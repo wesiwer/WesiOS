@@ -1,0 +1,9 @@
+{
+  "name": "wesios-telegram-webhook",
+  "version": "1.0.0",
+  "description": "Webhook server for WesiOS Telegram notifications",
+  "main": "api/send-message.js",
+  "dependencies": {
+    "@vercel/postgres": "^0.5.1"
+  }
+}
