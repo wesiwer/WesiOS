@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../features/splash/splash_screen.dart';
-import '../../features/home/home_screen.dart';
+import '../../features/auth/welcome_screen.dart';
 import '../../features/auth/login_screen.dart';
+import '../../features/home/home_screen.dart';
 import '../../features/treasury/treasury_screen.dart';
 import '../../features/tasks/tasks_screen.dart';
 import '../../features/roadmap/roadmap_screen.dart';
@@ -19,6 +20,8 @@ class AppRouter {
     switch (settings.name) {
       case '/':
         return MaterialPageRoute(builder: (_) => const SplashScreen());
+      case '/welcome':
+        return _fadeRoute(const WelcomeScreen());
       case '/login':
         return MaterialPageRoute(builder: (_) => const LoginScreen());
       case '/home':
@@ -48,7 +51,7 @@ class AppRouter {
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
-            body: Center(child: Text('Route not found: \${settings.name}')),
+            body: Center(child: Text('Route not found: ${settings.name}')),
           ),
         );
     }
