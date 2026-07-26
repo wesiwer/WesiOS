@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import '../../core/theme/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -48,13 +47,12 @@ class _SplashScreenState extends State<SplashScreen>
 
     _controller.forward();
 
-    // Change loading text
     _startTextRotation();
 
-    // Navigate after 5 seconds
+    // Navigate to WelcomeScreen after 5 seconds
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/home');
+        Navigator.of(context).pushReplacementNamed('/welcome');
       }
     });
   }
@@ -82,7 +80,7 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: AppTheme.background,
       body: Stack(
         children: [
-          // Background particles effect (simplified)
+          // Background gradient
           Container(
             decoration: BoxDecoration(
               gradient: RadialGradient(
