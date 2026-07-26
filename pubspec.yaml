@@ -87,6 +87,7 @@ flutter:
 
   assets:
     - assets/images/
+    - assets/images/wesi_logo_easter.png
     - assets/audio/
     - assets/fonts/
     - assets/animations/
