@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "885912986842",
+    "project_id": "wesios-d7b07",
+    "storage_bucket": "wesios-d7b07.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:885912986842:android:6215dc1216db43ce8d31e3",
+        "android_client_info": {
+          "package_name": "com.wesi.wesios"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAlBRd6z6V0t16wgcOd68o2CXA0n8jtE_k"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
