@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../core/theme/app_theme.dart';
+import 'models/transaction_model.dart';
+import 'services/treasury_service.dart';
 
 /// Экран прогноза Treasury с графиком P10/P50/P90
 /// 
@@ -18,12 +20,98 @@ class TreasuryForecastScreen extends StatefulWidget {
 class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   bool _showP10P90 = true;
   int _forecastDays = 30;
+  final TreasuryService _service = TreasuryService();
+  List<ForecastPoint> _data = [];
+  bool _isLoading = true;
 
-  // Демо-данные: 30 дней истории + 30 дней прогноза
-  final List<ForecastPoint> _data = _generateDemoData();
+  @override
+  void initState() {
+    super.initState();
+    _loadForecast();
+  }
+
+  Future<void> _loadForecast() async {
+    await _service.generateDemoData();
+    final forecast = await _service.generateForecast(days: _forecastDays);
+    final txs = await _service.getAllTransactions();
+
+    // Build history + forecast points
+    final data = <ForecastPoint>[];
+    final now = DateTime.now();
+
+    // History: last 30 days
+    final historyTxs = txs.where((t) => t.date.isAfter(now.subtract(const Duration(days: 30)))).toList();
+    final dailyBalance = <DateTime, double>{};
+    double runningBalance = 0;
+
+    for (final tx in txs.where((t) => t.date.isBefore(now.subtract(const Duration(days: 30))))) {
+      runningBalance += tx.type == TransactionType.income ? tx.amount : -tx.amount;
+    }
+
+    for (int i = 30; i >= 0; i--) {
+      final day = now.subtract(Duration(days: i));
+      final dayTxs = historyTxs.where((t) =>
+        t.date.year == day.year && t.date.month == day.month && t.date.day == day.day
+      );
+      double dayNet = 0;
+      for (final tx in dayTxs) {
+        dayNet += tx.type == TransactionType.income ? tx.amount : -tx.amount;
+      }
+      runningBalance += dayNet;
+      dailyBalance[day] = runningBalance;
+    }
+
+    final sortedDays = dailyBalance.keys.toList()..sort();
+    int dayIndex = 0;
+    for (final day in sortedDays) {
+      data.add(ForecastPoint(
+        day: dayIndex++,
+        p10: dailyBalance[day]! * 0.98,
+        p50: dailyBalance[day]!,
+        p90: dailyBalance[day]! * 1.02,
+        actual: dailyBalance[day],
+        isForecast: false,
+      ));
+    }
+
+    // Forecast
+    final p10 = forecast['p10'] ?? [];
+    final p50 = forecast['p50'] ?? [];
+    final p90 = forecast['p90'] ?? [];
+
+    for (int i = 0; i < p50.length; i++) {
+      data.add(ForecastPoint(
+        day: dayIndex + i,
+        p10: p10[i],
+        p50: p50[i],
+        p90: p90[i],
+        isForecast: true,
+      ));
+    }
+
+    setState(() {
+      _data = data;
+      _isLoading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: AppTheme.accentOrange.withOpacity(0.5)),
+              const SizedBox(height: 16),
+              Text('Generating forecast...', style: TextStyle(color: AppTheme.textMuted)),
+            ],
+          ),
+        ),
+      );
+    }
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: Column(
@@ -493,37 +581,4 @@ class ForecastPoint {
     this.actual,
     required this.isForecast,
   });
-}
-
-/// Генерация демо-данных
-List<ForecastPoint> _generateDemoData() {
-  final data = <ForecastPoint>[];
-  double base = 50000;
-
-  // 30 дней истории
-  for (int i = 0; i < 30; i++) {
-    base += (i % 7 == 0 ? -2000 : 1500) + (i * 100);
-    data.add(ForecastPoint(
-      day: i,
-      p10: base * 0.95,
-      p50: base,
-      p90: base * 1.05,
-      actual: base + (i % 3 == 0 ? 500 : -300),
-      isForecast: false,
-    ));
-  }
-
-  // 30 дней прогноза (растущий разброс)
-  for (int i = 30; i < 60; i++) {
-    final spread = (i - 29) * 800;
-    data.add(ForecastPoint(
-      day: i,
-      p10: base - spread,
-      p50: base + (i - 30) * 200,
-      p90: base + spread * 1.5,
-      isForecast: true,
-    ));
-  }
-
-  return data;
 }
