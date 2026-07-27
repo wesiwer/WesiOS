@@ -32,6 +32,13 @@ jobs:
       - name: Regenerate Windows platform files
         run: flutter create --platforms=windows --project-name=wesios .
 
+      - name: Restore custom Windows icon
+        shell: pwsh
+        run: |
+          if (Test-Path assets/images/app_icon.ico) {
+            Copy-Item assets/images/app_icon.ico windows/runner/resources/app_icon.ico -Force
+          }
+
       - name: Get dependencies
         run: flutter pub get
 
