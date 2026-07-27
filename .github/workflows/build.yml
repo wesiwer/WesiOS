@@ -23,7 +23,7 @@ jobs:
         run: flutter config --enable-windows-desktop
 
       - name: Regenerate Windows platform files
-        run: flutter create --platforms=windows .
+        run: flutter create --platforms=windows --project-name=wesios .
 
       - name: Get dependencies
         run: flutter pub get
