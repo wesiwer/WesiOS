@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_tooltip.dart';
+import '../../core/widgets/wesi_context_menu.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 
@@ -154,9 +155,14 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 ),
                 const SizedBox(height: 16),
                 // Forecast Button
-                HoverButton(
-                  onTap: () => Navigator.pushNamed(context, '/treasury/forecast'),
-                  padding: const EdgeInsets.all(20),
+                WesiContextMenu(
+                  title: 'Wesi Treasury Forecast',
+                  description: 'Monte-Carlo powered financial forecasting with P10/P50/P90 confidence intervals. Analyzes your transaction history to predict future balance with statistical accuracy.',
+                  purpose: 'See where your finances are heading. Plan ahead with data-driven confidence intervals, not guesswork.',
+                  children: [
+                    HoverButton(
+                      onTap: () => Navigator.pushNamed(context, '/treasury/forecast'),
+                      padding: const EdgeInsets.all(20),
                   backgroundColor: AppTheme.surface,
                   child: Row(
                     children: [
@@ -205,6 +211,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                     ],
                   ),
                 ),
+              ],
+            ),
                 const SizedBox(height: 24),
                 // Stats Row
                 Row(
