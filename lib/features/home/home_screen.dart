@@ -120,29 +120,29 @@ class _DashboardTab extends StatelessWidget {
                 children: [
                   Expanded(
                     child: WesiTooltip(
-                      message: 'Добавить продажу или доход',
-                      child: _buildQuickAction(context, Icons.add_circle, 'Продажа', '/treasury'),
+                      message: 'Record a sale or income transaction',
+                      child: _buildQuickAction(context, Icons.add_circle, 'Sales', '/treasury'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
-                      message: 'Зафиксировать расход',
-                      child: _buildQuickAction(context, Icons.remove_circle, 'Трата', '/treasury'),
+                      message: 'Record an expense or outgoing payment',
+                      child: _buildQuickAction(context, Icons.remove_circle, 'Expenses', '/treasury'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
-                      message: 'Голосовой ввод задачи или заметки',
-                      child: _buildQuickAction(context, Icons.mic, 'Голос', '/tasks'),
+                      message: 'Voice input for tasks and notes',
+                      child: _buildQuickAction(context, Icons.mic, 'Voice', '/tasks'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
-                      message: 'Wesi Калькулятор — быстрые расчёты',
-                      child: _buildQuickAction(context, Icons.calculate, 'Калькулятор', '/calculator'),
+                      message: 'Wesi Calculator — quick calculations',
+                      child: _buildQuickAction(context, Icons.calculate, 'Calculator', '/calculator'),
                     ),
                   ),
                 ],
