@@ -1,3 +1,5 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
@@ -6,6 +8,11 @@ import 'core/routes/app_router.dart';
 import 'core/widgets/window_controls.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/first_run/first_run_screen.dart';
+
+bool get isDesktop {
+  if (kIsWeb) return false;
+  return Platform.isWindows || Platform.isMacOS || Platform.isLinux;
+}
 
 class WesiOSApp extends StatelessWidget {
   final bool isFirstRun;
@@ -32,12 +39,13 @@ class WesiOSApp extends StatelessWidget {
         return Stack(
           children: [
             if (child != null) child,
-            const Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: WindowControls(),
-            ),
+            if (isDesktop)
+              const Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: WindowControls(),
+              ),
           ],
         );
       },
