@@ -9,10 +9,14 @@ class SplashScreen extends StatefulWidget {
 }
 
 class _SplashScreenState extends State<SplashScreen>
-    with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
+    with TickerProviderStateMixin {
+  late AnimationController _fadeController;
+  late AnimationController _ringController1;
+  late AnimationController _ringController2;
+  late AnimationController _ringController3;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
+  late Animation<double> _glowAnimation;
 
   final List<String> _loadingTexts = [
     'Загружаем вселенную Wesi...',
@@ -32,20 +36,39 @@ class _SplashScreenState extends State<SplashScreen>
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(
+    _fadeController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 5),
     );
 
+    _ringController1 = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 3),
+    )..repeat();
+
+    _ringController2 = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 5),
+    )..repeat(reverse: true);
+
+    _ringController3 = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 4),
+    )..repeat();
+
     _fadeAnimation = Tween(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0, 0.3, curve: Curves.easeOut)),
+      CurvedAnimation(parent: _fadeController, curve: const Interval(0, 0.3, curve: Curves.easeOut)),
     );
 
     _scaleAnimation = Tween(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0, 0.5, curve: Curves.easeOutCubic)),
+      CurvedAnimation(parent: _fadeController, curve: const Interval(0, 0.5, curve: Curves.easeOutCubic)),
     );
 
-    _controller.forward();
+    _glowAnimation = Tween(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeController, curve: const Interval(0.2, 0.8, curve: Curves.easeInOut)),
+    );
+
+    _fadeController.forward();
     _startTextRotation();
 
     Future.delayed(const Duration(seconds: 5), () {
@@ -68,7 +91,10 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
-    _controller.dispose();
+    _fadeController.dispose();
+    _ringController1.dispose();
+    _ringController2.dispose();
+    _ringController3.dispose();
     super.dispose();
   }
 
@@ -78,7 +104,7 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: AppTheme.background,
       body: Stack(
         children: [
-          // Carbon fiber background
+          // Carbon fiber background with orange glow
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -91,6 +117,54 @@ class _SplashScreenState extends State<SplashScreen>
                 ],
               ),
             ),
+          ),
+          // Orange ambient glow — bottom right
+          AnimatedBuilder(
+            animation: _glowAnimation,
+            builder: (context, child) {
+              return Positioned(
+                bottom: -100,
+                right: -100,
+                child: Container(
+                  width: 400,
+                  height: 400,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppTheme.accentOrange.withOpacity(0.08 * _glowAnimation.value),
+                        AppTheme.accentOrange.withOpacity(0.02 * _glowAnimation.value),
+                        Colors.transparent,
+                      ],
+                      stops: const [0.0, 0.5, 1.0],
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          // Orange ambient glow — top left subtle
+          AnimatedBuilder(
+            animation: _glowAnimation,
+            builder: (context, child) {
+              return Positioned(
+                top: -80,
+                left: -80,
+                child: Container(
+                  width: 300,
+                  height: 300,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: RadialGradient(
+                      colors: [
+                        AppTheme.accentOrange.withOpacity(0.05 * _glowAnimation.value),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
           // Soft white highlight
           Positioned(
@@ -113,7 +187,7 @@ class _SplashScreenState extends State<SplashScreen>
           // Main content
           Center(
             child: AnimatedBuilder(
-              animation: _controller,
+              animation: _fadeController,
               builder: (context, child) {
                 return Opacity(
                   opacity: _fadeAnimation.value,
@@ -122,74 +196,145 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Carbon logo
-                        Container(
-                          width: 120,
-                          height: 120,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [
-                                AppTheme.carbonDark,
-                                AppTheme.carbonMid,
-                                AppTheme.carbonLight,
-                              ],
-                            ),
-                            border: Border.all(
-                              color: AppTheme.carbonHighlight,
-                              width: 2,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.5),
-                                blurRadius: 30,
-                                spreadRadius: 5,
+                        // Animated rings + Logo
+                        SizedBox(
+                          width: 160,
+                          height: 160,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              // Outer ring — rotates clockwise
+                              RotationTransition(
+                                turns: _ringController1,
+                                child: Container(
+                                  width: 160,
+                                  height: 160,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: AppTheme.accentOrange.withOpacity(0.3),
+                                      width: 1.5,
+                                    ),
+                                    gradient: SweepGradient(
+                                      colors: [
+                                        Colors.transparent,
+                                        AppTheme.accentOrange.withOpacity(0.4),
+                                        Colors.transparent,
+                                      ],
+                                      stops: const [0.0, 0.5, 1.0],
+                                    ),
+                                  ),
+                                ),
                               ),
-                              BoxShadow(
-                                color: Colors.white.withOpacity(0.05),
-                                blurRadius: 10,
-                                offset: const Offset(-2, -2),
+                              // Middle ring — rotates counter-clockwise
+                              RotationTransition(
+                                turns: ReverseAnimation(_ringController2),
+                                child: Container(
+                                  width: 130,
+                                  height: 130,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: AppTheme.accentOrange.withOpacity(0.25),
+                                      width: 1.2,
+                                    ),
+                                    gradient: SweepGradient(
+                                      colors: [
+                                        Colors.transparent,
+                                        AppTheme.accentOrange.withOpacity(0.3),
+                                        Colors.transparent,
+                                      ],
+                                      stops: const [0.0, 0.5, 1.0],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Inner ring — rotates clockwise faster
+                              RotationTransition(
+                                turns: _ringController3,
+                                child: Container(
+                                  width: 100,
+                                  height: 100,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: AppTheme.accentOrange.withOpacity(0.2),
+                                      width: 1,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              // Carbon logo center
+                              Container(
+                                width: 80,
+                                height: 80,
+                                decoration: BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  gradient: const LinearGradient(
+                                    begin: Alignment.topLeft,
+                                    end: Alignment.bottomRight,
+                                    colors: [
+                                      AppTheme.carbonDark,
+                                      AppTheme.carbonMid,
+                                      AppTheme.carbonLight,
+                                    ],
+                                  ),
+                                  border: Border.all(
+                                    color: AppTheme.accentOrange.withOpacity(0.4),
+                                    width: 2,
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: AppTheme.accentOrange.withOpacity(0.15),
+                                      blurRadius: 20,
+                                      spreadRadius: 2,
+                                    ),
+                                    BoxShadow(
+                                      color: Colors.black.withOpacity(0.5),
+                                      blurRadius: 30,
+                                      spreadRadius: 5,
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: ShaderMask(
+                                    shaderCallback: (bounds) {
+                                      return LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Colors.white.withOpacity(0.95),
+                                          AppTheme.accentOrange.withOpacity(0.8),
+                                          Colors.white.withOpacity(0.6),
+                                        ],
+                                        stops: const [0.0, 0.5, 1.0],
+                                      ).createShader(bounds);
+                                    },
+                                    child: const Text(
+                                      'W',
+                                      style: TextStyle(
+                                        fontSize: 40,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
                             ],
                           ),
-                          child: Center(
-                            child: ShaderMask(
-                              shaderCallback: (bounds) {
-                                return LinearGradient(
-                                  begin: Alignment.topLeft,
-                                  end: Alignment.bottomRight,
-                                  colors: [
-                                    Colors.white.withOpacity(0.95),
-                                    Colors.white.withOpacity(0.6),
-                                    Colors.white.withOpacity(0.3),
-                                  ],
-                                  stops: const [0.0, 0.5, 1.0],
-                                ).createShader(bounds);
-                              },
-                              child: const Text(
-                                'W',
-                                style: TextStyle(
-                                  fontSize: 56,
-                                  fontWeight: FontWeight.w900,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
                         ),
-                        const SizedBox(height: 32),
-                        // WesiOS text — carbon style
+                        const SizedBox(height: 40),
+                        // WesiOS text — carbon style with orange accent
                         ShaderMask(
                           shaderCallback: (bounds) {
                             return LinearGradient(
                               begin: Alignment.topCenter,
                               end: Alignment.bottomCenter,
                               colors: [
-                                Colors.white.withOpacity(0.9),
-                                Colors.white.withOpacity(0.5),
-                                AppTheme.carbonHighlight.withOpacity(0.3),
+                                Colors.white.withOpacity(0.95),
+                                Colors.white.withOpacity(0.7),
+                                AppTheme.accentOrange.withOpacity(0.5),
                               ],
                             ).createShader(bounds);
                           },
@@ -231,11 +376,14 @@ class _SplashScreenState extends State<SplashScreen>
                         // Progress
                         SizedBox(
                           width: 200,
-                          child: LinearProgressIndicator(
-                            value: _controller.value,
-                            backgroundColor: AppTheme.surfaceLight,
-                            valueColor: const AlwaysStoppedAnimation(AppTheme.accentOrange),
+                          child: ClipRRect(
                             borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: _fadeController.value,
+                              backgroundColor: AppTheme.surfaceLight,
+                              valueColor: const AlwaysStoppedAnimation(AppTheme.accentOrange),
+                              minHeight: 3,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 16),
