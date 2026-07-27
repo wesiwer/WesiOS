@@ -22,9 +22,6 @@ jobs:
       - name: Enable Windows desktop
         run: flutter config --enable-windows-desktop
 
-      - name: Create Windows project
-        run: flutter create --platforms=windows . --project-name=wesios --org=com.wesi
-
       - name: Get dependencies
         run: flutter pub get
 
