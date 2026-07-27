@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
-import '../theme/app_theme.dart';
+import '../core/theme/app_theme.dart';
 
 class HoverButton extends StatefulWidget {
   final Widget child;
-  final VoidCallback? onTap;
+  final FutureOr<void> Function()? onTap;
   final EdgeInsetsGeometry? padding;
   final BorderRadius? borderRadius;
   final Color? backgroundColor;
@@ -72,7 +73,7 @@ class _HoverButtonState extends State<HoverButton> {
 
 class HoverIconButton extends StatefulWidget {
   final IconData icon;
-  final VoidCallback? onTap;
+  final FutureOr<void> Function()? onTap;
   final double size;
   final Color? color;
 
