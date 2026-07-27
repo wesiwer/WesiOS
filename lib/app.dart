@@ -3,13 +3,14 @@ import 'package:flutter/services.dart';
 import 'core/theme/app_theme.dart';
 import 'core/routes/app_router.dart';
 import 'features/splash/splash_screen.dart';
+import 'features/first_run/first_run_screen.dart';
 
 class WesiOSApp extends StatelessWidget {
-  const WesiOSApp({super.key});
+  final bool isFirstRun;
+  const WesiOSApp({super.key, this.isFirstRun = false});
 
   @override
   Widget build(BuildContext context) {
-    // Set preferred orientations
     SystemChrome.setPreferredOrientations([
       DeviceOrientation.portraitUp,
       DeviceOrientation.portraitDown,
@@ -24,7 +25,7 @@ class WesiOSApp extends StatelessWidget {
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
       onGenerateRoute: AppRouter.onGenerateRoute,
-      home: const SplashScreen(),
+      home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
     );
   }
 }
