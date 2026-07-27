@@ -80,6 +80,8 @@ class _DashboardTab extends StatelessWidget {
                     icon: Icons.notifications_outlined,
                     onTap: () {},
                   ),
+                  const SizedBox(width: 8),
+                  _ProfileDropdown(),
                 ],
               ),
             ),
@@ -184,6 +186,106 @@ class _DashboardTab extends StatelessWidget {
 
 
 
+
+class _ProfileDropdown extends StatefulWidget {
+  @override
+  State<_ProfileDropdown> createState() => _ProfileDropdownState();
+}
+
+class _ProfileDropdownState extends State<_ProfileDropdown> {
+  bool _isHovered = false;
+
+  void _showMenu(BuildContext context) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    showMenu<String>(
+      context: context,
+      position: position,
+      color: AppTheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: [
+        _buildMenuItem('Профиль', Icons.person_outline, '/profile'),
+        _buildMenuItem('Настройки', Icons.settings_outlined, '/settings'),
+        _buildMenuItem('Ключи и токены', Icons.vpn_key_outlined, '/profile'),
+        const PopupMenuDivider(),
+        _buildMenuItem('О WesiOS', Icons.info_outline, '/founder'),
+      ],
+    ).then((route) {
+      if (route != null) {
+        Navigator.pushNamed(context, route);
+      }
+    });
+  }
+
+  PopupMenuItem<String> _buildMenuItem(String label, IconData icon, String route) {
+    return PopupMenuItem<String>(
+      value: route,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.textSecondary),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _showMenu(context),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppTheme.surfaceLight : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _isHovered ? AppTheme.accentOrange.withOpacity(0.4) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: AnimatedScale(
+            scale: _isHovered ? 1.15 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppTheme.carbonDark, AppTheme.carbonMid],
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _isHovered ? AppTheme.accentOrange : AppTheme.textMuted,
+                  width: 1.5,
+                ),
+              ),
+              child: Icon(
+                Icons.person,
+                size: 16,
+                color: _isHovered ? AppTheme.accentOrange : AppTheme.textPrimary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HoverIconButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -192,6 +294,106 @@ class _HoverIconButton extends StatefulWidget {
 
   @override
   State<_HoverIconButton> createState() => _HoverIconButtonState();
+}
+
+
+class _ProfileDropdown extends StatefulWidget {
+  @override
+  State<_ProfileDropdown> createState() => _ProfileDropdownState();
+}
+
+class _ProfileDropdownState extends State<_ProfileDropdown> {
+  bool _isHovered = false;
+
+  void _showMenu(BuildContext context) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    showMenu<String>(
+      context: context,
+      position: position,
+      color: AppTheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: [
+        _buildMenuItem('Профиль', Icons.person_outline, '/profile'),
+        _buildMenuItem('Настройки', Icons.settings_outlined, '/settings'),
+        _buildMenuItem('Ключи и токены', Icons.vpn_key_outlined, '/profile'),
+        const PopupMenuDivider(),
+        _buildMenuItem('О WesiOS', Icons.info_outline, '/founder'),
+      ],
+    ).then((route) {
+      if (route != null) {
+        Navigator.pushNamed(context, route);
+      }
+    });
+  }
+
+  PopupMenuItem<String> _buildMenuItem(String label, IconData icon, String route) {
+    return PopupMenuItem<String>(
+      value: route,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.textSecondary),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _showMenu(context),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppTheme.surfaceLight : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _isHovered ? AppTheme.accentOrange.withOpacity(0.4) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: AnimatedScale(
+            scale: _isHovered ? 1.15 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppTheme.carbonDark, AppTheme.carbonMid],
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _isHovered ? AppTheme.accentOrange : AppTheme.textMuted,
+                  width: 1.5,
+                ),
+              ),
+              child: Icon(
+                Icons.person,
+                size: 16,
+                color: _isHovered ? AppTheme.accentOrange : AppTheme.textPrimary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HoverIconButtonState extends State<_HoverIconButton> {
@@ -247,6 +449,106 @@ class _HoverQuickAction extends StatefulWidget {
 }
 
 
+
+class _ProfileDropdown extends StatefulWidget {
+  @override
+  State<_ProfileDropdown> createState() => _ProfileDropdownState();
+}
+
+class _ProfileDropdownState extends State<_ProfileDropdown> {
+  bool _isHovered = false;
+
+  void _showMenu(BuildContext context) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    showMenu<String>(
+      context: context,
+      position: position,
+      color: AppTheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: [
+        _buildMenuItem('Профиль', Icons.person_outline, '/profile'),
+        _buildMenuItem('Настройки', Icons.settings_outlined, '/settings'),
+        _buildMenuItem('Ключи и токены', Icons.vpn_key_outlined, '/profile'),
+        const PopupMenuDivider(),
+        _buildMenuItem('О WesiOS', Icons.info_outline, '/founder'),
+      ],
+    ).then((route) {
+      if (route != null) {
+        Navigator.pushNamed(context, route);
+      }
+    });
+  }
+
+  PopupMenuItem<String> _buildMenuItem(String label, IconData icon, String route) {
+    return PopupMenuItem<String>(
+      value: route,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.textSecondary),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _showMenu(context),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppTheme.surfaceLight : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _isHovered ? AppTheme.accentOrange.withOpacity(0.4) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: AnimatedScale(
+            scale: _isHovered ? 1.15 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppTheme.carbonDark, AppTheme.carbonMid],
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _isHovered ? AppTheme.accentOrange : AppTheme.textMuted,
+                  width: 1.5,
+                ),
+              ),
+              child: Icon(
+                Icons.person,
+                size: 16,
+                color: _isHovered ? AppTheme.accentOrange : AppTheme.textPrimary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HoverIconButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback onTap;
@@ -255,6 +557,106 @@ class _HoverIconButton extends StatefulWidget {
 
   @override
   State<_HoverIconButton> createState() => _HoverIconButtonState();
+}
+
+
+class _ProfileDropdown extends StatefulWidget {
+  @override
+  State<_ProfileDropdown> createState() => _ProfileDropdownState();
+}
+
+class _ProfileDropdownState extends State<_ProfileDropdown> {
+  bool _isHovered = false;
+
+  void _showMenu(BuildContext context) {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(Offset.zero, ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    showMenu<String>(
+      context: context,
+      position: position,
+      color: AppTheme.surface,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      items: [
+        _buildMenuItem('Профиль', Icons.person_outline, '/profile'),
+        _buildMenuItem('Настройки', Icons.settings_outlined, '/settings'),
+        _buildMenuItem('Ключи и токены', Icons.vpn_key_outlined, '/profile'),
+        const PopupMenuDivider(),
+        _buildMenuItem('О WesiOS', Icons.info_outline, '/founder'),
+      ],
+    ).then((route) {
+      if (route != null) {
+        Navigator.pushNamed(context, route);
+      }
+    });
+  }
+
+  PopupMenuItem<String> _buildMenuItem(String label, IconData icon, String route) {
+    return PopupMenuItem<String>(
+      value: route,
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: AppTheme.textSecondary),
+          const SizedBox(width: 12),
+          Text(label, style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+        ],
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () => _showMenu(context),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppTheme.surfaceLight : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _isHovered ? AppTheme.accentOrange.withOpacity(0.4) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: AnimatedScale(
+            scale: _isHovered ? 1.15 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [AppTheme.carbonDark, AppTheme.carbonMid],
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: _isHovered ? AppTheme.accentOrange : AppTheme.textMuted,
+                  width: 1.5,
+                ),
+              ),
+              child: Icon(
+                Icons.person,
+                size: 16,
+                color: _isHovered ? AppTheme.accentOrange : AppTheme.textPrimary,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HoverIconButtonState extends State<_HoverIconButton> {
