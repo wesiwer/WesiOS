@@ -3,6 +3,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_tooltip.dart';
 import '../../core/widgets/wesi_context_menu.dart';
+import '../../core/localization/wesi_locale.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 
