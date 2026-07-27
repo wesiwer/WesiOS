@@ -6,6 +6,7 @@ import '../../widgets/wesi_logo.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../core/widgets/wesi_tooltip.dart';
 import '../../core/widgets/wesi_context_menu.dart';
+import '../../core/localization/wesi_locale.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -121,21 +122,21 @@ class _DashboardTab extends StatelessWidget {
                 children: [
                   Expanded(
                     child: WesiTooltip(
-                      message: 'Record a sale or income transaction',
+                      message: WesiLocale.isRussian ? 'Добавить продажу или доход' : 'Record a sale or income transaction',
                       child: _buildQuickAction(context, Icons.add_circle, 'Sales', '/treasury'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
-                      message: 'Record an expense or outgoing payment',
+                      message: WesiLocale.isRussian ? 'Зафиксировать расход' : 'Record an expense or outgoing payment',
                       child: _buildQuickAction(context, Icons.remove_circle, 'Expenses', '/treasury'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
-                      message: 'Voice input for tasks and notes',
+                      message: WesiLocale.isRussian ? 'Голосовой ввод задачи или заметки' : 'Voice input for tasks and notes',
                       child: _buildQuickAction(context, Icons.mic, 'Voice', '/tasks'),
                     ),
                   ),
