@@ -4,6 +4,7 @@ import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/wesi_logo.dart';
 import '../../core/widgets/window_controls.dart';
+import '../../core/widgets/wesi_tooltip.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -117,13 +118,33 @@ class _DashboardTab extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Expanded(child: _buildQuickAction(context, Icons.add_circle, 'Продажа', '/treasury')),
+                  Expanded(
+                    child: WesiTooltip(
+                      message: 'Добавить продажу или доход',
+                      child: _buildQuickAction(context, Icons.add_circle, 'Продажа', '/treasury'),
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildQuickAction(context, Icons.remove_circle, 'Трата', '/treasury')),
+                  Expanded(
+                    child: WesiTooltip(
+                      message: 'Зафиксировать расход',
+                      child: _buildQuickAction(context, Icons.remove_circle, 'Трата', '/treasury'),
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildQuickAction(context, Icons.mic, 'Голос', '/tasks')),
+                  Expanded(
+                    child: WesiTooltip(
+                      message: 'Голосовой ввод задачи или заметки',
+                      child: _buildQuickAction(context, Icons.mic, 'Голос', '/tasks'),
+                    ),
+                  ),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildQuickAction(context, Icons.calculate, 'Калькулятор', '/calculator')),
+                  Expanded(
+                    child: WesiTooltip(
+                      message: 'Wesi Калькулятор — быстрые расчёты',
+                      child: _buildQuickAction(context, Icons.calculate, 'Калькулятор', '/calculator'),
+                    ),
+                  ),
                 ],
               ),
             ),
