@@ -64,6 +64,29 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      - name: Create dummy google-services.json
+        run: |
+          mkdir -p android/app
+          echo '{
+            "project_info": {
+              "project_number": "123456789",
+              "project_id": "wesios-d7b07",
+              "storage_bucket": "wesios-d7b07.appspot.com"
+            },
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:123456789:android:abc123",
+                "android_client_info": { "package_name": "com.wesi.wesios" }
+              },
+              "oauth_client": [],
+              "api_key": [{ "current_key": "dummy-key" }],
+              "services": {
+                "appinvite_service": { "other_platform_oauth_client": [] }
+              }
+            }],
+            "configuration_version": "1"
+          }' > android/app/google-services.json
+
       - name: Build APK
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false'
