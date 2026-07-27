@@ -26,6 +26,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   DateTime? _birthDate;
   String _gender = 'Не указан';
   String _country = 'Не указана';
+  int _selectedAvatarIndex = 0;
   bool _isLoading = false;
   String? _error;
 
@@ -191,50 +192,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const SizedBox(height: 40),
-                      // Avatar
-                      GestureDetector(
-                        onTap: () {
-                          // TODO: image picker
-                        },
-                        child: MouseRegion(
-                          cursor: SystemMouseCursors.click,
-                          child: AnimatedContainer(
-                            duration: const Duration(milliseconds: 200),
-                            width: 80,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              gradient: const LinearGradient(
-                                colors: [AppTheme.carbonDark, AppTheme.carbonMid],
-                              ),
-                              shape: BoxShape.circle,
-                              border: Border.all(
-                                color: AppTheme.accentOrange.withOpacity(0.4),
-                                width: 2,
-                              ),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: AppTheme.accentOrange.withOpacity(0.1),
-                                  blurRadius: 15,
-                                  spreadRadius: 2,
-                                ),
-                              ],
-                            ),
-                            child: const Icon(
-                              Icons.person_outline,
-                              size: 36,
-                              color: AppTheme.textSecondary,
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      const Text(
-                        'Нажмите для смены аватарки',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: AppTheme.textMuted,
-                        ),
-                      ),
+                      // Selected avatar preview
+                      _buildSelectedAvatar(),
+                      const SizedBox(height: 16),
+                      // Avatar grid
+                      _buildAvatarGrid(),
+                      const SizedBox(height: 12),
+                      // Upload custom
+                      _buildCustomUploadButton(),
                     ],
                   ),
                 ),
@@ -475,4 +440,246 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
     );
   }
+
+
+  Widget _buildSelectedAvatar() {
+    final avatar = _avatarPresets[_selectedAvatarIndex];
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 300),
+      width: 100,
+      height: 100,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        gradient: avatar.gradient,
+        border: Border.all(
+          color: AppTheme.accentOrange.withOpacity(0.6),
+          width: 2.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppTheme.accentOrange.withOpacity(0.15),
+            blurRadius: 20,
+            spreadRadius: 3,
+          ),
+        ],
+      ),
+      child: Center(child: avatar.icon),
+    );
+  }
+
+  Widget _buildAvatarGrid() {
+    return Wrap(
+      spacing: 12,
+      runSpacing: 12,
+      alignment: WrapAlignment.center,
+      children: List.generate(_avatarPresets.length, (index) {
+        final preset = _avatarPresets[index];
+        final isSelected = index == _selectedAvatarIndex;
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => setState(() => _selectedAvatarIndex = index),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: preset.gradient,
+                border: Border.all(
+                  color: isSelected
+                    ? AppTheme.accentOrange
+                    : Colors.transparent,
+                  width: isSelected ? 2.5 : 0,
+                ),
+                boxShadow: isSelected
+                  ? [
+                      BoxShadow(
+                        color: AppTheme.accentOrange.withOpacity(0.25),
+                        blurRadius: 12,
+                        spreadRadius: 2,
+                      ),
+                    ]
+                  : null,
+              ),
+              child: Center(
+                child: AnimatedScale(
+                  scale: isSelected ? 1.15 : 1.0,
+                  duration: const Duration(milliseconds: 200),
+                  child: preset.icon,
+                ),
+              ),
+            ),
+          ),
+        );
+      }),
+    );
+  }
+
+  Widget _buildCustomUploadButton() {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          // TODO: image picker
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Загрузка своей аватарки — скоро')),
+          );
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+          decoration: BoxDecoration(
+            color: AppTheme.surface,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: AppTheme.accentOrange.withOpacity(0.3),
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.add_photo_alternate_outlined,
+                size: 16,
+                color: AppTheme.accentOrange.withOpacity(0.8),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'Загрузить свою',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.accentOrange.withOpacity(0.9),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static final List<_AvatarPreset> _avatarPresets = [
+    // 1. Neon Cyber — оранжевый неоновый круг
+    _AvatarPreset(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF1A0A00), Color(0xFF3D1F00), Color(0xFF0A0A0F)],
+      ),
+      icon: ShaderMask(
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [AppTheme.accentOrange, Color(0xFFFFD700)],
+        ).createShader(bounds),
+        child: const Icon(Icons.bolt, size: 28, color: Colors.white),
+      ),
+    ),
+    // 2. Ice Operator — холодный синий
+    _AvatarPreset(
+      gradient: const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF0A1A2A), Color(0xFF001A33), Color(0xFF0A0A0F)],
+      ),
+      icon: ShaderMask(
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [Color(0xFF60A5FA), Color(0xFF93C5FD)],
+        ).createShader(bounds),
+        child: const Icon(Icons.ac_unit, size: 26, color: Colors.white),
+      ),
+    ),
+    // 3. Phantom — фиолетовый призрак
+    _AvatarPreset(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [Color(0xFF1A0A1A), Color(0xFF2D1F3D), Color(0xFF0A0A0F)],
+      ),
+      icon: ShaderMask(
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [Color(0xFFA78BFA), Color(0xFFC4B5FD)],
+        ).createShader(bounds),
+        child: const Icon(Icons.visibility_off, size: 26, color: Colors.white),
+      ),
+    ),
+    // 4. Toxic — кислотный зелёный
+    _AvatarPreset(
+      gradient: const LinearGradient(
+        begin: Alignment.centerLeft,
+        end: Alignment.centerRight,
+        colors: [Color(0xFF0A1A0A), Color(0xFF1A3D1A), Color(0xFF0A0A0F)],
+      ),
+      icon: ShaderMask(
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [AppTheme.accentGreen, Color(0xFFBEF264)],
+        ).createShader(bounds),
+        child: const Icon(Icons.biotech, size: 26, color: Colors.white),
+      ),
+    ),
+    // 5. Crimson — алое пламя
+    _AvatarPreset(
+      gradient: const LinearGradient(
+        begin: Alignment.topRight,
+        end: Alignment.bottomLeft,
+        colors: [Color(0xFF2A0A0A), Color(0xFF4D1F1F), Color(0xFF0A0A0F)],
+      ),
+      icon: ShaderMask(
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [Color(0xFFF87171), Color(0xFFFCA5A5)],
+        ).createShader(bounds),
+        child: const Icon(Icons.local_fire_department, size: 28, color: Colors.white),
+      ),
+    ),
+    // 6. Carbon Elite — чистый карбон
+    _AvatarPreset(
+      gradient: const LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: [AppTheme.carbonDark, AppTheme.carbonMid, AppTheme.carbonLight],
+      ),
+      icon: ShaderMask(
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [AppTheme.textPrimary, AppTheme.textSecondary],
+        ).createShader(bounds),
+        child: const Icon(Icons.shield, size: 26, color: Colors.white),
+      ),
+    ),
+    // 7. Gold Trader — золотой
+    _AvatarPreset(
+      gradient: const LinearGradient(
+        begin: Alignment.topCenter,
+        end: Alignment.bottomCenter,
+        colors: [Color(0xFF2A240A), Color(0xFF4D3D1F), Color(0xFF0A0A0F)],
+      ),
+      icon: ShaderMask(
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [Color(0xFFFCD34D), Color(0xFFFDE68A)],
+        ).createShader(bounds),
+        child: const Icon(Icons.trending_up, size: 28, color: Colors.white),
+      ),
+    ),
+    // 8. Void Walker — чёрная дыра
+    _AvatarPreset(
+      gradient: const RadialGradient(
+        center: Alignment.center,
+        colors: [Color(0xFF1A1A2E), Color(0xFF0A0A0F), Color(0xFF000000)],
+      ),
+      icon: ShaderMask(
+        shaderCallback: (bounds) => const LinearGradient(
+          colors: [Color(0xFF818CF8), Color(0xFFA5B4FC)],
+        ).createShader(bounds),
+        child: const Icon(Icons.all_inclusive, size: 26, color: Colors.white),
+      ),
+    ),
+  ];
+}
+
+class _AvatarPreset {
+  final Gradient gradient;
+  final Widget icon;
+
+  const _AvatarPreset({required this.gradient, required this.icon});
+
 }
