@@ -72,8 +72,8 @@ dependencies:
   # Timer
   flutter_timer_countdown: ^1.0.7
 
-  # Canvas / MindMap
-  flutter_drawing_board: ^0.7.1
+  # Canvas / MindMap - using flutter_drawing_board from pub.dev latest
+  flutter_drawing_board: ^1.0.1
 
 dev_dependencies:
   flutter_test:
