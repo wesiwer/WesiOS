@@ -119,7 +119,7 @@ class _DashboardTab extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(child: _buildQuickAction(context, Icons.mic, 'Голос', '/tasks')),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildQuickAction(context, Icons.calculate, 'Кальк', '/calculator')),
+                  Expanded(child: _buildQuickAction(context, Icons.calculate, 'Калькулятор', '/calculator')),
                 ],
               ),
             ),
@@ -180,6 +180,83 @@ class _DashboardTab extends StatelessWidget {
     );
   }
 
+
+class _HoverQuickAction extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _HoverQuickAction({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  State<_HoverQuickAction> createState() => _HoverQuickActionState();
+}
+
+class _HoverQuickActionState extends State<_HoverQuickAction> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppTheme.surfaceLight : AppTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _isHovered ? AppTheme.accentOrange.withOpacity(0.5) : AppTheme.glassBorder,
+              width: _isHovered ? 1.5 : 1,
+            ),
+            boxShadow: _isHovered
+                ? [
+                    BoxShadow(
+                      color: AppTheme.accentOrange.withOpacity(0.1),
+                      blurRadius: 12,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : null,
+          ),
+          child: Column(
+            children: [
+              AnimatedScale(
+                scale: _isHovered ? 1.2 : 1.0,
+                duration: const Duration(milliseconds: 200),
+                curve: Curves.easeOutCubic,
+                child: Icon(
+                  widget.icon,
+                  color: AppTheme.accentOrange,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _isHovered ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  fontWeight: _isHovered ? FontWeight.w500 : FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
   Widget _buildSubBalance(String label, String amount, Color color) {
     return Expanded(
       child: Container(
@@ -201,22 +278,10 @@ class _DashboardTab extends StatelessWidget {
   }
 
   Widget _buildQuickAction(BuildContext context, IconData icon, String label, String route) {
-    return GestureDetector(
+    return _HoverQuickAction(
+      icon: icon,
+      label: label,
       onTap: () => Navigator.pushNamed(context, route),
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: AppTheme.accentOrange, size: 28),
-            const SizedBox(height: 8),
-            Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-          ],
-        ),
-      ),
     );
   }
 
