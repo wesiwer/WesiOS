@@ -8,6 +8,35 @@ on:
   workflow_dispatch:
 
 jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Create Windows project
+        run: flutter create --platforms=windows . --project-name=wesios --org=com.wesi
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Windows
+        run: flutter build windows --release
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WesiOS-Windows
+          path: build/windows/x64/runner/Release/
+
   build-android:
     runs-on: ubuntu-latest
     steps:
