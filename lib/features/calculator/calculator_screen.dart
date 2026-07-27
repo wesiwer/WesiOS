@@ -84,7 +84,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               backgroundColor: AppTheme.background,
               appBar: AppBar(
                 title: const Text(
-                  'Wesi Калькулятор',
+                  'Wesi Calculator',
                   style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
