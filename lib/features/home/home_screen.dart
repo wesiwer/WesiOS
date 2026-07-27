@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/wesi_logo.dart';
+import '../../core/widgets/window_controls.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -65,18 +66,19 @@ class _DashboardTab extends StatelessWidget {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, kTitleBarHeight + 8, 16, 16),
               child: Row(
                 children: [
                   const WesiLogo(size: 40),
                   const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.search, color: AppTheme.textPrimary),
-                    onPressed: () {},
+                  _HoverIconButton(
+                    icon: Icons.search,
+                    onTap: () {},
                   ),
-                  IconButton(
-                    icon: const Icon(Icons.notifications_outlined, color: AppTheme.textPrimary),
-                    onPressed: () {},
+                  const SizedBox(width: 8),
+                  _HoverIconButton(
+                    icon: Icons.notifications_outlined,
+                    onTap: () {},
                   ),
                 ],
               ),
@@ -181,6 +183,54 @@ class _DashboardTab extends StatelessWidget {
   }
 
 
+
+class _HoverIconButton extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _HoverIconButton({required this.icon, required this.onTap});
+
+  @override
+  State<_HoverIconButton> createState() => _HoverIconButtonState();
+}
+
+class _HoverIconButtonState extends State<_HoverIconButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppTheme.surfaceLight : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _isHovered ? AppTheme.accentOrange.withOpacity(0.4) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: AnimatedScale(
+            scale: _isHovered ? 1.15 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Icon(
+              widget.icon,
+              color: _isHovered ? AppTheme.accentOrange : AppTheme.textPrimary,
+              size: 24,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _HoverQuickAction extends StatefulWidget {
   final IconData icon;
   final String label;
@@ -194,6 +244,54 @@ class _HoverQuickAction extends StatefulWidget {
 
   @override
   State<_HoverQuickAction> createState() => _HoverQuickActionState();
+}
+
+
+class _HoverIconButton extends StatefulWidget {
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _HoverIconButton({required this.icon, required this.onTap});
+
+  @override
+  State<_HoverIconButton> createState() => _HoverIconButtonState();
+}
+
+class _HoverIconButtonState extends State<_HoverIconButton> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppTheme.surfaceLight : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: _isHovered ? AppTheme.accentOrange.withOpacity(0.4) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: AnimatedScale(
+            scale: _isHovered ? 1.15 : 1.0,
+            duration: const Duration(milliseconds: 150),
+            child: Icon(
+              widget.icon,
+              color: _isHovered ? AppTheme.accentOrange : AppTheme.textPrimary,
+              size: 24,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HoverQuickActionState extends State<_HoverQuickAction> {
