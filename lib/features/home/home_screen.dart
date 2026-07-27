@@ -142,8 +142,8 @@ class _DashboardTab extends StatelessWidget {
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
-                      message: 'Wesi Calculator — quick calculations',
-                      child: _buildQuickAction(context, Icons.calculate, 'Calculator', '/calculator'),
+                      message: 'Wesi Калькулятор — быстрые расчёты',
+                      child: _buildQuickAction(context, Icons.calculate, 'Калькулятор', '/calculator'),
                     ),
                   ),
                 ],
