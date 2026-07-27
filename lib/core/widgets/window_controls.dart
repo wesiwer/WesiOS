@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import '../theme/app_theme.dart';
 
+/// Высота title bar для отступов контента
+const double kTitleBarHeight = 40;
+
 class WindowControls extends StatefulWidget {
   const WindowControls({super.key});
 
@@ -36,28 +39,72 @@ class _WindowControlsState extends State<WindowControls> {
         _checkMaximized();
       },
       child: Container(
-        height: 40,
+        height: kTitleBarHeight,
         color: Colors.transparent,
         child: Row(
           children: [
             const SizedBox(width: 16),
-            // App title
-            Text(
-              'WesiOS',
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: AppTheme.textMuted,
-                letterSpacing: 1,
-              ),
+            // Styled WesiOS logo — carbon + orange accent
+            Row(
+              children: [
+                Container(
+                  width: 22,
+                  height: 22,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppTheme.carbonDark,
+                        AppTheme.carbonMid,
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(
+                      color: AppTheme.accentOrange.withOpacity(0.5),
+                      width: 1.2,
+                    ),
+                  ),
+                  child: const Center(
+                    child: Text(
+                      'W',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                        color: AppTheme.accentOrange,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                ShaderMask(
+                  shaderCallback: (bounds) {
+                    return const LinearGradient(
+                      colors: [
+                        AppTheme.textPrimary,
+                        AppTheme.textSecondary,
+                      ],
+                    ).createShader(bounds);
+                  },
+                  child: const Text(
+                    'WesiOS',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                      letterSpacing: 1.5,
+                    ),
+                  ),
+                ),
+              ],
             ),
             const Spacer(),
-            // Minimize
+            // Window buttons
             _WindowButton(
               icon: Icons.remove,
               onTap: () => windowManager.minimize(),
             ),
-            // Maximize / Restore
             _WindowButton(
               icon: _isMaximized ? Icons.filter_none : Icons.crop_square,
               onTap: () async {
@@ -69,7 +116,6 @@ class _WindowControlsState extends State<WindowControls> {
                 _checkMaximized();
               },
             ),
-            // Close
             _WindowButton(
               icon: Icons.close,
               onTap: () => windowManager.close(),
@@ -110,7 +156,7 @@ class _WindowButtonState extends State<_WindowButton> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
           width: 48,
-          height: 40,
+          height: kTitleBarHeight,
           color: _isHovered
               ? (widget.isClose ? const Color(0xFFE81123) : Colors.white.withOpacity(0.1))
               : Colors.transparent,
