@@ -55,3 +55,33 @@ match /users/{uid}/finance/{document=**} {
 
 `transactions` требует составной индекс по `date` (ORDER BY) — Firebase
 сам предложит создать его при первом деплое.
+
+
+---
+
+## users/{uid}/finance/account
+
+Документ с текущим финансовым состоянием пользователя.
+
+```json
+{
+  "currentBalance": 47250.00,
+  "currency": "USD",
+  "lastUpdated": "2026-07-28T00:00:00Z",
+  "createdAt": "2026-07-28T00:00:00Z"
+}
+```
+
+| Поле | Тип | Описание |
+|------|-----|----------|
+| `currentBalance` | double | Текущий баланс счёта |
+| `currency` | string | Валюта счёта (default: USD) |
+| `lastUpdated` | timestamp | Время последнего обновления |
+| `createdAt` | timestamp | Время создания документа |
+
+### Cloud Functions интеграция
+
+- `scheduledLayer` обновляет `currentBalance` при регулярных платежах
+- `anomalyFilter` проверяет транзакции на аномалии перед обновлением баланса
+- `forecastEngine` использует `currentBalance` как baseline для прогнозов
+
