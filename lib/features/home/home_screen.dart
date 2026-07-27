@@ -5,6 +5,7 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/wesi_logo.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../core/widgets/wesi_tooltip.dart';
+import '../../core/widgets/wesi_context_menu.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
