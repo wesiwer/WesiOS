@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/firebase_config_service.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/widgets/hover_button.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -39,7 +40,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
   @override
   void initState() {
     super.initState();
+    _loadAvatar();
     _loadConfig();
+  }
+
+  Future<void> _loadAvatar() async {
+    final box = Hive.box('wesios_settings');
+    final savedIndex = box.get('avatar_index');
+    if (savedIndex != null) {
+      setState(() => _selectedAvatarIndex = savedIndex as int);
+    } else {
+      // First visit — auto-select random avatar
+      final randomIndex = DateTime.now().millisecond % _avatarPresets.length;
+      setState(() => _selectedAvatarIndex = randomIndex);
+      await box.put('avatar_index', randomIndex);
+    }
+  }
+
+  Future<void> _saveAvatar(int index) async {
+    final box = Hive.box('wesios_settings');
+    await box.put('avatar_index', index);
   }
 
   Future<void> _loadConfig() async {
@@ -478,7 +498,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return MouseRegion(
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
-            onTap: () => setState(() => _selectedAvatarIndex = index),
+            onTap: () async { setState(() => _selectedAvatarIndex = index); await _saveAvatar(index); },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               width: 56,
