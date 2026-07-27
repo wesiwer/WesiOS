@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/localization/wesi_locale.dart';
 import '../../widgets/glass_card.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -23,8 +29,8 @@ class SettingsScreen extends StatelessWidget {
           _buildSettingTile(
             icon: Icons.language,
             title: 'Язык',
-            subtitle: 'Русский',
-            onTap: () {},
+            subtitle: WesiLocale.isRussian ? 'Русский' : 'English',
+            onTap: _showLanguagePicker,
           ),
           const SizedBox(height: 24),
           _buildSectionTitle('Уведомления'),
@@ -120,7 +126,7 @@ class SettingsScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'v0.1 α',
+                    'v0.1.1 α',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.accentOrange,
@@ -225,8 +231,8 @@ class SettingsScreen extends StatelessWidget {
                 leading: const Text('🇷🇺', style: TextStyle(fontSize: 24)),
                 title: const Text('Русский', style: TextStyle(color: AppTheme.textPrimary)),
                 trailing: WesiLocale.isRussian
-                  ? const Icon(Icons.check, color: AppTheme.accentOrange)
-                  : null,
+                    ? const Icon(Icons.check, color: AppTheme.accentOrange)
+                    : null,
                 onTap: () async {
                   await WesiLocale.setLanguage('ru');
                   if (mounted) {
@@ -239,8 +245,8 @@ class SettingsScreen extends StatelessWidget {
                 leading: const Text('🇬🇧', style: TextStyle(fontSize: 24)),
                 title: const Text('English', style: TextStyle(color: AppTheme.textPrimary)),
                 trailing: WesiLocale.isEnglish
-                  ? const Icon(Icons.check, color: AppTheme.accentOrange)
-                  : null,
+                    ? const Icon(Icons.check, color: AppTheme.accentOrange)
+                    : null,
                 onTap: () async {
                   await WesiLocale.setLanguage('en');
                   if (mounted) {
@@ -360,8 +366,8 @@ class _HoverSettingTileState extends State<_HoverSettingTile> {
                   color: AppTheme.surface,
                   borderRadius: BorderRadius.circular(10),
                   border: _isHovered
-                    ? Border.all(color: AppTheme.accentOrange.withOpacity(0.3), width: 1)
-                    : null,
+                      ? Border.all(color: AppTheme.accentOrange.withOpacity(0.3), width: 1)
+                      : null,
                 ),
                 child: AnimatedScale(
                   scale: _isHovered ? 1.1 : 1.0,
@@ -405,4 +411,3 @@ class _HoverSettingTileState extends State<_HoverSettingTile> {
     );
   }
 }
-
