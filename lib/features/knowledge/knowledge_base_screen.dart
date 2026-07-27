@@ -9,7 +9,9 @@ class KnowledgeBaseScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(title: const Text('База знаний')),
-      body: const Center(child: Text('Древовидная база знаний - в разработке')),
+      body: const Center(
+        child: Text('База знаний — скоро', style: TextStyle(color: AppTheme.textMuted)),
+      ),
     );
   }
 }

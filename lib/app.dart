@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
 import 'core/theme/app_theme.dart';
 import 'core/routes/app_router.dart';
+import 'core/widgets/window_controls.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/first_run/first_run_screen.dart';
 
@@ -26,6 +28,19 @@ class WesiOSApp extends StatelessWidget {
       themeMode: ThemeMode.dark,
       onGenerateRoute: AppRouter.onGenerateRoute,
       home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
+      builder: (context, child) {
+        return Stack(
+          children: [
+            if (child != null) child,
+            const Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: WindowControls(),
+            ),
+          ],
+        );
+      },
     );
   }
 }

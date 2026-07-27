@@ -28,7 +28,7 @@ dependencies:
   flutter_animate: ^4.3.0
   fl_chart: ^0.66.0
   table_calendar: ^3.0.9
-  flutter_quill: ^9.2.10
+  flutter_quill: ^9.3.12
 
   # Audio & Video
   audioplayers: ^5.2.1
@@ -73,6 +73,9 @@ dependencies:
 
   # Canvas / MindMap
   flutter_drawing_board: ^1.0.1
+
+  # Window management (custom title bar)
+  window_manager: ^0.3.7
 
 dev_dependencies:
   flutter_test:

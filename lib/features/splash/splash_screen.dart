@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
+import '../core/theme/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -37,19 +37,17 @@ class _SplashScreenState extends State<SplashScreen>
       duration: const Duration(seconds: 5),
     );
 
-    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
+    _fadeAnimation = Tween(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: const Interval(0, 0.3, curve: Curves.easeOut)),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.8, end: 1).animate(
+    _scaleAnimation = Tween(begin: 0.8, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: const Interval(0, 0.5, curve: Curves.easeOutCubic)),
     );
 
     _controller.forward();
-
     _startTextRotation();
 
-    // Navigate to WelcomeScreen after 5 seconds
     Future.delayed(const Duration(seconds: 5), () {
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/welcome');
@@ -80,20 +78,38 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: AppTheme.background,
       body: Stack(
         children: [
-          // Background gradient
+          // Carbon fiber background
           Container(
             decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(0.3, -0.3),
-                radius: 1.2,
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
                 colors: [
-                  AppTheme.accentOrange.withOpacity(0.15),
+                  AppTheme.carbonDark,
                   AppTheme.background,
+                  AppTheme.carbonMid,
                 ],
               ),
             ),
           ),
-
+          // Soft white highlight
+          Positioned(
+            top: -100,
+            right: -100,
+            child: Container(
+              width: 400,
+              height: 400,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.03),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
           // Main content
           Center(
             child: AnimatedBuilder(
@@ -106,52 +122,89 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Logo
+                        // Carbon logo
                         Container(
                           width: 120,
                           height: 120,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                AppTheme.carbonDark,
+                                AppTheme.carbonMid,
+                                AppTheme.carbonLight,
+                              ],
+                            ),
                             border: Border.all(
-                              color: AppTheme.accentOrange.withOpacity(0.5),
+                              color: AppTheme.carbonHighlight,
                               width: 2,
                             ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.accentOrange.withOpacity(0.3),
-                                blurRadius: 40,
-                                spreadRadius: 10,
+                                color: Colors.black.withOpacity(0.5),
+                                blurRadius: 30,
+                                spreadRadius: 5,
+                              ),
+                              BoxShadow(
+                                color: Colors.white.withOpacity(0.05),
+                                blurRadius: 10,
+                                offset: const Offset(-2, -2),
                               ),
                             ],
                           ),
-                          child: const Center(
-                            child: Text(
-                              'W',
-                              style: TextStyle(
-                                fontSize: 56,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primary,
+                          child: Center(
+                            child: ShaderMask(
+                              shaderCallback: (bounds) {
+                                return LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    Colors.white.withOpacity(0.95),
+                                    Colors.white.withOpacity(0.6),
+                                    Colors.white.withOpacity(0.3),
+                                  ],
+                                  stops: const [0.0, 0.5, 1.0],
+                                ).createShader(bounds);
+                              },
+                              child: const Text(
+                                'W',
+                                style: TextStyle(
+                                  fontSize: 56,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                           ),
                         ),
-
                         const SizedBox(height: 32),
-
-                        // App name
-                        const Text(
-                          'WesiOS',
-                          style: TextStyle(
-                            fontSize: 42,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.primary,
-                            letterSpacing: 4,
+                        // WesiOS text — carbon style
+                        ShaderMask(
+                          shaderCallback: (bounds) {
+                            return LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.white.withOpacity(0.9),
+                                Colors.white.withOpacity(0.5),
+                                AppTheme.carbonHighlight.withOpacity(0.3),
+                              ],
+                            ).createShader(bounds);
+                          },
+                          child: const Text(
+                            'WesiOS',
+                            style: TextStyle(
+                              fontSize: 42,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 6,
+                            ),
                           ),
                         ),
-
                         const SizedBox(height: 8),
-
-                        const Text(
+                        Text(
                           'Business Operating System',
                           style: TextStyle(
                             fontSize: 14,
@@ -159,15 +212,13 @@ class _SplashScreenState extends State<SplashScreen>
                             letterSpacing: 2,
                           ),
                         ),
-
                         const SizedBox(height: 64),
-
                         // Loading text
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 300),
                           child: Text(
                             _loadingTexts[_currentTextIndex],
-                            key: ValueKey<int>(_currentTextIndex),
+                            key: ValueKey(_currentTextIndex),
                             style: const TextStyle(
                               fontSize: 14,
                               color: AppTheme.textMuted,
@@ -176,23 +227,18 @@ class _SplashScreenState extends State<SplashScreen>
                             textAlign: TextAlign.center,
                           ),
                         ),
-
                         const SizedBox(height: 24),
-
-                        // Progress indicator
+                        // Progress
                         SizedBox(
                           width: 200,
                           child: LinearProgressIndicator(
                             value: _controller.value,
                             backgroundColor: AppTheme.surfaceLight,
-                            valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accentOrange),
+                            valueColor: const AlwaysStoppedAnimation(AppTheme.accentOrange),
                             borderRadius: BorderRadius.circular(4),
                           ),
                         ),
-
                         const SizedBox(height: 16),
-
-                        // Version
                         const Text(
                           'v1.0',
                           style: TextStyle(

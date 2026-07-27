@@ -13,40 +13,66 @@ class WesiLogo extends StatelessWidget {
       onTap: onTap,
       onSecondaryTap: () => _showFounderStory(context),
       child: MouseRegion(
-        onHover: (_) => _showHoverTooltip(context),
+        cursor: SystemMouseCursors.click,
         child: Container(
           width: size,
           height: size,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                AppTheme.carbonDark,
+                AppTheme.carbonMid,
+                AppTheme.carbonLight,
+              ],
+            ),
             border: Border.all(
-              color: AppTheme.accentOrange.withOpacity(0.5),
-              width: 2,
+              color: AppTheme.carbonHighlight,
+              width: 1.5,
             ),
             boxShadow: [
               BoxShadow(
-                color: AppTheme.accentOrange.withOpacity(0.2),
-                blurRadius: size * 0.4,
+                color: Colors.black.withOpacity(0.4),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+              BoxShadow(
+                color: Colors.white.withOpacity(0.05),
+                blurRadius: 4,
+                offset: const Offset(-1, -1),
               ),
             ],
           ),
           child: Center(
-            child: Text(
-              'W',
-              style: TextStyle(
-                fontSize: size * 0.5,
-                fontWeight: FontWeight.bold,
-                color: AppTheme.primary,
+            child: ShaderMask(
+              shaderCallback: (bounds) {
+                return LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withOpacity(0.95),
+                    Colors.white.withOpacity(0.7),
+                    Colors.white.withOpacity(0.4),
+                  ],
+                  stops: const [0.0, 0.5, 1.0],
+                ).createShader(bounds);
+              },
+              child: Text(
+                'W',
+                style: TextStyle(
+                  fontSize: size * 0.45,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                  letterSpacing: 1,
+                ),
               ),
             ),
           ),
         ),
       ),
     );
-  }
-
-  void _showHoverTooltip(BuildContext context) {
-    // Tooltip will be shown via Tooltip widget or custom overlay
   }
 
   void _showFounderStory(BuildContext context) {

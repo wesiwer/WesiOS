@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/firebase_config_service.dart';
+import '../../core/widgets/hover_button.dart';
 import '../splash/splash_screen.dart';
 
 class FirstRunScreen extends StatefulWidget {
@@ -38,15 +39,11 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
 
   Future<void> _saveAndProceed() async {
     if (!_formKey.currentState!.validate()) return;
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    setState(() { _isLoading = true; _error = null; });
 
     try {
-      final configService = FirebaseConfigService();
-      await configService.saveConfig(
+      final service = FirebaseConfigService();
+      await service.saveConfig(
         apiKey: _apiKeyCtrl.text.trim(),
         appId: _appIdCtrl.text.trim(),
         messagingSenderId: _messagingSenderIdCtrl.text.trim(),
@@ -80,13 +77,19 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     }
   }
 
+  Future<void> _skip() async {
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(builder: (_) => const SplashScreen()),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(40),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(40),
+        child: Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 600),
             child: Form(
@@ -94,16 +97,31 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const SizedBox(height: 40),
                   Center(
                     child: Column(
                       children: [
-                        Text(
-                          'WesiOS',
-                          style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                                fontSize: 48,
-                                fontWeight: FontWeight.w900,
-                                color: AppTheme.accentOrange,
-                              ),
+                        ShaderMask(
+                          shaderCallback: (bounds) {
+                            return LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.white.withOpacity(0.9),
+                                Colors.white.withOpacity(0.5),
+                                AppTheme.carbonHighlight.withOpacity(0.3),
+                              ],
+                            ).createShader(bounds);
+                          },
+                          child: const Text(
+                            'WesiOS',
+                            style: TextStyle(
+                              fontSize: 48,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 8,
+                            ),
+                          ),
                         ),
                         const SizedBox(height: 8),
                         Text(
@@ -112,7 +130,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          'Введите данные вашего Firebase проекта.\nИх можно найти в консоли Firebase → Project Settings → General → Your apps → SDK setup and configuration',
+                          'Введите данные вашего Firebase проекта.',
                           textAlign: TextAlign.center,
                           style: Theme.of(context).textTheme.bodyMedium,
                         ),
@@ -120,51 +138,19 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                     ),
                   ),
                   const SizedBox(height: 40),
-                  _buildField(
-                    controller: _apiKeyCtrl,
-                    label: 'API Key *',
-                    hint: 'AIzaSy...',
-                    validator: (v) => v == null || v.isEmpty ? 'Обязательное поле' : null,
-                  ),
-                  _buildField(
-                    controller: _appIdCtrl,
-                    label: 'App ID *',
-                    hint: '1:123456789:web:abc123...',
-                    validator: (v) => v == null || v.isEmpty ? 'Обязательное поле' : null,
-                  ),
-                  _buildField(
-                    controller: _projectIdCtrl,
-                    label: 'Project ID *',
-                    hint: 'my-project-id',
-                    validator: (v) => v == null || v.isEmpty ? 'Обязательное поле' : null,
-                  ),
-                  _buildField(
-                    controller: _messagingSenderIdCtrl,
-                    label: 'Messaging Sender ID *',
-                    hint: '123456789',
-                    validator: (v) => v == null || v.isEmpty ? 'Обязательное поле' : null,
-                  ),
+                  _buildField(_apiKeyCtrl, 'API Key *', 'AIzaSy...'),
+                  _buildField(_appIdCtrl, 'App ID *', '1:123456789:web:abc123...'),
+                  _buildField(_projectIdCtrl, 'Project ID *', 'my-project-id'),
+                  _buildField(_messagingSenderIdCtrl, 'Messaging Sender ID *', '123456789'),
                   const SizedBox(height: 16),
                   Text(
                     'Дополнительные поля (опционально):',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppTheme.textMuted),
                   ),
                   const SizedBox(height: 12),
-                  _buildField(
-                    controller: _authDomainCtrl,
-                    label: 'Auth Domain',
-                    hint: 'my-project.firebaseapp.com',
-                  ),
-                  _buildField(
-                    controller: _storageBucketCtrl,
-                    label: 'Storage Bucket',
-                    hint: 'my-project.appspot.com',
-                  ),
-                  _buildField(
-                    controller: _measurementIdCtrl,
-                    label: 'Measurement ID',
-                    hint: 'G-XXXXXXXX',
-                  ),
+                  _buildField(_authDomainCtrl, 'Auth Domain', 'my-project.firebaseapp.com'),
+                  _buildField(_storageBucketCtrl, 'Storage Bucket', 'my-project.appspot.com'),
+                  _buildField(_measurementIdCtrl, 'Measurement ID', 'G-XXXXXXXX'),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
                     Container(
@@ -174,65 +160,25 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppTheme.accentRed.withOpacity(0.3)),
                       ),
-                      child: Text(
-                        _error!,
-                        style: TextStyle(color: AppTheme.accentRed),
-                      ),
+                      child: Text(_error!, style: const TextStyle(color: AppTheme.accentRed)),
                     ),
                   ],
                   const SizedBox(height: 32),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 52,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _saveAndProceed,
+                  HoverButton(
+                    onTap: _isLoading ? null : _saveAndProceed,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    backgroundColor: AppTheme.accentOrange,
+                    hoverColor: AppTheme.accentOrange.withOpacity(0.8),
+                    child: Center(
                       child: _isLoading
-                          ? const SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-                            )
-                          : const Text('Сохранить и продолжить', style: TextStyle(fontSize: 16)),
+                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : const Text('Сохранить и продолжить', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
                     ),
                   ),
                   const SizedBox(height: 16),
                   Center(
                     child: TextButton(
-                      onPressed: () {
-                        showDialog(
-                          context: context,
-                          builder: (_) => AlertDialog(
-                            backgroundColor: AppTheme.surface,
-                            title: const Text('Где найти эти данные?'),
-                            content: const Text(
-                              '1. Откройте https://console.firebase.google.com\n'
-                              '2. Выберите ваш проект\n'
-                              '3. Нажмите шестеренку → Project Settings\n'
-                              '4. В разделе "Your apps" выберите Web app\n'
-                              '5. Скопируйте значения из блока firebaseConfig\n\n'
-                              'Если у вас нет Web app — создайте его, нажав "Add app" → Web.',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(context),
-                                child: const Text('Понятно'),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
-                      child: const Text('Где взять эти данные?'),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  Center(
-                    child: TextButton(
-                      onPressed: () {
-                        // Skip Firebase for pure local / demo mode
-                        Navigator.of(context).pushReplacement(
-                          MaterialPageRoute(builder: (_) => const SplashScreen()),
-                        );
-                      },
+                      onPressed: _skip,
                       child: Text(
                         'Пропустить (локальный режим без Firebase)',
                         style: TextStyle(color: AppTheme.textMuted),
@@ -248,17 +194,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     );
   }
 
-  Widget _buildField({
-    required TextEditingController controller,
-    required String label,
-    String? hint,
-    String? Function(String?)? validator,
-  }) {
+  Widget _buildField(TextEditingController ctrl, String label, [String? hint]) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
-        controller: controller,
-        validator: validator,
+        controller: ctrl,
+        validator: label.contains('*') ? (v) => v == null || v.isEmpty ? 'Обязательное поле' : null : null,
         style: const TextStyle(color: AppTheme.textPrimary),
         decoration: InputDecoration(
           labelText: label,

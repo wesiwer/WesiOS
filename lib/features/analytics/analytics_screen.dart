@@ -9,7 +9,9 @@ class AnalyticsScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(title: const Text('Аналитика')),
-      body: const Center(child: Text('Визуальная аналитика - в разработке')),
+      body: const Center(
+        child: Text('Аналитика — скоро', style: TextStyle(color: AppTheme.textMuted)),
+      ),
     );
   }
 }

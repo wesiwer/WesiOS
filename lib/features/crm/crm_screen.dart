@@ -9,7 +9,9 @@ class CrmScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(title: const Text('CRM')),
-      body: const Center(child: Text('База клиентов - в разработке')),
+      body: const Center(
+        child: Text('CRM — скоро', style: TextStyle(color: AppTheme.textMuted)),
+      ),
     );
   }
 }

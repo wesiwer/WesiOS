@@ -14,12 +14,12 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  final List<Widget> _screens = [
-    const _DashboardTab(),
-    const _TasksTab(),
-    const _TreasuryTab(),
-    const _AnalyticsTab(),
-    const _MoreTab(),
+  final List<Widget> _screens = const [
+    _DashboardTab(),
+    _TasksTab(),
+    _TreasuryTab(),
+    _AnalyticsTab(),
+    _MoreTab(),
   ];
 
   @override
@@ -63,7 +63,6 @@ class _DashboardTab extends StatelessWidget {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          // App bar with logo
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -83,8 +82,6 @@ class _DashboardTab extends StatelessWidget {
               ),
             ),
           ),
-
-          // Balance widget
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -92,19 +89,9 @@ class _DashboardTab extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Баланс Wesi Inc',
-                      style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
-                    ),
+                    const Text('Баланс Wesi Inc', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
                     const SizedBox(height: 8),
-                    const Text(
-                      '₽ 0',
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primary,
-                      ),
-                    ),
+                    const Text('₽ 0', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.primary)),
                     const SizedBox(height: 16),
                     Row(
                       children: [
@@ -120,10 +107,7 @@ class _DashboardTab extends StatelessWidget {
               ),
             ),
           ),
-
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
-
-          // Quick actions
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -140,10 +124,7 @@ class _DashboardTab extends StatelessWidget {
               ),
             ),
           ),
-
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
-          // Calendar preview
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -154,10 +135,7 @@ class _DashboardTab extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Календарь',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
+                        const Text('Календарь', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                         TextButton(
                           onPressed: () => Navigator.pushNamed(context, '/calendar'),
                           child: const Text('Все', style: TextStyle(color: AppTheme.accentOrange)),
@@ -171,10 +149,7 @@ class _DashboardTab extends StatelessWidget {
               ),
             ),
           ),
-
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
-
-          // Tasks preview
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -185,10 +160,7 @@ class _DashboardTab extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text(
-                          'Задачи',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                        ),
+                        const Text('Задачи', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                         TextButton(
                           onPressed: () => Navigator.pushNamed(context, '/tasks'),
                           child: const Text('Все', style: TextStyle(color: AppTheme.accentOrange)),
@@ -202,7 +174,6 @@ class _DashboardTab extends StatelessWidget {
               ),
             ),
           ),
-
           const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
       ),
@@ -277,10 +248,7 @@ class _DashboardTab extends StatelessWidget {
   Widget _buildTaskItem(String title, String subtitle, bool isDone) {
     return Row(
       children: [
-        Icon(
-          isDone ? Icons.check_circle : Icons.radio_button_unchecked,
-          color: isDone ? AppTheme.accentGreen : AppTheme.textMuted,
-        ),
+        Icon(isDone ? Icons.check_circle : Icons.radio_button_unchecked, color: isDone ? AppTheme.accentGreen : AppTheme.textMuted),
         const SizedBox(width: 12),
         Expanded(
           child: Column(
@@ -299,23 +267,23 @@ class _DashboardTab extends StatelessWidget {
 class _TasksTab extends StatelessWidget {
   const _TasksTab();
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Задачи'));
+  Widget build(BuildContext context) => const Center(child: Text('Задачи', style: TextStyle(color: AppTheme.textMuted)));
 }
 
 class _TreasuryTab extends StatelessWidget {
   const _TreasuryTab();
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Финансы'));
+  Widget build(BuildContext context) => const Center(child: Text('Финансы', style: TextStyle(color: AppTheme.textMuted)));
 }
 
 class _AnalyticsTab extends StatelessWidget {
   const _AnalyticsTab();
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Аналитика'));
+  Widget build(BuildContext context) => const Center(child: Text('Аналитика', style: TextStyle(color: AppTheme.textMuted)));
 }
 
 class _MoreTab extends StatelessWidget {
   const _MoreTab();
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Ещё'));
+  Widget build(BuildContext context) => const Center(child: Text('Ещё', style: TextStyle(color: AppTheme.textMuted)));
 }

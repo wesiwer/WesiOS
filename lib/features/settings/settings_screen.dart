@@ -13,7 +13,6 @@ class SettingsScreen extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // Theme section
           _buildSectionTitle('Внешний вид'),
           _buildSettingTile(
             icon: Icons.dark_mode,
@@ -27,10 +26,7 @@ class SettingsScreen extends StatelessWidget {
             subtitle: 'Русский',
             onTap: () {},
           ),
-
           const SizedBox(height: 24),
-
-          // Notifications section
           _buildSectionTitle('Уведомления'),
           _buildSettingTile(
             icon: Icons.notifications,
@@ -50,10 +46,7 @@ class SettingsScreen extends StatelessWidget {
             subtitle: 'Привязать',
             onTap: () {},
           ),
-
           const SizedBox(height: 24),
-
-          // Privacy section
           _buildSectionTitle('Конфиденциальность'),
           _buildSettingTile(
             icon: Icons.visibility_off,
@@ -65,10 +58,7 @@ class SettingsScreen extends StatelessWidget {
               activeColor: AppTheme.accentOrange,
             ),
           ),
-
           const SizedBox(height: 24),
-
-          // Hotkeys section
           _buildSectionTitle('Горячие клавиши'),
           _buildSettingTile(
             icon: Icons.keyboard,
@@ -76,15 +66,11 @@ class SettingsScreen extends StatelessWidget {
             subtitle: 'Ctrl+K, Ctrl+Shift+A...',
             onTap: () {},
           ),
-
           const SizedBox(height: 24),
-
-          // About section with Easter Egg logo
           _buildSectionTitle('О приложении'),
           GlassCard(
             child: Column(
               children: [
-                // Easter Egg Logo
                 GestureDetector(
                   onLongPress: () => _showEasterEggAnimation(context),
                   child: Container(
@@ -161,11 +147,14 @@ class SettingsScreen extends StatelessWidget {
               ],
             ),
           ),
-
-          const SizedBox(height: 32),
-
-          // Danger zone
+          const SizedBox(height: 24),
           _buildSectionTitle('Данные'),
+          _buildSettingTile(
+            icon: Icons.key,
+            title: 'Firebase Config',
+            subtitle: 'Изменить ключи доступа',
+            onTap: () => Navigator.pushNamed(context, '/profile'),
+          ),
           _buildSettingTile(
             icon: Icons.backup,
             title: 'Экспорт бэкапа',
@@ -179,7 +168,6 @@ class SettingsScreen extends StatelessWidget {
             onTap: () {},
             textColor: AppTheme.accentRed,
           ),
-
           const SizedBox(height: 32),
         ],
       ),
@@ -262,12 +250,8 @@ class SettingsScreen extends StatelessWidget {
         ),
       ),
     );
-
-    // Auto close after 2 seconds
     Future.delayed(const Duration(seconds: 2), () {
-      if (Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
+      if (Navigator.canPop(context)) Navigator.pop(context);
     });
   }
 }

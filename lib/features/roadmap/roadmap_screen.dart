@@ -8,8 +8,10 @@ class RoadmapScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      appBar: AppBar(title: const Text('Roadmap')),
-      body: const Center(child: Text('Диаграмма Ганта - в разработке')),
+      appBar: AppBar(title: const Text('Диаграмма Ганта')),
+      body: const Center(
+        child: Text('Roadmap — скоро', style: TextStyle(color: AppTheme.textMuted)),
+      ),
     );
   }
 }

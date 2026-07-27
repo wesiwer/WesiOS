@@ -9,7 +9,9 @@ class CalendarScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(title: const Text('Календарь')),
-      body: const Center(child: Text('Интерактивный календарь - в разработке')),
+      body: const Center(
+        child: Text('Календарь — скоро', style: TextStyle(color: AppTheme.textMuted)),
+      ),
     );
   }
 }

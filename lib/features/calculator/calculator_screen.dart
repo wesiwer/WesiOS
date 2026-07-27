@@ -40,58 +40,84 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppTheme.background,
-      appBar: AppBar(title: const Text('Калькулятор')),
-      body: Column(
-        children: [
-          Expanded(
-            flex: 2,
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              alignment: Alignment.bottomRight,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                crossAxisAlignment: CrossAxisAlignment.end,
+      backgroundColor: Colors.transparent,
+      body: Center(
+        child: Container(
+          margin: const EdgeInsets.all(40),
+          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
+          decoration: BoxDecoration(
+            color: AppTheme.background,
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: AppTheme.glassBorder),
+            boxShadow: [
+              BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 40),
+            ],
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: Scaffold(
+              backgroundColor: AppTheme.background,
+              appBar: AppBar(
+                title: const Text('Калькулятор'),
+                leading: IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+              body: Column(
                 children: [
-                  Text(_expression, style: const TextStyle(fontSize: 24, color: AppTheme.textSecondary)),
-                  const SizedBox(height: 8),
-                  Text(_result, style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold)),
+                  Expanded(
+                    flex: 2,
+                    child: Container(
+                      padding: const EdgeInsets.all(24),
+                      alignment: Alignment.bottomRight,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(_expression, style: const TextStyle(fontSize: 24, color: AppTheme.textSecondary)),
+                          const SizedBox(height: 8),
+                          Text(_result, style: const TextStyle(fontSize: 48, fontWeight: FontWeight.bold)),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    flex: 5,
+                    child: GridView.count(
+                      crossAxisCount: 4,
+                      padding: const EdgeInsets.all(16),
+                      mainAxisSpacing: 12,
+                      crossAxisSpacing: 12,
+                      children: [
+                        _buildButton('C', AppTheme.accentRed),
+                        _buildButton('(', AppTheme.textSecondary),
+                        _buildButton(')', AppTheme.textSecondary),
+                        _buildButton('⌫', AppTheme.accentOrange),
+                        _buildButton('7'),
+                        _buildButton('8'),
+                        _buildButton('9'),
+                        _buildButton('/', AppTheme.accentOrange),
+                        _buildButton('4'),
+                        _buildButton('5'),
+                        _buildButton('6'),
+                        _buildButton('*', AppTheme.accentOrange),
+                        _buildButton('1'),
+                        _buildButton('2'),
+                        _buildButton('3'),
+                        _buildButton('-', AppTheme.accentOrange),
+                        _buildButton('0'),
+                        _buildButton('.'),
+                        _buildButton('=', AppTheme.accentGreen),
+                        _buildButton('+', AppTheme.accentOrange),
+                      ],
+                    ),
+                  ),
                 ],
               ),
             ),
           ),
-          Expanded(
-            flex: 5,
-            child: GridView.count(
-              crossAxisCount: 4,
-              padding: const EdgeInsets.all(16),
-              mainAxisSpacing: 12,
-              crossAxisSpacing: 12,
-              children: [
-                _buildButton('C', AppTheme.accentRed),
-                _buildButton('(', AppTheme.textSecondary),
-                _buildButton(')', AppTheme.textSecondary),
-                _buildButton('⌫', AppTheme.accentOrange),
-                _buildButton('7'),
-                _buildButton('8'),
-                _buildButton('9'),
-                _buildButton('/', AppTheme.accentOrange),
-                _buildButton('4'),
-                _buildButton('5'),
-                _buildButton('6'),
-                _buildButton('*', AppTheme.accentOrange),
-                _buildButton('1'),
-                _buildButton('2'),
-                _buildButton('3'),
-                _buildButton('-', AppTheme.accentOrange),
-                _buildButton('0'),
-                _buildButton('.'),
-                _buildButton('=', AppTheme.accentGreen),
-                _buildButton('+', AppTheme.accentOrange),
-              ],
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }

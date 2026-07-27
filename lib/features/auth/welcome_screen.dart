@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/hover_button.dart';
 
 class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({super.key});
@@ -13,26 +14,21 @@ class _WelcomeScreenState extends State<WelcomeScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
-  late Animation<double> _glowAnimation;
 
   @override
   void initState() {
     super.initState();
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 2),
     );
 
-    _fadeAnimation = Tween<double>(begin: 0, end: 1).animate(
+    _fadeAnimation = Tween(begin: 0.0, end: 1.0).animate(
       CurvedAnimation(parent: _controller, curve: const Interval(0, 0.5, curve: Curves.easeOut)),
     );
 
-    _scaleAnimation = Tween<double>(begin: 0.5, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0.2, 0.7, curve: Curves.easeOutCubic)),
-    );
-
-    _glowAnimation = Tween<double>(begin: 0.3, end: 1).animate(
-      CurvedAnimation(parent: _controller, curve: const Interval(0.5, 1, curve: Curves.easeInOut)),
+    _scaleAnimation = Tween(begin: 0.9, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: const Interval(0.2, 0.8, curve: Curves.easeOutCubic)),
     );
 
     _controller.forward();
@@ -50,34 +46,46 @@ class _WelcomeScreenState extends State<WelcomeScreen>
       backgroundColor: AppTheme.background,
       body: Stack(
         children: [
-          // Animated background glow
-          AnimatedBuilder(
-            animation: _glowAnimation,
-            builder: (context, child) {
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(0, -0.2),
-                    radius: 0.8,
-                    colors: [
-                      AppTheme.accentOrange.withOpacity(0.15 * _glowAnimation.value),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              );
-            },
+          // Carbon background
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  AppTheme.carbonDark,
+                  AppTheme.background,
+                  AppTheme.carbonMid,
+                ],
+              ),
+            ),
           ),
-
-          // Main content
+          // Soft highlight
+          Positioned(
+            top: -50,
+            left: -50,
+            child: Container(
+              width: 300,
+              height: 300,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  colors: [
+                    Colors.white.withOpacity(0.02),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // Content
           SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(
                 children: [
                   const Spacer(),
-
-                  // Easter Egg Logo with animation
+                  // Easter Egg Logo
                   AnimatedBuilder(
                     animation: _controller,
                     builder: (context, child) {
@@ -86,15 +94,19 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                         child: Transform.scale(
                           scale: _scaleAnimation.value,
                           child: Container(
-                            width: 200,
-                            height: 200,
+                            width: 180,
+                            height: 180,
                             decoration: BoxDecoration(
                               shape: BoxShape.circle,
+                              border: Border.all(
+                                color: AppTheme.carbonHighlight,
+                                width: 2,
+                              ),
                               boxShadow: [
                                 BoxShadow(
-                                  color: AppTheme.accentOrange.withOpacity(0.3 * _glowAnimation.value),
-                                  blurRadius: 60,
-                                  spreadRadius: 20,
+                                  color: Colors.black.withOpacity(0.4),
+                                  blurRadius: 40,
+                                  spreadRadius: 10,
                                 ),
                               ],
                             ),
@@ -109,93 +121,68 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                       );
                     },
                   ),
-
                   const SizedBox(height: 40),
-
-                  // Welcome text
+                  // WesiOS — carbon text
                   AnimatedBuilder(
                     animation: _controller,
                     builder: (context, child) {
                       return Opacity(
                         opacity: _fadeAnimation.value,
-                        child: const Column(
-                          children: [
-                            Text(
-                              'Добро пожаловать',
-                              style: TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.primary,
-                              ),
+                        child: ShaderMask(
+                          shaderCallback: (bounds) {
+                            return LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.white.withOpacity(0.95),
+                                Colors.white.withOpacity(0.5),
+                                AppTheme.carbonHighlight.withOpacity(0.3),
+                              ],
+                            ).createShader(bounds);
+                          },
+                          child: const Text(
+                            'WesiOS',
+                            style: TextStyle(
+                              fontSize: 48,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 8,
                             ),
-                            SizedBox(height: 8),
-                            Text(
-                              'в WesiOS',
-                              style: TextStyle(
-                                fontSize: 20,
-                                color: AppTheme.accentOrange,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // Subtitle
-                  AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: _fadeAnimation.value,
-                        child: const Text(
-                          'Business Operating System',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: AppTheme.textSecondary,
-                            letterSpacing: 2,
                           ),
                         ),
                       );
                     },
                   ),
-
+                  const SizedBox(height: 8),
+                  Text(
+                    'Business Operating System',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: AppTheme.textSecondary,
+                      letterSpacing: 3,
+                    ),
+                  ),
                   const Spacer(),
-
-                  // Start button
-                  AnimatedBuilder(
-                    animation: _controller,
-                    builder: (context, child) {
-                      return Opacity(
-                        opacity: _fadeAnimation.value,
-                        child: SizedBox(
-                          width: double.infinity,
-                          child: ElevatedButton(
-                            onPressed: () => Navigator.pushReplacementNamed(context, '/login'),
-                            style: ElevatedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 18),
-                            ),
-                            child: const Text(
-                              'Начать работу',
-                              style: TextStyle(fontSize: 18),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
+                  // Start button with hover
+                  HoverButton(
+                    onTap: () => Navigator.pushReplacementNamed(context, '/login'),
+                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 48),
+                    backgroundColor: AppTheme.surface,
+                    hoverColor: AppTheme.surfaceLight,
+                    child: const Text(
+                      'Начать работу',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
                   ),
-
                   const SizedBox(height: 16),
-
-                  // Version
                   const Text(
                     'v1.0',
                     style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),
-
                   const SizedBox(height: 16),
                 ],
               ),

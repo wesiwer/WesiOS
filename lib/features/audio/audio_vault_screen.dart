@@ -9,7 +9,9 @@ class AudioVaultScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(title: const Text('Audio Vault')),
-      body: const Center(child: Text('Хранилище битов - в разработке')),
+      body: const Center(
+        child: Text('Хранилище битов — скоро', style: TextStyle(color: AppTheme.textMuted)),
+      ),
     );
   }
 }

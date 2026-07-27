@@ -9,7 +9,9 @@ class TasksScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       appBar: AppBar(title: const Text('Задачи')),
-      body: const Center(child: Text('Система задач - в разработке')),
+      body: const Center(
+        child: Text('Система задач — скоро', style: TextStyle(color: AppTheme.textMuted)),
+      ),
     );
   }
 }

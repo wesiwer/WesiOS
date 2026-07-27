@@ -44,10 +44,7 @@ class FounderStoryScreen extends StatelessWidget {
                             ],
                           ),
                           child: const Center(
-                            child: Text(
-                              'W',
-                              style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold),
-                            ),
+                            child: Text('W', style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold)),
                           ),
                         ),
                       ),

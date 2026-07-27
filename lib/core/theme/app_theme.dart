@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 
 class AppTheme {
-  // Colors
   static const Color background = Color(0xFF09090B);
   static const Color surface = Color(0xFF18181B);
   static const Color surfaceLight = Color(0xFF27272A);
@@ -15,7 +14,12 @@ class AppTheme {
   static const Color glassBackground = Color(0x1AFFFFFF);
   static const Color glassBorder = Color(0x33FFFFFF);
 
-  // Glassmorphism decoration
+  // Carbon fiber gradient colors
+  static const Color carbonDark = Color(0xFF0A0A0F);
+  static const Color carbonMid = Color(0xFF1A1A24);
+  static const Color carbonLight = Color(0xFF2A2A3A);
+  static const Color carbonHighlight = Color(0xFF3A3A50);
+
   static BoxDecoration glassDecoration = BoxDecoration(
     color: glassBackground,
     borderRadius: BorderRadius.circular(16),
