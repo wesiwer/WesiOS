@@ -129,13 +129,13 @@ class _DashboardTab extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: Row(
                 children: [
-                  Expanded(child: _buildQuickAction(Icons.add_circle, 'Продажа', '/treasury')),
+                  Expanded(child: _buildQuickAction(context, Icons.add_circle, 'Продажа', '/treasury')),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildQuickAction(Icons.remove_circle, 'Трата', '/treasury')),
+                  Expanded(child: _buildQuickAction(context, Icons.remove_circle, 'Трата', '/treasury')),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildQuickAction(Icons.mic, 'Голос', '/tasks')),
+                  Expanded(child: _buildQuickAction(context, Icons.mic, 'Голос', '/tasks')),
                   const SizedBox(width: 12),
-                  Expanded(child: _buildQuickAction(Icons.calculate, 'Кальк', '/calculator')),
+                  Expanded(child: _buildQuickAction(context, Icons.calculate, 'Кальк', '/calculator')),
                 ],
               ),
             ),
@@ -229,7 +229,7 @@ class _DashboardTab extends StatelessWidget {
     );
   }
 
-  Widget _buildQuickAction(IconData icon, String label, String route) {
+  Widget _buildQuickAction(BuildContext context, IconData icon, String label, String route) {
     return GestureDetector(
       onTap: () => Navigator.pushNamed(context, route),
       child: Container(
