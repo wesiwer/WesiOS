@@ -51,7 +51,7 @@ dependencies:
   share_plus: ^7.2.1
 
   # System
-  device_info_plus: ^9.1.2
+  device_info_plus: ^10.1.0
   package_info_plus: ^5.0.1
   url_launcher: ^6.2.2
 
@@ -72,7 +72,7 @@ dependencies:
   # Timer
   flutter_timer_countdown: ^1.0.7
 
-  # Canvas / MindMap - using flutter_drawing_board from pub.dev latest
+  # Canvas / MindMap
   flutter_drawing_board: ^1.0.1
 
 dev_dependencies:
