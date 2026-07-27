@@ -180,7 +180,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                   ),
                   const SizedBox(height: 16),
                   const Text(
-                    'v1.0',
+                    'v0.1 α',
                     style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),
                   const SizedBox(height: 16),

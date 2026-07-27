@@ -120,7 +120,7 @@ class SettingsScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'v1.0',
+                    'v0.1 α',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.accentOrange,
