@@ -197,29 +197,13 @@ class SettingsScreen extends StatelessWidget {
     Widget? trailing,
     Color? textColor,
   }) {
-    return ListTile(
-      leading: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: AppTheme.surface,
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Icon(icon, color: AppTheme.accentOrange, size: 20),
-      ),
-      title: Text(
-        title,
-        style: TextStyle(
-          fontSize: 15,
-          fontWeight: FontWeight.w500,
-          color: textColor ?? AppTheme.primary,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: TextStyle(fontSize: 13, color: textColor?.withOpacity(0.7) ?? AppTheme.textMuted),
-      ),
-      trailing: trailing ?? const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textMuted),
+    return _HoverSettingTile(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
       onTap: onTap,
+      trailing: trailing,
+      textColor: textColor,
     );
   }
 
@@ -255,3 +239,102 @@ class SettingsScreen extends StatelessWidget {
     });
   }
 }
+
+class _HoverSettingTile extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final VoidCallback? onTap;
+  final Widget? trailing;
+  final Color? textColor;
+
+  const _HoverSettingTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.onTap,
+    this.trailing,
+    this.textColor,
+  });
+
+  @override
+  State<_HoverSettingTile> createState() => _HoverSettingTileState();
+}
+
+class _HoverSettingTileState extends State<_HoverSettingTile> {
+  bool _isHovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      cursor: widget.onTap != null ? SystemMouseCursors.click : SystemMouseCursors.basic,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          margin: const EdgeInsets.symmetric(vertical: 2),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: _isHovered ? AppTheme.surfaceLight.withOpacity(0.5) : Colors.transparent,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _isHovered ? AppTheme.accentOrange.withOpacity(0.2) : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface,
+                  borderRadius: BorderRadius.circular(10),
+                  border: _isHovered
+                    ? Border.all(color: AppTheme.accentOrange.withOpacity(0.3), width: 1)
+                    : null,
+                ),
+                child: AnimatedScale(
+                  scale: _isHovered ? 1.1 : 1.0,
+                  duration: const Duration(milliseconds: 150),
+                  child: Icon(
+                    widget.icon,
+                    color: _isHovered ? AppTheme.accentOrange : AppTheme.accentOrange.withOpacity(0.8),
+                    size: 20,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.title,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: _isHovered ? FontWeight.w600 : FontWeight.w500,
+                        color: widget.textColor ?? AppTheme.primary,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      widget.subtitle,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: widget.textColor?.withOpacity(0.7) ?? AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              widget.trailing ?? const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
