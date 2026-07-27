@@ -22,10 +22,23 @@ cd WesiOS
 flutter pub get
 ```
 
-### 3. Настройка Firebase
+### 3. Первый запуск (Firebase)
 
-1. Скачай `google-services.json` из Firebase Console
-2. Помести файл в `android/app/google-services.json`
+При первом запуске приложение покажет экран **«Первоначальная настройка»**.
+
+Введи данные из Firebase Console → Project Settings → Your apps → Web app (firebaseConfig):
+- API Key
+- App ID
+- Project ID
+- Messaging Sender ID
+
+(опционально: Auth Domain, Storage Bucket, Measurement ID)
+
+Данные сохраняются в защищённое хранилище устройства.
+
+Можно нажать **«Пропустить (локальный режим без Firebase)»** — приложение запустится без бэкенда.
+
+Для Android всё ещё можно положить `google-services.json` в `android/app/` (fallback).
 
 ### 4. Сборка
 
@@ -41,6 +54,13 @@ flutter build apk --release
 ```
 APK файл: `build/app/outputs/flutter-apk/app-release.apk`
 
+**Запуск в dev:**
+```bash
+flutter run -d windows
+# или
+flutter run -d android
+```
+
 ## Структура папок
 
 ```
@@ -48,25 +68,30 @@ WesiOS/
 ├── android/              # Android-конфигурация
 ├── windows/              # Windows-конфигурация
 ├── lib/                  # Исходный код Dart
-├── assets/               # Ресурсы (изображения, аудио, шрифты)
-├── .github/workflows/    # CI/CD конфигурация
-├── pubspec.yaml          # Зависимости
-└── README.md             # Документация
+│   ├── core/             # theme, routes, services
+│   ├── features/         # экраны
+│   └── widgets/
+├── assets/               # Ресурсы
+├── .github/workflows/    # CI/CD
+├── pubspec.yaml
+└── README.md
 ```
 
 ## Решение проблем
 
-### Ошибка: `google-services.json` не найден
+### Приложение не стартует / белый экран
+1. `flutter pub get`
+2. `flutter clean && flutter pub get`
+3. Проверь, что Visual Studio C++ установлен (для Windows)
 
-Скачай файл из Firebase Console и помести в `android/app/`.
+### Firebase не инициализируется
+- На первом запуске введи корректные данные Web app из Firebase Console
+- Или нажми «Пропустить» для локального режима
 
 ### Ошибка сборки Windows
-
 Убедись, что установлен Visual Studio 2022 с компонентом "Desktop development with C++".
 
 ### Ошибка сборки Android
-
-Убедись, что:
 1. Android SDK установлен
-2. Переменная окружения `ANDROID_HOME` настроена
-3. Приняты лицензии: `flutter doctor --android-licenses`
+2. `ANDROID_HOME` настроен
+3. `flutter doctor --android-licenses`
