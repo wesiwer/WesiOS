@@ -189,6 +189,74 @@ class SettingsScreen extends StatelessWidget {
     );
   }
 
+  void _showLanguagePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppTheme.textMuted.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text(
+                  'Select Language',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: const Text('🇷🇺', style: TextStyle(fontSize: 24)),
+                title: const Text('Русский', style: TextStyle(color: AppTheme.textPrimary)),
+                trailing: WesiLocale.isRussian
+                  ? const Icon(Icons.check, color: AppTheme.accentOrange)
+                  : null,
+                onTap: () async {
+                  await WesiLocale.setLanguage('ru');
+                  if (mounted) {
+                    setState(() {});
+                    Navigator.pop(context);
+                  }
+                },
+              ),
+              ListTile(
+                leading: const Text('🇬🇧', style: TextStyle(fontSize: 24)),
+                title: const Text('English', style: TextStyle(color: AppTheme.textPrimary)),
+                trailing: WesiLocale.isEnglish
+                  ? const Icon(Icons.check, color: AppTheme.accentOrange)
+                  : null,
+                onTap: () async {
+                  await WesiLocale.setLanguage('en');
+                  if (mounted) {
+                    setState(() {});
+                    Navigator.pop(context);
+                  }
+                },
+              ),
+              const SizedBox(height: 16),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildSettingTile({
     required IconData icon,
     required String title,
