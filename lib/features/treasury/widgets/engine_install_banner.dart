@@ -53,6 +53,9 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
     for (final kind in _downloadable) {
       result[kind] = await EngineInstallService.isInstalled(kind);
     }
+    // Манифест нужен, чтобы понять, не устарела ли уже установленная сборка.
+    // Fail-soft: нет сети — просто не будет предложений об обновлении.
+    await EngineInstallService.fetchManifest();
     if (mounted) setState(() => _installed = result);
   }
 
@@ -64,9 +67,20 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
   @override
   Widget build(BuildContext context) {
     if (!Platform.isWindows || _dismissed) return const SizedBox.shrink();
+
     final missing =
         _downloadable.where((k) => _installed[k] == false).toList();
-    if (missing.isEmpty) return const SizedBox.shrink();
+    // Установленные, но устаревшие — предлагаем обновить тем же баннером.
+    final outdated = _downloadable
+        .where((k) =>
+            _installed[k] == true && EngineInstallService.updateAvailable(k))
+        .toList();
+    final actionable = [...missing, ...outdated];
+    if (actionable.isEmpty) return const SizedBox.shrink();
+
+    // Если ставить нечего и речь только про обновление — меняем текст,
+    // чтобы не предлагать «установить» уже установленное.
+    final updateOnly = missing.isEmpty;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -82,12 +96,14 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Icon(Icons.auto_awesome,
+              Icon(updateOnly ? Icons.system_update_alt : Icons.auto_awesome,
                   size: 18, color: AppTheme.accentOrange),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  'engine_install_banner_title'.w,
+                  updateOnly
+                      ? 'engine_update_banner_title'.w
+                      : 'engine_install_banner_title'.w,
                   style: const TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
@@ -103,14 +119,16 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
           ),
           const SizedBox(height: 4),
           Text(
-            'engine_install_banner_hint'.w,
+            updateOnly
+                ? 'engine_update_banner_hint'.w
+                : 'engine_install_banner_hint'.w,
             style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 10),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: missing.map(_downloadButton).toList(),
+            children: actionable.map(_downloadButton).toList(),
           ),
         ],
       ),
@@ -124,8 +142,11 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
             p.stage == InstallStage.extracting);
     final failed = p?.stage == InstallStage.failed;
     final label = WesiLocale.isRussian ? kind.nameRu : kind.nameEn;
-    final sizeMb =
-        (EngineInstallService.approxSizeBytes[kind]! / (1024 * 1024)).round();
+    final isUpdate = _installed[kind] == true;
+    // Размер из манифеста точнее зашитой оценки — берём его, когда есть.
+    final knownSize = EngineInstallService.cachedRelease(kind)?.sizeBytes ??
+        EngineInstallService.approxSizeBytes[kind]!;
+    final sizeMb = (knownSize / (1024 * 1024)).round();
 
     if (installing) {
       final pct =
@@ -177,15 +198,18 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(failed ? Icons.refresh : Icons.download,
+            Icon(
+                failed
+                    ? Icons.refresh
+                    : (isUpdate ? Icons.system_update_alt : Icons.download),
                 size: 14,
                 color: failed ? AppTheme.accentRed : AppTheme.accentOrange),
             const SizedBox(width: 6),
             Text(
               failed
                   ? '${'engine_retry'.w} $label'
-                  : '${'engine_download'.w} $label '
-                      '(~$sizeMb ${WesiLocale.isRussian ? 'МБ' : 'MB'})',
+                  : '${isUpdate ? 'engine_update_button'.w : 'engine_download'.w}'
+                      ' $label (~$sizeMb ${WesiLocale.isRussian ? 'МБ' : 'MB'})',
               style: TextStyle(
                   fontSize: 12,
                   color: failed ? AppTheme.accentRed : AppTheme.textPrimary),

@@ -155,6 +155,11 @@ class WesiLocale {
       'engine_windows_only': 'Доступно только на Windows',
       'engine_show_download_overlay': 'Показывать индикатор загрузки',
       'engine_show_download_overlay_hint': 'Маленькое окно с прогрессом в углу экрана',
+      'engine_update_banner_title': 'Доступно обновление движков прогноза',
+      'engine_update_banner_hint': 'Вышла более свежая сборка модели. Обновление заменит установленную версию — прогнозы и данные не затрагиваются.',
+      'engine_update_button': 'Обновить',
+      'engine_update_available': 'Доступно обновление',
+      'engine_version_label': 'Версия',
 
       // Sandbox
       'sandbox_balance': 'Баланс песочницы',
@@ -380,6 +385,11 @@ class WesiLocale {
       'engine_windows_only': 'Windows only',
       'engine_show_download_overlay': 'Show download indicator',
       'engine_show_download_overlay_hint': 'Small progress window in the corner of the screen',
+      'engine_update_banner_title': 'Forecast engine update available',
+      'engine_update_banner_hint': 'A newer build of the model has been published. Updating replaces the installed version — your forecasts and data are untouched.',
+      'engine_update_button': 'Update',
+      'engine_update_available': 'Update available',
+      'engine_version_label': 'Version',
 
       // Sandbox
       'sandbox_balance': 'Sandbox Balance',

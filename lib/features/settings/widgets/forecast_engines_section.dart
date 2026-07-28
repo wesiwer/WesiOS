@@ -51,6 +51,10 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
     for (final kind in _engines) {
       result[kind] = await EngineInstallService.isInstalled(kind);
     }
+    // Настройки — то место, куда человек приходит осознанно проверить
+    // состояние движков, поэтому манифест здесь запрашиваем принудительно,
+    // не полагаясь на 6-часовой кэш.
+    await EngineInstallService.fetchManifest(force: true);
     if (mounted) setState(() => _installed = result);
   }
 
@@ -67,10 +71,15 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
 
   Widget _engineTile(ForecastEngineKind kind) {
     final label = WesiLocale.isRussian ? kind.nameRu : kind.nameEn;
-    final sizeMb =
-        (EngineInstallService.approxSizeBytes[kind]! / (1024 * 1024)).round();
+    final release = EngineInstallService.cachedRelease(kind);
+    final knownSize =
+        release?.sizeBytes ?? EngineInstallService.approxSizeBytes[kind]!;
+    final sizeMb = (knownSize / (1024 * 1024)).round();
     final unit = WesiLocale.isRussian ? 'МБ' : 'MB';
     final installed = _installed[kind] == true;
+    final installedVersion = EngineInstallService.installedVersion(kind);
+    final hasUpdate =
+        installed && EngineInstallService.updateAvailable(kind);
     final p = EngineInstallService.progress.value[kind];
     final installing = p != null &&
         (p.stage == InstallStage.downloading ||
@@ -87,7 +96,12 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
           : 'engine_stage_downloading'.w;
       subtitle = '$stage$pct';
     } else if (installed) {
-      subtitle = '${'engine_installed'.w} · ~$sizeMb $unit';
+      final versionPart = installedVersion != null
+          ? ' · ${'engine_version_label'.w} $installedVersion'
+          : '';
+      subtitle = hasUpdate
+          ? '${'engine_update_available'.w}: ${release!.version}$versionPart'
+          : '${'engine_installed'.w}$versionPart · ~$sizeMb $unit';
     } else if (failed) {
       subtitle = p?.error == 'windows_only'
           ? 'engine_windows_only'.w
@@ -98,13 +112,21 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
 
     return ListTile(
       leading: Icon(
-        installed ? Icons.check_circle : Icons.cloud_download_outlined,
-        color: installed ? AppTheme.accentGreen : AppTheme.accentOrange,
+        installed
+            ? (hasUpdate ? Icons.system_update_alt : Icons.check_circle)
+            : Icons.cloud_download_outlined,
+        color: installed && !hasUpdate
+            ? AppTheme.accentGreen
+            : AppTheme.accentOrange,
       ),
       title: Text(label, style: const TextStyle(color: AppTheme.textPrimary)),
       subtitle: Text(subtitle,
           style: TextStyle(
-              color: (failed ? AppTheme.accentRed : AppTheme.textMuted)
+              color: (failed
+                      ? AppTheme.accentRed
+                      : (hasUpdate
+                          ? AppTheme.accentOrange
+                          : AppTheme.textMuted))
                   .withOpacity(0.9),
               fontSize: 13)),
       trailing: !Platform.isWindows
@@ -119,9 +141,11 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
               : TextButton(
                   onPressed: () => EngineInstallService.install(kind),
                   child: Text(
-                    installed
-                        ? 'engine_reinstall_button'.w
-                        : 'engine_install_button'.w,
+                    hasUpdate
+                        ? 'engine_update_button'.w
+                        : (installed
+                            ? 'engine_reinstall_button'.w
+                            : 'engine_install_button'.w),
                     style: const TextStyle(color: AppTheme.accentOrange),
                   ),
                 ),

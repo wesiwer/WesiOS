@@ -5,7 +5,7 @@
 /// только здесь; pubspec.yaml (`version:`) и README.md обновляются вручную
 /// вместе с этим файлом при бампе версии.
 class AppVersion {
-  static const String number = '0.5.0';
+  static const String number = '0.6.0';
   static const String stage = 'α';
   static const String display = 'v$number $stage';
 }

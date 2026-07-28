@@ -6,20 +6,35 @@ name: Build Forecast Engine Bundles
 # EngineInstallService в приложении просто скачивает готовый zip с
 # GitHub Release и распаковывает.
 #
-# Не гоняется на каждый push: зависимости движков (numpy/pandas/statsmodels/
-# prophet) меняются на порядки реже, чем остальной код, а Prophet-бандл
-# компилируется добрых 10+ минут. Запускать вручную (workflow_dispatch),
-# когда реально нужно обновить движки.
+# Не гоняется на каждый push: зависимости движков меняются на порядки реже,
+# чем остальной код, а Prophet-бандл компилируется 10+ минут. Раз в месяц
+# пересобирается сам (свежие statsmodels/prophet с PyPI), плюс можно
+# запустить вручную.
+#
+# ВАЖНО: пакеты намеренно НЕ запинены по версиям — смысл ежемесячной
+# пересборки именно в том, чтобы подтянуть актуальные. Страховка от
+# сломанного апстрима — smoke-тест ниже: если свежесобранный движок не
+# выдаёт корректный прогноз, публикация не происходит, и у пользователей
+# остаётся предыдущая рабочая сборка.
 on:
   workflow_dispatch:
+  schedule:
+    # 4-е число каждого месяца, 03:00 UTC — не 1-е число и не полночь,
+    # когда GitHub Actions перегружен задачами по расписанию.
+    - cron: '0 3 4 * *'
 
 env:
   PY_VERSION: '3.11.9'
   RELEASE_TAG: 'engines-v1'
+  RELEASE_NOTES: 'Prebuilt Python runtimes for the optional Prophet/SARIMAX forecast engines. The app downloads these on demand (Settings > Forecast Models, or the banner on the Forecast screen) — they are not part of the main installer. manifest.json describes the current build; the app polls it to offer updates.'
 
 jobs:
   build-sarimax:
     runs-on: windows-2022
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      size: ${{ steps.meta.outputs.size }}
+      packages: ${{ steps.meta.outputs.packages }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,6 +61,26 @@ jobs:
           & python_runtime\python.exe get-pip.py --no-warn-script-location
           & python_runtime\python.exe -m pip install --no-warn-script-location numpy pandas statsmodels
 
+      - name: Smoke test — the freshly built engine must produce a real forecast
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # Гоняем ровно тот скрипт, который поедет пользователю, на ровно том
+          # рантайме, который собрали. Ловит несовместимость свежих версий
+          # пакетов ДО публикации — иначе ежемесячная авто-пересборка могла бы
+          # молча выложить сломанный движок.
+          $result = Get-Content python_engines\_smoke_test_input.json -Raw | & python_runtime\python.exe python_engines\forecast_sarimax.py
+          Write-Host "engine output: $result"
+          $parsed = $result | ConvertFrom-Json
+          if ($parsed.error) { throw "engine returned an error: $($parsed.error) / $($parsed.detail)" }
+          if (-not $parsed.p50 -or $parsed.p50.Count -ne 7) { throw "expected 7 p50 points, got $($parsed.p50.Count)" }
+          for ($i = 0; $i -lt 7; $i++) {
+            if ($parsed.p10[$i] -gt $parsed.p50[$i] -or $parsed.p50[$i] -gt $parsed.p90[$i]) {
+              throw "percentiles out of order at day $i"
+            }
+          }
+          Write-Host "smoke test passed"
+
       - name: Assemble bundle
         shell: pwsh
         run: |
@@ -55,11 +90,20 @@ jobs:
           Copy-Item python_engines bundle\python_engines -Recurse -Force
           Compress-Archive -Path bundle\* -DestinationPath wesios-engine-sarimax-win64.zip -Force
 
-      - name: Upload build artifact (for inspection before publishing)
-        uses: actions/upload-artifact@v4
-        with:
-          name: wesios-engine-sarimax-win64
-          path: wesios-engine-sarimax-win64.zip
+      - name: Collect build metadata for the manifest
+        id: meta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = Get-Date -Format 'yyyy.MM.dd'
+          $size = (Get-Item wesios-engine-sarimax-win64.zip).Length
+          $np = & python_runtime\python.exe -c "import numpy; print(numpy.__version__)"
+          $pd = & python_runtime\python.exe -c "import pandas; print(pandas.__version__)"
+          $sm = & python_runtime\python.exe -c "import statsmodels; print(statsmodels.__version__)"
+          $packages = "{""numpy"":""$np"",""pandas"":""$pd"",""statsmodels"":""$sm""}"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "size=$size" >> $env:GITHUB_OUTPUT
+          "packages=$packages" >> $env:GITHUB_OUTPUT
 
       - name: Publish to GitHub Release
         shell: bash
@@ -69,12 +113,15 @@ jobs:
           set -e
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" || \
             gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "Forecast engine bundles" \
-              --notes "Prebuilt Python runtimes for the optional Prophet/SARIMAX forecast engines (downloaded on-demand from Settings > Forecast Models, or the install banner on the Forecast screen). Rebuilt manually via build-engines.yml when the engine scripts or their dependencies change."
+              --title "Forecast engine bundles" --notes "$RELEASE_NOTES"
           gh release upload "$RELEASE_TAG" wesios-engine-sarimax-win64.zip --repo "$GITHUB_REPOSITORY" --clobber
 
   build-prophet:
     runs-on: windows-2022
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      size: ${{ steps.meta.outputs.size }}
+      packages: ${{ steps.meta.outputs.packages }}
     steps:
       - uses: actions/checkout@v4
 
@@ -110,6 +157,26 @@ jobs:
           # оказалась именно тут, в python_runtime\cmdstan.
           & python_runtime\python.exe -m cmdstanpy.install_cmdstan --dir python_runtime\cmdstan
 
+      - name: Smoke test — the freshly built engine must produce a real forecast
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # Заодно проверяет самое хрупкое место Prophet-бандла: что
+          # forecast_prophet.py действительно находит собранный CmdStan
+          # относительно sys.executable. Если бы путь резолвился неправильно,
+          # скрипт упал бы здесь, а не у пользователя.
+          $result = Get-Content python_engines\_smoke_test_input.json -Raw | & python_runtime\python.exe python_engines\forecast_prophet.py
+          Write-Host "engine output: $result"
+          $parsed = $result | ConvertFrom-Json
+          if ($parsed.error) { throw "engine returned an error: $($parsed.error) / $($parsed.detail)" }
+          if (-not $parsed.p50 -or $parsed.p50.Count -ne 7) { throw "expected 7 p50 points, got $($parsed.p50.Count)" }
+          for ($i = 0; $i -lt 7; $i++) {
+            if ($parsed.p10[$i] -gt $parsed.p50[$i] -or $parsed.p50[$i] -gt $parsed.p90[$i]) {
+              throw "percentiles out of order at day $i"
+            }
+          }
+          Write-Host "smoke test passed"
+
       - name: Assemble bundle
         shell: pwsh
         run: |
@@ -119,11 +186,20 @@ jobs:
           Copy-Item python_engines bundle\python_engines -Recurse -Force
           Compress-Archive -Path bundle\* -DestinationPath wesios-engine-prophet-win64.zip -Force
 
-      - name: Upload build artifact (for inspection before publishing)
-        uses: actions/upload-artifact@v4
-        with:
-          name: wesios-engine-prophet-win64
-          path: wesios-engine-prophet-win64.zip
+      - name: Collect build metadata for the manifest
+        id: meta
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = Get-Date -Format 'yyyy.MM.dd'
+          $size = (Get-Item wesios-engine-prophet-win64.zip).Length
+          $np = & python_runtime\python.exe -c "import numpy; print(numpy.__version__)"
+          $pd = & python_runtime\python.exe -c "import pandas; print(pandas.__version__)"
+          $pr = & python_runtime\python.exe -c "import prophet; print(prophet.__version__)"
+          $packages = "{""numpy"":""$np"",""pandas"":""$pd"",""prophet"":""$pr""}"
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "size=$size" >> $env:GITHUB_OUTPUT
+          "packages=$packages" >> $env:GITHUB_OUTPUT
 
       - name: Publish to GitHub Release
         shell: bash
@@ -133,6 +209,48 @@ jobs:
           set -e
           gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" || \
             gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "Forecast engine bundles" \
-              --notes "Prebuilt Python runtimes for the optional Prophet/SARIMAX forecast engines (downloaded on-demand from Settings > Forecast Models, or the install banner on the Forecast screen). Rebuilt manually via build-engines.yml when the engine scripts or their dependencies change."
+              --title "Forecast engine bundles" --notes "$RELEASE_NOTES"
           gh release upload "$RELEASE_TAG" wesios-engine-prophet-win64.zip --repo "$GITHUB_REPOSITORY" --clobber
+
+  publish-manifest:
+    # Отдельной задачей после обеих сборок: манифест — это то, по чему
+    # приложение решает «есть обновление». Публиковать его должен ровно один
+    # исполнитель и только после того, как ОБА бандла успешно собрались и
+    # прошли smoke-тест, иначе манифест пообещает версию, которой нет.
+    needs: [build-sarimax, build-prophet]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build manifest.json
+        shell: bash
+        run: |
+          set -e
+          cat > manifest.json <<EOF
+          {
+            "schema": 1,
+            "engines": {
+              "sarimax": {
+                "version": "${{ needs.build-sarimax.outputs.version }}",
+                "asset": "wesios-engine-sarimax-win64.zip",
+                "sizeBytes": ${{ needs.build-sarimax.outputs.size }},
+                "packages": ${{ needs.build-sarimax.outputs.packages }}
+              },
+              "prophet": {
+                "version": "${{ needs.build-prophet.outputs.version }}",
+                "asset": "wesios-engine-prophet-win64.zip",
+                "sizeBytes": ${{ needs.build-prophet.outputs.size }},
+                "packages": ${{ needs.build-prophet.outputs.packages }}
+              }
+            }
+          }
+          EOF
+          cat manifest.json
+          # Ловим кривой JSON здесь, а не в приложении у пользователя.
+          python3 -m json.tool manifest.json > /dev/null
+
+      - name: Publish manifest to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release upload "$RELEASE_TAG" manifest.json --repo "$GITHUB_REPOSITORY" --clobber
