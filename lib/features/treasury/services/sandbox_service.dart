@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../models/transaction_model.dart';
 import 'treasury_service.dart';
 import '../models/transaction_model.dart';
 
