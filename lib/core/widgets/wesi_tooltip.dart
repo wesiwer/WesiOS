@@ -29,11 +29,15 @@ class WesiTooltip extends StatefulWidget {
 class _WesiTooltipState extends State<WesiTooltip> {
   bool _isVisible = false;
   OverlayEntry? _overlayEntry;
+  Future<void>? _delayedShow;
 
   void _showTooltip() {
     if (_overlayEntry != null) return;
+    if (!mounted) return;
 
-    final RenderBox renderBox = context.findRenderObject() as RenderBox;
+    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+
     final Offset offset = renderBox.localToGlobal(Offset.zero);
     final Size size = renderBox.size;
 
@@ -76,13 +80,25 @@ class _WesiTooltipState extends State<WesiTooltip> {
     );
 
     Overlay.of(context).insert(_overlayEntry!);
-    setState(() => _isVisible = true);
+    if (mounted) setState(() => _isVisible = true);
   }
 
   void _hideTooltip() {
+    _delayedShow = null; // Cancel any pending show
     _overlayEntry?.remove();
     _overlayEntry = null;
-    setState(() => _isVisible = false);
+    if (mounted) setState(() => _isVisible = false);
+  }
+
+  void _onEnter() {
+    _delayedShow = Future.delayed(widget.showDelay, () {
+      if (mounted && _delayedShow != null) _showTooltip();
+    });
+  }
+
+  void _onExit() {
+    _delayedShow = null; // Cancel pending show
+    _hideTooltip();
   }
 
   @override
@@ -94,10 +110,8 @@ class _WesiTooltipState extends State<WesiTooltip> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      onEnter: (_) => Future.delayed(widget.showDelay, () {
-        if (mounted) _showTooltip();
-      }),
-      onExit: (_) => _hideTooltip(),
+      onEnter: (_) => _onEnter(),
+      onExit: (_) => _onExit(),
       child: widget.child,
     );
   }
