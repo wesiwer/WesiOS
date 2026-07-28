@@ -246,7 +246,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   List<Widget> _buildBodySlivers() {
     return [
-     	ableofcontentsPadding(
+      SliverPadding(
         padding: const EdgeInsets.all(24),
         sliver: SliverList(
           delegate: SliverChildListDelegate([
