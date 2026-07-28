@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
+import '../localization/wesi_locale.dart';
 
 /// Контекстное меню при правом клике на элемент системы.
-/// Показывает полное описание системы и её назначение.
 class WesiContextMenu extends StatelessWidget {
   final String title;
   final String description;
@@ -66,7 +66,6 @@ class WesiContextMenu extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                // Title with icon
                 Row(
                   children: [
                     Container(
@@ -78,27 +77,18 @@ class WesiContextMenu extends StatelessWidget {
                         ),
                         borderRadius: BorderRadius.circular(8),
                       ),
-                      child: const Icon(
-                        Icons.info_outline,
-                        color: Colors.white,
-                        size: 18,
-                      ),
+                      child: const Icon(Icons.info_outline, color: Colors.white, size: 18),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
                         title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.textPrimary,
-                        ),
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 16),
-                // Description
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
@@ -106,50 +96,28 @@ class WesiContextMenu extends StatelessWidget {
                     borderRadius: BorderRadius.circular(10),
                     border: Border.all(color: AppTheme.glassBorder),
                   ),
-                  child: Text(
-                    description,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppTheme.textSecondary,
-                      height: 1.5,
-                    ),
-                  ),
+                  child: Text(description, style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary, height: 1.5)),
                 ),
                 const SizedBox(height: 12),
-                // Purpose
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(
-                      Icons.lightbulb_outline,
-                      size: 16,
-                      color: AppTheme.accentOrange.withOpacity(0.7),
-                    ),
+                    Icon(Icons.lightbulb_outline, size: 16, color: AppTheme.accentOrange.withOpacity(0.7)),
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         purpose,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.accentOrange.withOpacity(0.8),
-                          height: 1.4,
-                          fontStyle: FontStyle.italic,
-                        ),
+                        style: TextStyle(fontSize: 12, color: AppTheme.accentOrange.withOpacity(0.8), height: 1.4, fontStyle: FontStyle.italic),
                       ),
                     ),
                   ],
                 ),
                 const SizedBox(height: 8),
-                // Divider
                 Divider(color: AppTheme.glassBorder.withOpacity(0.5)),
                 const SizedBox(height: 8),
-                // Hint
                 Text(
-                  'Click to open this system',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: AppTheme.textMuted.withOpacity(0.7),
-                  ),
+                  WesiLocale.get('click_to_open'),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted.withOpacity(0.7)),
                 ),
               ],
             ),
