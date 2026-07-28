@@ -195,6 +195,7 @@ CI был красный **30+ прогонов подряд**, падали о�
 - Пункт 3 (валюта налезает на Close) — правился только для Treasury/Sandbox, на других экранах с `actions` может воспроизводиться.
 - Пункт 43 — стрелками охвачены общие кнопки; отдельные `GestureDetector` по экранам нет.
 - `pubspec.lock` в репозиторий не добавлен (вопрос конвенции проекта — решать пользователю).
+- **21 зависимость в `pubspec.yaml` не используется в `lib/` ни разу:** `audioplayers`, `device_info_plus`, `dio`, `equatable`, `flutter_animate`, `flutter_bloc`, `flutter_drawing_board`, `flutter_local_notifications`, `flutter_quill`, `flutter_timer_countdown`, `intl`, `path_provider`, `pdf`, `printing`, `share_plus`, `speech_to_text`, `syncfusion_flutter_gauges`, `table_calendar`, `url_launcher`, `vibration`, `video_player`. Реально импортируются только `file_picker`, `firebase_core`, `fl_chart`, `flutter_secure_storage`, `hive`, `hive_flutter`, `http`, `math_expressions`, `shared_preferences`, `window_manager`. Каждая неиспользуемая нативная зависимость всё равно компилируется в APK и может уронить сборку — так и случилось с `flutter_local_notifications`. Чистить или нет — решение по продукту, сам не трогал.
 - `android/app/src/{debug,profile}/AndroidManifest.xml` и `android/gradlew` из шаблона Flutter в репозитории по-прежнему отсутствуют. Release-сборке они не нужны, поэтому не добавлял.
 
 ---
