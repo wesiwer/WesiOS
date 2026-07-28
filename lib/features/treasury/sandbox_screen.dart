@@ -3,6 +3,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/hover_button.dart';
 import '../../../core/widgets/wesi_tooltip.dart';
 import '../../../core/localization/wesi_locale.dart';
+import '../../../core/services/currency_service.dart';
 import 'services/sandbox_service.dart';
 import 'models/transaction_model.dart';
 
@@ -22,6 +23,9 @@ class _SandboxScreenState extends State<SandboxScreen> {
   List<TransactionModel> _anomalies = [];
   bool _isLoading = true;
   String _currentScenario = WesiLocale.get('scenario');
+  String _currency = CurrencyService.current;
+
+  String get _sym => CurrencyService.symbol;
 
   @override
   void initState() {
@@ -40,8 +44,15 @@ class _SandboxScreenState extends State<SandboxScreen> {
       _balance = balance;
       _breakdown = breakdown;
       _anomalies = anomalies;
+      _currency = CurrencyService.current;
       _isLoading = false;
     });
+  }
+
+  Future<void> _toggleCurrency() async {
+    final next = _currency == 'rub' ? 'usd' : 'rub';
+    await CurrencyService.set(next);
+    setState(() => _currency = next);
   }
 
   Future<void> _runScenario(String scenario) async {
@@ -74,12 +85,12 @@ class _SandboxScreenState extends State<SandboxScreen> {
   Future<void> _addTransaction(TransactionType type) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => _AddSandboxTransactionDialog(type: type),
+      builder: (context) => _AddSandboxTransactionDialog(type: type, symbol: _sym),
     );
 
     if (result != null) {
       final tx = TransactionModel(
-        id: 'sandbox_\${DateTime.now().millisecondsSinceEpoch}',
+        id: 'sandbox_${DateTime.now().millisecondsSinceEpoch}',
         title: result['title'],
         amount: result['amount'],
         type: type,
@@ -92,6 +103,11 @@ class _SandboxScreenState extends State<SandboxScreen> {
       await _service.addTransaction(tx);
       await _loadData();
     }
+  }
+
+  Future<void> _deleteTransaction(String id) async {
+    await _service.deleteTransaction(id);
+    await _loadData();
   }
 
   @override
@@ -117,6 +133,30 @@ class _SandboxScreenState extends State<SandboxScreen> {
                     icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
                     onPressed: () => Navigator.pop(context),
                   ),
+                  actions: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: 12),
+                      child: GestureDetector(
+                        onTap: _toggleCurrency,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surface.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppTheme.glassBorder),
+                          ),
+                          child: Text(
+                            _sym,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.accentOrange,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                   flexibleSpace: FlexibleSpaceBar(
                     title: Text(
                       WesiLocale.get('wesi_sandbox_title'),
@@ -140,6 +180,46 @@ class _SandboxScreenState extends State<SandboxScreen> {
                       _buildScenarioSelector(),
                       const SizedBox(height: 24),
                       _buildBalanceCard(),
+                      const SizedBox(height: 16),
+                      // Forecast from sandbox data
+                      HoverButton(
+                        onTap: () => Navigator.pushNamed(context, '/treasury/forecast'),
+                        padding: const EdgeInsets.all(16),
+                        backgroundColor: AppTheme.surface.withOpacity(0.4),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: AppTheme.accentOrange.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3)),
+                              ),
+                              child: const Icon(Icons.trending_up, color: AppTheme.accentOrange, size: 20),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    WesiLocale.get('forecast_p10_p50_p90'),
+                                    style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                                  ),
+                                  Text(
+                                    WesiLocale.isRussian
+                                        ? 'Прогноз по данным песочницы'
+                                        : 'Forecast from sandbox data',
+                                    style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.textMuted),
+                          ],
+                        ),
+                      ),
                       const SizedBox(height: 24),
                       Row(
                         children: [
@@ -171,12 +251,25 @@ class _SandboxScreenState extends State<SandboxScreen> {
                       const SizedBox(height: 24),
                       Row(
                         children: [
-                          _buildStatCard(WesiLocale.get('total_income'), '\$${_breakdown['income']?.toStringAsFixed(0) ?? '0'}', AppTheme.accentGreen),
+                          _buildStatCard(
+                            WesiLocale.get('total_income'),
+                            '$_sym${_breakdown['income']?.toStringAsFixed(0) ?? '0'}',
+                            AppTheme.accentGreen,
+                          ),
                           const SizedBox(width: 12),
-                          _buildStatCard(WesiLocale.get('total_expenses'), '\$${_breakdown['expense']?.toStringAsFixed(0) ?? '0'}', AppTheme.accentRed),
+                          _buildStatCard(
+                            WesiLocale.get('total_expenses'),
+                            '$_sym${_breakdown['expense']?.toStringAsFixed(0) ?? '0'}',
+                            AppTheme.accentRed,
+                          ),
                           const SizedBox(width: 12),
-                          _buildStatCard(WesiLocale.get('net'), '\$${_breakdown['net']?.toStringAsFixed(0) ?? '0'}',
-                              _breakdown['net'] != null && _breakdown['net']! >= 0 ? AppTheme.accentGreen : AppTheme.accentRed),
+                          _buildStatCard(
+                            WesiLocale.get('net'),
+                            '$_sym${_breakdown['net']?.toStringAsFixed(0) ?? '0'}',
+                            _breakdown['net'] != null && _breakdown['net']! >= 0
+                                ? AppTheme.accentGreen
+                                : AppTheme.accentRed,
+                          ),
                         ],
                       ),
                       const SizedBox(height: 24),
@@ -184,9 +277,10 @@ class _SandboxScreenState extends State<SandboxScreen> {
                         _buildAnomaliesCard(),
                         const SizedBox(height: 24),
                       ],
-                      _buildSectionTitle('${WesiLocale.get('sandbox_transactions')} (${_transactions.length})'),
+                      _buildSectionTitle(
+                          '${WesiLocale.get('sandbox_transactions')} (${_transactions.length})'),
                       const SizedBox(height: 12),
-                      ..._transactions.take(10).map((tx) => _buildTransactionItem(tx)),
+                      ..._transactions.take(15).map((tx) => _buildTransactionItem(tx)),
                       const SizedBox(height: 32),
                     ]),
                   ),
@@ -217,7 +311,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
             const SizedBox(height: 24),
             Text(
               WesiLocale.get('wesi_sandbox_title'),
-              style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.textPrimary, letterSpacing: 3),
+              style: const TextStyle(
+                  fontSize: 24, fontWeight: FontWeight.w900, color: AppTheme.textPrimary, letterSpacing: 3),
             ),
             const SizedBox(height: 8),
             Text(
@@ -250,11 +345,15 @@ class _SandboxScreenState extends State<SandboxScreen> {
             ),
             child: Row(
               children: [
-                Icon(Icons.science, size: 14, color: AppTheme.accentOrange),
+                const Icon(Icons.science, size: 14, color: AppTheme.accentOrange),
                 const SizedBox(width: 6),
                 Text(
                   WesiLocale.get('sandbox_mode'),
-                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: AppTheme.accentOrange, letterSpacing: 1.5),
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.accentOrange,
+                      letterSpacing: 1.5),
                 ),
               ],
             ),
@@ -279,10 +378,10 @@ class _SandboxScreenState extends State<SandboxScreen> {
 
   Widget _buildScenarioSelector() {
     final scenarios = [
-      ('startup', 'Startup', Icons.rocket_launch, 'Seed round + burn rate + MRR'),
-      ('freelancer', 'Freelancer', Icons.laptop_mac, 'Irregular income + expenses'),
-      ('crisis', 'Crisis', Icons.warning, 'Multiple anomalies + emergencies'),
-      ('clone', 'Clone Real', Icons.copy_all, 'Copy from real Treasury data'),
+      ('startup', 'Startup', Icons.rocket_launch, 'Seed + burn + MRR'),
+      ('freelancer', 'Freelancer', Icons.laptop_mac, 'Irregular income'),
+      ('crisis', 'Crisis', Icons.warning, 'Anomalies + chaos'),
+      ('clone', 'Clone Real', Icons.copy_all, 'Copy real Treasury'),
     ];
 
     return Column(
@@ -296,39 +395,53 @@ class _SandboxScreenState extends State<SandboxScreen> {
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
-            children: scenarios.map((s) => Padding(
-              padding: const EdgeInsets.only(right: 10),
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
-                child: GestureDetector(
-                  onTap: () => _runScenario(s.$1),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    width: 160,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [AppTheme.surface.withOpacity(0.5), AppTheme.surface.withOpacity(0.2)],
+            children: scenarios
+                .map((s) => Padding(
+                      padding: const EdgeInsets.only(right: 10),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          onTap: () => _runScenario(s.$1),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 200),
+                            width: 160,
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  AppTheme.surface.withOpacity(0.5),
+                                  AppTheme.surface.withOpacity(0.2)
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(14),
+                              border: Border.all(
+                                  color: AppTheme.accentOrange.withOpacity(0.2), width: 1),
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(s.$3, size: 24, color: AppTheme.accentOrange.withOpacity(0.8)),
+                                const SizedBox(height: 10),
+                                Text(s.$2,
+                                    style: const TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppTheme.textPrimary)),
+                                const SizedBox(height: 4),
+                                Text(s.$4,
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        color: AppTheme.textMuted.withOpacity(0.8),
+                                        height: 1.3)),
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppTheme.accentOrange.withOpacity(0.2), width: 1),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Icon(s.$3, size: 24, color: AppTheme.accentOrange.withOpacity(0.8)),
-                        const SizedBox(height: 10),
-                        Text(s.$2, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
-                        const SizedBox(height: 4),
-                        Text(s.$4, style: TextStyle(fontSize: 10, color: AppTheme.textMuted.withOpacity(0.8), height: 1.3)),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            )).toList(),
+                    ))
+                .toList(),
           ),
         ),
       ],
@@ -342,11 +455,19 @@ class _SandboxScreenState extends State<SandboxScreen> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [const Color(0xFF2D1F00).withOpacity(0.5), AppTheme.surface.withOpacity(0.3)],
+          colors: [
+            const Color(0xFF2D1F00).withOpacity(0.5),
+            AppTheme.surface.withOpacity(0.3)
+          ],
         ),
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: AppTheme.accentOrange.withOpacity(0.2), width: 1),
-        boxShadow: [BoxShadow(color: AppTheme.accentOrange.withOpacity(0.03), blurRadius: 20, spreadRadius: 2)],
+        boxShadow: [
+          BoxShadow(
+              color: AppTheme.accentOrange.withOpacity(0.03),
+              blurRadius: 20,
+              spreadRadius: 2)
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -355,7 +476,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
             children: [
               Text(
                 WesiLocale.get('sandbox_balance'),
-                style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary, letterSpacing: 0.5),
+                style: const TextStyle(
+                    fontSize: 13, color: AppTheme.textSecondary, letterSpacing: 0.5),
               ),
               const SizedBox(width: 8),
               Container(
@@ -366,19 +488,27 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 ),
                 child: Text(
                   WesiLocale.get('test'),
-                  style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: AppTheme.accentOrange.withOpacity(0.8), letterSpacing: 1),
+                  style: TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.accentOrange.withOpacity(0.8),
+                      letterSpacing: 1),
                 ),
               ),
             ],
           ),
           const SizedBox(height: 12),
           Text(
-            '\$${_balance.toStringAsFixed(2)}',
-            style: const TextStyle(fontSize: 36, fontWeight: FontWeight.w800, color: AppTheme.textPrimary, letterSpacing: -0.5),
+            '$_sym${_balance.toStringAsFixed(2)}',
+            style: const TextStyle(
+                fontSize: 36,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textPrimary,
+                letterSpacing: -0.5),
           ),
           const SizedBox(height: 8),
           Text(
-            '${_transactions.length} ${WesiLocale.isRussian ? 'транзакций' : 'transactions'} ${WesiLocale.isRussian ? 'в песочнице' : 'in sandbox'}',
+            '${_transactions.length} ${WesiLocale.isRussian ? 'транзакций в песочнице' : 'transactions in sandbox'}',
             style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
           ),
         ],
@@ -386,7 +516,12 @@ class _SandboxScreenState extends State<SandboxScreen> {
     );
   }
 
-  Widget _buildActionButton({required IconData icon, required String label, required Color color, required VoidCallback onTap}) {
+  Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
     return HoverButton(
       onTap: onTap,
       padding: const EdgeInsets.symmetric(vertical: 16),
@@ -416,7 +551,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
           children: [
             Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
             const SizedBox(height: 6),
-            Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
+            Text(value,
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: color)),
           ],
         ),
       ),
@@ -440,15 +576,19 @@ class _SandboxScreenState extends State<SandboxScreen> {
               const SizedBox(width: 8),
               Text(
                 '${WesiLocale.get('anomalies_detected')}: ${_anomalies.length}',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: AppTheme.accentRed.withOpacity(0.8)),
+                style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.accentRed.withOpacity(0.8)),
               ),
             ],
           ),
           const SizedBox(height: 8),
           ..._anomalies.map((a) => Text(
-            '• ${a.title}: \$${a.amount.toStringAsFixed(0)} (Z: ${a.zScore?.toStringAsFixed(1)})',
-            style: TextStyle(fontSize: 11, color: AppTheme.textSecondary.withOpacity(0.7)),
-          )),
+                '• ${a.title}: $_sym${a.amount.toStringAsFixed(0)} (Z: ${a.zScore?.toStringAsFixed(1)})',
+                style: TextStyle(
+                    fontSize: 11, color: AppTheme.textSecondary.withOpacity(0.7)),
+              )),
         ],
       ),
     );
@@ -460,9 +600,15 @@ class _SandboxScreenState extends State<SandboxScreen> {
       margin: const EdgeInsets.only(bottom: 6),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: tx.isAnomaly ? AppTheme.accentRed.withOpacity(0.04) : AppTheme.surface.withOpacity(0.25),
+        color: tx.isAnomaly
+            ? AppTheme.accentRed.withOpacity(0.04)
+            : AppTheme.surface.withOpacity(0.25),
         borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: tx.isAnomaly ? AppTheme.accentRed.withOpacity(0.15) : AppTheme.glassBorder),
+        border: Border.all(
+          color: tx.isAnomaly
+              ? AppTheme.accentRed.withOpacity(0.15)
+              : AppTheme.glassBorder,
+        ),
       ),
       child: Row(
         children: [
@@ -470,25 +616,44 @@ class _SandboxScreenState extends State<SandboxScreen> {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: isIncome ? AppTheme.accentGreen.withOpacity(0.12) : AppTheme.accentRed.withOpacity(0.12),
+              color: isIncome
+                  ? AppTheme.accentGreen.withOpacity(0.12)
+                  : AppTheme.accentRed.withOpacity(0.12),
               borderRadius: BorderRadius.circular(8),
             ),
-            child: Icon(isIncome ? Icons.arrow_upward : Icons.arrow_downward,
-                color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed, size: 16),
+            child: Icon(
+              isIncome ? Icons.arrow_upward : Icons.arrow_downward,
+              color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
+              size: 16,
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(tx.title, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: AppTheme.textPrimary)),
-                Text(tx.category ?? WesiLocale.get('uncategorized'), style: const TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                Text(tx.title,
+                    style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: AppTheme.textPrimary)),
+                Text(tx.category ?? WesiLocale.get('uncategorized'),
+                    style: const TextStyle(fontSize: 10, color: AppTheme.textMuted)),
               ],
             ),
           ),
           Text(
-            '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(0)}',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed),
+            '${isIncome ? '+' : '-'}$_sym${tx.amount.toStringAsFixed(0)}',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
+            ),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () => _deleteTransaction(tx.id),
+            child: Icon(Icons.close, size: 16, color: AppTheme.textMuted.withOpacity(0.6)),
           ),
         ],
       ),
@@ -496,24 +661,38 @@ class _SandboxScreenState extends State<SandboxScreen> {
   }
 
   Widget _buildSectionTitle(String title) {
-    return Text(title, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary, letterSpacing: 0.3));
+    return Text(title,
+        style: const TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textPrimary,
+            letterSpacing: 0.3));
   }
 }
 
 class _AddSandboxTransactionDialog extends StatefulWidget {
   final TransactionType type;
-  const _AddSandboxTransactionDialog({required this.type});
+  final String symbol;
+  const _AddSandboxTransactionDialog({required this.type, required this.symbol});
 
   @override
-  State<_AddSandboxTransactionDialog> createState() => _AddSandboxTransactionDialogState();
+  State<_AddSandboxTransactionDialog> createState() =>
+      _AddSandboxTransactionDialogState();
 }
 
-class _AddSandboxTransactionDialogState extends State<_AddSandboxTransactionDialog> {
+class _AddSandboxTransactionDialogState
+    extends State<_AddSandboxTransactionDialog> {
   final _titleCtrl = TextEditingController();
   final _amountCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
   String _category = 'Test';
-  final List<String> _categories = ['Test', 'Simulation', 'Scenario', 'Experiment', 'Other'];
+  final List<String> _categories = [
+    'Test',
+    'Simulation',
+    'Scenario',
+    'Experiment',
+    'Other'
+  ];
 
   @override
   Widget build(BuildContext context) {
@@ -540,8 +719,13 @@ class _AddSandboxTransactionDialogState extends State<_AddSandboxTransactionDial
                 ),
                 const SizedBox(width: 12),
                 Text(
-                  isIncome ? WesiLocale.get('add_test_income') : WesiLocale.get('add_test_expense'),
-                  style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                  isIncome
+                      ? WesiLocale.get('add_test_income')
+                      : WesiLocale.get('add_test_expense'),
+                  style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary),
                 ),
               ],
             ),
@@ -556,7 +740,8 @@ class _AddSandboxTransactionDialogState extends State<_AddSandboxTransactionDial
               style: const TextStyle(color: AppTheme.textPrimary),
               decoration: InputDecoration(
                 labelText: WesiLocale.get('title'),
-                hintText: isIncome ? 'e.g. Test Client Payment' : 'e.g. Test Expense',
+                hintText:
+                    isIncome ? 'e.g. Test Client Payment' : 'e.g. Test Expense',
               ),
             ),
             const SizedBox(height: 12),
@@ -567,7 +752,7 @@ class _AddSandboxTransactionDialogState extends State<_AddSandboxTransactionDial
               decoration: InputDecoration(
                 labelText: WesiLocale.get('amount'),
                 hintText: '0.00',
-                prefixText: '\$ ',
+                prefixText: '${widget.symbol} ',
               ),
             ),
             const SizedBox(height: 12),
@@ -584,10 +769,14 @@ class _AddSandboxTransactionDialogState extends State<_AddSandboxTransactionDial
                   isExpanded: true,
                   dropdownColor: AppTheme.surface,
                   style: const TextStyle(color: AppTheme.textPrimary),
-                  items: _categories.map((c) => DropdownMenuItem(
-                    value: c,
-                    child: Text(c, style: const TextStyle(color: AppTheme.textPrimary)),
-                  )).toList(),
+                  items: _categories
+                      .map((c) => DropdownMenuItem(
+                            value: c,
+                            child: Text(c,
+                                style:
+                                    const TextStyle(color: AppTheme.textPrimary)),
+                          ))
+                      .toList(),
                   onChanged: (v) => setState(() => _category = v ?? 'Test'),
                 ),
               ),
@@ -596,7 +785,8 @@ class _AddSandboxTransactionDialogState extends State<_AddSandboxTransactionDial
             TextField(
               controller: _descCtrl,
               style: const TextStyle(color: AppTheme.textPrimary),
-              decoration: InputDecoration(labelText: WesiLocale.get('description_optional')),
+              decoration:
+                  InputDecoration(labelText: WesiLocale.get('description_optional')),
             ),
             const SizedBox(height: 24),
             Row(
@@ -604,7 +794,8 @@ class _AddSandboxTransactionDialogState extends State<_AddSandboxTransactionDial
                 Expanded(
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: Text(WesiLocale.get('cancel'), style: const TextStyle(color: AppTheme.textMuted)),
+                    child: Text(WesiLocale.get('cancel'),
+                        style: const TextStyle(color: AppTheme.textMuted)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -622,11 +813,13 @@ class _AddSandboxTransactionDialogState extends State<_AddSandboxTransactionDial
                       }
                     },
                     padding: const EdgeInsets.symmetric(vertical: 14),
-                    backgroundColor: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
+                    backgroundColor:
+                        isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
                     child: Center(
                       child: Text(
                         WesiLocale.get('add_to_sandbox'),
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                        style: const TextStyle(
+                            color: Colors.white, fontWeight: FontWeight.w600),
                       ),
                     ),
                   ),
