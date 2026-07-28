@@ -95,13 +95,13 @@ class TreasuryService {
     for (final tx in recurring) {
       if (_shouldProcess(tx, now)) {
         final newTx = TransactionModel(
-          id: '${tx.id}_\${now.millisecondsSinceEpoch}',
+          id: '${tx.id}_${now.millisecondsSinceEpoch}',
           title: tx.title,
           amount: tx.amount,
           type: tx.type,
           date: now,
           category: tx.category,
-          description: 'Recurring: \${tx.description}',
+          description: 'Recurring: ${tx.description}',
           isRecurring: false,
         );
         await addTransaction(newTx);
@@ -124,7 +124,7 @@ class TreasuryService {
     }
   }
 
-  // ========== FORECAST (Monte-Carlo inspired) ==========
+  // ========== FORECAST (flexible, non-linear Monte-Carlo inspired) ==========
 
   Future<Map<String, List<double>>> generateForecast({int days = 30}) async {
     final all = await getAllTransactions();
@@ -149,22 +149,59 @@ class TreasuryService {
     final variance = dailyNet.map((v) => pow(v - mean, 2)).reduce((a, b) => a + b) / dailyNet.length;
     final stdDev = sqrt(variance);
 
+    // Recent trend (last ~14 days) for non-linear drift
+    final recent = dailyNet.length > 14 ? dailyNet.sublist(dailyNet.length - 14) : dailyNet;
+    double recentMean = recent.reduce((a, b) => a + b) / recent.length;
+    double slope = 0;
+    if (recent.length >= 3) {
+      // simple linear regression slope on recent window
+      final n = recent.length;
+      double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+      for (int i = 0; i < n; i++) {
+        sumX += i;
+        sumY += recent[i];
+        sumXY += i * recent[i];
+        sumX2 += i * i;
+      }
+      final denom = n * sumX2 - sumX * sumX;
+      if (denom != 0) slope = (n * sumXY - sumX * sumY) / denom;
+    }
+
+    // Blend overall mean with recent mean + mild slope decay
+    final drift = 0.6 * mean + 0.4 * recentMean;
+
     final currentBalance = await getCurrentBalance();
     final p10 = <double>[];
     final p50 = <double>[];
     final p90 = <double>[];
 
+    double balP50 = currentBalance;
+    double balP10 = currentBalance;
+    double balP90 = currentBalance;
+
+    final rng = Random(42); // deterministic for stability across rebuilds
+
     for (int i = 1; i <= days; i++) {
-      final spread = stdDev * sqrt(i.toDouble());
-      p10.add(currentBalance + (mean * i) - (1.28 * spread));
-      p50.add(currentBalance + (mean * i));
-      p90.add(currentBalance + (mean * i) + (1.28 * spread));
+      // Non-linear: slope decays over time + small stochastic drift
+      final decay = exp(-i / (days * 1.5));
+      final dayDrift = drift + slope * decay;
+      final noise = (rng.nextDouble() - 0.5) * stdDev * 0.15;
+
+      final spread = stdDev * sqrt(i.toDouble()) * (1.0 + 0.1 * sin(i / 7.0)); // mild weekly oscillation
+
+      balP50 += dayDrift + noise;
+      balP10 = balP50 - 1.28 * spread;
+      balP90 = balP50 + 1.28 * spread;
+
+      p10.add(balP10);
+      p50.add(balP50);
+      p90.add(balP90);
     }
 
     return {'p10': p10, 'p50': p50, 'p90': p90};
   }
 
-  // ========== DEMO DATA ==========
+  // ========== DEMO DATA (kept but NOT auto-called from forecast screen) ==========
 
   Future<void> generateDemoData() async {
     final box = await _treasuryBox;
@@ -182,8 +219,8 @@ class TreasuryService {
       // Daily income (freelance, sales)
       if (random.nextDouble() > 0.3) {
         await addTransaction(TransactionModel(
-          id: 'inc_\$i',
-          title: 'Income #\$i',
+          id: 'inc_$i',
+          title: 'Income #$i',
           amount: 1000 + random.nextInt(4000).toDouble(),
           type: TransactionType.income,
           date: date,
@@ -195,8 +232,8 @@ class TreasuryService {
       if (random.nextDouble() > 0.2) {
         final amount = 100 + random.nextInt(900).toDouble();
         await addTransaction(TransactionModel(
-          id: 'exp_\$i',
-          title: 'Expense #\$i',
+          id: 'exp_$i',
+          title: 'Expense #$i',
           amount: amount,
           type: TransactionType.expense,
           date: date,
