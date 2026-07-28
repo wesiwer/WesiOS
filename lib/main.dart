@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 import 'core/services/firebase_config_service.dart';
+import 'core/services/exchange_rate_service.dart';
 import 'features/treasury/models/transaction_model.dart';
 import 'app.dart';
 
@@ -16,8 +17,6 @@ bool get isDesktop {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Desktop: сразу на весь экран (maximize), без true-fullscreen
-  // (true fullscreen прячет панель задач и глючит на Windows)
   if (isDesktop) {
     await windowManager.ensureInitialized();
     const windowOptions = WindowOptions(
@@ -45,6 +44,9 @@ void main() async {
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
+
+  // Курсы в фоне — не блокируем старт
+  ExchangeRateService.refresh();
 
   final configService = FirebaseConfigService();
   final isConfigured = await configService.isConfigured();
