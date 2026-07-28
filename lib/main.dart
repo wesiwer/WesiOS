@@ -6,6 +6,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:window_manager/window_manager.dart';
 import 'core/services/firebase_config_service.dart';
+import 'features/treasury/models/transaction_model.dart';
 import 'app.dart';
 
 bool get isDesktop {
@@ -37,6 +38,11 @@ void main() async {
 
   // Initialize Hive (Offline-First)
   await Hive.initFlutter();
+
+  // Register Hive adapters for Treasury models
+  Hive.registerAdapter(TransactionModelAdapter());
+  Hive.registerAdapter(TransactionTypeAdapter());
+  Hive.registerAdapter(RecurringPeriodAdapter());
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
