@@ -4,6 +4,7 @@ import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_tooltip.dart';
 import '../../core/widgets/wesi_context_menu.dart';
 import '../../core/localization/wesi_locale.dart';
+import '../../core/services/currency_service.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 
@@ -21,6 +22,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   Map<String, double> _breakdown = {};
   List<TransactionModel> _anomalies = [];
   bool _isLoading = true;
+  String _currency = CurrencyService.current;
+
+  String get _sym => CurrencyService.symbol;
 
   @override
   void initState() {
@@ -39,14 +43,21 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       _balance = balance;
       _breakdown = breakdown;
       _anomalies = anomalies;
+      _currency = CurrencyService.current;
       _isLoading = false;
     });
+  }
+
+  Future<void> _toggleCurrency() async {
+    final next = _currency == 'rub' ? 'usd' : 'rub';
+    await CurrencyService.set(next);
+    setState(() => _currency = next);
   }
 
   Future<void> _addTransaction(TransactionType type) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) => _AddTransactionDialog(type: type),
+      builder: (context) => _AddTransactionDialog(type: type, symbol: _sym),
     );
 
     if (result != null) {
@@ -93,6 +104,31 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             elevation: 0,
             pinned: true,
             expandedHeight: 140,
+            actions: [
+              // Currency toggle
+              Padding(
+                padding: const EdgeInsets.only(right: 12),
+                child: GestureDetector(
+                  onTap: _toggleCurrency,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: AppTheme.surface.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.glassBorder),
+                    ),
+                    child: Text(
+                      _sym,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.accentOrange,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               title: Text(
                 WesiLocale.get('wesi_treasury_title'),
@@ -194,21 +230,21 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                   children: [
                     _buildStatCard(
                       WesiLocale.get('total_income'),
-                      '₽${_breakdown['income']?.toStringAsFixed(0) ?? '0'}',
+                      '$_sym${_breakdown['income']?.toStringAsFixed(0) ?? '0'}',
                       AppTheme.accentGreen,
                       Icons.arrow_upward,
                     ),
                     const SizedBox(width: 12),
                     _buildStatCard(
                       WesiLocale.get('total_expenses'),
-                      '₽${_breakdown['expense']?.toStringAsFixed(0) ?? '0'}',
+                      '$_sym${_breakdown['expense']?.toStringAsFixed(0) ?? '0'}',
                       AppTheme.accentRed,
                       Icons.arrow_downward,
                     ),
                     const SizedBox(width: 12),
                     _buildStatCard(
                       WesiLocale.get('net'),
-                      '₽${_breakdown['net']?.toStringAsFixed(0) ?? '0'}',
+                      '$_sym${_breakdown['net']?.toStringAsFixed(0) ?? '0'}',
                       _breakdown['net'] != null && _breakdown['net']! >= 0 ? AppTheme.accentGreen : AppTheme.accentRed,
                       Icons.account_balance,
                     ),
@@ -262,7 +298,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            '₽${_balance.toStringAsFixed(2)}',
+            '$_sym${_balance.toStringAsFixed(2)}',
             style: TextStyle(
               fontSize: 36,
               fontWeight: FontWeight.w800,
@@ -372,7 +408,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           ..._anomalies.map((a) => Padding(
             padding: const EdgeInsets.only(left: 26, top: 4),
             child: Text(
-              '${a.title}: \$${a.amount.toStringAsFixed(0)} (Z: ${a.zScore?.toStringAsFixed(1)})',
+              '${a.title}: $_sym${a.amount.toStringAsFixed(0)} (Z: ${a.zScore?.toStringAsFixed(1)})',
               style: TextStyle(fontSize: 12, color: AppTheme.textSecondary.withOpacity(0.8)),
             ),
           )),
@@ -421,7 +457,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '${isIncome ? '+' : '-'}\$${tx.amount.toStringAsFixed(0)}',
+                '${isIncome ? '+' : '-'}$_sym${tx.amount.toStringAsFixed(0)}',
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed),
               ),
               if (tx.isAnomaly)
@@ -446,7 +482,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
 class _AddTransactionDialog extends StatefulWidget {
   final TransactionType type;
-  const _AddTransactionDialog({required this.type});
+  final String symbol;
+  const _AddTransactionDialog({required this.type, required this.symbol});
 
   @override
   State<_AddTransactionDialog> createState() => _AddTransactionDialogState();
@@ -499,7 +536,7 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
               decoration: InputDecoration(
                 labelText: WesiLocale.get('amount'),
                 hintText: '0.00',
-                prefixText: '₽ ',
+                prefixText: '${widget.symbol} ',
               ),
             ),
             const SizedBox(height: 12),
