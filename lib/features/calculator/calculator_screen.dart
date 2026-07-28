@@ -15,6 +15,11 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   String _result = '0';
   final FocusNode _focusNode = FocusNode();
 
+  bool _pinned = false;
+  bool _showBlur = true;
+  Offset _offset = Offset.zero;
+  double _scale = 1.0;
+
   @override
   void initState() {
     super.initState();
@@ -29,7 +34,10 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
   void _onPressed(String value) {
     setState(() {
-      if (value == 'C' || value == 'c' || value == 'Escape') {
+      if (value == 'C' || value == 'c') {
+        _expression = '';
+        _result = '0';
+      } else if (value == 'Delete' || value == 'DEL') {
         _expression = '';
         _result = '0';
       } else if (value == '=' || value == 'Enter') {
@@ -52,19 +60,19 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   void _calculate() {
     if (_expression.isEmpty) return;
     try {
-      Parser p = Parser();
-      Expression exp = p.parse(_expression);
-      ContextModel cm = ContextModel();
-      double eval = exp.evaluate(EvaluationType.REAL, cm);
-      _result = eval == eval.toInt() ? eval.toInt().toString() : eval.toString();
-    } catch (e) {
+      final p = Parser();
+      final exp = p.parse(_expression);
+      final cm = ContextModel();
+      final eval = exp.evaluate(EvaluationType.REAL, cm);
+      _result =
+          eval == eval.toInt() ? eval.toInt().toString() : eval.toString();
+    } catch (_) {
       _result = 'Error';
     }
   }
 
-  /// Map numpad keys to calculator input
-  String? _mapNumpadKey(LogicalKeyboardKey key) {
-    final numpadMap = {
+  String? _mapNumpad(LogicalKeyboardKey key) {
+    const map = {
       LogicalKeyboardKey.numpad0: '0',
       LogicalKeyboardKey.numpad1: '1',
       LogicalKeyboardKey.numpad2: '2',
@@ -82,172 +90,253 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       LogicalKeyboardKey.numpadDivide: '/',
       LogicalKeyboardKey.numpadEnter: 'Enter',
       LogicalKeyboardKey.numpadEqual: '=',
-      LogicalKeyboardKey.numpadParenLeft: '(',
-      LogicalKeyboardKey.numpadParenRight: ')',
     };
-    return numpadMap[key];
+    return map[key];
+  }
+
+  void _handleKey(KeyEvent event) {
+    if (event is! KeyDownEvent) return;
+    final key = event.logicalKey;
+
+    if (key == LogicalKeyboardKey.escape) {
+      if (!_pinned) Navigator.pop(context);
+      return;
+    }
+    if (key == LogicalKeyboardKey.delete) {
+      _onPressed('Delete');
+      return;
+    }
+
+    final np = _mapNumpad(key);
+    if (np != null) {
+      _onPressed(np);
+      return;
+    }
+    if (key == LogicalKeyboardKey.enter) {
+      _onPressed('Enter');
+    } else if (key == LogicalKeyboardKey.backspace) {
+      _onPressed('Backspace');
+    } else {
+      final char = key.keyLabel;
+      if (char.length == 1) _onPressed(char);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: Center(
-        child: Container(
-          margin: const EdgeInsets.all(40),
-          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 580),
-          decoration: BoxDecoration(
-            color: AppTheme.background,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: AppTheme.glassBorder),
-            boxShadow: [
-              BoxShadow(color: Colors.black.withOpacity(0.5), blurRadius: 40),
-            ],
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(24),
-            child: Scaffold(
-              backgroundColor: AppTheme.background,
-              appBar: AppBar(
-                title: const Text(
-                  'Wesi Calculator',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                leading: IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(context),
-                ),
+    final panel = Transform.translate(
+      offset: _offset,
+      child: Transform.scale(
+        scale: _scale,
+        child: GestureDetector(
+          onPanUpdate: (d) => setState(() => _offset += d.delta),
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
+            decoration: BoxDecoration(
+              color: AppTheme.background,
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: _pinned
+                    ? AppTheme.accentOrange.withOpacity(0.5)
+                    : AppTheme.glassBorder,
               ),
-              body: KeyboardListener(
-                focusNode: _focusNode,
-                autofocus: true,
-                onKeyEvent: (event) {
-                  if (event is KeyDownEvent) {
-                    final key = event.logicalKey;
-                    // Check numpad keys first
-                    final numpadValue = _mapNumpadKey(key);
-                    if (numpadValue != null) {
-                      _onPressed(numpadValue);
-                      return;
-                    }
-                    // Regular keys
-                    if (key == LogicalKeyboardKey.enter) {
-                      _onPressed('Enter');
-                    } else if (key == LogicalKeyboardKey.backspace) {
-                      _onPressed('Backspace');
-                    } else if (key == LogicalKeyboardKey.escape) {
-                      _onPressed('Escape');
-                    } else {
-                      final char = key.keyLabel;
-                      if (char.length == 1) _onPressed(char);
-                    }
-                  }
-                },
-                child: Column(
-                  children: [
-                    // Display
-                    Container(
-                      padding: const EdgeInsets.all(24),
-                      alignment: Alignment.bottomRight,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            _expression,
-                            style: const TextStyle(
-                              fontSize: 22,
-                              color: AppTheme.textSecondary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            _result,
-                            style: const TextStyle(
-                              fontSize: 44,
-                              fontWeight: FontWeight.bold,
-                              color: AppTheme.textPrimary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Buttons
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                      child: Column(
-                        children: [
-                          _buildButtonRow(['C', '(', ')', '⌫']),
-                          const SizedBox(height: 10),
-                          _buildButtonRow(['7', '8', '9', '/']),
-                          const SizedBox(height: 10),
-                          _buildButtonRow(['4', '5', '6', '*']),
-                          const SizedBox(height: 10),
-                          _buildButtonRow(['1', '2', '3', '-']),
-                          const SizedBox(height: 10),
-                          _buildButtonRow(['0', '.', '=', '+']),
-                        ],
-                      ),
-                    ),
-                  ],
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.45),
+                  blurRadius: 30,
                 ),
+              ],
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Header
+                  Container(
+                    height: 44,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    color: AppTheme.surface,
+                    child: Row(
+                      children: [
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Wesi Calculator',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          tooltip: _showBlur ? 'Убрать блюр' : 'Включить блюр',
+                          icon: Icon(
+                            _showBlur ? Icons.blur_on : Icons.blur_off,
+                            size: 18,
+                            color: AppTheme.textMuted,
+                          ),
+                          onPressed: () =>
+                              setState(() => _showBlur = !_showBlur),
+                        ),
+                        IconButton(
+                          tooltip: _pinned ? 'Открепить' : 'Закрепить',
+                          icon: Icon(
+                            _pinned
+                                ? Icons.push_pin
+                                : Icons.push_pin_outlined,
+                            size: 18,
+                            color: _pinned
+                                ? AppTheme.accentOrange
+                                : AppTheme.textMuted,
+                          ),
+                          onPressed: () =>
+                              setState(() => _pinned = !_pinned),
+                        ),
+                        IconButton(
+                          tooltip: 'Уменьшить',
+                          icon: const Icon(Icons.remove, size: 18,
+                              color: AppTheme.textMuted),
+                          onPressed: () => setState(
+                              () => _scale = (_scale - 0.1).clamp(0.7, 1.4)),
+                        ),
+                        IconButton(
+                          tooltip: 'Увеличить',
+                          icon: const Icon(Icons.add, size: 18,
+                              color: AppTheme.textMuted),
+                          onPressed: () => setState(
+                              () => _scale = (_scale + 0.1).clamp(0.7, 1.4)),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 18),
+                          onPressed: () => Navigator.pop(context),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Display
+                  Padding(
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          _expression,
+                          style: const TextStyle(
+                              fontSize: 20, color: AppTheme.textSecondary),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          _result,
+                          style: const TextStyle(
+                            fontSize: 40,
+                            fontWeight: FontWeight.bold,
+                            color: AppTheme.textPrimary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Keys
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                    child: Column(
+                      children: [
+                        _row(['C', 'DEL', '(', ')', '⌫']),
+                        const SizedBox(height: 8),
+                        _row(['7', '8', '9', '/']),
+                        const SizedBox(height: 8),
+                        _row(['4', '5', '6', '*']),
+                        const SizedBox(height: 8),
+                        _row(['1', '2', '3', '-']),
+                        const SizedBox(height: 8),
+                        _row(['0', '.', '=', '+']),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
       ),
     );
-  }
 
-  Widget _buildButtonRow(List<String> buttons) {
-    return Row(
-      children: buttons.map((text) => Expanded(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: _buildButton(text),
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: KeyboardListener(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: _handleKey,
+        child: Stack(
+          children: [
+            // Backdrop: плавный fade без тяжёлого blur при каждом кадре
+            if (_showBlur)
+              GestureDetector(
+                onTap: _pinned ? null : () => Navigator.pop(context),
+                child: AnimatedOpacity(
+                  opacity: 1,
+                  duration: const Duration(milliseconds: 200),
+                  child: Container(
+                    color: Colors.black.withOpacity(0.55),
+                  ),
+                ),
+              )
+            else
+              GestureDetector(
+                onTap: _pinned ? null : () => Navigator.pop(context),
+                child: Container(color: Colors.transparent),
+              ),
+            Center(child: panel),
+          ],
         ),
-      )).toList(),
+      ),
     );
   }
 
-  Widget _buildButton(String text) {
-    Color? color;
-    if (text == 'C') color = AppTheme.accentRed;
-    else if (text == '=') color = AppTheme.accentGreen;
-    else if (['/', '*', '-', '+', '⌫'].contains(text)) color = AppTheme.accentOrange;
-    else if (['(', ')'].contains(text)) color = AppTheme.textSecondary;
+  Widget _row(List<String> keys) {
+    return Row(
+      children: keys
+          .map((t) => Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: _btn(t),
+                ),
+              ))
+          .toList(),
+    );
+  }
 
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () => _onPressed(text),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 100),
-          height: 56,
-          decoration: BoxDecoration(
-            color: color != null ? color.withOpacity(0.15) : AppTheme.surface,
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: color != null ? color.withOpacity(0.3) : AppTheme.glassBorder,
-              width: 1,
-            ),
+  Widget _btn(String text) {
+    Color? color;
+    if (text == 'C' || text == 'DEL') color = AppTheme.accentRed;
+    else if (text == '=') color = AppTheme.accentGreen;
+    else if (['/', '*', '-', '+', '⌫'].contains(text)) {
+      color = AppTheme.accentOrange;
+    }
+
+    return GestureDetector(
+      onTap: () => _onPressed(text),
+      child: Container(
+        height: 52,
+        decoration: BoxDecoration(
+          color: color != null ? color.withOpacity(0.15) : AppTheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: color != null ? color.withOpacity(0.3) : AppTheme.glassBorder,
           ),
-          child: Center(
-            child: Text(
-              text,
-              style: TextStyle(
-                fontSize: 22,
-                fontWeight: FontWeight.w600,
-                color: color ?? AppTheme.primary,
-              ),
+        ),
+        child: Center(
+          child: Text(
+            text,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: color ?? AppTheme.primary,
             ),
           ),
         ),

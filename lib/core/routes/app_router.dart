@@ -1,4 +1,3 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../features/splash/splash_screen.dart';
 import '../../features/auth/welcome_screen.dart';
@@ -52,7 +51,19 @@ class AppRouter {
       case '/profile':
         return _slideUpRoute(const ProfileScreen());
       case '/calculator':
-        return _popupRoute(const CalculatorScreen());
+        // Калькулятор сам рисует backdrop — без BackdropFilter в роутере
+        return PageRouteBuilder(
+          opaque: false,
+          barrierDismissible: true,
+          pageBuilder: (_, __, ___) => const CalculatorScreen(),
+          transitionsBuilder: (_, anim, __, child) {
+            return FadeTransition(
+              opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
+              child: child,
+            );
+          },
+          transitionDuration: const Duration(milliseconds: 220),
+        );
       case '/audio':
         return _slideUpRoute(const AudioVaultScreen());
       case '/crm':
@@ -88,7 +99,8 @@ class AppRouter {
         final slideUp = Tween<Offset>(
           begin: const Offset(0, 1),
           end: Offset.zero,
-        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+        ).animate(
+            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
         final fadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
           CurvedAnimation(parent: animation, curve: const Interval(0, 0.5)),
         );
@@ -98,40 +110,6 @@ class AppRouter {
         );
       },
       transitionDuration: const Duration(milliseconds: 400),
-    );
-  }
-
-  static PageRouteBuilder _popupRoute(Widget page) {
-    return PageRouteBuilder(
-      opaque: false,
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return Stack(
-          children: [
-            // Blur backdrop
-            BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 15, sigmaY: 15),
-              child: Container(
-                color: Colors.black.withOpacity(0.4),
-              ),
-            ),
-            // Popup content
-            Center(child: page),
-          ],
-        );
-      },
-      transitionsBuilder: (_, animation, __, child) {
-        final fade = Tween<double>(begin: 0.0, end: 1.0).animate(
-          CurvedAnimation(parent: animation, curve: Curves.easeOut),
-        );
-        final scale = Tween<double>(begin: 0.85, end: 1.0).animate(
-          CurvedAnimation(parent: animation, curve: Curves.easeOutCubic),
-        );
-        return FadeTransition(
-          opacity: fade,
-          child: ScaleTransition(scale: scale, child: child),
-        );
-      },
-      transitionDuration: const Duration(milliseconds: 350),
     );
   }
 }
