@@ -7,6 +7,7 @@ import '../../features/treasury/treasury_screen.dart';
 import '../../features/treasury/forecast_chart_screen.dart';
 import '../../features/treasury/treasury_dashboard_screen.dart';
 import '../../features/treasury/sandbox_screen.dart';
+import '../../features/treasury/operations_screen.dart';
 import '../../features/tasks/tasks_screen.dart';
 import '../../features/roadmap/roadmap_screen.dart';
 import '../../features/analytics/analytics_screen.dart';
@@ -38,6 +39,8 @@ class AppRouter {
         return _slideUpRoute(const TreasuryDashboardScreen());
       case '/treasury/sandbox':
         return _slideUpRoute(const SandboxScreen());
+      case '/treasury/operations':
+        return _slideUpRoute(const OperationsScreen());
       case '/tasks':
         return _slideUpRoute(const TasksScreen());
       case '/roadmap':
