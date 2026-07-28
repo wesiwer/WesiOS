@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_tooltip.dart';
-import '../../core/widgets/wesi_context_menu.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
@@ -192,7 +191,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       body: CustomScrollView(
         slivers: [
           const SliverToBoxAdapter(child: SizedBox(height: kTitleBarHeight)),
-          'SliverAppBar'(
+          SliverAppBar(
             backgroundColor: AppTheme.background.withOpacity(0.9),
             elevation: 0,
             pinned: true,
@@ -226,7 +225,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
             ),
           ),
-          SliverPadding(
+          'SliverPadding'(
             padding: const EdgeInsets.all(24),
             sliver: SliverList(
               delegate: SliverChildListDelegate(bodyChildren),
