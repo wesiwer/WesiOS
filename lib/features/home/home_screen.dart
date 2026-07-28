@@ -60,8 +60,6 @@ class _HomeScreenState extends State<HomeScreen> {
 }
 
 class _DashboardTab extends StatelessWidget {
-  const _DashboardTab();
-
   @override
   Widget build(BuildContext context) {
     return SafeArea(
@@ -72,7 +70,35 @@ class _DashboardTab extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, kTitleBarHeight + 8, 16, 16),
               child: Row(
                 children: [
-                  const WesiLogo(size: 40),
+                  // WesiOS title with tooltip and context menu
+                  WesiTooltip(
+                    message: WesiLocale.isRussian 
+                        ? 'WesiOS — система, которая меняет мир бизнеса'
+                        : 'WesiOS — a system that changes the business world',
+                    child: WesiContextMenu(
+                      title: 'WesiOS',
+                      description: WesiLocale.isRussian
+                          ? 'WesiOS — Business Operating System. Управляйте бизнесом по-новому.'
+                          : 'WesiOS — Business Operating System. Manage your business in a new way.',
+                      purpose: WesiLocale.isRussian
+                          ? 'Центральная панель управления всеми системами Wesi'
+                          : 'Central dashboard for all Wesi systems',
+                      children: [
+                        GestureDetector(
+                          onTap: () {},
+                          child: const Text(
+                            'WesiOS',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                              letterSpacing: 3,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   const Spacer(),
                   _HoverIconButton(
                     icon: Icons.search,
@@ -84,7 +110,7 @@ class _DashboardTab extends StatelessWidget {
                     onTap: () {},
                   ),
                   const SizedBox(width: 8),
-                  _ProfileDropdown(),
+                  const _ProfileDropdown(),
                 ],
               ),
             ),
@@ -123,14 +149,14 @@ class _DashboardTab extends StatelessWidget {
                   Expanded(
                     child: WesiTooltip(
                       message: WesiLocale.get('record_sale'),
-                      child: _buildQuickAction(context, Icons.add_circle, WesiLocale.get('wesi_sales_title'), '/treasury'),
+                      child: _buildQuickAction(context, Icons.add_circle, WesiLocale.isRussian ? 'Продажи' : 'Sales', '/treasury'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
                       message: WesiLocale.get('record_expense_tooltip'),
-                      child: _buildQuickAction(context, Icons.remove_circle, WesiLocale.get('wesi_expenses_title'), '/treasury'),
+                      child: _buildQuickAction(context, Icons.remove_circle, WesiLocale.isRussian ? 'Траты' : 'Expenses', '/treasury'),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -278,7 +304,6 @@ class _DashboardTab extends StatelessWidget {
     );
   }
 }
-
 class _ProfileDropdown extends StatefulWidget {
   @override
   State<_ProfileDropdown> createState() => _ProfileDropdownState();
@@ -502,25 +527,95 @@ class _HoverQuickActionState extends State<_HoverQuickAction> {
 }
 
 class _TasksTab extends StatelessWidget {
-  const _TasksTab();
   @override
   Widget build(BuildContext context) => Center(child: Text(WesiLocale.get('tasks'), style: const TextStyle(color: AppTheme.textMuted)));
 }
 
 class _TreasuryTab extends StatelessWidget {
-  const _TreasuryTab();
   @override
-  Widget build(BuildContext context) => Center(child: Text(WesiLocale.get('finances'), style: const TextStyle(color: AppTheme.textMuted)));
+  Widget build(BuildContext context) => const TreasuryPlaceholder();
 }
 
 class _AnalyticsTab extends StatelessWidget {
-  const _AnalyticsTab();
   @override
-  Widget build(BuildContext context) => Center(child: Text(WesiLocale.get('analytics'), style: const TextStyle(color: AppTheme.textMuted)));
+  Widget build(BuildContext context) => const AnalyticsPlaceholder();
 }
 
 class _MoreTab extends StatelessWidget {
-  const _MoreTab();
   @override
   Widget build(BuildContext context) => Center(child: Text(WesiLocale.get('more'), style: const TextStyle(color: AppTheme.textMuted)));
+}
+
+class TreasuryPlaceholder extends StatelessWidget {
+  const TreasuryPlaceholder({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.account_balance_wallet, size: 64, color: AppTheme.textMuted.withOpacity(0.3)),
+          const SizedBox(height: 16),
+          Text(
+            WesiLocale.isRussian ? 'Wesi Treasury' : 'Wesi Treasury',
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            WesiLocale.isRussian ? 'Нажмите, чтобы открыть полный экран' : 'Tap to open full screen',
+            style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => Navigator.pushNamed(context, '/treasury'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentOrange,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text(WesiLocale.isRussian ? 'Открыть Treasury' : 'Open Treasury'),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class AnalyticsPlaceholder extends StatelessWidget {
+  const AnalyticsPlaceholder({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.analytics, size: 64, color: AppTheme.textMuted.withOpacity(0.3)),
+          const SizedBox(height: 16),
+          Text(
+            WesiLocale.isRussian ? 'Wesi Analytics' : 'Wesi Analytics',
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            WesiLocale.isRussian ? 'Нажмите, чтобы открыть полный экран' : 'Tap to open full screen',
+            style: TextStyle(fontSize: 14, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 24),
+          ElevatedButton(
+            onPressed: () => Navigator.pushNamed(context, '/analytics'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppTheme.accentOrange,
+              foregroundColor: Colors.white,
+              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: Text(WesiLocale.isRussian ? 'Открыть Analytics' : 'Open Analytics'),
+          ),
+        ],
+      ),
+    );
+  }
 }
