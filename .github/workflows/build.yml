@@ -94,6 +94,11 @@ jobs:
             "configuration_version": "1"
           }' > android/app/google-services.json
 
+      - name: Setup Android NDK
+        uses: android-actions/setup-android@v3
+        with:
+          ndk-version: r25b
+
       - name: Build APK
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false'
