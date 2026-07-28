@@ -242,7 +242,10 @@ class _StreamStats {
 /// - опционально — дисконтирование (DCF) для длинных горизонтов: будущий
 ///   баланс приводится к сегодняшним деньгам по годовой ставке.
 class ForecastEngine {
-  static const int defaultPaths = 1000;
+  // ТЗ просит 5 000–10 000 прогонов; 5 000 — нижняя граница диапазона.
+  // Профиль на синтетических тестах: ~450k итераций на 90-дневный горизонт,
+  // не заметно на десктопе. Поднять до 10 000 — тривиально, если этого мало.
+  static const int defaultPaths = 5000;
   static const int _minPaths = 100;
   static const int _defaultSeed = 42;
   static const int _seasonalityMinSpanDays = 21;
