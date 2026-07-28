@@ -152,6 +152,7 @@ class _DashboardTab extends StatefulWidget {
 class _DashboardTabState extends State<_DashboardTab> {
   final TreasuryService _service = TreasuryService();
   double _balance = 0;
+  Map<String, double> _breakdown = const {};
 
   @override
   void initState() {
@@ -161,12 +162,17 @@ class _DashboardTabState extends State<_DashboardTab> {
 
   Future<void> _loadBalance() async {
     final balance = await _service.getCurrentBalance();
-    if (mounted) setState(() => _balance = balance);
+    final breakdown = await _service.getBalanceBreakdown();
+    if (mounted) {
+      setState(() {
+        _balance = balance;
+        _breakdown = breakdown;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final sym = CurrencyService.symbol;
     return SafeArea(
       child: CustomScrollView(
         slivers: [
@@ -234,14 +240,23 @@ class _DashboardTabState extends State<_DashboardTab> {
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        _chip(WesiLocale.get('operational'), '$sym 0',
-                            AppTheme.accentGreen),
+                        _chip(
+                          WesiLocale.get('total_income'),
+                          CurrencyService.format(_breakdown['income'] ?? 0),
+                          AppTheme.accentGreen,
+                        ),
                         const SizedBox(width: 12),
-                        _chip(WesiLocale.get('marketing'), '$sym 0',
-                            AppTheme.accentOrange),
+                        _chip(
+                          WesiLocale.get('total_expenses'),
+                          CurrencyService.format(_breakdown['expense'] ?? 0),
+                          AppTheme.accentRed,
+                        ),
                         const SizedBox(width: 12),
-                        _chip(WesiLocale.get('reserve'), '$sym 0',
-                            AppTheme.textSecondary),
+                        _chip(
+                          WesiLocale.get('net'),
+                          CurrencyService.format(_breakdown['net'] ?? 0),
+                          AppTheme.textSecondary,
+                        ),
                       ],
                     ),
                   ],
