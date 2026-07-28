@@ -1,15 +1,8 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 
-/// WesiOS Tooltip — показывает подсказку при наведении.
-/// 
-/// Использование:
-/// ```dart
-/// WesiTooltip(
-///   message: 'Система, которая меняет мир',
-///   child: IconButton(...),
-/// )
-/// ```
+/// Подсказка при наведении.
+/// Overlay с IgnorePointer — не перехватывает курсор → нет мерцания на границе.
 class WesiTooltip extends StatefulWidget {
   final String message;
   final Widget child;
@@ -19,7 +12,7 @@ class WesiTooltip extends StatefulWidget {
     super.key,
     required this.message,
     required this.child,
-    this.showDelay = const Duration(milliseconds: 400),
+    this.showDelay = const Duration(milliseconds: 350),
   });
 
   @override
@@ -27,51 +20,54 @@ class WesiTooltip extends StatefulWidget {
 }
 
 class _WesiTooltipState extends State<WesiTooltip> {
-  bool _isVisible = false;
   OverlayEntry? _overlayEntry;
-  Future<void>? _delayedShow;
+  bool _pending = false;
 
-  void _showTooltip() {
-    if (_overlayEntry != null) return;
-    if (!mounted) return;
+  void _show() {
+    if (_overlayEntry != null || !mounted) return;
 
-    final RenderBox? renderBox = context.findRenderObject() as RenderBox?;
-    if (renderBox == null) return;
+    final box = context.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
 
-    final Offset offset = renderBox.localToGlobal(Offset.zero);
-    final Size size = renderBox.size;
+    final offset = box.localToGlobal(Offset.zero);
+    final size = box.size;
+
+    // Справа от элемента, чуть ниже верха — не перекрывает hit-зону child
+    final left = offset.dx + size.width + 10;
+    final top = offset.dy + (size.height / 2) - 18;
 
     _overlayEntry = OverlayEntry(
-      builder: (context) => Positioned(
-        left: offset.dx + size.width / 2 - 100,
-        top: offset.dy - 45,
-        child: Material(
-          color: Colors.transparent,
-          child: Container(
-            width: 200,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppTheme.carbonDark.withOpacity(0.95),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: AppTheme.accentOrange.withOpacity(0.3),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: AppTheme.accentOrange.withOpacity(0.1),
-                  blurRadius: 10,
-                  spreadRadius: 1,
+      builder: (_) => Positioned(
+        left: left.clamp(8.0, MediaQuery.sizeOf(context).width - 220),
+        top: top.clamp(8.0, MediaQuery.sizeOf(context).height - 60),
+        child: IgnorePointer(
+          // критично: overlay не участвует в hit-test → нет enter/exit цикла
+          child: Material(
+            color: Colors.transparent,
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 220),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: AppTheme.carbonDark.withOpacity(0.96),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                  color: AppTheme.accentOrange.withOpacity(0.3),
                 ),
-              ],
-            ),
-            child: Text(
-              widget.message,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 12,
-                color: AppTheme.textSecondary,
-                height: 1.4,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.35),
+                    blurRadius: 12,
+                  ),
+                ],
+              ),
+              child: Text(
+                widget.message,
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppTheme.textSecondary,
+                  height: 1.4,
+                ),
               ),
             ),
           ),
@@ -80,30 +76,26 @@ class _WesiTooltipState extends State<WesiTooltip> {
     );
 
     Overlay.of(context).insert(_overlayEntry!);
-    if (mounted) setState(() => _isVisible = true);
   }
 
-  void _hideTooltip() {
-    _delayedShow = null; // Cancel any pending show
+  void _hide() {
+    _pending = false;
     _overlayEntry?.remove();
     _overlayEntry = null;
-    if (mounted) setState(() => _isVisible = false);
   }
 
   void _onEnter() {
-    _delayedShow = Future.delayed(widget.showDelay, () {
-      if (mounted && _delayedShow != null) _showTooltip();
+    _pending = true;
+    Future.delayed(widget.showDelay, () {
+      if (_pending && mounted) _show();
     });
   }
 
-  void _onExit() {
-    _delayedShow = null; // Cancel pending show
-    _hideTooltip();
-  }
+  void _onExit() => _hide();
 
   @override
   void dispose() {
-    _hideTooltip();
+    _hide();
     super.dispose();
   }
 
