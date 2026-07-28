@@ -517,7 +517,6 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen>
           maxY: maxY,
           lineTouchData: LineTouchData(
             touchTooltipData: LineTouchTooltipData(
-              getTooltipColor: (_) => AppTheme.carbonDark.withOpacity(0.95),
               tooltipBorder: BorderSide(color: AppTheme.accentOrange.withOpacity(0.4)),
               getTooltipItems: (touchedSpots) {
                 return touchedSpots.map((spot) {
