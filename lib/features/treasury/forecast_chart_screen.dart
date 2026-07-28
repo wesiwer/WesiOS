@@ -6,6 +6,7 @@ import '../../core/services/currency_service.dart';
 import 'services/treasury_service.dart';
 import 'services/forecast_engine.dart';
 import 'models/transaction_model.dart';
+import 'widgets/what_if_dialog.dart';
 
 class TreasuryForecastScreen extends StatefulWidget {
   const TreasuryForecastScreen({super.key});
@@ -36,6 +37,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   DateTimeRange? _customRange;
   String _selectedChart = 'forecast';
   String _currency = CurrencyService.current;
+  WhatIfScenario _whatIf = WhatIfScenario.none;
+  bool _discountEnabled = false;
+
+  /// Условная ставка дисконтирования (инфляция/стоимость денег) — применима
+  /// только к длинным (от года) горизонтам, включается отдельным тоглом.
+  static const double _annualDiscountRate = 0.08;
 
   /// Фон графика — сплошной цвет, каким контейнер реально рендерится
   /// (surface@0.4 поверх background). Нужен, чтобы «стереть» лишнюю заливку
@@ -58,7 +65,11 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       setState(() => _chartBusy = true);
     }
 
-    final forecast = await _service.generateForecast(days: _forecastDays);
+    final forecast = await _service.generateForecast(
+      days: _forecastDays,
+      whatIf: _whatIf,
+      annualDiscountRate: _discountEnabled ? _annualDiscountRate : 0.0,
+    );
     final txs = await _service.getAllTransactions();
     // detectAnomalies() возвращает копии с выставленным isAnomaly — этот флаг
     // никогда не пишется обратно в Hive, поэтому `txs`/`tx.isAnomaly` его не
@@ -152,6 +163,22 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     _loadData(full: false); // без полноэкранного лоадера
   }
 
+  /// Сценарий «Что если?» — виртуальный, ничего не пишет в базу. Пересчёт
+  /// идёт через тот же _loadData, просто с новым параметром whatIf.
+  Future<void> _openWhatIf() async {
+    final result = await showDialog<WhatIfScenario>(
+      context: context,
+      builder: (context) => WhatIfDialog(
+        initial: _whatIf,
+        forecastDays: _forecastDays,
+        symbol: CurrencyService.symbol,
+      ),
+    );
+    if (result == null) return;
+    setState(() => _whatIf = result);
+    _loadData(full: false);
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
@@ -216,6 +243,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         title: Text('wesi_forecast_title'.w),
         actions: [
           IconButton(
+            icon: Icon(Icons.alt_route,
+                color: _whatIf.isEmpty ? null : AppTheme.accentOrange),
+            tooltip: 'what_if'.w,
+            onPressed: _openWhatIf,
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () => _loadData(full: false),
           ),
@@ -225,6 +258,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          if (!_whatIf.isEmpty) _whatIfBanner(),
+          _riskBanner(),
           Row(
             children: [
               Expanded(child: _stats(last, growth)),
@@ -280,6 +315,91 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             color: AppTheme.accentOrange,
           ),
         ),
+      ),
+    );
+  }
+
+  /// Явный индикатор виртуального сценария — чтобы нельзя было спутать
+  /// гипотетические цифры с реальным прогнозом.
+  Widget _whatIfBanner() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.accentOrange.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accentOrange.withOpacity(0.4)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.alt_route, size: 18, color: AppTheme.accentOrange),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text('what_if_active'.w,
+                style: const TextStyle(
+                    color: AppTheme.accentOrange,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600)),
+          ),
+          GestureDetector(
+            onTap: () {
+              setState(() => _whatIf = WhatIfScenario.none);
+              _loadData(full: false);
+            },
+            child: Text('what_if_reset'.w,
+                style: const TextStyle(
+                    color: AppTheme.accentOrange,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    decoration: TextDecoration.underline)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Cash Gap Risk Score: предупреждение, если вероятность ухода баланса
+  /// в минус в какой-то день прогноза превышает 5% симулированных путей.
+  Widget _riskBanner() {
+    final alertDay = _forecast.riskAlertDay;
+    if (alertDay == null) return const SizedBox.shrink();
+    final date = DateTime.now().add(Duration(days: alertDay));
+    final dateLabel = '${date.day.toString().padLeft(2, '0')}.'
+        '${date.month.toString().padLeft(2, '0')}.${date.year}';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.accentRed.withOpacity(0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.accentRed.withOpacity(0.4)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.warning_amber_rounded, color: AppTheme.accentRed),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('cash_gap_risk'.w,
+                    style: const TextStyle(
+                        color: AppTheme.accentRed,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700)),
+                const SizedBox(height: 2),
+                Text(
+                  'cash_gap_risk_detail'.w
+                      .replaceAll('{days}', '$alertDay')
+                      .replaceAll('{date}', dateLabel),
+                  style: const TextStyle(
+                      color: AppTheme.textSecondary, fontSize: 12),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -996,6 +1116,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   Widget _controls() {
     return Wrap(
       spacing: 8,
+      runSpacing: 8,
       children: [
         _toggle('p10_p90_range'.w, _showP10P90,
             (v) => setState(() => _showP10P90 = v)),
@@ -1003,6 +1124,13 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             (v) => setState(() => _showConfidenceBands = v)),
         _toggle('trend_line'.w, _showTrendLine,
             (v) => setState(() => _showTrendLine = v)),
+        // DCF: приведение будущего баланса к сегодняшним деньгам имеет смысл
+        // только для длинных горизонтов — показываем от года.
+        if (_forecastDays >= 365)
+          _toggle('discount_toggle'.w, _discountEnabled, (v) {
+            setState(() => _discountEnabled = v);
+            _loadData(full: false);
+          }),
       ],
     );
   }

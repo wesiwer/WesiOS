@@ -109,6 +109,172 @@ void main() {
         expect(result.p90[i], closeTo(expected, 0.001));
       }
     });
+
+    test('Cash Gap Risk Score: a draining recurring expense trips runway and '
+        'the 5% risk alert at the correct day', () {
+      final today = DateTime.now();
+      final anchor = DateTime(today.year, today.month, today.day);
+      // Три РАЗНЫХ ежедневных расхода по 100 (минимум 3 транзакции для
+      // движка), суммарно 300/день без дохода — съедают баланс 1000 ровно
+      // за 4 дня: 1000 -> 700 -> 400 -> 100 -> -200.
+      final txs = List.generate(
+        3,
+        (i) => _tx(
+          id: 'burn_$i',
+          amount: 100,
+          type: TransactionType.expense,
+          date: anchor,
+          isRecurring: true,
+          recurringPeriod: RecurringPeriod.daily,
+        ),
+      );
+
+      final result = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 1000,
+        days: 10,
+      );
+
+      expect(result.runwayDays, 4);
+      expect(result.riskAlertDay, 4);
+      // Нулевая волатильность здесь => вероятность либо 0, либо 1.
+      expect(result.belowZeroProbability[2], 0); // день 3: баланс ещё 100
+      expect(result.belowZeroProbability[3], 1); // день 4: баланс -200
+    });
+
+    test('What-If: a one-off virtual event shifts the median trajectory only '
+        'on and after its day, without touching the real transaction list',
+        () {
+      final today = DateTime.now();
+      final anchor = DateTime(today.year, today.month, today.day);
+      final txs = List.generate(
+        3,
+        (i) => _tx(
+          id: 'daily_$i',
+          amount: 100,
+          type: TransactionType.income,
+          date: anchor,
+          isRecurring: true,
+          recurringPeriod: RecurringPeriod.daily,
+        ),
+      );
+
+      final baseline = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 1000,
+        days: 5,
+      );
+
+      final withEvent = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 1000,
+        days: 5,
+        whatIf: WhatIfScenario(
+          events: [
+            WhatIfEvent(
+              title: 'Оборудование',
+              amount: 5000,
+              type: TransactionType.expense,
+              date: anchor.add(const Duration(days: 3)),
+            ),
+          ],
+        ),
+      );
+
+      // До события (дни 1-2) обе траектории идентичны.
+      expect(withEvent.p50[0], closeTo(baseline.p50[0], 0.001));
+      expect(withEvent.p50[1], closeTo(baseline.p50[1], 0.001));
+      // На день события и после — расхождение ровно на сумму события.
+      expect(withEvent.p50[2], closeTo(baseline.p50[2] - 5000, 0.001));
+      expect(withEvent.p50[4], closeTo(baseline.p50[4] - 5000, 0.001));
+      // Реальные транзакции не переданы обратно и не мутировали список.
+      expect(txs.length, 3);
+    });
+
+    test('What-If: income multiplier scales only the income stream, '
+        'expenses stay untouched', () {
+      final today = DateTime.now();
+      final anchor = DateTime(today.year, today.month, today.day);
+      final txs = [
+        _tx(
+          id: 'salary',
+          amount: 1000,
+          type: TransactionType.income,
+          date: anchor,
+          isRecurring: true,
+          recurringPeriod: RecurringPeriod.daily,
+        ),
+        _tx(
+          id: 'rent',
+          amount: 200,
+          type: TransactionType.expense,
+          date: anchor,
+          isRecurring: true,
+          recurringPeriod: RecurringPeriod.daily,
+        ),
+        // Движку нужно минимум 3 транзакции, чтобы вообще строить прогноз;
+        // третья регулярная запись не меняет арифметику теста.
+        _tx(
+          id: 'subscription',
+          amount: 0,
+          type: TransactionType.expense,
+          date: anchor,
+          isRecurring: true,
+          recurringPeriod: RecurringPeriod.daily,
+        ),
+      ];
+
+      final halved = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 0,
+        days: 3,
+        whatIf: const WhatIfScenario(incomeMultiplier: 0.5),
+      );
+
+      // Доход урезан вдвое (500), расход остаётся 200 => чистое +300/день.
+      for (int i = 0; i < 3; i++) {
+        expect(halved.p50[i], closeTo(300.0 * (i + 1), 0.001));
+      }
+    });
+
+    test('DCF discounting reduces future balances toward zero at the given '
+        'annual rate, does not affect belowZeroProbability', () {
+      final today = DateTime.now();
+      final anchor = DateTime(today.year, today.month, today.day);
+      final txs = List.generate(
+        3,
+        (i) => _tx(
+          id: 'daily_$i',
+          amount: 100,
+          type: TransactionType.income,
+          date: anchor,
+          isRecurring: true,
+          recurringPeriod: RecurringPeriod.daily,
+        ),
+      );
+
+      const rate = 0.10;
+      final nominal = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 1000,
+        days: 365,
+      );
+      final discounted = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 1000,
+        days: 365,
+        annualDiscountRate: rate,
+      );
+
+      const lastDay = 364;
+      const expectedFactor = 1 / (1.0 + rate); // t = 365/365 = 1 год
+      expect(
+        discounted.p50[lastDay],
+        closeTo(nominal.p50[lastDay] * expectedFactor, 0.01),
+      );
+      // Дисконт не должен трогать вероятностную часть.
+      expect(discounted.belowZeroProbability, nominal.belowZeroProbability);
+    });
   });
 
   group('RecurringEngine', () {

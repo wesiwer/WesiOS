@@ -5,6 +5,7 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import 'services/sandbox_service.dart';
 import 'models/transaction_model.dart';
+import 'widgets/add_transaction_dialog.dart';
 
 class SandboxScreen extends StatefulWidget {
   const SandboxScreen({super.key});
@@ -83,7 +84,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) =>
-          _AddSandboxTransactionDialog(type: type, symbol: _sym),
+          AddTransactionDialog(type: type, symbol: _sym),
     );
     if (result != null) {
       final tx = TransactionModel(
@@ -98,6 +99,36 @@ class _SandboxScreenState extends State<SandboxScreen> {
         recurringPeriod: result['recurringPeriod'],
       );
       await _service.addTransaction(tx);
+      await _loadData();
+    }
+  }
+
+  /// Идентично Operations screen у Treasury: предзаполненный диалог,
+  /// сохранение по тому же id — не delete+add с новым id.
+  Future<void> _editTransaction(TransactionModel tx) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AddTransactionDialog(
+        type: tx.type,
+        symbol: _sym,
+        initial: tx,
+      ),
+    );
+    if (result != null) {
+      final updated = TransactionModel(
+        id: tx.id,
+        title: result['title'],
+        amount: result['amount'],
+        type: tx.type,
+        date: tx.date,
+        category: result['category'],
+        description: result['description'],
+        isRecurring: result['isRecurring'] ?? false,
+        recurringPeriod: result['recurringPeriod'],
+        isAnomaly: tx.isAnomaly,
+        zScore: tx.zScore,
+      );
+      await _service.addTransaction(updated);
       await _loadData();
     }
   }
@@ -443,100 +474,17 @@ class _SandboxScreenState extends State<SandboxScreen> {
           ),
           const SizedBox(width: 8),
           GestureDetector(
+            onTap: () => _editTransaction(tx),
+            child: const Icon(Icons.edit,
+                size: 16, color: AppTheme.textMuted),
+          ),
+          const SizedBox(width: 8),
+          GestureDetector(
             onTap: () => _deleteTransaction(tx.id),
             child: const Icon(Icons.close,
                 size: 16, color: AppTheme.textMuted),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _AddSandboxTransactionDialog extends StatefulWidget {
-  final TransactionType type;
-  final String symbol;
-  const _AddSandboxTransactionDialog(
-      {required this.type, required this.symbol});
-
-  @override
-  State<_AddSandboxTransactionDialog> createState() =>
-      _AddSandboxTransactionDialogState();
-}
-
-class _AddSandboxTransactionDialogState
-    extends State<_AddSandboxTransactionDialog> {
-  final _titleCtrl = TextEditingController();
-  final _amountCtrl = TextEditingController();
-  final String _category = 'Test';
-
-  @override
-  Widget build(BuildContext context) {
-    final isIncome = widget.type == TransactionType.income;
-    return Dialog(
-      backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              isIncome
-                  ? WesiLocale.get('add_test_income')
-                  : WesiLocale.get('add_test_expense'),
-              style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textPrimary),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _titleCtrl,
-              style: const TextStyle(color: AppTheme.textPrimary),
-              decoration: InputDecoration(labelText: WesiLocale.get('title')),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _amountCtrl,
-              keyboardType: TextInputType.number,
-              style: const TextStyle(color: AppTheme.textPrimary),
-              decoration: InputDecoration(
-                labelText: WesiLocale.get('amount'),
-                prefixText: '${widget.symbol} ',
-              ),
-            ),
-            const SizedBox(height: 20),
-            Row(
-              children: [
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(WesiLocale.get('cancel')),
-                ),
-                const Spacer(),
-                HoverButton(
-                  onTap: () {
-                    final amount = double.tryParse(_amountCtrl.text);
-                    if (_titleCtrl.text.isNotEmpty && amount != null) {
-                      Navigator.pop(context, {
-                        'title': _titleCtrl.text,
-                        'amount': amount,
-                        'category': _category,
-                        'description': '',
-                      });
-                    }
-                  },
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                  backgroundColor:
-                      isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
-                  child: Text(WesiLocale.get('save'),
-                      style: const TextStyle(color: Colors.white)),
-                ),
-              ],
-            ),
-          ],
-        ),
       ),
     );
   }

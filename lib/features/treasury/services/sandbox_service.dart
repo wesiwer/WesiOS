@@ -122,12 +122,18 @@ class SandboxService {
 
   // ========== FORECAST ==========
 
-  Future<ForecastResult> generateForecast({int days = 30}) async {
+  Future<ForecastResult> generateForecast({
+    int days = 30,
+    WhatIfScenario whatIf = WhatIfScenario.none,
+    double annualDiscountRate = 0.0,
+  }) async {
     final all = await getAllTransactions();
     final balance = await getCurrentBalance();
     return ForecastEngine.generate(
       transactions: all,
       currentBalance: balance,
+      whatIf: whatIf,
+      annualDiscountRate: annualDiscountRate,
       days: days,
     );
   }
