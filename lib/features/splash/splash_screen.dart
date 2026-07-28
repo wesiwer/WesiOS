@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 import '../../core/theme/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -38,22 +39,22 @@ class _SplashScreenState extends State<SplashScreen>
     super.initState();
     _fadeController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 5),
+      duration: const Duration(seconds: 8),
     );
 
     _ringController1 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 3),
+      duration: const Duration(seconds: 4),
     )..repeat();
 
     _ringController2 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 5),
-    )..repeat(reverse: true);
+      duration: const Duration(seconds: 6),
+    )..repeat();
 
     _ringController3 = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 4),
+      duration: const Duration(seconds: 3),
     )..repeat();
 
     _fadeAnimation = Tween(begin: 0.0, end: 1.0).animate(
@@ -71,7 +72,7 @@ class _SplashScreenState extends State<SplashScreen>
     _fadeController.forward();
     _startTextRotation();
 
-    Future.delayed(const Duration(seconds: 5), () {
+    Future.delayed(const Duration(seconds: 8), () {
       if (mounted) {
         Navigator.of(context).pushReplacementNamed('/welcome');
       }
@@ -80,7 +81,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _startTextRotation() {
     Future.doWhile(() async {
-      await Future.delayed(const Duration(milliseconds: 500));
+      await Future.delayed(const Duration(milliseconds: 800));
       if (mounted && _currentTextIndex < _loadingTexts.length - 1) {
         setState(() => _currentTextIndex++);
         return true;
@@ -104,85 +105,43 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: AppTheme.background,
       body: Stack(
         children: [
-          // Carbon fiber background with orange glow
-          Container(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  AppTheme.carbonDark,
-                  AppTheme.background,
-                  AppTheme.carbonMid,
-                ],
-              ),
-            ),
-          ),
-          // Orange ambient glow — bottom right
+          // Orange ambient glow background
           AnimatedBuilder(
             animation: _glowAnimation,
             builder: (context, child) {
-              return Positioned(
-                bottom: -100,
-                right: -100,
-                child: Container(
-                  width: 400,
-                  height: 400,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        AppTheme.accentOrange.withOpacity(0.08 * _glowAnimation.value),
-                        AppTheme.accentOrange.withOpacity(0.02 * _glowAnimation.value),
-                        Colors.transparent,
-                      ],
-                      stops: const [0.0, 0.5, 1.0],
-                    ),
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(0.3, -0.3),
+                    radius: 0.8,
+                    colors: [
+                      AppTheme.accentOrange.withOpacity(0.15 * _glowAnimation.value),
+                      AppTheme.accentOrange.withOpacity(0.05 * _glowAnimation.value),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.5, 1.0],
                   ),
                 ),
               );
             },
           ),
-          // Orange ambient glow — top left subtle
+          // Secondary glow
           AnimatedBuilder(
             animation: _glowAnimation,
             builder: (context, child) {
-              return Positioned(
-                top: -80,
-                left: -80,
-                child: Container(
-                  width: 300,
-                  height: 300,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: RadialGradient(
-                      colors: [
-                        AppTheme.accentOrange.withOpacity(0.05 * _glowAnimation.value),
-                        Colors.transparent,
-                      ],
-                    ),
+              return Container(
+                decoration: BoxDecoration(
+                  gradient: RadialGradient(
+                    center: const Alignment(-0.5, 0.5),
+                    radius: 0.6,
+                    colors: [
+                      AppTheme.accentOrange.withOpacity(0.08 * _glowAnimation.value),
+                      Colors.transparent,
+                    ],
                   ),
                 ),
               );
             },
-          ),
-          // Soft white highlight
-          Positioned(
-            top: -100,
-            right: -100,
-            child: Container(
-              width: 400,
-              height: 400,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  colors: [
-                    Colors.white.withOpacity(0.03),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
           ),
           // Main content
           Center(
@@ -196,78 +155,59 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Animated rings + Logo
+                        // Animated rings
                         SizedBox(
-                          width: 160,
-                          height: 160,
+                          width: 180,
+                          height: 180,
                           child: Stack(
                             alignment: Alignment.center,
                             children: [
-                              // Outer ring — rotates clockwise
+                              // Outer ring - separate, rotating around own axis
                               RotationTransition(
                                 turns: _ringController1,
-                                child: Container(
-                                  width: 160,
-                                  height: 160,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: AppTheme.accentOrange.withOpacity(0.3),
-                                      width: 1.5,
-                                    ),
-                                    gradient: SweepGradient(
-                                      colors: [
-                                        Colors.transparent,
-                                        AppTheme.accentOrange.withOpacity(0.4),
-                                        Colors.transparent,
-                                      ],
-                                      stops: const [0.0, 0.5, 1.0],
-                                    ),
+                                child: CustomPaint(
+                                  size: const Size(180, 180),
+                                  painter: RingPainter(
+                                    radius: 85,
+                                    strokeWidth: 3,
+                                    color: AppTheme.accentOrange,
+                                    segments: 3,
+                                    gapAngle: 0.4,
                                   ),
                                 ),
                               ),
-                              // Middle ring — rotates counter-clockwise
+                              // Middle ring - separate, rotating opposite
                               RotationTransition(
                                 turns: ReverseAnimation(_ringController2),
-                                child: Container(
-                                  width: 130,
-                                  height: 130,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: AppTheme.accentOrange.withOpacity(0.25),
-                                      width: 1.2,
-                                    ),
-                                    gradient: SweepGradient(
-                                      colors: [
-                                        Colors.transparent,
-                                        AppTheme.accentOrange.withOpacity(0.3),
-                                        Colors.transparent,
-                                      ],
-                                      stops: const [0.0, 0.5, 1.0],
-                                    ),
+                                child: CustomPaint(
+                                  size: const Size(180, 180),
+                                  painter: RingPainter(
+                                    radius: 65,
+                                    strokeWidth: 2.5,
+                                    color: AppTheme.accentOrange,
+                                    segments: 4,
+                                    gapAngle: 0.3,
                                   ),
                                 ),
                               ),
-                              // Inner ring — rotates clockwise faster
+                              // Inner ring - separate, rotating faster
                               RotationTransition(
                                 turns: _ringController3,
-                                child: Container(
-                                  width: 100,
-                                  height: 100,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: AppTheme.accentOrange.withOpacity(0.2),
-                                      width: 1,
-                                    ),
+                                child: CustomPaint(
+                                  size: const Size(180, 180),
+                                  painter: RingPainter(
+                                    radius: 45,
+                                    strokeWidth: 2,
+                                    color: AppTheme.accentOrange,
+                                    segments: 2,
+                                    gapAngle: 0.5,
                                   ),
                                 ),
                               ),
-                              // Carbon logo center
+                              // Center logo
                               Container(
-                                width: 80,
-                                height: 80,
+                                width: 60,
+                                height: 60,
                                 decoration: BoxDecoration(
                                   shape: BoxShape.circle,
                                   gradient: const LinearGradient(
@@ -276,47 +216,27 @@ class _SplashScreenState extends State<SplashScreen>
                                     colors: [
                                       AppTheme.carbonDark,
                                       AppTheme.carbonMid,
-                                      AppTheme.carbonLight,
                                     ],
                                   ),
                                   border: Border.all(
-                                    color: AppTheme.accentOrange.withOpacity(0.4),
+                                    color: AppTheme.accentOrange,
                                     width: 2,
                                   ),
                                   boxShadow: [
                                     BoxShadow(
-                                      color: AppTheme.accentOrange.withOpacity(0.15),
+                                      color: AppTheme.accentOrange.withOpacity(0.3),
                                       blurRadius: 20,
                                       spreadRadius: 2,
                                     ),
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.5),
-                                      blurRadius: 30,
-                                      spreadRadius: 5,
-                                    ),
                                   ],
                                 ),
-                                child: Center(
-                                  child: ShaderMask(
-                                    shaderCallback: (bounds) {
-                                      return LinearGradient(
-                                        begin: Alignment.topLeft,
-                                        end: Alignment.bottomRight,
-                                        colors: [
-                                          Colors.white.withOpacity(0.95),
-                                          AppTheme.accentOrange.withOpacity(0.8),
-                                          Colors.white.withOpacity(0.6),
-                                        ],
-                                        stops: const [0.0, 0.5, 1.0],
-                                      ).createShader(bounds);
-                                    },
-                                    child: const Text(
-                                      'W',
-                                      style: TextStyle(
-                                        fontSize: 40,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white,
-                                      ),
+                                child: const Center(
+                                  child: Text(
+                                    'W',
+                                    style: TextStyle(
+                                      fontSize: 28,
+                                      fontWeight: FontWeight.w900,
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ),
@@ -324,28 +244,15 @@ class _SplashScreenState extends State<SplashScreen>
                             ],
                           ),
                         ),
-                        const SizedBox(height: 40),
-                        // WesiOS text — carbon style with orange accent
-                        ShaderMask(
-                          shaderCallback: (bounds) {
-                            return LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.white.withOpacity(0.95),
-                                Colors.white.withOpacity(0.7),
-                                AppTheme.accentOrange.withOpacity(0.5),
-                              ],
-                            ).createShader(bounds);
-                          },
-                          child: const Text(
-                            'WesiOS',
-                            style: TextStyle(
-                              fontSize: 42,
-                              fontWeight: FontWeight.w900,
-                              color: Colors.white,
-                              letterSpacing: 6,
-                            ),
+                        const SizedBox(height: 48),
+                        // WesiOS text
+                        const Text(
+                          'WesiOS',
+                          style: TextStyle(
+                            fontSize: 48,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                            letterSpacing: 8,
                           ),
                         ),
                         const SizedBox(height: 8),
@@ -360,10 +267,10 @@ class _SplashScreenState extends State<SplashScreen>
                         const SizedBox(height: 64),
                         // Loading text
                         AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 300),
+                          duration: const Duration(milliseconds: 400),
                           child: Text(
                             _loadingTexts[_currentTextIndex],
-                            key: ValueKey(_currentTextIndex),
+                            key: ValueKey<int>(_currentTextIndex),
                             style: const TextStyle(
                               fontSize: 14,
                               color: AppTheme.textMuted,
@@ -373,7 +280,7 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                         ),
                         const SizedBox(height: 24),
-                        // Progress
+                        // Progress bar
                         SizedBox(
                           width: 200,
                           child: ClipRRect(
@@ -381,14 +288,14 @@ class _SplashScreenState extends State<SplashScreen>
                             child: LinearProgressIndicator(
                               value: _fadeController.value,
                               backgroundColor: AppTheme.surfaceLight,
-                              valueColor: const AlwaysStoppedAnimation(AppTheme.accentOrange),
+                              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accentOrange),
                               minHeight: 3,
                             ),
                           ),
                         ),
                         const SizedBox(height: 16),
                         const Text(
-                          'v0.1 α',
+                          'v0.1.2 α',
                           style: TextStyle(
                             fontSize: 12,
                             color: AppTheme.textMuted,
@@ -405,4 +312,48 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     );
   }
+}
+
+/// Custom painter for segmented rings with gaps
+class RingPainter extends CustomPainter {
+  final double radius;
+  final double strokeWidth;
+  final Color color;
+  final int segments;
+  final double gapAngle;
+
+  RingPainter({
+    required this.radius,
+    required this.strokeWidth,
+    required this.color,
+    required this.segments,
+    required this.gapAngle,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = Offset(size.width / 2, size.height / 2);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..strokeCap = StrokeCap.round;
+
+    final totalGap = gapAngle * segments;
+    final segmentAngle = (2 * math.pi - totalGap) / segments;
+
+    for (int i = 0; i < segments; i++) {
+      final startAngle = i * (segmentAngle + gapAngle) - math.pi / 2;
+      canvas.drawArc(
+        Rect.fromCircle(center: center, radius: radius),
+        startAngle,
+        segmentAngle,
+        false,
+        paint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }
