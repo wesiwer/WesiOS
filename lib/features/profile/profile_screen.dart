@@ -4,6 +4,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/services/firebase_config_service.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/widgets/hover_button.dart';
+import '../../core/widgets/wesi_avatar.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -50,16 +51,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (savedIndex != null) {
       setState(() => _selectedAvatarIndex = savedIndex as int);
     } else {
-      // First visit — auto-select random avatar
-      final randomIndex = DateTime.now().millisecond % _avatarPresets.length;
+      final randomIndex = DateTime.now().millisecond % WesiAvatar.avatarPresets.length;
       setState(() => _selectedAvatarIndex = randomIndex);
       await box.put('avatar_index', randomIndex);
     }
   }
 
   Future<void> _saveAvatar(int index) async {
-    final box = Hive.box('wesios_settings');
-    await box.put('avatar_index', index);
+    await WesiAvatar.setIndex(index);
   }
 
   Future<void> _loadConfig() async {
@@ -121,7 +120,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         );
       } catch (e) {
-        debugPrint('Firebase re-init failed: \$e');
+        debugPrint('Firebase re-init failed: $e');
       }
 
       if (mounted) {
@@ -130,7 +129,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
       }
     } catch (e) {
-      setState(() => _error = 'Ошибка: \$e');
+      setState(() => _error = 'Ошибка: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
@@ -186,7 +185,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             backgroundColor: AppTheme.background.withOpacity(0.9),
             elevation: 0,
             pinned: true,
-            expandedHeight: 200,
+            expandedHeight: 220,
             flexibleSpace: FlexibleSpaceBar(
               title: const Text(
                 'Wesi Профиль',
@@ -212,13 +211,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       const SizedBox(height: 40),
-                      // Selected avatar preview
                       _buildSelectedAvatar(),
                       const SizedBox(height: 16),
-                      // Avatar grid
                       _buildAvatarGrid(),
                       const SizedBox(height: 12),
-                      // Upload custom
                       _buildCustomUploadButton(),
                     ],
                   ),
@@ -230,35 +226,27 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.all(24),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                // Personal info section
                 _buildSectionTitle('Личная информация'),
                 const SizedBox(height: 16),
                 _buildField(_nameCtrl, 'Имя', 'Ваше имя'),
                 _buildField(_emailCtrl, 'Email', 'email@example.com'),
-
-                // Birth date
                 _buildDropdownField(
                   label: 'Дата рождения',
                   value: _birthDate != null
-                    ? '\${_birthDate!.day}.\${_birthDate!.month}.\${_birthDate!.year}'
+                    ? '${_birthDate!.day}.${_birthDate!.month}.${_birthDate!.year}'
                     : 'Не указана',
                   onTap: _pickBirthDate,
                 ),
-
-                // Gender
                 _buildDropdownField(
                   label: 'Пол',
                   value: _gender,
                   onTap: () => _showPicker('Пол', _genders, (v) => setState(() => _gender = v)),
                 ),
-
-                // Country
                 _buildDropdownField(
                   label: 'Страна',
                   value: _country,
                   onTap: () => _showPicker('Страна', _countries, (v) => setState(() => _country = v)),
                 ),
-
                 const SizedBox(height: 32),
                 _buildSectionTitle('Ключи и токены'),
                 const SizedBox(height: 8),
@@ -267,7 +255,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                 ),
                 const SizedBox(height: 16),
-
                 Form(
                   key: _formKey,
                   child: Column(
@@ -283,7 +270,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     ],
                   ),
                 ),
-
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Container(
@@ -296,7 +282,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     child: Text(_error!, style: const TextStyle(color: AppTheme.accentRed)),
                   ),
                 ],
-
                 const SizedBox(height: 32),
                 HoverButton(
                   onTap: _isLoading ? null : _saveConfig,
@@ -381,28 +366,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        label,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppTheme.textSecondary,
-                        ),
-                      ),
+                      Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
                       const SizedBox(height: 4),
-                      Text(
-                        value,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
+                      Text(value, style: const TextStyle(fontSize: 16, color: AppTheme.textPrimary)),
                     ],
                   ),
                 ),
-                const Icon(
-                  Icons.arrow_drop_down,
-                  color: AppTheme.textMuted,
-                ),
+                const Icon(Icons.arrow_drop_down, color: AppTheme.textMuted),
               ],
             ),
           ),
@@ -421,7 +391,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) {
         return SafeArea(
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisSize: MainAxis.min,
             children: [
               Container(
                 margin: const EdgeInsets.only(top: 8),
@@ -434,14 +404,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary,
-                  ),
-                ),
+                child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
               ),
               ...items.map((item) => ListTile(
                 title: Text(item, style: const TextStyle(color: AppTheme.textPrimary)),
@@ -461,30 +424,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-
   Widget _buildSelectedAvatar() {
-    final avatar = _avatarPresets[_selectedAvatarIndex];
-    return AnimatedContainer(
-      duration: const Duration(milliseconds: 300),
-      width: 100,
-      height: 100,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: avatar.gradient,
-        border: Border.all(
-          color: AppTheme.accentOrange.withOpacity(0.6),
-          width: 2.5,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.accentOrange.withOpacity(0.15),
-            blurRadius: 20,
-            spreadRadius: 3,
-          ),
-        ],
-      ),
-      child: Center(child: avatar.icon),
-    );
+    return WesiAvatar(size: 100, showBorder: true);
   }
 
   Widget _buildAvatarGrid() {
@@ -492,13 +433,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       spacing: 12,
       runSpacing: 12,
       alignment: WrapAlignment.center,
-      children: List.generate(_avatarPresets.length, (index) {
-        final preset = _avatarPresets[index];
+      children: List.generate(WesiAvatar.avatarPresets.length, (index) {
+        final preset = WesiAvatar.avatarPresets[index];
         final isSelected = index == _selectedAvatarIndex;
         return MouseRegion(
           cursor: SystemMouseCursors.click,
           child: GestureDetector(
-            onTap: () async { setState(() => _selectedAvatarIndex = index); await _saveAvatar(index); },
+            onTap: () async {
+              setState(() => _selectedAvatarIndex = index);
+              await _saveAvatar(index);
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               width: 56,
@@ -507,26 +451,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: BoxShape.circle,
                 gradient: preset.gradient,
                 border: Border.all(
-                  color: isSelected
-                    ? AppTheme.accentOrange
-                    : Colors.transparent,
+                  color: isSelected ? AppTheme.accentOrange : Colors.transparent,
                   width: isSelected ? 2.5 : 0,
                 ),
                 boxShadow: isSelected
-                  ? [
-                      BoxShadow(
-                        color: AppTheme.accentOrange.withOpacity(0.25),
-                        blurRadius: 12,
-                        spreadRadius: 2,
-                      ),
-                    ]
+                  ? [BoxShadow(color: AppTheme.accentOrange.withOpacity(0.25), blurRadius: 12, spreadRadius: 2)]
                   : null,
               ),
               child: Center(
                 child: AnimatedScale(
                   scale: isSelected ? 1.15 : 1.0,
                   duration: const Duration(milliseconds: 200),
-                  child: preset.icon,
+                  child: IconTheme(
+                    data: const IconThemeData(size: 24),
+                    child: preset.icon,
+                  ),
                 ),
               ),
             ),
@@ -541,7 +480,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () {
-          // TODO: image picker
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Загрузка своей аватарки — скоро')),
           );
@@ -552,27 +490,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: BoxDecoration(
             color: AppTheme.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: AppTheme.accentOrange.withOpacity(0.3),
-              width: 1,
-            ),
+            border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3), width: 1),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                Icons.add_photo_alternate_outlined,
-                size: 16,
-                color: AppTheme.accentOrange.withOpacity(0.8),
-              ),
+              Icon(Icons.add_photo_alternate_outlined, size: 16, color: AppTheme.accentOrange.withOpacity(0.8)),
               const SizedBox(width: 8),
               Text(
                 'Загрузить свою',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: AppTheme.accentOrange.withOpacity(0.9),
-                  fontWeight: FontWeight.w500,
-                ),
+                style: TextStyle(fontSize: 12, color: AppTheme.accentOrange.withOpacity(0.9), fontWeight: FontWeight.w500),
               ),
             ],
           ),
@@ -580,126 +507,4 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
-
-  static final List<_AvatarPreset> _avatarPresets = [
-    // 1. Neon Cyber — оранжевый неоновый круг
-    _AvatarPreset(
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF1A0A00), Color(0xFF3D1F00), Color(0xFF0A0A0F)],
-      ),
-      icon: ShaderMask(
-        shaderCallback: (bounds) => const LinearGradient(
-          colors: [AppTheme.accentOrange, Color(0xFFFFD700)],
-        ).createShader(bounds),
-        child: const Icon(Icons.bolt, size: 28, color: Colors.white),
-      ),
-    ),
-    // 2. Ice Operator — холодный синий
-    _AvatarPreset(
-      gradient: const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF0A1A2A), Color(0xFF001A33), Color(0xFF0A0A0F)],
-      ),
-      icon: ShaderMask(
-        shaderCallback: (bounds) => const LinearGradient(
-          colors: [Color(0xFF60A5FA), Color(0xFF93C5FD)],
-        ).createShader(bounds),
-        child: const Icon(Icons.ac_unit, size: 26, color: Colors.white),
-      ),
-    ),
-    // 3. Phantom — фиолетовый призрак
-    _AvatarPreset(
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [Color(0xFF1A0A1A), Color(0xFF2D1F3D), Color(0xFF0A0A0F)],
-      ),
-      icon: ShaderMask(
-        shaderCallback: (bounds) => const LinearGradient(
-          colors: [Color(0xFFA78BFA), Color(0xFFC4B5FD)],
-        ).createShader(bounds),
-        child: const Icon(Icons.visibility_off, size: 26, color: Colors.white),
-      ),
-    ),
-    // 4. Toxic — кислотный зелёный
-    _AvatarPreset(
-      gradient: const LinearGradient(
-        begin: Alignment.centerLeft,
-        end: Alignment.centerRight,
-        colors: [Color(0xFF0A1A0A), Color(0xFF1A3D1A), Color(0xFF0A0A0F)],
-      ),
-      icon: ShaderMask(
-        shaderCallback: (bounds) => const LinearGradient(
-          colors: [AppTheme.accentGreen, Color(0xFFBEF264)],
-        ).createShader(bounds),
-        child: const Icon(Icons.biotech, size: 26, color: Colors.white),
-      ),
-    ),
-    // 5. Crimson — алое пламя
-    _AvatarPreset(
-      gradient: const LinearGradient(
-        begin: Alignment.topRight,
-        end: Alignment.bottomLeft,
-        colors: [Color(0xFF2A0A0A), Color(0xFF4D1F1F), Color(0xFF0A0A0F)],
-      ),
-      icon: ShaderMask(
-        shaderCallback: (bounds) => const LinearGradient(
-          colors: [Color(0xFFF87171), Color(0xFFFCA5A5)],
-        ).createShader(bounds),
-        child: const Icon(Icons.local_fire_department, size: 28, color: Colors.white),
-      ),
-    ),
-    // 6. Carbon Elite — чистый карбон
-    _AvatarPreset(
-      gradient: const LinearGradient(
-        begin: Alignment.topLeft,
-        end: Alignment.bottomRight,
-        colors: [AppTheme.carbonDark, AppTheme.carbonMid, AppTheme.carbonLight],
-      ),
-      icon: ShaderMask(
-        shaderCallback: (bounds) => const LinearGradient(
-          colors: [AppTheme.textPrimary, AppTheme.textSecondary],
-        ).createShader(bounds),
-        child: const Icon(Icons.shield, size: 26, color: Colors.white),
-      ),
-    ),
-    // 7. Gold Trader — золотой
-    _AvatarPreset(
-      gradient: const LinearGradient(
-        begin: Alignment.topCenter,
-        end: Alignment.bottomCenter,
-        colors: [Color(0xFF2A240A), Color(0xFF4D3D1F), Color(0xFF0A0A0F)],
-      ),
-      icon: ShaderMask(
-        shaderCallback: (bounds) => const LinearGradient(
-          colors: [Color(0xFFFCD34D), Color(0xFFFDE68A)],
-        ).createShader(bounds),
-        child: const Icon(Icons.trending_up, size: 28, color: Colors.white),
-      ),
-    ),
-    // 8. Void Walker — чёрная дыра
-    _AvatarPreset(
-      gradient: const RadialGradient(
-        center: Alignment.center,
-        colors: [Color(0xFF1A1A2E), Color(0xFF0A0A0F), Color(0xFF000000)],
-      ),
-      icon: ShaderMask(
-        shaderCallback: (bounds) => const LinearGradient(
-          colors: [Color(0xFF818CF8), Color(0xFFA5B4FC)],
-        ).createShader(bounds),
-        child: const Icon(Icons.all_inclusive, size: 26, color: Colors.white),
-      ),
-    ),
-  ];
-}
-
-class _AvatarPreset {
-  final Gradient gradient;
-  final Widget icon;
-
-  const _AvatarPreset({required this.gradient, required this.icon});
-
 }
