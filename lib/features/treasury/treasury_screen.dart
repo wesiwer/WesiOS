@@ -29,7 +29,6 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   }
 
   Future<void> _loadData() async {
-    await _service.generateDemoData();
     final txs = await _service.getAllTransactions();
     final balance = await _service.getCurrentBalance();
     final breakdown = await _service.getBalanceBreakdown();
@@ -195,21 +194,21 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                   children: [
                     _buildStatCard(
                       WesiLocale.get('total_income'),
-                      '\$${_breakdown['income']?.toStringAsFixed(0) ?? '0'}',
+                      '₽${_breakdown['income']?.toStringAsFixed(0) ?? '0'}',
                       AppTheme.accentGreen,
                       Icons.arrow_upward,
                     ),
                     const SizedBox(width: 12),
                     _buildStatCard(
                       WesiLocale.get('total_expenses'),
-                      '\$${_breakdown['expense']?.toStringAsFixed(0) ?? '0'}',
+                      '₽${_breakdown['expense']?.toStringAsFixed(0) ?? '0'}',
                       AppTheme.accentRed,
                       Icons.arrow_downward,
                     ),
                     const SizedBox(width: 12),
                     _buildStatCard(
                       WesiLocale.get('net'),
-                      '\$${_breakdown['net']?.toStringAsFixed(0) ?? '0'}',
+                      '₽${_breakdown['net']?.toStringAsFixed(0) ?? '0'}',
                       _breakdown['net'] != null && _breakdown['net']! >= 0 ? AppTheme.accentGreen : AppTheme.accentRed,
                       Icons.account_balance,
                     ),
@@ -263,7 +262,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            '\$${_balance.toStringAsFixed(2)}',
+            '₽${_balance.toStringAsFixed(2)}',
             style: TextStyle(
               fontSize: 36,
               fontWeight: FontWeight.w800,
@@ -500,7 +499,7 @@ class _AddTransactionDialogState extends State<_AddTransactionDialog> {
               decoration: InputDecoration(
                 labelText: WesiLocale.get('amount'),
                 hintText: '0.00',
-                prefixText: '\$ ',
+                prefixText: '₽ ',
               ),
             ),
             const SizedBox(height: 12),
