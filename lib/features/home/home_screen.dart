@@ -84,7 +84,7 @@ class _DashboardTab extends StatelessWidget {
                     onTap: () {},
                   ),
                   const SizedBox(width: 8),
-                  const _ProfileDropdown(),
+                  _ProfileDropdown(),
                 ],
               ),
             ),
