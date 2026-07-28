@@ -793,7 +793,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen>
   Widget _buildHeatmap() {
     // Weekly heatmap
     final weekData = <int, List<double>>{};
-    for (int w = 0; w < 4; w++) weekData[w] = [];
+    for (int w = 0; w < 4; w++) weekData[w] = <double>[];
 
     for (final tx in _transactions) {
       final week = (tx.date.day - 1) ~/ 7;
