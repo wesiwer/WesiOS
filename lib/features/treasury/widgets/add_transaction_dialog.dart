@@ -1,20 +1,26 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/hover_button.dart';
+import '../../../core/widgets/window_controls.dart';
 import '../../../core/localization/wesi_locale.dart';
 import '../../../core/services/currency_service.dart';
 import '../models/transaction_model.dart';
 
-/// Публичный диалог добавления транзакции (доход/расход)
-/// Используется из HomeScreen (быстрые кнопки) и TreasuryScreen
+/// Публичный диалог добавления/редактирования транзакции (доход/расход)
+/// Используется из HomeScreen (быстрые кнопки), TreasuryScreen и OperationsScreen.
+///
+/// [initial] != null — режим редактирования: поля предзаполняются,
+/// заголовок меняется на «Редактировать операцию».
 class AddTransactionDialog extends StatefulWidget {
   final TransactionType type;
   final String symbol;
+  final TransactionModel? initial;
 
   const AddTransactionDialog({
     super.key,
     required this.type,
     required this.symbol,
+    this.initial,
   });
 
   @override
@@ -54,19 +60,50 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
   @override
   void initState() {
     super.initState();
-    _category = _categories.last;
+    final tx = widget.initial;
+    if (tx != null) {
+      _titleCtrl.text = tx.title;
+      // amount хранится в RUB-эквиваленте — показываем в текущей валюте
+      _amountCtrl.text = _trimZeros(CurrencyService.fromRub(tx.amount));
+      _descCtrl.text = tx.description ?? '';
+      _isRecurring = tx.isRecurring;
+      _recurringPeriod = tx.recurringPeriod;
+      final cat = tx.category;
+      _category =
+          (cat != null && _categories.contains(cat)) ? cat : _categories.last;
+    } else {
+      _category = _categories.last;
+    }
+  }
+
+  static String _trimZeros(double v) {
+    final s = v.toStringAsFixed(2);
+    return s.endsWith('.00') ? s.substring(0, s.length - 3) : s;
+  }
+
+  @override
+  void dispose() {
+    _titleCtrl.dispose();
+    _amountCtrl.dispose();
+    _descCtrl.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final isIncome = widget.type == TransactionType.income;
-    final title = isIncome
-        ? (WesiLocale.isRussian ? 'Продажа' : 'Sale')
-        : (WesiLocale.isRussian ? 'Трата' : 'Expense');
+    final title = widget.initial != null
+        ? WesiLocale.get('edit_operation')
+        : isIncome
+            ? (WesiLocale.isRussian ? 'Продажа' : 'Sale')
+            : (WesiLocale.isRussian ? 'Трата' : 'Expense');
 
     return Dialog(
       backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      // Отступ сверху на высоту кастомного title bar — иначе кнопки диалога
+      // оказываются под системными кнопками окна (свернуть/закрыть).
+      insetPadding: const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
       child: Container(
         width: 400,
         padding: const EdgeInsets.all(24),

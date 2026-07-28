@@ -1,8 +1,9 @@
 import 'dart:async';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/localization/wesi_locale.dart';
 import '../../core/services/firebase_config_service.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_avatar.dart';
@@ -216,6 +217,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Center(child: WesiAvatar(size: 100, showBorder: true)),
           const SizedBox(height: 16),
           _avatarGrid(),
+          const SizedBox(height: 12),
+          _avatarActions(),
           const SizedBox(height: 28),
           _section('Личная информация'),
           _field(_nameCtrl, 'Имя', 'Ваше имя'),
@@ -414,6 +417,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// Загрузка своей аватарки + возврат к пресетам.
+  Widget _avatarActions() {
+    final hasCustom = WesiAvatar.hasCustom;
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        HoverButton(
+          onTap: _pickCustomAvatar,
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          backgroundColor: AppTheme.surface,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.upload, size: 16, color: AppTheme.accentOrange),
+              const SizedBox(width: 8),
+              Text(
+                WesiLocale.get('upload_avatar'),
+                style: const TextStyle(
+                    fontSize: 13, color: AppTheme.textSecondary),
+              ),
+            ],
+          ),
+        ),
+        if (hasCustom) ...[
+          const SizedBox(width: 10),
+          HoverButton(
+            onTap: () async {
+              await WesiAvatar.clearCustom();
+              if (mounted) setState(() {});
+            },
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            backgroundColor: AppTheme.surface,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.restart_alt,
+                    size: 16, color: AppTheme.textMuted),
+                const SizedBox(width: 8),
+                Text(
+                  WesiLocale.get('reset_avatar'),
+                  style: const TextStyle(
+                      fontSize: 13, color: AppTheme.textSecondary),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Future<void> _pickCustomAvatar() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true, // нужны байты: складываем картинку в Hive
+    );
+    final bytes = result?.files.single.bytes;
+    if (bytes == null) return;
+    await WesiAvatar.setCustom(bytes);
+    if (mounted) setState(() {});
+  }
+
   Widget _avatarGrid() {
     return Wrap(
       spacing: 12,
@@ -421,11 +486,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       alignment: WrapAlignment.center,
       children: List.generate(WesiAvatar.avatarPresets.length, (index) {
         final preset = WesiAvatar.avatarPresets[index];
-        final sel = index == _selectedAvatarIndex;
+        final sel = index == _selectedAvatarIndex && !WesiAvatar.hasCustom;
         return GestureDetector(
           onTap: () async {
             setState(() => _selectedAvatarIndex = index);
             await WesiAvatar.setIndex(index);
+            if (mounted) setState(() {});
           },
           child: Container(
             width: 52,

@@ -150,7 +150,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   const SizedBox(height: 12),
                   _buildField(_authDomainCtrl, 'Auth Domain', 'my-project.firebaseapp.com', 'Домен для аутентификации. Автоматически генерируется Firebase.'),
                   _buildField(_storageBucketCtrl, 'Storage Bucket', 'my-project.appspot.com', 'Bucket для Cloud Storage. Найдите в Storage > Get Started.'),
-                  _buildField(_measurementIdCtrl, 'Measurement ID', 'G-XXXXXXXX'),
+                  _buildField(_measurementIdCtrl, 'Measurement ID', 'G-XXXXXXXX', 'ID для Google Analytics. Найдите в Project Settings > Integrations > Google Analytics, либо в конфиге веб-приложения.'),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
                     Container(

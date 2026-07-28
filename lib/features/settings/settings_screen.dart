@@ -223,11 +223,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? const Icon(Icons.check, color: AppTheme.accentOrange)
                     : null,
                 onTap: () async {
+                  final nav = Navigator.of(ctx);
                   await WesiLocale.setLanguage('ru');
-                  if (mounted) {
-                    setState(() {});
-                    Navigator.pop(ctx);
-                  }
+                  if (!mounted) return;
+                  setState(() {});
+                  nav.pop();
                 },
               ),
               ListTile(
@@ -238,11 +238,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ? const Icon(Icons.check, color: AppTheme.accentOrange)
                     : null,
                 onTap: () async {
+                  final nav = Navigator.of(ctx);
                   await WesiLocale.setLanguage('en');
-                  if (mounted) {
-                    setState(() {});
-                    Navigator.pop(ctx);
-                  }
+                  if (!mounted) return;
+                  setState(() {});
+                  nav.pop();
                 },
               ),
               const SizedBox(height: 16),

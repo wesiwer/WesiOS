@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 /// WesiLocale — система локализации WesiOS.
@@ -83,7 +83,6 @@ class WesiLocale {
       'reserve': 'Резерв',
       'calendar': 'Календарь',
       'all': 'Все',
-      'today': 'Сегодня',
       'no_events': 'Нет запланированных событий',
       'tasks': 'Задачи',
       'no_active_tasks': 'Нет активных задач',
@@ -114,6 +113,12 @@ class WesiLocale {
       'category': 'Категория',
       'uncategorized': 'Без категории',
       'anomaly': 'АНОМАЛИЯ',
+      'edit_operation': 'Редактировать операцию',
+      'rate_cbr_on': 'Курс ЦБ на',
+      'rate_fallback': 'Курс недоступен — резервное значение',
+      'custom_range': 'Свой диапазон',
+      'upload_avatar': 'Загрузить свою',
+      'reset_avatar': 'Вернуть пресет',
 
       // Sandbox
       'sandbox_balance': 'Баланс песочницы',
@@ -269,7 +274,6 @@ class WesiLocale {
       'reserve': 'Reserve',
       'calendar': 'Calendar',
       'all': 'All',
-      'today': 'Today',
       'no_events': 'No scheduled events',
       'tasks': 'Tasks',
       'no_active_tasks': 'No active tasks',
@@ -300,6 +304,12 @@ class WesiLocale {
       'category': 'Category',
       'uncategorized': 'Uncategorized',
       'anomaly': 'ANOMALY',
+      'edit_operation': 'Edit operation',
+      'rate_cbr_on': 'CBR rate as of',
+      'rate_fallback': 'Rate unavailable — using fallback',
+      'custom_range': 'Custom range',
+      'upload_avatar': 'Upload your own',
+      'reset_avatar': 'Back to preset',
 
       // Sandbox
       'sandbox_balance': 'Sandbox Balance',
@@ -398,9 +408,15 @@ class WesiLocale {
     }
   }
 
+  /// Слушатель смены языка. `MaterialApp` подписан на него в `app.dart`,
+  /// поэтому смена языка перестраивает всё дерево, а не только Settings.
+  static final ValueNotifier<String> localeNotifier =
+      ValueNotifier<String>(_getSavedLanguage());
+
   static Future<void> setLanguage(String lang) async {
     final box = Hive.box(_boxName);
     await box.put(_key, lang);
+    localeNotifier.value = lang;
   }
 
   static String get currentLanguage => _getSavedLanguage();
