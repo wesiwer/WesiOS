@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/hover_button.dart';
-import '../../../core/widgets/window_controls.dart';
-import '../../../core/localization/wesi_locale.dart';
-import '../../../core/services/currency_service.dart';
-import '../services/treasury_service.dart';
-import '../models/transaction_model.dart';
-import '../widgets/add_transaction_dialog.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/localization/wesi_locale.dart';
+import '../../core/services/currency_service.dart';
+import 'services/treasury_service.dart';
+import 'models/transaction_model.dart';
+import 'widgets/add_transaction_dialog.dart';
 
 /// Экран всех операций — полный список транзакций с edit/delete
 class OperationsScreen extends StatefulWidget {
@@ -74,12 +72,13 @@ class _OperationsScreenState extends State<OperationsScreen> {
       builder: (context) => AddTransactionDialog(
         type: tx.type,
         symbol: CurrencyService.symbol,
+        initial: tx,
       ),
     );
     if (result != null) {
-      await _service.deleteTransaction(tx.id);
-      final newTx = TransactionModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+      // Тот же id — box.put перезаписывает запись, а не плодит дубли.
+      final updated = TransactionModel(
+        id: tx.id,
         title: result['title'],
         amount: result['amount'],
         type: tx.type,
@@ -88,8 +87,10 @@ class _OperationsScreenState extends State<OperationsScreen> {
         description: result['description'],
         isRecurring: result['isRecurring'] ?? false,
         recurringPeriod: result['recurringPeriod'],
+        isAnomaly: tx.isAnomaly,
+        zScore: tx.zScore,
       );
-      await _service.addTransaction(newTx);
+      await _service.addTransaction(updated);
       await _loadData();
     }
   }

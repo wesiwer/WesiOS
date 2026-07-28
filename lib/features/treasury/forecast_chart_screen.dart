@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/localization/wesi_locale.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/localization/wesi_locale.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 
@@ -25,6 +25,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   bool _showConfidenceBands = true;
   bool _showTrendLine = true;
   int _forecastDays = 30;
+  DateTimeRange? _customRange;
   String _selectedChart = 'forecast';
   String _currency = 'rub';
 
@@ -115,8 +116,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   }
 
   void _changePeriod(int days) {
-    if (_forecastDays == days) return;
-    setState(() => _forecastDays = days);
+    final hadRange = _customRange != null;
+    if (_forecastDays == days && !hadRange) return;
+    setState(() {
+      _forecastDays = days;
+      _customRange = null;
+    });
     _loadData(full: false); // без полноэкранного лоадера
   }
 
@@ -162,13 +167,15 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             ],
           ),
           const SizedBox(height: 16),
+          _chartModeTabs(),
+          const SizedBox(height: 10),
           _periodChips(),
           const SizedBox(height: 12),
           // График: плавная смена без сброса всего экрана
           AnimatedOpacity(
             opacity: _chartBusy ? 0.45 : 1.0,
             duration: const Duration(milliseconds: 200),
-            child: _forecastChart(),
+            child: _chartForMode(),
           ),
           const SizedBox(height: 16),
           _controls(),
@@ -295,37 +302,108 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   Widget _periodChips() {
     return Wrap(
       spacing: 6,
-      children: [7, 14, 30, 60, 90].map((d) {
-        final sel = _forecastDays == d;
-        return GestureDetector(
-          onTap: () => _changePeriod(d),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: sel
-                  ? AppTheme.accentOrange.withOpacity(0.2)
-                  : AppTheme.surface,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                  color: sel
-                      ? AppTheme.accentOrange.withOpacity(0.5)
-                      : AppTheme.glassBorder),
-            ),
-            child: Text(
-              '$d дн.',
+      runSpacing: 6,
+      children: [
+        ...[7, 14, 30, 60, 90].map((d) {
+          final sel = _customRange == null && _forecastDays == d;
+          return _periodChip(
+            label: '$d ${'days'.w}',
+            selected: sel,
+            onTap: () => _changePeriod(d),
+          );
+        }),
+        // Ручной диапазон датами — вместо только фиксированных chips
+        _periodChip(
+          label: _customRange == null
+              ? 'custom_range'.w
+              : '${_fmtDate(_customRange!.start)} — ${_fmtDate(_customRange!.end)}',
+          selected: _customRange != null,
+          icon: Icons.calendar_month,
+          onTap: _pickCustomRange,
+        ),
+      ],
+    );
+  }
+
+  Widget _periodChip({
+    required String label,
+    required bool selected,
+    required VoidCallback onTap,
+    IconData? icon,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: selected
+              ? AppTheme.accentOrange.withOpacity(0.2)
+              : AppTheme.surface,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+              color: selected
+                  ? AppTheme.accentOrange.withOpacity(0.5)
+                  : AppTheme.glassBorder),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (icon != null) ...[
+              Icon(icon,
+                  size: 14,
+                  color:
+                      selected ? AppTheme.accentOrange : AppTheme.textSecondary),
+              const SizedBox(width: 6),
+            ],
+            Text(
+              label,
               style: TextStyle(
                 fontSize: 12,
-                fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                 color:
-                    sel ? AppTheme.accentOrange : AppTheme.textSecondary,
+                    selected ? AppTheme.accentOrange : AppTheme.textSecondary,
               ),
             ),
-          ),
-        );
-      }).toList(),
+          ],
+        ),
+      ),
     );
+  }
+
+  static String _fmtDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
+
+  Future<void> _pickCustomRange() async {
+    final today = DateTime.now();
+    final start = DateTime(today.year, today.month, today.day);
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: start,
+      lastDate: start.add(const Duration(days: 730)),
+      initialDateRange: _customRange ??
+          DateTimeRange(
+              start: start, end: start.add(Duration(days: _forecastDays))),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.dark(
+            primary: AppTheme.accentOrange,
+            onPrimary: AppTheme.background,
+            surface: AppTheme.surface,
+            onSurface: AppTheme.textPrimary,
+          ),
+          scaffoldBackgroundColor: AppTheme.background,
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null) return;
+
+    final days = picked.duration.inDays.clamp(1, 365);
+    setState(() => _customRange = picked);
+    if (days == _forecastDays) return;
+    setState(() => _forecastDays = days);
+    _loadData(full: false); // без полноэкранного лоадера
   }
 
   Widget _forecastChart() {
@@ -453,6 +531,247 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               color: Colors.white.withOpacity(0.75),
               barWidth: 2,
               dotData: const FlDotData(show: false),
+            ),
+          ],
+        ),
+        duration: const Duration(milliseconds: 450),
+        curve: Curves.easeInOut,
+      ),
+    );
+  }
+
+  // ===== Режимы графика: прогноз / структура / тренд =====
+
+  Widget _chartModeTabs() {
+    const modes = ['forecast', 'breakdown', 'trend'];
+    return Row(
+      children: modes.map((m) {
+        final sel = _selectedChart == m;
+        return Padding(
+          padding: const EdgeInsets.only(right: 6),
+          child: GestureDetector(
+            // Только смена содержимого графика, экран не перестраивается
+            onTap: () => setState(() => _selectedChart = m),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              decoration: BoxDecoration(
+                color: sel
+                    ? AppTheme.accentOrange.withOpacity(0.2)
+                    : AppTheme.surface,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
+                    color: sel
+                        ? AppTheme.accentOrange.withOpacity(0.5)
+                        : AppTheme.glassBorder),
+              ),
+              child: Text(
+                m.w,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
+                  color:
+                      sel ? AppTheme.accentOrange : AppTheme.textSecondary,
+                ),
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _chartForMode() {
+    switch (_selectedChart) {
+      case 'breakdown':
+        return _categoryChart();
+      case 'trend':
+        return _trendChart();
+      default:
+        return _forecastChart();
+    }
+  }
+
+  Widget _chartFrame({required Widget child}) {
+    return Container(
+      height: 340,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: child,
+    );
+  }
+
+  /// Столбики по категориям: доход зелёный, расход красный.
+  Widget _categoryChart() {
+    if (_categoryBreakdown.isEmpty) {
+      return _chartFrame(
+        child: Center(
+          child: Text('no_transactions'.w,
+              style: const TextStyle(color: AppTheme.textMuted)),
+        ),
+      );
+    }
+
+    final entries = _categoryBreakdown.entries.toList()
+      ..sort((a, b) => b.value.abs().compareTo(a.value.abs()));
+    final top = entries.take(8).toList();
+    final maxAbs =
+        top.map((e) => e.value.abs()).reduce((a, b) => a > b ? a : b);
+
+    return _chartFrame(
+      child: BarChart(
+        BarChartData(
+          alignment: BarChartAlignment.spaceAround,
+          maxY: maxAbs * 1.15,
+          minY: -maxAbs * 1.15,
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) => FlLine(
+              color: AppTheme.glassBorder.withOpacity(0.2),
+              strokeWidth: 1,
+            ),
+          ),
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 50,
+                getTitlesWidget: (v, _) => Text(_fmt(v),
+                    style: const TextStyle(
+                        color: AppTheme.textMuted, fontSize: 10)),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 46,
+                getTitlesWidget: (v, _) {
+                  final i = v.toInt();
+                  if (i < 0 || i >= top.length) return const SizedBox.shrink();
+                  return Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      top[i].key.length > 8
+                          ? '${top[i].key.substring(0, 7)}…'
+                          : top[i].key,
+                      style: const TextStyle(
+                          color: AppTheme.textMuted, fontSize: 9),
+                    ),
+                  );
+                },
+              ),
+            ),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          borderData: FlBorderData(show: false),
+          barGroups: [
+            for (int i = 0; i < top.length; i++)
+              BarChartGroupData(
+                x: i,
+                barRods: [
+                  BarChartRodData(
+                    toY: top[i].value,
+                    width: 14,
+                    borderRadius: BorderRadius.circular(4),
+                    color: top[i].value >= 0
+                        ? AppTheme.accentGreen
+                        : AppTheme.accentRed,
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Дневная динамика нетто за историю — «куда двигались» деньги.
+  Widget _trendChart() {
+    final history = _data.where((d) => !d.isForecast).toList();
+    if (history.length < 2) {
+      return _chartFrame(
+        child: Center(
+          child: Text('no_transactions'.w,
+              style: const TextStyle(color: AppTheme.textMuted)),
+        ),
+      );
+    }
+
+    final spots = <FlSpot>[];
+    for (int i = 1; i < history.length; i++) {
+      final delta = (history[i].actual ?? history[i].p50) -
+          (history[i - 1].actual ?? history[i - 1].p50);
+      spots.add(FlSpot(history[i].day.toDouble(), delta));
+    }
+
+    final values = spots.map((s) => s.y).toList();
+    final minY = values.reduce((a, b) => a < b ? a : b);
+    final maxY = values.reduce((a, b) => a > b ? a : b);
+    final pad = ((maxY - minY).abs() * 0.15) + 1;
+
+    return _chartFrame(
+      child: LineChart(
+        LineChartData(
+          gridData: FlGridData(
+            show: true,
+            drawVerticalLine: false,
+            getDrawingHorizontalLine: (_) => FlLine(
+              color: AppTheme.glassBorder.withOpacity(0.2),
+              strokeWidth: 1,
+            ),
+          ),
+          titlesData: FlTitlesData(
+            leftTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 50,
+                getTitlesWidget: (v, _) => Text(_fmt(v),
+                    style: const TextStyle(
+                        color: AppTheme.textMuted, fontSize: 10)),
+              ),
+            ),
+            bottomTitles: AxisTitles(
+              sideTitles: SideTitles(
+                showTitles: true,
+                reservedSize: 28,
+                interval: (history.length / 6).clamp(1, 30).toDouble(),
+                getTitlesWidget: (v, _) {
+                  final d = DateTime.now()
+                      .subtract(Duration(days: 30 - v.toInt().clamp(0, 30)));
+                  return Text('${d.day}.${d.month}',
+                      style: const TextStyle(
+                          color: AppTheme.textMuted, fontSize: 9));
+                },
+              ),
+            ),
+            rightTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles:
+                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          borderData: FlBorderData(show: false),
+          minY: minY - pad,
+          maxY: maxY + pad,
+          lineBarsData: [
+            LineChartBarData(
+              spots: spots,
+              isCurved: true,
+              color: AppTheme.accentOrange,
+              barWidth: 2,
+              dotData: const FlDotData(show: false),
+              belowBarData: BarAreaData(
+                show: true,
+                color: AppTheme.accentOrange.withOpacity(0.10),
+              ),
             ),
           ],
         ),
