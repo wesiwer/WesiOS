@@ -210,12 +210,28 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             ),
           ),
           const SizedBox(height: 24),
-          Text(
-            WesiLocale.get('recent_transactions'),
-            style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textPrimary),
+          Row(
+            children: [
+              Text(
+                WesiLocale.get('recent_transactions'),
+                style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary),
+              ),
+              const Spacer(),
+              GestureDetector(
+                onTap: () => Navigator.pushNamed(context, '/treasury/operations'),
+                child: Text(
+                  WesiLocale.isRussian ? 'Все операции →' : 'All operations →',
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: AppTheme.accentOrange,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 12),
           ..._transactions.take(20).map(_txItem),
