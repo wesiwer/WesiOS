@@ -39,24 +39,36 @@ class WesiOSApp extends StatelessWidget {
         return Stack(
           children: [
             if (child != null) child,
-            // Калькулятор — глобальный оверлей поверх IndexedStack:
-            // закреплённый переживает переключение вкладок.
+            // Собственный Overlay обязателен: `builder` находится ВЫШЕ Navigator,
+            // поэтому Overlay.of() отсюда не виден, а Tooltip его требует —
+            // без этого подсказки на кнопках окна падают с
+            // «No Overlay widget found» (в debug — ассертом при build).
             Positioned.fill(
-              child: ValueListenableBuilder<bool>(
-                valueListenable: CalculatorOverlay.visible,
-                builder: (context, visible, _) => visible
-                    ? const CalculatorScreen(asOverlay: true)
-                    : const SizedBox.shrink(),
+              child: Overlay(
+                initialEntries: [
+                  // Калькулятор — глобальный оверлей поверх IndexedStack:
+                  // закреплённый переживает переключение вкладок.
+                  OverlayEntry(
+                    builder: (_) => ValueListenableBuilder<bool>(
+                      valueListenable: CalculatorOverlay.visible,
+                      builder: (context, visible, _) => visible
+                          ? const CalculatorScreen(asOverlay: true)
+                          : const SizedBox.shrink(),
+                    ),
+                  ),
+                  // Кнопки окна остаются выше калькулятора и всегда кликабельны
+                  if (isDesktop)
+                    OverlayEntry(
+                      builder: (_) => const Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: WindowControls(),
+                      ),
+                    ),
+                ],
               ),
             ),
-            // Кнопки окна остаются выше калькулятора и всегда кликабельны
-            if (isDesktop)
-              const Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: WindowControls(),
-              ),
           ],
         );
       },

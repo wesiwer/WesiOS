@@ -35,7 +35,7 @@ dependencies:
   video_player: ^2.8.1
 
   # Notifications
-  flutter_local_notifications: ^16.3.0
+  flutter_local_notifications: ^17.2.3
 
   # Voice input
   speech_to_text: ^6.5.1
