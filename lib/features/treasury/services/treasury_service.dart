@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../models/transaction_model.dart';
 import 'transaction_model.dart';
 
 /// Wesi Treasury Service — управление финансами, аномалиями, прогнозами
