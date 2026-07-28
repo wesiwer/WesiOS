@@ -3,8 +3,24 @@ import 'package:flutter/services.dart';
 import 'package:math_expressions/math_expressions.dart';
 import '../../core/theme/app_theme.dart';
 
+/// Глобальный оверлей калькулятора.
+///
+/// Калькулятор живёт поверх всего дерева (рядом с WindowControls в `app.dart`),
+/// а не отдельным роутом — поэтому закреплённый (pinned) калькулятор
+/// переживает переключение вкладок в HomeScreen.
+class CalculatorOverlay {
+  static final ValueNotifier<bool> visible = ValueNotifier<bool>(false);
+
+  static void show() => visible.value = true;
+  static void hide() => visible.value = false;
+  static void toggle() => visible.value = !visible.value;
+}
+
 class CalculatorScreen extends StatefulWidget {
-  const CalculatorScreen({super.key});
+  /// true — виджет отрисован как глобальный оверлей, а не как route.
+  final bool asOverlay;
+
+  const CalculatorScreen({super.key, this.asOverlay = false});
 
   @override
   State<CalculatorScreen> createState() => _CalculatorScreenState();
@@ -71,27 +87,37 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     }
   }
 
-  String? _mapNumpad(LogicalKeyboardKey key) {
-    const map = {
-      LogicalKeyboardKey.numpad0: '0',
-      LogicalKeyboardKey.numpad1: '1',
-      LogicalKeyboardKey.numpad2: '2',
-      LogicalKeyboardKey.numpad3: '3',
-      LogicalKeyboardKey.numpad4: '4',
-      LogicalKeyboardKey.numpad5: '5',
-      LogicalKeyboardKey.numpad6: '6',
-      LogicalKeyboardKey.numpad7: '7',
-      LogicalKeyboardKey.numpad8: '8',
-      LogicalKeyboardKey.numpad9: '9',
-      LogicalKeyboardKey.numpadDecimal: '.',
-      LogicalKeyboardKey.numpadAdd: '+',
-      LogicalKeyboardKey.numpadSubtract: '-',
-      LogicalKeyboardKey.numpadMultiply: '*',
-      LogicalKeyboardKey.numpadDivide: '/',
-      LogicalKeyboardKey.numpadEnter: 'Enter',
-      LogicalKeyboardKey.numpadEqual: '=',
-    };
-    return map[key];
+  /// LogicalKeyboardKey не имеет primitive equality → const-мапа невозможна.
+  /// static final: строится один раз, а не на каждое нажатие.
+  static final Map<LogicalKeyboardKey, String> _numpadMap = {
+    LogicalKeyboardKey.numpad0: '0',
+    LogicalKeyboardKey.numpad1: '1',
+    LogicalKeyboardKey.numpad2: '2',
+    LogicalKeyboardKey.numpad3: '3',
+    LogicalKeyboardKey.numpad4: '4',
+    LogicalKeyboardKey.numpad5: '5',
+    LogicalKeyboardKey.numpad6: '6',
+    LogicalKeyboardKey.numpad7: '7',
+    LogicalKeyboardKey.numpad8: '8',
+    LogicalKeyboardKey.numpad9: '9',
+    LogicalKeyboardKey.numpadDecimal: '.',
+    LogicalKeyboardKey.numpadAdd: '+',
+    LogicalKeyboardKey.numpadSubtract: '-',
+    LogicalKeyboardKey.numpadMultiply: '*',
+    LogicalKeyboardKey.numpadDivide: '/',
+    LogicalKeyboardKey.numpadEnter: 'Enter',
+    LogicalKeyboardKey.numpadEqual: '=',
+  };
+
+  String? _mapNumpad(LogicalKeyboardKey key) => _numpadMap[key];
+
+  /// Закрытие: в оверлей-режиме прячем оверлей, иначе — обычный pop.
+  void _close() {
+    if (widget.asOverlay) {
+      CalculatorOverlay.hide();
+    } else {
+      Navigator.pop(context);
+    }
   }
 
   void _handleKey(KeyEvent event) {
@@ -99,7 +125,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     final key = event.logicalKey;
 
     if (key == LogicalKeyboardKey.escape) {
-      if (!_pinned) Navigator.pop(context);
+      if (!_pinned) _close();
       return;
     }
     if (key == LogicalKeyboardKey.delete) {
@@ -130,7 +156,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         scale: _scale,
         child: GestureDetector(
           onPanUpdate: (d) => setState(() => _offset += d.delta),
-          child: Container(
+          child: Stack(
+            children: [
+              Container(
             constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
             decoration: BoxDecoration(
               color: AppTheme.background,
@@ -209,7 +237,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                         ),
                         IconButton(
                           icon: const Icon(Icons.close, size: 18),
-                          onPressed: () => Navigator.pop(context),
+                          onPressed: _close,
                         ),
                       ],
                     ),
@@ -261,38 +289,74 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 ],
               ),
             ),
+              ),
+              // Resize за угол — пропорционально, тот же clamp что и у +/−
+              Positioned(right: 2, bottom: 2, child: _resizeHandle()),
+            ],
           ),
         ),
       ),
     );
 
+    final content = Stack(
+      children: [
+        // Закреплённый калькулятор не перехватывает клики по приложению —
+        // backdrop рисуем только когда он не закреплён.
+        if (!_pinned)
+          GestureDetector(
+            onTap: _close,
+            child: AnimatedOpacity(
+              opacity: 1,
+              duration: const Duration(milliseconds: 200),
+              child: Container(
+                // Плавное затемнение без тяжёлого blur на каждом кадре
+                color: _showBlur
+                    ? Colors.black.withOpacity(0.55)
+                    : Colors.transparent,
+              ),
+            ),
+          ),
+        Center(child: panel),
+      ],
+    );
+
+    final listener = KeyboardListener(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: _handleKey,
+      child: content,
+    );
+
+    if (widget.asOverlay) {
+      return Material(type: MaterialType.transparency, child: listener);
+    }
+
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: KeyboardListener(
-        focusNode: _focusNode,
-        autofocus: true,
-        onKeyEvent: _handleKey,
-        child: Stack(
-          children: [
-            // Backdrop: плавный fade без тяжёлого blur при каждом кадре
-            if (_showBlur)
-              GestureDetector(
-                onTap: _pinned ? null : () => Navigator.pop(context),
-                child: AnimatedOpacity(
-                  opacity: 1,
-                  duration: const Duration(milliseconds: 200),
-                  child: Container(
-                    color: Colors.black.withOpacity(0.55),
-                  ),
-                ),
-              )
-            else
-              GestureDetector(
-                onTap: _pinned ? null : () => Navigator.pop(context),
-                child: Container(color: Colors.transparent),
-              ),
-            Center(child: panel),
-          ],
+      body: listener,
+    );
+  }
+
+  Widget _resizeHandle() {
+    return MouseRegion(
+      cursor: SystemMouseCursors.resizeDownRight,
+      child: GestureDetector(
+        onPanUpdate: (d) => setState(() {
+          // Усредняем смещение по осям — пропорции панели не плывут
+          final delta = (d.delta.dx + d.delta.dy) / 2;
+          _scale = (_scale + delta / 300).clamp(0.7, 1.4);
+        }),
+        child: Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.bottomRight,
+          padding: const EdgeInsets.all(3),
+          color: Colors.transparent,
+          child: Icon(
+            Icons.open_in_full,
+            size: 12,
+            color: AppTheme.textMuted.withOpacity(0.8),
+          ),
         ),
       ),
     );
@@ -313,9 +377,11 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
   Widget _btn(String text) {
     Color? color;
-    if (text == 'C' || text == 'DEL') color = AppTheme.accentRed;
-    else if (text == '=') color = AppTheme.accentGreen;
-    else if (['/', '*', '-', '+', '⌫'].contains(text)) {
+    if (text == 'C' || text == 'DEL') {
+      color = AppTheme.accentRed;
+    } else if (text == '=') {
+      color = AppTheme.accentGreen;
+    } else if (['/', '*', '-', '+', '⌫'].contains(text)) {
       color = AppTheme.accentOrange;
     }
 

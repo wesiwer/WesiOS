@@ -6,6 +6,7 @@ import '../../core/widgets/wesi_context_menu.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
+import '../calculator/calculator_screen.dart';
 import '../treasury/treasury_screen.dart';
 import '../treasury/widgets/add_transaction_dialog.dart';
 import '../treasury/models/transaction_model.dart';
@@ -21,22 +22,83 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
+
+  /// Ленивая инициализация вкладок: тяжёлые экраны (Treasury) строятся
+  /// только после первого открытия, иначе первый кадр Home лагает.
+  final Set<int> _built = {0};
+
+  late final AnimationController _fadeCtrl;
+  late final Animation<double> _fade;
+
+  @override
+  void initState() {
+    super.initState();
+    _fadeCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 170),
+      value: 1,
+    );
+    _fade = Tween<double>(begin: 0.35, end: 1.0).animate(
+      CurvedAnimation(parent: _fadeCtrl, curve: Curves.easeOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _fadeCtrl.dispose();
+    super.dispose();
+  }
+
+  void _onTabTap(int i) {
+    if (i == _selectedIndex) return;
+    setState(() {
+      _selectedIndex = i;
+      _built.add(i);
+    });
+    // Лёгкий cross-fade вместо жёсткой подмены — без full-screen loader.
+    _fadeCtrl.forward(from: 0);
+  }
+
+  /// [lang] входит в key каждой вкладки: при смене языка вкладка
+  /// пересоздаётся и перечитывает строки через WesiLocale.
+  Widget _tab(int i, String lang) {
+    if (!_built.contains(i)) return const SizedBox.shrink();
+    final key = ValueKey('tab_${i}_$lang');
+    switch (i) {
+      case 0:
+        return _DashboardTab(key: key);
+      case 1:
+        return TasksScreen(key: key);
+      case 2:
+        return TreasuryScreen(key: key);
+      case 3:
+        return AnalyticsScreen(key: key);
+      default:
+        return SettingsScreen(key: key);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final screens = <Widget>[
-      const _DashboardTab(),
-      const TasksScreen(),
-      const TreasuryScreen(),
-      const AnalyticsScreen(),
-      const SettingsScreen(),
-    ];
+    return ValueListenableBuilder<String>(
+      valueListenable: WesiLocale.localeNotifier,
+      builder: (context, lang, _) => _buildScaffold(context, lang),
+    );
+  }
 
+  Widget _buildScaffold(BuildContext context, String lang) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: IndexedStack(index: _selectedIndex, children: screens),
+      body: FadeTransition(
+        opacity: _fade,
+        child: IndexedStack(
+          index: _selectedIndex,
+          children: List.generate(5, (i) => _tab(i, lang)),
+        ),
+      ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.95),
@@ -46,7 +108,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
         child: BottomNavigationBar(
           currentIndex: _selectedIndex,
-          onTap: (i) => setState(() => _selectedIndex = i),
+          onTap: _onTabTap,
           backgroundColor: Colors.transparent,
           elevation: 0,
           type: BottomNavigationBarType.fixed,
@@ -80,8 +142,27 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class _DashboardTab extends StatelessWidget {
-  const _DashboardTab();
+class _DashboardTab extends StatefulWidget {
+  const _DashboardTab({super.key});
+
+  @override
+  State<_DashboardTab> createState() => _DashboardTabState();
+}
+
+class _DashboardTabState extends State<_DashboardTab> {
+  final TreasuryService _service = TreasuryService();
+  double _balance = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadBalance();
+  }
+
+  Future<void> _loadBalance() async {
+    final balance = await _service.getCurrentBalance();
+    if (mounted) setState(() => _balance = balance);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -143,7 +224,7 @@ class _DashboardTab extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '$sym 0',
+                      CurrencyService.format(_balance),
                       style: const TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
@@ -202,7 +283,7 @@ class _DashboardTab extends StatelessWidget {
                     child: _Quick(
                       icon: Icons.calculate,
                       label: WesiLocale.get('wesi_calculator_title'),
-                      onTap: () => Navigator.pushNamed(context, '/calculator'),
+                      onTap: CalculatorOverlay.show,
                     ),
                   ),
                 ],
@@ -225,7 +306,6 @@ class _DashboardTab extends StatelessWidget {
       ),
     );
     if (result != null) {
-      final service = TreasuryService();
       final tx = TransactionModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         title: result['title'],
@@ -237,9 +317,8 @@ class _DashboardTab extends StatelessWidget {
         isRecurring: result['isRecurring'] ?? false,
         recurringPeriod: result['recurringPeriod'],
       );
-      await service.addTransaction(tx);
-      // Refresh dashboard balance
-      if (mounted) setState(() {});
+      await _service.addTransaction(tx);
+      await _loadBalance();
     }
   }
 
@@ -279,25 +358,40 @@ class _Quick extends StatefulWidget {
 
 class _QuickState extends State<_Quick> {
   bool _h = false;
+  bool _f = false;
+
+  bool get _active => _h || _f;
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
-      onEnter: (_) => setState(() => _h = true),
-      onExit: (_) => setState(() => _h = false),
-      cursor: SystemMouseCursors.click,
+    // Быстрые действия доступны с клавиатуры: стрелки + Enter/Space
+    return FocusableActionDetector(
+      mouseCursor: SystemMouseCursors.click,
+      onShowHoverHighlight: (v) => setState(() => _h = v),
+      onShowFocusHighlight: (v) => setState(() => _f = v),
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<ActivateIntent>(
+          onInvoke: (_) {
+            widget.onTap();
+            return null;
+          },
+        ),
+      },
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 180),
           padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
-            color: _h ? AppTheme.surfaceLight : AppTheme.surface,
+            color: _active ? AppTheme.surfaceLight : AppTheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: _h
-                  ? AppTheme.accentOrange.withOpacity(0.5)
-                  : AppTheme.glassBorder,
+              color: _f
+                  ? AppTheme.accentOrange
+                  : _h
+                      ? AppTheme.accentOrange.withOpacity(0.5)
+                      : AppTheme.glassBorder,
+              width: _f ? 2 : 1,
             ),
           ),
           child: Column(
@@ -308,7 +402,7 @@ class _QuickState extends State<_Quick> {
                 widget.label,
                 style: TextStyle(
                   fontSize: 12,
-                  color: _h ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  color: _active ? AppTheme.textPrimary : AppTheme.textSecondary,
                 ),
               ),
             ],
@@ -369,8 +463,8 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
 
   void _menu(BuildContext context) {
     final box = context.findRenderObject() as RenderBox;
-    final overlay =
-        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final navigator = Navigator.of(context);
+    final overlay = navigator.overlay!.context.findRenderObject() as RenderBox;
     final pos = RelativeRect.fromRect(
       Rect.fromPoints(
         box.localToGlobal(Offset.zero, ancestor: overlay),
@@ -395,7 +489,8 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
         _item(WesiLocale.get('about_wesios'), Icons.info_outline, '/founder'),
       ],
     ).then((r) {
-      if (r != null) Navigator.pushNamed(context, r);
+      // navigator захвачен до await — BuildContext через async gap не тащим
+      if (r != null) navigator.pushNamed(r);
     });
   }
 

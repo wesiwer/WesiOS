@@ -1,12 +1,11 @@
 import 'dart:io';
-import 'dart:ui';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:window_manager/window_manager.dart';
 import 'core/theme/app_theme.dart';
 import 'core/routes/app_router.dart';
 import 'core/widgets/window_controls.dart';
+import 'features/calculator/calculator_screen.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/first_run/first_run_screen.dart';
 
@@ -40,6 +39,17 @@ class WesiOSApp extends StatelessWidget {
         return Stack(
           children: [
             if (child != null) child,
+            // Калькулятор — глобальный оверлей поверх IndexedStack:
+            // закреплённый переживает переключение вкладок.
+            Positioned.fill(
+              child: ValueListenableBuilder<bool>(
+                valueListenable: CalculatorOverlay.visible,
+                builder: (context, visible, _) => visible
+                    ? const CalculatorScreen(asOverlay: true)
+                    : const SizedBox.shrink(),
+              ),
+            ),
+            // Кнопки окна остаются выше калькулятора и всегда кликабельны
             if (isDesktop)
               const Positioned(
                 top: 0,
