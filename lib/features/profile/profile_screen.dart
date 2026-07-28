@@ -1,10 +1,12 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/firebase_config_service.dart';
-import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_avatar.dart';
+import '../../core/widgets/window_controls.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -14,7 +16,6 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _nameCtrl = TextEditingController();
   final _emailCtrl = TextEditingController();
   final _apiKeyCtrl = TextEditingController();
@@ -29,143 +30,136 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String _gender = 'Не указан';
   String _country = 'Не указана';
   int _selectedAvatarIndex = 0;
-  bool _isLoading = false;
-  String? _error;
+  String? _savedHint;
+  Timer? _debounce;
 
   final List<String> _genders = ['Не указан', 'Мужской', 'Женский'];
   final List<String> _countries = [
-    'Не указана', 'Россия', 'США', 'Германия', 'Франция',
-    'Великобритания', 'Китай', 'Япония', 'Другая'
+    'Не указана',
+    'Россия',
+    'США',
+    'Германия',
+    'Франция',
+    'Великобритания',
+    'Китай',
+    'Япония',
+    'Другая'
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadAvatar();
-    _loadConfig();
-  }
-
-  Future<void> _loadAvatar() async {
-    final box = Hive.box('wesios_settings');
-    final savedIndex = box.get('avatar_index');
-    if (savedIndex != null) {
-      setState(() => _selectedAvatarIndex = savedIndex as int);
-    } else {
-      final randomIndex =
-          DateTime.now().millisecond % WesiAvatar.avatarPresets.length;
-      setState(() => _selectedAvatarIndex = randomIndex);
-      await box.put('avatar_index', randomIndex);
+    _loadAll();
+    for (final c in [
+      _nameCtrl,
+      _emailCtrl,
+      _apiKeyCtrl,
+      _appIdCtrl,
+      _projectIdCtrl,
+      _messagingSenderIdCtrl,
+      _authDomainCtrl,
+      _storageBucketCtrl,
+      _measurementIdCtrl,
+    ]) {
+      c.addListener(_scheduleSave);
     }
   }
 
-  Future<void> _saveAvatar(int index) async {
-    await WesiAvatar.setIndex(index);
+  void _scheduleSave() {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 600), _autoSave);
   }
 
-  Future<void> _loadConfig() async {
+  Future<void> _loadAll() async {
+    final box = Hive.box('wesios_settings');
+    final idx = box.get('avatar_index');
+    if (idx != null) {
+      _selectedAvatarIndex = idx as int;
+    }
+    _nameCtrl.text = box.get('profile_name', defaultValue: '') as String;
+    _emailCtrl.text = box.get('profile_email', defaultValue: '') as String;
+    _gender = box.get('profile_gender', defaultValue: 'Не указан') as String;
+    _country = box.get('profile_country', defaultValue: 'Не указана') as String;
+    final bd = box.get('profile_birth');
+    if (bd is String && bd.isNotEmpty) {
+      _birthDate = DateTime.tryParse(bd);
+    }
+
     final service = FirebaseConfigService();
     final config = await service.getConfig();
+    _apiKeyCtrl.text = config['apiKey'] ?? '';
+    _appIdCtrl.text = config['appId'] ?? '';
+    _projectIdCtrl.text = config['projectId'] ?? '';
+    _messagingSenderIdCtrl.text = config['messagingSenderId'] ?? '';
+    _authDomainCtrl.text = config['authDomain'] ?? '';
+    _storageBucketCtrl.text = config['storageBucket'] ?? '';
+    _measurementIdCtrl.text = config['measurementId'] ?? '';
+
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _autoSave() async {
+    final box = Hive.box('wesios_settings');
+    await box.put('profile_name', _nameCtrl.text.trim());
+    await box.put('profile_email', _emailCtrl.text.trim());
+    await box.put('profile_gender', _gender);
+    await box.put('profile_country', _country);
+    if (_birthDate != null) {
+      await box.put('profile_birth', _birthDate!.toIso8601String());
+    }
+
+    // Firebase keys — сохраняем если есть обязательные
+    if (_apiKeyCtrl.text.trim().isNotEmpty &&
+        _appIdCtrl.text.trim().isNotEmpty &&
+        _projectIdCtrl.text.trim().isNotEmpty &&
+        _messagingSenderIdCtrl.text.trim().isNotEmpty) {
+      try {
+        final service = FirebaseConfigService();
+        await service.saveConfig(
+          apiKey: _apiKeyCtrl.text.trim(),
+          appId: _appIdCtrl.text.trim(),
+          messagingSenderId: _messagingSenderIdCtrl.text.trim(),
+          projectId: _projectIdCtrl.text.trim(),
+          authDomain: _authDomainCtrl.text.trim().isEmpty
+              ? null
+              : _authDomainCtrl.text.trim(),
+          storageBucket: _storageBucketCtrl.text.trim().isEmpty
+              ? null
+              : _storageBucketCtrl.text.trim(),
+          measurementId: _measurementIdCtrl.text.trim().isEmpty
+              ? null
+              : _measurementIdCtrl.text.trim(),
+        );
+      } catch (e) {
+        debugPrint('auto-save firebase: $e');
+      }
+    }
+
     if (mounted) {
-      setState(() {
-        _apiKeyCtrl.text = config['apiKey'] ?? '';
-        _appIdCtrl.text = config['appId'] ?? '';
-        _projectIdCtrl.text = config['projectId'] ?? '';
-        _messagingSenderIdCtrl.text = config['messagingSenderId'] ?? '';
-        _authDomainCtrl.text = config['authDomain'] ?? '';
-        _storageBucketCtrl.text = config['storageBucket'] ?? '';
-        _measurementIdCtrl.text = config['measurementId'] ?? '';
+      setState(() => _savedHint = 'Сохранено');
+      Future.delayed(const Duration(seconds: 1), () {
+        if (mounted) setState(() => _savedHint = null);
       });
     }
   }
 
   @override
   void dispose() {
-    _nameCtrl.dispose();
-    _emailCtrl.dispose();
-    _apiKeyCtrl.dispose();
-    _appIdCtrl.dispose();
-    _projectIdCtrl.dispose();
-    _messagingSenderIdCtrl.dispose();
-    _authDomainCtrl.dispose();
-    _storageBucketCtrl.dispose();
-    _measurementIdCtrl.dispose();
+    _debounce?.cancel();
+    for (final c in [
+      _nameCtrl,
+      _emailCtrl,
+      _apiKeyCtrl,
+      _appIdCtrl,
+      _projectIdCtrl,
+      _messagingSenderIdCtrl,
+      _authDomainCtrl,
+      _storageBucketCtrl,
+      _measurementIdCtrl,
+    ]) {
+      c.dispose();
+    }
     super.dispose();
-  }
-
-  Future<void> _saveConfig() async {
-    if (!_formKey.currentState!.validate()) return;
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      final service = FirebaseConfigService();
-      await service.saveConfig(
-        apiKey: _apiKeyCtrl.text.trim(),
-        appId: _appIdCtrl.text.trim(),
-        messagingSenderId: _messagingSenderIdCtrl.text.trim(),
-        projectId: _projectIdCtrl.text.trim(),
-        authDomain: _authDomainCtrl.text.trim().isEmpty
-            ? null
-            : _authDomainCtrl.text.trim(),
-        storageBucket: _storageBucketCtrl.text.trim().isEmpty
-            ? null
-            : _storageBucketCtrl.text.trim(),
-        measurementId: _measurementIdCtrl.text.trim().isEmpty
-            ? null
-            : _measurementIdCtrl.text.trim(),
-      );
-
-      try {
-        await Firebase.initializeApp(
-          options: FirebaseOptions(
-            apiKey: _apiKeyCtrl.text.trim(),
-            appId: _appIdCtrl.text.trim(),
-            messagingSenderId: _messagingSenderIdCtrl.text.trim(),
-            projectId: _projectIdCtrl.text.trim(),
-            authDomain: _authDomainCtrl.text.trim().isEmpty
-                ? null
-                : _authDomainCtrl.text.trim(),
-            storageBucket: _storageBucketCtrl.text.trim().isEmpty
-                ? null
-                : _storageBucketCtrl.text.trim(),
-            measurementId: _measurementIdCtrl.text.trim().isEmpty
-                ? null
-                : _measurementIdCtrl.text.trim(),
-          ),
-        );
-      } catch (e) {
-        debugPrint('Firebase re-init failed: $e');
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Сохранено')),
-        );
-      }
-    } catch (e) {
-      setState(() => _error = 'Ошибка: $e');
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _clearConfig() async {
-    final service = FirebaseConfigService();
-    await service.clearConfig();
-    if (mounted) {
-      _apiKeyCtrl.clear();
-      _appIdCtrl.clear();
-      _projectIdCtrl.clear();
-      _messagingSenderIdCtrl.clear();
-      _authDomainCtrl.clear();
-      _storageBucketCtrl.clear();
-      _measurementIdCtrl.clear();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Конфигурация очищена')),
-      );
-    }
   }
 
   Future<void> _pickBirthDate() async {
@@ -188,6 +182,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
     if (picked != null) {
       setState(() => _birthDate = picked);
+      _scheduleSave();
     }
   }
 
@@ -195,235 +190,196 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            backgroundColor: AppTheme.background.withOpacity(0.9),
-            elevation: 0,
-            pinned: true,
-            expandedHeight: 220,
-            flexibleSpace: FlexibleSpaceBar(
-              title: const Text(
+      body: ListView(
+        padding: EdgeInsets.fromLTRB(24, kTitleBarHeight + 16, 24, 32),
+        children: [
+          Row(
+            children: [
+              const Text(
                 'Wesi Профиль',
                 style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: 0.5,
+                  fontSize: 22,
+                  fontWeight: FontWeight.w800,
+                  color: AppTheme.textPrimary,
                 ),
               ),
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [
-                      AppTheme.carbonDark.withOpacity(0.6),
-                      AppTheme.background,
-                    ],
-                  ),
+              const Spacer(),
+              if (_savedHint != null)
+                Text(
+                  _savedHint!,
+                  style: const TextStyle(
+                      fontSize: 12, color: AppTheme.accentGreen),
                 ),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const SizedBox(height: 40),
-                      _buildSelectedAvatar(),
-                      const SizedBox(height: 16),
-                      _buildAvatarGrid(),
-                      const SizedBox(height: 12),
-                      _buildCustomUploadButton(),
-                    ],
-                  ),
-                ),
-              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Center(child: WesiAvatar(size: 100, showBorder: true)),
+          const SizedBox(height: 16),
+          _avatarGrid(),
+          const SizedBox(height: 28),
+          _section('Личная информация'),
+          _field(_nameCtrl, 'Имя', 'Ваше имя'),
+          _field(_emailCtrl, 'Email', 'email@example.com'),
+          _dropdown(
+            'Дата рождения',
+            _birthDate != null
+                ? '${_birthDate!.day}.${_birthDate!.month}.${_birthDate!.year}'
+                : 'Не указана',
+            _pickBirthDate,
+          ),
+          _dropdown(
+            'Пол',
+            _gender,
+            () => _picker('Пол', _genders, (v) {
+              setState(() => _gender = v);
+              _scheduleSave();
+            }),
+          ),
+          _dropdown(
+            'Страна',
+            _country,
+            () => _picker('Страна', _countries, (v) {
+              setState(() => _country = v);
+              _scheduleSave();
+            }),
+          ),
+          const SizedBox(height: 24),
+          _section('Ключи Firebase (автосохранение)'),
+          const Text(
+            'Наведи на поле — подсказка где взять значение. Сохраняется само.',
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 12),
+          _fieldTip(
+              _apiKeyCtrl,
+              'API Key *',
+              'Firebase Console → Project settings → Your apps → apiKey'),
+          _fieldTip(
+              _appIdCtrl,
+              'App ID *',
+              'Firebase Console → Project settings → Your apps → appId'),
+          _fieldTip(
+              _projectIdCtrl,
+              'Project ID *',
+              'Firebase Console → Project settings → Project ID'),
+          _fieldTip(
+              _messagingSenderIdCtrl,
+              'Messaging Sender ID *',
+              'Firebase Console → Project settings → Cloud Messaging'),
+          _fieldTip(_authDomainCtrl, 'Auth Domain',
+              'Обычно project-id.firebaseapp.com'),
+          _fieldTip(_storageBucketCtrl, 'Storage Bucket',
+              'Обычно project-id.appspot.com'),
+          _fieldTip(_measurementIdCtrl, 'Measurement ID',
+              'Analytics → Measurement ID (G-...)'),
+          const SizedBox(height: 16),
+          HoverButton(
+            onTap: () async {
+              final service = FirebaseConfigService();
+              await service.clearConfig();
+              _apiKeyCtrl.clear();
+              _appIdCtrl.clear();
+              _projectIdCtrl.clear();
+              _messagingSenderIdCtrl.clear();
+              _authDomainCtrl.clear();
+              _storageBucketCtrl.clear();
+              _measurementIdCtrl.clear();
+            },
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            backgroundColor: AppTheme.surface,
+            child: const Center(
+              child: Text('Очистить Firebase-ключи',
+                  style: TextStyle(color: AppTheme.accentRed)),
             ),
           ),
-          for (final w in _buildBodySlivers()) w,
         ],
       ),
     );
   }
 
-  List<Widget> _buildBodySlivers() {
-    return [
-      SliverPadding(
-        padding: const EdgeInsets.all(24),
-        sliver: SliverList(
-          delegate: SliverChildListDelegate([
-            _buildSectionTitle('Личная информация'),
-            const SizedBox(height: 16),
-            _buildField(_nameCtrl, 'Имя', 'Ваше имя'),
-            _buildField(_emailCtrl, 'Email', 'email@example.com'),
-            _buildDropdownField(
-              label: 'Дата рождения',
-              value: _birthDate != null
-                  ? '${_birthDate!.day}.${_birthDate!.month}.${_birthDate!.year}'
-                  : 'Не указана',
-              onTap: _pickBirthDate,
-            ),
-            _buildDropdownField(
-              label: 'Пол',
-              value: _gender,
-              onTap: () => _showPicker(
-                  'Пол', _genders, (v) => setState(() => _gender = v)),
-            ),
-            _buildDropdownField(
-              label: 'Страна',
-              value: _country,
-              onTap: () => _showPicker(
-                  'Страна', _countries, (v) => setState(() => _country = v)),
-            ),
-            const SizedBox(height: 32),
-            _buildSectionTitle('Ключи и токены'),
-            const SizedBox(height: 8),
-            const Text(
-              'Конфигурация Firebase проекта',
-              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-            ),
-            const SizedBox(height: 16),
-            Form(
-              key: _formKey,
-              child: Column(
-                children: [
-                  _buildField(_apiKeyCtrl, 'API Key *', 'AIzaSy...'),
-                  _buildField(_appIdCtrl, 'App ID *', '1:123...'),
-                  _buildField(_projectIdCtrl, 'Project ID *', 'my-project'),
-                  _buildField(
-                      _messagingSenderIdCtrl, 'Messaging Sender ID *', '123456'),
-                  const SizedBox(height: 16),
-                  _buildField(_authDomainCtrl, 'Auth Domain'),
-                  _buildField(_storageBucketCtrl, 'Storage Bucket'),
-                  _buildField(_measurementIdCtrl, 'Measurement ID'),
-                ],
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: AppTheme.accentRed.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
-                  border:
-                      Border.all(color: AppTheme.accentRed.withOpacity(0.3)),
-                ),
-                child: Text(_error!,
-                    style: const TextStyle(color: AppTheme.accentRed)),
-              ),
-            ],
-            const SizedBox(height: 32),
-            HoverButton(
-              onTap: _isLoading ? null : _saveConfig,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              backgroundColor: AppTheme.accentOrange,
-              hoverColor: AppTheme.accentOrange.withOpacity(0.8),
-              child: Center(
-                child: _isLoading
-                    ? const SizedBox(
-                        width: 24,
-                        height: 24,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white))
-                    : const Text('Сохранить',
-                        style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            HoverButton(
-              onTap: _clearConfig,
-              padding: const EdgeInsets.symmetric(vertical: 14),
-              backgroundColor: AppTheme.surface,
-              hoverColor: AppTheme.accentRed.withOpacity(0.2),
-              child: const Center(
-                child: Text('Очистить конфигурацию',
-                    style: TextStyle(color: AppTheme.accentRed)),
-              ),
-            ),
-            const SizedBox(height: 32),
-          ]),
-        ),
-      ),
-    ];
-  }
+  Widget _section(String t) => Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(t,
+            style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary)),
+      );
 
-  Widget _buildSectionTitle(String title) {
-    return Text(
-      title,
-      style: const TextStyle(
-        fontSize: 18,
-        fontWeight: FontWeight.w700,
-        color: AppTheme.textPrimary,
-        letterSpacing: 0.3,
-      ),
-    );
-  }
-
-  Widget _buildField(TextEditingController ctrl, String label, [String? hint]) {
+  Widget _field(TextEditingController c, String label, [String? hint]) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: TextFormField(
-        controller: ctrl,
-        validator: label.contains('*')
-            ? (v) => v == null || v.isEmpty ? 'Обязательное поле' : null
-            : null,
+      padding: const EdgeInsets.only(bottom: 12),
+      child: TextField(
+        controller: c,
         style: const TextStyle(color: AppTheme.textPrimary),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
           labelStyle: const TextStyle(color: AppTheme.textSecondary),
-          hintStyle: const TextStyle(color: AppTheme.textMuted),
         ),
       ),
     );
   }
 
-  Widget _buildDropdownField({
-    required String label,
-    required String value,
-    required VoidCallback onTap,
-  }) {
+  Widget _fieldTip(TextEditingController c, String label, String tip) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: GestureDetector(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
-              color: AppTheme.surfaceLight,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.glassBorder),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(label,
-                          style: const TextStyle(
-                              fontSize: 12, color: AppTheme.textSecondary)),
-                      const SizedBox(height: 4),
-                      Text(value,
-                          style: const TextStyle(
-                              fontSize: 16, color: AppTheme.textPrimary)),
-                    ],
-                  ),
-                ),
-                const Icon(Icons.arrow_drop_down, color: AppTheme.textMuted),
-              ],
-            ),
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Tooltip(
+        message: tip,
+        waitDuration: const Duration(milliseconds: 300),
+        child: TextField(
+          controller: c,
+          style: const TextStyle(color: AppTheme.textPrimary),
+          decoration: InputDecoration(
+            labelText: label,
+            helperText: tip,
+            helperMaxLines: 2,
+            helperStyle:
+                const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            labelStyle: const TextStyle(color: AppTheme.textSecondary),
           ),
         ),
       ),
     );
   }
 
-  void _showPicker(
+  Widget _dropdown(String label, String value, VoidCallback onTap) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceLight,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: AppTheme.glassBorder),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(label,
+                        style: const TextStyle(
+                            fontSize: 12, color: AppTheme.textSecondary)),
+                    const SizedBox(height: 4),
+                    Text(value,
+                        style: const TextStyle(
+                            fontSize: 16, color: AppTheme.textPrimary)),
+                  ],
+                ),
+              ),
+              const Icon(Icons.arrow_drop_down, color: AppTheme.textMuted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _picker(
       String title, List<String> items, ValueChanged<String> onSelect) {
     showModalBottomSheet(
       context: context,
@@ -431,140 +387,66 @@ class _ProfileScreenState extends State<ProfileScreen> {
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
-      builder: (context) {
-        return SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                margin: const EdgeInsets.only(top: 8),
-                width: 40,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: AppTheme.textMuted.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(title,
-                    style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                        color: AppTheme.textPrimary)),
-              ),
-              ...items.map((item) => ListTile(
-                    title: Text(item,
-                        style: const TextStyle(color: AppTheme.textPrimary)),
-                    trailing: (title == 'Пол' && item == _gender) ||
-                            (title == 'Страна' && item == _country)
-                        ? const Icon(Icons.check, color: AppTheme.accentOrange)
-                        : null,
-                    onTap: () {
-                      onSelect(item);
-                      Navigator.pop(context);
-                    },
-                  )),
-              const SizedBox(height: 16),
-            ],
-          ),
-        );
-      },
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(title,
+                  style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary)),
+            ),
+            ...items.map((item) => ListTile(
+                  title: Text(item,
+                      style: const TextStyle(color: AppTheme.textPrimary)),
+                  onTap: () {
+                    onSelect(item);
+                    Navigator.pop(ctx);
+                  },
+                )),
+            const SizedBox(height: 12),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _buildSelectedAvatar() {
-    return const WesiAvatar(size: 100, showBorder: true);
-  }
-
-  Widget _buildAvatarGrid() {
+  Widget _avatarGrid() {
     return Wrap(
       spacing: 12,
       runSpacing: 12,
       alignment: WrapAlignment.center,
       children: List.generate(WesiAvatar.avatarPresets.length, (index) {
         final preset = WesiAvatar.avatarPresets[index];
-        final isSelected = index == _selectedAvatarIndex;
-        return MouseRegion(
-          cursor: SystemMouseCursors.click,
-          child: GestureDetector(
-            onTap: () async {
-              setState(() => _selectedAvatarIndex = index);
-              await _saveAvatar(index);
-            },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: preset.gradient,
-                border: Border.all(
-                  color:
-                      isSelected ? AppTheme.accentOrange : Colors.transparent,
-                  width: isSelected ? 2.5 : 0,
-                ),
-                boxShadow: isSelected
-                    ? [
-                        BoxShadow(
-                            color: AppTheme.accentOrange.withOpacity(0.25),
-                            blurRadius: 12,
-                            spreadRadius: 2)
-                      ]
-                    : null,
+        final sel = index == _selectedAvatarIndex;
+        return GestureDetector(
+          onTap: () async {
+            setState(() => _selectedAvatarIndex = index);
+            await WesiAvatar.setIndex(index);
+          },
+          child: Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: preset.gradient,
+              border: Border.all(
+                color: sel ? AppTheme.accentOrange : Colors.transparent,
+                width: 2.5,
               ),
-              child: Center(
-                child: AnimatedScale(
-                  scale: isSelected ? 1.15 : 1.0,
-                  duration: const Duration(milliseconds: 200),
-                  child: IconTheme(
-                    data: const IconThemeData(size: 24),
-                    child: preset.icon,
-                  ),
-                ),
+            ),
+            child: Center(
+              child: IconTheme(
+                data: const IconThemeData(size: 22),
+                child: preset.icon,
               ),
             ),
           ),
         );
       }),
-    );
-  }
-
-  Widget _buildCustomUploadButton() {
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: () {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Загрузка своей аватарки — скоро')),
-          );
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-          decoration: BoxDecoration(
-            color: AppTheme.surface,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-                color: AppTheme.accentOrange.withOpacity(0.3), width: 1),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.add_photo_alternate_outlined,
-                  size: 16, color: AppTheme.accentOrange.withOpacity(0.8)),
-              const SizedBox(width: 8),
-              Text(
-                'Загрузить свою',
-                style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.accentOrange.withOpacity(0.9),
-                    fontWeight: FontWeight.w500),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
