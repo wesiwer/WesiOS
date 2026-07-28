@@ -5,6 +5,7 @@ import '../../core/widgets/wesi_tooltip.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/services/exchange_rate_service.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 import 'widgets/add_transaction_dialog.dart';
@@ -264,8 +265,91 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               color: AppTheme.textPrimary,
             ),
           ),
+          _rateLine(),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              _miniStat(
+                WesiLocale.get('total_income'),
+                CurrencyService.format(_breakdown['income'] ?? 0),
+                AppTheme.accentGreen,
+              ),
+              const SizedBox(width: 10),
+              _miniStat(
+                WesiLocale.get('total_expenses'),
+                CurrencyService.format(_breakdown['expense'] ?? 0),
+                AppTheme.accentRed,
+              ),
+              if (_anomalies.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                _miniStat(
+                  WesiLocale.get('anomalies_detected'),
+                  '${_anomalies.length}',
+                  AppTheme.accentOrange,
+                ),
+              ],
+            ],
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _miniStat(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.10),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(label,
+                style: TextStyle(fontSize: 10, color: color),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis),
+            const SizedBox(height: 2),
+            Text(value,
+                style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textPrimary)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Реальный курс + дата ЦБ, а не только символ валюты.
+  /// Подписан на revision — курс приезжает уже после старта приложения.
+  Widget _rateLine() {
+    return ValueListenableBuilder<int>(
+      valueListenable: ExchangeRateService.revision,
+      builder: (context, _, __) {
+        final rate = ExchangeRateService.currentRateLabel;
+        if (rate == null) return const SizedBox.shrink();
+
+        final date = ExchangeRateService.rateDateLabel;
+        final prefix = ExchangeRateService.usingFallback
+            ? WesiLocale.get('rate_fallback')
+            : '${WesiLocale.get('rate_cbr_on')} ${date ?? ''}'.trim();
+
+        return Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: Text(
+            '$rate · $prefix',
+            style: TextStyle(
+              fontSize: 11,
+              color: ExchangeRateService.usingFallback
+                  ? AppTheme.accentOrange.withOpacity(0.8)
+                  : AppTheme.textMuted,
+            ),
+          ),
+        );
+      },
     );
   }
 
