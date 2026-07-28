@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../theme/app_theme.dart';
 
-/// Общий виджет аватарки WesiOS.
-/// Читает выбранный индекс из Hive и рисует антропоморфный пресет.
+/// Аватарка WesiOS. Слушает Hive → меняется без рестарта приложения.
 class WesiAvatar extends StatelessWidget {
   final double size;
   final bool showBorder;
@@ -16,62 +15,70 @@ class WesiAvatar extends StatelessWidget {
     this.onTap,
   });
 
+  static const _box = 'wesios_settings';
+  static const _key = 'avatar_index';
+
   static int get currentIndex {
     try {
-      final box = Hive.box('wesios_settings');
-      return box.get('avatar_index', defaultValue: 0) as int;
+      final box = Hive.box(_box);
+      return box.get(_key, defaultValue: 0) as int;
     } catch (_) {
       return 0;
     }
   }
 
   static Future<void> setIndex(int index) async {
-    final box = Hive.box('wesios_settings');
-    await box.put('avatar_index', index.clamp(0, avatarPresets.length - 1));
+    final box = Hive.box(_box);
+    await box.put(_key, index.clamp(0, avatarPresets.length - 1));
   }
 
   @override
   Widget build(BuildContext context) {
-    final index = currentIndex.clamp(0, avatarPresets.length - 1);
-    final preset = avatarPresets[index];
+    // ValueListenableBuilder → live update по всему приложению
+    return ValueListenableBuilder(
+      valueListenable: Hive.box(_box).listenable(keys: [_key]),
+      builder: (context, Box box, _) {
+        final index =
+            (box.get(_key, defaultValue: 0) as int).clamp(0, avatarPresets.length - 1);
+        final preset = avatarPresets[index];
 
-    final avatar = Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        gradient: preset.gradient,
-        border: showBorder
-            ? Border.all(
-                color: AppTheme.accentOrange.withOpacity(0.55),
-                width: size > 40 ? 2.2 : 1.5,
-              )
-            : null,
-        boxShadow: [
-          BoxShadow(
-            color: AppTheme.accentOrange.withOpacity(0.12),
-            blurRadius: size * 0.25,
-            spreadRadius: 1,
+        final avatar = Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: preset.gradient,
+            border: showBorder
+                ? Border.all(
+                    color: AppTheme.accentOrange.withOpacity(0.55),
+                    width: size > 40 ? 2.2 : 1.5,
+                  )
+                : null,
+            boxShadow: [
+              BoxShadow(
+                color: AppTheme.accentOrange.withOpacity(0.12),
+                blurRadius: size * 0.25,
+                spreadRadius: 1,
+              ),
+            ],
           ),
-        ],
-      ),
-      child: Center(
-        child: IconTheme(
-          data: IconThemeData(size: size * 0.45),
-          child: preset.icon,
-        ),
-      ),
-    );
+          child: Center(
+            child: IconTheme(
+              data: IconThemeData(size: size * 0.45),
+              child: preset.icon,
+            ),
+          ),
+        );
 
-    if (onTap != null) {
-      return GestureDetector(onTap: onTap, child: avatar);
-    }
-    return avatar;
+        if (onTap != null) {
+          return GestureDetector(onTap: onTap, child: avatar);
+        }
+        return avatar;
+      },
+    );
   }
 
-  /// Антропоморфные / стилизованные персонажи-пресеты
   static final List<WesiAvatarPreset> avatarPresets = [
-    // 1. Neon Cyber
     WesiAvatarPreset(
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
@@ -85,7 +92,6 @@ class WesiAvatar extends StatelessWidget {
         child: const Icon(Icons.bolt, color: Colors.white),
       ),
     ),
-    // 2. Ice Operator
     WesiAvatarPreset(
       gradient: const LinearGradient(
         begin: Alignment.topCenter,
@@ -99,7 +105,6 @@ class WesiAvatar extends StatelessWidget {
         child: const Icon(Icons.ac_unit, color: Colors.white),
       ),
     ),
-    // 3. Phantom
     WesiAvatarPreset(
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
@@ -113,7 +118,6 @@ class WesiAvatar extends StatelessWidget {
         child: const Icon(Icons.visibility_off, color: Colors.white),
       ),
     ),
-    // 4. Toxic
     WesiAvatarPreset(
       gradient: const LinearGradient(
         begin: Alignment.centerLeft,
@@ -127,7 +131,6 @@ class WesiAvatar extends StatelessWidget {
         child: const Icon(Icons.biotech, color: Colors.white),
       ),
     ),
-    // 5. Crimson
     WesiAvatarPreset(
       gradient: const LinearGradient(
         begin: Alignment.topRight,
@@ -141,7 +144,6 @@ class WesiAvatar extends StatelessWidget {
         child: const Icon(Icons.local_fire_department, color: Colors.white),
       ),
     ),
-    // 6. Carbon Elite
     WesiAvatarPreset(
       gradient: const LinearGradient(
         begin: Alignment.topLeft,
@@ -155,7 +157,6 @@ class WesiAvatar extends StatelessWidget {
         child: const Icon(Icons.shield, color: Colors.white),
       ),
     ),
-    // 7. Gold Trader
     WesiAvatarPreset(
       gradient: const LinearGradient(
         begin: Alignment.topCenter,
@@ -169,7 +170,6 @@ class WesiAvatar extends StatelessWidget {
         child: const Icon(Icons.trending_up, color: Colors.white),
       ),
     ),
-    // 8. Void Walker
     WesiAvatarPreset(
       gradient: const RadialGradient(
         center: Alignment.center,
