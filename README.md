@@ -20,19 +20,18 @@
 
 ### Готово
 - Desktop window controls, splash, home IndexedStack
-- Treasury (продажа/траты, multi-currency, delete)
-- Sandbox (изолированные сценарии, без «Сценарий:» в баннере)
-- Forecast P10/P50/P90 без дёрганья при смене периода
-- Calculator pin/ESC/Delete/blur
-- Profile auto-save + Firebase tips
-- Settings locale live
+- Treasury/Sandbox (продажа/траты, multi-currency, edit/delete, identical engine)
+- Forecast — bootstrap Monte-Carlo с сезонностью по дню недели и проекцией
+  регулярных платежей, P10/P50/P90 без дёрганья при смене периода
+- Operations screen (поиск/фильтр/сортировка/edit)
+- Calculator: global overlay, pin/ESC/Delete/blur/resize
+- Profile auto-save + Firebase tips, upload custom avatar
+- Settings locale live (пересобирает все вкладки)
 - Live avatars (Hive listenable)
 
 ### Очередь
-- Upload custom avatar, calendar range в forecast
-- Edit транзакций, operations screen
-- Keyboard arrow navigation
 - Tasks/Analytics/CRM deep features
+- Автоматический запуск processRecurringPayments (сейчас доступен, но нигде не вызывается)
 
 Полный чеклист и правила для AI → **STATUS.md**
 
@@ -48,4 +47,4 @@ CI: push в `main` → GitHub Actions (Windows + Android).
 
 ## Версия
 
-v0.1.2 α — Private, Wesi Inc.
+v0.2.0 α — Private, Wesi Inc.

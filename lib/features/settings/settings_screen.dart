@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/constants/app_version.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/window_controls.dart';
@@ -105,7 +106,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'v0.1.2 α',
+                    AppVersion.display,
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.accentOrange,

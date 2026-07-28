@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
+import '../../core/constants/app_version.dart';
 import '../../core/theme/app_theme.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -245,7 +246,7 @@ class _SplashScreenState extends State<SplashScreen>
                         ),
                         const SizedBox(height: 20),
                         const Text(
-                          'v0.1.2 α',
+                          AppVersion.display,
                           style: TextStyle(
                             fontSize: 12,
                             color: AppTheme.textMuted,
