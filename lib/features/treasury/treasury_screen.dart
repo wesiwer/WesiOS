@@ -105,7 +105,6 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             pinned: true,
             expandedHeight: 140,
             actions: [
-              // Currency toggle
               Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: GestureDetector(
@@ -179,6 +178,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                   ],
                 ),
                 const SizedBox(height: 16),
+                // Forecast card
                 WesiContextMenu(
                   title: WesiLocale.get('wesi_forecast_title'),
                   description: WesiLocale.get('wesi_forecast_desc'),
@@ -219,6 +219,75 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                               ],
                             ),
                           ),
+                          const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textMuted),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                // Sandbox entry card
+                WesiContextMenu(
+                  title: WesiLocale.get('wesi_sandbox_title'),
+                  description: WesiLocale.get('wesi_sandbox_desc'),
+                  purpose: WesiLocale.get('wesi_sandbox_purpose'),
+                  children: [
+                    HoverButton(
+                      onTap: () => Navigator.pushNamed(context, '/treasury/sandbox'),
+                      padding: const EdgeInsets.all(20),
+                      backgroundColor: AppTheme.surface,
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 48,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  const Color(0xFF4D3D00).withOpacity(0.5),
+                                  AppTheme.accentOrange.withOpacity(0.15),
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: AppTheme.accentOrange.withOpacity(0.35)),
+                            ),
+                            child: const Icon(Icons.science, color: AppTheme.accentOrange),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  WesiLocale.get('wesi_sandbox_title'),
+                                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  WesiLocale.get('data_isolated'),
+                                  style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentOrange.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3)),
+                            ),
+                            child: Text(
+                              WesiLocale.get('sandbox_mode'),
+                              style: const TextStyle(
+                                fontSize: 9,
+                                fontWeight: FontWeight.w800,
+                                color: AppTheme.accentOrange,
+                                letterSpacing: 0.8,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           const Icon(Icons.arrow_forward_ios, size: 16, color: AppTheme.textMuted),
                         ],
                       ),
