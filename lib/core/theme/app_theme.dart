@@ -42,12 +42,10 @@ class AppTheme {
         primary: primary,
         secondary: accentOrange,
         surface: surface,
-        background: background,
         error: accentRed,
         onPrimary: background,
         onSecondary: background,
         onSurface: textPrimary,
-        onBackground: textPrimary,
       ),
       textTheme: const TextTheme(
         displayLarge: TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: textPrimary),

@@ -6,6 +6,14 @@
 .pub-cache/
 .pub/
 build/
+pubspec.lock
+
+# Сгенерированное `flutter pub get` / `flutter create` — в репозиторий не идёт
+windows/flutter/ephemeral/
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugin_registrant.h
+windows/flutter/generated_plugins.cmake
+android/app/src/main/java/io/flutter/plugins/
 
 # Android
 android/.gradle/

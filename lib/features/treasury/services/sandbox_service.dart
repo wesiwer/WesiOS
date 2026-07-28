@@ -58,8 +58,11 @@ class SandboxService {
     final all = await getAllTransactions();
     double income = 0, expense = 0;
     for (final tx in all) {
-      if (tx.type == TransactionType.income) income += tx.amount;
-      else expense += tx.amount;
+      if (tx.type == TransactionType.income) {
+        income += tx.amount;
+      } else {
+        expense += tx.amount;
+      }
     }
     return {'income': income, 'expense': expense, 'net': income - expense};
   }

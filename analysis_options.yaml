@@ -1,5 +1,13 @@
 include: package:flutter_lints/flutter.yaml
 
+analyzer:
+  exclude:
+    # Мёртвый код: cloud_firestore / firebase_auth убраны из pubspec, потому что
+    # ломают Windows desktop build. Файл ниоткуда не импортируется и в сборку
+    # не попадает, но analyzer ругался на отсутствующие пакеты.
+    # Вернуть в анализ, когда Firestore/Auth вернутся в зависимости.
+    - lib/core/services/finance_firestore_service.dart
+
 linter:
   rules:
     avoid_print: false
