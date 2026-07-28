@@ -78,9 +78,6 @@ class WesiLocale {
 
       // Home Screen
       'balance_wesi_inc': 'Баланс Wesi Inc',
-      'operational': 'Операционный',
-      'marketing': 'Маркетинг',
-      'reserve': 'Резерв',
       'calendar': 'Календарь',
       'all': 'Все',
       'no_events': 'Нет запланированных событий',
@@ -119,6 +116,13 @@ class WesiLocale {
       'custom_range': 'Свой диапазон',
       'upload_avatar': 'Загрузить свою',
       'reset_avatar': 'Вернуть пресет',
+      'insufficient_data': 'Недостаточно данных для прогноза',
+      'insufficient_data_hint': 'Добавьте хотя бы несколько операций дохода и расхода — и здесь появится прогноз',
+      'based_on_history': 'На основе {days} дн. истории',
+      'monte_carlo_paths': '{n} симуляций Монте-Карло',
+      'seasonality_on': 'с учётом дня недели',
+      'seasonality_off': 'мало истории для сезонности',
+      'growth_over_period': 'за период',
 
       // Sandbox
       'sandbox_balance': 'Баланс песочницы',
@@ -269,9 +273,6 @@ class WesiLocale {
 
       // Home Screen
       'balance_wesi_inc': 'Balance Wesi Inc',
-      'operational': 'Operational',
-      'marketing': 'Marketing',
-      'reserve': 'Reserve',
       'calendar': 'Calendar',
       'all': 'All',
       'no_events': 'No scheduled events',
@@ -310,6 +311,13 @@ class WesiLocale {
       'custom_range': 'Custom range',
       'upload_avatar': 'Upload your own',
       'reset_avatar': 'Back to preset',
+      'insufficient_data': 'Not enough data for a forecast',
+      'insufficient_data_hint': 'Add a few income and expense entries — a forecast will appear here',
+      'based_on_history': 'Based on {days}d of history',
+      'monte_carlo_paths': '{n} Monte-Carlo paths',
+      'seasonality_on': 'weekday-adjusted',
+      'seasonality_off': 'not enough history for seasonality',
+      'growth_over_period': 'over period',
 
       // Sandbox
       'sandbox_balance': 'Sandbox Balance',

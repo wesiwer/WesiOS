@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
+import '../../core/services/currency_service.dart';
 import 'services/treasury_service.dart';
+import 'services/forecast_engine.dart';
 import 'models/transaction_model.dart';
 
 class TreasuryForecastScreen extends StatefulWidget {
@@ -15,26 +17,33 @@ class TreasuryForecastScreen extends StatefulWidget {
 class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   final TreasuryService _service = TreasuryService();
 
+  ForecastResult _forecast = ForecastResult.empty();
   List<ForecastPoint> _data = [];
   List<TransactionModel> _transactions = [];
   Map<String, double> _categoryBreakdown = {};
   bool _isLoading = true;
   bool _chartBusy = false; // только график, не весь экран
 
+  // Смысл каждого переключателя разведён однозначно:
+  // — P10–P90 — пунктирные границы диапазона;
+  // — доверительные интервалы — заливка между ними;
+  // — линия тренда — медианная (P50) линия.
   bool _showP10P90 = true;
   bool _showConfidenceBands = true;
   bool _showTrendLine = true;
   int _forecastDays = 30;
+  int _historyWindowDays = 30;
   DateTimeRange? _customRange;
   String _selectedChart = 'forecast';
-  String _currency = 'rub';
+  String _currency = CurrencyService.current;
 
-  String get _sym => _currency == 'rub' ? '₽' : '\$';
-
-  String _fmt(double v) {
-    if (v.abs() >= 1000) return '$_sym${(v / 1000).toStringAsFixed(1)}k';
-    return '$_sym${v.toStringAsFixed(0)}';
-  }
+  /// Фон графика — сплошной цвет, каким контейнер реально рендерится
+  /// (surface@0.4 поверх background). Нужен, чтобы «стереть» лишнюю заливку
+  /// под P10 и получить полосу ровно между P10 и P90, а не до низа графика.
+  static final Color _chartBg = Color.alphaBlend(
+    AppTheme.surface.withOpacity(0.4),
+    AppTheme.background,
+  );
 
   @override
   void initState() {
@@ -59,17 +68,21 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           (tx.type == TransactionType.income ? tx.amount : -tx.amount);
     }
 
+    // История на графике масштабируется вместе с горизонтом прогноза —
+    // 90-дневный прогноз без контекста истории тяжелее оценить на глаз.
+    final historyWindowDays = _forecastDays.clamp(30, 90);
+
     final data = <ForecastPoint>[];
     final now = DateTime.now();
     double runningBalance = 0;
 
-    for (final tx in txs.where(
-        (t) => t.date.isBefore(now.subtract(const Duration(days: 30))))) {
+    for (final tx in txs.where((t) =>
+        t.date.isBefore(now.subtract(Duration(days: historyWindowDays))))) {
       runningBalance +=
           tx.type == TransactionType.income ? tx.amount : -tx.amount;
     }
 
-    for (int i = 30; i >= 0; i--) {
+    for (int i = historyWindowDays; i >= 0; i--) {
       final day = now.subtract(Duration(days: i));
       final dayTxs = txs.where((t) =>
           t.date.year == day.year &&
@@ -77,42 +90,51 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           t.date.day == day.day);
       double dayNet = 0;
       for (final tx in dayTxs) {
-        dayNet +=
-            tx.type == TransactionType.income ? tx.amount : -tx.amount;
+        dayNet += tx.type == TransactionType.income ? tx.amount : -tx.amount;
       }
       runningBalance += dayNet;
+      // История — факт, а не оценка: p10/p50/p90 совпадают с фактическим
+      // балансом (раньше здесь была фиктивная полоса ±3%, вводившая в
+      // заблуждение — история не имеет доверительного интервала).
       data.add(ForecastPoint(
-        day: 30 - i,
-        p10: runningBalance * 0.97,
+        day: historyWindowDays - i,
+        p10: runningBalance,
         p50: runningBalance,
-        p90: runningBalance * 1.03,
+        p90: runningBalance,
         actual: runningBalance,
         isForecast: false,
       ));
     }
 
-    final p10 = forecast['p10'] ?? [];
-    final p50 = forecast['p50'] ?? [];
-    final p90 = forecast['p90'] ?? [];
-
-    for (int i = 0; i < p50.length; i++) {
+    for (int i = 0; i < forecast.p50.length; i++) {
       data.add(ForecastPoint(
-        day: 31 + i,
-        p10: p10.isNotEmpty ? p10[i] : p50[i] * 0.9,
-        p50: p50[i],
-        p90: p90.isNotEmpty ? p90[i] : p50[i] * 1.1,
+        day: historyWindowDays + 1 + i,
+        p10: forecast.p10.isNotEmpty ? forecast.p10[i] : forecast.p50[i],
+        p50: forecast.p50[i],
+        p90: forecast.p90.isNotEmpty ? forecast.p90[i] : forecast.p50[i],
         isForecast: true,
       ));
     }
 
     if (!mounted) return;
     setState(() {
+      _forecast = forecast;
       _data = data;
       _transactions = txs;
       _categoryBreakdown = breakdown;
+      _historyWindowDays = historyWindowDays;
+      _currency = CurrencyService.current;
       _isLoading = false;
       _chartBusy = false;
     });
+  }
+
+  Future<void> _cycleCurrency() async {
+    final codes = CurrencyService.codes;
+    final i = codes.indexOf(_currency);
+    final next = codes[(i + 1) % codes.length];
+    await CurrencyService.set(next);
+    setState(() => _currency = next);
   }
 
   void _changePeriod(int days) {
@@ -137,11 +159,49 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       );
     }
 
-    final forecast = _data.where((d) => d.isForecast).toList();
-    final last = forecast.isNotEmpty ? forecast.last : null;
-    final first = forecast.isNotEmpty ? forecast.first : null;
+    if (_forecast.insufficientData) {
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(
+          backgroundColor: AppTheme.background,
+          title: Text('wesi_forecast_title'.w),
+        ),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.query_stats,
+                    size: 48, color: AppTheme.textMuted.withOpacity(0.5)),
+                const SizedBox(height: 16),
+                Text(
+                  'insufficient_data'.w,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'insufficient_data_hint'.w,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                      fontSize: 13, color: AppTheme.textMuted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
+    final forecastPoints = _data.where((d) => d.isForecast).toList();
+    final last = forecastPoints.isNotEmpty ? forecastPoints.last : null;
+    final first = forecastPoints.isNotEmpty ? forecastPoints.first : null;
     final growth = (last != null && first != null && first.p50 != 0)
-        ? ((last.p50 - first.p50) / first.p50 * 100)
+        ? ((last.p50 - first.p50) / first.p50.abs() * 100)
         : 0.0;
 
     return Scaffold(
@@ -163,10 +223,13 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           Row(
             children: [
               Expanded(child: _stats(last, growth)),
-              _currencyToggle(),
+              const SizedBox(width: 8),
+              _currencyBadge(),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          _diagnostics(),
+          const SizedBox(height: 12),
           _chartModeTabs(),
           const SizedBox(height: 10),
           _periodChips(),
@@ -178,6 +241,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             child: _chartForMode(),
           ),
           const SizedBox(height: 16),
+          Text('display_options'.w,
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondary)),
+          const SizedBox(height: 8),
           _controls(),
           const SizedBox(height: 24),
           if (_categoryBreakdown.isNotEmpty) _breakdown(),
@@ -188,38 +257,40 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
-  Widget _currencyToggle() {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _curBtn('rub', '₽'),
-        _curBtn('usd', '\$'),
-      ],
+  Widget _currencyBadge() {
+    return GestureDetector(
+      onTap: _cycleCurrency,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: AppTheme.surface.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppTheme.glassBorder),
+        ),
+        child: Text(
+          '${CurrencyService.symbol} ${_currency.toUpperCase()}',
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.accentOrange,
+          ),
+        ),
+      ),
     );
   }
 
-  Widget _curBtn(String code, String label) {
-    final sel = _currency == code;
-    return GestureDetector(
-      onTap: () => setState(() => _currency = code),
-      child: Container(
-        margin: const EdgeInsets.only(left: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: sel
-              ? AppTheme.accentOrange.withOpacity(0.2)
-              : AppTheme.surface,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(
-              color: sel
-                  ? AppTheme.accentOrange.withOpacity(0.5)
-                  : AppTheme.glassBorder),
-        ),
-        child: Text(label,
-            style: TextStyle(
-                color: sel ? AppTheme.accentOrange : AppTheme.textMuted,
-                fontWeight: FontWeight.w700)),
-      ),
+  /// Прозрачность про то, на чём построен прогноз — сколько истории,
+  /// сколько траекторий симулировано, учтена ли сезонность по дню недели.
+  Widget _diagnostics() {
+    final daysLabel =
+        'based_on_history'.w.replaceAll('{days}', '${_forecast.historyDaysSpan}');
+    final pathsLabel =
+        'monte_carlo_paths'.w.replaceAll('{n}', '${_forecast.simulatedPaths}');
+    final seasonLabel =
+        _forecast.seasonalityApplied ? 'seasonality_on'.w : 'seasonality_off'.w;
+    return Text(
+      '$daysLabel · $pathsLabel · $seasonLabel',
+      style: TextStyle(fontSize: 11, color: AppTheme.textMuted.withOpacity(0.8)),
     );
   }
 
@@ -228,7 +299,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       children: [
         _stat(
           'P50',
-          last != null ? _fmt(last.p50) : '—',
+          last != null ? CurrencyService.format(last.p50) : '—',
           AppTheme.accentOrange,
           Tooltip(
             message: WesiLocale.isRussian
@@ -237,11 +308,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             child: const Icon(Icons.info_outline,
                 size: 14, color: AppTheme.textMuted),
           ),
+          growth: growth,
         ),
         const SizedBox(width: 8),
         _stat(
           'P10',
-          last != null ? _fmt(last.p10) : '—',
+          last != null ? CurrencyService.format(last.p10) : '—',
           AppTheme.accentRed,
           Tooltip(
             message: WesiLocale.isRussian
@@ -254,7 +326,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         const SizedBox(width: 8),
         _stat(
           'P90',
-          last != null ? _fmt(last.p90) : '—',
+          last != null ? CurrencyService.format(last.p90) : '—',
           AppTheme.accentGreen,
           Tooltip(
             message: WesiLocale.isRussian
@@ -268,7 +340,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
-  Widget _stat(String label, String value, Color color, Widget tip) {
+  Widget _stat(String label, String value, Color color, Widget tip,
+      {double? growth}) {
     return Expanded(
       child: Container(
         padding: const EdgeInsets.all(12),
@@ -293,6 +366,17 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             Text(value,
                 style: TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w800, color: color)),
+            if (growth != null) ...[
+              const SizedBox(height: 2),
+              Text(
+                '${growth >= 0 ? '▲' : '▼'} ${growth.abs().toStringAsFixed(1)}% ${'growth_over_period'.w}',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w600,
+                  color: growth >= 0 ? AppTheme.accentGreen : AppTheme.accentRed,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -411,10 +495,15 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
 
     final history = _data.where((d) => !d.isForecast).toList();
     final forecast = _data.where((d) => d.isForecast).toList();
-    final minY =
-        _data.map((d) => d.p10).reduce((a, b) => a < b ? a : b) * 0.95;
-    final maxY =
-        _data.map((d) => d.p90).reduce((a, b) => a > b ? a : b) * 1.05;
+
+    final allY = <double>[
+      for (final d in _data) ...[d.p10, d.p50, d.p90],
+    ];
+    final rawMin = allY.reduce((a, b) => a < b ? a : b);
+    final rawMax = allY.reduce((a, b) => a > b ? a : b);
+    final pad = (rawMax - rawMin).abs() * 0.08 + 1;
+    final minY = rawMin - pad;
+    final maxY = rawMax + pad;
 
     return Container(
       height: 340,
@@ -439,7 +528,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 50,
-                getTitlesWidget: (v, _) => Text(_fmt(v),
+                getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
                     style: const TextStyle(
                         color: AppTheme.textMuted, fontSize: 10)),
               ),
@@ -451,12 +540,13 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 interval: (_data.length / 6).clamp(1, 30).toDouble(),
                 getTitlesWidget: (v, _) {
                   final i = v.toInt().clamp(0, _data.length - 1);
-                  final day = DateTime.now().subtract(
-                      Duration(days: 30 - _data[i].day.clamp(0, 30)));
+                  final day = DateTime.now().subtract(Duration(
+                      days: _historyWindowDays -
+                          _data[i].day.clamp(0, _historyWindowDays)));
                   // Для прогноза — дата вперёд
                   final d = _data[i].isForecast
                       ? DateTime.now()
-                          .add(Duration(days: _data[i].day - 30))
+                          .add(Duration(days: _data[i].day - _historyWindowDays))
                       : day;
                   return Text(
                     '${d.day}.${d.month}',
@@ -477,7 +567,10 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           minY: minY,
           maxY: maxY,
           lineBarsData: [
-            if (_showP10P90 && _showConfidenceBands) ...[
+            // Заливка П10–П90: рисуем P90 с заливкой вниз, затем «стираем»
+            // цветом фона всё ниже P10 — так полоса ограничена именно
+            // диапазоном P10–P90, а не тянется до низа графика.
+            if (_showConfidenceBands) ...[
               LineChartBarData(
                 spots: forecast
                     .map((d) => FlSpot(d.day.toDouble(), d.p90))
@@ -491,17 +584,28 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                   color: AppTheme.accentOrange.withOpacity(0.08),
                 ),
               ),
-              if (_showTrendLine)
-                LineChartBarData(
-                  spots: forecast
-                      .map((d) => FlSpot(d.day.toDouble(), d.p90))
-                      .toList(),
-                  isCurved: true,
-                  color: AppTheme.accentOrange.withOpacity(0.3),
-                  barWidth: 1.2,
-                  dashArray: [4, 4],
-                  dotData: const FlDotData(show: false),
-                ),
+              LineChartBarData(
+                spots: forecast
+                    .map((d) => FlSpot(d.day.toDouble(), d.p10))
+                    .toList(),
+                isCurved: true,
+                color: Colors.transparent,
+                barWidth: 0,
+                dotData: const FlDotData(show: false),
+                belowBarData: BarAreaData(show: true, color: _chartBg),
+              ),
+            ],
+            if (_showP10P90) ...[
+              LineChartBarData(
+                spots: forecast
+                    .map((d) => FlSpot(d.day.toDouble(), d.p90))
+                    .toList(),
+                isCurved: true,
+                color: AppTheme.accentOrange.withOpacity(0.3),
+                barWidth: 1.2,
+                dashArray: const [4, 4],
+                dotData: const FlDotData(show: false),
+              ),
               LineChartBarData(
                 spots: forecast
                     .map((d) => FlSpot(d.day.toDouble(), d.p10))
@@ -509,23 +613,23 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 isCurved: true,
                 color: AppTheme.accentOrange.withOpacity(0.3),
                 barWidth: 1.2,
-                dashArray: [4, 4],
+                dashArray: const [4, 4],
                 dotData: const FlDotData(show: false),
               ),
             ],
-            LineChartBarData(
-              spots: forecast
-                  .map((d) => FlSpot(d.day.toDouble(), d.p50))
-                  .toList(),
-              isCurved: true,
-              color: AppTheme.accentOrange,
-              barWidth: 2.5,
-              dotData: const FlDotData(show: false),
-            ),
+            if (_showTrendLine)
+              LineChartBarData(
+                spots: forecast
+                    .map((d) => FlSpot(d.day.toDouble(), d.p50))
+                    .toList(),
+                isCurved: true,
+                color: AppTheme.accentOrange,
+                barWidth: 2.5,
+                dotData: const FlDotData(show: false),
+              ),
             LineChartBarData(
               spots: history
-                  .map((d) =>
-                      FlSpot(d.day.toDouble(), d.actual ?? d.p50))
+                  .map((d) => FlSpot(d.day.toDouble(), d.actual ?? d.p50))
                   .toList(),
               isCurved: true,
               color: Colors.white.withOpacity(0.75),
@@ -540,40 +644,37 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
-  // ===== Режимы графика: прогноз / структура / тренд =====
+  // ===== Режимы графика: прогноз / структура / тренд / сезонность =====
 
   Widget _chartModeTabs() {
-    const modes = ['forecast', 'breakdown', 'trend'];
-    return Row(
+    const modes = ['forecast', 'breakdown', 'trend', 'heatmap'];
+    return Wrap(
+      spacing: 6,
+      runSpacing: 6,
       children: modes.map((m) {
         final sel = _selectedChart == m;
-        return Padding(
-          padding: const EdgeInsets.only(right: 6),
-          child: GestureDetector(
-            // Только смена содержимого графика, экран не перестраивается
-            onTap: () => setState(() => _selectedChart = m),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              decoration: BoxDecoration(
-                color: sel
-                    ? AppTheme.accentOrange.withOpacity(0.2)
-                    : AppTheme.surface,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                    color: sel
-                        ? AppTheme.accentOrange.withOpacity(0.5)
-                        : AppTheme.glassBorder),
-              ),
-              child: Text(
-                m.w,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
-                  color:
-                      sel ? AppTheme.accentOrange : AppTheme.textSecondary,
-                ),
+        return GestureDetector(
+          // Только смена содержимого графика, экран не перестраивается
+          onTap: () => setState(() => _selectedChart = m),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: sel
+                  ? AppTheme.accentOrange.withOpacity(0.2)
+                  : AppTheme.surface,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                  color: sel
+                      ? AppTheme.accentOrange.withOpacity(0.5)
+                      : AppTheme.glassBorder),
+            ),
+            child: Text(
+              m.w,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
+                color: sel ? AppTheme.accentOrange : AppTheme.textSecondary,
               ),
             ),
           ),
@@ -588,6 +689,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         return _categoryChart();
       case 'trend':
         return _trendChart();
+      case 'heatmap':
+        return _seasonalityChart();
       default:
         return _forecastChart();
     }
@@ -646,7 +749,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 50,
-                getTitlesWidget: (v, _) => Text(_fmt(v),
+                getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
                     style: const TextStyle(
                         color: AppTheme.textMuted, fontSize: 10)),
               ),
@@ -738,7 +841,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 50,
-                getTitlesWidget: (v, _) => Text(_fmt(v),
+                getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
                     style: const TextStyle(
                         color: AppTheme.textMuted, fontSize: 10)),
               ),
@@ -749,8 +852,9 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 reservedSize: 28,
                 interval: (history.length / 6).clamp(1, 30).toDouble(),
                 getTitlesWidget: (v, _) {
-                  final d = DateTime.now()
-                      .subtract(Duration(days: 30 - v.toInt().clamp(0, 30)));
+                  final d = DateTime.now().subtract(Duration(
+                      days: _historyWindowDays -
+                          v.toInt().clamp(0, _historyWindowDays)));
                   return Text('${d.day}.${d.month}',
                       style: const TextStyle(
                           color: AppTheme.textMuted, fontSize: 9));
@@ -785,15 +889,114 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
+  /// Сезонность по дню недели — прямой побочный продукт нового движка
+  /// прогноза: показывает, какие дни недели обычно «тяжелее» или «легче».
+  Widget _seasonalityChart() {
+    if (!_forecast.seasonalityApplied || _forecast.weekdayFactor.isEmpty) {
+      return _chartFrame(
+        child: Center(
+          child: Text('seasonality_off'.w,
+              style: const TextStyle(color: AppTheme.textMuted)),
+        ),
+      );
+    }
+
+    final labels = WesiLocale.isRussian
+        ? const ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс']
+        : const ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final values = _forecast.weekdayFactor;
+    final maxAbs =
+        values.map((v) => v.abs()).reduce((a, b) => a > b ? a : b) + 1;
+
+    return _chartFrame(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('weekly_activity_heatmap'.w,
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textSecondary)),
+          const SizedBox(height: 8),
+          Expanded(
+            child: BarChart(
+              BarChartData(
+                alignment: BarChartAlignment.spaceAround,
+                maxY: maxAbs,
+                minY: -maxAbs,
+                gridData: FlGridData(
+                  show: true,
+                  drawVerticalLine: false,
+                  getDrawingHorizontalLine: (_) => FlLine(
+                    color: AppTheme.glassBorder.withOpacity(0.2),
+                    strokeWidth: 1,
+                  ),
+                ),
+                titlesData: FlTitlesData(
+                  leftTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 50,
+                      getTitlesWidget: (v, _) => Text(
+                          CurrencyService.format(v),
+                          style: const TextStyle(
+                              color: AppTheme.textMuted, fontSize: 10)),
+                    ),
+                  ),
+                  bottomTitles: AxisTitles(
+                    sideTitles: SideTitles(
+                      showTitles: true,
+                      reservedSize: 24,
+                      getTitlesWidget: (v, _) {
+                        final i = v.toInt();
+                        if (i < 0 || i >= labels.length) {
+                          return const SizedBox.shrink();
+                        }
+                        return Text(labels[i],
+                            style: const TextStyle(
+                                color: AppTheme.textMuted, fontSize: 10));
+                      },
+                    ),
+                  ),
+                  rightTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                  topTitles: const AxisTitles(
+                      sideTitles: SideTitles(showTitles: false)),
+                ),
+                borderData: FlBorderData(show: false),
+                barGroups: [
+                  for (int i = 0; i < values.length; i++)
+                    BarChartGroupData(
+                      x: i,
+                      barRods: [
+                        BarChartRodData(
+                          toY: values[i],
+                          width: 22,
+                          borderRadius: BorderRadius.circular(4),
+                          color: values[i] >= 0
+                              ? AppTheme.accentGreen
+                              : AppTheme.accentRed,
+                        ),
+                      ],
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _controls() {
     return Wrap(
       spacing: 8,
       children: [
-        _toggle('Диапазон P10–P90', _showP10P90,
+        _toggle('p10_p90_range'.w, _showP10P90,
             (v) => setState(() => _showP10P90 = v)),
-        _toggle('Полосы доверия', _showConfidenceBands,
+        _toggle('confidence_bands'.w, _showConfidenceBands,
             (v) => setState(() => _showConfidenceBands = v)),
-        _toggle('Линия тренда', _showTrendLine,
+        _toggle('trend_line'.w, _showTrendLine,
             (v) => setState(() => _showTrendLine = v)),
       ],
     );
@@ -845,7 +1048,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                       child: Text(e.key,
                           style: const TextStyle(
                               color: AppTheme.textSecondary))),
-                  Text(_fmt(e.value.abs()),
+                  Text(CurrencyService.format(e.value.abs()),
                       style: TextStyle(
                           fontWeight: FontWeight.w600,
                           color: e.value >= 0
@@ -875,7 +1078,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         ),
         const SizedBox(height: 8),
         ...anomalies.map((a) => Text(
-              '• ${a.title}: ${_fmt(a.amount)}',
+              '• ${a.title}: ${CurrencyService.format(a.amount)}',
               style: const TextStyle(
                   fontSize: 13, color: AppTheme.textSecondary),
             )),
