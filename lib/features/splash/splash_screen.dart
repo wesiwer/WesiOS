@@ -58,15 +58,21 @@ class _SplashScreenState extends State<SplashScreen>
     )..repeat();
 
     _fadeAnimation = Tween(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: const Interval(0, 0.3, curve: Curves.easeOut)),
+      CurvedAnimation(
+          parent: _fadeController,
+          curve: const Interval(0, 0.3, curve: Curves.easeOut)),
     );
 
     _scaleAnimation = Tween(begin: 0.8, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: const Interval(0, 0.5, curve: Curves.easeOutCubic)),
+      CurvedAnimation(
+          parent: _fadeController,
+          curve: const Interval(0, 0.5, curve: Curves.easeOutCubic)),
     );
 
-    _glowAnimation = Tween(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _fadeController, curve: const Interval(0.2, 0.8, curve: Curves.easeInOut)),
+    _glowAnimation = Tween(begin: 0.4, end: 1.0).animate(
+      CurvedAnimation(
+          parent: _fadeController,
+          curve: const Interval(0.1, 0.9, curve: Curves.easeInOut)),
     );
 
     _fadeController.forward();
@@ -105,45 +111,30 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: AppTheme.background,
       body: Stack(
         children: [
-          // Orange ambient glow background
+          // Яркий оранжевый ambient glow
           AnimatedBuilder(
             animation: _glowAnimation,
             builder: (context, child) {
               return Container(
                 decoration: BoxDecoration(
                   gradient: RadialGradient(
-                    center: const Alignment(0.3, -0.3),
-                    radius: 0.8,
+                    center: Alignment.center,
+                    radius: 1.1,
                     colors: [
-                      AppTheme.accentOrange.withOpacity(0.15 * _glowAnimation.value),
-                      AppTheme.accentOrange.withOpacity(0.05 * _glowAnimation.value),
+                      AppTheme.accentOrange
+                          .withOpacity(0.45 * _glowAnimation.value),
+                      AppTheme.accentOrange
+                          .withOpacity(0.18 * _glowAnimation.value),
+                      AppTheme.accentOrange
+                          .withOpacity(0.05 * _glowAnimation.value),
                       Colors.transparent,
                     ],
-                    stops: const [0.0, 0.5, 1.0],
+                    stops: const [0.0, 0.35, 0.65, 1.0],
                   ),
                 ),
               );
             },
           ),
-          // Secondary glow
-          AnimatedBuilder(
-            animation: _glowAnimation,
-            builder: (context, child) {
-              return Container(
-                decoration: BoxDecoration(
-                  gradient: RadialGradient(
-                    center: const Alignment(-0.5, 0.5),
-                    radius: 0.6,
-                    colors: [
-                      AppTheme.accentOrange.withOpacity(0.08 * _glowAnimation.value),
-                      Colors.transparent,
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-          // Main content
           Center(
             child: AnimatedBuilder(
               animation: _fadeController,
@@ -155,97 +146,6 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Animated rings
-                        SizedBox(
-                          width: 180,
-                          height: 180,
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              // Outer ring - separate, rotating around own axis
-                              RotationTransition(
-                                turns: _ringController1,
-                                child: CustomPaint(
-                                  size: const Size(180, 180),
-                                  painter: RingPainter(
-                                    radius: 85,
-                                    strokeWidth: 3,
-                                    color: AppTheme.accentOrange,
-                                    segments: 3,
-                                    gapAngle: 0.4,
-                                  ),
-                                ),
-                              ),
-                              // Middle ring - separate, rotating opposite
-                              RotationTransition(
-                                turns: ReverseAnimation(_ringController2),
-                                child: CustomPaint(
-                                  size: const Size(180, 180),
-                                  painter: RingPainter(
-                                    radius: 65,
-                                    strokeWidth: 2.5,
-                                    color: AppTheme.accentOrange,
-                                    segments: 4,
-                                    gapAngle: 0.3,
-                                  ),
-                                ),
-                              ),
-                              // Inner ring - separate, rotating faster
-                              RotationTransition(
-                                turns: _ringController3,
-                                child: CustomPaint(
-                                  size: const Size(180, 180),
-                                  painter: RingPainter(
-                                    radius: 45,
-                                    strokeWidth: 2,
-                                    color: AppTheme.accentOrange,
-                                    segments: 2,
-                                    gapAngle: 0.5,
-                                  ),
-                                ),
-                              ),
-                              // Center logo
-                              Container(
-                                width: 60,
-                                height: 60,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: const LinearGradient(
-                                    begin: Alignment.topLeft,
-                                    end: Alignment.bottomRight,
-                                    colors: [
-                                      AppTheme.carbonDark,
-                                      AppTheme.carbonMid,
-                                    ],
-                                  ),
-                                  border: Border.all(
-                                    color: AppTheme.accentOrange,
-                                    width: 2,
-                                  ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: AppTheme.accentOrange.withOpacity(0.3),
-                                      blurRadius: 20,
-                                      spreadRadius: 2,
-                                    ),
-                                  ],
-                                ),
-                                child: const Center(
-                                  child: Text(
-                                    'W',
-                                    style: TextStyle(
-                                      fontSize: 28,
-                                      fontWeight: FontWeight.w900,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 48),
-                        // WesiOS text
                         const Text(
                           'WesiOS',
                           style: TextStyle(
@@ -264,8 +164,7 @@ class _SplashScreenState extends State<SplashScreen>
                             letterSpacing: 2,
                           ),
                         ),
-                        const SizedBox(height: 64),
-                        // Loading text
+                        const SizedBox(height: 48),
                         AnimatedSwitcher(
                           duration: const Duration(milliseconds: 400),
                           child: Text(
@@ -279,21 +178,72 @@ class _SplashScreenState extends State<SplashScreen>
                             textAlign: TextAlign.center,
                           ),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
                         // Progress bar
                         SizedBox(
-                          width: 200,
+                          width: 220,
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(4),
                             child: LinearProgressIndicator(
                               value: _fadeController.value,
                               backgroundColor: AppTheme.surfaceLight,
-                              valueColor: const AlwaysStoppedAnimation<Color>(AppTheme.accentOrange),
+                              valueColor: const AlwaysStoppedAnimation<Color>(
+                                  AppTheme.accentOrange),
                               minHeight: 3,
                             ),
                           ),
                         ),
-                        const SizedBox(height: 16),
+                        const SizedBox(height: 28),
+                        // Кольца НИЖЕ шкалы: толще, меньше, без центральной W
+                        SizedBox(
+                          width: 110,
+                          height: 110,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              RotationTransition(
+                                turns: _ringController1,
+                                child: CustomPaint(
+                                  size: const Size(110, 110),
+                                  painter: RingPainter(
+                                    radius: 48,
+                                    strokeWidth: 5,
+                                    color: AppTheme.accentOrange,
+                                    segments: 3,
+                                    gapAngle: 0.35,
+                                  ),
+                                ),
+                              ),
+                              RotationTransition(
+                                turns: ReverseAnimation(_ringController2),
+                                child: CustomPaint(
+                                  size: const Size(110, 110),
+                                  painter: RingPainter(
+                                    radius: 34,
+                                    strokeWidth: 4.5,
+                                    color: AppTheme.accentOrange.withOpacity(0.85),
+                                    segments: 4,
+                                    gapAngle: 0.28,
+                                  ),
+                                ),
+                              ),
+                              RotationTransition(
+                                turns: _ringController3,
+                                child: CustomPaint(
+                                  size: const Size(110, 110),
+                                  painter: RingPainter(
+                                    radius: 20,
+                                    strokeWidth: 4,
+                                    color: AppTheme.accentOrange.withOpacity(0.7),
+                                    segments: 2,
+                                    gapAngle: 0.45,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 20),
                         const Text(
                           'v0.1.2 α',
                           style: TextStyle(
@@ -314,7 +264,6 @@ class _SplashScreenState extends State<SplashScreen>
   }
 }
 
-/// Custom painter for segmented rings with gaps
 class RingPainter extends CustomPainter {
   final double radius;
   final double strokeWidth;
