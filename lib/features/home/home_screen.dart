@@ -46,12 +46,12 @@ class _HomeScreenState extends State<HomeScreen> {
           type: BottomNavigationBarType.fixed,
           selectedItemColor: AppTheme.accentOrange,
           unselectedItemColor: AppTheme.textMuted,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.dashboard_outlined), label: 'Главная'),
-            BottomNavigationBarItem(icon: Icon(Icons.task_alt), label: 'Задачи'),
-            BottomNavigationBarItem(icon: Icon(Icons.account_balance_wallet), label: 'Финансы'),
-            BottomNavigationBarItem(icon: Icon(Icons.analytics), label: 'Аналитика'),
-            BottomNavigationBarItem(icon: Icon(Icons.more_horiz), label: 'Ещё'),
+          items: [
+            BottomNavigationBarItem(icon: const Icon(Icons.dashboard_outlined), label: WesiLocale.get('dashboard')),
+            BottomNavigationBarItem(icon: const Icon(Icons.task_alt), label: WesiLocale.get('tasks')),
+            BottomNavigationBarItem(icon: const Icon(Icons.account_balance_wallet), label: WesiLocale.get('finances')),
+            BottomNavigationBarItem(icon: const Icon(Icons.analytics), label: WesiLocale.get('analytics')),
+            BottomNavigationBarItem(icon: const Icon(Icons.more_horiz), label: WesiLocale.get('more')),
           ],
         ),
       ),
@@ -96,17 +96,17 @@ class _DashboardTab extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Баланс Wesi Inc', style: TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
+                    Text(WesiLocale.get('balance_wesi_inc'), style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
                     const SizedBox(height: 8),
                     const Text('₽ 0', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.primary)),
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        _buildSubBalance('Операционный', '₽ 0', AppTheme.accentGreen),
+                        _buildSubBalance(WesiLocale.get('operational'), '₽ 0', AppTheme.accentGreen),
                         const SizedBox(width: 12),
-                        _buildSubBalance('Маркетинг', '₽ 0', AppTheme.accentOrange),
+                        _buildSubBalance(WesiLocale.get('marketing'), '₽ 0', AppTheme.accentOrange),
                         const SizedBox(width: 12),
-                        _buildSubBalance('Резерв', '₽ 0', AppTheme.textSecondary),
+                        _buildSubBalance(WesiLocale.get('reserve'), '₽ 0', AppTheme.textSecondary),
                       ],
                     ),
                   ],
@@ -122,29 +122,29 @@ class _DashboardTab extends StatelessWidget {
                 children: [
                   Expanded(
                     child: WesiTooltip(
-                      message: WesiLocale.isRussian ? 'Добавить продажу или доход' : 'Record a sale or income transaction',
-                      child: _buildQuickAction(context, Icons.add_circle, 'Sales', '/treasury'),
+                      message: WesiLocale.get('record_sale'),
+                      child: _buildQuickAction(context, Icons.add_circle, WesiLocale.get('wesi_sales_title'), '/treasury'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
-                      message: WesiLocale.isRussian ? 'Зафиксировать расход' : 'Record an expense or outgoing payment',
-                      child: _buildQuickAction(context, Icons.remove_circle, 'Expenses', '/treasury'),
+                      message: WesiLocale.get('record_expense_tooltip'),
+                      child: _buildQuickAction(context, Icons.remove_circle, WesiLocale.get('wesi_expenses_title'), '/treasury'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
-                      message: WesiLocale.isRussian ? 'Голосовой ввод задачи или заметки' : 'Voice input for tasks and notes',
-                      child: _buildQuickAction(context, Icons.mic, 'Voice', '/tasks'),
+                      message: WesiLocale.get('voice_input'),
+                      child: _buildQuickAction(context, Icons.mic, WesiLocale.get('wesi_voice_title'), '/tasks'),
                     ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: WesiTooltip(
-                      message: 'Wesi Калькулятор — быстрые расчёты',
-                      child: _buildQuickAction(context, Icons.calculate, 'Калькулятор', '/calculator'),
+                      message: WesiLocale.get('wesi_calculator'),
+                      child: _buildQuickAction(context, Icons.calculate, WesiLocale.get('wesi_calculator_title'), '/calculator'),
                     ),
                   ),
                 ],
@@ -162,15 +162,15 @@ class _DashboardTab extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Календарь', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                        Text(WesiLocale.get('calendar'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                         TextButton(
                           onPressed: () => Navigator.pushNamed(context, '/calendar'),
-                          child: const Text('Все', style: TextStyle(color: AppTheme.accentOrange)),
+                          child: Text(WesiLocale.get('all'), style: const TextStyle(color: AppTheme.accentOrange)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    _buildCalendarEvent('Сегодня', 'Нет запланированных событий', Icons.event_available),
+                    _buildCalendarEvent(WesiLocale.get('today'), WesiLocale.get('no_events'), Icons.event_available),
                   ],
                 ),
               ),
@@ -187,15 +187,15 @@ class _DashboardTab extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Задачи', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
+                        Text(WesiLocale.get('tasks'), style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600)),
                         TextButton(
                           onPressed: () => Navigator.pushNamed(context, '/tasks'),
-                          child: const Text('Все', style: TextStyle(color: AppTheme.accentOrange)),
+                          child: Text(WesiLocale.get('all'), style: const TextStyle(color: AppTheme.accentOrange)),
                         ),
                       ],
                     ),
                     const SizedBox(height: 8),
-                    _buildTaskItem('Нет активных задач', 'Создайте первую задачу', false),
+                    _buildTaskItem(WesiLocale.get('no_active_tasks'), WesiLocale.get('create_first_task'), false),
                   ],
                 ),
               ),
@@ -304,11 +304,11 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
       color: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       items: [
-        _buildMenuItem('Профиль', Icons.person_outline, '/profile'),
-        _buildMenuItem('Настройки', Icons.settings_outlined, '/settings'),
-        _buildMenuItem('Ключи и токены', Icons.vpn_key_outlined, '/profile'),
+        _buildMenuItem(WesiLocale.get('profile'), Icons.person_outline, '/profile'),
+        _buildMenuItem(WesiLocale.get('settings'), Icons.settings_outlined, '/settings'),
+        _buildMenuItem(WesiLocale.get('keys_and_tokens'), Icons.vpn_key_outlined, '/profile'),
         const PopupMenuDivider(),
-        _buildMenuItem('О WesiOS', Icons.info_outline, '/founder'),
+        _buildMenuItem(WesiLocale.get('about_wesios'), Icons.info_outline, '/founder'),
       ],
     ).then((route) {
       if (route != null) {
@@ -504,23 +504,23 @@ class _HoverQuickActionState extends State<_HoverQuickAction> {
 class _TasksTab extends StatelessWidget {
   const _TasksTab();
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Задачи', style: TextStyle(color: AppTheme.textMuted)));
+  Widget build(BuildContext context) => Center(child: Text(WesiLocale.get('tasks'), style: const TextStyle(color: AppTheme.textMuted)));
 }
 
 class _TreasuryTab extends StatelessWidget {
   const _TreasuryTab();
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Финансы', style: TextStyle(color: AppTheme.textMuted)));
+  Widget build(BuildContext context) => Center(child: Text(WesiLocale.get('finances'), style: const TextStyle(color: AppTheme.textMuted)));
 }
 
 class _AnalyticsTab extends StatelessWidget {
   const _AnalyticsTab();
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Аналитика', style: TextStyle(color: AppTheme.textMuted)));
+  Widget build(BuildContext context) => Center(child: Text(WesiLocale.get('analytics'), style: const TextStyle(color: AppTheme.textMuted)));
 }
 
 class _MoreTab extends StatelessWidget {
   const _MoreTab();
   @override
-  Widget build(BuildContext context) => const Center(child: Text('Ещё', style: TextStyle(color: AppTheme.textMuted)));
+  Widget build(BuildContext context) => Center(child: Text(WesiLocale.get('more'), style: const TextStyle(color: AppTheme.textMuted)));
 }
