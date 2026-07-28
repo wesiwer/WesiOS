@@ -1,7 +1,8 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
 **Обновлено:** 2026-07-28 (сессия: починка сборки + P0/P1/P2)  
-**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** claude/document-review-wp4jch · **UI:** v0.1.2 α · **pubspec:** 0.1.2+3
+**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** claude/document-review-wp4jch · **UI:** v0.1.2 α · **pubspec:** 0.1.2+3  
+**CI:** прогон #186 на `546dae8` — **Windows и Android зелёные** (артефакты 14,8 МБ и 24,3 МБ). До этой сессии CI был красный 30+ прогонов подряд.
 
 Читай этот файл **перед** любыми правками. Не помечай задачу ✅, пока пользователь не подтвердил на билде.
 
@@ -33,6 +34,16 @@ CI был красный **30+ прогонов подряд**, падали о�
 | 9 | `hover_button.dart`, `home_screen.dart` | `FocusableActionDetector` — навигация стрелками + Enter/Space |
 | 10 | `wesi_locale.dart`, `app.dart` | `localeNotifier` — смена языка перерисовывает все вкладки |
 | 11 | `analysis_options.yaml` | `flutter analyze` — 0 замечаний |
+
+### Ещё три поломки сборки, которые вскрылись после починки Dart
+
+Их не было видно раньше: билд умирал до этих стадий.
+
+| # | Где | Что было |
+|---|-----|----------|
+| 1 | `android/app/src/main/res/` | Папки не было в репозитории **вообще**, хотя манифест всегда ссылался на `@mipmap/ic_launcher`, `@style/LaunchTheme`, `@style/NormalTheme`. Падало на `:app:processReleaseResources` |
+| 2 | `pubspec.yaml` | `flutter_local_notifications` 16.x не компилируется с `compileSdk 35` (`bigLargeIcon is ambiguous`). Поднят до 17.2.x — в `lib/` пакет не используется, на код не влияет |
+| 3 | `app.dart` | `Tooltip` внутри `MaterialApp.builder` падал с «No Overlay widget found»: `builder` выше Navigator, `Overlay.of()` оттуда не виден. Это ломало подсказки на кнопках окна. Добавлен свой `Overlay` + тест `test/window_controls_overlay_test.dart` |
 
 ---
 
