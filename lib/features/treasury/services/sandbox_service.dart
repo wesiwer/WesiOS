@@ -2,13 +2,11 @@ import 'dart:math';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/transaction_model.dart';
 import 'treasury_service.dart';
-import '../models/transaction_model.dart';
 
 /// Wesi Sandbox — изолированная среда для тестирования финансовых сценариев.
-/// 
-/// Полностью повторяет функционал TreasuryService, но работает с отдельным
-/// хранилищем. Позволяет экспериментировать с данными без риска повредить
-/// реальные записи.
+///
+/// Намеренно дублирует TreasuryService: работает с отдельным Hive-боксом,
+/// чтобы можно было крутить вымышленные сценарии без риска для реальных данных.
 class SandboxService {
   static const String _boxName = 'wesios_sandbox';
   Box<TransactionModel>? _box;
@@ -18,7 +16,7 @@ class SandboxService {
     return _box!;
   }
 
-  // ========== CRUD (mirror of TreasuryService) ==========
+  // ========== CRUD ==========
 
   Future<void> addTransaction(TransactionModel tx) async {
     final box = await _sandboxBox;
@@ -92,7 +90,7 @@ class SandboxService {
     return anomalies;
   }
 
-  // ========== FORECAST ==========
+  // ========== FORECAST (sandbox-local, non-linear) ==========
 
   Future<Map<String, List<double>>> generateForecast({int days = 30}) async {
     final all = await getAllTransactions();
@@ -103,7 +101,8 @@ class SandboxService {
 
     for (final tx in all) {
       final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
-      byDay[day] = (byDay[day] ?? 0) + (tx.type == TransactionType.income ? tx.amount : -tx.amount);
+      byDay[day] = (byDay[day] ?? 0) +
+          (tx.type == TransactionType.income ? tx.amount : -tx.amount);
     }
 
     final sortedDays = byDay.keys.toList()..sort();
@@ -114,19 +113,47 @@ class SandboxService {
     if (dailyNet.isEmpty) return {'p10': [], 'p50': [], 'p90': []};
 
     final mean = dailyNet.reduce((a, b) => a + b) / dailyNet.length;
-    final variance = dailyNet.map((v) => pow(v - mean, 2)).reduce((a, b) => a + b) / dailyNet.length;
+    final variance =
+        dailyNet.map((v) => pow(v - mean, 2)).reduce((a, b) => a + b) /
+            dailyNet.length;
     final stdDev = sqrt(variance);
 
+    final recent =
+        dailyNet.length > 14 ? dailyNet.sublist(dailyNet.length - 14) : dailyNet;
+    final recentMean = recent.reduce((a, b) => a + b) / recent.length;
+    double slope = 0;
+    if (recent.length >= 3) {
+      final n = recent.length;
+      double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+      for (int i = 0; i < n; i++) {
+        sumX += i;
+        sumY += recent[i];
+        sumXY += i * recent[i];
+        sumX2 += i * i;
+      }
+      final denom = n * sumX2 - sumX * sumX;
+      if (denom != 0) slope = (n * sumXY - sumX * sumY) / denom;
+    }
+
+    final drift = 0.6 * mean + 0.4 * recentMean;
     final currentBalance = await getCurrentBalance();
     final p10 = <double>[];
     final p50 = <double>[];
     final p90 = <double>[];
 
+    double balP50 = currentBalance;
+    final rng = Random(42);
+
     for (int i = 1; i <= days; i++) {
-      final spread = stdDev * sqrt(i.toDouble());
-      p10.add(currentBalance + (mean * i) - (1.28 * spread));
-      p50.add(currentBalance + (mean * i));
-      p90.add(currentBalance + (mean * i) + (1.28 * spread));
+      final decay = exp(-i / (days * 1.5));
+      final dayDrift = drift + slope * decay;
+      final noise = (rng.nextDouble() - 0.5) * stdDev * 0.15;
+      final spread = stdDev * sqrt(i.toDouble()) * (1.0 + 0.1 * sin(i / 7.0));
+
+      balP50 += dayDrift + noise;
+      p10.add(balP50 - 1.28 * spread);
+      p50.add(balP50);
+      p90.add(balP50 + 1.28 * spread);
     }
 
     return {'p10': p10, 'p50': p50, 'p90': p90};
@@ -134,15 +161,13 @@ class SandboxService {
 
   // ========== SCENARIO GENERATORS ==========
 
-  /// Быстрый сценарий: стартап с инвестициями
   Future<void> generateStartupScenario() async {
     await clearAll();
     final now = DateTime.now();
     final random = Random();
 
-    // Seed funding
     await addTransaction(TransactionModel(
-      id: 'seed',
+      id: 'sandbox_seed',
       title: 'Seed Investment',
       amount: 500000,
       type: TransactionType.income,
@@ -150,10 +175,9 @@ class SandboxService {
       category: 'Investment',
     ));
 
-    // Monthly burn rate
     for (int i = 90; i >= 0; i -= 30) {
       await addTransaction(TransactionModel(
-        id: 'burn_\$i',
+        id: 'sandbox_burn_$i',
         title: 'Monthly Burn',
         amount: 15000 + random.nextInt(5000).toDouble(),
         type: TransactionType.expense,
@@ -162,10 +186,9 @@ class SandboxService {
       ));
     }
 
-    // Some revenue
     for (int i = 60; i >= 0; i -= 15) {
       await addTransaction(TransactionModel(
-        id: 'rev_\$i',
+        id: 'sandbox_rev_$i',
         title: 'MRR Revenue',
         amount: 2000 + random.nextInt(3000).toDouble(),
         type: TransactionType.income,
@@ -175,7 +198,6 @@ class SandboxService {
     }
   }
 
-  /// Быстрый сценарий: фрилансер
   Future<void> generateFreelancerScenario() async {
     await clearAll();
     final now = DateTime.now();
@@ -183,7 +205,7 @@ class SandboxService {
 
     for (int i = 60; i >= 0; i -= random.nextInt(5) + 2) {
       await addTransaction(TransactionModel(
-        id: 'fl_\$i',
+        id: 'sandbox_fl_$i',
         title: 'Client Project #${random.nextInt(20)}',
         amount: 500 + random.nextInt(2500).toDouble(),
         type: TransactionType.income,
@@ -194,7 +216,7 @@ class SandboxService {
 
     for (int i = 60; i >= 0; i -= random.nextInt(7) + 3) {
       await addTransaction(TransactionModel(
-        id: 'fle_\$i',
+        id: 'sandbox_fle_$i',
         title: 'Business Expense',
         amount: 50 + random.nextInt(300).toDouble(),
         type: TransactionType.expense,
@@ -204,17 +226,15 @@ class SandboxService {
     }
   }
 
-  /// Быстрый сценарий: кризис (много аномалий)
   Future<void> generateCrisisScenario() async {
     await clearAll();
     final now = DateTime.now();
     final random = Random();
 
-    // Normal operations
     for (int i = 90; i >= 30; i--) {
       if (random.nextDouble() > 0.7) {
         await addTransaction(TransactionModel(
-          id: 'norm_\$i',
+          id: 'sandbox_norm_$i',
           title: 'Regular Expense',
           amount: 100 + random.nextInt(200).toDouble(),
           type: TransactionType.expense,
@@ -224,9 +244,8 @@ class SandboxService {
       }
     }
 
-    // Crisis hits — huge anomalies
     await addTransaction(TransactionModel(
-      id: 'crisis_1',
+      id: 'sandbox_crisis_1',
       title: 'Emergency Legal Fees',
       amount: 50000,
       type: TransactionType.expense,
@@ -237,7 +256,7 @@ class SandboxService {
     ));
 
     await addTransaction(TransactionModel(
-      id: 'crisis_2',
+      id: 'sandbox_crisis_2',
       title: 'Server Ransomware Recovery',
       amount: 35000,
       type: TransactionType.expense,
@@ -248,7 +267,7 @@ class SandboxService {
     ));
 
     await addTransaction(TransactionModel(
-      id: 'crisis_3',
+      id: 'sandbox_crisis_3',
       title: 'Client Churn — Refunds',
       amount: 25000,
       type: TransactionType.expense,
@@ -259,13 +278,16 @@ class SandboxService {
     ));
   }
 
-  /// Скопировать реальные данные в песочницу
+  /// Копирует реальные данные с уникальными sandbox-id, чтобы не было коллизий
   Future<void> cloneFromReal() async {
     await clearAll();
     final realService = TreasuryService();
     final realTxs = await realService.getAllTransactions();
+    final ts = DateTime.now().millisecondsSinceEpoch;
     for (final tx in realTxs) {
-      await addTransaction(tx);
+      await addTransaction(tx.copyWith(
+        id: 'sandbox_clone_${ts}_${tx.id}',
+      ));
     }
   }
 }
