@@ -3,8 +3,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/hover_button.dart';
 import '../../../core/widgets/wesi_tooltip.dart';
 import '../../../core/localization/wesi_locale.dart';
-import '../services/sandbox_service.dart';
-import '../models/transaction_model.dart';
+import 'services/sandbox_service.dart';
+import 'models/transaction_model.dart';
 
 /// Wesi Sandbox — изолированная среда для тестирования финансовых сценариев.
 class SandboxScreen extends StatefulWidget {
