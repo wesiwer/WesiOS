@@ -19,7 +19,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
 
   ForecastResult _forecast = ForecastResult.empty();
   List<ForecastPoint> _data = [];
-  List<TransactionModel> _transactions = [];
+  List<TransactionModel> _anomalies = [];
   Map<String, double> _categoryBreakdown = {};
   bool _isLoading = true;
   bool _chartBusy = false; // только график, не весь экран
@@ -60,6 +60,11 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
 
     final forecast = await _service.generateForecast(days: _forecastDays);
     final txs = await _service.getAllTransactions();
+    // detectAnomalies() возвращает копии с выставленным isAnomaly — этот флаг
+    // никогда не пишется обратно в Hive, поэтому `txs`/`tx.isAnomaly` его не
+    // содержит для реально обнаруженных (не «зашитых» в демо-данных) случаев.
+    // Берём список отдельно, как это уже правильно делают Treasury/Sandbox.
+    final anomalies = await _service.detectAnomalies();
 
     final breakdown = <String, double>{};
     for (final tx in txs) {
@@ -120,7 +125,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     setState(() {
       _forecast = forecast;
       _data = data;
-      _transactions = txs;
+      _anomalies = anomalies;
       _categoryBreakdown = breakdown;
       _historyWindowDays = historyWindowDays;
       _currency = CurrencyService.current;
@@ -251,7 +256,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           const SizedBox(height: 24),
           if (_categoryBreakdown.isNotEmpty) _breakdown(),
           const SizedBox(height: 24),
-          _anomalies(),
+          _anomaliesSection(),
         ],
       ),
     );
@@ -1061,23 +1066,22 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
-  Widget _anomalies() {
-    final anomalies = _transactions.where((t) => t.isAnomaly).toList();
-    if (anomalies.isEmpty) return const SizedBox.shrink();
+  Widget _anomaliesSection() {
+    if (_anomalies.isEmpty) return const SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           WesiLocale.isRussian
-              ? 'Аномалии (${anomalies.length})'
-              : 'Anomalies (${anomalies.length})',
+              ? 'Аномалии (${_anomalies.length})'
+              : 'Anomalies (${_anomalies.length})',
           style: const TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
               color: AppTheme.accentRed),
         ),
         const SizedBox(height: 8),
-        ...anomalies.map((a) => Text(
+        ..._anomalies.map((a) => Text(
               '• ${a.title}: ${CurrencyService.format(a.amount)}',
               style: const TextStyle(
                   fontSize: 13, color: AppTheme.textSecondary),
