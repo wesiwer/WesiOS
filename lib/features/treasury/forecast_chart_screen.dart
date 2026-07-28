@@ -620,15 +620,19 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     final entries = _categoryBreakdown.entries.toList()
       ..sort((a, b) => b.value.abs().compareTo(a.value.abs()));
     final top = entries.take(8).toList();
-    final maxAbs =
-        top.map((e) => e.value.abs()).reduce((a, b) => a > b ? a : b);
+    final values = top.map((e) => e.value).toList();
+    // Ось по фактическим данным: если все категории одного знака,
+    // не растягиваем шкалу симметрично на пустую половину.
+    final hi = values.reduce((a, b) => a > b ? a : b);
+    final lo = values.reduce((a, b) => a < b ? a : b);
+    final pad = (hi - lo).abs() * 0.15 + 1;
 
     return _chartFrame(
       child: BarChart(
         BarChartData(
           alignment: BarChartAlignment.spaceAround,
-          maxY: maxAbs * 1.15,
-          minY: -maxAbs * 1.15,
+          maxY: (hi > 0 ? hi : 0) + pad,
+          minY: (lo < 0 ? lo : 0) - pad,
           gridData: FlGridData(
             show: true,
             drawVerticalLine: false,
