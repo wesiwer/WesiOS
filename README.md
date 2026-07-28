@@ -22,7 +22,8 @@
 - Desktop window controls, splash, home IndexedStack
 - Treasury/Sandbox (продажа/траты, multi-currency, edit/delete, identical engine)
 - Forecast — bootstrap Monte-Carlo с сезонностью по дню недели и проекцией
-  регулярных платежей, P10/P50/P90 без дёрганья при смене периода
+  регулярных платежей, P10/P50/P90 без дёрганья при смене периода;
+  Cash Gap Risk Score, What-If сценарии, DCF-дисконтирование
 - Operations screen (поиск/фильтр/сортировка/edit)
 - Calculator: global overlay, pin/ESC/Delete/blur/resize
 - Profile auto-save + Firebase tips, upload custom avatar
@@ -47,4 +48,4 @@ CI: push в `main` → GitHub Actions (Windows + Android).
 
 ## Версия
 
-v0.2.0 α — Private, Wesi Inc.
+v0.3.0 α — Private, Wesi Inc.
