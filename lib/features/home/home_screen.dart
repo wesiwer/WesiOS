@@ -7,6 +7,9 @@ import '../../core/widgets/wesi_avatar.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import '../treasury/treasury_screen.dart';
+import '../treasury/widgets/add_transaction_dialog.dart';
+import '../treasury/models/transaction_model.dart';
+import '../treasury/services/treasury_service.dart';
 import '../tasks/tasks_screen.dart';
 import '../analytics/analytics_screen.dart';
 import '../settings/settings_screen.dart';
@@ -175,7 +178,7 @@ class _DashboardTab extends StatelessWidget {
                     child: _Quick(
                       icon: Icons.add_circle,
                       label: WesiLocale.isRussian ? 'Продажа' : 'Sale',
-                      onTap: () => Navigator.pushNamed(context, '/treasury'),
+                      onTap: () => _showAddTransaction(context, TransactionType.income),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -183,7 +186,7 @@ class _DashboardTab extends StatelessWidget {
                     child: _Quick(
                       icon: Icons.remove_circle,
                       label: WesiLocale.isRussian ? 'Траты' : 'Expense',
-                      onTap: () => Navigator.pushNamed(context, '/treasury'),
+                      onTap: () => _showAddTransaction(context, TransactionType.expense),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -210,6 +213,34 @@ class _DashboardTab extends StatelessWidget {
         ],
       ),
     );
+  }
+
+
+  Future<void> _showAddTransaction(BuildContext context, TransactionType type) async {
+    final result = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (context) => AddTransactionDialog(
+        type: type,
+        symbol: CurrencyService.symbol,
+      ),
+    );
+    if (result != null) {
+      final service = TreasuryService();
+      final tx = TransactionModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: result['title'],
+        amount: result['amount'],
+        type: type,
+        date: DateTime.now(),
+        category: result['category'],
+        description: result['description'],
+        isRecurring: result['isRecurring'] ?? false,
+        recurringPeriod: result['recurringPeriod'],
+      );
+      await service.addTransaction(tx);
+      // Refresh dashboard balance
+      if (mounted) setState(() {});
+    }
   }
 
   Widget _chip(String label, String amount, Color color) {
