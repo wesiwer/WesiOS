@@ -1,8 +1,17 @@
 import 'dart:math';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/transaction_model.dart';
+import 'anomaly_engine.dart';
+import 'forecast_engine.dart';
+import 'recurring_engine.dart';
 
-/// Wesi Treasury Service — управление финансами, аномалиями, прогнозами
+/// Wesi Treasury Service — управление финансами, аномалиями, прогнозами.
+///
+/// Статистика (прогноз, аномалии, регулярные платежи) вынесена в общие
+/// движки ([ForecastEngine], [AnomalyEngine], [RecurringEngine]), которые
+/// использует и [TreasuryService], и SandboxService — так гарантируется,
+/// что поведение у них идентично, а данные при этом изолированы (разные
+/// Hive-боксы).
 class TreasuryService {
   static const String _boxName = 'wesios_treasury';
   Box<TransactionModel>? _box;
@@ -58,30 +67,10 @@ class TreasuryService {
     return {'income': income, 'expense': expense, 'net': income - expense};
   }
 
-  // ========== ANOMALY DETECTION (Z-Score) ==========
+  // ========== ANOMALY DETECTION ==========
 
   Future<List<TransactionModel>> detectAnomalies() async {
-    final all = await getAllTransactions();
-    if (all.length < 4) return [];
-
-    final expenses = all.where((t) => t.type == TransactionType.expense).toList();
-    if (expenses.length < 4) return [];
-
-    final amounts = expenses.map((e) => e.amount).toList();
-    final mean = amounts.reduce((a, b) => a + b) / amounts.length;
-    final variance = amounts.map((a) => pow(a - mean, 2)).reduce((a, b) => a + b) / amounts.length;
-    final stdDev = sqrt(variance);
-
-    if (stdDev == 0) return [];
-
-    final anomalies = <TransactionModel>[];
-    for (final tx in expenses) {
-      final zScore = (tx.amount - mean) / stdDev;
-      if (zScore.abs() > 2.0) {
-        anomalies.add(tx.copyWith(isAnomaly: true, zScore: zScore));
-      }
-    }
-    return anomalies;
+    return AnomalyEngine.detect(await getAllTransactions());
   }
 
   // ========== RECURRING PAYMENTS ==========
@@ -91,117 +80,57 @@ class TreasuryService {
     return all.where((t) => t.isRecurring).toList();
   }
 
+  /// Материализует все просроченные регулярные платежи в отдельные
+  /// транзакции и сдвигает «якорь» (дату) регулярной записи вперёд.
+  ///
+  /// Раньше проверка due-даты сравнивалась с ИСХОДНОЙ датой создания записи,
+  /// которая никогда не обновлялась — при повторном вызове платёж
+  /// пересоздавался бы бесконечно. Теперь после срабатывания дата регулярной
+  /// транзакции переносится на дату последнего проведённого платежа.
   Future<void> processRecurringPayments() async {
     final recurring = await getRecurringPayments();
     final now = DateTime.now();
 
     for (final tx in recurring) {
-      if (_shouldProcess(tx, now)) {
-        final newTx = TransactionModel(
-          id: '${tx.id}_${now.millisecondsSinceEpoch}',
+      final period = tx.recurringPeriod;
+      if (period == null) continue;
+
+      var anchor = tx;
+      var guard = 0;
+      // Обрабатываем все просроченные периоды за один вызов — иначе платёж
+      // «застрянет» на первом же пропущенном разе.
+      while (RecurringEngine.isDue(anchor, now) && guard < 366) {
+        final due = RecurringEngine.advance(anchor.date, period);
+        await addTransaction(TransactionModel(
+          id: '${tx.id}_${due.millisecondsSinceEpoch}',
           title: tx.title,
           amount: tx.amount,
           type: tx.type,
-          date: now,
+          date: due,
           category: tx.category,
-          description: 'Recurring: ${tx.description}',
+          description:
+              tx.description == null ? null : 'Recurring: ${tx.description}',
           isRecurring: false,
-        );
-        await addTransaction(newTx);
+        ));
+        anchor = anchor.copyWith(date: due);
+        guard++;
+      }
+      if (guard > 0) {
+        await addTransaction(anchor); // сдвигаем якорь исходной записи
       }
     }
   }
 
-  bool _shouldProcess(TransactionModel tx, DateTime now) {
-    if (tx.recurringPeriod == null) return false;
-    final lastDate = tx.date;
-    switch (tx.recurringPeriod!) {
-      case RecurringPeriod.daily:
-        return now.difference(lastDate).inDays >= 1;
-      case RecurringPeriod.weekly:
-        return now.difference(lastDate).inDays >= 7;
-      case RecurringPeriod.monthly:
-        return now.month != lastDate.month || now.year != lastDate.year;
-      case RecurringPeriod.yearly:
-        return now.year != lastDate.year;
-    }
-  }
+  // ========== FORECAST ==========
 
-  // ========== FORECAST (flexible, non-linear Monte-Carlo inspired) ==========
-
-  Future<Map<String, List<double>>> generateForecast({int days = 30}) async {
+  Future<ForecastResult> generateForecast({int days = 30}) async {
     final all = await getAllTransactions();
-    if (all.isEmpty) return {'p10': [], 'p50': [], 'p90': []};
-
-    final dailyNet = <double>[];
-    final byDay = <DateTime, double>{};
-
-    for (final tx in all) {
-      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
-      byDay[day] = (byDay[day] ?? 0) + (tx.type == TransactionType.income ? tx.amount : -tx.amount);
-    }
-
-    final sortedDays = byDay.keys.toList()..sort();
-    for (final day in sortedDays) {
-      dailyNet.add(byDay[day]!);
-    }
-
-    if (dailyNet.isEmpty) return {'p10': [], 'p50': [], 'p90': []};
-
-    final mean = dailyNet.reduce((a, b) => a + b) / dailyNet.length;
-    final variance = dailyNet.map((v) => pow(v - mean, 2)).reduce((a, b) => a + b) / dailyNet.length;
-    final stdDev = sqrt(variance);
-
-    // Recent trend (last ~14 days) for non-linear drift
-    final recent = dailyNet.length > 14 ? dailyNet.sublist(dailyNet.length - 14) : dailyNet;
-    double recentMean = recent.reduce((a, b) => a + b) / recent.length;
-    double slope = 0;
-    if (recent.length >= 3) {
-      // simple linear regression slope on recent window
-      final n = recent.length;
-      double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-      for (int i = 0; i < n; i++) {
-        sumX += i;
-        sumY += recent[i];
-        sumXY += i * recent[i];
-        sumX2 += i * i;
-      }
-      final denom = n * sumX2 - sumX * sumX;
-      if (denom != 0) slope = (n * sumXY - sumX * sumY) / denom;
-    }
-
-    // Blend overall mean with recent mean + mild slope decay
-    final drift = 0.6 * mean + 0.4 * recentMean;
-
-    final currentBalance = await getCurrentBalance();
-    final p10 = <double>[];
-    final p50 = <double>[];
-    final p90 = <double>[];
-
-    double balP50 = currentBalance;
-    double balP10 = currentBalance;
-    double balP90 = currentBalance;
-
-    final rng = Random(42); // deterministic for stability across rebuilds
-
-    for (int i = 1; i <= days; i++) {
-      // Non-linear: slope decays over time + small stochastic drift
-      final decay = exp(-i / (days * 1.5));
-      final dayDrift = drift + slope * decay;
-      final noise = (rng.nextDouble() - 0.5) * stdDev * 0.15;
-
-      final spread = stdDev * sqrt(i.toDouble()) * (1.0 + 0.1 * sin(i / 7.0)); // mild weekly oscillation
-
-      balP50 += dayDrift + noise;
-      balP10 = balP50 - 1.28 * spread;
-      balP90 = balP50 + 1.28 * spread;
-
-      p10.add(balP10);
-      p50.add(balP50);
-      p90.add(balP90);
-    }
-
-    return {'p10': p10, 'p50': p50, 'p90': p90};
+    final balance = await getCurrentBalance();
+    return ForecastEngine.generate(
+      transactions: all,
+      currentBalance: balance,
+      days: days,
+    );
   }
 
   // ========== DEMO DATA (kept but NOT auto-called from forecast screen) ==========
