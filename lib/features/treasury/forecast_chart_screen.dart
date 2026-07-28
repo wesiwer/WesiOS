@@ -1,4 +1,3 @@
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../../core/theme/app_theme.dart';
@@ -34,7 +33,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen>
   bool _showTrendLine = true;
   int _forecastDays = 30;
   String _selectedChart = 'forecast';
-  String _currency = 'rub'; // 'rub' | 'usd'
+  String _currency = 'rub';
 
   String get _sym => _currency == 'rub' ? 'currency_rub'.w : 'currency_usd'.w;
 
@@ -78,7 +77,6 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen>
   }
 
   Future<void> _loadData() async {
-    // generateDemoData убран — только реальные данные
     final forecast = await _service.generateForecast(days: _forecastDays);
     final txs = await _service.getAllTransactions();
 
@@ -234,13 +232,11 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen>
           position: _slideAnimation,
           child: CustomScrollView(
             slivers: [
-              // Header
-              SheetAppBar(),
+              _buildSheetAppBar(),
               SliverPadding(
                 padding: const EdgeInsets.all(20),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    // Stats + currency switch
                     Row(
                       children: [
                         Expanded(child: _buildStatsCards(last, first, growth)),
@@ -249,7 +245,6 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen>
                       ],
                     ),
                     const SizedBox(height: 20),
-                    // Chart selector + period side-by-side
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -259,19 +254,15 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen>
                       ],
                     ),
                     const SizedBox(height: 16),
-                    // Main Chart
                     AnimatedSwitcher(
                       duration: const Duration(milliseconds: 500),
                       child: _buildMainChart(),
                     ),
                     const SizedBox(height: 24),
-                    // Controls
                     _buildControls(),
                     const SizedBox(height: 24),
-                    // Category Breakdown
                     _buildCategoryBreakdown(),
                     const SizedBox(height: 24),
-                    // Anomaly List
                     _buildAnomalySection(),
                     const SizedBox(height: 32),
                   ]),
@@ -284,7 +275,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen>
     );
   }
 
-  Widget SheetAppBar() {
+  Widget _buildSheetAppBar() {
     return SliverAppBar(
       backgroundColor: AppTheme.background.withOpacity(0.9),
       elevation: 0,
