@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 import '../../core/widgets/window_controls.dart';
-import '../../core/widgets/wesi_tooltip.dart';
 import '../../core/widgets/wesi_context_menu.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/localization/wesi_locale.dart';
@@ -125,8 +124,7 @@ class _DashboardTab extends StatelessWidget {
               ),
             ),
           ),
-          // Balance
-          'SliverToBoxAdapter'(
+          SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: GlassCard(
@@ -142,19 +140,149 @@ class _DashboardTab extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      '0',
-                      style: TextStyle(
+                      '$sym 0',
+                      style: const TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.primary,
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        _chip(WesiLocale.get('operational'), '$sym 0',
+                            AppTheme.accentGreen),
+                        const SizedBox(width: 12),
+                        _chip(WesiLocale.get('marketing'), '$sym 0',
+                            AppTheme.accentOrange),
+                        const SizedBox(width: 12),
+                        _chip(WesiLocale.get('reserve'), '$sym 0',
+                            AppTheme.textSecondary),
+                      ],
                     ),
                   ],
                 ),
               ),
             ),
           ),
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: _Quick(
+                      icon: Icons.add_circle,
+                      label: WesiLocale.isRussian ? 'Продажа' : 'Sale',
+                      onTap: () => Navigator.pushNamed(context, '/treasury'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _Quick(
+                      icon: Icons.remove_circle,
+                      label: WesiLocale.isRussian ? 'Траты' : 'Expense',
+                      onTap: () => Navigator.pushNamed(context, '/treasury'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _Quick(
+                      icon: Icons.mic,
+                      label: WesiLocale.get('wesi_voice_title'),
+                      onTap: () => Navigator.pushNamed(context, '/tasks'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: _Quick(
+                      icon: Icons.calculate,
+                      label: WesiLocale.get('wesi_calculator_title'),
+                      onTap: () => Navigator.pushNamed(context, '/calculator'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 32)),
         ],
+      ),
+    );
+  }
+
+  Widget _chip(String label, String amount, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(fontSize: 11, color: color)),
+            const SizedBox(height: 4),
+            Text(amount,
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _Quick extends StatefulWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  const _Quick(
+      {required this.icon, required this.label, required this.onTap});
+
+  @override
+  State<_Quick> createState() => _QuickState();
+}
+
+class _QuickState extends State<_Quick> {
+  bool _h = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _h = true),
+      onExit: (_) => setState(() => _h = false),
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          decoration: BoxDecoration(
+            color: _h ? AppTheme.surfaceLight : AppTheme.surface,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: _h
+                  ? AppTheme.accentOrange.withOpacity(0.5)
+                  : AppTheme.glassBorder,
+            ),
+          ),
+          child: Column(
+            children: [
+              Icon(widget.icon, color: AppTheme.accentOrange, size: 28),
+              const SizedBox(height: 8),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _h ? AppTheme.textPrimary : AppTheme.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
