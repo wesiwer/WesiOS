@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Тёмный фон под цвет приложения: белый шаблонный давал вспышку на старте -->
+    <item android:drawable="@color/wesi_background" />
+</layer-list>
