@@ -138,18 +138,18 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                     ),
                   ),
                   const SizedBox(height: 40),
-                  _buildField(_apiKeyCtrl, 'API Key *', 'AIzaSy...'),
-                  _buildField(_appIdCtrl, 'App ID *', '1:123456789:web:abc123...'),
-                  _buildField(_projectIdCtrl, 'Project ID *', 'my-project-id'),
-                  _buildField(_messagingSenderIdCtrl, 'Messaging Sender ID *', '123456789'),
+                  _buildField(_apiKeyCtrl, 'API Key *', 'AIzaSy...', 'API Key для доступа к Firebase services. Найдите в Project Settings > General > Web API Key.'),
+                  _buildField(_appIdCtrl, 'App ID *', '1:123456789:web:abc123...', 'Уникальный ID приложения. Найдите в Project Settings > General > Your Apps > App ID.'),
+                  _buildField(_projectIdCtrl, 'Project ID *', 'my-project-id', 'ID проекта Firebase. Найдите в Project Settings > General > Project ID.'),
+                  _buildField(_messagingSenderIdCtrl, 'Messaging Sender ID *', '123456789', 'ID отправителя для FCM. Найдите в Project Settings > Cloud Messaging > Sender ID.'),
                   const SizedBox(height: 16),
                   Text(
                     'Дополнительные поля (опционально):',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppTheme.textMuted),
                   ),
                   const SizedBox(height: 12),
-                  _buildField(_authDomainCtrl, 'Auth Domain', 'my-project.firebaseapp.com'),
-                  _buildField(_storageBucketCtrl, 'Storage Bucket', 'my-project.appspot.com'),
+                  _buildField(_authDomainCtrl, 'Auth Domain', 'my-project.firebaseapp.com', 'Домен для аутентификации. Автоматически генерируется Firebase.'),
+                  _buildField(_storageBucketCtrl, 'Storage Bucket', 'my-project.appspot.com', 'Bucket для Cloud Storage. Найдите в Storage > Get Started.'),
                   _buildField(_measurementIdCtrl, 'Measurement ID', 'G-XXXXXXXX'),
                   if (_error != null) ...[
                     const SizedBox(height: 16),
@@ -194,19 +194,44 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
     );
   }
 
-  Widget _buildField(TextEditingController ctrl, String label, [String? hint]) {
+  Widget _buildField(TextEditingController ctrl, String label, [String? hint, String? tooltip]) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 16),
-      child: TextFormField(
-        controller: ctrl,
-        validator: label.contains('*') ? (v) => v == null || v.isEmpty ? 'Обязательное поле' : null : null,
-        style: const TextStyle(color: AppTheme.textPrimary),
-        decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
-          labelStyle: const TextStyle(color: AppTheme.textSecondary),
-          hintStyle: const TextStyle(color: AppTheme.textMuted),
-        ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextFormField(
+                  controller: ctrl,
+                  validator: label.contains('*') ? (v) => v == null || v.isEmpty ? 'Обязательное поле' : null : null,
+                  style: const TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: label,
+                    hintText: hint,
+                    labelStyle: const TextStyle(color: AppTheme.textSecondary),
+                    hintStyle: const TextStyle(color: AppTheme.textMuted),
+                  ),
+                ),
+              ),
+              if (tooltip != null)
+                Tooltip(
+                  message: tooltip,
+                  textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.carbonDark.withOpacity(0.95),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3)),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.only(left: 8),
+                    child: Icon(Icons.info_outline, size: 18, color: AppTheme.textMuted),
+                  ),
+                ),
+            ],
+          ),
+        ],
       ),
     );
   }
