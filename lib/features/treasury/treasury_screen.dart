@@ -97,140 +97,127 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     final saleLabel = WesiLocale.isRussian ? 'Продажа' : 'Sale';
     final expenseLabel = WesiLocale.isRussian ? 'Траты' : 'Expense';
 
-    final bodyChildren = <Widget>[
-      _balanceCard(),
-      const SizedBox(height: 20),
-      Row(
-        children: [
-          Expanded(
-            child: WesiTooltip(
-              message: WesiLocale.get('record_income'),
-              child: _actionBtn(
-                Icons.add_circle,
-                saleLabel,
-                AppTheme.accentGreen,
-                () => _addTransaction(TransactionType.income),
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: WesiTooltip(
-              message: WesiLocale.get('record_expense'),
-              child: _actionBtn(
-                Icons.remove_circle,
-                expenseLabel,
-                AppTheme.accentRed,
-                () => _addTransaction(TransactionType.expense),
+    return Scaffold(
+      backgroundColor: AppTheme.background,
+      appBar: AppBar(
+        backgroundColor: AppTheme.background,
+        title: Text(WesiLocale.get('wesi_treasury_title')),
+        actions: [
+          Padding(
+            padding: const EdgeInsets.only(right: 140),
+            child: Center(
+              child: GestureDetector(
+                onTap: _cycleCurrency,
+                child: Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppTheme.surface.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.glassBorder),
+                  ),
+                  child: Text(
+                    '$_sym ${_currency.toUpperCase()}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.accentOrange,
+                    ),
+                  ),
+                ),
               ),
             ),
           ),
         ],
       ),
-      const SizedBox(height: 16),
-      HoverButton(
-        onTap: () => Navigator.pushNamed(context, '/treasury/forecast'),
-        padding: const EdgeInsets.all(20),
-        backgroundColor: AppTheme.surface,
-        child: Row(
-          children: [
-            const Icon(Icons.trending_up, color: AppTheme.accentOrange),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                WesiLocale.get('forecast_p10_p50_p90'),
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary),
+      body: ListView(
+        padding: EdgeInsets.fromLTRB(24, kTitleBarHeight > 0 ? 8 : 24, 24, 32),
+        children: [
+          _balanceCard(),
+          const SizedBox(height: 20),
+          Row(
+            children: [
+              Expanded(
+                child: WesiTooltip(
+                  message: WesiLocale.get('record_income'),
+                  child: _actionBtn(
+                    Icons.add_circle,
+                    saleLabel,
+                    AppTheme.accentGreen,
+                    () => _addTransaction(TransactionType.income),
+                  ),
+                ),
               ),
-            ),
-            const Icon(Icons.arrow_forward_ios,
-                size: 16, color: AppTheme.textMuted),
-          ],
-        ),
-      ),
-      const SizedBox(height: 12),
-      HoverButton(
-        onTap: () => Navigator.pushNamed(context, '/treasury/sandbox'),
-        padding: const EdgeInsets.all(20),
-        backgroundColor: AppTheme.surface,
-        child: Row(
-          children: [
-            const Icon(Icons.science, color: AppTheme.accentOrange),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Text(
-                WesiLocale.get('wesi_sandbox_title'),
-                style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary),
-              ),
-            ),
-            const Icon(Icons.arrow_forward_ios,
-                size: 16, color: AppTheme.textMuted),
-          ],
-        ),
-      ),
-      const SizedBox(height: 24),
-      Text(
-        WesiLocale.get('recent_transactions'),
-        style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textPrimary),
-      ),
-      const SizedBox(height: 12),
-      ..._transactions.take(20).map(_txItem),
-      const SizedBox(height: 32),
-    ];
-
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: CustomScrollView(
-        slivers: [
-          const SliverToBoxAdapter(child: SizedBox(height: kTitleBarHeight)),
-          SliverAppBar(
-            backgroundColor: AppTheme.background.withOpacity(0.9),
-            elevation: 0,
-            pinned: true,
-            actions: [
-              Padding(
-                padding: const EdgeInsets.only(right: 140),
-                child: GestureDetector(
-                  onTap: _cycleCurrency,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: AppTheme.surface.withOpacity(0.5),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(color: AppTheme.glassBorder),
-                    ),
-                    child: Text(
-                      '$_sym ${_currency.toUpperCase()}',
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: AppTheme.accentOrange,
-                      ),
-                    ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: WesiTooltip(
+                  message: WesiLocale.get('record_expense'),
+                  child: _actionBtn(
+                    Icons.remove_circle,
+                    expenseLabel,
+                    AppTheme.accentRed,
+                    () => _addTransaction(TransactionType.expense),
                   ),
                 ),
               ),
             ],
-            title: Text(
-              WesiLocale.get('wesi_treasury_title'),
-              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 16),
+          HoverButton(
+            onTap: () => Navigator.pushNamed(context, '/treasury/forecast'),
+            padding: const EdgeInsets.all(20),
+            backgroundColor: AppTheme.surface,
+            child: Row(
+              children: [
+                const Icon(Icons.trending_up, color: AppTheme.accentOrange),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    WesiLocale.get('forecast_p10_p50_p90'),
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary),
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios,
+                    size: 16, color: AppTheme.textMuted),
+              ],
             ),
           ),
-          'SliverPadding'(
-            padding: const EdgeInsets.all(24),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate(bodyChildren),
+          const SizedBox(height: 12),
+          HoverButton(
+            onTap: () => Navigator.pushNamed(context, '/treasury/sandbox'),
+            padding: const EdgeInsets.all(20),
+            backgroundColor: AppTheme.surface,
+            child: Row(
+              children: [
+                const Icon(Icons.science, color: AppTheme.accentOrange),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    WesiLocale.get('wesi_sandbox_title'),
+                    style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary),
+                  ),
+                ),
+                const Icon(Icons.arrow_forward_ios,
+                    size: 16, color: AppTheme.textMuted),
+              ],
             ),
           ),
+          const SizedBox(height: 24),
+          Text(
+            WesiLocale.get('recent_transactions'),
+            style: const TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary),
+          ),
+          const SizedBox(height: 12),
+          ..._transactions.take(20).map(_txItem),
         ],
       ),
     );
