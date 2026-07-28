@@ -41,7 +41,7 @@ CI был красный **30+ прогонов подряд**, падали о�
 1. `SandboxService` ≠ `TreasuryService` — **намеренное** дублирование.
 2. Суммы внутри в RUB-эквиваленте; UI через `CurrencyService.fromRub` / `toRub`.
 3. Кастомный title bar (`TitleBarStyle.hidden` + `WindowControls`).
-4. Курсы: `ExchangeRateService` → cbr.ru (`scripts/XML_daily.asp`); fallback — exchangerate.host, затем зашитые курсы. ЦБ **не отдаёт UAH** — у неё остаётся зашитый курс.
+4. Курсы: `ExchangeRateService` → cbr.ru (`scripts/XML_daily.asp`); fallback — exchangerate.host, затем зашитые курсы. Парсер проверен на живом ответе ЦБ от 28.07.2026: разбираются все 54 блока `<Valute>`, все восемь валют приложения присутствуют (USD 78,02 · EUR 88,76 · GBP 103,97 · CNY 11,52 · UAH 1,74 · BYN 27,06 · KZT 0,164).
 5. **CI пересоздаёт `windows/`.** Шаг «Wipe broken Windows platform stub» удаляет всю папку и заново генерирует её через `flutter create`, потому что в репозитории лежит неполный огрызок (нет `flutter_window.cpp`, `win32_window.cpp`, `utils.cpp`, `Runner.rc`). Любая правка в `windows/runner/` **в сборку не попадает** — переживает только то, что workflow восстанавливает отдельным шагом (сейчас это иконка). Не чини нативные баги правками в `windows/` — они не доедут.
 6. `SetQuitOnClose` должен быть `true`. При `false` `WM_DESTROY` не вызывает `PostQuitMessage`, и после закрытия окна процесс остаётся жить.
 7. `lib/core/services/finance_firestore_service.dart` — мёртвый код, исключён из анализа: `cloud_firestore` / `firebase_auth` убраны из pubspec (ломают Windows desktop build), файл ниоткуда не импортируется.
@@ -194,8 +194,8 @@ CI был красный **30+ прогонов подряд**, падали о�
 ### Что осталось незакрытым
 - Пункт 3 (валюта налезает на Close) — правился только для Treasury/Sandbox, на других экранах с `actions` может воспроизводиться.
 - Пункт 43 — стрелками охвачены общие кнопки; отдельные `GestureDetector` по экранам нет.
-- UAH: ЦБ её не публикует, курс остаётся зашитым.
 - `pubspec.lock` в репозиторий не добавлен (вопрос конвенции проекта — решать пользователю).
+- `android/app/src/{debug,profile}/AndroidManifest.xml` и `android/gradlew` из шаблона Flutter в репозитории по-прежнему отсутствуют. Release-сборке они не нужны, поэтому не добавлял.
 
 ---
 
