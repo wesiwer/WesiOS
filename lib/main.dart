@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:window_manager/window_manager.dart';
@@ -17,29 +16,29 @@ bool get isDesktop {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Window manager init (desktop only)
+  // Desktop: сразу на весь экран (maximize), без true-fullscreen
+  // (true fullscreen прячет панель задач и глючит на Windows)
   if (isDesktop) {
     await windowManager.ensureInitialized();
-    WindowOptions windowOptions = const WindowOptions(
+    const windowOptions = WindowOptions(
       size: Size(1280, 800),
       center: true,
       backgroundColor: Colors.transparent,
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.hidden,
-      minimumSize: Size(800, 600),
+      minimumSize: Size(900, 600),
+      fullScreen: false,
     );
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.setPreventClose(false);
+      await windowManager.maximize();
       await windowManager.show();
       await windowManager.focus();
-      await windowManager.maximize();
-      await windowManager.setFullScreen(true);
     });
   }
 
-  // Initialize Hive (Offline-First)
   await Hive.initFlutter();
 
-  // Register Hive adapters for Treasury models
   Hive.registerAdapter(TransactionModelAdapter());
   Hive.registerAdapter(TransactionTypeAdapter());
   Hive.registerAdapter(RecurringPeriodAdapter());
@@ -70,13 +69,13 @@ void main() async {
         );
       }
     } catch (e) {
-      debugPrint('Firebase init from saved config failed: \$e');
+      debugPrint('Firebase init from saved config failed: $e');
     }
   } else {
     try {
       await Firebase.initializeApp();
     } catch (e) {
-      debugPrint('Firebase default init skipped/failed: \$e');
+      debugPrint('Firebase default init skipped/failed: $e');
     }
   }
 
