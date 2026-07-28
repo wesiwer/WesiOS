@@ -126,7 +126,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Text(
-                    'v0.1.1 α',
+                    'v0.1.2 α',
                     style: TextStyle(
                       fontSize: 12,
                       color: AppTheme.accentOrange,
