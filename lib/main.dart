@@ -26,11 +26,12 @@ void main() async {
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.hidden,
       minimumSize: Size(900, 600),
-      fullScreen: false,
+      fullScreen: true,
     );
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setPreventClose(false);
       await windowManager.maximize();
+      await windowManager.setFullScreen(true);
       await windowManager.show();
       await windowManager.focus();
     });
