@@ -8,6 +8,7 @@ import 'core/widgets/window_controls.dart';
 import 'features/calculator/calculator_screen.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/first_run/first_run_screen.dart';
+import 'features/treasury/widgets/engine_download_overlay.dart';
 
 bool get isDesktop {
   if (kIsWeb) return false;
@@ -56,6 +57,11 @@ class WesiOSApp extends StatelessWidget {
                           : const SizedBox.shrink(),
                     ),
                   ),
+                  // Прогресс закачки движков прогноза — виден поверх ЛЮБОГО
+                  // экрана, не только Forecast, ровно тем же приёмом, что
+                  // и калькулятор выше.
+                  if (isDesktop)
+                    OverlayEntry(builder: (_) => const EngineDownloadOverlay()),
                   // Кнопки окна остаются выше калькулятора и всегда кликабельны
                   if (isDesktop)
                     OverlayEntry(

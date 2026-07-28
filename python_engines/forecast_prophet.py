@@ -7,6 +7,33 @@ interval_width=0.8 — по документации Prophet это и есть 
 интервал (10-й / 90-й перцентиль при её внутреннем допущении о нормальности
 ошибки), то есть ровно то, что нужно для P10/P90 без дополнительных плясок.
 """
+import os
+import sys
+
+# CmdStan (нужен Prophet под капотом) собирается ОДИН РАЗ в CI —
+# .github/workflows/build-engines.yml — и кладётся в `python/cmdstan/` того
+# же zip-бандла, что скачивает EngineInstallService. На машине пользователя
+# нет C++ тулчейна, чтобы собрать CmdStan самому, поэтому важно указать
+# cmdstanpy путь до готового бинарника, а не дать ему пытаться найти/собрать
+# CmdStan заново (уйдёт в ValueError "No CmdStan installation found").
+#
+# Путь ищем ОТНОСИТЕЛЬНО sys.executable, а не по абсолютному пути, записанному
+# во время сборки: у пользователя бандл лежит в другом месте (обычно
+# ApplicationSupportDirectory), чем на CI-раннере, где он собирался — жёстко
+# зашитый build-time путь на машине пользователя просто не существовал бы.
+_cmdstan_root = os.path.join(os.path.dirname(sys.executable), "cmdstan")
+if os.path.isdir(_cmdstan_root):
+    _versions = sorted(
+        d for d in os.listdir(_cmdstan_root)
+        if os.path.isdir(os.path.join(_cmdstan_root, d))
+    )
+    if _versions:
+        # Обычно ровно одна версия — берём последнюю по имени на случай,
+        # если когда-нибудь окажется больше одной.
+        os.environ["CMDSTAN"] = os.path.join(_cmdstan_root, _versions[-1])
+# Если каталога нет вовсе (локальная разработка, системный Python с уже
+# настроенным cmdstanpy) — просто не трогаем, пусть cmdstanpy сам решает.
+
 import warnings
 import pandas as pd
 from prophet import Prophet

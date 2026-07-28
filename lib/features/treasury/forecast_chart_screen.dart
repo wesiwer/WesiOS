@@ -9,6 +9,7 @@ import 'services/forecast_engine.dart';
 import 'services/multi_engine_forecast.dart';
 import 'models/transaction_model.dart';
 import 'widgets/what_if_dialog.dart';
+import 'widgets/engine_install_banner.dart';
 
 class TreasuryForecastScreen extends StatefulWidget {
   const TreasuryForecastScreen({super.key});
@@ -348,6 +349,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       body: ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          const EngineInstallBanner(),
           if (!_whatIf.isEmpty) _whatIfBanner(),
           _riskBanner(),
           Row(

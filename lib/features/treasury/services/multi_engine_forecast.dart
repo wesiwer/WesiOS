@@ -2,34 +2,11 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import '../models/transaction_model.dart';
+import 'engine_install_service.dart';
 import 'forecast_engine.dart';
+import 'forecast_engine_kind.dart';
 
-/// Один из выбираемых движков прогноза на экране Forecast.
-///
-/// [wesiHorizon] — родной движок ([ForecastEngine]): bootstrap Monte-Carlo,
-/// разделяет доход/расход, всегда доступен (чистый Dart, без внешних
-/// зависимостей). [prophet] и [sarimax] — настоящие библиотеки временных
-/// рядов, вызываются через [ExternalForecastBridge] как Python-подпроцесс;
-/// могут быть недоступны (нет бандла/Python на машине) — тогда UI показывает
-/// это явно, а не тихо подставляет пустоту. [combined] — не отдельный
-/// расчёт, а поэлементное среднее по тем движкам, что реально посчитались.
-enum ForecastEngineKind { wesiHorizon, prophet, sarimax, combined }
-
-extension ForecastEngineKindX on ForecastEngineKind {
-  String get nameRu => switch (this) {
-        ForecastEngineKind.wesiHorizon => 'Wesi Horizon',
-        ForecastEngineKind.prophet => 'Prophet',
-        ForecastEngineKind.sarimax => 'SARIMAX',
-        ForecastEngineKind.combined => 'Комбинированный',
-      };
-
-  String get nameEn => switch (this) {
-        ForecastEngineKind.wesiHorizon => 'Wesi Horizon',
-        ForecastEngineKind.prophet => 'Prophet',
-        ForecastEngineKind.sarimax => 'SARIMAX',
-        ForecastEngineKind.combined => 'Combined',
-      };
-}
+export 'forecast_engine_kind.dart';
 
 /// Оценивает Cash Gap Risk Score по готовым P10/P50/P90, когда нет сырых
 /// симулированных путей (Prophet/SARIMAX/Combined дают параметрический
@@ -110,8 +87,8 @@ class ExternalForecastBridge {
         ? 'forecast_prophet.py'
         : 'forecast_sarimax.py';
 
-    final python = await _resolvePython();
-    final script = await _resolveScript(scriptFile);
+    final python = await _resolvePython(engine);
+    final script = await _resolveScript(engine, scriptFile);
     if (python == null || script == null) return null;
 
     final payload = _buildPayload(transactions, currentBalance, days);
@@ -164,7 +141,16 @@ class ExternalForecastBridge {
   static List<double> _toDoubleList(dynamic raw) =>
       (raw as List).map((e) => (e as num).toDouble()).toList();
 
-  static Future<String?> _resolvePython() async {
+  /// Порядок поиска: 1) движок, установленный через [EngineInstallService]
+  /// (скачан по требованию пользователя в ApplicationSupportDirectory —
+  /// основной путь после перехода на ленивую установку) → 2) старое место
+  /// рядом с exe (оставлено на случай, если сборка когда-нибудь снова начнёт
+  /// бандлить движок по умолчанию — не используется сейчас, но не мешает)
+  /// → 3) системный Python (дев-фолбэк для локальной разработки).
+  static Future<String?> _resolvePython(ForecastEngineKind engine) async {
+    final installed = await EngineInstallService.pythonExecutable(engine);
+    if (installed != null) return installed;
+
     if (Platform.isWindows) {
       try {
         final exeDir = File(Platform.resolvedExecutable).parent.path;
@@ -172,8 +158,6 @@ class ExternalForecastBridge {
         if (await File(bundled).exists()) return bundled;
       } catch (_) {}
     }
-    // Дев-фолбэк: системный Python — пока релизный бандл не собран/недоступен
-    // на этой машине, движки можно гонять локально при разработке.
     for (final candidate in ['python3', 'python']) {
       try {
         final probe = await Process.run(candidate, ['--version']);
@@ -183,7 +167,14 @@ class ExternalForecastBridge {
     return null;
   }
 
-  static Future<String?> _resolveScript(String fileName) async {
+  static Future<String?> _resolveScript(
+      ForecastEngineKind engine, String fileName) async {
+    final installedDir = await EngineInstallService.scriptDirectory(engine);
+    if (installedDir != null) {
+      final path = '$installedDir${Platform.pathSeparator}$fileName';
+      if (await File(path).exists()) return path;
+    }
+
     try {
       final exeDir = File(Platform.resolvedExecutable).parent.path;
       final bundled =

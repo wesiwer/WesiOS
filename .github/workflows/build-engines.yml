@@ -1,0 +1,138 @@
+name: Build Forecast Engine Bundles
+
+# Собирает готовые к использованию Python-рантаймы для Prophet и SARIMAX —
+# ОДИН РАЗ здесь, в CI, где есть C++ тулчейн для сборки CmdStan (Prophet)
+# и быстрый доступ к PyPI. Обычный пользователь их не собирает у себя —
+# EngineInstallService в приложении просто скачивает готовый zip с
+# GitHub Release и распаковывает.
+#
+# Не гоняется на каждый push: зависимости движков (numpy/pandas/statsmodels/
+# prophet) меняются на порядки реже, чем остальной код, а Prophet-бандл
+# компилируется добрых 10+ минут. Запускать вручную (workflow_dispatch),
+# когда реально нужно обновить движки.
+on:
+  workflow_dispatch:
+
+env:
+  PY_VERSION: '3.11.9'
+  RELEASE_TAG: 'engines-v1'
+
+jobs:
+  build-sarimax:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download embeddable Python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/$env:PY_VERSION/python-$env:PY_VERSION-embed-amd64.zip" -OutFile python-embed.zip
+          Expand-Archive python-embed.zip -DestinationPath python_runtime -Force
+
+      - name: Enable site-packages in the embeddable distribution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pthFile = Get-ChildItem python_runtime\python*._pth | Select-Object -First 1
+          (Get-Content $pthFile.FullName) -replace '#import site', 'import site' | Set-Content $pthFile.FullName
+          Add-Content $pthFile.FullName "`nLib\site-packages"
+
+      - name: Bootstrap pip and install the SARIMAX stack
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile get-pip.py
+          & python_runtime\python.exe get-pip.py --no-warn-script-location
+          & python_runtime\python.exe -m pip install --no-warn-script-location numpy pandas statsmodels
+
+      - name: Assemble bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path bundle\python -Force | Out-Null
+          Copy-Item python_runtime\* bundle\python -Recurse -Force
+          Copy-Item python_engines bundle\python_engines -Recurse -Force
+          Compress-Archive -Path bundle\* -DestinationPath wesios-engine-sarimax-win64.zip -Force
+
+      - name: Upload build artifact (for inspection before publishing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: wesios-engine-sarimax-win64
+          path: wesios-engine-sarimax-win64.zip
+
+      - name: Publish to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" || \
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Forecast engine bundles" \
+              --notes "Prebuilt Python runtimes for the optional Prophet/SARIMAX forecast engines (downloaded on-demand from Settings > Forecast Models, or the install banner on the Forecast screen). Rebuilt manually via build-engines.yml when the engine scripts or their dependencies change."
+          gh release upload "$RELEASE_TAG" wesios-engine-sarimax-win64.zip --repo "$GITHUB_REPOSITORY" --clobber
+
+  build-prophet:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download embeddable Python
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/$env:PY_VERSION/python-$env:PY_VERSION-embed-amd64.zip" -OutFile python-embed.zip
+          Expand-Archive python-embed.zip -DestinationPath python_runtime -Force
+
+      - name: Enable site-packages in the embeddable distribution
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pthFile = Get-ChildItem python_runtime\python*._pth | Select-Object -First 1
+          (Get-Content $pthFile.FullName) -replace '#import site', 'import site' | Set-Content $pthFile.FullName
+          Add-Content $pthFile.FullName "`nLib\site-packages"
+
+      - name: Bootstrap pip and install the Prophet stack
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile get-pip.py
+          & python_runtime\python.exe get-pip.py --no-warn-script-location
+          & python_runtime\python.exe -m pip install --no-warn-script-location numpy pandas prophet cmdstanpy
+
+      - name: Compile CmdStan once, here (no C++ toolchain on end-user machines)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          # forecast_prophet.py находит python/cmdstan/<version>/ сам,
+          # относительно своего sys.executable — важно только, чтобы версия
+          # оказалась именно тут, в python_runtime\cmdstan.
+          & python_runtime\python.exe -m cmdstanpy.install_cmdstan --dir python_runtime\cmdstan
+
+      - name: Assemble bundle
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          New-Item -ItemType Directory -Path bundle\python -Force | Out-Null
+          Copy-Item python_runtime\* bundle\python -Recurse -Force
+          Copy-Item python_engines bundle\python_engines -Recurse -Force
+          Compress-Archive -Path bundle\* -DestinationPath wesios-engine-prophet-win64.zip -Force
+
+      - name: Upload build artifact (for inspection before publishing)
+        uses: actions/upload-artifact@v4
+        with:
+          name: wesios-engine-prophet-win64
+          path: wesios-engine-prophet-win64.zip
+
+      - name: Publish to GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" || \
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "Forecast engine bundles" \
+              --notes "Prebuilt Python runtimes for the optional Prophet/SARIMAX forecast engines (downloaded on-demand from Settings > Forecast Models, or the install banner on the Forecast screen). Rebuilt manually via build-engines.yml when the engine scripts or their dependencies change."
+          gh release upload "$RELEASE_TAG" wesios-engine-prophet-win64.zip --repo "$GITHUB_REPOSITORY" --clobber

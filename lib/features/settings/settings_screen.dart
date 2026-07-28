@@ -4,6 +4,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../widgets/glass_card.dart';
+import 'widgets/forecast_engines_section.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -75,6 +76,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               activeColor: AppTheme.accentOrange,
             ),
           ),
+          const SizedBox(height: 24),
+          _section(WesiLocale.get('engine_settings_section')),
+          const ForecastEnginesSection(),
           const SizedBox(height: 24),
           _section(WesiLocale.get('about_app')),
           GlassCard(

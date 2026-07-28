@@ -26,8 +26,9 @@
   Cash Gap Risk Score, What-If сценарии, DCF-дисконтирование
 - Мульти-движковый прогноз: Wesi Horizon (родной) / Prophet / SARIMAX —
   независимые тумблеры, режим сравнения (график+таблица), Combined-режим
-  (среднее по посчитавшимся движкам). Prophet/SARIMAX — Windows-only,
-  через бандл Python (SARIMAX в комплекте; Prophet — по решению, см. STATUS.md)
+  (среднее по посчитавшимся движкам). Windows-only, устанавливаются по
+  требованию (баннер на Forecast + раздел в Settings) — скачивание с
+  прогресс-баром/скоростью/этапами, плавающий индикатор поверх всех экранов
 - Operations screen (поиск/фильтр/сортировка/edit)
 - Calculator: global overlay, pin/ESC/Delete/blur/resize
 - Profile auto-save + Firebase tips, upload custom avatar
@@ -52,4 +53,4 @@ CI: push в `main` → GitHub Actions (Windows + Android).
 
 ## Версия
 
-v0.4.0 α — Private, Wesi Inc.
+v0.5.0 α — Private, Wesi Inc.
