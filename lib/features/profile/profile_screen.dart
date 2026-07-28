@@ -51,7 +51,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (savedIndex != null) {
       setState(() => _selectedAvatarIndex = savedIndex as int);
     } else {
-      final randomIndex = DateTime.now().millisecond % WesiAvatar.avatarPresets.length;
+      final randomIndex =
+          DateTime.now().millisecond % WesiAvatar.avatarPresets.length;
       setState(() => _selectedAvatarIndex = randomIndex);
       await box.put('avatar_index', randomIndex);
     }
@@ -93,7 +94,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _saveConfig() async {
     if (!_formKey.currentState!.validate()) return;
-    setState(() { _isLoading = true; _error = null; });
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
 
     try {
       final service = FirebaseConfigService();
@@ -102,9 +106,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
         appId: _appIdCtrl.text.trim(),
         messagingSenderId: _messagingSenderIdCtrl.text.trim(),
         projectId: _projectIdCtrl.text.trim(),
-        authDomain: _authDomainCtrl.text.trim().isEmpty ? null : _authDomainCtrl.text.trim(),
-        storageBucket: _storageBucketCtrl.text.trim().isEmpty ? null : _storageBucketCtrl.text.trim(),
-        measurementId: _measurementIdCtrl.text.trim().isEmpty ? null : _measurementIdCtrl.text.trim(),
+        authDomain: _authDomainCtrl.text.trim().isEmpty
+            ? null
+            : _authDomainCtrl.text.trim(),
+        storageBucket: _storageBucketCtrl.text.trim().isEmpty
+            ? null
+            : _storageBucketCtrl.text.trim(),
+        measurementId: _measurementIdCtrl.text.trim().isEmpty
+            ? null
+            : _measurementIdCtrl.text.trim(),
       );
 
       try {
@@ -114,9 +124,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             appId: _appIdCtrl.text.trim(),
             messagingSenderId: _messagingSenderIdCtrl.text.trim(),
             projectId: _projectIdCtrl.text.trim(),
-            authDomain: _authDomainCtrl.text.trim().isEmpty ? null : _authDomainCtrl.text.trim(),
-            storageBucket: _storageBucketCtrl.text.trim().isEmpty ? null : _storageBucketCtrl.text.trim(),
-            measurementId: _measurementIdCtrl.text.trim().isEmpty ? null : _measurementIdCtrl.text.trim(),
+            authDomain: _authDomainCtrl.text.trim().isEmpty
+                ? null
+                : _authDomainCtrl.text.trim(),
+            storageBucket: _storageBucketCtrl.text.trim().isEmpty
+                ? null
+                : _storageBucketCtrl.text.trim(),
+            measurementId: _measurementIdCtrl.text.trim().isEmpty
+                ? null
+                : _measurementIdCtrl.text.trim(),
           ),
         );
       } catch (e) {
@@ -222,94 +238,118 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ),
-          SliverPadding(
-            padding: const EdgeInsets.all(24),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _buildSectionTitle('Личная информация'),
-                const SizedBox(height: 16),
-                _buildField(_nameCtrl, 'Имя', 'Ваше имя'),
-                _buildField(_emailCtrl, 'Email', 'email@example.com'),
-                _buildDropdownField(
-                  label: 'Дата рождения',
-                  value: _birthDate != null
-                    ? '${_birthDate!.day}.${_birthDate!.month}.${_birthDate!.year}'
-                    : 'Не указана',
-                  onTap: _pickBirthDate,
-                ),
-                _buildDropdownField(
-                  label: 'Пол',
-                  value: _gender,
-                  onTap: () => _showPicker('Пол', _genders, (v) => setState(() => _gender = v)),
-                ),
-                _buildDropdownField(
-                  label: 'Страна',
-                  value: _country,
-                  onTap: () => _showPicker('Страна', _countries, (v) => setState(() => _country = v)),
-                ),
-                const SizedBox(height: 32),
-                _buildSectionTitle('Ключи и токены'),
-                const SizedBox(height: 8),
-                const Text(
-                  'Конфигурация Firebase проекта',
-                  style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-                ),
-                const SizedBox(height: 16),
-                Form(
-                  key: _formKey,
-                  child: Column(
-                    children: [
-                      _buildField(_apiKeyCtrl, 'API Key *', 'AIzaSy...'),
-                      _buildField(_appIdCtrl, 'App ID *', '1:123...'),
-                      _buildField(_projectIdCtrl, 'Project ID *', 'my-project'),
-                      _buildField(_messagingSenderIdCtrl, 'Messaging Sender ID *', '123456'),
-                      const SizedBox(height: 16),
-                      _buildField(_authDomainCtrl, 'Auth Domain'),
-                      _buildField(_storageBucketCtrl, 'Storage Bucket'),
-                      _buildField(_measurementIdCtrl, 'Measurement ID'),
-                    ],
-                  ),
-                ),
-                if (_error != null) ...[
-                  const SizedBox(height: 16),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentRed.withOpacity(0.1),
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: AppTheme.accentRed.withOpacity(0.3)),
-                    ),
-                    child: Text(_error!, style: const TextStyle(color: AppTheme.accentRed)),
-                  ),
-                ],
-                const SizedBox(height: 32),
-                HoverButton(
-                  onTap: _isLoading ? null : _saveConfig,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  backgroundColor: AppTheme.accentOrange,
-                  hoverColor: AppTheme.accentOrange.withOpacity(0.8),
-                  child: Center(
-                    child: _isLoading
-                      ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                      : const Text('Сохранить', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                HoverButton(
-                  onTap: _clearConfig,
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                  backgroundColor: AppTheme.surface,
-                  hoverColor: AppTheme.accentRed.withOpacity(0.2),
-                  child: const Center(
-                    child: Text('Очистить конфигурацию', style: TextStyle(color: AppTheme.accentRed)),
-                  ),
-                ),
-                const SizedBox(height: 32),
-              ]),
-            ),
-          ),
+          theSliverPadding(),
         ],
       ),
+    );
+  }
+
+  Widget theSliverPadding() {
+    return SliverPadding(
+      padding: const EdgeInsets.all(24),
+      sliver: theSliverList(),
+    );
+  }
+
+  Widget theSliverList() {
+    return EditableSliverList();
+  }
+
+  Widget EditableSliverList() {
+    return SliverList(
+      delegate: SliverChildListDelegate([
+        _buildSectionTitle('Личная информация'),
+        const SizedBox(height: 16),
+        _buildField(_nameCtrl, 'Имя', 'Ваше имя'),
+        _buildField(_emailCtrl, 'Email', 'email@example.com'),
+        _buildDropdownField(
+          label: 'Дата рождения',
+          value: _birthDate != null
+              ? '${_birthDate!.day}.${_birthDate!.month}.${_birthDate!.year}'
+              : 'Не указана',
+          onTap: _pickBirthDate,
+        ),
+        _buildDropdownField(
+          label: 'Пол',
+          value: _gender,
+          onTap: () =>
+              _showPicker('Пол', _genders, (v) => setState(() => _gender = v)),
+        ),
+        _buildDropdownField(
+          label: 'Страна',
+          value: _country,
+          onTap: () => _showPicker(
+              'Страна', _countries, (v) => setState(() => _country = v)),
+        ),
+        const SizedBox(height: 32),
+        _buildSectionTitle('Ключи и токены'),
+        const SizedBox(height: 8),
+        const Text(
+          'Конфигурация Firebase проекта',
+          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+        ),
+        const SizedBox(height: 16),
+        Form(
+          key: _formKey,
+          child: Column(
+            children: [
+              _buildField(_apiKeyCtrl, 'API Key *', 'AIzaSy...'),
+              _buildField(_appIdCtrl, 'App ID *', '1:123...'),
+              _buildField(_projectIdCtrl, 'Project ID *', 'my-project'),
+              _buildField(
+                  _messagingSenderIdCtrl, 'Messaging Sender ID *', '123456'),
+              const SizedBox(height: 16),
+              _buildField(_authDomainCtrl, 'Auth Domain'),
+              _buildField(_storageBucketCtrl, 'Storage Bucket'),
+              _buildField(_measurementIdCtrl, 'Measurement ID'),
+            ],
+          ),
+        ),
+        if (_error != null) ...[
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: AppTheme.accentRed.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppTheme.accentRed.withOpacity(0.3)),
+            ),
+            child: Text(_error!, style: const TextStyle(color: AppTheme.accentRed)),
+          ),
+        ],
+        const SizedBox(height: 32),
+        HoverButton(
+          onTap: _isLoading ? null : _saveConfig,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          backgroundColor: AppTheme.accentOrange,
+          hoverColor: AppTheme.accentOrange.withOpacity(0.8),
+          child: Center(
+            child: _isLoading
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.white))
+                : const Text('Сохранить',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white)),
+          ),
+        ),
+        const SizedBox(height: 12),
+        HoverButton(
+          onTap: _clearConfig,
+          padding: const EdgeInsets.symmetric(vertical: 14),
+          backgroundColor: AppTheme.surface,
+          hoverColor: AppTheme.accentRed.withOpacity(0.2),
+          child: const Center(
+            child: Text('Очистить конфигурацию',
+                style: TextStyle(color: AppTheme.accentRed)),
+          ),
+        ),
+        const SizedBox(height: 32),
+      ]),
     );
   }
 
@@ -330,7 +370,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.only(bottom: 16),
       child: TextFormField(
         controller: ctrl,
-        validator: label.contains('*') ? (v) => v == null || v.isEmpty ? 'Обязательное поле' : null : null,
+        validator: label.contains('*')
+            ? (v) => v == null || v.isEmpty ? 'Обязательное поле' : null
+            : null,
         style: const TextStyle(color: AppTheme.textPrimary),
         decoration: InputDecoration(
           labelText: label,
@@ -366,9 +408,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(label, style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+                      Text(label,
+                          style: const TextStyle(
+                              fontSize: 12, color: AppTheme.textSecondary)),
                       const SizedBox(height: 4),
-                      Text(value, style: const TextStyle(fontSize: 16, color: AppTheme.textPrimary)),
+                      Text(value,
+                          style: const TextStyle(
+                              fontSize: 16, color: AppTheme.textPrimary)),
                     ],
                   ),
                 ),
@@ -381,7 +427,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _showPicker(String title, List<String> items, ValueChanged<String> onSelect) {
+  void _showPicker(
+      String title, List<String> items, ValueChanged<String> onSelect) {
     showModalBottomSheet(
       context: context,
       backgroundColor: AppTheme.surface,
@@ -391,7 +438,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       builder: (context) {
         return SafeArea(
           child: Column(
-            mainAxisSize: MainAxis.min,
+            mainAxisSize: MainAxisSize.min,
             children: [
               Container(
                 margin: const EdgeInsets.only(top: 8),
@@ -404,18 +451,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+                child: Text(title,
+                    style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary)),
               ),
               ...items.map((item) => ListTile(
-                title: Text(item, style: const TextStyle(color: AppTheme.textPrimary)),
-                trailing: (title == 'Пол' && item == _gender) || (title == 'Страна' && item == _country)
-                  ? const Icon(Icons.check, color: AppTheme.accentOrange)
-                  : null,
-                onTap: () {
-                  onSelect(item);
-                  Navigator.pop(context);
-                },
-              )),
+                    title: Text(item,
+                        style: const TextStyle(color: AppTheme.textPrimary)),
+                    trailing: (title == 'Пол' && item == _gender) ||
+                            (title == 'Страна' && item == _country)
+                        ? const Icon(Icons.check, color: AppTheme.accentOrange)
+                        : null,
+                    onTap: () {
+                      onSelect(item);
+                      Navigator.pop(context);
+                    },
+                  )),
               const SizedBox(height: 16),
             ],
           ),
@@ -425,7 +478,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSelectedAvatar() {
-    return WesiAvatar(size: 100, showBorder: true);
+    return const WesiAvatar(size: 100, showBorder: true);
   }
 
   Widget _buildAvatarGrid() {
@@ -455,8 +508,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   width: isSelected ? 2.5 : 0,
                 ),
                 boxShadow: isSelected
-                  ? [BoxShadow(color: AppTheme.accentOrange.withOpacity(0.25), blurRadius: 12, spreadRadius: 2)]
-                  : null,
+                    ? [
+                        BoxShadow(
+                            color: AppTheme.accentOrange.withOpacity(0.25),
+                            blurRadius: 12,
+                            spreadRadius: 2)
+                      ]
+                    : null,
               ),
               child: Center(
                 child: AnimatedScale(
@@ -490,16 +548,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           decoration: BoxDecoration(
             color: AppTheme.surface,
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3), width: 1),
+            border: Border.all(
+                color: AppTheme.accentOrange.withOpacity(0.3), width: 1),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.add_photo_alternate_outlined, size: 16, color: AppTheme.accentOrange.withOpacity(0.8)),
+              Icon(Icons.add_photo_alternate_outlined,
+                  size: 16, color: AppTheme.accentOrange.withOpacity(0.8)),
               const SizedBox(width: 8),
               Text(
                 'Загрузить свою',
-                style: TextStyle(fontSize: 12, color: AppTheme.accentOrange.withOpacity(0.9), fontWeight: FontWeight.w500),
+                style: TextStyle(
+                    fontSize: 12,
+                    color: AppTheme.accentOrange.withOpacity(0.9),
+                    fontWeight: FontWeight.w500),
               ),
             ],
           ),
