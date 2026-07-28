@@ -1,137 +1,189 @@
-# WesiOS — статус для AI-агентов
+# WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-07-28  
-**Репо:** https://github.com/wesiwer/WesiOS  
-**Ветка:** main  
-**Версия UI:** v0.1.2 α
+**Обновлено:** 2026-07-28 (полный аудит по баг-листу пользователя)  
+**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** main · **UI:** v0.1.2 α
 
-Этот файл — единый источник правды: что уже сделано, что в работе, что нельзя ломать.
+Читай этот файл **перед** любыми правками. Не помечай задачу ✅, пока пользователь не подтвердил на билде.
 
 ---
 
-## Архитектурные решения (не «баги»)
+## Архитектура (не баги)
 
-1. **SandboxService ≠ TreasuryService** — намеренное дублирование. Песочница работает на вымышленных данных и не трогает реальные транзакции.
-2. **Валюта хранится в RUB-эквиваленте**, отображение через `CurrencyService.fromRub` / `toRub`.
-3. **Кастомный title bar** (`WindowControls`) — системный title bar скрыт (`TitleBarStyle.hidden`).
-4. **Курсы** — `ExchangeRateService` тянет exchangerate.host при старте; fallback — зашитые курсы.
+1. `SandboxService` ≠ `TreasuryService` — **намеренное** дублирование.
+2. Суммы внутри в RUB-эквиваленте; UI через `CurrencyService.fromRub` / `toRub`.
+3. Кастомный title bar (`TitleBarStyle.hidden` + `WindowControls`).
+4. Курсы: `ExchangeRateService` → exchangerate.host; fallback — зашитые курсы.
 
 ---
 
-## ✅ Сделано
+## Полный разбор баг-листа пользователя
 
-### Окно / desktop
-- [x] Кастомный title bar без лого/надписи WesiOS
-- [x] Minimize / maximize / close с мгновенным откликом (`Listener`)
-- [x] Drag-зона отдельно от кнопок окна
-- [x] Старт: maximize (не true-fullscreen — на Windows глючит)
-- [x] Кнопка валюты не перекрывает close (padding right: 140)
+Легенда: ✅ в коде и ожидаемо работает · ⚠️ в коде, **не подтверждено** / частично · ❌ не сделано
 
-### Splash
-- [x] Яркий оранжевый ambient glow
-- [x] Убрана центральная W
-- [x] Кольца толще/меньше, **ниже** progress bar
+### Окно Windows
 
-### Home
-- [x] Bottom tabs → IndexedStack (Tasks / Treasury / Analytics / Settings сразу, без placeholder)
-- [x] Кнопки «Продажа» / «Траты»
-- [x] Лого: hover-карточка справа, без мерцания (`IgnorePointer` на overlay)
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 1 | Кнопка **свернуть** не работает | ⚠️ | Код: `windowManager.minimize()` через `Listener.onPointerDown`. Пользователь раньше жаловался — **перепроверить на билде**. Если снова мёртвая — копать hit-test / parent GestureDetector. |
+| 2 | Свернуть/закрыть **долго реагируют** | ⚠️ | Переведено на `Listener` + отдельная drag-зона. Нужна проверка. |
+| 3 | Валюта **налезает на Close** | ⚠️ | Padding `right: 140` в Treasury/Sandbox. Может остаться на других экранах с actions. |
+| 4 | Кнопка **Отмена** в диалогах налезает на Close | ❌ | Не проверялось системно; диалоги не сдвинуты относительно title bar. |
+| 5 | При старте **полный экран**, сейчас окно | ⚠️ | `maximize()` при старте, **не** `setFullScreen(true)` (на Win ломает taskbar). Если пользователь хочет именно fullscreen — обсудить. |
+| 6 | Убрать **маленький лого + «WesiOS»** из title bar | ✅ | Title bar пустой слева, только кнопки окна. |
+
+### Home / навигация
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 7 | Bottom tabs **сразу** в экраны, без «Открыть Treasury» | ✅ | `IndexedStack`: Tasks / Treasury / Analytics / Settings. |
+| 8 | Home **Продажа** → сразу экран/диалог продажи | ❌ | Сейчас `Navigator.pushNamed('/treasury')`, **не** диалог. |
+| 9 | Home **Траты** → сразу окно трат | ❌ | То же. |
+| 10 | Кошелёк только через **Финансы** снизу | ✅ | Tab Treasury. |
+| 11 | Hover на лого: подсказка **рядом**, не поверх | ✅ | Карточка справа + `IgnorePointer`. |
+| 12 | Мерцание на углу лого | ✅ | Fix IgnorePointer. |
+| 13 | **Анимация смены bottom-вкладок лагает**, неприятно глазу | ❌ | **NEW.** Сейчас `IndexedStack` без transition; при тяжёлых детях (Treasury) первый показ лагает. Нужно: лёгкий cross-fade / отложенная инициализация / не строить все табы сразу. |
 
 ### Treasury
-- [x] Кнопки действий: **Продажа** / **Траты** (не «Всего доходов»)
-- [x] Категории на русском при RU-локали
-- [x] Удаление транзакций
-- [x] Multi-currency cycle (RUB/USD/EUR/GBP/CNY/UAH/BYN/KZT)
-- [x] Отображение баланса в выбранной валюте
-- [x] Вход в Sandbox и Forecast
 
-### Sandbox
-- [x] Изолированные данные, сценарии (startup/freelancer/crisis/clone)
-- [x] Удаление транзакций
-- [x] Баннер без слова «Сценарий:» (только режим + изоляция)
-- [x] Намеренное дублирование сервиса
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 14 | Кнопки «Всего доходов/расходов» → **Продажа / Траты** | ✅ | |
+| 15 | Категории на **русском** (EN только в EN-локали) | ✅ | В диалоге добавления. |
+| 16 | Кнопка **Операции**: список всех, **edit + delete** | ❌ | Delete на строке есть. **Нет** отдельного экрана операций, **нет edit**. |
+| 17 | Реальный **курс**, не только символ | ⚠️ | `fromRub`/`toRub` + `ExchangeRateService`. API не ЦБ РФ; без сети — fallback. Нет UI «курс на …». |
+| 18 | Курс с **гос. сайта** | ❌ | Сейчас exchangerate.host, не cbr.ru / ECB. |
 
 ### Forecast
-- [x] P10/P50/P90 + тултипы
-- [x] Смена периода **без** полноэкранного лоадера (только график)
-- [x] Тогглы диапазон / полосы / тренд реально влияют на chart
-- [x] Даты на оси X
-- [x] Аномалии на русском
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 19 | Тогглы диапазон / тренд **ничего не меняют** | ⚠️ | В коде влияют на `lineBarsData`. Перепроверить на билде. |
+| 20 | Тултипы **P10 / P50 / P90** | ✅ | |
+| 21 | Аномалии на русском | ✅ | |
+| 22 | **Календарь** ручного диапазона | ❌ | Только chips 7/14/30/60/90. |
+| 23 | Смена периода без дёрганья экрана | ✅ | Только opacity графика. |
+| 24 | Даты на оси X | ✅ | |
+| 25 | Более детальные графики | ⚠️ | Несколько режимов были; после упрощения — в основном line forecast. |
 
 ### Calculator
-- [x] ESC закрывает (если не pinned)
-- [x] Delete очищает
-- [x] Pin / blur on-off / drag / scale
-- [x] Без тяжёлого BackdropFilter в роутере (плавный fade)
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 26 | Блюр с **зависаниями** → плавный | ⚠️ | Убран BackdropFilter из роутера, затемнение `Colors.black54`. На слабых GPU всё ещё может быть тяжело. |
+| 27 | **Убрать блюр** (toggle) | ✅ | Кнопка blur on/off. |
+| 28 | **Перемещать** окно калькулятора | ✅ | `onPanUpdate` → offset. |
+| 29 | **Закрепить (pin)** — живёт поверх вкладок | ⚠️ | Pin не даёт закрыть по backdrop/ESC. **Не** сделан глобальный overlay поверх IndexedStack (при смене tab route может уйти). |
+| 30 | **Resize** с сохранением пропорций | ⚠️ | Только scale 0.7–1.4 кнопками +/−, не drag-углом. |
+| 31 | **ESC** закрывает если не pinned | ✅ | |
+| 32 | **Delete** очищает (не только C) | ✅ | |
+
+### Settings / Locale
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 33 | Смена языка **не обновляет** сами настройки | ⚠️ | Settings переведён на `WesiLocale.get` + setState. Home/другие экраны в IndexedStack **могут не перерисоваться** до переключения tab. Нужен глобальный locale notifier. |
+
+### Аватарки / иконки
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 34 | Иконки/аватар меняются **только после рестарта** | ⚠️ | `WesiAvatar` → `ValueListenableBuilder` + Hive.listenable. Если всё ещё stale — проверить, что box открыт и ключ `avatar_index`. |
+| 35 | Аватарки **старые, поменять** набор | ❌ | Те же 8 gradient+icon пресетов. Нужен новый визуальный сет. |
+| 36 | **Своя ава** (upload) | ❌ | Кнопка-заглушка. |
+
+### First-run / Firebase
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 37 | Подсказки **где взять ключ** при наведении на first-run | ❌ | Подсказки есть в **Profile**, на **FirstRunScreen** — только hint вроде `AIzaSy...`, **нет** подробных tooltip. |
+
+### Splash
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 38 | Оранжевый свет **ярче** | ✅ | |
+| 39 | Убрать иконку по центру | ✅ | |
+| 40 | Кольца толще/меньше, **ниже** шкалы | ✅ | |
+
+### Sandbox
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 41 | Убрать слова **«Сценарий»** | ✅ | Баннер: mode + isolation + no impact. |
+
+### Валюты
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 42 | EUR, GBP, CNY, UAH, BYN, KZT | ✅ | В `CurrencyService.currencies`. |
+
+### Клавиатура
+
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 43 | Стрелки между кнопками UI | ❌ | Не реализовано. |
 
 ### Profile
-- [x] Автосейв всех полей (debounce 600ms)
-- [x] Подсказки где взять Firebase-ключи
-- [x] Выбор пресет-аватарок
-- [x] Live-аватар через ValueListenableBuilder (без рестарта)
 
-### Settings
-- [x] Все строки через WesiLocale
-- [x] Смена языка → setState, UI обновляется на месте
-
-### Валюты / курсы
-- [x] 8 валют в CurrencyService
-- [x] ExchangeRateService при старте
-
-### Локализация
-- [x] WesiLocale ru/en, ключи в Hive
-
-### Прочее
-- [x] Hover flicker лого пофикшен
+| # | Запрос | Статус | Комментарий |
+|---|--------|--------|-------------|
+| 44 | Автосохранение без кнопки | ✅ | Debounce 600ms. |
 
 ---
 
-## 🔄 В очереди / частично
+## Сводка: что чинить в первую очередь
 
-- [ ] **Upload своей аватарки** (кнопка есть, file_picker ещё не подключён до конца)
-- [ ] **Календарь ручного диапазона** в Forecast (chips 7/14/30/60/90 есть)
-- [ ] **Продажа/Траты с Home** → сразу диалог добавления (сейчас открывает `/treasury`)
-- [ ] **Клавиатура**: стрелки между кнопками UI
-- [ ] **Редактирование** транзакции (delete есть, edit нет)
-- [ ] **Отдельный экран всех операций** с фильтрами
-- [ ] Курсы: при отсутствии сети — только fallback (ок); UI «обновлено в …» нет
-- [ ] Tasks / Analytics / CRM / Roadmap — в основном заглушки
-- [ ] Голосовой ввод, Command Palette, Privacy Mode — не начаты
+### P0 — пользователь явно не закрыл / критично
+1. **Minimize** — перепроверить; если нет — починить hit-test.
+2. **Fullscreen/maximize при старте** — перепроверить.
+3. **Home Продажа/Траты → диалог сразу**, не `/treasury`.
+4. **Экран Операции** (все tx, edit + delete).
+5. **FirstRun** подробные tooltip по Firebase-ключам.
+6. **Лаг анимации bottom-tabs** (новый пункт).
 
----
+### P1
+7. Глобальный locale rebuild (не только Settings).
+8. Курсы с ЦБ / отображение реального курса + timestamp.
+9. Календарь диапазона в Forecast.
+10. Новые пресеты аватарок + upload.
+11. Pin калькулятора как global overlay.
+12. Resize калькулятора drag-corner.
+13. Keyboard arrow focus traversal.
 
-## ⚠️ Известные ограничения среды
-
-- CI/local build Windows: CMake deprecation warning (не блокер)
-- True fullscreen на Windows не используем
-- Firebase Auth/Firestore на desktop Windows ограничен
-
----
-
-## Правила для следующего AI
-
-1. **Не удалять** дублирование Sandbox/Treasury.
-2. **Не возвращать** лого в title bar.
-3. **Не ставить** `MainAxis.min` — только `MainAxisSize.min`.
-4. Overlay-тултипы всегда с `IgnorePointer`.
-5. При смене периода Forecast — **не** ставить `_isLoading = true` на весь экран.
-6. После крупных UI-правок — обновить **этот** STATUS.md.
-7. Коммиты в `main` через GitHub API / push; пользователь гоняет билды сам.
+### P2
+14. Отмена в диалогах vs title bar overlap.
+15. Продвинутые графики / больше метрик.
 
 ---
 
-## Ключевые пути
+## Правила для AI
 
-| Что | Файл |
+1. Не удалять дублирование Sandbox/Treasury.
+2. Не возвращать лого в title bar.
+3. Только `MainAxisSize.min`, никогда `MainAxis.min`.
+4. Overlay-тултипы → всегда `IgnorePointer`.
+5. Forecast period change → не full-screen loader.
+6. После правок — обновить **этот** STATUS.md (статус строк таблицы).
+7. Не ставить ✅ без проверки на Windows-билде пользователем.
+
+---
+
+## Ключевые файлы
+
+| Что | Путь |
 |-----|------|
 | Title bar | `lib/core/widgets/window_controls.dart` |
-| Валюта | `lib/core/services/currency_service.dart` |
-| Курсы | `lib/core/services/exchange_rate_service.dart` |
-| Локаль | `lib/core/localization/wesi_locale.dart` |
-| Аватар | `lib/core/widgets/wesi_avatar.dart` |
-| Treasury UI | `lib/features/treasury/treasury_screen.dart` |
-| Sandbox UI | `lib/features/treasury/sandbox_screen.dart` |
+| App start window | `lib/main.dart` |
+| Currency | `lib/core/services/currency_service.dart` |
+| Rates | `lib/core/services/exchange_rate_service.dart` |
+| Locale | `lib/core/localization/wesi_locale.dart` |
+| Avatar | `lib/core/widgets/wesi_avatar.dart` |
+| Home | `lib/features/home/home_screen.dart` |
+| Treasury | `lib/features/treasury/treasury_screen.dart` |
+| Sandbox | `lib/features/treasury/sandbox_screen.dart` |
 | Forecast | `lib/features/treasury/forecast_chart_screen.dart` |
 | Calculator | `lib/features/calculator/calculator_screen.dart` |
 | Profile | `lib/features/profile/profile_screen.dart` |
-| Home | `lib/features/home/home_screen.dart` |
+| First run | `lib/features/first_run/first_run_screen.dart` |
+| Settings | `lib/features/settings/settings_screen.dart` |
+| Splash | `lib/features/splash/splash_screen.dart` |
