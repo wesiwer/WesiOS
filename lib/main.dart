@@ -29,9 +29,13 @@ void main() async {
     );
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setPreventClose(false);
-      // Только maximize: borderless-fullscreen окно на Win32 не сворачивается
-      // по windowManager.minimize() и перекрывает taskbar.
-      await windowManager.maximize();
+      // Настоящий OS fullscreen по запросу пользователя. Плагин на Win32
+      // намеренно не даёт свернуть fullscreen-окно (WindowManager::Minimize
+      // делает ранний return, если IsFullScreen() — как у Chromium), поэтому
+      // сама минимизация обходит это в WindowControls: перед minimize()
+      // сначала выходит из fullscreen, а при восстановлении из трея —
+      // возвращается в него (см. window_controls.dart).
+      await windowManager.setFullScreen(true);
       await windowManager.show();
       await windowManager.focus();
     });

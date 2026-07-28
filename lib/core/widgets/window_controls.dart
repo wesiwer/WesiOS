@@ -15,13 +15,20 @@ class WindowControls extends StatefulWidget {
 }
 
 class _WindowControlsState extends State<WindowControls> with WindowListener {
-  bool _isMaximized = true;
+  // Текущее нативное состояние (для иконки кнопки).
+  bool _isFullScreen = true;
+  // Что выбрал пользователь — не путать с _isFullScreen: во время
+  // _minimize() мы технически временно гасим fullscreen, чтобы обойти отказ
+  // Win32 сворачивать fullscreen-окно, но пользователь fullscreen не отменял.
+  // Именно это поле решает, возвращаться ли в fullscreen после восстановления
+  // из трея.
+  bool _wantFullScreen = true;
 
   @override
   void initState() {
     super.initState();
     windowManager.addListener(this);
-    _checkMaximized();
+    _checkFullScreen();
   }
 
   @override
@@ -31,20 +38,45 @@ class _WindowControlsState extends State<WindowControls> with WindowListener {
   }
 
   @override
-  void onWindowMaximize() {
-    if (mounted) setState(() => _isMaximized = true);
+  void onWindowEnterFullScreen() {
+    if (mounted) setState(() => _isFullScreen = true);
   }
 
   @override
-  void onWindowUnmaximize() {
-    if (mounted) setState(() => _isMaximized = false);
+  void onWindowLeaveFullScreen() {
+    if (mounted) setState(() => _isFullScreen = false);
   }
 
-  Future<void> _checkMaximized() async {
+  /// На Win32 плагин безусловно отказывается сворачивать fullscreen-окно
+  /// (см. main.dart) — при восстановлении из трея нужно вернуть прежний вид
+  /// самим, иначе после первого же сворачивания окно навсегда остаётся
+  /// обычным, даже если пользователь фактически fullscreen не выключал.
+  @override
+  void onWindowRestore() {
+    if (_wantFullScreen) windowManager.setFullScreen(true);
+  }
+
+  Future<void> _checkFullScreen() async {
     try {
-      final maximized = await windowManager.isMaximized();
-      if (mounted) setState(() => _isMaximized = maximized);
+      final fullScreen = await windowManager.isFullScreen();
+      if (mounted) setState(() => _isFullScreen = fullScreen);
     } catch (_) {}
+  }
+
+  /// Сворачивание из fullscreen на Win32 — не встроенная функция плагина
+  /// (см. main.dart): нужно сперва явно выйти из fullscreen, и только потом
+  /// звать minimize(), иначе вызов молча ничего не делает. _wantFullScreen
+  /// не трогаем — это чисто техническое отключение, а не выбор пользователя.
+  Future<void> _minimize() async {
+    if (await windowManager.isFullScreen()) {
+      await windowManager.setFullScreen(false);
+    }
+    await windowManager.minimize();
+  }
+
+  Future<void> _toggleFullScreen() async {
+    _wantFullScreen = !_wantFullScreen;
+    await windowManager.setFullScreen(_wantFullScreen);
   }
 
   @override
@@ -57,14 +89,10 @@ class _WindowControlsState extends State<WindowControls> with WindowListener {
           Expanded(
             child: GestureDetector(
               behavior: HitTestBehavior.translucent,
+              // На Windows плагин сам глушит startDragging() в fullscreen —
+              // перетаскивать всё равно нечего, пока не вышли в оконный режим.
               onPanStart: (_) => windowManager.startDragging(),
-              onDoubleTap: () async {
-                if (_isMaximized) {
-                  await windowManager.unmaximize();
-                } else {
-                  await windowManager.maximize();
-                }
-              },
+              onDoubleTap: _toggleFullScreen,
               child: const SizedBox.expand(),
             ),
           ),
@@ -72,18 +100,14 @@ class _WindowControlsState extends State<WindowControls> with WindowListener {
           _WinBtn(
             icon: Icons.remove,
             tooltip: 'Свернуть',
-            onTap: () => windowManager.minimize(),
+            onTap: _minimize,
           ),
           _WinBtn(
-            icon: _isMaximized ? Icons.filter_none : Icons.crop_square,
-            tooltip: _isMaximized ? 'Восстановить' : 'Развернуть',
-            onTap: () async {
-              if (_isMaximized) {
-                await windowManager.unmaximize();
-              } else {
-                await windowManager.maximize();
-              }
-            },
+            icon: _isFullScreen ? Icons.fullscreen_exit : Icons.fullscreen,
+            tooltip: _isFullScreen
+                ? 'Выйти из полноэкранного режима'
+                : 'На весь экран',
+            onTap: _toggleFullScreen,
           ),
           _WinBtn(
             icon: Icons.close,
