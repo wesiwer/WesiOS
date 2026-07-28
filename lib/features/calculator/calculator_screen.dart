@@ -62,6 +62,32 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     }
   }
 
+  /// Map numpad keys to calculator input
+  String? _mapNumpadKey(LogicalKeyboardKey key) {
+    final numpadMap = {
+      LogicalKeyboardKey.numpad0: '0',
+      LogicalKeyboardKey.numpad1: '1',
+      LogicalKeyboardKey.numpad2: '2',
+      LogicalKeyboardKey.numpad3: '3',
+      LogicalKeyboardKey.numpad4: '4',
+      LogicalKeyboardKey.numpad5: '5',
+      LogicalKeyboardKey.numpad6: '6',
+      LogicalKeyboardKey.numpad7: '7',
+      LogicalKeyboardKey.numpad8: '8',
+      LogicalKeyboardKey.numpad9: '9',
+      LogicalKeyboardKey.numpadDecimal: '.',
+      LogicalKeyboardKey.numpadAdd: '+',
+      LogicalKeyboardKey.numpadSubtract: '-',
+      LogicalKeyboardKey.numpadMultiply: '*',
+      LogicalKeyboardKey.numpadDivide: '/',
+      LogicalKeyboardKey.numpadEnter: 'Enter',
+      LogicalKeyboardKey.numpadEqual: '=',
+      LogicalKeyboardKey.numpadParenLeft: '(',
+      LogicalKeyboardKey.numpadParenRight: ')',
+    };
+    return numpadMap[key];
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -102,7 +128,14 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 onKeyEvent: (event) {
                   if (event is KeyDownEvent) {
                     final key = event.logicalKey;
-                    if (key == LogicalKeyboardKey.enter || key == LogicalKeyboardKey.numpadEnter) {
+                    // Check numpad keys first
+                    final numpadValue = _mapNumpadKey(key);
+                    if (numpadValue != null) {
+                      _onPressed(numpadValue);
+                      return;
+                    }
+                    // Regular keys
+                    if (key == LogicalKeyboardKey.enter) {
                       _onPressed('Enter');
                     } else if (key == LogicalKeyboardKey.backspace) {
                       _onPressed('Backspace');
@@ -147,7 +180,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                         ],
                       ),
                     ),
-                    // Buttons — no scroll, fixed layout
+                    // Buttons
                     Padding(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
                       child: Column(
