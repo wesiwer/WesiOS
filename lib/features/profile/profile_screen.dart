@@ -238,119 +238,115 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ),
           ),
-          theSliverPadding(),
+          for (final w in _buildBodySlivers()) w,
         ],
       ),
     );
   }
 
-  Widget theSliverPadding() {
-    return SliverPadding(
-      padding: const EdgeInsets.all(24),
-      sliver: theSliverList(),
-    );
-  }
-
-  Widget theSliverList() {
-    return EditableSliverList();
-  }
-
-  Widget EditableSliverList() {
-    return SliverList(
-      delegate: SliverChildListDelegate([
-        _buildSectionTitle('Личная информация'),
-        const SizedBox(height: 16),
-        _buildField(_nameCtrl, 'Имя', 'Ваше имя'),
-        _buildField(_emailCtrl, 'Email', 'email@example.com'),
-        _buildDropdownField(
-          label: 'Дата рождения',
-          value: _birthDate != null
-              ? '${_birthDate!.day}.${_birthDate!.month}.${_birthDate!.year}'
-              : 'Не указана',
-          onTap: _pickBirthDate,
-        ),
-        _buildDropdownField(
-          label: 'Пол',
-          value: _gender,
-          onTap: () =>
-              _showPicker('Пол', _genders, (v) => setState(() => _gender = v)),
-        ),
-        _buildDropdownField(
-          label: 'Страна',
-          value: _country,
-          onTap: () => _showPicker(
-              'Страна', _countries, (v) => setState(() => _country = v)),
-        ),
-        const SizedBox(height: 32),
-        _buildSectionTitle('Ключи и токены'),
-        const SizedBox(height: 8),
-        const Text(
-          'Конфигурация Firebase проекта',
-          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
-        ),
-        const SizedBox(height: 16),
-        Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              _buildField(_apiKeyCtrl, 'API Key *', 'AIzaSy...'),
-              _buildField(_appIdCtrl, 'App ID *', '1:123...'),
-              _buildField(_projectIdCtrl, 'Project ID *', 'my-project'),
-              _buildField(
-                  _messagingSenderIdCtrl, 'Messaging Sender ID *', '123456'),
-              const SizedBox(height: 16),
-              _buildField(_authDomainCtrl, 'Auth Domain'),
-              _buildField(_storageBucketCtrl, 'Storage Bucket'),
-              _buildField(_measurementIdCtrl, 'Measurement ID'),
-            ],
-          ),
-        ),
-        if (_error != null) ...[
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.accentRed.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: AppTheme.accentRed.withOpacity(0.3)),
+  List<Widget> _buildBodySlivers() {
+    return [
+     	ableofcontentsPadding(
+        padding: const EdgeInsets.all(24),
+        sliver: SliverList(
+          delegate: SliverChildListDelegate([
+            _buildSectionTitle('Личная информация'),
+            const SizedBox(height: 16),
+            _buildField(_nameCtrl, 'Имя', 'Ваше имя'),
+            _buildField(_emailCtrl, 'Email', 'email@example.com'),
+            _buildDropdownField(
+              label: 'Дата рождения',
+              value: _birthDate != null
+                  ? '${_birthDate!.day}.${_birthDate!.month}.${_birthDate!.year}'
+                  : 'Не указана',
+              onTap: _pickBirthDate,
             ),
-            child: Text(_error!, style: const TextStyle(color: AppTheme.accentRed)),
-          ),
-        ],
-        const SizedBox(height: 32),
-        HoverButton(
-          onTap: _isLoading ? null : _saveConfig,
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          backgroundColor: AppTheme.accentOrange,
-          hoverColor: AppTheme.accentOrange.withOpacity(0.8),
-          child: Center(
-            child: _isLoading
-                ? const SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Text('Сохранить',
-                    style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white)),
-          ),
+            _buildDropdownField(
+              label: 'Пол',
+              value: _gender,
+              onTap: () => _showPicker(
+                  'Пол', _genders, (v) => setState(() => _gender = v)),
+            ),
+            _buildDropdownField(
+              label: 'Страна',
+              value: _country,
+              onTap: () => _showPicker(
+                  'Страна', _countries, (v) => setState(() => _country = v)),
+            ),
+            const SizedBox(height: 32),
+            _buildSectionTitle('Ключи и токены'),
+            const SizedBox(height: 8),
+            const Text(
+              'Конфигурация Firebase проекта',
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 16),
+            Form(
+              key: _formKey,
+              child: Column(
+                children: [
+                  _buildField(_apiKeyCtrl, 'API Key *', 'AIzaSy...'),
+                  _buildField(_appIdCtrl, 'App ID *', '1:123...'),
+                  _buildField(_projectIdCtrl, 'Project ID *', 'my-project'),
+                  _buildField(
+                      _messagingSenderIdCtrl, 'Messaging Sender ID *', '123456'),
+                  const SizedBox(height: 16),
+                  _buildField(_authDomainCtrl, 'Auth Domain'),
+                  _buildField(_storageBucketCtrl, 'Storage Bucket'),
+                  _buildField(_measurementIdCtrl, 'Measurement ID'),
+                ],
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 16),
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: AppTheme.accentRed.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                  border:
+                      Border.all(color: AppTheme.accentRed.withOpacity(0.3)),
+                ),
+                child: Text(_error!,
+                    style: const TextStyle(color: AppTheme.accentRed)),
+              ),
+            ],
+            const SizedBox(height: 32),
+            HoverButton(
+              onTap: _isLoading ? null : _saveConfig,
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              backgroundColor: AppTheme.accentOrange,
+              hoverColor: AppTheme.accentOrange.withOpacity(0.8),
+              child: Center(
+                child: _isLoading
+                    ? const SizedBox(
+                        width: 24,
+                        height: 24,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 2, color: Colors.white))
+                    : const Text('Сохранить',
+                        style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white)),
+              ),
+            ),
+            const SizedBox(height: 12),
+            HoverButton(
+              onTap: _clearConfig,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              backgroundColor: AppTheme.surface,
+              hoverColor: AppTheme.accentRed.withOpacity(0.2),
+              child: const Center(
+                child: Text('Очистить конфигурацию',
+                    style: TextStyle(color: AppTheme.accentRed)),
+              ),
+            ),
+            const SizedBox(height: 32),
+          ]),
         ),
-        const SizedBox(height: 12),
-        HoverButton(
-          onTap: _clearConfig,
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          backgroundColor: AppTheme.surface,
-          hoverColor: AppTheme.accentRed.withOpacity(0.2),
-          child: const Center(
-            child: Text('Очистить конфигурацию',
-                style: TextStyle(color: AppTheme.accentRed)),
-          ),
-        ),
-        const SizedBox(height: 32),
-      ]),
-    );
+      ),
+    ];
   }
 
   Widget _buildSectionTitle(String title) {
@@ -504,7 +500,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 shape: BoxShape.circle,
                 gradient: preset.gradient,
                 border: Border.all(
-                  color: isSelected ? AppTheme.accentOrange : Colors.transparent,
+                  color:
+                      isSelected ? AppTheme.accentOrange : Colors.transparent,
                   width: isSelected ? 2.5 : 0,
                 ),
                 boxShadow: isSelected
