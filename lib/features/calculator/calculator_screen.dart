@@ -159,136 +159,136 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           child: Stack(
             children: [
               Container(
-            constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
-            decoration: BoxDecoration(
-              color: AppTheme.background,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: _pinned
-                    ? AppTheme.accentOrange.withOpacity(0.5)
-                    : AppTheme.glassBorder,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.45),
-                  blurRadius: 30,
+                constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
+                decoration: BoxDecoration(
+                  color: AppTheme.background,
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: _pinned
+                        ? AppTheme.accentOrange.withOpacity(0.5)
+                        : AppTheme.glassBorder,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.45),
+                      blurRadius: 30,
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  // Header
-                  Container(
-                    height: 44,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
-                    color: AppTheme.surface,
-                    child: Row(
-                      children: [
-                        const SizedBox(width: 8),
-                        const Text(
-                          'Wesi Calculator',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: AppTheme.textPrimary,
-                          ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Header
+                      Container(
+                        height: 44,
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        color: AppTheme.surface,
+                        child: Row(
+                          children: [
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Wesi Calculator',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: AppTheme.textPrimary,
+                              ),
+                            ),
+                            const Spacer(),
+                            IconButton(
+                              tooltip: _showBlur ? 'Убрать блюр' : 'Включить блюр',
+                              icon: Icon(
+                                _showBlur ? Icons.blur_on : Icons.blur_off,
+                                size: 18,
+                                color: AppTheme.textMuted,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _showBlur = !_showBlur),
+                            ),
+                            IconButton(
+                              tooltip: _pinned ? 'Открепить' : 'Закрепить',
+                              icon: Icon(
+                                _pinned
+                                    ? Icons.push_pin
+                                    : Icons.push_pin_outlined,
+                                size: 18,
+                                color: _pinned
+                                    ? AppTheme.accentOrange
+                                    : AppTheme.textMuted,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _pinned = !_pinned),
+                            ),
+                            IconButton(
+                              tooltip: 'Уменьшить',
+                              icon: const Icon(Icons.remove, size: 18,
+                                  color: AppTheme.textMuted),
+                              onPressed: () => setState(
+                                  () => _scale = (_scale - 0.1).clamp(0.7, 1.4)),
+                            ),
+                            IconButton(
+                              tooltip: 'Увеличить',
+                              icon: const Icon(Icons.add, size: 18,
+                                  color: AppTheme.textMuted),
+                              onPressed: () => setState(
+                                  () => _scale = (_scale + 0.1).clamp(0.7, 1.4)),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 18),
+                              onPressed: _close,
+                            ),
+                          ],
                         ),
-                        const Spacer(),
-                        IconButton(
-                          tooltip: _showBlur ? 'Убрать блюр' : 'Включить блюр',
-                          icon: Icon(
-                            _showBlur ? Icons.blur_on : Icons.blur_off,
-                            size: 18,
-                            color: AppTheme.textMuted,
-                          ),
-                          onPressed: () =>
-                              setState(() => _showBlur = !_showBlur),
+                      ),
+                      // Display
+                      Padding(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            Text(
+                              _expression,
+                              style: const TextStyle(
+                                  fontSize: 20, color: AppTheme.textSecondary),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _result,
+                              style: const TextStyle(
+                                fontSize: 40,
+                                fontWeight: FontWeight.bold,
+                                color: AppTheme.textPrimary,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
                         ),
-                        IconButton(
-                          tooltip: _pinned ? 'Открепить' : 'Закрепить',
-                          icon: Icon(
-                            _pinned
-                                ? Icons.push_pin
-                                : Icons.push_pin_outlined,
-                            size: 18,
-                            color: _pinned
-                                ? AppTheme.accentOrange
-                                : AppTheme.textMuted,
-                          ),
-                          onPressed: () =>
-                              setState(() => _pinned = !_pinned),
+                      ),
+                      // Keys
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
+                        child: Column(
+                          children: [
+                            _row(['C', 'DEL', '(', ')', '⌫']),
+                            const SizedBox(height: 8),
+                            _row(['7', '8', '9', '/']),
+                            const SizedBox(height: 8),
+                            _row(['4', '5', '6', '*']),
+                            const SizedBox(height: 8),
+                            _row(['1', '2', '3', '-']),
+                            const SizedBox(height: 8),
+                            _row(['0', '.', '=', '+']),
+                          ],
                         ),
-                        IconButton(
-                          tooltip: 'Уменьшить',
-                          icon: const Icon(Icons.remove, size: 18,
-                              color: AppTheme.textMuted),
-                          onPressed: () => setState(
-                              () => _scale = (_scale - 0.1).clamp(0.7, 1.4)),
-                        ),
-                        IconButton(
-                          tooltip: 'Увеличить',
-                          icon: const Icon(Icons.add, size: 18,
-                              color: AppTheme.textMuted),
-                          onPressed: () => setState(
-                              () => _scale = (_scale + 0.1).clamp(0.7, 1.4)),
-                        ),
-                        IconButton(
-                          icon: const Icon(Icons.close, size: 18),
-                          onPressed: _close,
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  // Display
-                  Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          _expression,
-                          style: const TextStyle(
-                              fontSize: 20, color: AppTheme.textSecondary),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          _result,
-                          style: const TextStyle(
-                            fontSize: 40,
-                            fontWeight: FontWeight.bold,
-                            color: AppTheme.textPrimary,
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                  // Keys
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                    child: Column(
-                      children: [
-                        _row(['C', 'DEL', '(', ')', '⌫']),
-                        const SizedBox(height: 8),
-                        _row(['7', '8', '9', '/']),
-                        const SizedBox(height: 8),
-                        _row(['4', '5', '6', '*']),
-                        const SizedBox(height: 8),
-                        _row(['1', '2', '3', '-']),
-                        const SizedBox(height: 8),
-                        _row(['0', '.', '=', '+']),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                ),
               ),
               // Resize за угол — пропорционально, тот же clamp что и у +/−
               Positioned(right: 2, bottom: 2, child: _resizeHandle()),
