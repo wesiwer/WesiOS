@@ -137,6 +137,9 @@ class WesiLocale {
       'what_if_active': 'Активен виртуальный сценарий',
       'discount_toggle': 'В сегодняшних деньгах',
       'discount_hint': 'Приведено к текущей покупательной способности по ставке {rate}%/год (доступно от 1 года)',
+      'engine_unavailable_hint': 'Движок недоступен на этой машине (не найден Python-рантайм) или не смог построить модель по имеющимся данным',
+      'no_engines_selected': 'Ни один движок не выбран — включите хотя бы один переключатель выше',
+      'day': 'День',
 
       // Sandbox
       'sandbox_balance': 'Баланс песочницы',
@@ -344,6 +347,9 @@ class WesiLocale {
       'what_if_active': 'Virtual scenario active',
       'discount_toggle': 'In today\'s money',
       'discount_hint': 'Adjusted to today\'s purchasing power at {rate}%/year (available from 1 year)',
+      'engine_unavailable_hint': 'Engine unavailable on this machine (no bundled Python runtime found) or couldn\'t fit a model to the available data',
+      'no_engines_selected': 'No engine selected — turn on at least one toggle above',
+      'day': 'Day',
 
       // Sandbox
       'sandbox_balance': 'Sandbox Balance',

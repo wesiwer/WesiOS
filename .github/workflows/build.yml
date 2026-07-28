@@ -45,6 +45,39 @@ jobs:
       - name: Build Windows
         run: flutter build windows --release
 
+      - name: Bundle Python runtime for the SARIMAX forecast engine
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $pyVersion = "3.11.9"
+          $releaseDir = "build\windows\x64\runner\Release"
+
+          # Embeddable distribution — портативный, без инсталлятора/реестра,
+          # ровно то, что можно скопировать рядом с exe и запускать оттуда.
+          Invoke-WebRequest -Uri "https://www.python.org/ftp/python/$pyVersion/python-$pyVersion-embed-amd64.zip" -OutFile python-embed.zip
+          Expand-Archive python-embed.zip -DestinationPath python_runtime -Force
+
+          # Embeddable-сборка по умолчанию отключает site-packages — включаем
+          # и явно прописываем путь, где будет лежать statsmodels/numpy/pandas.
+          $pthFile = Get-ChildItem python_runtime\python*._pth | Select-Object -First 1
+          (Get-Content $pthFile.FullName) -replace '#import site', 'import site' | Set-Content $pthFile.FullName
+          Add-Content $pthFile.FullName "`nLib\site-packages"
+
+          Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile get-pip.py
+          & python_runtime\python.exe get-pip.py --no-warn-script-location
+
+          # Только SARIMAX-стек (statsmodels+numpy+pandas, ~350 МБ, чистые
+          # wheels без компиляции). Prophet сюда осознанно НЕ входит — его
+          # стек с CmdStan весит ~1.7 ГБ и требует C++ компиляции модели;
+          # решение по нему ждёт отдельного подтверждения (см. STATUS.md).
+          # forecast_prophet.py остаётся в бандле (см. ниже) и корректно
+          # сообщит "недоступен", если модуль prophet не установлен —
+          # ExternalForecastBridge такое падение уже обрабатывает как null.
+          & python_runtime\python.exe -m pip install --no-warn-script-location numpy pandas statsmodels
+
+          Copy-Item python_runtime "$releaseDir\python" -Recurse -Force
+          Copy-Item python_engines "$releaseDir\python_engines" -Recurse -Force
+
       - name: Upload Windows artifact
         uses: actions/upload-artifact@v4
         with:

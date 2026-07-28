@@ -1,3 +1,4 @@
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/theme/app_theme.dart';
@@ -5,6 +6,7 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import 'services/treasury_service.dart';
 import 'services/forecast_engine.dart';
+import 'services/multi_engine_forecast.dart';
 import 'models/transaction_model.dart';
 import 'widgets/what_if_dialog.dart';
 
@@ -43,6 +45,26 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   /// Условная ставка дисконтирования (инфляция/стоимость денег) — применима
   /// только к длинным (от года) горизонтам, включается отдельным тоглом.
   static const double _annualDiscountRate = 0.08;
+
+  // ===== Мульти-движковый прогноз: Wesi Horizon / Prophet / SARIMAX / Combined =====
+  //
+  // Wesi Horizon всегда доступен и пересчитывается в _loadData вместе со всем
+  // остальным (это тот же _forecast). Prophet/SARIMAX — внешние Python-движки,
+  // считаются ЛЕНИВО: только когда пользователь включает тумблер, и только
+  // один раз до следующего изменения периода/сценария (см. _loadData).
+  // Комбинированный не считается отдельно — это среднее по тем движкам,
+  // что реально посчитались (см. combineForecastResults).
+  final Set<ForecastEngineKind> _activeEngines = {ForecastEngineKind.wesiHorizon};
+  final Map<ForecastEngineKind, ForecastResult?> _engineCache = {};
+  final Set<ForecastEngineKind> _loadingEngines = {};
+  final Set<ForecastEngineKind> _unavailableEngines = {};
+
+  static const Map<ForecastEngineKind, Color> _engineColor = {
+    ForecastEngineKind.wesiHorizon: AppTheme.accentOrange,
+    ForecastEngineKind.prophet: Color(0xFF38BDF8),
+    ForecastEngineKind.sarimax: Color(0xFFC084FC),
+    ForecastEngineKind.combined: Color(0xFF2DD4BF),
+  };
 
   /// Фон графика — сплошной цвет, каким контейнер реально рендерится
   /// (surface@0.4 поверх background). Нужен, чтобы «стереть» лишнюю заливку
@@ -142,7 +164,75 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       _currency = CurrencyService.current;
       _isLoading = false;
       _chartBusy = false;
+
+      // Период/сценарий поменялись — кэш внешних движков и комбинированного
+      // устарел. Wesi Horizon пересчитан только что, он всегда актуален.
+      _engineCache[ForecastEngineKind.wesiHorizon] = forecast;
+      _engineCache.remove(ForecastEngineKind.prophet);
+      _engineCache.remove(ForecastEngineKind.sarimax);
+      _engineCache.remove(ForecastEngineKind.combined);
+      _unavailableEngines.clear();
     });
+
+    // Если Prophet/SARIMAX/Combined были включены — досчитать их заново под
+    // новые данные. Не блокирует основной экран (лоадер уже снят выше).
+    for (final kind in _activeEngines) {
+      if (kind != ForecastEngineKind.wesiHorizon) _ensureEngineComputed(kind);
+    }
+  }
+
+  /// Включает/выключает показ движка на графике/в таблице сравнения. Для
+  /// Prophet/SARIMAX первое включение запускает ленивый расчёт (внешний
+  /// Python-подпроцесс, может занять секунду-другую) — виден отдельный
+  /// индикатор загрузки прямо на тумблере, не общий экран.
+  Future<void> _toggleEngine(ForecastEngineKind kind) async {
+    setState(() {
+      if (_activeEngines.contains(kind)) {
+        _activeEngines.remove(kind);
+      } else {
+        _activeEngines.add(kind);
+      }
+    });
+    if (_activeEngines.contains(kind)) await _ensureEngineComputed(kind);
+  }
+
+  Future<void> _ensureEngineComputed(ForecastEngineKind kind) async {
+    if (kind == ForecastEngineKind.wesiHorizon) return; // уже в кэше всегда
+    if (kind == ForecastEngineKind.combined) {
+      setState(_recomputeCombined);
+      return;
+    }
+    if (_engineCache.containsKey(kind) || _loadingEngines.contains(kind)) {
+      return;
+    }
+    setState(() => _loadingEngines.add(kind));
+    final txs = await _service.getAllTransactions();
+    final balance = await _service.getCurrentBalance();
+    final result = await ExternalForecastBridge.run(
+      engine: kind,
+      transactions: txs,
+      currentBalance: balance,
+      days: _forecastDays,
+    );
+    if (!mounted) return;
+    setState(() {
+      _loadingEngines.remove(kind);
+      _engineCache[kind] = result;
+      if (result == null) {
+        _unavailableEngines.add(kind);
+      } else {
+        _unavailableEngines.remove(kind);
+      }
+      _recomputeCombined();
+    });
+  }
+
+  void _recomputeCombined() {
+    _engineCache[ForecastEngineKind.combined] = combineForecastResults([
+      _engineCache[ForecastEngineKind.wesiHorizon],
+      _engineCache[ForecastEngineKind.prophet],
+      _engineCache[ForecastEngineKind.sarimax],
+    ]);
   }
 
   Future<void> _cycleCurrency() async {
@@ -270,6 +360,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           const SizedBox(height: 8),
           _diagnostics(),
           const SizedBox(height: 12),
+          _engineSelector(),
+          const SizedBox(height: 12),
           _chartModeTabs(),
           const SizedBox(height: 10),
           _periodChips(),
@@ -280,6 +372,14 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             duration: const Duration(milliseconds: 200),
             child: _chartForMode(),
           ),
+          if (_selectedChart == 'forecast' && _activeEngines.length > 1) ...[
+            const SizedBox(height: 10),
+            _engineLegend(),
+          ],
+          if (_selectedChart == 'forecast') ...[
+            const SizedBox(height: 20),
+            _comparisonTable(),
+          ],
           const SizedBox(height: 16),
           Text('display_options'.w,
               style: const TextStyle(
@@ -416,6 +516,181 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     return Text(
       '$daysLabel · $pathsLabel · $seasonLabel',
       style: TextStyle(fontSize: 11, color: AppTheme.textMuted.withOpacity(0.8)),
+    );
+  }
+
+  /// Переключатель движков прогноза: Wesi Horizon (родной), Prophet, SARIMAX
+  /// — независимые тумблеры, можно включить любое подмножество (в т.ч. ни
+  /// одного — тогда график и таблица пустые) или все сразу. «Комбинированный»
+  /// — не отдельный расчёт, а среднее по тем, что реально посчитались.
+  Widget _engineSelector() {
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: ForecastEngineKind.values.map((kind) {
+        final active = _activeEngines.contains(kind);
+        final loading = _loadingEngines.contains(kind);
+        final unavailable = _unavailableEngines.contains(kind);
+        final color = _engineColor[kind]!;
+        final label = WesiLocale.isRussian ? kind.nameRu : kind.nameEn;
+
+        Widget leading;
+        if (loading) {
+          leading = SizedBox(
+            width: 12,
+            height: 12,
+            child: CircularProgressIndicator(strokeWidth: 1.5, color: color),
+          );
+        } else if (unavailable) {
+          leading = Icon(Icons.error_outline, size: 14, color: AppTheme.textMuted);
+        } else {
+          leading = Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: active ? color : AppTheme.textMuted.withOpacity(0.4),
+            ),
+          );
+        }
+
+        final chip = GestureDetector(
+          onTap: () => _toggleEngine(kind),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: active ? color.withOpacity(0.15) : AppTheme.surface,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                  color: active ? color.withOpacity(0.5) : AppTheme.glassBorder),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                leading,
+                const SizedBox(width: 8),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: active ? FontWeight.w700 : FontWeight.w400,
+                    color: unavailable
+                        ? AppTheme.textMuted
+                        : (active ? color : AppTheme.textSecondary),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+
+        if (!unavailable) return chip;
+        return Tooltip(
+          message: 'engine_unavailable_hint'.w,
+          child: chip,
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _engineLegend() {
+    final active = ForecastEngineKind.values.where(_activeEngines.contains);
+    return Wrap(
+      spacing: 14,
+      runSpacing: 6,
+      children: active.map((kind) {
+        final color = _engineColor[kind]!;
+        final label = WesiLocale.isRussian ? kind.nameRu : kind.nameEn;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 10,
+              height: 3,
+              color: color,
+            ),
+            const SizedBox(width: 6),
+            Text(label,
+                style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+          ],
+        );
+      }).toList(),
+    );
+  }
+
+  /// Таблица сравнения: по строке на выбранный день горизонта, по столбцу на
+  /// активный движок (P50). Полный список дней при большом горизонте не
+  /// поместится и не нужен — берём равномерную выборку точек.
+  Widget _comparisonTable() {
+    final active = ForecastEngineKind.values
+        .where((k) => _activeEngines.contains(k) && _engineCache[k] != null)
+        .toList();
+
+    if (active.isEmpty) {
+      return Container(
+        padding: const EdgeInsets.all(20),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppTheme.surface.withOpacity(0.3),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.glassBorder),
+        ),
+        child: Text('no_engines_selected'.w,
+            style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+      );
+    }
+
+    final days = active.map((k) => _engineCache[k]!.p50.length).reduce(min);
+    if (days == 0) return const SizedBox.shrink();
+
+    const maxRows = 12;
+    final step = (days / maxRows).ceil().clamp(1, days);
+    final sampleOffsets = <int>[
+      for (int i = 0; i < days; i += step) i,
+      if ((days - 1) % step != 0) days - 1,
+    ];
+
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: DataTable(
+        headingRowHeight: 36,
+        dataRowMinHeight: 32,
+        dataRowMaxHeight: 32,
+        columnSpacing: 20,
+        columns: [
+          DataColumn(
+              label: Text('day'.w,
+                  style: const TextStyle(
+                      fontSize: 11, color: AppTheme.textMuted))),
+          for (final kind in active)
+            DataColumn(
+              label: Text(
+                WesiLocale.isRussian ? kind.nameRu : kind.nameEn,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: _engineColor[kind]),
+              ),
+            ),
+        ],
+        rows: sampleOffsets.map((i) {
+          final date = DateTime.now().add(Duration(days: i + 1));
+          final dateLabel = '${date.day.toString().padLeft(2, '0')}.'
+              '${date.month.toString().padLeft(2, '0')}';
+          return DataRow(cells: [
+            DataCell(Text(dateLabel,
+                style: const TextStyle(
+                    fontSize: 11, color: AppTheme.textSecondary))),
+            for (final kind in active)
+              DataCell(Text(
+                CurrencyService.format(_engineCache[kind]!.p50[i]),
+                style: const TextStyle(
+                    fontSize: 11, color: AppTheme.textPrimary),
+              )),
+          ]);
+        }).toList(),
+      ),
     );
   }
 
@@ -619,16 +894,38 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     if (_data.isEmpty) return const SizedBox(height: 300);
 
     final history = _data.where((d) => !d.isForecast).toList();
-    final forecast = _data.where((d) => d.isForecast).toList();
+
+    // Ровно один активный движок — показываем деталировку (band/пунктир
+    // P10-P90/тренд, управляется существующими тумблерами в _controls()),
+    // используя цвет ЭТОГО движка. Ноль или несколько — режим сравнения:
+    // только линия P50 на каждый активный движок, без полос (иначе на
+    // графике станет нечитаемо), плюс легенда под графиком (см. build()).
+    final singleEngine =
+        _activeEngines.length == 1 ? _activeEngines.single : null;
+    final singleResult =
+        singleEngine != null ? _engineCache[singleEngine] : null;
+    final singleColor =
+        singleEngine != null ? _engineColor[singleEngine]! : AppTheme.accentOrange;
 
     final allY = <double>[
-      for (final d in _data) ...[d.p10, d.p50, d.p90],
+      for (final d in history) ...[d.p10, d.p50, d.p90],
+      for (final kind in _activeEngines)
+        if (_engineCache[kind] != null) ...[
+          ..._engineCache[kind]!.p10,
+          ..._engineCache[kind]!.p50,
+          ..._engineCache[kind]!.p90,
+        ],
     ];
+    if (allY.isEmpty) allY.addAll([0, 1]); // все движки выключены — не падаем
     final rawMin = allY.reduce((a, b) => a < b ? a : b);
     final rawMax = allY.reduce((a, b) => a > b ? a : b);
     final pad = (rawMax - rawMin).abs() * 0.08 + 1;
     final minY = rawMin - pad;
     final maxY = rawMax + pad;
+
+    List<FlSpot> spotsFor(List<double> series) => List.generate(
+        series.length,
+        (i) => FlSpot((_historyWindowDays + 1 + i).toDouble(), series[i]));
 
     return Container(
       height: 340,
@@ -692,66 +989,69 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           minY: minY,
           maxY: maxY,
           lineBarsData: [
-            // Заливка П10–П90: рисуем P90 с заливкой вниз, затем «стираем»
-            // цветом фона всё ниже P10 — так полоса ограничена именно
-            // диапазоном P10–P90, а не тянется до низа графика.
-            if (_showConfidenceBands) ...[
-              LineChartBarData(
-                spots: forecast
-                    .map((d) => FlSpot(d.day.toDouble(), d.p90))
-                    .toList(),
-                isCurved: true,
-                color: Colors.transparent,
-                barWidth: 0,
-                dotData: const FlDotData(show: false),
-                belowBarData: BarAreaData(
-                  show: true,
-                  color: AppTheme.accentOrange.withOpacity(0.08),
+            if (singleResult != null) ...[
+              // Заливка П10–П90: рисуем P90 с заливкой вниз, затем «стираем»
+              // цветом фона всё ниже P10 — так полоса ограничена именно
+              // диапазоном P10–P90, а не тянется до низа графика.
+              if (_showConfidenceBands) ...[
+                LineChartBarData(
+                  spots: spotsFor(singleResult.p90),
+                  isCurved: true,
+                  color: Colors.transparent,
+                  barWidth: 0,
+                  dotData: const FlDotData(show: false),
+                  belowBarData: BarAreaData(
+                    show: true,
+                    color: singleColor.withOpacity(0.08),
+                  ),
                 ),
-              ),
-              LineChartBarData(
-                spots: forecast
-                    .map((d) => FlSpot(d.day.toDouble(), d.p10))
-                    .toList(),
-                isCurved: true,
-                color: Colors.transparent,
-                barWidth: 0,
-                dotData: const FlDotData(show: false),
-                belowBarData: BarAreaData(show: true, color: _chartBg),
-              ),
-            ],
-            if (_showP10P90) ...[
-              LineChartBarData(
-                spots: forecast
-                    .map((d) => FlSpot(d.day.toDouble(), d.p90))
-                    .toList(),
-                isCurved: true,
-                color: AppTheme.accentOrange.withOpacity(0.3),
-                barWidth: 1.2,
-                dashArray: const [4, 4],
-                dotData: const FlDotData(show: false),
-              ),
-              LineChartBarData(
-                spots: forecast
-                    .map((d) => FlSpot(d.day.toDouble(), d.p10))
-                    .toList(),
-                isCurved: true,
-                color: AppTheme.accentOrange.withOpacity(0.3),
-                barWidth: 1.2,
-                dashArray: const [4, 4],
-                dotData: const FlDotData(show: false),
-              ),
-            ],
-            if (_showTrendLine)
-              LineChartBarData(
-                spots: forecast
-                    .map((d) => FlSpot(d.day.toDouble(), d.p50))
-                    .toList(),
-                isCurved: true,
-                color: AppTheme.accentOrange,
-                barWidth: 2.5,
-                dotData: const FlDotData(show: false),
-              ),
+                LineChartBarData(
+                  spots: spotsFor(singleResult.p10),
+                  isCurved: true,
+                  color: Colors.transparent,
+                  barWidth: 0,
+                  dotData: const FlDotData(show: false),
+                  belowBarData: BarAreaData(show: true, color: _chartBg),
+                ),
+              ],
+              if (_showP10P90) ...[
+                LineChartBarData(
+                  spots: spotsFor(singleResult.p90),
+                  isCurved: true,
+                  color: singleColor.withOpacity(0.3),
+                  barWidth: 1.2,
+                  dashArray: const [4, 4],
+                  dotData: const FlDotData(show: false),
+                ),
+                LineChartBarData(
+                  spots: spotsFor(singleResult.p10),
+                  isCurved: true,
+                  color: singleColor.withOpacity(0.3),
+                  barWidth: 1.2,
+                  dashArray: const [4, 4],
+                  dotData: const FlDotData(show: false),
+                ),
+              ],
+              if (_showTrendLine)
+                LineChartBarData(
+                  spots: spotsFor(singleResult.p50),
+                  isCurved: true,
+                  color: singleColor,
+                  barWidth: 2.5,
+                  dotData: const FlDotData(show: false),
+                ),
+            ] else
+              // Сравнение (0 или 2+ движков): только P50 на каждый активный,
+              // без полос — иначе график становится нечитаемым.
+              for (final kind in ForecastEngineKind.values)
+                if (_activeEngines.contains(kind) && _engineCache[kind] != null)
+                  LineChartBarData(
+                    spots: spotsFor(_engineCache[kind]!.p50),
+                    isCurved: true,
+                    color: _engineColor[kind]!,
+                    barWidth: 2.2,
+                    dotData: const FlDotData(show: false),
+                  ),
             LineChartBarData(
               spots: history
                   .map((d) => FlSpot(d.day.toDouble(), d.actual ?? d.p50))

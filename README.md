@@ -24,6 +24,10 @@
 - Forecast — bootstrap Monte-Carlo с сезонностью по дню недели и проекцией
   регулярных платежей, P10/P50/P90 без дёрганья при смене периода;
   Cash Gap Risk Score, What-If сценарии, DCF-дисконтирование
+- Мульти-движковый прогноз: Wesi Horizon (родной) / Prophet / SARIMAX —
+  независимые тумблеры, режим сравнения (график+таблица), Combined-режим
+  (среднее по посчитавшимся движкам). Prophet/SARIMAX — Windows-only,
+  через бандл Python (SARIMAX в комплекте; Prophet — по решению, см. STATUS.md)
 - Operations screen (поиск/фильтр/сортировка/edit)
 - Calculator: global overlay, pin/ESC/Delete/blur/resize
 - Profile auto-save + Firebase tips, upload custom avatar
@@ -48,4 +52,4 @@ CI: push в `main` → GitHub Actions (Windows + Android).
 
 ## Версия
 
-v0.3.0 α — Private, Wesi Inc.
+v0.4.0 α — Private, Wesi Inc.
