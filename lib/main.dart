@@ -26,12 +26,12 @@ void main() async {
       skipTaskbar: false,
       titleBarStyle: TitleBarStyle.hidden,
       minimumSize: Size(900, 600),
-      fullScreen: true,
     );
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setPreventClose(false);
+      // Только maximize: borderless-fullscreen окно на Win32 не сворачивается
+      // по windowManager.minimize() и перекрывает taskbar.
       await windowManager.maximize();
-      await windowManager.setFullScreen(true);
       await windowManager.show();
       await windowManager.focus();
     });
