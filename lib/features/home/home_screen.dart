@@ -6,7 +6,9 @@ import '../../widgets/wesi_logo.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../core/widgets/wesi_tooltip.dart';
 import '../../core/widgets/wesi_context_menu.dart';
+import '../../core/widgets/wesi_avatar.dart';
 import '../../core/localization/wesi_locale.dart';
+import '../../core/services/currency_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -62,6 +64,7 @@ class _HomeScreenState extends State<HomeScreen> {
 class _DashboardTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final sym = CurrencyService.symbol;
     return SafeArea(
       child: CustomScrollView(
         slivers: [
@@ -70,9 +73,8 @@ class _DashboardTab extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(16, kTitleBarHeight + 8, 16, 16),
               child: Row(
                 children: [
-                  // WesiOS title with tooltip and context menu
                   WesiTooltip(
-                    message: WesiLocale.isRussian 
+                    message: WesiLocale.isRussian
                         ? 'WesiOS — система, которая меняет мир бизнеса'
                         : 'WesiOS — a system that changes the business world',
                     child: WesiContextMenu(
@@ -115,6 +117,7 @@ class _DashboardTab extends StatelessWidget {
               ),
             ),
           ),
+          // Balance card
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -124,15 +127,15 @@ class _DashboardTab extends StatelessWidget {
                   children: [
                     Text(WesiLocale.get('balance_wesi_inc'), style: const TextStyle(fontSize: 14, color: AppTheme.textSecondary)),
                     const SizedBox(height: 8),
-                    const Text('₽ 0', style: TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.primary)),
+                    Text('$sym 0', style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppTheme.primary)),
                     const SizedBox(height: 16),
                     Row(
                       children: [
-                        _buildSubBalance(WesiLocale.get('operational'), '₽ 0', AppTheme.accentGreen),
+                        _buildSubBalance(WesiLocale.get('operational'), '$sym 0', AppTheme.accentGreen),
                         const SizedBox(width: 12),
-                        _buildSubBalance(WesiLocale.get('marketing'), '₽ 0', AppTheme.accentOrange),
+                        _buildSubBalance(WesiLocale.get('marketing'), '$sym 0', AppTheme.accentOrange),
                         const SizedBox(width: 12),
-                        _buildSubBalance(WesiLocale.get('reserve'), '₽ 0', AppTheme.textSecondary),
+                        _buildSubBalance(WesiLocale.get('reserve'), '$sym 0', AppTheme.textSecondary),
                       ],
                     ),
                   ],
@@ -304,7 +307,10 @@ class _DashboardTab extends StatelessWidget {
     );
   }
 }
+
 class _ProfileDropdown extends StatefulWidget {
+  const _ProfileDropdown();
+
   @override
   State<_ProfileDropdown> createState() => _ProfileDropdownState();
 }
@@ -365,37 +371,20 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
         onTap: () => _showMenu(context),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: _isHovered ? AppTheme.surfaceLight : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _isHovered ? AppTheme.accentOrange.withOpacity(0.4) : Colors.transparent,
               width: 1,
             ),
           ),
           child: AnimatedScale(
-            scale: _isHovered ? 1.15 : 1.0,
+            scale: _isHovered ? 1.08 : 1.0,
             duration: const Duration(milliseconds: 150),
-            child: Container(
-              width: 28,
-              height: 28,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [AppTheme.carbonDark, AppTheme.carbonMid],
-                ),
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: _isHovered ? AppTheme.accentOrange : AppTheme.textMuted,
-                  width: 1.5,
-                ),
-              ),
-              child: Icon(
-                Icons.person,
-                size: 16,
-                color: _isHovered ? AppTheme.accentOrange : AppTheme.textPrimary,
-              ),
-            ),
+            // Реальная выбранная аватарка вместо серого кружка
+            child: const WesiAvatar(size: 32),
           ),
         ),
       ),
