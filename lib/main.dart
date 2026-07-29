@@ -8,6 +8,7 @@ import 'core/services/firebase_config_service.dart';
 import 'core/services/exchange_rate_service.dart';
 import 'features/treasury/models/transaction_model.dart';
 import 'features/tasks/models/task_model.dart';
+import 'core/services/app_update_service.dart';
 import 'app.dart';
 
 bool get isDesktop {
@@ -57,6 +58,9 @@ void main() async {
 
   // Курсы в фоне — не блокируем старт
   ExchangeRateService.refresh();
+  // Проверка обновления тоже фоном: если сети нет или релиз ещё не
+  // опубликован, check() просто вернёт null и ничего не покажет.
+  AppUpdateService.check();
 
   final configService = FirebaseConfigService();
   final isConfigured = await configService.isConfigured();

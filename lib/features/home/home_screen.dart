@@ -13,6 +13,7 @@ import '../treasury/models/transaction_model.dart';
 import '../treasury/services/treasury_service.dart';
 import '../tasks/tasks_screen.dart';
 import 'widgets/home_agenda.dart';
+import '../../core/widgets/app_update_card.dart';
 import '../analytics/analytics_screen.dart';
 import 'more_tab.dart';
 import '../../core/widgets/wesi_clock.dart';
@@ -244,6 +245,12 @@ class _DashboardTabState extends State<_DashboardTab> {
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
               child: WesiQuoteCard(),
+            ),
+          ),
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: AppUpdateBanner(),
             ),
           ),
           SliverToBoxAdapter(

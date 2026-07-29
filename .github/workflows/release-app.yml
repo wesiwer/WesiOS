@@ -1,0 +1,223 @@
+name: Publish WesiOS Release
+
+# Собирает Windows и Android и публикует их как ассеты GitHub Release под
+# ПОСТОЯННЫМ тегом `app-latest`, рядом кладёт `app-manifest.json`.
+#
+# Почему постоянный тег, а не `v0.9.0`: приложение должно узнавать о новой
+# версии, ничего о ней не зная заранее. Ссылка на манифест зашита в код и
+# не меняется никогда, а его содержимое перезаписывается на каждом релизе
+# (`gh release upload --clobber`). Иначе для каждой новой версии пришлось бы
+# выпускать предыдущую с новым URL — курица и яйцо.
+#
+# Версия берётся из pubspec.yaml — единственного источника правды, чтобы
+# манифест не разошёлся с тем, что реально внутри сборки.
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'Что нового (показывается в приложении)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+env:
+  RELEASE_TAG: 'app-latest'
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      build: ${{ steps.v.outputs.build }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: v
+        name: Read version from pubspec
+        run: |
+          set -euo pipefail
+          RAW=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}')
+          echo "version=${RAW%%+*}" >> "$GITHUB_OUTPUT"
+          echo "build=${RAW##*+}" >> "$GITHUB_OUTPUT"
+          echo "pubspec version: $RAW"
+
+  build-windows:
+    needs: version
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - run: flutter config --enable-windows-desktop
+
+      # Локальная windows/ — неполный огрызок, поэтому CI её пересоздаёт.
+      # Любая ручная правка внутри windows/runner в сборку не попадает.
+      - name: Wipe broken Windows platform stub
+        run: if (Test-Path windows) { Remove-Item -Recurse -Force windows }
+
+      - name: Regenerate Windows platform files
+        run: flutter create --platforms=windows --project-name=wesios .
+
+      - name: Restore custom Windows icon
+        run: |
+          if (Test-Path assets/images/app_icon.ico) {
+            Copy-Item assets/images/app_icon.ico windows/runner/resources/app_icon.ico -Force
+          }
+
+      - run: flutter pub get
+      - run: flutter build windows --release
+
+      - name: Pack the portable build
+        run: |
+          Compress-Archive -Path build/windows/x64/runner/Release/* `
+            -DestinationPath wesios-windows-x64.zip -Force
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" `
+              --title "WesiOS — latest build" `
+              --notes "Актуальные сборки WesiOS. Приложение проверяет app-manifest.json и предлагает обновиться само."
+          }
+          gh release upload "$env:RELEASE_TAG" wesios-windows-x64.zip `
+            --repo "$env:GITHUB_REPOSITORY" --clobber
+
+      - name: Collect metadata
+        id: meta
+        run: |
+          $size = (Get-Item wesios-windows-x64.zip).Length
+          "size=$size" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+    outputs:
+      size: ${{ steps.meta.outputs.size }}
+
+  build-android:
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - run: flutter pub get
+
+      - name: Create dummy google-services.json
+        run: |
+          mkdir -p android/app
+          echo '{
+            "project_info": {
+              "project_number": "123456789",
+              "project_id": "wesios-dummy",
+              "storage_bucket": "wesios-dummy.appspot.com"
+            },
+            "client": [{
+              "client_info": {
+                "mobilesdk_app_id": "1:123456789:android:abc123",
+                "android_client_info": { "package_name": "com.wesi.wesios" }
+              },
+              "oauth_client": [],
+              "api_key": [{ "current_key": "dummy" }],
+              "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
+            }],
+            "configuration_version": "1"
+          }' > android/app/google-services.json
+
+      - name: Setup Android NDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build APK
+        env:
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false'
+        run: flutter build apk --release
+
+      - name: Rename APK
+        run: cp build/app/outputs/flutter-apk/app-release.apk wesios-android.apk
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" || \
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "WesiOS — latest build" \
+              --notes "Актуальные сборки WesiOS. Приложение проверяет app-manifest.json и предлагает обновиться само."
+          gh release upload "$RELEASE_TAG" wesios-android.apk \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Collect metadata
+        id: meta
+        run: echo "size=$(stat -c%s wesios-android.apk)" >> "$GITHUB_OUTPUT"
+    outputs:
+      size: ${{ steps.meta.outputs.size }}
+
+  publish-manifest:
+    needs: [version, build-windows, build-android]
+    runs-on: ubuntu-latest
+    # Манифест публикуется ПОСЛЕДНИМ и только если обе сборки прошли: иначе
+    # приложение предложило бы обновиться на версию, ассета которой нет.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Write app-manifest.json
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD: ${{ needs.version.outputs.build }}
+          WIN_SIZE: ${{ needs.build-windows.outputs.size }}
+          APK_SIZE: ${{ needs.build-android.outputs.size }}
+          NOTES: ${{ github.event.inputs.notes }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          notes = os.environ.get("NOTES") or None
+          def size(v):
+              try:
+                  return int(v)
+              except (TypeError, ValueError):
+                  return None
+          manifest = {
+              "version": os.environ["VERSION"],
+              "build": int(os.environ["BUILD"]),
+              "windows": {
+                  "version": os.environ["VERSION"],
+                  "build": int(os.environ["BUILD"]),
+                  "asset": "wesios-windows-x64.zip",
+                  "sizeBytes": size(os.environ.get("WIN_SIZE")),
+                  "notes": notes,
+              },
+              "android": {
+                  "version": os.environ["VERSION"],
+                  "build": int(os.environ["BUILD"]),
+                  "asset": "wesios-android.apk",
+                  "sizeBytes": size(os.environ.get("APK_SIZE")),
+                  "notes": notes,
+              },
+          }
+          with open("app-manifest.json", "w", encoding="utf-8") as f:
+              json.dump(manifest, f, ensure_ascii=False, indent=2)
+          print(json.dumps(manifest, ensure_ascii=False, indent=2))
+          PY
+
+      - name: Publish manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "$RELEASE_TAG" app-manifest.json \
+            --repo "$GITHUB_REPOSITORY" --clobber

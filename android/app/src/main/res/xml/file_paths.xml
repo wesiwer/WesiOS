@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Пути, которые FileProvider разрешает отдавать наружу.
+
+  Скачанный APK кладётся в getExternalFilesDir(...) — это приватная для
+  приложения папка на «внешнем» хранилище, ей соответствует external-files-path.
+  cache-path и files-path добавлены на случай, если путь придёт из
+  getTemporaryDirectory()/getApplicationDocumentsDirectory().
+-->
+<paths>
+    <external-files-path name="ext_files" path="." />
+    <external-cache-path name="ext_cache" path="." />
+    <cache-path name="cache" path="." />
+    <files-path name="files" path="." />
+</paths>
