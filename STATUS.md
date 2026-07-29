@@ -2,7 +2,17 @@
 
 **Обновлено:** 2026-07-29 (сессия 2, часть 8: баг-лист с фото, 1013 цитат, канбан «Задачи», прогноз песочницы)  
 **Репо:** https://github.com/wesiwer/WesiOS · **ветка:** claude/document-review-wp4jch · **UI:** v0.8.0 α · **pubspec:** 0.8.0+10  
-**CI на момент начала этой сессии:** прогон #186/#187 на `546dae8`/`c728912` — Windows и Android зелёные. Эта сессия внесла новые изменения — **см. в конце файла статус CI для актуального коммита**, не для `546dae8`.
+**CI на момент начала этой сессии:** прогон #186/#187 на `546dae8`/`c728912` — Windows и Android зелёные. Актуальный статус этой сессии — в разделе «Статус CI» ниже.
+
+## Статус CI (часть 8)
+
+| Workflow | Ветка | Что |
+|---|---|---|
+| `build.yml` | `claude/document-review-wp4jch` | Windows + Android. Запущен на тэйле ветки после всех правок части 8. |
+| `build-engines.yml` | `main` | Бандлы Prophet/SARIMAX. Прогон №1 упал на smoke-тесте (`ModuleNotFoundError: _io_common`), №2 — после починки дошёл до публикации и упал на `HTTP 403` (у `GITHUB_TOKEN` не было `contents: write`), №3 — после добавления `permissions:`. |
+
+**Не ставь ✅ пунктам, пока сборка соответствующей платформы не прошла.**
+Проверять статус: вкладка Actions в репозитории.
 
 Читай этот файл **перед** любыми правками. Не помечай задачу ✅, пока пользователь не подтвердил на билде.
 
@@ -829,3 +839,36 @@ CI был красный **30+ прогонов подряд**, падали о�
 | Движок регулярных платежей | `lib/features/treasury/services/recurring_engine.dart` |
 | Версия приложения | `lib/core/constants/app_version.dart` |
 | Тесты движков | `test/treasury_engines_test.dart` |
+| Задачи (канбан) | `lib/features/tasks/tasks_screen.dart` |
+| Модель задачи | `lib/features/tasks/models/task_model.dart` |
+| Хранилище задач | `lib/features/tasks/services/task_service.dart` |
+| Прогноз песочницы | `lib/features/treasury/sandbox_forecast_screen.dart` |
+| Сценарии «Что если?» | `lib/features/treasury/services/what_if_store.dart` |
+| Круговые диаграммы | `lib/features/treasury/widgets/category_pie.dart` |
+| Категории | `lib/features/treasury/services/category_service.dart` |
+| Выбор валюты | `lib/core/widgets/currency_picker.dart` |
+| Страны | `lib/core/data/countries.dart` |
+| Пароль на ключи | `lib/core/services/vault_lock_service.dart` |
+| Фразы (1013) | `lib/core/data/wesi_quotes.dart` |
+| Сборка движков прогноза | `.github/workflows/build-engines.yml` |
+| Скрипты движков | `python_engines/` |
+
+## Занятые Hive typeId
+
+Менять нельзя — по ним читаются уже записанные данные.
+
+| typeId | Что |
+|---|---|
+| 1 | `TransactionModel` |
+| 2 | `TransactionType` |
+| 3 | `RecurringPeriod` |
+| 10 | `TaskStatus` |
+| 11 | `TaskPriority` |
+| 12 | `SubTask` |
+| 13 | `TaskModel` |
+
+Все четыре адаптера задач регистрируются в `lib/main.dart`. Забыть об этом —
+падение в рантайме при открытии бокса, которое `flutter analyze` не ловит.
+
+Боксы без адаптеров (обычный JSON/примитивы): `wesios_cache`,
+`wesios_settings`, `wesios_offline_queue`, `wesios_whatif`.
