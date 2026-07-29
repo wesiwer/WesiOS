@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../localization/wesi_locale.dart';
+import 'wesi_wordmark.dart';
 import 'window_controls.dart';
 
 /// Стадия готовности модуля. Показывается плашкой в шапке экрана, чтобы
@@ -81,7 +82,7 @@ class ModuleScaffold extends StatelessWidget {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.background,
-        title: Text(title),
+        title: WesiTitle(title, size: 18),
         // Резерв справа под системные кнопки окна — иначе заголовок/действия
         // уезжают под «свернуть/закрыть» кастомного title bar.
         actions: const [SizedBox(width: 140)],
@@ -110,16 +111,7 @@ class ModuleScaffold extends StatelessWidget {
                   children: [
                     Row(
                       children: [
-                        Flexible(
-                          child: Text(
-                            title,
-                            style: const TextStyle(
-                              fontSize: 20,
-                              fontWeight: FontWeight.w800,
-                              color: AppTheme.textPrimary,
-                            ),
-                          ),
-                        ),
+                        Flexible(child: WesiTitle(title, size: 20)),
                         const SizedBox(width: 10),
                         _stageBadge(ru),
                       ],

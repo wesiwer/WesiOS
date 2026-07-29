@@ -11,6 +11,7 @@ import 'services/multi_engine_forecast.dart';
 import 'models/transaction_model.dart';
 import 'widgets/what_if_dialog.dart';
 import 'widgets/engine_install_banner.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 
 class TreasuryForecastScreen extends StatefulWidget {
   const TreasuryForecastScreen({super.key});
@@ -287,7 +288,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         backgroundColor: AppTheme.background,
         appBar: AppBar(
           backgroundColor: AppTheme.background,
-          title: Text('wesi_forecast_title'.w),
+          title: WesiTitle('wesi_forecast_title'.w, size: 18),
         ),
         body: Center(
           child: Padding(
@@ -331,7 +332,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.background,
-        title: Text('wesi_forecast_title'.w),
+        title: WesiTitle('wesi_forecast_title'.w, size: 18),
         actions: [
           IconButton(
             icon: Icon(Icons.alt_route,

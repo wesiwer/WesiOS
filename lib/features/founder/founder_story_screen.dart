@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 
 class FounderStoryScreen extends StatelessWidget {
   const FounderStoryScreen({super.key});
@@ -19,7 +20,7 @@ class FounderStoryScreen extends StatelessWidget {
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => Navigator.pop(context),
               ),
-              title: const Text('История создания'),
+              title: const WesiTitle('История создания', size: 18),
               centerTitle: true,
             ),
             SliverPadding(

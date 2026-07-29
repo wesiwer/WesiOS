@@ -7,6 +7,7 @@ import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 import 'widgets/add_transaction_dialog.dart';
 import 'widgets/category_pie.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 
 /// Экран всех операций — полный список транзакций с edit/delete
 class OperationsScreen extends StatefulWidget {
@@ -117,7 +118,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.background,
-        title: Text(WesiLocale.get('operations')),
+        title: WesiTitle(WesiLocale.get('operations'), size: 18),
         actions: [
           // Sort button
           PopupMenuButton<String>(

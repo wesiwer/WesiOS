@@ -6,6 +6,7 @@ import '../../core/widgets/window_controls.dart';
 import '../../widgets/glass_card.dart';
 import 'widgets/forecast_engines_section.dart';
 import '../../core/widgets/app_update_card.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -23,14 +24,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 16),
         children: [
-          Text(
-            WesiLocale.get('settings'),
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary,
-            ),
-          ),
+          WesiTitle(WesiLocale.get('settings')),
           const SizedBox(height: 24),
           _section(WesiLocale.get('appearance')),
           _tile(

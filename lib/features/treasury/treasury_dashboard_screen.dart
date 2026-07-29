@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 
 /// Wesi Treasury Dashboard — полноэкранный дашборд с заглушками
 /// Показывает расположение всех будущих модулей по ТЗ
@@ -90,14 +91,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
                 child: const Icon(Icons.account_balance, color: Colors.white, size: 18),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Wesi Treasury',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
+              const WesiTitle('Wesi Treasury', size: 16),
             ],
           ),
           const SizedBox(height: 32),

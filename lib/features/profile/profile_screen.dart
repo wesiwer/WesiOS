@@ -11,6 +11,7 @@ import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../core/security/shield_service.dart';
 import '../../core/widgets/vault_unlock_dialog.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -211,14 +212,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Row(
             children: [
-              const Text(
-                'Wesi Профиль',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w800,
-                  color: AppTheme.textPrimary,
-                ),
-              ),
+              const WesiTitle('Wesi Профиль', size: 22),
               const Spacer(),
               if (_savedHint != null)
                 Text(

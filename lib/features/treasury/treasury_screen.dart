@@ -13,6 +13,7 @@ import 'widgets/accounts_bar.dart';
 import 'services/account_service.dart';
 import 'models/account_model.dart';
 import 'widgets/add_transaction_dialog.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 
 class TreasuryScreen extends StatefulWidget {
   const TreasuryScreen({super.key});
@@ -158,7 +159,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.background,
-        title: Text(WesiLocale.get('wesi_treasury_title')),
+        title: WesiTitle(WesiLocale.get('wesi_treasury_title'), size: 18),
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 140),
