@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/window_controls.dart';
@@ -150,14 +151,7 @@ class MoreTab extends StatelessWidget {
       body: ListView(
         padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 32),
         children: [
-          Text(
-            ru ? 'Ещё' : 'More',
-            style: const TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w800,
-              color: AppTheme.textPrimary,
-            ),
-          ),
+          WesiTitle(ru ? 'Ещё' : 'More'),
           const SizedBox(height: 4),
           Text(
             ru

@@ -268,6 +268,29 @@ class ForecastEngine {
   /// в какой-то день превышает это значение — riskAlertDay указывает на него.
   static const double _riskAlertThreshold = 0.05;
 
+  /// Сколько траекторий реально симулировать на данном горизонте.
+  ///
+  /// Стоимость расчёта — `paths × days`, и на пятилетнем горизонте 5000
+  /// путей дают 9 миллионов шагов: на телефоне это заметное подвисание.
+  /// Держим объём работы примерно постоянным, снижая число путей на длинных
+  /// горизонтах, но не ниже [_longHorizonMinPaths] — иначе перцентили
+  /// начинают заметно скакать от одного пересчёта к другому.
+  ///
+  /// Точность от этого страдает мало: на годы вперёд разброс определяется
+  /// накопленной неопределённостью, а не числом выборок.
+  static int pathsForHorizon(int days, [int requested = defaultPaths]) {
+    final base = requested < _minPaths ? _minPaths : requested;
+    if (days <= _fullPathsHorizonDays) return base;
+    final scaled = (base * _fullPathsHorizonDays / days).round();
+    return scaled < _longHorizonMinPaths ? _longHorizonMinPaths : scaled;
+  }
+
+  /// До этого горизонта считаем полным числом путей.
+  static const int _fullPathsHorizonDays = 120;
+
+  /// Ниже этого числа траекторий перцентили становятся шумными.
+  static const int _longHorizonMinPaths = 800;
+
   static ForecastResult generate({
     required List<TransactionModel> transactions,
     required double currentBalance,
@@ -399,7 +422,7 @@ class ForecastEngine {
 
     // ---------- Monte-Carlo: bootstrap-шум + сезонность + тренд + шоки + регулярные ----------
     final rng = Random(seed); // фиксированный seed — стабильность между перерисовками UI
-    final effectivePaths = paths < _minPaths ? _minPaths : paths;
+    final effectivePaths = pathsForHorizon(days, paths);
     final balances =
         List.generate(days, (_) => List<double>.filled(effectivePaths, 0));
 

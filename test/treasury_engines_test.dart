@@ -24,6 +24,7 @@ TransactionModel _tx({
 }
 
 void main() {
+  _longHorizonTests();
   group('ForecastEngine', () {
     test('returns insufficientData with fewer than 3 transactions', () {
       final result = ForecastEngine.generate(
@@ -422,6 +423,56 @@ void main() {
         ),
       );
       expect(AnomalyEngine.detect(txs), isEmpty);
+    });
+  });
+}
+
+void _longHorizonTests() {
+  group('ForecastEngine long horizons', () {
+    test('keeps the full path count on short horizons', () {
+      expect(ForecastEngine.pathsForHorizon(30), ForecastEngine.defaultPaths);
+      expect(ForecastEngine.pathsForHorizon(120), ForecastEngine.defaultPaths);
+    });
+
+    test('scales the path count down on multi-year horizons — cost is '
+        'paths x days, and 5000 paths over five years is nine million steps, '
+        'which visibly stalls a phone', () {
+      final year = ForecastEngine.pathsForHorizon(365);
+      final fiveYears = ForecastEngine.pathsForHorizon(1825);
+      expect(year, lessThan(ForecastEngine.defaultPaths));
+      expect(fiveYears, lessThan(year));
+    });
+
+    test('never drops below the floor where percentiles get noisy', () {
+      expect(ForecastEngine.pathsForHorizon(100000), greaterThanOrEqualTo(800));
+    });
+
+    test('a five-year forecast still returns ordered percentiles for every '
+        'day of the horizon', () {
+      final now = DateTime.now();
+      final txs = List.generate(
+        40,
+        (i) => TransactionModel(
+          id: 'tx$i',
+          title: 'op$i',
+          amount: 1000.0 + (i % 7) * 120,
+          type: i.isEven ? TransactionType.income : TransactionType.expense,
+          date: now.subtract(Duration(days: 40 - i)),
+        ),
+      );
+
+      final r = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 50000,
+        days: 1825,
+      );
+
+      expect(r.insufficientData, isFalse);
+      expect(r.p50.length, 1825);
+      for (var i = 0; i < r.p50.length; i++) {
+        expect(r.p10[i], lessThanOrEqualTo(r.p50[i]));
+        expect(r.p50[i], lessThanOrEqualTo(r.p90[i]));
+      }
     });
   });
 }

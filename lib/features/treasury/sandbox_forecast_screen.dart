@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
@@ -270,13 +271,8 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _ru ? 'Прогноз песочницы' : 'Sandbox forecast',
-                  style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.textPrimary),
-                ),
+                WesiTitle(_ru ? 'Прогноз песочницы' : 'Sandbox forecast',
+                    size: 22),
                 Text(
                   _ru
                       ? 'Свои сценарии «Что если?» на изолированных данных'
@@ -292,10 +288,28 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     );
   }
 
+  /// «1 год / 2 года / 5 лет» — без склонения подпись выглядит калькой.
+  static String _yearsWordRu(int years) {
+    if (years == 1) return 'год';
+    if (years >= 2 && years <= 4) return 'года';
+    return 'лет';
+  }
+
+  String _horizonLabel(int d) {
+    if (d < 365) return '$d ${_ru ? 'дн.' : 'd'}';
+    final years = d ~/ 365;
+    return _ru
+        ? '$years ${_yearsWordRu(years)}'
+        : '$years ${years == 1 ? 'year' : 'years'}';
+  }
+
   Widget _horizonChips() {
-    const options = [7, 14, 30, 60, 90];
+    // Долгосрок нужен и здесь: сценарий «что если через два года» без
+    // горизонта в два года проверить нечем.
+    const options = [7, 14, 30, 60, 90, 180, 365, 730, 1095, 1825];
     return Wrap(
       spacing: 8,
+      runSpacing: 8,
       children: options.map((d) {
         final sel = d == _days;
         return GestureDetector(
@@ -313,7 +327,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                       : AppTheme.glassBorder),
             ),
             child: Text(
-              '$d ${_ru ? 'дн.' : 'd'}',
+              _horizonLabel(d),
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: sel ? FontWeight.w700 : FontWeight.w400,

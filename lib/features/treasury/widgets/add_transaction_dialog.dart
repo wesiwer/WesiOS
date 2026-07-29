@@ -39,7 +39,9 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
 
   /// Категории берутся из [CategoryService] — их можно править прямо
   /// отсюда, а не только менять код.
-  List<String> get _categories => CategoryService.all;
+  /// Категории именно этого типа операции — у доходов и расходов
+  /// наборы разные.
+  List<String> get _categories => CategoryService.forType(widget.type);
 
   @override
   void initState() {
@@ -151,7 +153,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                   icon: const Icon(Icons.tune,
                       size: 18, color: AppTheme.accentOrange),
                   onPressed: () async {
-                    await CategoryEditorDialog.show(context);
+                    await CategoryEditorDialog.show(context, widget.type);
                     if (!mounted) return;
                     setState(() {
                       if (!_categories.contains(_category)) {

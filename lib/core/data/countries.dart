@@ -1,15 +1,239 @@
 import '../localization/wesi_locale.dart';
 
-/// Список стран для профиля.
+/// Страны мира для профиля.
 ///
-/// Порядок не алфавитный по всему списку: при русском интерфейсе Россия
-/// идёт первой (и ближайшие соседи сразу за ней), потому что подавляющее
-/// большинство пользователей выбирает именно их — искать свою страну в
-/// середине алфавита неудобно. Остальные отсортированы по алфавиту.
+/// Хранятся ПАРАМИ (ru, en), а не двумя независимыми списками: раньше в
+/// русском списке было 108 названий, в английском — 119, и при смене языка
+/// выбранная страна могла просто исчезнуть из списка.
+///
+/// Порядок не алфавитный по всему списку: при русском интерфейсе Россия идёт
+/// первой, а ближайшие соседи сразу за ней — искать свою страну в середине
+/// алфавита неудобно. Остальные отсортированы по алфавиту нужного языка.
 class Countries {
   const Countries._();
 
-  /// Приоритетные варианты для русского интерфейса.
+  /// Все страны как пары (русское название, английское название).
+  static const List<(String, String)> pairs = [
+    ('Австралия', 'Australia'),
+    ('Австрия', 'Austria'),
+    ('Азербайджан', 'Azerbaijan'),
+    ('Албания', 'Albania'),
+    ('Алжир', 'Algeria'),
+    ('Ангилья', 'Anguilla'),
+    ('Ангола', 'Angola'),
+    ('Андорра', 'Andorra'),
+    ('Антигуа и Барбуда', 'Antigua and Barbuda'),
+    ('Аргентина', 'Argentina'),
+    ('Армения', 'Armenia'),
+    ('Аруба', 'Aruba'),
+    ('Афганистан', 'Afghanistan'),
+    ('Багамские Острова', 'Bahamas'),
+    ('Бангладеш', 'Bangladesh'),
+    ('Барбадос', 'Barbados'),
+    ('Бахрейн', 'Bahrain'),
+    ('Беларусь', 'Belarus'),
+    ('Белиз', 'Belize'),
+    ('Бельгия', 'Belgium'),
+    ('Бенин', 'Benin'),
+    ('Бермудские Острова', 'Bermuda'),
+    ('Болгария', 'Bulgaria'),
+    ('Боливия', 'Bolivia'),
+    ('Босния и Герцеговина', 'Bosnia and Herzegovina'),
+    ('Ботсвана', 'Botswana'),
+    ('Бразилия', 'Brazil'),
+    ('Британские Виргинские Острова', 'British Virgin Islands'),
+    ('Бруней', 'Brunei'),
+    ('Буркина-Фасо', 'Burkina Faso'),
+    ('Бурунди', 'Burundi'),
+    ('Бутан', 'Bhutan'),
+    ('Вануату', 'Vanuatu'),
+    ('Ватикан', 'Vatican City'),
+    ('Великобритания', 'United Kingdom'),
+    ('Венгрия', 'Hungary'),
+    ('Венесуэла', 'Venezuela'),
+    ('Восточный Тимор', 'Timor-Leste'),
+    ('Вьетнам', 'Vietnam'),
+    ('Габон', 'Gabon'),
+    ('Гаити', 'Haiti'),
+    ('Гайана', 'Guyana'),
+    ('Гамбия', 'Gambia'),
+    ('Гана', 'Ghana'),
+    ('Гватемала', 'Guatemala'),
+    ('Гвинея', 'Guinea'),
+    ('Гвинея-Бисау', 'Guinea-Bissau'),
+    ('Германия', 'Germany'),
+    ('Гернси', 'Guernsey'),
+    ('Гибралтар', 'Gibraltar'),
+    ('Гондурас', 'Honduras'),
+    ('Гонконг', 'Hong Kong'),
+    ('Гренада', 'Grenada'),
+    ('Гренландия', 'Greenland'),
+    ('Греция', 'Greece'),
+    ('Грузия', 'Georgia'),
+    ('Дания', 'Denmark'),
+    ('Демократическая Республика Конго', 'Democratic Republic of the Congo'),
+    ('Джерси', 'Jersey'),
+    ('Джибути', 'Djibouti'),
+    ('Доминика', 'Dominica'),
+    ('Доминиканская Республика', 'Dominican Republic'),
+    ('Египет', 'Egypt'),
+    ('Замбия', 'Zambia'),
+    ('Зимбабве', 'Zimbabwe'),
+    ('Израиль', 'Israel'),
+    ('Индия', 'India'),
+    ('Индонезия', 'Indonesia'),
+    ('Иордания', 'Jordan'),
+    ('Ирак', 'Iraq'),
+    ('Иран', 'Iran'),
+    ('Ирландия', 'Ireland'),
+    ('Исландия', 'Iceland'),
+    ('Испания', 'Spain'),
+    ('Италия', 'Italy'),
+    ('Йемен', 'Yemen'),
+    ('КНДР', 'North Korea'),
+    ('Кабо-Верде', 'Cabo Verde'),
+    ('Казахстан', 'Kazakhstan'),
+    ('Каймановы Острова', 'Cayman Islands'),
+    ('Камбоджа', 'Cambodia'),
+    ('Камерун', 'Cameroon'),
+    ('Канада', 'Canada'),
+    ('Катар', 'Qatar'),
+    ('Кения', 'Kenya'),
+    ('Кипр', 'Cyprus'),
+    ('Киргизия', 'Kyrgyzstan'),
+    ('Кирибати', 'Kiribati'),
+    ('Китай', 'China'),
+    ('Колумбия', 'Colombia'),
+    ('Коморы', 'Comoros'),
+    ('Конго', 'Republic of the Congo'),
+    ('Косово', 'Kosovo'),
+    ('Коста-Рика', 'Costa Rica'),
+    ('Кот-д’Ивуар', 'Côte d\'Ivoire'),
+    ('Куба', 'Cuba'),
+    ('Кувейт', 'Kuwait'),
+    ('Кюрасао', 'Curaçao'),
+    ('Лаос', 'Laos'),
+    ('Латвия', 'Latvia'),
+    ('Лесото', 'Lesotho'),
+    ('Либерия', 'Liberia'),
+    ('Ливан', 'Lebanon'),
+    ('Ливия', 'Libya'),
+    ('Литва', 'Lithuania'),
+    ('Лихтенштейн', 'Liechtenstein'),
+    ('Люксембург', 'Luxembourg'),
+    ('Маврикий', 'Mauritius'),
+    ('Мавритания', 'Mauritania'),
+    ('Мадагаскар', 'Madagascar'),
+    ('Макао', 'Macao'),
+    ('Малави', 'Malawi'),
+    ('Малайзия', 'Malaysia'),
+    ('Мали', 'Mali'),
+    ('Мальдивы', 'Maldives'),
+    ('Мальта', 'Malta'),
+    ('Марокко', 'Morocco'),
+    ('Маршалловы Острова', 'Marshall Islands'),
+    ('Мексика', 'Mexico'),
+    ('Микронезия', 'Micronesia'),
+    ('Мозамбик', 'Mozambique'),
+    ('Молдова', 'Moldova'),
+    ('Монако', 'Monaco'),
+    ('Монголия', 'Mongolia'),
+    ('Монтсеррат', 'Montserrat'),
+    ('Мьянма', 'Myanmar'),
+    ('Намибия', 'Namibia'),
+    ('Науру', 'Nauru'),
+    ('Непал', 'Nepal'),
+    ('Нигер', 'Niger'),
+    ('Нигерия', 'Nigeria'),
+    ('Нидерланды', 'Netherlands'),
+    ('Никарагуа', 'Nicaragua'),
+    ('Ниуэ', 'Niue'),
+    ('Новая Зеландия', 'New Zealand'),
+    ('Новая Каледония', 'New Caledonia'),
+    ('Норвегия', 'Norway'),
+    ('ОАЭ', 'United Arab Emirates'),
+    ('Оман', 'Oman'),
+    ('Остров Мэн', 'Isle of Man'),
+    ('Острова Кука', 'Cook Islands'),
+    ('Пакистан', 'Pakistan'),
+    ('Палау', 'Palau'),
+    ('Палестина', 'Palestine'),
+    ('Панама', 'Panama'),
+    ('Папуа — Новая Гвинея', 'Papua New Guinea'),
+    ('Парагвай', 'Paraguay'),
+    ('Перу', 'Peru'),
+    ('Польша', 'Poland'),
+    ('Португалия', 'Portugal'),
+    ('Пуэрто-Рико', 'Puerto Rico'),
+    ('Республика Корея', 'South Korea'),
+    ('Россия', 'Russia'),
+    ('Руанда', 'Rwanda'),
+    ('Румыния', 'Romania'),
+    ('США', 'United States'),
+    ('Сальвадор', 'El Salvador'),
+    ('Самоа', 'Samoa'),
+    ('Сан-Марино', 'San Marino'),
+    ('Сан-Томе и Принсипи', 'São Tomé and Príncipe'),
+    ('Саудовская Аравия', 'Saudi Arabia'),
+    ('Северная Македония', 'North Macedonia'),
+    ('Сейшельские Острова', 'Seychelles'),
+    ('Сенегал', 'Senegal'),
+    ('Сент-Винсент и Гренадины', 'Saint Vincent and the Grenadines'),
+    ('Сент-Китс и Невис', 'Saint Kitts and Nevis'),
+    ('Сент-Люсия', 'Saint Lucia'),
+    ('Сербия', 'Serbia'),
+    ('Сингапур', 'Singapore'),
+    ('Сирия', 'Syria'),
+    ('Словакия', 'Slovakia'),
+    ('Словения', 'Slovenia'),
+    ('Соломоновы Острова', 'Solomon Islands'),
+    ('Сомали', 'Somalia'),
+    ('Судан', 'Sudan'),
+    ('Суринам', 'Suriname'),
+    ('Сьерра-Леоне', 'Sierra Leone'),
+    ('Таджикистан', 'Tajikistan'),
+    ('Таиланд', 'Thailand'),
+    ('Тайвань', 'Taiwan'),
+    ('Танзания', 'Tanzania'),
+    ('Того', 'Togo'),
+    ('Тонга', 'Tonga'),
+    ('Тринидад и Тобаго', 'Trinidad and Tobago'),
+    ('Тувалу', 'Tuvalu'),
+    ('Тунис', 'Tunisia'),
+    ('Туркменистан', 'Turkmenistan'),
+    ('Турция', 'Türkiye'),
+    ('Уганда', 'Uganda'),
+    ('Узбекистан', 'Uzbekistan'),
+    ('Украина', 'Ukraine'),
+    ('Уругвай', 'Uruguay'),
+    ('Фарерские острова', 'Faroe Islands'),
+    ('Фиджи', 'Fiji'),
+    ('Филиппины', 'Philippines'),
+    ('Финляндия', 'Finland'),
+    ('Франция', 'France'),
+    ('Французская Полинезия', 'French Polynesia'),
+    ('Хорватия', 'Croatia'),
+    ('ЦАР', 'Central African Republic'),
+    ('Чад', 'Chad'),
+    ('Черногория', 'Montenegro'),
+    ('Чехия', 'Czechia'),
+    ('Чили', 'Chile'),
+    ('Швейцария', 'Switzerland'),
+    ('Швеция', 'Sweden'),
+    ('Шри-Ланка', 'Sri Lanka'),
+    ('Эквадор', 'Ecuador'),
+    ('Экваториальная Гвинея', 'Equatorial Guinea'),
+    ('Эритрея', 'Eritrea'),
+    ('Эсватини', 'Eswatini'),
+    ('Эстония', 'Estonia'),
+    ('Эфиопия', 'Ethiopia'),
+    ('ЮАР', 'South Africa'),
+    ('Южный Судан', 'South Sudan'),
+    ('Ямайка', 'Jamaica'),
+    ('Япония', 'Japan'),
+  ];
+
+  /// Что показать первым при русском интерфейсе.
   static const List<String> _priorityRu = [
     'Россия',
     'Беларусь',
@@ -26,65 +250,30 @@ class Countries {
 
   static const List<String> _priorityEn = ['United States', 'United Kingdom'];
 
-  static const List<String> _restRu = [
-    'Австралия', 'Австрия', 'Албания', 'Алжир', 'Аргентина', 'Афганистан',
-    'Бангладеш', 'Бахрейн', 'Бельгия', 'Болгария', 'Боливия', 'Босния и Герцеговина',
-    'Бразилия', 'Великобритания', 'Венгрия', 'Венесуэла', 'Вьетнам', 'Гана',
-    'Гватемала', 'Германия', 'Гонконг', 'Греция', 'Дания', 'Доминикана',
-    'Египет', 'Израиль', 'Индия', 'Индонезия', 'Иордания', 'Ирак', 'Иран',
-    'Ирландия', 'Исландия', 'Испания', 'Италия', 'Йемен', 'Камбоджа', 'Канада',
-    'Катар', 'Кения', 'Кипр', 'Китай', 'Колумбия', 'Коста-Рика', 'Куба',
-    'Кувейт', 'Латвия', 'Ливан', 'Ливия', 'Литва', 'Люксембург', 'Маврикий',
-    'Малайзия', 'Мальта', 'Марокко', 'Мексика', 'Монголия', 'Мьянма', 'Непал',
-    'Нигерия', 'Нидерланды', 'Никарагуа', 'Новая Зеландия', 'Норвегия',
-    'ОАЭ', 'Оман', 'Пакистан', 'Панама', 'Парагвай', 'Перу', 'Польша',
-    'Португалия', 'Республика Корея', 'Румыния', 'США', 'Сальвадор',
-    'Саудовская Аравия', 'Северная Македония', 'Сербия', 'Сингапур', 'Сирия',
-    'Словакия', 'Словения', 'Судан', 'Таиланд', 'Тайвань', 'Танзания',
-    'Тунис', 'Туркменистан', 'Турция', 'Уганда', 'Уругвай', 'Филиппины',
-    'Финляндия', 'Франция', 'Хорватия', 'Черногория', 'Чехия', 'Чили',
-    'Швейцария', 'Швеция', 'Шри-Ланка', 'Эквадор', 'Эстония', 'Эфиопия',
-    'ЮАР', 'Ямайка', 'Япония',
-  ];
+  static List<String> _named(bool ru) =>
+      pairs.map((p) => ru ? p.$1 : p.$2).toList();
 
-  static const List<String> _restEn = [
-    'Afghanistan', 'Albania', 'Algeria', 'Argentina', 'Armenia', 'Australia',
-    'Austria', 'Azerbaijan', 'Bahrain', 'Bangladesh', 'Belarus', 'Belgium',
-    'Bolivia', 'Bosnia and Herzegovina', 'Brazil', 'Bulgaria', 'Cambodia',
-    'Canada', 'Chile', 'China', 'Colombia', 'Costa Rica', 'Croatia', 'Cuba',
-    'Cyprus', 'Czechia', 'Denmark', 'Dominican Republic', 'Ecuador', 'Egypt',
-    'El Salvador', 'Estonia', 'Ethiopia', 'Finland', 'France', 'Georgia',
-    'Germany', 'Ghana', 'Greece', 'Guatemala', 'Hong Kong', 'Hungary',
-    'Iceland', 'India', 'Indonesia', 'Iran', 'Iraq', 'Ireland', 'Israel',
-    'Italy', 'Jamaica', 'Japan', 'Jordan', 'Kazakhstan', 'Kenya', 'Kuwait',
-    'Kyrgyzstan', 'Latvia', 'Lebanon', 'Libya', 'Lithuania', 'Luxembourg',
-    'Malaysia', 'Malta', 'Mauritius', 'Mexico', 'Moldova', 'Mongolia',
-    'Montenegro', 'Morocco', 'Myanmar', 'Nepal', 'Netherlands', 'New Zealand',
-    'Nicaragua', 'Nigeria', 'North Macedonia', 'Norway', 'Oman', 'Pakistan',
-    'Panama', 'Paraguay', 'Peru', 'Philippines', 'Poland', 'Portugal', 'Qatar',
-    'Romania', 'Russia', 'Saudi Arabia', 'Serbia', 'Singapore', 'Slovakia',
-    'Slovenia', 'South Africa', 'South Korea', 'Spain', 'Sri Lanka', 'Sudan',
-    'Sweden', 'Switzerland', 'Syria', 'Taiwan', 'Tajikistan', 'Tanzania',
-    'Thailand', 'Tunisia', 'Turkey', 'Turkmenistan', 'UAE', 'Uganda',
-    'Ukraine', 'United Kingdom', 'United States', 'Uruguay', 'Uzbekistan',
-    'Venezuela', 'Vietnam', 'Yemen',
-  ];
-
-  static String get notSpecified =>
-      WesiLocale.isRussian ? 'Не указана' : 'Not specified';
-
-  /// Полный список для текущего языка: «не указана», затем приоритетные,
-  /// затем остальные без повторов.
+  /// Полный список для активного языка: приоритетные сверху, остальные по
+  /// алфавиту.
   static List<String> get all {
     final ru = WesiLocale.isRussian;
     final priority = ru ? _priorityRu : _priorityEn;
-    final rest = ru ? _restRu : _restEn;
-
-    final seen = <String>{};
-    final result = <String>[notSpecified];
-    for (final c in [...priority, ...rest]) {
-      if (seen.add(c)) result.add(c);
+    final rest = _named(ru)..sort();
+    final head = <String>[];
+    for (final p in priority) {
+      if (rest.remove(p)) head.add(p);
     }
-    return result;
+    return [...head, ...rest];
   }
+
+  /// Переводит название страны между языками — чтобы сохранённый в профиле
+  /// выбор не терялся при смене языка интерфейса.
+  static String? translate(String name, {required bool toRussian}) {
+    for (final p in pairs) {
+      if (p.$1 == name || p.$2 == name) return toRussian ? p.$1 : p.$2;
+    }
+    return null;
+  }
+
+  static int get count => pairs.length;
 }

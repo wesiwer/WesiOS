@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/window_controls.dart';
@@ -182,13 +183,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                       icon: const Icon(Icons.arrow_back),
                       onPressed: () => Navigator.pop(context),
                     ),
-                    Text(
-                      WesiLocale.get('wesi_sandbox_title'),
-                      style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 1),
-                    ),
+                    WesiTitle(WesiLocale.get('wesi_sandbox_title'), size: 22),
                     const Spacer(),
                     GestureDetector(
                       onTap: _toggleCurrency,

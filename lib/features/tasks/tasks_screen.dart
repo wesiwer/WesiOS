@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/window_controls.dart';
@@ -163,11 +164,7 @@ class _TasksScreenState extends State<TasksScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(ru ? 'Задачи' : 'Tasks',
-                  style: const TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w800,
-                      color: AppTheme.textPrimary)),
+              WesiTitle(ru ? 'Задачи' : 'Tasks'),
               const SizedBox(height: 2),
               Text(
                 _tasks.isEmpty

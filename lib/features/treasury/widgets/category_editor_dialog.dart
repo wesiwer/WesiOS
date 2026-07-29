@@ -2,16 +2,22 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/localization/wesi_locale.dart';
 import '../../../core/widgets/window_controls.dart';
+import '../models/transaction_model.dart';
 import '../services/category_service.dart';
 
 /// Редактор списка категорий: добавить, переименовать, удалить, сбросить.
+///
+/// Правит набор ОДНОГО типа операций: у доходов и расходов списки разные,
+/// и общий редактор смешивал бы их обратно.
 class CategoryEditorDialog extends StatefulWidget {
-  const CategoryEditorDialog({super.key});
+  final TransactionType type;
 
-  static Future<void> show(BuildContext context) {
+  const CategoryEditorDialog({super.key, required this.type});
+
+  static Future<void> show(BuildContext context, TransactionType type) {
     return showDialog<void>(
       context: context,
-      builder: (_) => const CategoryEditorDialog(),
+      builder: (_) => CategoryEditorDialog(type: type),
     );
   }
 
@@ -21,7 +27,7 @@ class CategoryEditorDialog extends StatefulWidget {
 
 class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
   final _newCtrl = TextEditingController();
-  late List<String> _items = CategoryService.all;
+  late List<String> _items = CategoryService.forType(widget.type);
 
   @override
   void dispose() {
@@ -29,12 +35,13 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
     super.dispose();
   }
 
-  void _reload() => setState(() => _items = CategoryService.all);
+  void _reload() =>
+      setState(() => _items = CategoryService.forType(widget.type));
 
   Future<void> _add() async {
     final name = _newCtrl.text.trim();
     if (name.isEmpty) return;
-    await CategoryService.add(name);
+    await CategoryService.add(widget.type, name);
     _newCtrl.clear();
     _reload();
   }
@@ -70,13 +77,13 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
       ),
     );
     if (result != null && result.trim().isNotEmpty) {
-      await CategoryService.rename(current, result);
+      await CategoryService.rename(widget.type, current, result);
       _reload();
     }
   }
 
   Future<void> _remove(String name) async {
-    final ok = await CategoryService.remove(name);
+    final ok = await CategoryService.remove(widget.type, name);
     if (!ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -180,7 +187,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                 children: [
                   TextButton(
                     onPressed: () async {
-                      await CategoryService.resetToDefaults();
+                      await CategoryService.resetToDefaults(widget.type);
                       _reload();
                     },
                     child: Text(ru ? 'Сбросить' : 'Reset',

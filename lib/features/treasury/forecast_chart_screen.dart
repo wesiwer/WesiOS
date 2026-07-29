@@ -785,15 +785,35 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
+  /// «1 год / 2 года / 5 лет» — без склонения подпись выглядит калькой.
+  static String _yearsWordRu(int years) {
+    if (years == 1) return 'год';
+    if (years >= 2 && years <= 4) return 'года';
+    return 'лет';
+  }
+
   Widget _periodChips() {
     return Wrap(
       spacing: 6,
       runSpacing: 6,
       children: [
-        ...[7, 14, 30, 60, 90].map((d) {
+        // Короткие горизонты — днями, длинные — годами: «730 дн.» читается
+        // хуже, чем «2 года», а планирование в долгосрок этим и меряют.
+        ...const [7, 14, 30, 60, 90, 180].map((d) {
           final sel = _customRange == null && _forecastDays == d;
           return _periodChip(
             label: '$d ${'days'.w}',
+            selected: sel,
+            onTap: () => _changePeriod(d),
+          );
+        }),
+        ...const [365, 730, 1095, 1825].map((d) {
+          final years = d ~/ 365;
+          final sel = _customRange == null && _forecastDays == d;
+          return _periodChip(
+            label: WesiLocale.isRussian
+                ? '$years ${_yearsWordRu(years)}'
+                : '$years ${years == 1 ? 'year' : 'years'}',
             selected: sel,
             onTap: () => _changePeriod(d),
           );
@@ -882,7 +902,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     final picked = await showDateRangePicker(
       context: context,
       firstDate: start,
-      lastDate: start.add(const Duration(days: 730)),
+      // Пять лет вперёд: столько же, сколько даёт самый длинный chip.
+      lastDate: start.add(const Duration(days: 1825)),
       initialDateRange: _customRange ??
           DateTimeRange(
               start: start, end: start.add(Duration(days: _forecastDays))),
