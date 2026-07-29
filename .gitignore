@@ -35,3 +35,7 @@ Thumbs.db
 
 # Firebase
 lib/firebase_options.dart
+
+# Python (bundled forecast engines — python_engines/*.py IS tracked)
+python_engines/__pycache__/
+*.pyc
