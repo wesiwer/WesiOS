@@ -101,8 +101,10 @@ class MoreTab extends StatelessWidget {
             route: '/analytics',
             icon: Icons.analytics,
             title: ru ? 'Аналитика' : 'Analytics',
-            subtitle: ru ? 'Сводка по всем модулям' : 'Cross-module overview',
-            stage: ModuleStage.planned,
+            subtitle: ru
+                ? 'KPI, динамика, здоровье бизнеса'
+                : 'KPIs, trends, business health',
+            stage: ModuleStage.ready,
           ),
         ],
       ),
