@@ -23,6 +23,14 @@ on:
     # когда GitHub Actions перегружен задачами по расписанию.
     - cron: '0 3 4 * *'
 
+# Бандлы публикуются как ассеты GitHub Release, а GITHUB_TOKEN по умолчанию
+# в этом репозитории только на чтение — без явного contents: write шаг
+# публикации падает с «HTTP 403: Resource not accessible by integration»
+# уже ПОСЛЕ того, как всё собралось и прошло smoke-тест (Prophet к этому
+# моменту компилирует CmdStan десять с лишним минут).
+permissions:
+  contents: write
+
 env:
   PY_VERSION: '3.11.9'
   RELEASE_TAG: 'engines-v1'
