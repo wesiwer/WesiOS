@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../core/constants/app_version.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -147,15 +148,7 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Text(
-                          'WesiOS',
-                          style: TextStyle(
-                            fontSize: 48,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                            letterSpacing: 8,
-                          ),
-                        ),
+                        const WesiWordmark(size: 46),
                         const SizedBox(height: 8),
                         Text(
                           'Business Operating System',

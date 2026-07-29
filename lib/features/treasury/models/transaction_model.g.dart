@@ -24,9 +24,9 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       date: fields[4] as DateTime,
       category: fields[5] as String?,
       description: fields[6] as String?,
-      isRecurring: fields[7] as bool? ?? false,
+      isRecurring: fields[7] as bool,
       recurringPeriod: fields[8] as RecurringPeriod?,
-      isAnomaly: fields[9] as bool? ?? false,
+      isAnomaly: fields[9] as bool,
       zScore: fields[10] as double?,
     );
   }
@@ -125,7 +125,7 @@ class RecurringPeriodAdapter extends TypeAdapter<RecurringPeriod> {
       case 3:
         return RecurringPeriod.yearly;
       default:
-        return RecurringPeriod.monthly;
+        return RecurringPeriod.daily;
     }
   }
 

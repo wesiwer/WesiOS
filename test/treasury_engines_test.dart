@@ -42,6 +42,55 @@ void main() {
       expect(result.p50, isEmpty);
     });
 
+    test('refuses to forecast from a single day of one-off transactions '
+        '(regression: one day of history produced zero volatility, so all '
+        '5000 paths were identical and the chart showed a confident straight '
+        'line with p10 == p50 == p90)', () {
+      final today = DateTime.now();
+      final anchor = DateTime(today.year, today.month, today.day);
+      final txs = [
+        _tx(id: 'a', amount: 43000, type: TransactionType.income, date: anchor),
+        _tx(id: 'b', amount: 1400, type: TransactionType.expense, date: anchor),
+        _tx(id: 'c', amount: 1300, type: TransactionType.expense, date: anchor),
+      ];
+
+      final result = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 43000,
+        days: 30,
+      );
+
+      expect(result.insufficientData, isTrue);
+      expect(result.p50, isEmpty);
+    });
+
+    test('a short history still forecasts when recurring payments carry it — '
+        'there the straight line is the correct deterministic answer, not an '
+        'artefact of missing data', () {
+      final today = DateTime.now();
+      final anchor = DateTime(today.year, today.month, today.day);
+      final txs = List.generate(
+        3,
+        (i) => _tx(
+          id: 'daily_$i',
+          amount: 100,
+          type: TransactionType.income,
+          date: anchor,
+          isRecurring: true,
+          recurringPeriod: RecurringPeriod.daily,
+        ),
+      );
+
+      final result = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 1000,
+        days: 5,
+      );
+
+      expect(result.insufficientData, isFalse);
+      expect(result.p50.first, closeTo(1300, 0.001));
+    });
+
     test('percentiles are ordered (p10 <= p50 <= p90) for every day, '
         'and series length matches the requested horizon', () {
       final now = DateTime.now();

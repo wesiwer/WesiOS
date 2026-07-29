@@ -3,11 +3,14 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/data/countries.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/firebase_config_service.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/window_controls.dart';
+import '../../core/services/vault_lock_service.dart';
+import '../../core/widgets/vault_unlock_dialog.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -34,18 +37,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   String? _savedHint;
   Timer? _debounce;
 
+  /// Доступ к секции ключей Firebase подтверждён в этом сеансе экрана.
+  /// Намеренно не сохраняется между открытиями: закрыл профиль — снова
+  /// нужен пароль.
+  bool _vaultUnlocked = false;
+  bool _bioAvailable = false;
+
   final List<String> _genders = ['Не указан', 'Мужской', 'Женский'];
-  final List<String> _countries = [
-    'Не указана',
-    'Россия',
-    'США',
-    'Германия',
-    'Франция',
-    'Великобритания',
-    'Китай',
-    'Япония',
-    'Другая'
-  ];
+  /// Полный список стран. При русском интерфейсе Россия и соседи идут
+  /// первыми — искать свою страну в середине алфавита неудобно.
+  List<String> get _countries => Countries.all;
 
   @override
   void initState() {
@@ -169,12 +170,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
       initialDate: _birthDate ?? DateTime(2000),
       firstDate: DateTime(1900),
       lastDate: DateTime.now(),
+      // Календарь на языке приложения. Без явной локали Flutter показывает
+      // системную, из-за чего при русском интерфейсе месяцы и кнопки
+      // оставались английскими.
+      locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: const ColorScheme.dark(
               primary: AppTheme.accentOrange,
+              onPrimary: AppTheme.background,
               surface: AppTheme.surface,
+              onSurface: AppTheme.textPrimary,
             ),
           ),
           child: child!,
@@ -185,6 +192,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
       setState(() => _birthDate = picked);
       _scheduleSave();
     }
+  }
+
+  /// Дата в формате дд.мм.гггг — с ведущими нулями (09.07.2004), а не
+  /// 9.7.2004: без них дата читается как небрежность.
+  static String _formatDate(DateTime d) {
+    final dd = d.day.toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    return '$dd.$mm.${d.year}';
   }
 
   @override
@@ -226,7 +241,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _dropdown(
             'Дата рождения',
             _birthDate != null
-                ? '${_birthDate!.day}.${_birthDate!.month}.${_birthDate!.year}'
+                ? _formatDate(_birthDate!)
                 : 'Не указана',
             _pickBirthDate,
           ),
@@ -248,6 +263,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 24),
           _section('Ключи Firebase (автосохранение)'),
+          // Ключи Firebase — это доступ к бэкенду проекта, поэтому секция
+          // закрыта: значения не рисуются, пока не подтвердили пароль
+          // (или отпечаток/Face ID на телефоне).
+          if (!_vaultUnlocked) _lockedVault(),
+          if (_vaultUnlocked) ...[
           const Text(
             'Наведи на поле — подсказка где взять значение. Сохраняется само.',
             style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
@@ -295,9 +315,122 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   style: TextStyle(color: AppTheme.accentRed)),
             ),
           ),
+          const SizedBox(height: 12),
+          _vaultOptions(),
+          ],
         ],
       ),
     );
+  }
+
+  /// Заглушка вместо полей, пока доступ не подтверждён.
+  Widget _lockedVault() {
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.lock, size: 18, color: AppTheme.accentOrange),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  VaultLockService.isConfigured
+                      ? 'Ключи защищены'
+                      : 'Защитите ключи паролем',
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            VaultLockService.isConfigured
+                ? 'Введите пароль, чтобы посмотреть или изменить ключи Firebase.'
+                : 'Ключи Firebase дают доступ к бэкенду проекта. Задайте пароль, '
+                    'чтобы их нельзя было прочитать с разблокированного устройства.',
+            style: const TextStyle(
+                fontSize: 12, color: AppTheme.textMuted, height: 1.4),
+          ),
+          const SizedBox(height: 14),
+          HoverButton(
+            onTap: _unlockVault,
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            backgroundColor: AppTheme.accentOrange,
+            child: Center(
+              child: Text(
+                VaultLockService.isConfigured
+                    ? 'Разблокировать'
+                    : 'Создать пароль',
+                style: const TextStyle(
+                    color: Colors.white, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Управление замком, когда доступ уже получен.
+  Widget _vaultOptions() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (_bioAvailable)
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: VaultLockService.biometricsEnabled,
+            activeColor: AppTheme.accentOrange,
+            title: const Text('Отпечаток или Face ID',
+                style: TextStyle(
+                    fontSize: 14, color: AppTheme.textPrimary)),
+            subtitle: const Text(
+                'Открывать ключи биометрией вместо ввода пароля',
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+            onChanged: (v) async {
+              await VaultLockService.setBiometricsEnabled(v);
+              if (mounted) setState(() {});
+            },
+          ),
+        TextButton(
+          onPressed: () async {
+            final ok = await showDialog<bool>(
+              context: context,
+              builder: (_) => const VaultUnlockDialog(setupMode: true),
+            );
+            if (ok == true && mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Пароль обновлён')),
+              );
+            }
+          },
+          child: const Text('Сменить пароль',
+              style: TextStyle(color: AppTheme.accentOrange)),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _unlockVault() async {
+    final ok = await VaultUnlockDialog.unlock(context);
+    if (ok && mounted) {
+      final bio = await VaultLockService.isBiometricAvailable;
+      if (!mounted) return;
+      setState(() {
+        _vaultUnlocked = true;
+        _bioAvailable = bio;
+      });
+    }
   }
 
   Widget _section(String t) => Padding(

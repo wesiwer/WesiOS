@@ -26,7 +26,7 @@ class MoreTab extends StatelessWidget {
             icon: Icons.task_alt,
             title: ru ? 'Задачи' : 'Tasks',
             subtitle: ru ? 'Канбан, сроки, исполнители' : 'Kanban, deadlines, assignees',
-            stage: ModuleStage.planned,
+            stage: ModuleStage.ready,
           ),
           _ModuleItem(
             route: '/roadmap',

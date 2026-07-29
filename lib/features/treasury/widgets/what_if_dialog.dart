@@ -68,6 +68,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
       initialDate: _eventDate,
       firstDate: start.add(const Duration(days: 1)),
       lastDate: start.add(Duration(days: widget.forecastDays)),
+      locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.dark(

@@ -1,3 +1,4 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:math_expressions/math_expressions.dart';
@@ -26,10 +27,25 @@ class CalculatorScreen extends StatefulWidget {
   State<CalculatorScreen> createState() => _CalculatorScreenState();
 }
 
+/// Одна завершённая операция в истории калькулятора.
+class _CalcEntry {
+  final String expression;
+  final String result;
+  const _CalcEntry({required this.expression, required this.result});
+}
+
 class _CalculatorScreenState extends State<CalculatorScreen> {
   String _expression = '';
   String _result = '0';
   final FocusNode _focusNode = FocusNode();
+
+  /// true — последнее действие было «=». Следующий оператор продолжит счёт
+  /// от результата, а следующая цифра начнёт новое вычисление.
+  bool _justEvaluated = false;
+
+  static const int _historyLimit = 50;
+  final List<_CalcEntry> _history = [];
+  bool _showHistory = false;
 
   bool _pinned = false;
   bool _showBlur = true;
@@ -53,17 +69,36 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       if (value == 'C' || value == 'c') {
         _expression = '';
         _result = '0';
+        _justEvaluated = false;
       } else if (value == 'Delete' || value == 'DEL') {
         _expression = '';
         _result = '0';
+        _justEvaluated = false;
       } else if (value == '=' || value == 'Enter') {
         _calculate();
       } else if (value == '⌫' || value == 'Backspace') {
         if (_expression.isNotEmpty) {
           _expression = _expression.substring(0, _expression.length - 1);
         }
+        _justEvaluated = false;
       } else if (_isValidInput(value)) {
-        _expression += value;
+        // Продолжение счёта от результата: после «=» набранный оператор
+        // должен применяться К РЕЗУЛЬТАТУ, а не дописываться к старому
+        // выражению. Раньше «10+5 =» давало 15, а следующее «*2» превращало
+        // строку в «10+5*2» — по приоритету операций получалось 20 вместо
+        // ожидаемых 30. Теперь после «=» выражение начинается с результата.
+        if (_justEvaluated) {
+          if (_isOperator(value)) {
+            _expression = '$_result$value';
+          } else {
+            // Новая цифра после «=» — это начало нового вычисления.
+            _expression = value;
+            _result = '0';
+          }
+          _justEvaluated = false;
+        } else {
+          _expression += value;
+        }
       }
     });
   }
@@ -73,6 +108,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     return valid.contains(value);
   }
 
+  static bool _isOperator(String v) => '+-*/^%'.contains(v) && v.length == 1;
+
   void _calculate() {
     if (_expression.isEmpty) return;
     try {
@@ -80,10 +117,16 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       final exp = p.parse(_expression);
       final cm = ContextModel();
       final eval = exp.evaluate(EvaluationType.REAL, cm);
-      _result =
+      final formatted =
           eval == eval.toInt() ? eval.toInt().toString() : eval.toString();
+      // Каждое «=» — отдельная запись в истории, а не продолжение прошлой.
+      _history.insert(0, _CalcEntry(expression: _expression, result: formatted));
+      if (_history.length > _historyLimit) _history.removeLast();
+      _result = formatted;
+      _justEvaluated = true;
     } catch (_) {
       _result = 'Error';
+      _justEvaluated = false;
     }
   }
 
@@ -198,6 +241,20 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                             ),
                             const Spacer(),
                             IconButton(
+                              tooltip: _showHistory
+                                  ? 'Скрыть историю'
+                                  : 'История вычислений',
+                              icon: Icon(
+                                Icons.history,
+                                size: 18,
+                                color: _showHistory
+                                    ? AppTheme.accentOrange
+                                    : AppTheme.textMuted,
+                              ),
+                              onPressed: () =>
+                                  setState(() => _showHistory = !_showHistory),
+                            ),
+                            IconButton(
                               tooltip: _showBlur ? 'Убрать блюр' : 'Включить блюр',
                               icon: Icon(
                                 _showBlur ? Icons.blur_on : Icons.blur_off,
@@ -269,6 +326,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                           ],
                         ),
                       ),
+                      if (_showHistory) _historyPanel(),
                       // Keys
                       Padding(
                         padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
@@ -305,15 +363,27 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         if (!_pinned)
           GestureDetector(
             onTap: _close,
-            child: AnimatedOpacity(
-              opacity: 1,
-              duration: const Duration(milliseconds: 200),
-              child: Container(
-                // Плавное затемнение без тяжёлого blur на каждом кадре
-                color: _showBlur
-                    ? Colors.black.withOpacity(0.55)
-                    : Colors.transparent,
-              ),
+            // Настоящее размытие фона, а не просто затемнение.
+            //
+            // Плавность даёт TweenAnimationBuilder: sigma растёт от 0 до
+            // целевого значения за 260 мс. Резкое включение BackdropFilter
+            // на полную силу — это один тяжёлый кадр, который и читался как
+            // «блюр с зависанием»; постепенный рост распределяет нагрузку и
+            // выглядит как плавное появление.
+            child: TweenAnimationBuilder<double>(
+              tween: Tween(begin: 0, end: _showBlur ? 14 : 0),
+              duration: const Duration(milliseconds: 260),
+              curve: Curves.easeOutCubic,
+              builder: (context, sigma, _) {
+                final backdrop = Container(
+                  color: Colors.black.withOpacity(_showBlur ? 0.35 : 0.0),
+                );
+                if (sigma <= 0.01) return backdrop;
+                return BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                  child: backdrop,
+                );
+              },
             ),
           ),
         Center(child: panel),
@@ -334,6 +404,95 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     return Scaffold(
       backgroundColor: Colors.transparent,
       body: listener,
+    );
+  }
+
+  /// История вычислений: каждое «=» — отдельная строка, а не продолжение
+  /// прошлой. Тап по строке возвращает её результат в текущий расчёт.
+  Widget _historyPanel() {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 150),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(0.6),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: _history.isEmpty
+          ? const Padding(
+              padding: EdgeInsets.symmetric(vertical: 18),
+              child: Center(
+                child: Text('История пуста',
+                    style: TextStyle(
+                        fontSize: 12, color: AppTheme.textMuted)),
+              ),
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
+                  child: Row(
+                    children: [
+                      const Text('История',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textMuted)),
+                      const Spacer(),
+                      GestureDetector(
+                        onTap: () => setState(_history.clear),
+                        child: const Text('Очистить',
+                            style: TextStyle(
+                                fontSize: 11, color: AppTheme.accentOrange)),
+                      ),
+                    ],
+                  ),
+                ),
+                Flexible(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    padding: const EdgeInsets.only(bottom: 8),
+                    itemCount: _history.length,
+                    itemBuilder: (context, i) {
+                      final e = _history[i];
+                      return InkWell(
+                        onTap: () => setState(() {
+                          _expression = e.result;
+                          _result = e.result;
+                          _justEvaluated = true;
+                        }),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  e.expression,
+                                  style: const TextStyle(
+                                      fontSize: 12,
+                                      color: AppTheme.textMuted),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '= ${e.result}',
+                                style: const TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textPrimary),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
     );
   }
 

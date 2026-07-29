@@ -2,7 +2,9 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme/app_theme.dart';
+import 'core/localization/wesi_locale.dart';
 import 'core/routes/app_router.dart';
 import 'core/widgets/window_controls.dart';
 import 'features/calculator/calculator_screen.dart';
@@ -34,6 +36,16 @@ class WesiOSApp extends StatelessWidget {
       theme: AppTheme.darkTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.dark,
+      // Без этих делегатов встроенные виджеты Material (календарь
+      // showDatePicker, диалоги выбора времени и т.п.) остаются на английском
+      // независимо от языка интерфейса — свой WesiLocale на них не влияет.
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('ru'), Locale('en')],
+      locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
       onGenerateRoute: AppRouter.onGenerateRoute,
       home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
       builder: (context, child) {

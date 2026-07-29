@@ -94,6 +94,27 @@ class TransactionModel {
   };
 }
 
-enum TransactionType { income, expense }
+/// Аннотации обязательны, хотя адаптеры для этих enum уже лежали в
+/// `transaction_model.g.dart`: без них build_runner при следующей генерации
+/// просто выкидывает `TransactionTypeAdapter` и `RecurringPeriodAdapter` из
+/// файла, и приложение перестаёт собираться. typeId 2 и 3 и порядок значений
+/// менять нельзя — по ним читаются уже записанные на диск транзакции.
+@HiveType(typeId: 2)
+enum TransactionType {
+  @HiveField(0)
+  income,
+  @HiveField(1)
+  expense,
+}
 
-enum RecurringPeriod { daily, weekly, monthly, yearly }
+@HiveType(typeId: 3)
+enum RecurringPeriod {
+  @HiveField(0)
+  daily,
+  @HiveField(1)
+  weekly,
+  @HiveField(2)
+  monthly,
+  @HiveField(3)
+  yearly,
+}

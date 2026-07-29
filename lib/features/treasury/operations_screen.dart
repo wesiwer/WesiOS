@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/widgets/window_controls.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 import 'widgets/add_transaction_dialog.dart';
+import 'widgets/category_pie.dart';
 
 /// Экран всех операций — полный список транзакций с edit/delete
 class OperationsScreen extends StatefulWidget {
@@ -201,10 +203,16 @@ class _OperationsScreenState extends State<OperationsScreen> {
                       style: const TextStyle(color: AppTheme.textMuted),
                     ),
                   )
-                : ListView.builder(
+                : ListView(
                     padding: const EdgeInsets.all(16),
-                    itemCount: _filtered.length,
-                    itemBuilder: (_, i) => _txItem(_filtered[i]),
+                    children: [
+                      // Диаграммы считаются по ОТФИЛЬТРОВАННОМУ списку —
+                      // так поиск и фильтр по категории меняют и структуру,
+                      // а не только перечень строк ниже.
+                      CategoryPieSection(transactions: _filtered),
+                      const SizedBox(height: 20),
+                      ..._filtered.map(_txItem),
+                    ],
                   ),
           ),
         ],
@@ -269,10 +277,56 @@ class _OperationsScreenState extends State<OperationsScreen> {
               onTap: () => _editTx(tx),
               child: const Icon(Icons.edit, size: 18, color: AppTheme.textMuted),
             ),
+            const SizedBox(width: 12),
+            // Явная кнопка удаления. Свайп (Dismissible) остаётся, но на
+            // десктопе он неочевиден, а на телефоне о нём надо догадаться —
+            // из-за этого удалять операции получалось только во вкладке
+            // «Финансы».
+            GestureDetector(
+              onTap: () => _confirmDelete(tx),
+              child: const Icon(Icons.delete_outline,
+                  size: 18, color: AppTheme.accentRed),
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _confirmDelete(TransactionModel tx) async {
+    final ru = WesiLocale.isRussian;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape:
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding:
+            const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
+        title: Text(ru ? 'Удалить операцию?' : 'Delete operation?',
+            style: const TextStyle(
+                fontSize: 17, color: AppTheme.textPrimary)),
+        content: Text(
+          ru
+              ? '«${tx.title}» будет удалена безвозвратно.'
+              : '"${tx.title}" will be permanently removed.',
+          style: const TextStyle(color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(WesiLocale.get('cancel'),
+                style: const TextStyle(color: AppTheme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(ru ? 'Удалить' : 'Delete',
+                style: const TextStyle(color: AppTheme.accentRed)),
+          ),
+        ],
+      ),
+    );
+    if (ok == true) await _deleteTx(tx.id);
   }
 
   String _formatDate(DateTime d) {

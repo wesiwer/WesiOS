@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/services/firebase_config_service.dart';
 import '../../core/widgets/hover_button.dart';
+import '../../core/widgets/vault_unlock_dialog.dart';
 import '../splash/splash_screen.dart';
 
 class FirstRunScreen extends StatefulWidget {
@@ -24,6 +25,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
 
   bool _isLoading = false;
   String? _error;
+  bool _passwordSet = false;
 
   @override
   void dispose() {
@@ -163,6 +165,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                       child: Text(_error!, style: const TextStyle(color: AppTheme.accentRed)),
                     ),
                   ],
+                  const SizedBox(height: 24),
+                  _passwordOffer(),
                   const SizedBox(height: 32),
                   HoverButton(
                     onTap: _isLoading ? null : _saveAndProceed,
@@ -190,6 +194,72 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// Предложение сразу закрыть ключи паролем.
+  ///
+  /// Именно здесь это уместнее всего: ключи только что введены и лежат
+  /// открытыми. Не обязательное — пропустить можно, пароль ставится позже
+  /// в профиле.
+  Widget _passwordOffer() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _passwordSet
+              ? AppTheme.accentGreen.withOpacity(0.4)
+              : AppTheme.glassBorder,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(_passwordSet ? Icons.lock : Icons.lock_open,
+              size: 18,
+              color: _passwordSet
+                  ? AppTheme.accentGreen
+                  : AppTheme.accentOrange),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _passwordSet
+                      ? 'Пароль установлен'
+                      : 'Защитить ключи паролем',
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _passwordSet
+                      ? 'Ключи будут скрыты до ввода пароля. На телефоне можно открывать отпечатком.'
+                      : 'Иначе ключи сможет прочитать любой, кто возьмёт разблокированное устройство.',
+                  style: const TextStyle(
+                      fontSize: 11, color: AppTheme.textMuted, height: 1.35),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          TextButton(
+            onPressed: () async {
+              final ok = await showDialog<bool>(
+                context: context,
+                builder: (_) => const VaultUnlockDialog(setupMode: true),
+              );
+              if (ok == true && mounted) setState(() => _passwordSet = true);
+            },
+            child: Text(_passwordSet ? 'Сменить' : 'Задать',
+                style: const TextStyle(color: AppTheme.accentOrange)),
+          ),
+        ],
       ),
     );
   }

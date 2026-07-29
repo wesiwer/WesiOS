@@ -1,7 +1,7 @@
 name: wesios
 description: WesiOS - Business Operating System for Wesi Inc.
 publish_to: 'none'
-version: 0.7.0+9
+version: 0.8.0+10
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -80,6 +80,12 @@ dependencies:
   # Zip-распаковка загруженных движков прогноза (Prophet/SARIMAX)
   archive: ^3.6.1
 
+  # Защита ключей Firebase: отпечаток/Face ID на телефоне
+  local_auth: ^2.2.0
+
+  # Хэш пароля доступа — сам пароль не хранится
+  crypto: ^3.0.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
@@ -101,13 +107,12 @@ flutter:
 # Launcher icons configuration
 flutter_launcher_icons:
   android: "launcher_icon"
-  ios: true
+  # iOS/macOS в проекте нет — платформенные папки не сгенерированы,
+  # генератор на них падает.
+  ios: false
   image_path: "assets/images/app_icon.png"
   min_sdk_android: 21
   windows:
     generate: true
     image_path: "assets/images/app_icon.png"
     icon_size: 48
-  macos:
-    generate: true
-    image_path: "assets/images/app_icon.png"

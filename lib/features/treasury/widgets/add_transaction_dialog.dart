@@ -5,6 +5,8 @@ import '../../../core/widgets/window_controls.dart';
 import '../../../core/localization/wesi_locale.dart';
 import '../../../core/services/currency_service.dart';
 import '../models/transaction_model.dart';
+import '../services/category_service.dart';
+import 'category_editor_dialog.dart';
 
 /// Публичный диалог добавления/редактирования транзакции (доход/расход)
 /// Используется из HomeScreen (быстрые кнопки), TreasuryScreen и OperationsScreen.
@@ -35,27 +37,9 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
   bool _isRecurring = false;
   RecurringPeriod? _recurringPeriod;
 
-  List<String> get _categories => WesiLocale.isRussian
-      ? [
-          'ПО',
-          'Маркетинг',
-          'Офис',
-          'Зарплаты',
-          'Фриланс',
-          'Инвестиции',
-          'Инфраструктура',
-          'Другое'
-        ]
-      : [
-          'Software',
-          'Marketing',
-          'Office',
-          'Salaries',
-          'Freelance',
-          'Investments',
-          'Infrastructure',
-          'Other'
-        ];
+  /// Категории берутся из [CategoryService] — их можно править прямо
+  /// отсюда, а не только менять код.
+  List<String> get _categories => CategoryService.all;
 
   @override
   void initState() {
@@ -133,20 +117,50 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
               ),
             ),
             const SizedBox(height: 12),
-            DropdownButtonFormField<String>(
-              value: _category,
-              dropdownColor: AppTheme.surface,
-              decoration:
-                  InputDecoration(labelText: WesiLocale.get('category')),
-              items: _categories
-                  .map((c) => DropdownMenuItem(
-                        value: c,
-                        child: Text(c,
-                            style: const TextStyle(
-                                color: AppTheme.textPrimary)),
-                      ))
-                  .toList(),
-              onChanged: (v) => setState(() => _category = v ?? _categories.last),
+            Row(
+              children: [
+                Expanded(
+                  child: DropdownButtonFormField<String>(
+                    // Категорию могли переименовать/удалить, пока диалог был
+                    // открыт в другом месте — тогда value не найдётся в items
+                    // и Dropdown упадёт. Подстраховываемся значением из списка.
+                    value: _categories.contains(_category)
+                        ? _category
+                        : _categories.last,
+                    dropdownColor: AppTheme.surface,
+                    isExpanded: true,
+                    decoration:
+                        InputDecoration(labelText: WesiLocale.get('category')),
+                    items: _categories
+                        .map((c) => DropdownMenuItem(
+                              value: c,
+                              child: Text(c,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                      color: AppTheme.textPrimary)),
+                            ))
+                        .toList(),
+                    onChanged: (v) =>
+                        setState(() => _category = v ?? _categories.last),
+                  ),
+                ),
+                IconButton(
+                  tooltip: WesiLocale.isRussian
+                      ? 'Изменить категории'
+                      : 'Edit categories',
+                  icon: const Icon(Icons.tune,
+                      size: 18, color: AppTheme.accentOrange),
+                  onPressed: () async {
+                    await CategoryEditorDialog.show(context);
+                    if (!mounted) return;
+                    setState(() {
+                      if (!_categories.contains(_category)) {
+                        _category = _categories.last;
+                      }
+                    });
+                  },
+                ),
+              ],
             ),
             const SizedBox(height: 12),
             TextField(

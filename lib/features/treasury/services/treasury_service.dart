@@ -1,4 +1,5 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/transaction_model.dart';
 import 'anomaly_engine.dart';
@@ -16,6 +17,15 @@ class TreasuryService {
   static const String _boxName = 'wesios_treasury';
   Box<TransactionModel>? _box;
 
+  /// Счётчик изменений данных. Инкрементируется на каждую запись/удаление.
+  ///
+  /// Нужен, потому что вкладки живут в `IndexedStack` и **не пересоздаются**
+  /// при переключении: `initState` дашборда отрабатывает один раз за всё
+  /// время жизни приложения. Без этого сигнала баланс на главной оставался
+  /// таким, каким был на момент первого открытия, и расходился с Treasury,
+  /// стоило добавить операцию на другой вкладке.
+  static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+
   Future<Box<TransactionModel>> get _treasuryBox async {
     _box ??= await Hive.openBox<TransactionModel>(_boxName);
     return _box!;
@@ -26,11 +36,13 @@ class TreasuryService {
   Future<void> addTransaction(TransactionModel tx) async {
     final box = await _treasuryBox;
     await box.put(tx.id, tx);
+    revision.value++;
   }
 
   Future<void> deleteTransaction(String id) async {
     final box = await _treasuryBox;
     await box.delete(id);
+    revision.value++;
   }
 
   Future<List<TransactionModel>> getAllTransactions() async {

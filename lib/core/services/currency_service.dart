@@ -18,6 +18,35 @@ class CurrencyService {
     'kzt': ['₸', 'Казахстанский тенге', 'Kazakhstani Tenge'],
   };
 
+  /// Страны, где валюта является национальной, и флаг для быстрого узнавания.
+  /// Нужно, чтобы по коду валюты было понятно, о какой стране речь.
+  static const Map<String, List<String>> _countries = {
+    'rub': ['🇷🇺', 'Россия', 'Russia'],
+    'usd': ['🇺🇸', 'США', 'United States'],
+    'eur': ['🇪🇺', 'Еврозона', 'Eurozone'],
+    'gbp': ['🇬🇧', 'Великобритания', 'United Kingdom'],
+    'cny': ['🇨🇳', 'Китай', 'China'],
+    'uah': ['🇺🇦', 'Украина', 'Ukraine'],
+    'byn': ['🇧🇾', 'Беларусь', 'Belarus'],
+    'kzt': ['🇰🇿', 'Казахстан', 'Kazakhstan'],
+  };
+
+  static String flag(String code) => _countries[code]?[0] ?? '';
+
+  static String countryName(String code, {bool russian = true}) {
+    final c = _countries[code];
+    if (c == null) return '';
+    return russian ? c[1] : c[2];
+  }
+
+  static String currencyName(String code, {bool russian = true}) {
+    final c = currencies[code];
+    if (c == null) return code.toUpperCase();
+    return russian ? c[1] : c[2];
+  }
+
+  static String symbolOf(String code) => currencies[code]?[0] ?? '';
+
   /// Курсы: сколько единиц валюты за 1 RUB (хранятся как «за 1 USD» и пересчитываются).
   /// Значения по умолчанию; живые — через setRates().
   static Map<String, double> _ratesToRub = {

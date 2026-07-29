@@ -15,6 +15,7 @@ import '../tasks/tasks_screen.dart';
 import '../analytics/analytics_screen.dart';
 import 'more_tab.dart';
 import '../../core/widgets/wesi_clock.dart';
+import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/wesi_quote_card.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -162,6 +163,16 @@ class _DashboardTabState extends State<_DashboardTab> {
   void initState() {
     super.initState();
     _loadBalance();
+    // Вкладка живёт в IndexedStack и больше не пересоздаётся, поэтому
+    // одного initState мало: операция, добавленная в Treasury, должна
+    // подтянуться сюда сама (см. TreasuryService.revision).
+    TreasuryService.revision.addListener(_loadBalance);
+  }
+
+  @override
+  void dispose() {
+    TreasuryService.revision.removeListener(_loadBalance);
+    super.dispose();
   }
 
   Future<void> _loadBalance() async {
@@ -194,15 +205,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                         ? 'Центральная панель управления всеми системами Wesi'
                         : 'Central dashboard for all Wesi systems',
                     children: const [
-                      Text(
-                        'WesiOS',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: 3,
-                        ),
-                      ),
+                      WesiWordmark(size: 26),
                     ],
                   ),
                   const Spacer(),

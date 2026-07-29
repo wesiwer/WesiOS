@@ -7,6 +7,7 @@ import 'package:window_manager/window_manager.dart';
 import 'core/services/firebase_config_service.dart';
 import 'core/services/exchange_rate_service.dart';
 import 'features/treasury/models/transaction_model.dart';
+import 'features/tasks/models/task_model.dart';
 import 'app.dart';
 
 bool get isDesktop {
@@ -46,6 +47,10 @@ void main() async {
   Hive.registerAdapter(TransactionModelAdapter());
   Hive.registerAdapter(TransactionTypeAdapter());
   Hive.registerAdapter(RecurringPeriodAdapter());
+  Hive.registerAdapter(TaskStatusAdapter());
+  Hive.registerAdapter(TaskPriorityAdapter());
+  Hive.registerAdapter(SubTaskAdapter());
+  Hive.registerAdapter(TaskModelAdapter());
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');

@@ -4,6 +4,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/widgets/currency_picker.dart';
 import 'services/treasury_service.dart';
 import 'services/forecast_engine.dart';
 import 'services/multi_engine_forecast.dart';
@@ -237,11 +238,10 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   }
 
   Future<void> _cycleCurrency() async {
-    final codes = CurrencyService.codes;
-    final i = codes.indexOf(_currency);
-    final next = codes[(i + 1) % codes.length];
-    await CurrencyService.set(next);
-    setState(() => _currency = next);
+    final picked = await CurrencyPicker.show(context);
+    if (picked == null) return;
+    await CurrencyService.set(picked);
+    if (mounted) setState(() => _currency = picked);
   }
 
   void _changePeriod(int days) {
@@ -857,6 +857,22 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
+  /// Дата, соответствующая позиции X на графике.
+  ///
+  /// Ось X — это индекс дня в общем ряду «история + прогноз»: точки до
+  /// [_historyWindowDays] отсчитываются назад от сегодня, дальше — вперёд.
+  String _dateLabelForX(int x) {
+    final now = DateTime.now();
+    final offset = x - _historyWindowDays;
+    final d = DateTime(now.year, now.month, now.day).add(Duration(days: offset));
+    final dd = d.day.toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    final prefix = offset > 0
+        ? (WesiLocale.isRussian ? 'Прогноз' : 'Forecast')
+        : (WesiLocale.isRussian ? 'Факт' : 'Actual');
+    return '$prefix · $dd.$mm.${d.year}';
+  }
+
   static String _fmtDate(DateTime d) =>
       '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}';
 
@@ -870,6 +886,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       initialDateRange: _customRange ??
           DateTimeRange(
               start: start, end: start.add(Duration(days: _forecastDays))),
+      locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: const ColorScheme.dark(
@@ -986,6 +1003,38 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 const AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
           borderData: FlBorderData(show: false),
+          // Свой тултип: дефолтный у fl_chart светло-голубой (нечитаемо на
+          // тёмной теме) и показывает только числа — по ним невозможно
+          // понять, к какому дню относится значение.
+          lineTouchData: LineTouchData(
+            touchTooltipData: LineTouchTooltipData(
+              tooltipBgColor: AppTheme.surface.withOpacity(0.96),
+              tooltipRoundedRadius: 10,
+              tooltipPadding: const EdgeInsets.symmetric(
+                  horizontal: 12, vertical: 8),
+              fitInsideHorizontally: true,
+              fitInsideVertically: true,
+              getTooltipItems: (spots) {
+                if (spots.isEmpty) return const [];
+                final dateLabel = _dateLabelForX(spots.first.x.toInt());
+                return List.generate(spots.length, (i) {
+                  final spot = spots[i];
+                  final value = CurrencyService.format(spot.y);
+                  // Дату печатаем один раз — заголовком в первой строке,
+                  // иначе она дублировалась бы на каждой серии.
+                  final text = i == 0 ? '$dateLabel\n$value' : value;
+                  return LineTooltipItem(
+                    text,
+                    TextStyle(
+                      color: spot.bar.color ?? AppTheme.textPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  );
+                });
+              },
+            ),
+          ),
           minX: 0,
           maxX: (_data.length - 1).toDouble(),
           minY: minY,

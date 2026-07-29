@@ -5,6 +5,7 @@ import '../../core/widgets/wesi_tooltip.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/widgets/currency_picker.dart';
 import '../../core/services/exchange_rate_service.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
@@ -49,12 +50,13 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     });
   }
 
+  /// Выбор валюты списком (флаг, страна, название, курс) вместо перебора
+  /// по кругу — по одному коду было непонятно, о какой стране речь.
   Future<void> _cycleCurrency() async {
-    final codes = CurrencyService.codes;
-    final i = codes.indexOf(_currency);
-    final next = codes[(i + 1) % codes.length];
-    await CurrencyService.set(next);
-    setState(() => _currency = next);
+    final picked = await CurrencyPicker.show(context);
+    if (picked == null) return;
+    await CurrencyService.set(picked);
+    if (mounted) setState(() => _currency = picked);
   }
 
   Future<void> _addTransaction(TransactionType type) async {

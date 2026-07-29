@@ -1,11 +1,21 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
+import '../../core/widgets/window_controls.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/widgets/currency_picker.dart';
 import 'services/sandbox_service.dart';
 import 'models/transaction_model.dart';
+import 'sandbox_forecast_screen.dart';
 import 'widgets/add_transaction_dialog.dart';
+
+/// Кастомный title bar с кнопками окна существует только на десктопе —
+/// на мобильных резервировать под него место не нужно.
+bool get _isDesktop =>
+    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
 class SandboxScreen extends StatefulWidget {
   const SandboxScreen({super.key});
@@ -47,10 +57,16 @@ class _SandboxScreenState extends State<SandboxScreen> {
     });
   }
 
+  /// Открывает выбор из ВСЕХ поддерживаемых валют.
+  ///
+  /// Раньше здесь был жёсткий переключатель rub↔usd, из-за чего в песочнице
+  /// были доступны только рубль и доллар, хотя `CurrencyService` знает
+  /// восемь валют.
   Future<void> _toggleCurrency() async {
-    final next = _currency == 'rub' ? 'usd' : 'rub';
-    await CurrencyService.set(next);
-    setState(() => _currency = next);
+    final picked = await CurrencyPicker.show(context);
+    if (picked == null) return;
+    await CurrencyService.set(picked);
+    if (mounted) setState(() => _currency = picked);
   }
 
   Future<void> _runScenario(String scenario) async {
@@ -152,9 +168,17 @@ class _SandboxScreenState extends State<SandboxScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      body: Column(
-        children: [
-          _banner(),
+      // SafeArea — иначе на телефоне оранжевый баннер «РЕЖИМ ПЕСОЧНИЦЫ»
+      // залезал под статус-бар с часами, вырезом камеры и значками связи.
+      // Экран строит Column напрямую, без AppBar, поэтому системные отступы
+      // сам никто не учитывал.
+      body: SafeArea(
+        child: Column(
+          children: [
+            // На десктопе сверху висит кастомный title bar с кнопками окна —
+            // на мобильных его нет, поэтому отступ только для десктопа.
+            if (_isDesktop) const SizedBox(height: kTitleBarHeight),
+            _banner(),
           Expanded(
             child: ListView(
               padding: const EdgeInsets.all(24),
@@ -178,13 +202,16 @@ class _SandboxScreenState extends State<SandboxScreen> {
                       child: Container(
                         padding: const EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
-                        margin: const EdgeInsets.only(right: 140),
+                        // Место под кнопки окна резервируем только там, где
+                        // они есть — на телефоне этот отступ просто съедал
+                        // ширину экрана.
+                        margin: EdgeInsets.only(right: _isDesktop ? 140 : 0),
                         decoration: BoxDecoration(
                           color: AppTheme.surface.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: AppTheme.glassBorder),
                         ),
-                        child: Text(_sym,
+                        child: Text('$_sym ${_currency.toUpperCase()}',
                             style: const TextStyle(
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.accentOrange)),
@@ -218,6 +245,11 @@ class _SandboxScreenState extends State<SandboxScreen> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                // Прогноз песочницы отдельным экраном: там же конструктор
+                // собственных сценариев «Что если?» с автоматическими
+                // графиками. Данные — только песочницы, Treasury не трогает.
+                const SandboxForecastButton(),
                 const SizedBox(height: 20),
                 Text(
                   '${WesiLocale.get('sandbox_transactions')} (${_transactions.length})',
@@ -231,7 +263,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
               ],
             ),
           ),
-        ],
+          ],
+        ),
       ),
     );
   }

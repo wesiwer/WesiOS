@@ -15,9 +15,38 @@ void main() {
       expect(ru.length, WesiQuotes.all.length);
     });
 
+    test('no near-duplicates either — two phrases differing only by ё/е, '
+        'case or punctuation read as the same quote to a human, and the '
+        'exact-match check above would let them both through', () {
+      final seen = <String>{};
+      final dupes = <String>[];
+      for (final q in WesiQuotes.all) {
+        final key = q.ru
+            .toLowerCase()
+            .replaceAll('ё', 'е')
+            .replaceAll(RegExp(r'[^\wа-я\s]'), '')
+            .replaceAll(RegExp(r'\s+'), ' ')
+            .trim();
+        if (!seen.add(key)) dupes.add(q.ru);
+      }
+      expect(dupes, isEmpty, reason: 'near-duplicates: ${dupes.take(5)}');
+    });
+
     test('the pool is large enough that a given quote is rare', () {
       // Смысл фичи — «чтобы не надоедали». Небольшой список сводит идею на нет.
-      expect(WesiQuotes.all.length, greaterThanOrEqualTo(40));
+      expect(WesiQuotes.all.length, greaterThanOrEqualTo(1000));
+    });
+
+    test('walks the entire pool before repeating — the stride must stay '
+        'coprime with the list length, otherwise the rotation collapses '
+        'onto a small subset no matter how many quotes exist', () {
+      final seen = <String>{};
+      var t = DateTime(2026, 1, 1);
+      for (int i = 0; i < WesiQuotes.all.length; i++) {
+        seen.add(WesiQuotes.current(now: t).ru);
+        t = t.add(const Duration(hours: 6));
+      }
+      expect(seen.length, WesiQuotes.all.length);
     });
 
     test('stays stable within one slot — the screen must not reshuffle the '

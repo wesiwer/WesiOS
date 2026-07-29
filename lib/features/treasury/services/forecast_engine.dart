@@ -252,6 +252,18 @@ class ForecastEngine {
   static const int _minResidualsForBootstrap = 5;
   static const double _halfLifeDays = 10.0;
 
+  /// Минимальный охват истории в днях, при котором вообще имеет смысл
+  /// строить статистический прогноз.
+  ///
+  /// Без этого порога одного дня истории хватало, чтобы движок «сработал»:
+  /// пул остатков пуст, волатильность равна нулю (стандартное отклонение по
+  /// одной точке не определено), и все 5000 траекторий получались
+  /// ОДИНАКОВЫМИ. На графике это выглядело как уверенная прямая линия с
+  /// совпадающими P10/P50/P90 — то есть модель показывала максимальную
+  /// уверенность именно там, где данных меньше всего. Честнее сказать
+  /// «мало истории», чем нарисовать ровную прямую.
+  static const int minHistorySpanDays = 7;
+
   /// Порог тревоги «кассового разрыва»: если вероятность ухода в минус
   /// в какой-то день превышает это значение — riskAlertDay указывает на него.
   static const double _riskAlertThreshold = 0.05;
@@ -287,6 +299,19 @@ class ForecastEngine {
         .where((t) => t.isRecurring && t.recurringPeriod != null)
         .toList();
     final recurringIds = recurringTxs.map((t) => t.id).toSet();
+
+    // Хватает ли истории, чтобы вообще оценивать тренд и разброс.
+    //
+    // Разделяем два случая, потому что «прямая линия» бывает и правильной:
+    // — есть регулярные платежи → будущее известно по датам, прямая линия
+    //   это корректный детерминированный результат, история не нужна;
+    // — нет ни истории, ни регулярных платежей → экстраполировать нечего,
+    //   и попытка растянуть нетто одного дня на месяц даёт ту самую
+    //   уверенную прямую с P10 == P50 == P90. Честнее вернуть «мало данных».
+    final hasEnoughHistory = spanDays >= minHistorySpanDays;
+    if (!hasEnoughHistory && recurringTxs.isEmpty) {
+      return ForecastResult.empty();
+    }
 
     // Плотные (без пропусков) дневные ряды НЕ-регулярного дохода/расхода,
     // раздельно. Регулярные платежи полностью известны наперёд, поэтому не
@@ -407,11 +432,21 @@ class ForecastEngine {
           shock = shockMagnitudes[rng.nextInt(shockMagnitudes.length)];
         }
 
-        final incomeToday = (incomeStats.trendPerDay + incomeSeasonal + incomeNoise) *
-            incomeMult;
-        final expenseToday =
-            (expenseStats.trendPerDay + expenseSeasonal + expenseNoise + shock) *
-                expenseMult;
+        // При короткой истории статистическую часть не считаем вовсе: тренд,
+        // оценённый по паре дней, — это не тренд, а один случайный день,
+        // растянутый на весь горизонт. Остаются только регулярные платежи,
+        // которые известны по датам и в истории не нуждаются.
+        final incomeToday = hasEnoughHistory
+            ? (incomeStats.trendPerDay + incomeSeasonal + incomeNoise) *
+                incomeMult
+            : 0.0;
+        final expenseToday = hasEnoughHistory
+            ? (expenseStats.trendPerDay +
+                    expenseSeasonal +
+                    expenseNoise +
+                    shock) *
+                expenseMult
+            : 0.0;
 
         final recurringIncome = (recurringIncomeByOffset[i + 1] ?? 0.0) * incomeMult;
         final recurringExpense =
