@@ -13,7 +13,9 @@ import '../treasury/models/transaction_model.dart';
 import '../treasury/services/treasury_service.dart';
 import '../tasks/tasks_screen.dart';
 import '../analytics/analytics_screen.dart';
-import '../settings/settings_screen.dart';
+import 'more_tab.dart';
+import '../../core/widgets/wesi_clock.dart';
+import '../../core/widgets/wesi_quote_card.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -77,7 +79,9 @@ class _HomeScreenState extends State<HomeScreen>
       case 3:
         return AnalyticsScreen(key: key);
       default:
-        return SettingsScreen(key: key);
+        // «Ещё» — витрина всех модулей, а не сразу Настройки: иначе о
+        // существовании базы знаний, CRM, ИИ и прочего никак не узнать.
+        return MoreTab(key: key);
     }
   }
 
@@ -202,6 +206,17 @@ class _DashboardTabState extends State<_DashboardTab> {
                     ],
                   ),
                   const Spacer(),
+                  // Часы — заодно самый естественный вход в календарь.
+                  Tooltip(
+                    message: WesiLocale.isRussian
+                        ? 'Открыть календарь'
+                        : 'Open calendar',
+                    child: GestureDetector(
+                      onTap: () => Navigator.pushNamed(context, '/calendar'),
+                      child: const WesiClock(),
+                    ),
+                  ),
+                  const SizedBox(width: 20),
                   _HoverIconButton(icon: Icons.search, onTap: () {}),
                   const SizedBox(width: 8),
                   _HoverIconButton(
@@ -212,6 +227,12 @@ class _DashboardTabState extends State<_DashboardTab> {
                   const _ProfileDropdown(),
                 ],
               ),
+            ),
+          ),
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+              child: WesiQuoteCard(),
             ),
           ),
           SliverToBoxAdapter(

@@ -12,6 +12,7 @@ import '../../features/tasks/tasks_screen.dart';
 import '../../features/roadmap/roadmap_screen.dart';
 import '../../features/analytics/analytics_screen.dart';
 import '../../features/knowledge/knowledge_base_screen.dart';
+import '../../features/ai/ai_assistant_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/calculator/calculator_screen.dart';
@@ -49,6 +50,8 @@ class AppRouter {
         return _slideUpRoute(const AnalyticsScreen());
       case '/knowledge':
         return _slideUpRoute(const KnowledgeBaseScreen());
+      case '/ai':
+        return _slideUpRoute(const AiAssistantScreen());
       case '/settings':
         return _slideUpRoute(const SettingsScreen());
       case '/profile':
