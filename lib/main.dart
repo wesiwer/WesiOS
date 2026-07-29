@@ -9,6 +9,8 @@ import 'core/services/exchange_rate_service.dart';
 import 'features/treasury/models/transaction_model.dart';
 import 'features/tasks/models/task_model.dart';
 import 'features/treasury/models/account_model.dart';
+import 'features/knowledge/models/article_model.dart';
+import 'features/knowledge/services/knowledge_service.dart';
 import 'core/services/app_update_service.dart';
 import 'app.dart';
 
@@ -55,6 +57,8 @@ void main() async {
   Hive.registerAdapter(TaskModelAdapter());
   Hive.registerAdapter(AccountKindAdapter());
   Hive.registerAdapter(AccountModelAdapter());
+  Hive.registerAdapter(ArticleSectionAdapter());
+  Hive.registerAdapter(ArticleModelAdapter());
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
@@ -64,6 +68,8 @@ void main() async {
   // Проверка обновления тоже фоном: если сети нет или релиз ещё не
   // опубликован, check() просто вернёт null и ничего не покажет.
   AppUpdateService.check();
+  // Встроенная справка обновляется вместе с приложением.
+  KnowledgeService.seed();
 
   final configService = FirebaseConfigService();
   final isConfigured = await configService.isConfigured();

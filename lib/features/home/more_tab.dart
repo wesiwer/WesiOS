@@ -52,8 +52,10 @@ class MoreTab extends StatelessWidget {
             route: '/knowledge',
             icon: Icons.menu_book,
             title: ru ? 'База знаний' : 'Knowledge Base',
-            subtitle: ru ? 'Регламенты, инструкции, опыт' : 'Playbooks, guides, know-how',
-            stage: ModuleStage.planned,
+            subtitle: ru
+                ? 'Регламенты, инструкции и раздел «О программе»'
+                : 'Playbooks, guides and the About section',
+            stage: ModuleStage.ready,
           ),
           _ModuleItem(
             route: '/crm',
