@@ -483,7 +483,8 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                             ? series[spot.barIndex]
                             : null;
                         final line =
-                            '${s?.label ?? ''}: $_sym${spot.y.toStringAsFixed(0)}';
+                            '${s?.label ?? ''}: '
+                            '${CurrencyService.formatExact(spot.y, decimals: 0)}';
                         return LineTooltipItem(
                           i == 0 ? '$dateLabel\n$line' : line,
                           TextStyle(
@@ -609,7 +610,8 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     if (delta != null && delta.abs() >= 1) {
       final sign = delta > 0 ? '+' : '−';
       notes.add(
-          '${_ru ? 'разница' : 'delta'} $sign$_sym${delta.abs().toStringAsFixed(0)}');
+          '${_ru ? 'разница' : 'delta'} $sign'
+          '${CurrencyService.formatExact(delta.abs(), decimals: 0)}');
     }
     if (runway != null) {
       notes.add(_ru
@@ -663,7 +665,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Text(
-                '$_sym${end.toStringAsFixed(0)}',
+                CurrencyService.formatExact(end, decimals: 0),
                 style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w800,
@@ -798,7 +800,10 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     );
   }
 
-  String _compact(double v) {
+  /// Подпись оси Y. Конвертируем в выбранную валюту — иначе шкала осталась
+  /// бы рублёвой при любом значке.
+  String _compact(double rubValue) {
+    final v = CurrencyService.display(rubValue);
     final abs = v.abs();
     if (abs >= 1000000) return '${(v / 1000000).toStringAsFixed(1)}M';
     if (abs >= 1000) return '${(v / 1000).toStringAsFixed(0)}K';

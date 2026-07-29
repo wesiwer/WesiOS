@@ -79,7 +79,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
     final title = widget.initial != null
         ? WesiLocale.get('edit_operation')
         : isIncome
-            ? (WesiLocale.isRussian ? 'Продажа' : 'Sale')
+            ? (WesiLocale.isRussian ? 'Доход' : 'Income')
             : (WesiLocale.isRussian ? 'Трата' : 'Expense');
 
     return Dialog(

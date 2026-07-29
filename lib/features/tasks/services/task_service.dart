@@ -57,6 +57,53 @@ class TaskService {
     await save(task.copyWith(status: to, order: nextOrder));
   }
 
+  /// Задачи со сроком в указанный день — то, что календарь показывает
+  /// в ячейке даты. Завершённые не выбрасываем: в календаре полезно видеть,
+  /// что на этот день что-то было и оно сделано.
+  Future<List<TaskModel>> dueOn(DateTime day) async {
+    final all = await getAll();
+    return all.where((t) {
+      final d = t.dueDate;
+      if (d == null) return false;
+      return d.year == day.year && d.month == day.month && d.day == day.day;
+    }).toList();
+  }
+
+  /// Ближайшие незавершённые задачи со сроком — для карточки на главной.
+  /// Просроченные идут первыми: они и есть самое срочное.
+  Future<List<TaskModel>> upcoming({int limit = 3}) async {
+    final all = await getAll();
+    final withDue = all
+        .where((t) => t.dueDate != null && t.status != TaskStatus.done)
+        .toList()
+      ..sort((a, b) => a.dueDate!.compareTo(b.dueDate!));
+    return withDue.take(limit).toList();
+  }
+
+  /// Активные задачи без срока — показываем, когда со сроками ничего нет,
+  /// иначе карточка на главной выглядит пустой при полной доске.
+  Future<List<TaskModel>> activeWithoutDue({int limit = 3}) async {
+    final all = await getAll();
+    return all
+        .where((t) => t.dueDate == null && t.status != TaskStatus.done)
+        .take(limit)
+        .toList();
+  }
+
+  /// Все дни, на которые назначены задачи — календарю нужно, чтобы
+  /// проставить точки под датами, не перечитывая бокс на каждую ячейку.
+  Future<Map<DateTime, List<TaskModel>>> byDueDay() async {
+    final all = await getAll();
+    final map = <DateTime, List<TaskModel>>{};
+    for (final t in all) {
+      final d = t.dueDate;
+      if (d == null) continue;
+      final key = DateTime(d.year, d.month, d.day);
+      (map[key] ??= []).add(t);
+    }
+    return map;
+  }
+
   /// Сводка для дашборда: сколько задач в каждой колонке и сколько просрочено.
   Future<TaskSummary> summary() async {
     final all = await getAll();

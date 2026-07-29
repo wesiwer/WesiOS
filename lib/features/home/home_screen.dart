@@ -12,6 +12,7 @@ import '../treasury/widgets/add_transaction_dialog.dart';
 import '../treasury/models/transaction_model.dart';
 import '../treasury/services/treasury_service.dart';
 import '../tasks/tasks_screen.dart';
+import 'widgets/home_agenda.dart';
 import '../analytics/analytics_screen.dart';
 import 'more_tab.dart';
 import '../../core/widgets/wesi_clock.dart';
@@ -119,6 +120,13 @@ class _HomeScreenState extends State<HomeScreen>
           type: BottomNavigationBarType.fixed,
           selectedItemColor: AppTheme.accentOrange,
           unselectedItemColor: AppTheme.textMuted,
+          // Пять вкладок делят ширину телефона поровну, и «Аналитика» при
+          // системном размере шрифта в подпись не влезала — обрезалась в
+          // «Аналити…». Уменьшенный кегль плюс запрет масштабирования именно
+          // здесь оставляет все пять подписей целыми на узких экранах.
+          selectedFontSize: 11,
+          unselectedFontSize: 11,
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
           items: [
             BottomNavigationBarItem(
               icon: const Icon(Icons.dashboard_outlined),
@@ -292,41 +300,58 @@ class _DashboardTabState extends State<_DashboardTab> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: _Quick(
+              // Раньше это были четыре Expanded в одном Row: на телефоне
+              // каждой кнопке доставалось ~80 px, и «Wesi Calculator» уезжал
+              // за правый край. Теперь сетка сама решает, сколько колонок
+              // помещается — на телефоне две, на планшете/десктопе четыре.
+              child: LayoutBuilder(
+                builder: (context, c) {
+                  final columns = c.maxWidth >= 560 ? 4 : 2;
+                  const gap = 12.0;
+                  final width =
+                      (c.maxWidth - gap * (columns - 1)) / columns;
+                  final actions = <Widget>[
+                    _Quick(
                       icon: Icons.add_circle,
-                      label: WesiLocale.isRussian ? 'Продажа' : 'Sale',
-                      onTap: () => _showAddTransaction(context, TransactionType.income),
+                      label: WesiLocale.isRussian ? 'Доход' : 'Income',
+                      onTap: () =>
+                          _showAddTransaction(context, TransactionType.income),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _Quick(
+                    _Quick(
                       icon: Icons.remove_circle,
                       label: WesiLocale.isRussian ? 'Траты' : 'Expense',
-                      onTap: () => _showAddTransaction(context, TransactionType.expense),
+                      onTap: () =>
+                          _showAddTransaction(context, TransactionType.expense),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _Quick(
+                    _Quick(
                       icon: Icons.mic,
                       label: WesiLocale.get('wesi_voice_title'),
                       onTap: () => Navigator.pushNamed(context, '/tasks'),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: _Quick(
+                    _Quick(
                       icon: Icons.calculate,
                       label: WesiLocale.get('wesi_calculator_title'),
                       onTap: CalculatorOverlay.show,
                     ),
-                  ),
-                ],
+                  ];
+                  return Wrap(
+                    spacing: gap,
+                    runSpacing: gap,
+                    children: actions
+                        .map((a) => SizedBox(width: width, child: a))
+                        .toList(),
+                  );
+                },
               ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 24)),
+          // Календарь и задачи вернулись на главную — но уже не заглушками:
+          // обе карточки читают реальные задачи (см. HomeAgenda).
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: HomeAgenda(),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 32)),

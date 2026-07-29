@@ -16,12 +16,28 @@ class WesiWordmark extends StatelessWidget {
 
   final Color textColor;
 
+  /// Знак слева от надписи. По умолчанию false — надпись идёт первой, знак
+  /// замыкает; так строка читается слева направо как «WesiOS ▶», а сам знак
+  /// не спорит за внимание с текстом на старте строки.
+  final bool markFirst;
+
   const WesiWordmark({
     super.key,
     this.size = 32,
     this.showText = true,
     this.textColor = Colors.white,
+    this.markFirst = false,
   });
+
+  /// Стиль надписи — вынесен, чтобы заголовки экранов могли использовать
+  /// ровно тот же шрифт и трекинг, что и логотип (см. [WesiTitle]).
+  static TextStyle textStyle(double size, [Color color = Colors.white]) =>
+      TextStyle(
+        fontSize: size * 0.78,
+        fontWeight: FontWeight.w800,
+        color: color,
+        letterSpacing: size * 0.06,
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -33,23 +49,40 @@ class WesiWordmark extends StatelessWidget {
 
     if (!showText) return mark;
 
+    final text = Text('WesiOS', style: textStyle(size, textColor));
+    final gap = SizedBox(width: size * 0.34);
+
     return Row(
       mainAxisSize: MainAxisSize.min,
-      children: [
-        mark,
-        SizedBox(width: size * 0.34),
-        Text(
-          'WesiOS',
-          style: TextStyle(
-            fontSize: size * 0.78,
-            fontWeight: FontWeight.w800,
-            color: textColor,
-            letterSpacing: size * 0.06,
-          ),
-        ),
-      ],
+      children: markFirst ? [mark, gap, text] : [text, gap, mark],
     );
   }
+}
+
+/// Заголовок экрана в фирменном стиле.
+///
+/// Раньше каждая вкладка задавала свой размер и насыщенность, и названия
+/// разъезжались между экранами. Здесь один стиль на всё приложение — тот же,
+/// что у надписи в логотипе.
+class WesiTitle extends StatelessWidget {
+  final String text;
+  final double size;
+  final Color color;
+
+  const WesiTitle(
+    this.text, {
+    super.key,
+    this.size = 26,
+    this.color = AppTheme.textPrimary,
+  });
+
+  @override
+  Widget build(BuildContext context) => Text(
+        text,
+        style: WesiWordmark.textStyle(size, color),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      );
 }
 
 /// Рисует знак векторно, а не картинкой: он остаётся чётким на любом

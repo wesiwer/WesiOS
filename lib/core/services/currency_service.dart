@@ -115,5 +115,21 @@ class CurrencyService {
     return '$sign$symbol${abs.toStringAsFixed(decimals)}';
   }
 
+  /// То же, что [format], но БЕЗ сокращения до k/M — точная сумма.
+  ///
+  /// Нужна там, где важна каждая копейка (баланс, строка операции). Раньше в
+  /// таких местах писали `'$symbol$value'` вручную, то есть подставляли новый
+  /// значок к неконвертированной рублёвой сумме — при смене валюты менялся
+  /// только символ, а число оставалось прежним.
+  static String formatExact(double rubValue, {int decimals = 2}) {
+    final v = fromRub(rubValue);
+    final sign = v < 0 ? '-' : '';
+    return '$sign$symbol${v.abs().toStringAsFixed(decimals)}';
+  }
+
+  /// Конвертирует и возвращает голое число в текущей валюте — для графиков,
+  /// где подпись оси строится отдельно.
+  static double display(double rubValue) => fromRub(rubValue);
+
   static List<String> get codes => currencies.keys.toList();
 }

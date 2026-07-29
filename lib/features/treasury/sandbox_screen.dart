@@ -222,7 +222,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                     Expanded(
                       child: _action(
                         Icons.add_circle,
-                        WesiLocale.isRussian ? 'Продажа' : 'Sale',
+                        WesiLocale.isRussian ? 'Доход' : 'Income',
                         AppTheme.accentGreen,
                         () => _addTransaction(TransactionType.income),
                       ),
@@ -390,7 +390,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                   fontSize: 13, color: AppTheme.textSecondary)),
           const SizedBox(height: 8),
           Text(
-            '$_sym${_balance.toStringAsFixed(2)}',
+            CurrencyService.formatExact(_balance),
             style: const TextStyle(
                 fontSize: 34,
                 fontWeight: FontWeight.w800,
@@ -492,7 +492,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 style: const TextStyle(color: AppTheme.textPrimary)),
           ),
           Text(
-            '${isIncome ? '+' : '-'}$_sym${tx.amount.toStringAsFixed(0)}',
+            '${isIncome ? '+' : '-'}'
+            '${CurrencyService.formatExact(tx.amount, decimals: 0)}',
             style: TextStyle(
               fontWeight: FontWeight.w600,
               color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,

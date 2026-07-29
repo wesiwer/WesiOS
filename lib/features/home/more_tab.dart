@@ -77,7 +77,7 @@ class MoreTab extends StatelessWidget {
             route: '/treasury',
             icon: Icons.account_balance_wallet,
             title: 'Wesi Treasury',
-            subtitle: ru ? 'Продажи, траты, операции' : 'Sales, expenses, operations',
+            subtitle: ru ? 'Доходы, траты, операции' : 'Income, expenses, operations',
             stage: ModuleStage.ready,
           ),
           _ModuleItem(

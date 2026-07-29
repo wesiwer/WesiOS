@@ -98,7 +98,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       );
     }
 
-    final saleLabel = WesiLocale.isRussian ? 'Продажа' : 'Sale';
+    final saleLabel = WesiLocale.isRussian ? 'Доход' : 'Income';
     final expenseLabel = WesiLocale.isRussian ? 'Траты' : 'Expense';
 
     return Scaffold(
