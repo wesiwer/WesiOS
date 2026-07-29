@@ -126,6 +126,15 @@ class MoreTab extends StatelessWidget {
         title: ru ? 'Система' : 'System',
         items: [
           _ModuleItem(
+            route: '/shield',
+            icon: Icons.shield_outlined,
+            title: 'Wesi Shield',
+            subtitle: ru
+                ? 'Пароль, биометрия, автоблокировка, журнал'
+                : 'Password, biometrics, auto-lock, log',
+            stage: ModuleStage.ready,
+          ),
+          _ModuleItem(
             route: '/settings',
             icon: Icons.settings,
             title: ru ? 'Настройки' : 'Settings',

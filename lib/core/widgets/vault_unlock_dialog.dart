@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import '../theme/app_theme.dart';
 import '../localization/wesi_locale.dart';
-import '../services/vault_lock_service.dart';
+import '../security/shield_service.dart';
 import 'window_controls.dart';
 
 /// Диалог доступа к ключам Firebase: пароль, а на телефоне — ещё и
 /// отпечаток/скан лица.
+///
+/// Пароль тот же самый, что у Wesi Shield: два разных пароля на одно
+/// приложение пользователь всё равно сведёт к одному, только запутавшись.
 ///
 /// Один и тот же диалог используется и для первичной установки пароля
 /// (когда он ещё не задан), и для последующих разблокировок.
@@ -17,7 +20,7 @@ class VaultUnlockDialog extends StatefulWidget {
 
   /// Возвращает true, если доступ разрешён.
   static Future<bool> unlock(BuildContext context) async {
-    final setup = !VaultLockService.isConfigured;
+    final setup = !ShieldService.isConfigured;
     final ok = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -44,19 +47,19 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
   }
 
   Future<void> _initBiometrics() async {
-    final available = await VaultLockService.isBiometricAvailable;
+    final available = await ShieldService.isBiometricAvailable;
     if (!mounted) return;
     setState(() => _bioAvailable = available);
     // Если биометрия включена пользователем — предлагаем её сразу, чтобы
     // не заставлять набирать пароль там, где достаточно приложить палец.
-    if (!widget.setupMode && available && VaultLockService.biometricsEnabled) {
+    if (!widget.setupMode && available && ShieldService.biometricsEnabled) {
       _tryBiometric();
     }
   }
 
   Future<void> _tryBiometric() async {
     final ru = WesiLocale.isRussian;
-    final ok = await VaultLockService.authenticateBiometric(
+    final ok = await ShieldService.authenticateBiometric(
       ru ? 'Доступ к ключам Firebase' : 'Access Firebase keys',
     );
     if (ok && mounted) Navigator.pop(context, true);
@@ -67,9 +70,9 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
     final pass = _passCtrl.text;
 
     if (widget.setupMode) {
-      if (pass.length < 4) {
+      if (pass.length < 6) {
         setState(() => _error =
-            ru ? 'Минимум 4 символа' : 'At least 4 characters');
+            ru ? 'Минимум 6 символов' : 'At least 6 characters');
         return;
       }
       if (pass != _confirmCtrl.text) {
@@ -77,14 +80,24 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
             _error = ru ? 'Пароли не совпадают' : 'Passwords do not match');
         return;
       }
-      await VaultLockService.setPassword(pass);
+      await ShieldService.setPassword(pass);
       if (mounted) Navigator.pop(context, true);
       return;
     }
 
-    if (VaultLockService.verify(pass)) {
+    // Пауза после неудачных попыток общая с Shield: обходить её через диалог
+    // ключей было бы дырой ровно в той защите, ради которой она и стоит.
+    final wait = ShieldService.lockoutRemaining;
+    if (wait > Duration.zero) {
+      setState(() => _error = ru
+          ? 'Слишком много попыток. Подождите ${wait.inSeconds} с.'
+          : 'Too many attempts. Wait ${wait.inSeconds} s.');
+      return;
+    }
+
+    if (await ShieldService.verify(pass)) {
       if (mounted) Navigator.pop(context, true);
-    } else {
+    } else if (mounted) {
       setState(() => _error = ru ? 'Неверный пароль' : 'Wrong password');
     }
   }

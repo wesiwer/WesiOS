@@ -9,7 +9,7 @@ import '../../core/services/firebase_config_service.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/window_controls.dart';
-import '../../core/services/vault_lock_service.dart';
+import '../../core/security/shield_service.dart';
 import '../../core/widgets/vault_unlock_dialog.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -341,7 +341,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  VaultLockService.isConfigured
+                  ShieldService.isConfigured
                       ? 'Ключи защищены'
                       : 'Защитите ключи паролем',
                   style: const TextStyle(
@@ -354,7 +354,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           const SizedBox(height: 6),
           Text(
-            VaultLockService.isConfigured
+            ShieldService.isConfigured
                 ? 'Введите пароль, чтобы посмотреть или изменить ключи Firebase.'
                 : 'Ключи Firebase дают доступ к бэкенду проекта. Задайте пароль, '
                     'чтобы их нельзя было прочитать с разблокированного устройства.',
@@ -368,7 +368,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             backgroundColor: AppTheme.accentOrange,
             child: Center(
               child: Text(
-                VaultLockService.isConfigured
+                ShieldService.isConfigured
                     ? 'Разблокировать'
                     : 'Создать пароль',
                 style: const TextStyle(
@@ -389,7 +389,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         if (_bioAvailable)
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            value: VaultLockService.biometricsEnabled,
+            value: ShieldService.biometricsEnabled,
             activeColor: AppTheme.accentOrange,
             title: const Text('Отпечаток или Face ID',
                 style: TextStyle(
@@ -398,7 +398,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'Открывать ключи биометрией вместо ввода пароля',
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
             onChanged: (v) async {
-              await VaultLockService.setBiometricsEnabled(v);
+              await ShieldService.setBiometricsEnabled(v);
               if (mounted) setState(() {});
             },
           ),
@@ -417,6 +417,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: const Text('Сменить пароль',
               style: TextStyle(color: AppTheme.accentOrange)),
         ),
+        // Всё остальное — автоблокировка, журнал, область защиты — живёт в
+        // Wesi Shield; дублировать те же переключатели здесь значит однажды
+        // разойтись с ними в поведении.
+        TextButton.icon(
+          onPressed: () => Navigator.pushNamed(context, '/shield'),
+          icon: const Icon(Icons.shield_outlined,
+              size: 16, color: AppTheme.textSecondary),
+          label: const Text('Все настройки защиты — Wesi Shield',
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
+        ),
       ],
     );
   }
@@ -424,7 +434,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _unlockVault() async {
     final ok = await VaultUnlockDialog.unlock(context);
     if (ok && mounted) {
-      final bio = await VaultLockService.isBiometricAvailable;
+      final bio = await ShieldService.isBiometricAvailable;
       if (!mounted) return;
       setState(() {
         _vaultUnlocked = true;
