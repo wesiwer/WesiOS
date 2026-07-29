@@ -310,6 +310,24 @@ CI (`.github/workflows/release-app.yml`) публикует Windows-zip и APK �
 | Долгий прогноз | Горизонты до 5 лет и в Treasury, и в песочнице. Вместе с этим — адаптивное число траекторий: стоимость равна `paths x days`, и 5000 путей на пятилетнем горизонте дают 9 млн шагов. |
 | Диаграммы истории | Отдельно доходы, отдельно расходы, отдельно сравнение. Интерактивные: тап по сектору разворачивает категорию в конкретные операции. |
 
+### База знаний и «О программе»
+
+Статьи с разделами, тегами, поиском, закреплением и простым разбором
+Markdown. Встроенный раздел «О программе» описывает сам WesiOS — из чего
+состоит, как начать, как устроены финансы, прогноз, песочница и обновления.
+
+Встроенные статьи живут **в коде** и перезаписываются при каждом запуске:
+справка, отставшая от версии приложения, хуже её отсутствия. Пользовательские
+не трогаются, закрепление встроенной сохраняется, удалить встроенную нельзя —
+восстановить её было бы нечем.
+
+### Что осталось на потом
+
+- **Wesi Shield** — полноценная система защиты. Сейчас есть только замок на
+  ключи Firebase (`vault_lock_service.dart`): SHA-256 с солью плюс биометрия.
+- Экспорт отчётов в PDF, CRM, Audio Vault, Roadmap, Wesi AI — по-прежнему
+  макеты с честной пометкой стадии.
+
 ### Проверено
 
 `flutter analyze` — 0 замечаний. `flutter test` — **98 тестов**, все проходят.
@@ -940,6 +958,13 @@ CI был красный **30+ прогонов подряд**, падали о�
 | Пароль на ключи | `lib/core/services/vault_lock_service.dart` |
 | Фразы (1013) | `lib/core/data/wesi_quotes.dart` |
 | Сборка движков прогноза | `.github/workflows/build-engines.yml` |
+| Релиз приложения | `.github/workflows/release-app.yml` |
+| Автообновление | `lib/core/services/app_update_service.dart` |
+| Установка APK (нативно) | `android/app/src/main/kotlin/com/wesi/wesios/MainActivity.kt` |
+| Счета | `lib/features/treasury/services/account_service.dart` |
+| Аналитика (расчёт) | `lib/features/analytics/services/analytics_service.dart` |
+| База знаний | `lib/features/knowledge/services/knowledge_service.dart` |
+| Встроенная справка | `lib/features/knowledge/data/builtin_articles.dart` |
 | Скрипты движков | `python_engines/` |
 
 ## Занятые Hive typeId
@@ -955,9 +980,16 @@ CI был красный **30+ прогонов подряд**, падали о�
 | 11 | `TaskPriority` |
 | 12 | `SubTask` |
 | 13 | `TaskModel` |
+| 14 | `AccountKind` |
+| 15 | `AccountModel` |
+| 16 | `ArticleSection` |
+| 17 | `ArticleModel` |
 
 Все четыре адаптера задач регистрируются в `lib/main.dart`. Забыть об этом —
 падение в рантайме при открытии бокса, которое `flutter analyze` не ловит.
 
 Боксы без адаптеров (обычный JSON/примитивы): `wesios_cache`,
 `wesios_settings`, `wesios_offline_queue`, `wesios_whatif`.
+
+Типизированные боксы: `wesios_treasury`, `wesios_sandbox`, `wesios_tasks`,
+`wesios_accounts`, `wesios_knowledge`.
