@@ -7,6 +7,7 @@ import 'core/theme/app_theme.dart';
 import 'core/localization/wesi_locale.dart';
 import 'core/routes/app_router.dart';
 import 'core/security/shield_lock_screen.dart';
+import 'core/services/currency_service.dart';
 import 'core/widgets/window_controls.dart';
 import 'features/calculator/calculator_screen.dart';
 import 'features/splash/splash_screen.dart';
@@ -52,7 +53,15 @@ class WesiOSApp extends StatelessWidget {
       builder: (context, child) {
         return Stack(
           children: [
-            if (child != null) ShieldGate(child: child),
+            // Режим приватности меняет только вывод сумм, но вкладки живут в
+            // IndexedStack и сами по себе не перестраиваются. Перестроение
+            // всего дерева здесь дешевле, чем подписка в каждом экране, где
+            // показана хоть одна сумма, — и не забудется в новом экране.
+            if (child != null)
+              ValueListenableBuilder<bool>(
+                valueListenable: CurrencyService.privacyMode,
+                builder: (context, _, __) => ShieldGate(child: child),
+              ),
             // Собственный Overlay обязателен: `builder` находится ВЫШЕ Navigator,
             // поэтому Overlay.of() отсюда не виден, а Tooltip его требует —
             // без этого подсказки на кнопках окна падают с

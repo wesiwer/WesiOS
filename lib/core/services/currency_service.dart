@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 /// Поддерживаемые валюты и курсы к RUB (базовая).
@@ -102,7 +103,35 @@ class CurrencyService {
     return amountInCurrent * rateToRub(current);
   }
 
+  /// Режим приватности: суммы заменяются точками.
+  ///
+  /// Скрывается только текст — данные и расчёты не трогаются. Смысл в том,
+  /// чтобы можно было открыть приложение при посторонних, а не в том, чтобы
+  /// что-то защитить: за защиту отвечает Wesi Shield.
+  static final ValueNotifier<bool> privacyMode = ValueNotifier<bool>(false);
+
+  static const String _masked = '••••';
+
+  static Future<void> setPrivacyMode(bool value) async {
+    privacyMode.value = value;
+    try {
+      await Hive.box('wesios_settings').put('privacy_mode', value);
+    } catch (_) {
+      // Не сохранилось — режим всё равно работает до перезапуска.
+    }
+  }
+
+  /// Восстанавливает режим при старте.
+  static void loadPrivacyMode() {
+    try {
+      privacyMode.value = Hive.box('wesios_settings').get('privacy_mode') == true;
+    } catch (_) {
+      privacyMode.value = false;
+    }
+  }
+
   static String format(double rubValue, {int decimals = 0}) {
+    if (privacyMode.value) return '$symbol$_masked';
     final v = fromRub(rubValue);
     final abs = v.abs();
     final sign = v < 0 ? '-' : '';
@@ -122,6 +151,7 @@ class CurrencyService {
   /// значок к неконвертированной рублёвой сумме — при смене валюты менялся
   /// только символ, а число оставалось прежним.
   static String formatExact(double rubValue, {int decimals = 2}) {
+    if (privacyMode.value) return '$symbol$_masked';
     final v = fromRub(rubValue);
     final sign = v < 0 ? '-' : '';
     return '$sign$symbol${v.abs().toStringAsFixed(decimals)}';

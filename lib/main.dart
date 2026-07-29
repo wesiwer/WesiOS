@@ -13,6 +13,7 @@ import 'features/knowledge/models/article_model.dart';
 import 'features/knowledge/services/knowledge_service.dart';
 import 'core/services/app_update_service.dart';
 import 'app.dart';
+import 'core/services/currency_service.dart';
 
 bool get isDesktop {
   if (kIsWeb) return false;
@@ -62,6 +63,10 @@ void main() async {
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
+
+  // Режим приватности читается сразу: суммы не должны мелькнуть открытыми
+  // на первом кадре у того, кто его включил.
+  CurrencyService.loadPrivacyMode();
 
   // Курсы в фоне — не блокируем старт
   ExchangeRateService.refresh();
