@@ -339,7 +339,11 @@ class _TasksScreenState extends State<TasksScreen> {
             ),
           ),
           child: Column(
-            mainAxisSize: MainAxisSize.min,
+            // На телефоне колонка обжимается по содержимому — скроллит общий
+            // ListView снаружи. На доске колонка занимает всю высоту и
+            // скроллится внутри себя, иначе четыре колонки разной высоты
+            // выглядят рвано.
+            mainAxisSize: narrow ? MainAxisSize.min : MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
@@ -382,10 +386,10 @@ class _TasksScreenState extends State<TasksScreen> {
               else if (narrow)
                 ...items.map((t) => _card(t, ru))
               else
-                Flexible(
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: items.map((t) => _card(t, ru)).toList(),
+                Expanded(
+                  child: ListView.builder(
+                    itemCount: items.length,
+                    itemBuilder: (context, i) => _card(items[i], ru),
                   ),
                 ),
             ],
