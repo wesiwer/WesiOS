@@ -13,6 +13,9 @@ import '../treasury/models/transaction_model.dart';
 import '../treasury/services/treasury_service.dart';
 import '../tasks/tasks_screen.dart';
 import 'widgets/home_agenda.dart';
+import 'widgets/alerts_sheet.dart';
+import 'widgets/global_search_sheet.dart';
+import 'widgets/home_pulse.dart';
 import '../../core/widgets/app_update_card.dart';
 import '../analytics/analytics_screen.dart';
 import 'more_tab.dart';
@@ -229,12 +232,12 @@ class _DashboardTabState extends State<_DashboardTab> {
                     ),
                   ),
                   const SizedBox(width: 20),
-                  _HoverIconButton(icon: Icons.search, onTap: () {}),
-                  const SizedBox(width: 8),
                   _HoverIconButton(
-                    icon: Icons.notifications_outlined,
-                    onTap: () {},
+                    icon: Icons.search,
+                    onTap: () => GlobalSearchSheet.show(context),
                   ),
+                  const SizedBox(width: 8),
+                  const AlertsBell(),
                   const SizedBox(width: 8),
                   const _ProfileDropdown(),
                 ],
@@ -330,9 +333,12 @@ class _DashboardTabState extends State<_DashboardTab> {
                       onTap: () =>
                           _showAddTransaction(context, TransactionType.expense),
                     ),
+                    // Была кнопка «Wesi Voice» с микрофоном, которая вела в
+                    // задачи: голосового ввода нет, и подпись обещала не то,
+                    // что произойдёт. Теперь честно — задача.
                     _Quick(
-                      icon: Icons.mic,
-                      label: WesiLocale.get('wesi_voice_title'),
+                      icon: Icons.playlist_add_check,
+                      label: WesiLocale.isRussian ? 'Задача' : 'Task',
                       onTap: () => Navigator.pushNamed(context, '/tasks'),
                     ),
                     _Quick(
@@ -350,6 +356,13 @@ class _DashboardTabState extends State<_DashboardTab> {
                   );
                 },
               ),
+            ),
+          ),
+          const SliverToBoxAdapter(child: SizedBox(height: 20)),
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16),
+              child: HomePulse(),
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
