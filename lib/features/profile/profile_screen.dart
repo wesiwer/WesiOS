@@ -207,7 +207,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: ListView(
-        padding: EdgeInsets.fromLTRB(24, kTitleBarHeight + 16, 24, 32),
+        padding: EdgeInsets.fromLTRB(24, kTitleBarInset + 16, 24, 32),
         children: [
           Row(
             children: [

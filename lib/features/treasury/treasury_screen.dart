@@ -135,7 +135,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         ],
       ),
       body: ListView(
-        padding: EdgeInsets.fromLTRB(24, kTitleBarHeight > 0 ? 8 : 24, 24, 32),
+        padding: EdgeInsets.fromLTRB(24, kHasCustomTitleBar ? 8 : 24, 24, 32),
         children: [
           _balanceCard(),
           const SizedBox(height: 20),

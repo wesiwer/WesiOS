@@ -135,7 +135,7 @@ class _TasksScreenState extends State<TasksScreen> {
       ),
       body: SafeArea(
         child: Padding(
-          padding: EdgeInsets.fromLTRB(16, kTitleBarHeight + 12, 16, 8),
+          padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 12, 16, 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [

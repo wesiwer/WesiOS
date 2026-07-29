@@ -148,7 +148,7 @@ class MoreTab extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: ListView(
-        padding: EdgeInsets.fromLTRB(16, kTitleBarHeight + 16, 16, 32),
+        padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 32),
         children: [
           Text(
             ru ? 'Ещё' : 'More',

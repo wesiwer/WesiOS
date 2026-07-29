@@ -193,7 +193,7 @@ class _DashboardTabState extends State<_DashboardTab> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, kTitleBarHeight + 8, 16, 16),
+              padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 8, 16, 16),
               child: Row(
                 children: [
                   WesiContextMenu(

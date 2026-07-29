@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/theme/app_theme.dart';
@@ -11,9 +9,6 @@ import 'services/sandbox_service.dart';
 import 'services/forecast_engine.dart';
 import 'services/what_if_store.dart';
 import 'widgets/what_if_dialog.dart';
-
-bool get _isDesktop =>
-    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
 /// Прогноз внутри песочницы + конструктор собственных сценариев «Что если?».
 ///
@@ -232,7 +227,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            if (_isDesktop) const SizedBox(height: kTitleBarHeight),
+            if (kHasCustomTitleBar) const SizedBox(height: kTitleBarHeight),
             _header(),
             Expanded(
               child: _loading
@@ -264,7 +259,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
 
   Widget _header() {
     return Padding(
-      padding: EdgeInsets.fromLTRB(8, 8, _isDesktop ? 148 : 16, 4),
+      padding: EdgeInsets.fromLTRB(8, 8, kHasCustomTitleBar ? 148 : 16, 4),
       child: Row(
         children: [
           IconButton(

@@ -87,7 +87,7 @@ class ModuleScaffold extends StatelessWidget {
         actions: const [SizedBox(width: 140)],
       ),
       body: ListView(
-        padding: EdgeInsets.fromLTRB(20, kTitleBarHeight > 0 ? 8 : 20, 20, 32),
+        padding: EdgeInsets.fromLTRB(20, kHasCustomTitleBar ? 8 : 20, 20, 32),
         children: [
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,

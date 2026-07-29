@@ -1,9 +1,24 @@
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import '../theme/app_theme.dart';
 
 /// Высота title bar для отступов контента
 const double kTitleBarHeight = 36;
+
+/// Есть ли на этой платформе кастомный title bar с кнопками окна.
+bool get kHasCustomTitleBar =>
+    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
+
+/// Отступ сверху под кнопки окна.
+///
+/// [kTitleBarHeight] — константа времени компиляции, одинаковая на всех
+/// платформах, поэтому прибавлять её напрямую нельзя: на телефоне никакого
+/// title bar нет, и эти 36 px просто съедали экран поверх системного отступа
+/// SafeArea. Использовать это вместо `kTitleBarHeight` везде, где отступ
+/// нужен ради кнопок окна, а не ради выреза камеры.
+double get kTitleBarInset => kHasCustomTitleBar ? kTitleBarHeight : 0;
 
 /// Кастомный title bar без логотипа/надписи WesiOS.
 /// Кнопки окна с мгновенным откликом (Listener, не GestureDetector).

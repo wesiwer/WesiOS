@@ -1,5 +1,3 @@
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
@@ -11,11 +9,6 @@ import 'services/sandbox_service.dart';
 import 'models/transaction_model.dart';
 import 'sandbox_forecast_screen.dart';
 import 'widgets/add_transaction_dialog.dart';
-
-/// Кастомный title bar с кнопками окна существует только на десктопе —
-/// на мобильных резервировать под него место не нужно.
-bool get _isDesktop =>
-    !kIsWeb && (Platform.isWindows || Platform.isMacOS || Platform.isLinux);
 
 class SandboxScreen extends StatefulWidget {
   const SandboxScreen({super.key});
@@ -177,7 +170,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
           children: [
             // На десктопе сверху висит кастомный title bar с кнопками окна —
             // на мобильных его нет, поэтому отступ только для десктопа.
-            if (_isDesktop) const SizedBox(height: kTitleBarHeight),
+            if (kHasCustomTitleBar) const SizedBox(height: kTitleBarHeight),
             _banner(),
           Expanded(
             child: ListView(
@@ -205,7 +198,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                         // Место под кнопки окна резервируем только там, где
                         // они есть — на телефоне этот отступ просто съедал
                         // ширину экрана.
-                        margin: EdgeInsets.only(right: _isDesktop ? 140 : 0),
+                        margin: EdgeInsets.only(right: kHasCustomTitleBar ? 140 : 0),
                         decoration: BoxDecoration(
                           color: AppTheme.surface.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(10),
