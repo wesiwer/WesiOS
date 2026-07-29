@@ -1,3 +1,4 @@
+import '../../../core/services/recurrence.dart';
 import '../../tasks/models/task_model.dart';
 import '../../treasury/models/transaction_model.dart';
 
@@ -137,8 +138,8 @@ class AlertService {
     // выводится из неё, а не читается готовым.
     final upcoming = <TransactionModel>[];
     for (final t in transactions) {
-      if (!t.isRecurring || t.type != TransactionType.expense) continue;
-      final next = _nextOccurrence(t, today);
+      if (t.type != TransactionType.expense) continue;
+      final next = Recurrence.nextOccurrence(t, today);
       if (next == null) continue;
       final diff = next.difference(today).inDays;
       if (diff >= 0 && diff <= soonDays) upcoming.add(t);
@@ -184,46 +185,4 @@ class AlertService {
     return indexed.map((e) => e.value).toList();
   }
 
-  /// Ближайшая дата списания регулярного платежа, начиная с `from`.
-  ///
-  /// Возвращает null для периодов, которые не заданы: угадывать за
-  /// пользователя, каждый ли это месяц, — значит однажды напугать его
-  /// списанием, которого не будет.
-  static DateTime? _nextOccurrence(TransactionModel t, DateTime from) {
-    final period = t.recurringPeriod;
-    if (period == null) return null;
-    final start = DateTime(t.date.year, t.date.month, t.date.day);
-    if (!start.isBefore(from)) return start;
-
-    switch (period) {
-      case RecurringPeriod.daily:
-        return from;
-      case RecurringPeriod.weekly:
-        final days = from.difference(start).inDays;
-        return from.add(Duration(days: (7 - days % 7) % 7));
-      case RecurringPeriod.monthly:
-        // Начинаем с текущего месяца: платёж мог быть ещё впереди в нём.
-        for (var i = 0; i <= 1; i++) {
-          final date = _clampToMonth(from.year, from.month + i, start.day);
-          if (!date.isBefore(from)) return date;
-        }
-        return _clampToMonth(from.year, from.month + 2, start.day);
-      case RecurringPeriod.yearly:
-        // Годовой платёж повторяется в свой месяц, а не в любой: перебираем
-        // годы, месяц берём из исходной даты.
-        for (var i = 0; i <= 1; i++) {
-          final date =
-              _clampToMonth(from.year + i, start.month, start.day);
-          if (!date.isBefore(from)) return date;
-        }
-        return _clampToMonth(from.year + 2, start.month, start.day);
-    }
-  }
-
-  /// Дата с поправкой на короткие месяцы: платёж 31-го в феврале должен стать
-  /// 28-м (или 29-м), а не уехать на 3 марта.
-  static DateTime _clampToMonth(int year, int month, int day) {
-    final lastDay = DateTime(year, month + 1, 0).day;
-    return DateTime(year, month, day > lastDay ? lastDay : day);
-  }
 }

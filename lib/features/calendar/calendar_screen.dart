@@ -1,12 +1,20 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
+import '../../core/services/currency_service.dart';
+import '../../core/services/recurrence.dart';
 import '../../core/widgets/module_scaffold.dart';
+import '../tasks/models/task_model.dart';
+import '../tasks/services/task_service.dart';
+import '../treasury/models/transaction_model.dart';
+import '../treasury/services/treasury_service.dart';
 
-/// Календарь. Сетка месяца — настоящая и рабочая: листается, показывает
-/// сегодняшний день, даёт выбрать дату. Привязка событий/задач к датам —
-/// следующий шаг, поэтому модуль помечен как частично готовый, а панель
-/// событий явно нарисована заглушкой.
+/// Календарь. Сетка месяца листается, показывает сегодняшний день и даёт
+/// выбрать дату; на датах стоят отметки, а под сеткой — что именно в этот
+/// день происходит: сроки задач и регулярные списания.
+///
+/// Задачи и платежи читаются из тех же сервисов, что и остальные экраны:
+/// свой источник данных у календаря однажды разошёлся бы с доской задач.
 ///
 /// Сетка написана вручную, а не через `table_calendar`: нужен ровно месяц
 /// в тёмной теме проекта и понедельник первым днём недели, а зависимость
@@ -32,13 +40,51 @@ class _CalendarScreenState extends State<CalendarScreen> {
     'July', 'August', 'September', 'October', 'November', 'December',
   ];
 
+  List<TaskModel> _tasks = const [];
+  List<TransactionModel> _recurring = const [];
+
   @override
   void initState() {
     super.initState();
     final now = DateTime.now();
     _selected = DateTime(now.year, now.month, now.day);
     _visibleMonth = DateTime(now.year, now.month);
+    _load();
+    // Экран открывается поверх вкладок и не пересоздаётся при возврате:
+    // без подписок правка задачи не доехала бы до отметок на датах.
+    TaskService.revision.addListener(_load);
+    TreasuryService.revision.addListener(_load);
   }
+
+  @override
+  void dispose() {
+    TaskService.revision.removeListener(_load);
+    TreasuryService.revision.removeListener(_load);
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final tasks = await TaskService().getAll();
+    final transactions = await TreasuryService().getAllTransactions();
+    if (!mounted) return;
+    setState(() {
+      _tasks = tasks;
+      _recurring = transactions.where((t) => t.isRecurring).toList();
+    });
+  }
+
+  /// Задачи, у которых срок приходится на этот день.
+  List<TaskModel> _tasksOn(DateTime day) => _tasks.where((t) {
+        final due = t.dueDate;
+        if (due == null) return false;
+        return due.year == day.year &&
+            due.month == day.month &&
+            due.day == day.day;
+      }).toList();
+
+  /// Регулярные операции, которые списываются в этот день.
+  List<TransactionModel> _paymentsOn(DateTime day) =>
+      _recurring.where((t) => Recurrence.occursOn(t, day)).toList();
 
   void _shiftMonth(int delta) {
     setState(() {
@@ -65,9 +111,6 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ru
             ? 'События и напоминания с привязкой к конкретному дню'
             : 'Events and reminders attached to a specific day',
-        ru
-            ? 'Отметки на датах: задачи из «Задач», платежи из Treasury'
-            : 'Day markers: items from Tasks, payments from Treasury',
         ru
             ? 'Повторяющиеся события (еженедельные планёрки, оплаты)'
             : 'Recurring events (weekly standups, payments)',
@@ -206,6 +249,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
     final isToday = _isSameDay(date, today);
     final isSelected = _isSameDay(date, _selected);
 
+    final tasks = _tasksOn(date);
+    final payments = _paymentsOn(date);
+    // Просроченной считается только незавершённая задача с прошедшим сроком:
+    // иначе календарь краснел бы от уже сделанного.
+    final hasOverdue = tasks.any((t) =>
+        t.status != TaskStatus.done && date.isBefore(today) && !isToday);
+
     return GestureDetector(
       onTap: () => setState(() => _selected = date),
       child: Container(
@@ -224,22 +274,47 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     : Colors.transparent),
           ),
         ),
-        child: Center(
-          child: Text(
-            '${date.day}',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight:
-                  isToday || isSelected ? FontWeight.w800 : FontWeight.w400,
-              color: isSelected || isToday
-                  ? AppTheme.accentOrange
-                  : (isWeekend ? AppTheme.textMuted : AppTheme.textPrimary),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text(
+              '${date.day}',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight:
+                    isToday || isSelected ? FontWeight.w800 : FontWeight.w400,
+                color: isSelected || isToday
+                    ? AppTheme.accentOrange
+                    : (isWeekend ? AppTheme.textMuted : AppTheme.textPrimary),
+              ),
             ),
-          ),
+            // Точки, а не числа: в ячейке 42 px цифра рядом с датой читается
+            // как часть даты. Цвет отделяет задачи от денег.
+            if (tasks.isNotEmpty || payments.isNotEmpty) ...[
+              const SizedBox(height: 3),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  if (tasks.isNotEmpty)
+                    _dot(hasOverdue ? AppTheme.accentRed : AppTheme.primary),
+                  if (tasks.isNotEmpty && payments.isNotEmpty)
+                    const SizedBox(width: 3),
+                  if (payments.isNotEmpty) _dot(AppTheme.accentOrange),
+                ],
+              ),
+            ] else
+              const SizedBox(height: 8),
+          ],
         ),
       ),
     );
   }
+
+  Widget _dot(Color color) => Container(
+        width: 5,
+        height: 5,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      );
 
   Widget _selectedDayPanel(bool ru) {
     final months = ru ? _monthsRu : _monthsEn;
@@ -247,26 +322,124 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ? '${_selected.day} ${months[_selected.month - 1].toLowerCase()} ${_selected.year}'
         : '${months[_selected.month - 1]} ${_selected.day}, ${_selected.year}';
 
+    final tasks = _tasksOn(_selected);
+    final payments = _paymentsOn(_selected);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: AppTheme.textPrimary,
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
+            ),
+            if (tasks.isNotEmpty || payments.isNotEmpty)
+              Text(
+                ru
+                    ? '${tasks.length + payments.length} событ.'
+                    : '${tasks.length + payments.length} events',
+                style: const TextStyle(
+                    fontSize: 11, color: AppTheme.textMuted),
+              ),
+          ],
         ),
         const SizedBox(height: 10),
-        StubBlock(
-          icon: Icons.event_note,
-          height: 100,
-          label: ru
-              ? 'События этого дня появятся здесь, когда календарь свяжут\nс задачами и регулярными платежами'
-              : 'Events for this day will appear here once the calendar is\nlinked to tasks and recurring payments',
-        ),
+        if (tasks.isEmpty && payments.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+            decoration: BoxDecoration(
+              color: AppTheme.surface.withOpacity(0.3),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.glassBorder),
+            ),
+            child: Text(
+              ru ? 'В этот день ничего не запланировано' : 'Nothing on this day',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            ),
+          )
+        else ...[
+          ...tasks.map((t) => _eventRow(
+                icon: Icons.check_circle_outline,
+                color: t.status == TaskStatus.done
+                    ? AppTheme.accentGreen
+                    : AppTheme.primary,
+                title: t.title,
+                trailing: _statusLabel(t.status, ru),
+                onTap: () => Navigator.pushNamed(context, '/tasks'),
+              )),
+          ...payments.map((t) => _eventRow(
+                icon: t.type == TransactionType.income
+                    ? Icons.arrow_downward
+                    : Icons.arrow_upward,
+                color: t.type == TransactionType.income
+                    ? AppTheme.accentGreen
+                    : AppTheme.accentOrange,
+                title: t.title,
+                trailing: CurrencyService.format(t.amount),
+                onTap: () =>
+                    Navigator.pushNamed(context, '/treasury/operations'),
+              )),
+        ],
       ],
     );
   }
+
+  String _statusLabel(TaskStatus status, bool ru) {
+    if (!ru) return status.name;
+    return switch (status) {
+      TaskStatus.backlog => 'бэклог',
+      TaskStatus.inProgress => 'в работе',
+      TaskStatus.review => 'на проверке',
+      TaskStatus.done => 'готово',
+    };
+  }
+
+  Widget _eventRow({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String trailing,
+    required VoidCallback onTap,
+  }) =>
+      InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          decoration: BoxDecoration(
+            color: AppTheme.surface.withOpacity(0.3),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.glassBorder),
+          ),
+          child: Row(
+            children: [
+              Icon(icon, size: 15, color: color),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                      fontSize: 13, color: AppTheme.textPrimary),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(trailing,
+                  style: const TextStyle(
+                      fontSize: 11, color: AppTheme.textMuted)),
+            ],
+          ),
+        ),
+      );
 }
