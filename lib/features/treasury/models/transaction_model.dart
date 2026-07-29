@@ -1,5 +1,7 @@
 import 'package:hive/hive.dart';
 
+import 'account_model.dart';
+
 part 'transaction_model.g.dart';
 
 @HiveType(typeId: 1)
@@ -37,6 +39,14 @@ class TransactionModel {
   @HiveField(10)
   final double? zScore;
 
+  /// К какому счёту относится операция.
+  ///
+  /// null у всех записей, созданных до появления счетов — они трактуются как
+  /// операции основного счёта (`AccountModel.mainId`). Если бы старые записи
+  /// просто выпали из выборки, баланс обнулился бы сразу после обновления.
+  @HiveField(11)
+  final String? accountId;
+
   const TransactionModel({
     required this.id,
     required this.title,
@@ -49,7 +59,11 @@ class TransactionModel {
     this.recurringPeriod,
     this.isAnomaly = false,
     this.zScore,
+    this.accountId,
   });
+
+  /// Счёт операции с учётом старых записей без явного счёта.
+  String get effectiveAccountId => accountId ?? AccountModel.mainId;
 
   TransactionModel copyWith({
     String? id,
@@ -63,6 +77,7 @@ class TransactionModel {
     RecurringPeriod? recurringPeriod,
     bool? isAnomaly,
     double? zScore,
+    String? accountId,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -76,6 +91,7 @@ class TransactionModel {
       recurringPeriod: recurringPeriod ?? this.recurringPeriod,
       isAnomaly: isAnomaly ?? this.isAnomaly,
       zScore: zScore ?? this.zScore,
+      accountId: accountId ?? this.accountId,
     );
   }
 
@@ -91,6 +107,7 @@ class TransactionModel {
     'recurringPeriod': recurringPeriod?.name,
     'isAnomaly': isAnomaly,
     'zScore': zScore,
+    'accountId': accountId,
   };
 }
 

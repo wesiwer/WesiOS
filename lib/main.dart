@@ -8,6 +8,7 @@ import 'core/services/firebase_config_service.dart';
 import 'core/services/exchange_rate_service.dart';
 import 'features/treasury/models/transaction_model.dart';
 import 'features/tasks/models/task_model.dart';
+import 'features/treasury/models/account_model.dart';
 import 'core/services/app_update_service.dart';
 import 'app.dart';
 
@@ -52,6 +53,8 @@ void main() async {
   Hive.registerAdapter(TaskPriorityAdapter());
   Hive.registerAdapter(SubTaskAdapter());
   Hive.registerAdapter(TaskModelAdapter());
+  Hive.registerAdapter(AccountKindAdapter());
+  Hive.registerAdapter(AccountModelAdapter());
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');

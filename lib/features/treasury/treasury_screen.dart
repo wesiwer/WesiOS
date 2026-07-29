@@ -9,6 +9,9 @@ import '../../core/widgets/currency_picker.dart';
 import '../../core/services/exchange_rate_service.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
+import 'widgets/accounts_bar.dart';
+import 'services/account_service.dart';
+import 'models/account_model.dart';
 import 'widgets/add_transaction_dialog.dart';
 
 class TreasuryScreen extends StatefulWidget {
@@ -27,6 +30,13 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   bool _isLoading = true;
   String _currency = CurrencyService.current;
 
+  /// Выбранный счёт. null — «все счета».
+  String? _accountId = AccountService.selectedId;
+
+  /// Операции выбранного счёта: на них считается и баланс, и разрезы.
+  List<TransactionModel> get _visible =>
+      AccountService.filter(_transactions, _accountId);
+
   String get _sym => CurrencyService.symbol;
 
   @override
@@ -37,17 +47,57 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
   Future<void> _loadData() async {
     final txs = await _service.getAllTransactions();
-    final balance = await _service.getCurrentBalance();
-    final breakdown = await _service.getBalanceBreakdown();
     final anomalies = await _service.detectAnomalies();
+    await AccountService.ensureMain();
+    if (!mounted) return;
     setState(() {
       _transactions = txs;
-      _balance = balance;
-      _breakdown = breakdown;
       _anomalies = anomalies;
       _currency = CurrencyService.current;
       _isLoading = false;
     });
+    await _recalc();
+  }
+
+  /// Баланс и разрезы считаются по ВЫБРАННОМУ счёту, а не по всей базе:
+  /// иначе переключение счёта меняло бы только список операций, а цифры
+  /// сверху оставались бы общими и противоречили ему.
+  Future<void> _recalc() async {
+    final visible = _visible;
+    var income = 0.0;
+    var expense = 0.0;
+    for (final t in visible) {
+      if (t.type == TransactionType.income) {
+        income += t.amount;
+      } else {
+        expense += t.amount;
+      }
+    }
+
+    // Начальные остатки счетов — часть баланса, но не часть оборота.
+    final summaries = await AccountService.summaries(_transactions);
+    var opening = 0.0;
+    for (final s in summaries) {
+      if (_accountId == null || s.account.id == _accountId) {
+        opening += s.account.openingBalance;
+      }
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _balance = opening + income - expense;
+      _breakdown = {
+        'income': income,
+        'expense': expense,
+        'net': income - expense,
+      };
+    });
+  }
+
+  Future<void> _selectAccount(String? id) async {
+    setState(() => _accountId = id);
+    await AccountService.select(id);
+    await _recalc();
   }
 
   /// Выбор валюты списком (флаг, страна, название, курс) вместо перебора
@@ -75,6 +125,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         description: result['description'],
         isRecurring: result['isRecurring'] ?? false,
         recurringPeriod: result['recurringPeriod'],
+        // В режиме «Все счета» операция уходит на основной — иначе её
+        // некуда положить, а спрашивать счёт ради каждой траты навязчиво.
+        accountId: _accountId ?? AccountModel.mainId,
       );
       await _service.addTransaction(tx);
       await _loadData();
@@ -137,6 +190,12 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       body: ListView(
         padding: EdgeInsets.fromLTRB(24, kHasCustomTitleBar ? 8 : 24, 24, 32),
         children: [
+          AccountsBar(
+            transactions: _transactions,
+            selectedId: _accountId,
+            onSelect: _selectAccount,
+          ),
+          const SizedBox(height: 16),
           _balanceCard(),
           const SizedBox(height: 20),
           Row(
@@ -237,7 +296,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             ],
           ),
           const SizedBox(height: 12),
-          ..._transactions.take(20).map(_txItem),
+          ..._visible.take(20).map(_txItem),
         ],
       ),
     );

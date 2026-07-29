@@ -28,13 +28,14 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       recurringPeriod: fields[8] as RecurringPeriod?,
       isAnomaly: fields[9] as bool,
       zScore: fields[10] as double?,
+      accountId: fields[11] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, TransactionModel obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -56,7 +57,9 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       ..writeByte(9)
       ..write(obj.isAnomaly)
       ..writeByte(10)
-      ..write(obj.zScore);
+      ..write(obj.zScore)
+      ..writeByte(11)
+      ..write(obj.accountId);
   }
 
   @override
