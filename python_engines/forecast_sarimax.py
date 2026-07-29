@@ -10,7 +10,17 @@
 на Windows зависимость). Если сезонная модель не сходится (мало истории),
 откатываемся на простой ARIMA(1,1,1) без сезонной части.
 """
+import os
+import sys
 import warnings
+
+# Embeddable-дистрибутив Python (именно он лежит в бандле) задаёт sys.path
+# ЦЕЛИКОМ файлом `python311._pth` и, в отличие от обычной установки, НЕ
+# добавляет каталог запускаемого скрипта. Без этой строки соседний
+# `_io_common.py` не находится и запуск падает с ModuleNotFoundError —
+# одинаково и в CI, и у пользователя.
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 import numpy as np
 import pandas as pd
 from statsmodels.tsa.statespace.sarimax import SARIMAX
