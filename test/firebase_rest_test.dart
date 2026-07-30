@@ -101,6 +101,19 @@ void main() {
       expect(box.get('firebase_session'), isNull);
     });
 
+    test('«не запоминать» стирает копию на диске, но не выкидывает из входа',
+        () async {
+      // Выкинуть человека из уже выполненного входа было бы странным
+      // прочтением «не запоминай».
+      await box.put('firebase_session', jsonEncode(make().toJson()));
+      expect(FirebaseRestService.isSignedIn, isTrue);
+
+      await FirebaseRestService.forgetOnExit();
+      expect(box.get('firebase_session'), isNull);
+      expect(FirebaseRestService.isSignedIn, isTrue,
+          reason: 'сессия в памяти должна остаться');
+    });
+
     test('битая запись не считается сессией и не роняет чтение', () async {
       await box.put('firebase_session', 'не-json');
       expect(FirebaseRestService.isSignedIn, isFalse);
