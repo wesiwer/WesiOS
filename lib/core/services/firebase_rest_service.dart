@@ -12,10 +12,12 @@ import 'package:hive_flutter/hive_flutter.dart';
 /// а не скрытие ключа. Поэтому он спокойно зашит в сборку, и первый запуск
 /// не требует от человека вообще ничего.
 class FirebaseProject {
-  /// Заполняется владельцем: консоль Firebase → настройки проекта →
-  /// «Ваши приложения» → конфигурация SDK.
-  static const String defaultApiKey = '';
-  static const String defaultProjectId = '';
+  /// Взято из `android/app/google-services.json` — того же проекта, к
+  /// которому уже подключено Android-приложение. Отдельный проект заводить
+  /// незачем, а два разных означали бы два места, где лежат ключи.
+  static const String defaultApiKey =
+      'AIzaSyAlBRd6z6V0t16wgcOd68o2CXA0n8jtE_k';
+  static const String defaultProjectId = 'wesios-d7b07';
 
   static const String _box = 'wesios_settings';
   static const String _apiKeyKey = 'firebase_rest_api_key';

@@ -71,8 +71,17 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Create dummy google-services.json
+      # Настоящий google-services.json лежит в репозитории. Раньше этот шаг
+      # затирал его через `>`, и в каждом APK оказывался проект wesios-dummy:
+      # Firebase не работал ни в одной выпущенной сборке. Заглушка нужна
+      # только там, где файла нет вовсе, иначе Gradle не соберёт проект.
+      - name: Ensure google-services.json exists
         run: |
+          if [ -f android/app/google-services.json ]; then
+            echo "Использую настоящий google-services.json из репозитория"
+            exit 0
+          fi
+          echo "Настоящего конфига нет — кладу заглушку, Firebase работать не будет"
           mkdir -p android/app
           echo '{
             "project_info": {

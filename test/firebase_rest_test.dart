@@ -26,8 +26,20 @@ void main() {
   });
 
   group('настройка проекта', () {
-    test('без значений проект не настроен', () {
-      expect(FirebaseProject.isConfigured, isFalse);
+    test('по умолчанию берётся проект из google-services.json', () {
+      expect(FirebaseProject.apiKey, FirebaseProject.defaultApiKey);
+      expect(FirebaseProject.projectId, FirebaseProject.defaultProjectId);
+      expect(FirebaseProject.isConfigured, isTrue);
+    });
+
+    test('зашитые значения не пустые и похожи на настоящие', () {
+      // Ловушка на порчу при переносе, а не проверка правильности: пустой
+      // или обрезанный ключ выглядел бы рабочим, а вход молча не проходил бы.
+      expect(FirebaseProject.defaultApiKey, startsWith('AIza'));
+      expect(FirebaseProject.defaultApiKey.length, greaterThan(30));
+      expect(FirebaseProject.defaultProjectId, isNotEmpty);
+      expect(FirebaseProject.defaultProjectId.trim(),
+          FirebaseProject.defaultProjectId);
     });
 
     test('значения из настроек перекрывают зашитые', () async {
@@ -45,17 +57,23 @@ void main() {
       expect(FirebaseProject.projectId, 'wesios-test');
     });
 
-    test('одного apiKey без projectId недостаточно', () async {
+    test('пустое переопределение возвращает к зашитому, а не ломает вход',
+        () async {
       await FirebaseProject.configure(apiKey: 'AIzaTest', projectId: '');
-      expect(FirebaseProject.isConfigured, isFalse);
+      expect(FirebaseProject.apiKey, 'AIzaTest');
+      expect(FirebaseProject.projectId, FirebaseProject.defaultProjectId);
+      expect(FirebaseProject.isConfigured, isTrue);
     });
   });
 
-  group('вход без настроенного проекта', () {
-    test('не ходит в сеть, а честно говорит, что не настроен', () async {
-      final failure = await FirebaseRestService.signIn('a@b.c', 'pass');
-      expect(failure, isNotNull);
-      expect(failure!.code, 'NOT_CONFIGURED');
+  group('вход при пустом проекте', () {
+    test('честно говорит «не настроен», а не молчит', () {
+      // Прямой проверки без сети тут не сделать, поэтому проверяем сам
+      // текст отказа: он должен объяснять причину, а не быть пустым.
+      expect(
+        const FirebaseFailure('NOT_CONFIGURED', '').describe(),
+        'Проект Firebase не настроен',
+      );
     });
   });
 
