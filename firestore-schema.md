@@ -41,15 +41,30 @@ users/{uid}/finance/data/whatIfScenarios/{scenarioId}
     label: string
 ```
 
-## Правила безопасности (firestore.rules)
+## Правила безопасности
 
-```
-match /users/{uid}/finance/{document=**} {
-  allow read: if request.auth != null && request.auth.uid == uid;
-  allow write: if request.auth != null && request.auth.uid == uid
-               && document != "lastForecast";
-}
-```
+**Рабочие правила лежат в `firestore.rules` в корне репозитория.** Копировать
+в консоль Firebase нужно оттуда, целиком.
+
+Раньше здесь лежал фрагмент правила, и с ним было две беды. Обе тихие —
+всё выглядело работающим:
+
+1. **Фрагмент нельзя вставлять как есть.** Один `match` без обрамляющего
+   `service cloud.firestore { match /databases/{database}/documents { … } }`
+   не применяется вовсе, и тогда действует только запрет по умолчанию —
+   закрыто всё.
+2. **`document != "lastForecast"` ничего не запрещало.** При шаблоне
+   `{document=**}` переменная имеет тип «путь», а не строку; путь со строкой
+   не совпадёт никогда, значит условие всегда истинно. В рабочем файле взят
+   одиночный сегмент `{docId}` — там сравнение действительно работает.
+
+Плюс третье, о чём легко забыть: правила Firestore складываются по «ИЛИ».
+Отдельный блок с `allow write: if false` ничего не запрещает, а любое общее
+правило вида `match /users/{uid}/{document=**}` перекрывает `finance`
+целиком и отменяет исключение для `lastForecast`.
+
+`lastForecast` пишет Cloud Function через Admin SDK, а он правила не
+проверяет вовсе — поэтому запрет на клиентскую запись расчёту не мешает.
 
 ## Индексы
 
