@@ -10,6 +10,7 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../widgets/glass_card.dart';
 import 'widgets/forecast_engines_section.dart';
+import 'widgets/github_auth_section.dart';
 import '../../core/widgets/app_update_card.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 
@@ -97,6 +98,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 24),
           _section(WesiLocale.isRussian ? 'Обновление' : 'Updates'),
+          const GitHubAuthSection(),
           const AppUpdateCard(),
           const SizedBox(height: 8),
           _section(WesiLocale.get('engine_settings_section')),

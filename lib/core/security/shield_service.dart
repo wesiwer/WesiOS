@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 
 import '../services/backup_service.dart';
+import '../services/github_auth_service.dart';
 
 /// Что именно закрывает Wesi Shield.
 enum ShieldScope {
@@ -328,6 +329,10 @@ class ShieldService {
   /// отстала бы от него — и стирала бы не всё.
   static Future<void> _wipeData() async {
     await BackupService.clearLocalData();
+    // Токен GitHub даёт доступ к приватному репозиторию. Стереть финансы и
+    // оставить ключ от репозитория — половина работы: тот, ради кого стирание
+    // и затевалось, унёс бы его вместе с устройством.
+    await GitHubAuthService.signOut();
     await _log('wipe', true, 'сработал порог неудачных попыток');
   }
 

@@ -179,6 +179,8 @@ void main() {
       for (final forbidden in [
         'shield_hash',
         'shield_salt',
+        'github_token',
+        'github_refresh_token',
         'apiKey',
         'wesios_settings',
       ]) {

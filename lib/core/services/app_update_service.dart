@@ -8,6 +8,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../constants/app_version.dart';
+import 'github_auth_service.dart';
 
 /// Стадия обновления приложения. Сознательно повторяет форму
 /// `InstallStage` у движков прогноза — пользователь уже видел этот сценарий
@@ -120,8 +121,69 @@ class AppUpdateService {
   static const _box = 'wesios_settings';
   static const _skippedKey = 'update_skipped_version';
 
+  static const String repoOwner = 'wesiwer';
+  static const String repoName = 'WesiOS';
+
+  /// Прямая ссылка на файл релиза. Работает только для публичных
+  /// репозиториев; для приватного нужен путь через API — см. [_openAsset].
   static String releaseFileUrl(String asset) =>
-      'https://github.com/wesiwer/WesiOS/releases/download/$_releaseTag/$asset';
+      'https://github.com/$repoOwner/$repoName/releases/download/$_releaseTag/$asset';
+
+  static String get _releaseApiUrl =>
+      'https://api.github.com/repos/$repoOwner/$repoName/releases/tags/$_releaseTag';
+
+  /// id ассетов релиза по именам. Нужны, чтобы скачивать через API: у
+  /// приватного репозитория `browser_download_url` отдаёт 404 без входа.
+  static Future<Map<String, int>?> _assetIds(
+      HttpClient client, Map<String, String> headers) async {
+    final req = await client.getUrl(Uri.parse(_releaseApiUrl));
+    headers.forEach(req.headers.set);
+    req.headers.set(HttpHeaders.acceptHeader, 'application/vnd.github+json');
+    req.headers.set(HttpHeaders.userAgentHeader, 'WesiOS');
+    final res = await req.close();
+    if (res.statusCode != 200) return null;
+    final json = jsonDecode(await res.transform(utf8.decoder).join());
+    if (json is! Map || json['assets'] is! List) return null;
+    return {
+      for (final a in json['assets'] as List)
+        if (a is Map && a['name'] is String && a['id'] is int)
+          a['name'] as String: a['id'] as int,
+    };
+  }
+
+  /// Открывает поток с содержимым ассета.
+  ///
+  /// Редирект обрабатывается вручную и **намеренно**: GitHub отвечает 302 на
+  /// подписанную ссылку в хранилище, а хранилище отклоняет запрос, в котором
+  /// есть ещё и заголовок Authorization — «только один механизм за раз».
+  /// `followRedirects: true` протащил бы наш заголовок дальше и сломал бы
+  /// скачивание именно там, где всё уже почти получилось.
+  static Future<HttpClientResponse?> _openAsset(
+    HttpClient client,
+    int assetId,
+    Map<String, String> headers,
+  ) async {
+    final req = await client.getUrl(Uri.parse(
+        'https://api.github.com/repos/$repoOwner/$repoName/releases/assets/$assetId'));
+    req.followRedirects = false;
+    headers.forEach(req.headers.set);
+    req.headers.set(HttpHeaders.acceptHeader, 'application/octet-stream');
+    req.headers.set(HttpHeaders.userAgentHeader, 'WesiOS');
+    final res = await req.close();
+
+    if (res.statusCode == 200) return res;
+    if (res.statusCode == 302 || res.statusCode == 307) {
+      final location = res.headers.value(HttpHeaders.locationHeader);
+      // Тело первого ответа нужно вычитать, иначе соединение зависнет.
+      await res.drain<void>();
+      if (location == null) return null;
+      final redirect = await client.getUrl(Uri.parse(location));
+      redirect.headers.set(HttpHeaders.userAgentHeader, 'WesiOS');
+      return redirect.close();
+    }
+    await res.drain<void>();
+    return null;
+  }
 
   /// Ключ платформы в манифесте.
   static String? get platformKey {
@@ -137,6 +199,10 @@ class AppUpdateService {
       ValueNotifier(const UpdateProgress());
 
   static final ValueNotifier<AppRelease?> latest = ValueNotifier(null);
+
+  /// Кеш id ассетов текущего релиза — чтобы скачивание не делало ещё
+  /// один запрос к API за тем же списком.
+  static Map<String, int>? _assetIdCache;
 
   static AppRelease? _release;
   static DateTime? _checkedAt;
@@ -182,25 +248,46 @@ class AppUpdateService {
     progress.value = const UpdateProgress(stage: UpdateStage.checking);
     final client = HttpClient();
     try {
-      final request =
-          await client.getUrl(Uri.parse(releaseFileUrl(_manifestAsset)));
-      final response = await request.close();
-      if (response.statusCode != 200) {
-        // Показываем отказ только при явной проверке. 404 здесь почти всегда
-        // означает одно: репозиторий приватный, а ссылка на релиз анонимная.
-        // Молчать об этом при нажатии «Проверить» нельзя — «обновлений нет» и
-        // «проверить не смог» выглядели бы одинаково, и человек сидел бы на
-        // старой версии, считая её свежей. А вот красным баннером при каждом
-        // запуске напоминать о том, что из приложения всё равно не починить,
-        // — уже шум.
+      final headers = await GitHubAuthService.authHeaders();
+      if (headers.isEmpty) {
+        // Репозиторий приватный: без входа релиз не увидеть. Говорим об этом
+        // только при явной проверке — «обновлений нет» и «не смог проверить»
+        // снаружи выглядят одинаково, и человек сидел бы на старой версии,
+        // считая её свежей. Но красный баннер при каждом запуске про то, что
+        // требует отдельного действия, — уже шум.
         progress.value = force
             ? UpdateProgress(
                 stage: UpdateStage.failed,
-                error: response.statusCode == 404
-                    ? 'HTTP 404 — релиз недоступен без авторизации. Пока '
-                        'репозиторий приватный, автообновление работать не '
-                        'может: скачайте сборку вручную.'
-                    : 'HTTP ${response.statusCode}',
+                error: GitHubAuthService.isConfigured
+                    ? 'Нужен вход в GitHub: релизы лежат в приватном '
+                        'репозитории. Настройки → Обновление → Войти.'
+                    : 'Вход в GitHub не настроен — не задан client_id '
+                        'приложения. См. Настройки → Обновление.',
+              )
+            : const UpdateProgress(stage: UpdateStage.idle);
+        return null;
+      }
+
+      final assets = await _assetIds(client, headers);
+      final manifestId = assets?[_manifestAsset];
+      if (manifestId == null) {
+        progress.value = force
+            ? const UpdateProgress(
+                stage: UpdateStage.failed,
+                error: 'Релиз найден, но в нём нет app-manifest.json',
+              )
+            : const UpdateProgress(stage: UpdateStage.idle);
+        return null;
+      }
+      _assetIdCache = assets;
+
+      final response = await _openAsset(client, manifestId, headers);
+      if (response == null || response.statusCode != 200) {
+        progress.value = force
+            ? UpdateProgress(
+                stage: UpdateStage.failed,
+                error: 'Не удалось прочитать манифест '
+                    '(HTTP ${response?.statusCode ?? '—'})',
               )
             : const UpdateProgress(stage: UpdateStage.idle);
         return null;
@@ -242,13 +329,31 @@ class AppUpdateService {
     final client = HttpClient();
     File? target;
     try {
-      final request =
-          await client.getUrl(Uri.parse(releaseFileUrl(release.assetName)));
-      final response = await request.close();
-      if (response.statusCode != 200) {
+      final headers = await GitHubAuthService.authHeaders();
+      if (headers.isEmpty) {
+        progress.value = const UpdateProgress(
+          stage: UpdateStage.failed,
+          error: 'Нужен вход в GitHub: Настройки → Обновление → Войти.',
+        );
+        return;
+      }
+      // Список ассетов уже прочитан при проверке — второй запрос к API за той
+      // же информацией только тратит лимит.
+      final assets = _assetIdCache ?? await _assetIds(client, headers);
+      final assetId = assets?[release.assetName];
+      if (assetId == null) {
         progress.value = UpdateProgress(
           stage: UpdateStage.failed,
-          error: 'HTTP ${response.statusCode}',
+          error: 'В релизе нет файла ${release.assetName}',
+        );
+        return;
+      }
+
+      final response = await _openAsset(client, assetId, headers);
+      if (response == null || response.statusCode != 200) {
+        progress.value = UpdateProgress(
+          stage: UpdateStage.failed,
+          error: 'HTTP ${response?.statusCode ?? '—'}',
         );
         return;
       }
