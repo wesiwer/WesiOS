@@ -7,6 +7,8 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:local_auth/local_auth.dart';
 
+import '../services/backup_service.dart';
+
 /// Что именно закрывает Wesi Shield.
 enum ShieldScope {
   /// Только секция с ключами Firebase (как было до Shield).
@@ -321,29 +323,11 @@ class ShieldService {
 
   /// Стирает рабочие данные, оставляя настройки и журнал: иначе после
   /// срабатывания было бы не видно, что вообще произошло.
+  /// Стирание идёт через [BackupService.clearLocalData]: один и тот же список
+  /// боксов и одно и то же знание об их типах. Своя копия здесь однажды
+  /// отстала бы от него — и стирала бы не всё.
   static Future<void> _wipeData() async {
-    for (final name in const [
-      'wesios_treasury',
-      'wesios_sandbox',
-      'wesios_tasks',
-      'wesios_accounts',
-      'wesios_knowledge',
-      'wesios_whatif',
-      // Кэш и очередь синхронизации — копии тех же данных. Стереть основное
-      // и оставить копию значит не стереть ничего.
-      'wesios_cache',
-      'wesios_offline_queue',
-    ]) {
-      try {
-        if (Hive.isBoxOpen(name)) {
-          await Hive.box<dynamic>(name).clear();
-        } else {
-          await Hive.deleteBoxFromDisk(name);
-        }
-      } catch (_) {
-        // Один недоступный бокс не должен прерывать стирание остальных.
-      }
-    }
+    await BackupService.clearLocalData();
     await _log('wipe', true, 'сработал порог неудачных попыток');
   }
 

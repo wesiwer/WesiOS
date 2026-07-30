@@ -163,19 +163,36 @@ class BackupService {
     );
   }
 
+  /// Открытый бокс по имени, с его настоящим типом значений.
+  ///
+  /// Обойтись `Hive.box<dynamic>` нельзя: Hive сверяет тип значений и на
+  /// боксе, открытом как `Box<TransactionModel>`, бросает
+  /// «already open and of type». В коде, обёрнутом в `try`, это выглядит как
+  /// «ничего не произошло» — и очистка молча не срабатывала.
+  static BoxBase<dynamic>? openedBox(String name) {
+    if (!Hive.isBoxOpen(name)) return null;
+    try {
+      return switch (name) {
+        'wesios_treasury' ||
+        'wesios_sandbox' =>
+          Hive.box<TransactionModel>(name),
+        'wesios_tasks' => Hive.box<TaskModel>(name),
+        'wesios_accounts' => Hive.box<AccountModel>(name),
+        'wesios_knowledge' => Hive.box<ArticleModel>(name),
+        _ => Hive.box<dynamic>(name),
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// Сколько записей будет стёрто — показывается в подтверждении.
   ///
   /// Спрашивать «точно удалить?» без числа значит спрашивать ни о чём.
   static Future<int> countLocalRecords() async {
     var total = 0;
     for (final name in dataBoxes) {
-      try {
-        if (Hive.isBoxOpen(name)) {
-          total += Hive.box<dynamic>(name).length;
-        }
-      } catch (_) {
-        continue;
-      }
+      total += openedBox(name)?.length ?? 0;
     }
     return total;
   }
@@ -184,9 +201,10 @@ class BackupService {
   static Future<void> clearLocalData() async {
     for (final name in dataBoxes) {
       try {
-        if (Hive.isBoxOpen(name)) {
-          await Hive.box<dynamic>(name).clear();
-        } else {
+        final box = openedBox(name);
+        if (box != null) {
+          await box.clear();
+        } else if (!Hive.isBoxOpen(name)) {
           await Hive.deleteBoxFromDisk(name);
         }
       } catch (_) {
