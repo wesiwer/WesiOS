@@ -1,7 +1,9 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-07-29 (сессия 2, часть 9: автообновление, счета, аналитика)  
-**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** claude/document-review-wp4jch · **UI:** v0.10.0 α · **pubspec:** 0.10.0+12  
+**Обновлено:** 2026-07-30 (сессия 2, части 9–13: автообновление, счета,
+аналитика, Wesi Shield, главный экран, календарь, настройки)  
+**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** claude/document-review-wp4jch (смержена в `main`) · **UI:** v0.10.0 α · **pubspec:** 0.10.0+12  
+**Тесты:** `flutter analyze` — 0 замечаний, `flutter test` — **178 тестов**.  
 **CI на момент начала этой сессии:** прогон #186/#187 на `546dae8`/`c728912` — Windows и Android зелёные. Актуальный статус этой сессии — в разделе «Статус CI» ниже.
 
 ## Статус CI (часть 8) — зелёный
@@ -594,8 +596,8 @@ Hive сверяет тип значений и на боксе, открытом
 | Редактируемые категории | `services/category_service.dart` + `widgets/category_editor_dialog.dart` — Hive, добавить/переименовать/удалить/сбросить, удаление последней категории заблокировано; в диалоге транзакции — кнопка-шестерёнка и защита от падения `DropdownButton`, если текущей категории больше нет в списке. |
 | Формат даты рождения `09.07.2004` | `profile_screen.dart` — `padLeft(2, '0')`. |
 | Календарь на русском | `app.dart` — делегаты `GlobalMaterialLocalizations`/`GlobalWidgets`/`GlobalCupertino` + `supportedLocales`/`locale`; параметр `locale:` проставлен **всем** `showDatePicker`/`showDateRangePicker` (профиль, задачи, «Что если?», диапазон прогноза). Без делегатов встроенные виджеты Material остаются английскими независимо от `WesiLocale`. |
-| Все страны, Россия сверху | `core/data/countries.dart` — ~120 стран, `_priorityRu` поднимает Россию/Беларусь/Казахстан/Украину для русской локали. |
-| Пароль на ключи Firebase + биометрия | `core/services/vault_lock_service.dart` + `core/widgets/vault_unlock_dialog.dart` — SHA-256 с криптографической солью (`Random.secure()`), **сам пароль не хранится**; `local_auth` только на Android/iOS, отказ биометрии не блокирует ввод пароля. |
+| Все страны, Россия сверху | `core/data/countries.dart` — **217 стран парами (ru, en)**, `_priorityRu` поднимает Россию/Беларусь/Казахстан/Украину для русской локали. |
+| Пароль на ключи Firebase + биометрия | ~~`core/services/vault_lock_service.dart`~~ — **удалён в части 10**, заменён на `core/security/shield_service.dart` (PBKDF2 вместо одиночного SHA-256, см. раздел «Wesi Shield»). Диалог `core/widgets/vault_unlock_dialog.dart` остался, но ходит в Shield. |
 | Логотип и иконка | `assets/images/app_icon.png`, `wesi_mark.png`, `app_icon.ico` перерисованы: геометрическая монограмма W, последний штрих оранжевый и выходит выше базовой линии (читается как график роста). Векторная версия — `core/widgets/wesi_wordmark.dart` (`CustomPainter`), используется на главной и splash. **`wesi_logo_easter.png` (личный логотип со смертью с косой) не тронут** — прямое требование пользователя. |
 
 ### Вкладка «Задачи» — канбан (было: заглушка `ModuleScaffold`)
@@ -1185,7 +1187,10 @@ CI был красный **30+ прогонов подряд**, падали о�
 | Категории | `lib/features/treasury/services/category_service.dart` |
 | Выбор валюты | `lib/core/widgets/currency_picker.dart` |
 | Страны | `lib/core/data/countries.dart` |
-| Пароль на ключи | `lib/core/services/vault_lock_service.dart` |
+| Защита и пароль | `lib/core/security/shield_service.dart`, `shield_lock_screen.dart`, `lib/features/shield/shield_screen.dart` |
+| Резервная копия и очистка | `lib/core/services/backup_service.dart` |
+| Поиск и уведомления на главной | `lib/features/home/services/global_search_service.dart`, `alert_service.dart` |
+| Повторение платежей | `lib/core/services/recurrence.dart` |
 | Фразы (1013) | `lib/core/data/wesi_quotes.dart` |
 | Сборка движков прогноза | `.github/workflows/build-engines.yml` |
 | Релиз приложения | `.github/workflows/release-app.yml` |
