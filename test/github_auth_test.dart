@@ -24,9 +24,20 @@ void main() {
   });
 
   group('client_id', () {
-    test('без настройки вход считается ненастроенным', () {
-      expect(GitHubAuthService.clientId, '');
-      expect(GitHubAuthService.isConfigured, isFalse);
+    test('без правки в настройках берётся зашитый', () {
+      expect(GitHubAuthService.clientId, GitHubAuthService.defaultClientId);
+      expect(GitHubAuthService.isConfigured, isTrue);
+    });
+
+    test('зашитое значение похоже на настоящий id GitHub', () {
+      // Не проверка «правильности» — её из тестов не сделать. Это ловушка на
+      // порчу при переносе: лишний перевод строки или обрезанная строка
+      // выглядели бы как рабочий id, а вход молча не начинался бы.
+      const id = GitHubAuthService.defaultClientId;
+      expect(id, startsWith('Ov23li'));
+      expect(id.trim(), id, reason: 'по краям пробелы или перевод строки');
+      expect(RegExp(r'^[A-Za-z0-9]+$').hasMatch(id), isTrue, reason: id);
+      expect(id.length, greaterThanOrEqualTo(16));
     });
 
     test('значение из настроек перекрывает зашитое', () async {
@@ -41,9 +52,13 @@ void main() {
       expect(GitHubAuthService.clientId, 'Ov23liExample');
     });
 
-    test('пустая строка не считается настройкой', () async {
+    test('пустое значение возвращает к зашитому, а не отключает вход',
+        () async {
+      // Очистить поле — это «пользуйся встроенным», а не «сломай мне вход».
+      await GitHubAuthService.setClientId('Ov23liExample');
       await GitHubAuthService.setClientId('   ');
-      expect(GitHubAuthService.isConfigured, isFalse);
+      expect(GitHubAuthService.clientId, GitHubAuthService.defaultClientId);
+      expect(GitHubAuthService.isConfigured, isTrue);
     });
   });
 

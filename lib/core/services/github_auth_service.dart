@@ -70,12 +70,13 @@ class GitHubAuthService {
   static const String _clientIdKey = 'github_client_id';
   static const String _loginKey = 'github_login';
 
-  /// client_id зарегистрированного OAuth- или GitHub-приложения.
+  /// client_id зарегистрированного OAuth-приложения WesiOS.
   ///
-  /// Пусто, пока владелец не создал приложение на GitHub. Значение можно
-  /// вписать сюда при сборке или ввести в настройках уже установленной
-  /// программы — второе удобнее, не нужно ждать новой версии.
-  static const String defaultClientId = '';
+  /// Не секрет: в device flow клиент публичный по устройству протокола.
+  ///
+  /// Значение из настроек имеет приоритет над этим — чтобы сменить
+  /// приложение GitHub можно было без пересборки.
+  static const String defaultClientId = 'Ov23liYUSXiSuiA1V4wR';
 
   /// Права, которые запрашиваем у OAuth-приложения.
   ///

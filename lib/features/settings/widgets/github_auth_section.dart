@@ -61,8 +61,12 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
         _waiting = false;
         _messageIsError = true;
         _message = _ru
-            ? 'GitHub не выдал код. Проверьте сеть и правильность client_id.'
-            : 'GitHub did not issue a code. Check the network and client_id.';
+            ? 'GitHub не выдал код. Две обычные причины: в приложении не '
+                'включён «Enable Device Flow», либо client_id расходится '
+                'с тем, что на GitHub, — сверьте его выше посимвольно.'
+            : 'GitHub did not issue a code. Two usual causes: “Enable Device '
+                'Flow” is off for the app, or the client_id differs from the '
+                'one on GitHub — compare it above character by character.';
       });
       return;
     }
@@ -222,6 +226,28 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
             style: const TextStyle(
                 fontSize: 12, height: 1.4, color: AppTheme.textMuted),
           ),
+          if (configured && !signedIn) ...[
+            const SizedBox(height: 10),
+            // Показан целиком намеренно: секрета здесь нет, а сверить его
+            // с GitHub глазами — самый быстрый способ поймать расхождение,
+            // если приложение когда-нибудь пересоздадут.
+            Row(
+              children: [
+                const Icon(Icons.tag, size: 13, color: AppTheme.textMuted),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: SelectableText(
+                    GitHubAuthService.clientId,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: AppTheme.textSecondary,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (_code != null) ...[
             const SizedBox(height: 14),
             _codeBlock(_code!),
