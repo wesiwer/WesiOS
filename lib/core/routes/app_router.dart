@@ -13,6 +13,7 @@ import '../../features/roadmap/roadmap_screen.dart';
 import '../../features/analytics/analytics_screen.dart';
 import '../../features/knowledge/knowledge_base_screen.dart';
 import '../../features/shield/shield_screen.dart';
+import '../../features/keys/keys_screen.dart';
 import '../../features/ai/ai_assistant_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/profile/profile_screen.dart';
@@ -55,6 +56,8 @@ class AppRouter {
         return _slideUpRoute(const AiAssistantScreen());
       case '/shield':
         return _slideUpRoute(const ShieldScreen());
+      case '/keys':
+        return _slideUpRoute(const KeysScreen());
       case '/settings':
         return _slideUpRoute(const SettingsScreen());
       case '/profile':

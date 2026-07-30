@@ -135,6 +135,15 @@ class MoreTab extends StatelessWidget {
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
+            route: '/keys',
+            icon: Icons.vpn_key_outlined,
+            title: ru ? 'Ключи' : 'Keys',
+            subtitle: ru
+                ? 'Ключи сервисов: Shield, вход и правила Firestore'
+                : 'Service keys: Shield, sign-in and Firestore rules',
+            stage: ModuleStage.ready,
+          ),
+          _ModuleItem(
             route: '/settings',
             icon: Icons.settings,
             title: ru ? 'Настройки' : 'Settings',
