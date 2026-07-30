@@ -186,7 +186,23 @@ class AppUpdateService {
           await client.getUrl(Uri.parse(releaseFileUrl(_manifestAsset)));
       final response = await request.close();
       if (response.statusCode != 200) {
-        progress.value = const UpdateProgress(stage: UpdateStage.idle);
+        // Показываем отказ только при явной проверке. 404 здесь почти всегда
+        // означает одно: репозиторий приватный, а ссылка на релиз анонимная.
+        // Молчать об этом при нажатии «Проверить» нельзя — «обновлений нет» и
+        // «проверить не смог» выглядели бы одинаково, и человек сидел бы на
+        // старой версии, считая её свежей. А вот красным баннером при каждом
+        // запуске напоминать о том, что из приложения всё равно не починить,
+        // — уже шум.
+        progress.value = force
+            ? UpdateProgress(
+                stage: UpdateStage.failed,
+                error: response.statusCode == 404
+                    ? 'HTTP 404 — релиз недоступен без авторизации. Пока '
+                        'репозиторий приватный, автообновление работать не '
+                        'может: скачайте сборку вручную.'
+                    : 'HTTP ${response.statusCode}',
+              )
+            : const UpdateProgress(stage: UpdateStage.idle);
         return null;
       }
       final body = await response.transform(utf8.decoder).join();
