@@ -1,46 +1,93 @@
 # WesiOS Telegram Webhook
 
-Webhook-сервер для отправки уведомлений из WesiOS в Telegram.
+Две ручки: отправка сообщений из WesiOS в Telegram и приём обновлений от
+бота (нужен, чтобы узнать `chat_id` человека).
 
-## Установка
+## Что нужно завести
 
-1. Зарегистрируйся на [Vercel](https://vercel.com)
-2. Создай новый проект из этого репозитория
-3. Добавь переменную окружения `TELEGRAM_BOT_TOKEN`
-4. Задеплой
+Переменные окружения в Vercel — **Settings → Environment Variables**:
 
-## API
+| Имя | Откуда взять | Зачем |
+|---|---|---|
+| `TELEGRAM_BOT_TOKEN` | @BotFather → ваш бот → API Token | отправка сообщений |
+| `FIREBASE_PROJECT_ID` | `wesios-d7b07` | проверка, что вызывающий из вашего проекта |
+| `TELEGRAM_WEBHOOK_SECRET` | придумать длинную случайную строку | чтобы обновления принимались только от Telegram |
 
-### POST /api/send-message
+`FIREBASE_PROJECT_ID` не секрет. Два других — секреты, и они остаются
+**только здесь**: в приложение не попадают и в репозиторий не коммитятся.
 
-Отправляет сообщение в Telegram.
+## Развернуть
 
-**Body:**
+```bash
+npm i -g vercel          # если ещё нет
+cd telegram-webhook
+vercel login
+vercel --prod
+```
+
+Vercel спросит про проект — можно создать новый. После деплоя он покажет
+адрес вида `https://wesios-telegram-webhook.vercel.app`.
+
+## Подключить бота
+
+Один раз, подставив свои значения:
+
+```bash
+curl -X POST "https://api.telegram.org/bot<TELEGRAM_BOT_TOKEN>/setWebhook" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "url": "https://<ваш-адрес>.vercel.app/api/telegram-update",
+    "secret_token": "<TELEGRAM_WEBHOOK_SECRET>",
+    "allowed_updates": ["message"]
+  }'
+```
+
+Проверить: `https://api.telegram.org/bot<TOKEN>/getWebhookInfo` — там должен
+быть ваш адрес и `pending_update_count: 0`.
+
+## Ручки
+
+### `POST /api/send-message`
+
+Требует заголовок `Authorization: Bearer <токен Firebase>`. Токен берётся из
+входа в WesiOS.
+
 ```json
-{
-  "chat_id": "123456789",
-  "message": "Привет из WesiOS!",
-  "parse_mode": "HTML"
-}
+{ "chat_id": "123456789", "message": "Текст" }
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "message_id": 123
-}
-```
+**Почему проверка именно такая.** Прежняя версия принимала запрос от кого
+угодно и с `Access-Control-Allow-Origin: *` — то есть любой, узнав адрес,
+рассылал бы от имени бота что угодно кому угодно.
 
-## Использование в WesiOS
+Токен проверяется по **открытым** ключам Google, поэтому здесь не нужен ни
+сервисный аккаунт, ни какой-либо секрет Firebase. Обязательно сверяются
+`iss` и `aud`: без них подошёл бы токен из **чужого** проекта Firebase —
+ключи-то у Google общие.
 
-```dart
-final response = await http.post(
-  Uri.parse('https://your-vercel-url.vercel.app/api/send-message'),
-  headers: {'Content-Type': 'application/json'},
-  body: jsonEncode({
-    'chat_id': userChatId,
-    'message': 'Ваша задача просрочена!',
-  }),
-);
-```
+### `POST /api/telegram-update`
+
+Адрес для `setWebhook`. Принимает обновления только с правильным
+`X-Telegram-Bot-Api-Secret-Token`. Отвечает `200` всегда — на любой другой
+ответ Telegram считает доставку неудачной и повторяет её.
+
+### `GET /api/telegram-update?code=<код>`
+
+Приложение спрашивает: этот код уже подтвердили в боте? Отдаёт `chat_id` и
+**сразу забывает пару** — второй раз тот же код не сработает.
+
+## Ограничение, о котором надо знать
+
+Привязки «код → чат» живут в памяти функции, не в базе. Vercel может поднять
+несколько экземпляров, и код, пришедший в один, не найдётся в другом.
+
+Поэтому бот **дополнительно присылает `chat_id` сообщением в сам чат**: если
+приложение промахнулось мимо экземпляра, человек введёт номер руками.
+Держать базу ради одной короткоживущей пары — лишнее место, откуда утекают
+номера чатов.
+
+## Чего здесь ещё нет
+
+Восстановления доступа. Оно требует найти владельца по логину или почте, то
+есть прочитать данные всех пользователей, — а для этого нужен сервисный
+аккаунт Firebase. Ручка добавится отдельно, вместе с ним.
