@@ -28,14 +28,21 @@ if (flutterVersionName == null) {
 // Имена локальных переменных намеренно НЕ совпадают с keyAlias/keyPassword —
 // иначе Groovy считает вызов `keyAlias keyAlias` вызовом String.call() и
 // сборка падает с «No signature of method: java.lang.String.call()».
-def ksPath = System.getenv("KEYSTORE_PATH")
-def ksStorePassword = System.getenv("KEYSTORE_PASSWORD")
-def ksAlias = System.getenv("KEY_ALIAS")
-def ksKeyPassword = System.getenv("KEY_PASSWORD")
+//
+// trim() — защита от хвостового \n/пробела в GitHub Secrets (часто
+// появляется при вставке в UI и даёт «keystore password was incorrect»).
+def ksPath = System.getenv("KEYSTORE_PATH")?.trim()
+def ksStorePassword = System.getenv("KEYSTORE_PASSWORD")?.trim()
+def ksAlias = System.getenv("KEY_ALIAS")?.trim()
+def ksKeyPassword = System.getenv("KEY_PASSWORD")?.trim()
 def hasReleaseKey = ksPath != null &&
         ksStorePassword != null &&
         ksAlias != null &&
         ksKeyPassword != null &&
+        !ksPath.isEmpty() &&
+        !ksStorePassword.isEmpty() &&
+        !ksAlias.isEmpty() &&
+        !ksKeyPassword.isEmpty() &&
         file(ksPath).exists()
 
 android {
