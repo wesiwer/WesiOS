@@ -102,14 +102,14 @@ class _HomePulseState extends State<HomePulse> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(title,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 11, color: AppTheme.textMuted)),
           const SizedBox(height: 7),
           Text(
             CurrencyService.format(kpi.value),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 19,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textPrimary),
@@ -156,7 +156,7 @@ class _HomePulseState extends State<HomePulse> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(_ru ? 'Запас хода' : 'Runway',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 11, color: AppTheme.textMuted)),
           const SizedBox(height: 7),
           Text(
@@ -182,7 +182,7 @@ class _HomePulseState extends State<HomePulse> {
                     : 'at ${CurrencyService.format(s.burnPerDay)} per day'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
           ),
         ],
       ),
