@@ -119,7 +119,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
             ? AppTheme.accentGreen
             : AppTheme.accentOrange,
       ),
-      title: Text(label, style: const TextStyle(color: AppTheme.textPrimary)),
+      title: Text(label, style: TextStyle(color: AppTheme.textPrimary)),
       subtitle: Text(subtitle,
           style: TextStyle(
               color: (failed
@@ -146,7 +146,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
                         : (installed
                             ? 'engine_reinstall_button'.w
                             : 'engine_install_button'.w),
-                    style: const TextStyle(color: AppTheme.accentOrange),
+                    style: TextStyle(color: AppTheme.accentOrange),
                   ),
                 ),
     );
@@ -157,9 +157,9 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
       leading: const Icon(Icons.picture_in_picture,
           color: AppTheme.accentOrange),
       title: Text('engine_show_download_overlay'.w,
-          style: const TextStyle(color: AppTheme.textPrimary)),
+          style: TextStyle(color: AppTheme.textPrimary)),
       subtitle: Text('engine_show_download_overlay_hint'.w,
-          style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+          style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
       trailing: ValueListenableBuilder<bool>(
         valueListenable: EngineInstallService.overlayHidden,
         builder: (context, hidden, _) => Switch(
