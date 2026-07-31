@@ -83,7 +83,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                       Expanded(
                         child: Text(
                           widget.title,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w700,
                             color: AppTheme.textPrimary,
@@ -95,7 +95,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                   const SizedBox(height: 12),
                   Text(
                     widget.description,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       color: AppTheme.textSecondary,
                       height: 1.45,
@@ -175,13 +175,13 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(widget.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: AppTheme.textPrimary)),
                 const SizedBox(height: 12),
                 Text(widget.description,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         color: AppTheme.textSecondary,
                         height: 1.5)),
