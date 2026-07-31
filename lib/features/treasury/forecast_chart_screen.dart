@@ -640,7 +640,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           border: Border.all(color: AppTheme.glassBorder),
         ),
         child: Text('no_engines_selected'.w,
-            style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
       );
     }
 
@@ -1213,7 +1213,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       return _chartFrame(
         child: Center(
           child: Text('no_transactions'.w,
-              style: const TextStyle(color: AppTheme.textMuted)),
+              style: TextStyle(color: AppTheme.textMuted)),
         ),
       );
     }
@@ -1306,7 +1306,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       return _chartFrame(
         child: Center(
           child: Text('no_transactions'.w,
-              style: const TextStyle(color: AppTheme.textMuted)),
+              style: TextStyle(color: AppTheme.textMuted)),
         ),
       );
     }
@@ -1394,7 +1394,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       return _chartFrame(
         child: Center(
           child: Text('seasonality_off'.w,
-              style: const TextStyle(color: AppTheme.textMuted)),
+              style: TextStyle(color: AppTheme.textMuted)),
         ),
       );
     }
