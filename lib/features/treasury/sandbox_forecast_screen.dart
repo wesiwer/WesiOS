@@ -141,7 +141,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Text(_ru ? 'Название сценария' : 'Scenario name',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textPrimary)),
@@ -182,7 +182,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
         title: Text(_ru ? 'Удалить сценарий?' : 'Delete scenario?',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textPrimary)),
@@ -278,7 +278,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                       ? 'Свои сценарии «Что если?» на изолированных данных'
                       : 'Your own what-if scenarios on isolated data',
                   style:
-                      const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -356,7 +356,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             _ru
                 ? 'Данных в песочнице пока мало'
                 : 'Not enough sandbox data yet',
-            style: const TextStyle(
+            style: TextStyle(
                 fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
           ),
           const SizedBox(height: 6),
@@ -367,7 +367,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                 : 'Run a preset scenario or add transactions — the forecast '
                     'needs at least a week of history.',
             textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
           ),
         ],
       ),
@@ -440,7 +440,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                       reservedSize: 52,
                       getTitlesWidget: (value, meta) => Text(
                         _compact(value),
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 9, color: AppTheme.textMuted),
                       ),
                     ),
@@ -461,7 +461,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                           child: Text(
                             '${d.day.toString().padLeft(2, '0')}.'
                             '${d.month.toString().padLeft(2, '0')}',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 9, color: AppTheme.textMuted),
                           ),
                         );
@@ -543,7 +543,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                         Container(width: 12, height: 3, color: s.color),
                         const SizedBox(width: 6),
                         Text(s.label,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 11, color: AppTheme.textMuted)),
                       ],
                     ))
@@ -569,7 +569,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
       children: [
         Text(
           _ru ? 'Что получится' : 'What happens',
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 15,
               fontWeight: FontWeight.w700,
               color: AppTheme.textPrimary),
@@ -605,7 +605,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             _ru
                 ? 'Включите сценарий ниже — он появится на графике рядом с базовым.'
                 : 'Enable a scenario below — it will be drawn next to the baseline.',
-            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
           ),
         ],
       ],
@@ -660,7 +660,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(label,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: AppTheme.textPrimary)),
                 const SizedBox(height: 2),
@@ -688,7 +688,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
               ),
               Text(
                 _ru ? 'через $_days дн.' : 'in $_days days',
-                style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
               ),
             ],
           ),
@@ -705,7 +705,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
           children: [
             Text(
               _ru ? 'Мои сценарии' : 'My scenarios',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textPrimary),
@@ -714,7 +714,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             if (_presets.isNotEmpty)
               Text('${_enabled.length}/${_presets.length}',
                   style:
-                      const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                      TextStyle(fontSize: 12, color: AppTheme.textMuted)),
           ],
         ),
         const SizedBox(height: 10),
@@ -733,7 +733,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                   _ru
                       ? 'Сценариев пока нет'
                       : 'No scenarios yet',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textSecondary),
                 ),
@@ -748,7 +748,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                           'The chart draws itself.',
                   textAlign: TextAlign.center,
                   style:
-                      const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                      TextStyle(fontSize: 12, color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -783,14 +783,14 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(preset.name,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary)),
                 const SizedBox(height: 2),
                 Text(
                   preset.summary(_sym, _ru),
                   style:
-                      const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -864,7 +864,7 @@ class SandboxForecastButton extends StatelessWidget {
               children: [
                 Text(
                   ru ? 'Прогноз и «Что если?»' : 'Forecast & what-if',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary),
                 ),
@@ -873,7 +873,7 @@ class SandboxForecastButton extends StatelessWidget {
                       ? 'Свои сценарии, графики строятся автоматически'
                       : 'Your own scenarios, charts drawn automatically',
                   style:
-                      const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
               ],
             ),
