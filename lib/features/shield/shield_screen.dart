@@ -77,7 +77,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                         'автоблокировка и журнал входов'
                     : 'Access protection for WesiOS: password, biometrics, '
                         'auto-lock and a sign-in log',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12, color: AppTheme.textSecondary),
               ),
             ),
@@ -113,7 +113,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
               Expanded(
                 child: Text(
                   _ru ? 'Уровень защиты' : 'Protection level',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary),
                 ),
@@ -159,7 +159,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
             const SizedBox(width: 9),
             Expanded(
               child: Text(text,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12,
                       height: 1.4,
                       color: AppTheme.textSecondary)),
@@ -174,7 +174,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
           children: [
             Text(
               _ru ? 'Защита не включена' : 'Protection is off',
-              style: const TextStyle(
+              style: TextStyle(
                   fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
             ),
             const SizedBox(height: 6),
@@ -185,7 +185,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                   : 'Without a password anyone holding the device sees your '
                       'finances, tasks and keys in full.',
               style:
-                  const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
             const SizedBox(height: 16),
             HoverButton(
@@ -213,7 +213,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(_ru ? 'Настройки' : 'Settings',
-              style: const TextStyle(
+              style: TextStyle(
                   fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
           const SizedBox(height: 14),
           _switchRow(
@@ -242,7 +242,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
           const SizedBox(height: 8),
           Text(
             _ru ? 'Автоблокировка' : 'Auto-lock',
-            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -283,7 +283,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
           const SizedBox(height: 16),
           Text(
             _ru ? 'Стереть данные после неудачных попыток' : 'Wipe after failures',
-            style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
           ),
           const SizedBox(height: 4),
           Text(
@@ -292,7 +292,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                     'пароль означает потерю данных.'
                 : 'Irreversible. Enable only if you accept that a forgotten '
                     'password means losing the data.',
-            style: const TextStyle(fontSize: 11, color: AppTheme.accentRed),
+            style: TextStyle(fontSize: 11, color: AppTheme.accentRed),
           ),
           const SizedBox(height: 8),
           Wrap(
@@ -362,7 +362,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                               ? AppTheme.textMuted
                               : AppTheme.textPrimary)),
                   Text(subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 11, color: AppTheme.textMuted)),
                 ],
               ),
@@ -386,7 +386,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
             children: [
               Expanded(
                 child: Text(_ru ? 'Журнал' : 'Log',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: AppTheme.textPrimary)),
               ),
@@ -394,7 +394,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                 TextButton(
                   onPressed: ShieldService.clearLog,
                   child: Text(_ru ? 'Очистить' : 'Clear',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12, color: AppTheme.textMuted)),
                 ),
             ],
@@ -403,7 +403,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
           if (log.isEmpty)
             Text(
               _ru ? 'Событий пока нет' : 'No events yet',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             )
           else
             ...log.take(12).map(_logRow),
@@ -452,13 +452,13 @@ class _ShieldScreenState extends State<ShieldScreen> {
                   : '${_kindLabel(e.kind)} · ${e.detail}',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12, color: AppTheme.textSecondary),
             ),
           ),
           Text(stamp,
               style:
-                  const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                  TextStyle(fontSize: 11, color: AppTheme.textMuted)),
         ],
       ),
     );
@@ -478,7 +478,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                     child: Center(
                       child: Text(
                         _ru ? 'Сменить пароль' : 'Change password',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13, color: AppTheme.textPrimary),
                       ),
                     ),
@@ -493,7 +493,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                     child: Center(
                       child: Text(
                         _ru ? 'Снять защиту' : 'Turn off',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13, color: AppTheme.accentRed),
                       ),
                     ),
@@ -620,7 +620,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                 widget.confirmOnly
                     ? (_ru ? 'Подтвердите пароль' : 'Confirm password')
                     : (_ru ? 'Пароль Wesi Shield' : 'Wesi Shield password'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
@@ -633,7 +633,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                           'Восстановить его нечем, запишите надёжно.'
                       : 'The password is not stored — only a derived key. '
                           'There is no recovery, keep it safe.',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11, color: AppTheme.textMuted),
                 ),
               ],
