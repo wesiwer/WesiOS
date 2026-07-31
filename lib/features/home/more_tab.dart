@@ -179,7 +179,7 @@ class MoreTab extends StatelessWidget {
             ru
                 ? 'Все модули WesiOS. Пометка у каждого показывает, что уже работает, а что пока макет.'
                 : 'Every WesiOS module. The badge on each shows what already works and what is still a mock-up.',
-            style: const TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+            style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 24),
           for (final section in sections) ...[
@@ -187,7 +187,7 @@ class MoreTab extends StatelessWidget {
               padding: const EdgeInsets.only(left: 4, bottom: 10),
               child: Text(
                 section.title.toUpperCase(),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textMuted,
@@ -239,7 +239,7 @@ class MoreTab extends StatelessWidget {
                           Flexible(
                             child: Text(
                               item.title,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 14,
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.textPrimary,
@@ -253,7 +253,7 @@ class MoreTab extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         item.subtitle,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12, color: AppTheme.textMuted),
                       ),
                     ],
