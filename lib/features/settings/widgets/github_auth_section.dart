@@ -118,7 +118,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
         backgroundColor: AppTheme.surface,
         title: Text(
           _ru ? 'client_id приложения GitHub' : 'GitHub app client_id',
-          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 16),
+          style: TextStyle(color: AppTheme.textPrimary, fontSize: 16),
         ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
@@ -145,7 +145,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
             TextField(
               controller: ctrl,
               autofocus: true,
-              style: const TextStyle(color: AppTheme.textPrimary),
+              style: TextStyle(color: AppTheme.textPrimary),
               decoration: const InputDecoration(labelText: 'Client ID'),
             ),
           ],
@@ -154,12 +154,12 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text(WesiLocale.get('cancel'),
-                style: const TextStyle(color: AppTheme.textMuted)),
+                style: TextStyle(color: AppTheme.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
             child: Text(WesiLocale.get('save'),
-                style: const TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accentOrange)),
           ),
         ],
       ),
