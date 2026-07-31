@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/constants/app_version.dart';
+import '../../core/services/app_icon_service.dart';
 import '../../core/services/backup_service.dart';
 import '../../core/services/currency_service.dart';
 import '../tasks/services/task_service.dart';
@@ -56,6 +57,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         }
                       },
                     ),
+                  );
+                },
+              ),
+              ValueListenableBuilder<AppIconMode>(
+                valueListenable: AppIconService.mode,
+                builder: (context, iconMode, _) {
+                  final subtitle = switch (iconMode) {
+                    AppIconMode.auto => ru
+                        ? 'Авто — вместе с темой'
+                        : 'Auto — follows theme',
+                    AppIconMode.dark =>
+                      ru ? 'Тёмная (чёрный фон)' : 'Dark (black background)',
+                    AppIconMode.light =>
+                      ru ? 'Светлая (белый фон)' : 'Light (white background)',
+                  };
+                  return _tile(
+                    icon: Icons.apps,
+                    title: ru ? 'Иконка приложения' : 'App icon',
+                    subtitle: AppIconService.isSupported
+                        ? subtitle
+                        : (ru
+                            ? 'Смена иконки доступна на Android'
+                            : 'Icon change is available on Android'),
+                    onTap: AppIconService.isSupported
+                        ? _showIconPicker
+                        : null,
+                    trailing: AppIconService.isSupported
+                        ? Icon(Icons.arrow_forward_ios,
+                            size: 14, color: AppTheme.textMuted)
+                        : null,
                   );
                 },
               ),
@@ -232,7 +263,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: (textColor ?? AppTheme.textMuted).withOpacity(0.8),
               fontSize: 13)),
       trailing: trailing ??
-          Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.textMuted),
+          (onTap != null
+              ? Icon(Icons.arrow_forward_ios,
+                  size: 14, color: AppTheme.textMuted)
+              : null),
       onTap: onTap,
     );
   }
@@ -260,6 +294,110 @@ class _SettingsScreenState extends State<SettingsScreen> {
           style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
         ),
       ),
+    );
+  }
+
+  void _showIconPicker() {
+    final ru = WesiLocale.isRussian;
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppTheme.surface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: ValueListenableBuilder<AppIconMode>(
+            valueListenable: AppIconService.mode,
+            builder: (context, current, _) {
+              Widget option({
+                required AppIconMode value,
+                required IconData icon,
+                required String title,
+                required String subtitle,
+              }) {
+                final selected = current == value;
+                return ListTile(
+                  leading: Icon(icon,
+                      color: selected ? AppTheme.accent : AppTheme.textMuted),
+                  title: Text(title,
+                      style: TextStyle(color: AppTheme.textPrimary)),
+                  subtitle: Text(subtitle,
+                      style: TextStyle(
+                          color: AppTheme.textMuted, fontSize: 13)),
+                  trailing: selected
+                      ? Icon(Icons.check, color: AppTheme.accent)
+                      : null,
+                  onTap: () async {
+                    final nav = Navigator.of(ctx);
+                    await AppIconService.setMode(value);
+                    if (!mounted) return;
+                    nav.pop();
+                    ScaffoldMessenger.of(this.context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          ru
+                              ? 'Иконка обновлена. На части лаунчеров смена видна через несколько секунд.'
+                              : 'Icon updated. On some launchers it may take a few seconds.',
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }
+
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const SizedBox(height: 12),
+                  Text(
+                    ru ? 'Иконка приложения' : 'App icon',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: Text(
+                      ru
+                          ? 'Тёмная — чёрный фон и белый знак. Светлая — белый фон и серо-синий знак.'
+                          : 'Dark — black background, white mark. Light — white background, slate-blue mark.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 12, color: AppTheme.textMuted),
+                    ),
+                  ),
+                  option(
+                    value: AppIconMode.auto,
+                    icon: Icons.brightness_auto,
+                    title: ru ? 'Авто' : 'Auto',
+                    subtitle: ru
+                        ? 'Меняется вместе с темой приложения'
+                        : 'Changes with the app theme',
+                  ),
+                  option(
+                    value: AppIconMode.dark,
+                    icon: Icons.dark_mode,
+                    title: ru ? 'Тёмная' : 'Dark',
+                    subtitle: ru ? 'Всегда чёрный фон' : 'Always black background',
+                  ),
+                  option(
+                    value: AppIconMode.light,
+                    icon: Icons.light_mode,
+                    title: ru ? 'Светлая' : 'Light',
+                    subtitle:
+                        ru ? 'Всегда белый фон' : 'Always white background',
+                  ),
+                  const SizedBox(height: 16),
+                ],
+              );
+            },
+          ),
+        );
+      },
     );
   }
 
