@@ -95,7 +95,7 @@ class _AccountsBarState extends State<AccountsBar> {
           children: [
             Text(
               _ru ? 'Счета' : 'Accounts',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textSecondary),
@@ -111,7 +111,7 @@ class _AccountsBarState extends State<AccountsBar> {
               icon: const Icon(Icons.add, size: 15,
                   color: AppTheme.accentOrange),
               label: Text(_ru ? 'Счёт' : 'Account',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: AppTheme.accentOrange)),
             ),
           ],
@@ -221,7 +221,7 @@ class _AccountsBarState extends State<AccountsBar> {
               const Spacer(),
               Text(
                 CurrencyService.formatExact(amount, decimals: 0),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w800,
                     color: AppTheme.textPrimary),
@@ -231,7 +231,7 @@ class _AccountsBarState extends State<AccountsBar> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style:
-                    const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                    TextStyle(fontSize: 10, color: AppTheme.textMuted),
               ),
             ],
           ),
@@ -379,7 +379,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                 widget.initial == null
                     ? (_ru ? 'Новый счёт' : 'New account')
                     : (_ru ? 'Счёт' : 'Account'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
@@ -402,13 +402,13 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                   helperText: _ru
                       ? 'Сколько уже лежало на счёте до первой операции'
                       : 'What was already there before the first operation',
-                  helperStyle: const TextStyle(
+                  helperStyle: TextStyle(
                       fontSize: 11, color: AppTheme.textMuted),
                 ),
               ),
               const SizedBox(height: 18),
               Text(_ru ? 'Тип' : 'Kind',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Wrap(
@@ -453,7 +453,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
               ),
               const SizedBox(height: 18),
               Text(_ru ? 'Цвет' : 'Colour',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Row(
