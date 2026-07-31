@@ -89,7 +89,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     _ru
                         ? 'Сводная картина: деньги, работа, тенденции'
                         : 'The big picture: money, work, trends',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: AppTheme.textSecondary),
                   ),
                   const SizedBox(height: 14),
@@ -154,7 +154,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             const SizedBox(height: 12),
             Text(
               _ru ? 'Пока нечего анализировать' : 'Nothing to analyse yet',
-              style: const TextStyle(
+              style: TextStyle(
                   fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
             ),
             const SizedBox(height: 6),
@@ -165,7 +165,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   : 'Add operations in Finance or some tasks — analytics '
                       'builds itself.',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
           ],
         ),
@@ -210,7 +210,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
-              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+              style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
           const SizedBox(height: 8),
           Text(
             money
@@ -267,7 +267,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               _ru
                   ? 'Нужно хотя бы два месяца данных в выбранном периоде.'
                   : 'At least two months of data are needed for this period.',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
           ],
         ),
@@ -308,7 +308,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       reservedSize: 46,
                       getTitlesWidget: (v, meta) => Text(
                         _compact(v),
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 9, color: AppTheme.textMuted),
                       ),
                     ),
@@ -328,7 +328,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                           child: Text(
                             '${m.month.toString().padLeft(2, '0')}.'
                             '${m.year % 100}',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 9, color: AppTheme.textMuted),
                           ),
                         );
@@ -435,7 +435,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     : 'At the current pace the money lasts less than two '
                         'months. Worth checking the forecast and what-if scenarios.',
                 style:
-                    const TextStyle(fontSize: 12, color: AppTheme.accentRed),
+                    TextStyle(fontSize: 12, color: AppTheme.accentRed),
               ),
             ),
           ],
@@ -455,12 +455,12 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           if (d.topExpenseCategories.isEmpty && d.topIncomeCategories.isEmpty)
             Text(
               _ru ? 'Нет операций за период' : 'No operations in this period',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
           if (d.topExpenseCategories.isNotEmpty) ...[
             Text(_ru ? 'Расходы' : 'Expenses',
                 style:
-                    const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                    TextStyle(fontSize: 11, color: AppTheme.textMuted)),
             const SizedBox(height: 8),
             ..._bars(d.topExpenseCategories, AppTheme.accentRed),
             const SizedBox(height: 14),
@@ -468,7 +468,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           if (d.topIncomeCategories.isNotEmpty) ...[
             Text(_ru ? 'Доходы' : 'Income',
                 style:
-                    const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                    TextStyle(fontSize: 11, color: AppTheme.textMuted)),
             const SizedBox(height: 8),
             ..._bars(d.topIncomeCategories, AppTheme.accentGreen),
           ],
@@ -492,11 +492,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   child: Text(e.key,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12, color: AppTheme.textSecondary)),
                 ),
                 Text(CurrencyService.format(e.value),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary)),
@@ -530,7 +530,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               _ru
                   ? 'Задач пока нет — создайте их во вкладке «Задачи».'
                   : 'No tasks yet — create some in the Tasks tab.',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             )
           else ...[
             Row(
@@ -550,7 +550,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 const SizedBox(width: 12),
                 Text(
                   '${(d.taskCompletion * 100).round()}%',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.accentOrange),
@@ -597,11 +597,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             const SizedBox(width: 10),
             Expanded(
               child: Text(label,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: AppTheme.textSecondary)),
             ),
             Text(value,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary)),
@@ -619,13 +619,13 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                   BoxDecoration(color: color, shape: BoxShape.circle)),
           const SizedBox(width: 6),
           Text(label,
-              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+              style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
         ],
       );
 
   Widget _cardTitle(String text) => Text(
         text,
-        style: const TextStyle(
+        style: TextStyle(
             fontSize: 15,
             fontWeight: FontWeight.w700,
             color: AppTheme.textPrimary),
