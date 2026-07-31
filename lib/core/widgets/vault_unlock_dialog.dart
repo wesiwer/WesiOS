@@ -159,7 +159,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                 controller: _passCtrl,
                 obscureText: _obscure,
                 autofocus: true,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 onSubmitted: (_) => _submit(),
                 decoration: InputDecoration(
                   labelText: ru ? 'Пароль' : 'Password',
@@ -177,7 +177,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                 TextField(
                   controller: _confirmCtrl,
                   obscureText: _obscure,
-                  style: const TextStyle(color: AppTheme.textPrimary),
+                  style: TextStyle(color: AppTheme.textPrimary),
                   onSubmitted: (_) => _submit(),
                   decoration: InputDecoration(
                     labelText: ru ? 'Повторите пароль' : 'Repeat password',
@@ -198,7 +198,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                       size: 18, color: AppTheme.accentOrange),
                   label: Text(
                     ru ? 'Отпечаток или Face ID' : 'Fingerprint or Face ID',
-                    style: const TextStyle(color: AppTheme.accentOrange),
+                    style: TextStyle(color: AppTheme.accentOrange),
                   ),
                 ),
               ],
@@ -208,7 +208,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                   TextButton(
                     onPressed: () => Navigator.pop(context, false),
                     child: Text(WesiLocale.get('cancel'),
-                        style: const TextStyle(color: AppTheme.textMuted)),
+                        style: TextStyle(color: AppTheme.textMuted)),
                   ),
                   const Spacer(),
                   TextButton(
