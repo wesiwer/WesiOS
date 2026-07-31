@@ -451,11 +451,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: c,
-        style: const TextStyle(color: AppTheme.textPrimary),
+        style: TextStyle(color: AppTheme.textPrimary),
         decoration: InputDecoration(
           labelText: label,
           hintText: hint,
-          labelStyle: const TextStyle(color: AppTheme.textSecondary),
+          labelStyle: TextStyle(color: AppTheme.textSecondary),
         ),
       ),
     );
@@ -469,14 +469,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         waitDuration: const Duration(milliseconds: 300),
         child: TextField(
           controller: c,
-          style: const TextStyle(color: AppTheme.textPrimary),
+          style: TextStyle(color: AppTheme.textPrimary),
           decoration: InputDecoration(
             labelText: label,
             helperText: tip,
             helperMaxLines: 2,
             helperStyle:
                 const TextStyle(fontSize: 11, color: AppTheme.textMuted),
-            labelStyle: const TextStyle(color: AppTheme.textSecondary),
+            labelStyle: TextStyle(color: AppTheme.textSecondary),
           ),
         ),
       ),
@@ -541,7 +541,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             ...items.map((item) => ListTile(
                   title: Text(item,
-                      style: const TextStyle(color: AppTheme.textPrimary)),
+                      style: TextStyle(color: AppTheme.textPrimary)),
                   onTap: () {
                     onSelect(item);
                     Navigator.pop(ctx);
