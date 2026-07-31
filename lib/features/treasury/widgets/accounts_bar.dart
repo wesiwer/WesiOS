@@ -388,7 +388,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
               TextField(
                 controller: _nameCtrl,
                 autofocus: true,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                     labelText: _ru ? 'Название' : 'Name'),
               ),
@@ -396,7 +396,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
               TextField(
                 controller: _openingCtrl,
                 keyboardType: TextInputType.number,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                   labelText: _ru ? 'Начальный остаток' : 'Opening balance',
                   helperText: _ru
@@ -498,13 +498,13 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                       ),
                       child: Text(_ru ? 'Удалить' : 'Delete',
                           style:
-                              const TextStyle(color: AppTheme.accentRed)),
+                              TextStyle(color: AppTheme.accentRed)),
                     ),
                   const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(WesiLocale.get('cancel'),
-                        style: const TextStyle(color: AppTheme.textMuted)),
+                        style: TextStyle(color: AppTheme.textMuted)),
                   ),
                   const SizedBox(width: 8),
                   HoverButton(
