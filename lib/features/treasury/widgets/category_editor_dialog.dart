@@ -56,11 +56,11 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
         insetPadding:
             const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
         title: Text(WesiLocale.isRussian ? 'Переименовать' : 'Rename',
-            style: const TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
+            style: TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: TextField(
           controller: ctrl,
           autofocus: true,
-          style: const TextStyle(color: AppTheme.textPrimary),
+          style: TextStyle(color: AppTheme.textPrimary),
         ),
         actions: [
           TextButton(
@@ -113,7 +113,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
             Padding(
               padding: const EdgeInsets.fromLTRB(24, 22, 24, 4),
               child: Text(ru ? 'Категории' : 'Categories',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary)),
@@ -124,7 +124,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                 ru
                     ? 'Свой список для текущего языка интерфейса'
                     : 'Your own list for the current interface language',
-                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
             ),
             Flexible(
@@ -134,7 +134,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                     .map((c) => ListTile(
                           dense: true,
                           title: Text(c,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 14,
                                   color: AppTheme.textPrimary)),
                           trailing: Row(
@@ -164,12 +164,12 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                   Expanded(
                     child: TextField(
                       controller: _newCtrl,
-                      style: const TextStyle(color: AppTheme.textPrimary),
+                      style: TextStyle(color: AppTheme.textPrimary),
                       onSubmitted: (_) => _add(),
                       decoration: InputDecoration(
                         isDense: true,
                         hintText: ru ? 'Новая категория' : 'New category',
-                        hintStyle: const TextStyle(color: AppTheme.textMuted),
+                        hintStyle: TextStyle(color: AppTheme.textMuted),
                       ),
                     ),
                   ),
