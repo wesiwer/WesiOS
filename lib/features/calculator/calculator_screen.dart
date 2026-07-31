@@ -307,7 +307,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                           children: [
                             Text(
                               _expression,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 20, color: AppTheme.textSecondary),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -315,7 +315,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                             const SizedBox(height: 6),
                             Text(
                               _result,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 40,
                                 fontWeight: FontWeight.bold,
                                 color: AppTheme.textPrimary,
@@ -470,7 +470,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                               Expanded(
                                 child: Text(
                                   e.expression,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       fontSize: 12,
                                       color: AppTheme.textMuted),
                                   overflow: TextOverflow.ellipsis,
@@ -479,7 +479,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                               const SizedBox(width: 8),
                               Text(
                                 '= ${e.result}',
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 13,
                                     fontWeight: FontWeight.w700,
                                     color: AppTheme.textPrimary),
