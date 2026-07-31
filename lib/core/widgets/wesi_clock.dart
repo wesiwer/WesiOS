@@ -153,7 +153,7 @@ class _WesiClockState extends State<WesiClock> {
               const SizedBox(height: 2),
               Text(
                 date,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 11,
                   color: AppTheme.textSecondary,
                 ),
