@@ -11,6 +11,12 @@ name: Publish WesiOS Release
 #
 # Версия берётся из pubspec.yaml — единственного источника правды, чтобы
 # манифест не разошёлся с тем, что реально внутри сборки.
+#
+# Android подписывается постоянным release-ключом из GitHub Secrets:
+#   ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,
+#   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
+# Без них сборка падает — лучше явный сбой, чем debug-подпись, из-за
+# которой обновление на телефоне отказывается ставиться.
 
 on:
   workflow_dispatch:
@@ -148,12 +154,30 @@ jobs:
             "configuration_version": "1"
           }' > android/app/google-services.json
 
+      - name: Decode release keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
+            echo "::error::Секрет ANDROID_KEYSTORE_BASE64 не задан."
+            echo "Добавь в Settings → Secrets and variables → Actions:"
+            echo "  ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD,"
+            echo "  ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD"
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/wesios-release.jks"
+          echo "KEYSTORE_PATH=$RUNNER_TEMP/wesios-release.jks" >> "$GITHUB_ENV"
+
       - name: Setup Android NDK
         uses: android-actions/setup-android@v3
 
-      - name: Build APK
+      - name: Build signed APK
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false'
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build apk --release
 
       - name: Rename APK

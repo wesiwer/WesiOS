@@ -23,6 +23,20 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// Подпись релиза. В CI workflow кладёт keystore во временный файл и
+// выставляет KEYSTORE_PATH / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD.
+// Локально без этих переменных release остаётся на debug-ключе — удобно
+// для ручных сборок, но в Play/обновлениях нужен один постоянный ключ.
+def keystorePath = System.getenv("KEYSTORE_PATH")
+def keystorePassword = System.getenv("KEYSTORE_PASSWORD")
+def keyAlias = System.getenv("KEY_ALIAS")
+def keyPassword = System.getenv("KEY_PASSWORD")
+def hasReleaseKey = keystorePath != null &&
+        keystorePassword != null &&
+        keyAlias != null &&
+        keyPassword != null &&
+        file(keystorePath).exists()
+
 android {
     namespace "com.wesi.wesios"
     compileSdkVersion 35
@@ -50,9 +64,22 @@ android {
         versionName flutterVersionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            release {
+                storeFile file(keystorePath)
+                storePassword keystorePassword
+                keyAlias keyAlias
+                keyPassword keyPassword
+            }
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig signingConfigs.debug
+            signingConfig hasReleaseKey
+                    ? signingConfigs.release
+                    : signingConfigs.debug
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
