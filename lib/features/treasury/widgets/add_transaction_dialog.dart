@@ -98,7 +98,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(title,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary)),
@@ -138,7 +138,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                               value: c,
                               child: Text(c,
                                   overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                       color: AppTheme.textPrimary)),
                             ))
                         .toList(),
