@@ -484,7 +484,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text(tx.title,
-                style: const TextStyle(color: AppTheme.textPrimary)),
+                style: TextStyle(color: AppTheme.textPrimary)),
           ),
           Text(
             '${isIncome ? '+' : '-'}'
