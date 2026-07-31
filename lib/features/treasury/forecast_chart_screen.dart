@@ -302,7 +302,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 Text(
                   'insufficient_data'.w,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textPrimary),
@@ -311,7 +311,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 Text(
                   'insufficient_data_hint'.w,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13, color: AppTheme.textMuted),
                 ),
               ],
@@ -385,7 +385,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           ],
           const SizedBox(height: 16),
           Text('display_options'.w,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textSecondary)),
@@ -412,7 +412,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         ),
         child: Text(
           '${CurrencyService.symbol} ${_currency.toUpperCase()}',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
             color: AppTheme.accentOrange,
@@ -439,7 +439,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           const SizedBox(width: 10),
           Expanded(
             child: Text('what_if_active'.w,
-                style: const TextStyle(
+                style: TextStyle(
                     color: AppTheme.accentOrange,
                     fontSize: 13,
                     fontWeight: FontWeight.w600)),
@@ -450,7 +450,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               _loadData(full: false);
             },
             child: Text('what_if_reset'.w,
-                style: const TextStyle(
+                style: TextStyle(
                     color: AppTheme.accentOrange,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -487,7 +487,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('cash_gap_risk'.w,
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.accentRed,
                         fontSize: 14,
                         fontWeight: FontWeight.w700)),
@@ -496,7 +496,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                   'cash_gap_risk_detail'.w
                       .replaceAll('{days}', '$alertDay')
                       .replaceAll('{date}', dateLabel),
-                  style: const TextStyle(
+                  style: TextStyle(
                       color: AppTheme.textSecondary, fontSize: 12),
                 ),
               ],
@@ -664,7 +664,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         columns: [
           DataColumn(
               label: Text('day'.w,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11, color: AppTheme.textMuted))),
           for (final kind in active)
             DataColumn(
@@ -683,12 +683,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               '${date.month.toString().padLeft(2, '0')}';
           return DataRow(cells: [
             DataCell(Text(dateLabel,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 11, color: AppTheme.textSecondary))),
             for (final kind in active)
               DataCell(Text(
                 CurrencyService.format(_engineCache[kind]!.p50[i]),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 11, color: AppTheme.textPrimary),
               )),
           ]);
@@ -759,7 +759,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             Row(
               children: [
                 Text(label,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11, color: AppTheme.textMuted)),
                 const SizedBox(width: 4),
                 tip,
@@ -992,7 +992,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 showTitles: true,
                 reservedSize: 50,
                 getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.textMuted, fontSize: 10)),
               ),
             ),
@@ -1013,7 +1013,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                       : day;
                   return Text(
                     '${d.day}.${d.month}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.textMuted, fontSize: 9),
                   );
                 },
@@ -1248,7 +1248,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 showTitles: true,
                 reservedSize: 50,
                 getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.textMuted, fontSize: 10)),
               ),
             ),
@@ -1265,7 +1265,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                       top[i].key.length > 8
                           ? '${top[i].key.substring(0, 7)}…'
                           : top[i].key,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AppTheme.textMuted, fontSize: 9),
                     ),
                   );
@@ -1340,7 +1340,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 showTitles: true,
                 reservedSize: 50,
                 getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.textMuted, fontSize: 10)),
               ),
             ),
@@ -1354,7 +1354,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                       days: _historyWindowDays -
                           v.toInt().clamp(0, _historyWindowDays)));
                   return Text('${d.day}.${d.month}',
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AppTheme.textMuted, fontSize: 9));
                 },
               ),
@@ -1411,7 +1411,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('weekly_activity_heatmap'.w,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textSecondary)),
@@ -1437,7 +1437,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                       reservedSize: 50,
                       getTitlesWidget: (v, _) => Text(
                           CurrencyService.format(v),
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: AppTheme.textMuted, fontSize: 10)),
                     ),
                   ),
@@ -1451,7 +1451,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                           return const SizedBox.shrink();
                         }
                         return Text(labels[i],
-                            style: const TextStyle(
+                            style: TextStyle(
                                 color: AppTheme.textMuted, fontSize: 10));
                       },
                     ),
@@ -1541,7 +1541,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text('category_breakdown'.w,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textPrimary)),
@@ -1552,7 +1552,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 children: [
                   Expanded(
                       child: Text(e.key,
-                          style: const TextStyle(
+                          style: TextStyle(
                               color: AppTheme.textSecondary))),
                   Text(CurrencyService.format(e.value.abs()),
                       style: TextStyle(
@@ -1576,7 +1576,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           WesiLocale.isRussian
               ? 'Аномалии (${_anomalies.length})'
               : 'Anomalies (${_anomalies.length})',
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w700,
               color: AppTheme.accentRed),
@@ -1584,7 +1584,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         const SizedBox(height: 8),
         ..._anomalies.map((a) => Text(
               '• ${a.title}: ${CurrencyService.format(a.amount)}',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13, color: AppTheme.textSecondary),
             )),
       ],
