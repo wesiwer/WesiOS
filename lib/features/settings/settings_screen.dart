@@ -152,7 +152,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   onPressed: () => Navigator.pushNamed(context, '/founder'),
                   child: Text(
                     WesiLocale.get('founder_story'),
-                    style: const TextStyle(color: AppTheme.accentOrange),
+                    style: TextStyle(color: AppTheme.accentOrange),
                   ),
                 ),
               ],
@@ -239,9 +239,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final ru = WesiLocale.isRussian;
     return ListTile(
       leading: Icon(icon, color: AppTheme.textMuted),
-      title: Text(title, style: const TextStyle(color: AppTheme.textMuted)),
+      title: Text(title, style: TextStyle(color: AppTheme.textMuted)),
       subtitle: Text(subtitle,
-          style: const TextStyle(color: AppTheme.textMuted, fontSize: 13)),
+          style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
       trailing: Container(
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
@@ -303,7 +303,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         backgroundColor: AppTheme.surface,
         title: Text(
           ru ? 'Удалить локальные данные?' : 'Delete local data?',
-          style: const TextStyle(color: AppTheme.textPrimary, fontSize: 17),
+          style: TextStyle(color: AppTheme.textPrimary, fontSize: 17),
         ),
         content: Text(
           ru
@@ -313,18 +313,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               : 'This deletes $count records — operations, tasks, accounts '
                   'and your articles. It cannot be undone. Settings, keys '
                   'and the Wesi Shield password stay.',
-          style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+          style: TextStyle(color: AppTheme.textSecondary, fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
             child: Text(WesiLocale.get('cancel'),
-                style: const TextStyle(color: AppTheme.textMuted)),
+                style: TextStyle(color: AppTheme.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             child: Text(ru ? 'Удалить' : 'Delete',
-                style: const TextStyle(color: AppTheme.accentRed)),
+                style: TextStyle(color: AppTheme.accentRed)),
           ),
         ],
       ),
