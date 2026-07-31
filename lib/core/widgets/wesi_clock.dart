@@ -137,38 +137,62 @@ class _WesiClockState extends State<WesiClock> {
             ),
           );
 
-    return GestureDetector(
-      onLongPress: _toggleStyle,
-      // Короткий тап по-прежнему открывает календарь (обрабатывает родитель).
-      behavior: HitTestBehavior.opaque,
-      child: Tooltip(
-        message: ru
-            ? 'Долгий тап — сменить стиль часов'
-            : 'Long-press to switch clock style',
-        waitDuration: const Duration(milliseconds: 600),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            clock,
-            const SizedBox(height: 2),
-            Text(
-              date,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppTheme.textSecondary,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // Часы и дата
+        GestureDetector(
+          onTap: () {}, // Родитель обработает тап
+          behavior: HitTestBehavior.opaque,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              clock,
+              const SizedBox(height: 2),
+              Text(
+                date,
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: AppTheme.textSecondary,
+                ),
               ),
-            ),
-            Text(
-              weekday,
-              style: TextStyle(
-                fontSize: 10,
-                color: AppTheme.textMuted.withOpacity(0.8),
+              Text(
+                weekday,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: AppTheme.textMuted.withOpacity(0.8),
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
+        const SizedBox(width: 8),
+        // Переключатель стиля часов
+        GestureDetector(
+          onTap: _toggleStyle,
+          child: Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              color: AppTheme.surface.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: AppTheme.glassBorder,
+                width: 1,
+              ),
+            ),
+            child: Icon(
+              _style == ClockStyle.digital
+                  ? Icons.access_time
+                  : Icons.timer,
+              size: 16,
+              color: AppTheme.accentOrange,
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
