@@ -62,8 +62,12 @@ void main() async {
 
   CurrencyService.loadPrivacyMode();
   ThemeNotifier.load();
-  // После темы: auto-режим читает ThemeNotifier.
   AppIconService.load();
+
+  // Auto-иконка: при смене темы переключаем activity-alias на Android.
+  ThemeNotifier.instance.addListener(() {
+    AppIconService.apply();
+  });
 
   ExchangeRateService.refresh();
   AppUpdateService.check();

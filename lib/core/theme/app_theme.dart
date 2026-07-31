@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
-import '../services/app_icon_service.dart';
-
 /// Theme mode enum
 enum AppThemeMode { dark, light }
 
@@ -11,6 +9,10 @@ enum AppThemeMode { dark, light }
 ///
 /// Выбор сохраняется в Hive (`wesios_settings` / `app_theme`) и
 /// восстанавливается при старте через [load].
+///
+/// Смену launcher-иконки (auto) подписывает `main.dart` через
+/// [ThemeNotifier.instance.addListener] → AppIconService.apply(),
+/// чтобы не плодить циклический import theme ↔ icon.
 class ThemeNotifier extends ValueNotifier<AppThemeMode> {
   ThemeNotifier._() : super(AppThemeMode.dark);
   static final ThemeNotifier instance = ThemeNotifier._();
@@ -33,8 +35,6 @@ class ThemeNotifier extends ValueNotifier<AppThemeMode> {
     value = mode;
     _persist(mode);
     AppTheme.applySystemOverlay();
-    // В режиме auto иконка на рабочем столе следует за темой.
-    AppIconService.apply();
   }
 
   /// Вызывать после открытия Hive-бокса, до первого кадра UI.
@@ -55,15 +55,12 @@ class ThemeNotifier extends ValueNotifier<AppThemeMode> {
   Future<void> _persist(AppThemeMode mode) async {
     try {
       await Hive.box(_boxName).put(_key, mode == AppThemeMode.light ? 'light' : 'dark');
-    } catch (_) {
-      // Режим всё равно работает до перезапуска.
-    }
+    } catch (_) {}
   }
 }
 
 /// AppTheme — unified color palette for both dark and light themes
 class AppTheme {
-  // ─── Dark Theme Colors ───
   static const Color _darkBackground = Color(0xFF09090B);
   static const Color _darkSurface = Color(0xFF18181B);
   static const Color _darkSurfaceLight = Color(0xFF27272A);
@@ -77,7 +74,6 @@ class AppTheme {
   static const Color _darkCarbonLight = Color(0xFF2A2A3A);
   static const Color _darkCarbonHighlight = Color(0xFF3A3A50);
 
-  // ─── Light Theme Colors ───
   static const Color _lightBackground = Color(0xFFF8F9FC);
   static const Color _lightSurface = Color(0xFFFFFFFF);
   static const Color _lightSurfaceLight = Color(0xFFEEF1F6);
@@ -91,7 +87,6 @@ class AppTheme {
   static const Color _lightCarbonLight = Color(0xFFF6F7FB);
   static const Color _lightCarbonHighlight = Color(0xFFFFFFFF);
 
-  // ─── Accent Colors ───
   static const Color accentOrange = Color(0xFFF97316);
   static const Color accentGreen = Color(0xFF84CC16);
   static const Color accentRed = Color(0xFFEF4444);
