@@ -107,7 +107,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
               child: SizedBox(
                 height: 40,
                 child: TextField(
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13, color: AppTheme.textPrimary),
                   onChanged: (v) {
                     _query = v;
@@ -120,7 +120,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     hintText: _ru
                         ? 'Поиск по заголовку, тексту и тегам'
                         : 'Search titles, text and tags',
-                    hintStyle: const TextStyle(
+                    hintStyle: TextStyle(
                         fontSize: 13, color: AppTheme.textMuted),
                     filled: true,
                     fillColor: AppTheme.surface.withOpacity(0.5),
@@ -211,7 +211,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                 _query.isEmpty
                     ? (_ru ? 'Здесь пока пусто' : 'Nothing here yet')
                     : (_ru ? 'Ничего не найдено' : 'Nothing found'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
               ),
               const SizedBox(height: 6),
@@ -222,7 +222,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     : 'Write down a playbook or a guide — something you would '
                         'otherwise have to reconstruct from memory.',
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
             ],
           ),
@@ -261,7 +261,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                         a.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontWeight: FontWeight.w700,
                             color: AppTheme.textPrimary),
                       ),
@@ -276,7 +276,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                         ),
                         child: Text(
                           _ru ? 'встроенная' : 'built-in',
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 9, color: AppTheme.textMuted),
                         ),
                       ),
@@ -299,7 +299,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   a.excerpt,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: AppTheme.textSecondary),
                 ),
                 if (a.tags.isNotEmpty) ...[
@@ -308,7 +308,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     spacing: 6,
                     children: a.tags
                         .map((t) => Text('#$t',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 10, color: AppTheme.textMuted)))
                         .toList(),
                   ),
@@ -378,7 +378,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: Text(_ru ? 'Удалить статью?' : 'Delete article?',
-            style: const TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
+            style: TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: Text(_article.title,
             style: TextStyle(color: AppTheme.textSecondary)),
         actions: [
@@ -441,7 +441,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
                 children: [
                   Text(
                     _article.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 22,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.textPrimary),
@@ -474,7 +474,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
         widgets.add(Padding(
           padding: const EdgeInsets.only(top: 14, bottom: 6),
           child: Text(line.substring(3),
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.accentOrange)),
@@ -485,7 +485,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
         widgets.add(Padding(
           padding: const EdgeInsets.only(top: 8, bottom: 8),
           child: Text(line.substring(2),
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 19,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.textPrimary)),
@@ -502,7 +502,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(_stripMarks(line.substring(2)),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         height: 1.5,
                         color: AppTheme.textSecondary)),
@@ -524,7 +524,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(_stripMarks(numbered.group(2)!),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13,
                         height: 1.5,
                         color: AppTheme.textSecondary)),
@@ -537,7 +537,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
       widgets.add(Padding(
         padding: const EdgeInsets.only(bottom: 6),
         child: Text(_stripMarks(line),
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 13, height: 1.55, color: AppTheme.textSecondary)),
       ));
     }
@@ -651,7 +651,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                 widget.initial == null
                     ? (_ru ? 'Новая статья' : 'New article')
                     : (_ru ? 'Статья' : 'Article'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
@@ -670,14 +670,14 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                 maxLines: 10,
                 minLines: 6,
                 style:
-                    const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+                    TextStyle(fontSize: 13, color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                   labelText: _ru ? 'Текст' : 'Body',
                   helperText: _ru
                       ? '# заголовок, ## подзаголовок, - список'
                       : '# heading, ## subheading, - list',
                   helperStyle:
-                      const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
               ),
               const SizedBox(height: 12),
@@ -692,7 +692,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
               const SizedBox(height: 16),
               Text(_ru ? 'Раздел' : 'Section',
                   style:
-                      const TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                      TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
