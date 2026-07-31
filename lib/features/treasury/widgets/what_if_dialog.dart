@@ -147,7 +147,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                   ),
                   Expanded(
                     child: Text('what_if_add_event'.w,
-                        style: const TextStyle(color: AppTheme.textPrimary)),
+                        style: TextStyle(color: AppTheme.textPrimary)),
                   ),
                 ],
               ),
@@ -155,7 +155,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                 const SizedBox(height: 8),
                 TextField(
                   controller: _titleCtrl,
-                  style: const TextStyle(color: AppTheme.textPrimary),
+                  style: TextStyle(color: AppTheme.textPrimary),
                   decoration: InputDecoration(
                       labelText: 'what_if_event_title'.w),
                 ),
@@ -166,7 +166,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                       child: TextField(
                         controller: _amountCtrl,
                         keyboardType: TextInputType.number,
-                        style: const TextStyle(color: AppTheme.textPrimary),
+                        style: TextStyle(color: AppTheme.textPrimary),
                         decoration: InputDecoration(
                           labelText: 'amount'.w,
                           prefixText: '${widget.symbol} ',
@@ -197,7 +197,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                           '${_eventDate.day.toString().padLeft(2, '0')}.'
                           '${_eventDate.month.toString().padLeft(2, '0')}.'
                           '${_eventDate.year}',
-                          style: const TextStyle(color: AppTheme.textPrimary),
+                          style: TextStyle(color: AppTheme.textPrimary),
                         ),
                       ],
                     ),
@@ -228,13 +228,13 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                   TextButton(
                     onPressed: _reset,
                     child: Text('what_if_reset'.w,
-                        style: const TextStyle(color: AppTheme.textMuted)),
+                        style: TextStyle(color: AppTheme.textMuted)),
                   ),
                   const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text('cancel'.w,
-                        style: const TextStyle(color: AppTheme.textMuted)),
+                        style: TextStyle(color: AppTheme.textMuted)),
                   ),
                   const SizedBox(width: 8),
                   HoverButton(
