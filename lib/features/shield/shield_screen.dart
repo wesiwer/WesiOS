@@ -644,7 +644,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                 obscureText: true,
                 onChanged: (_) => setState(() => _error = null),
                 onSubmitted: (_) => widget.confirmOnly ? _submit() : null,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                   labelText: _ru ? 'Пароль' : 'Password',
                   errorText: _error,
@@ -679,7 +679,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                   controller: _second,
                   obscureText: true,
                   onSubmitted: (_) => _submit(),
-                  style: const TextStyle(color: AppTheme.textPrimary),
+                  style: TextStyle(color: AppTheme.textPrimary),
                   decoration: InputDecoration(
                     labelText: _ru ? 'Повторите пароль' : 'Repeat password',
                   ),
@@ -691,7 +691,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(WesiLocale.get('cancel'),
-                        style: const TextStyle(color: AppTheme.textMuted)),
+                        style: TextStyle(color: AppTheme.textMuted)),
                   ),
                   const Spacer(),
                   HoverButton(
