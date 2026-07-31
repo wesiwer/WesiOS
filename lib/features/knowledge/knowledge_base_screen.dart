@@ -380,17 +380,17 @@ class _ArticleScreenState extends State<ArticleScreen> {
         title: Text(_ru ? 'Удалить статью?' : 'Delete article?',
             style: const TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: Text(_article.title,
-            style: const TextStyle(color: AppTheme.textSecondary)),
+            style: TextStyle(color: AppTheme.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text(WesiLocale.get('cancel'),
-                style: const TextStyle(color: AppTheme.textMuted)),
+                style: TextStyle(color: AppTheme.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text(_ru ? 'Удалить' : 'Delete',
-                style: const TextStyle(color: AppTheme.accentRed)),
+                style: TextStyle(color: AppTheme.accentRed)),
           ),
         ],
       ),
@@ -520,7 +520,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('${numbered.group(1)}.',
-                  style: const TextStyle(color: AppTheme.accentOrange)),
+                  style: TextStyle(color: AppTheme.accentOrange)),
               const SizedBox(width: 8),
               Expanded(
                 child: Text(_stripMarks(numbered.group(2)!),
@@ -660,7 +660,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
               TextField(
                 controller: _titleCtrl,
                 autofocus: true,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 decoration:
                     InputDecoration(labelText: _ru ? 'Заголовок' : 'Title'),
               ),
@@ -683,7 +683,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
               const SizedBox(height: 12),
               TextField(
                 controller: _tagsCtrl,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                   labelText:
                       _ru ? 'Теги через запятую' : 'Comma-separated tags',
@@ -733,7 +733,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(WesiLocale.get('cancel'),
-                        style: const TextStyle(color: AppTheme.textMuted)),
+                        style: TextStyle(color: AppTheme.textMuted)),
                   ),
                   const Spacer(),
                   HoverButton(
