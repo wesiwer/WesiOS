@@ -149,10 +149,10 @@ class _OperationsScreenState extends State<OperationsScreen> {
                   _applyFilters();
                 });
               },
-              style: const TextStyle(color: AppTheme.textPrimary),
+              style: TextStyle(color: AppTheme.textPrimary),
               decoration: InputDecoration(
                 hintText: WesiLocale.get('search_operations'),
-                hintStyle: const TextStyle(color: AppTheme.textMuted),
+                hintStyle: TextStyle(color: AppTheme.textMuted),
                 prefixIcon: const Icon(Icons.search, color: AppTheme.textMuted),
                 filled: true,
                 fillColor: AppTheme.surface.withOpacity(0.5),
@@ -201,7 +201,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
                 ? Center(
                     child: Text(
                       WesiLocale.get('no_transactions'),
-                      style: const TextStyle(color: AppTheme.textMuted),
+                      style: TextStyle(color: AppTheme.textMuted),
                     ),
                   )
                 : ListView(
@@ -311,18 +311,18 @@ class _OperationsScreenState extends State<OperationsScreen> {
           ru
               ? '«${tx.title}» будет удалена безвозвратно.'
               : '"${tx.title}" will be permanently removed.',
-          style: const TextStyle(color: AppTheme.textSecondary),
+          style: TextStyle(color: AppTheme.textSecondary),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text(WesiLocale.get('cancel'),
-                style: const TextStyle(color: AppTheme.textMuted)),
+                style: TextStyle(color: AppTheme.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text(ru ? 'Удалить' : 'Delete',
-                style: const TextStyle(color: AppTheme.accentRed)),
+                style: TextStyle(color: AppTheme.accentRed)),
           ),
         ],
       ),
