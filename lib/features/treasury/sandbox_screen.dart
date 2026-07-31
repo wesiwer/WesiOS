@@ -200,7 +200,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                           border: Border.all(color: AppTheme.glassBorder),
                         ),
                         child: Text('$_sym ${_currency.toUpperCase()}',
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.accentOrange)),
                       ),
@@ -241,7 +241,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 const SizedBox(height: 20),
                 Text(
                   '${WesiLocale.get('sandbox_transactions')} (${_transactions.length})',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary),
@@ -293,7 +293,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 const SizedBox(width: 6),
                 Text(
                   WesiLocale.get('sandbox_mode'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
                       color: AppTheme.accentOrange,
@@ -353,11 +353,11 @@ class _SandboxScreenState extends State<SandboxScreen> {
                               size: 22, color: AppTheme.accentOrange),
                           const SizedBox(height: 8),
                           Text(s.$2,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontWeight: FontWeight.w600,
                                   color: AppTheme.textPrimary)),
                           Text(s.$4,
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 10, color: AppTheme.textMuted)),
                         ],
                       ),
@@ -381,12 +381,12 @@ class _SandboxScreenState extends State<SandboxScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(WesiLocale.get('sandbox_balance'),
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13, color: AppTheme.textSecondary)),
           const SizedBox(height: 8),
           Text(
             CurrencyService.formatExact(_balance),
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 34,
                 fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary),
@@ -438,7 +438,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
             Text(value,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary)),
@@ -459,7 +459,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
           Icon(icon, color: color, size: 28),
           const SizedBox(height: 8),
           Text(label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12, color: AppTheme.textSecondary)),
         ],
       ),
