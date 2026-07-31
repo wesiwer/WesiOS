@@ -150,7 +150,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                     obscureText: true,
                     enabled: !blocked && !_busy,
                     onSubmitted: (_) => _submit(),
-                    style: const TextStyle(color: AppTheme.textPrimary),
+                    style: TextStyle(color: AppTheme.textPrimary),
                     decoration: InputDecoration(
                       labelText: _ru ? 'Пароль' : 'Password',
                       errorText: _error
@@ -197,7 +197,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                           size: 18, color: AppTheme.accentOrange),
                       label: Text(
                         _ru ? 'Отпечаток или лицо' : 'Fingerprint or face',
-                        style: const TextStyle(color: AppTheme.accentOrange),
+                        style: TextStyle(color: AppTheme.accentOrange),
                       ),
                     ),
                   ],
