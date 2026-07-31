@@ -104,7 +104,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
                   updateOnly
                       ? 'engine_update_banner_title'.w
                       : 'engine_install_banner_title'.w,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary),
@@ -122,7 +122,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
             updateOnly
                 ? 'engine_update_banner_hint'.w
                 : 'engine_install_banner_hint'.w,
-            style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
           ),
           const SizedBox(height: 10),
           Wrap(
@@ -173,7 +173,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
             const SizedBox(width: 8),
             Text(
               '$label · $stageLabel$pct',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12,
                   color: AppTheme.accentOrange,
                   fontWeight: FontWeight.w600),
