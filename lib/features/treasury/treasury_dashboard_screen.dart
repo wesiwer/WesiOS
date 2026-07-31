@@ -279,14 +279,14 @@ class TreasuryDashboardScreen extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     m.$1,
-                    style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),
                 ],
               ),
               const SizedBox(height: 12),
               Text(
                 m.$2,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w800,
                   color: AppTheme.textPrimary,
@@ -518,8 +518,8 @@ class TreasuryDashboardScreen extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      Expanded(flex: 2, child: Text('2026-07-${20 + i}', style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary))),
-                      Expanded(flex: 3, child: Text('Transaction ${i + 1}', style: const TextStyle(fontSize: 12, color: AppTheme.textPrimary))),
+                      Expanded(flex: 2, child: Text('2026-07-${20 + i}', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary))),
+                      Expanded(flex: 3, child: Text('Transaction ${i + 1}', style: TextStyle(fontSize: 12, color: AppTheme.textPrimary))),
                       Expanded(flex: 2, child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
@@ -528,7 +528,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
                         ),
                         child: Text(
                           ['Software', 'Marketing', 'Office', 'Salaries'][i],
-                          style: const TextStyle(fontSize: 10, color: AppTheme.accentOrange),
+                          style: TextStyle(fontSize: 10, color: AppTheme.accentOrange),
                         ),
                       )),
                       Expanded(child: Text(
@@ -597,7 +597,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
           const SizedBox(width: 10),
           Text(
             label,
-            style: const TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+            style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
           ),
         ],
       ),
@@ -736,12 +736,12 @@ class TreasuryDashboardScreen extends StatelessWidget {
         Expanded(
           child: Text(
             message,
-            style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+            style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
           ),
         ),
         Text(
           time,
-          style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+          style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
         ),
       ],
     );
@@ -763,7 +763,7 @@ class _LegendDot extends StatelessWidget {
           decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
         ),
         const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+        Text(label, style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
       ],
     );
   }
