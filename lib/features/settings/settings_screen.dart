@@ -24,166 +24,179 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
-    // Все строки через WesiLocale — после смены языка setState перерисует
     final ru = WesiLocale.isRussian;
-    return Scaffold(
-      backgroundColor: AppTheme.background,
-      body: ListView(
-        padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 16),
-        children: [
-          WesiTitle(WesiLocale.get('settings')),
-          const SizedBox(height: 24),
-          _section(WesiLocale.get('appearance')),
-          // Тема в приложении одна. Пункт со стрелкой обещал выбор,
-          // которого нет.
-          _plannedTile(
-            icon: Icons.dark_mode,
-            title: WesiLocale.get('theme'),
-            subtitle: WesiLocale.get('dark_monochrome'),
-          ),
-          _tile(
-            icon: Icons.language,
-            title: WesiLocale.get('language'),
-            subtitle: WesiLocale.isRussian ? 'Русский' : 'English',
-            onTap: _showLanguagePicker,
-          ),
-          const SizedBox(height: 24),
-          _section(WesiLocale.get('notifications')),
-          // Здесь стояло «включены» — про push и почту, которых в
-          // приложении нет вовсе. То, что действительно работает, — это
-          // колокольчик на главной, и ссылка ведёт именно туда.
-          _tile(
-            icon: Icons.notifications_active_outlined,
-            title: ru ? 'Уведомления в приложении' : 'In-app notifications',
-            subtitle: ru
-                ? 'Просрочки, сроки, списания — колокольчик на главной'
-                : 'Overdue, deadlines, charges — the bell on Home',
-            onTap: () => Navigator.pushNamed(context, '/home'),
-          ),
-          _plannedTile(
-            icon: Icons.notifications,
-            title: WesiLocale.get('push_notifications'),
-            subtitle: ru ? 'Нужен сервер' : 'Requires a server',
-          ),
-          _plannedTile(
-            icon: Icons.email,
-            title: WesiLocale.get('email_notifications'),
-            subtitle: ru ? 'Нужен сервер' : 'Requires a server',
-          ),
-          _plannedTile(
-            icon: Icons.telegram,
-            title: WesiLocale.get('telegram_bot'),
-            subtitle: ru ? 'Нужен сервер' : 'Requires a server',
-          ),
-          const SizedBox(height: 24),
-          _section(WesiLocale.get('privacy')),
-          // Переключатель раньше стоял мёртвым: value: false, onChanged
-          // пустой. Теперь он действительно прячет суммы — по всему
-          // приложению, потому что маскирование живёт в CurrencyService,
-          // а не в каждом экране по отдельности.
-          ValueListenableBuilder<bool>(
-            valueListenable: CurrencyService.privacyMode,
-            builder: (context, hidden, _) => _tile(
-              icon: hidden ? Icons.visibility_off : Icons.visibility,
-              title: WesiLocale.get('privacy_mode'),
-              subtitle: ru
-                  ? 'Суммы заменяются точками — для чужих глаз рядом'
-                  : 'Amounts show as dots — for eyes over your shoulder',
-              trailing: Switch(
-                value: hidden,
-                onChanged: CurrencyService.setPrivacyMode,
-                activeColor: AppTheme.accentOrange,
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          _section(WesiLocale.isRussian ? 'Обновление' : 'Updates'),
-          const GitHubAuthSection(),
-          const AppUpdateCard(),
-          const SizedBox(height: 8),
-          _section(WesiLocale.get('engine_settings_section')),
-          const ForecastEnginesSection(),
-          const SizedBox(height: 24),
-          _section(WesiLocale.get('about_app')),
-          GlassCard(
-            child: Column(
-              children: [
-                const Text(
-                  'WesiOS',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.primary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  WesiLocale.get('business_os'),
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: AppTheme.textSecondary,
-                    letterSpacing: 1,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: AppTheme.accentOrange.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Text(
-                    AppVersion.display,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: AppTheme.accentOrange,
-                      fontWeight: FontWeight.w600,
+    return ValueListenableBuilder<AppThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (context, mode, _) {
+        return Scaffold(
+          backgroundColor: AppTheme.background,
+          body: ListView(
+            padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 16),
+            children: [
+              WesiTitle(WesiLocale.get('settings')),
+              const SizedBox(height: 24),
+              _section(WesiLocale.get('appearance')),
+              ValueListenableBuilder<AppThemeMode>(
+                valueListenable: ThemeNotifier.instance,
+                builder: (context, themeMode, _) {
+                  final isDark = themeMode == AppThemeMode.dark;
+                  return _tile(
+                    icon: isDark ? Icons.dark_mode : Icons.light_mode,
+                    title: WesiLocale.get('theme'),
+                    subtitle: isDark
+                        ? WesiLocale.get('theme_dark')
+                        : WesiLocale.get('theme_light'),
+                    trailing: Switch(
+                      value: !isDark,
+                      onChanged: (light) {
+                        if (light) {
+                          ThemeNotifier.instance.setLight();
+                        } else {
+                          ThemeNotifier.instance.setDark();
+                        }
+                      },
                     ),
+                  );
+                },
+              ),
+              _tile(
+                icon: Icons.language,
+                title: WesiLocale.get('language'),
+                subtitle: WesiLocale.isRussian ? 'Русский' : 'English',
+                onTap: _showLanguagePicker,
+              ),
+              const SizedBox(height: 24),
+              _section(WesiLocale.get('notifications')),
+              _tile(
+                icon: Icons.notifications_active_outlined,
+                title: ru ? 'Уведомления в приложении' : 'In-app notifications',
+                subtitle: ru
+                    ? 'Просрочки, сроки, списания — колокольчик на главной'
+                    : 'Overdue, deadlines, charges — the bell on Home',
+                onTap: () => Navigator.pushNamed(context, '/home'),
+              ),
+              _plannedTile(
+                icon: Icons.notifications,
+                title: WesiLocale.get('push_notifications'),
+                subtitle: ru ? 'Нужен сервер' : 'Requires a server',
+              ),
+              _plannedTile(
+                icon: Icons.email,
+                title: WesiLocale.get('email_notifications'),
+                subtitle: ru ? 'Нужен сервер' : 'Requires a server',
+              ),
+              _plannedTile(
+                icon: Icons.telegram,
+                title: WesiLocale.get('telegram_bot'),
+                subtitle: ru ? 'Нужен сервер' : 'Requires a server',
+              ),
+              const SizedBox(height: 24),
+              _section(WesiLocale.get('privacy')),
+              ValueListenableBuilder<bool>(
+                valueListenable: CurrencyService.privacyMode,
+                builder: (context, hidden, _) => _tile(
+                  icon: hidden ? Icons.visibility_off : Icons.visibility,
+                  title: WesiLocale.get('privacy_mode'),
+                  subtitle: ru
+                      ? 'Суммы заменяются точками — для чужих глаз рядом'
+                      : 'Amounts show as dots — for eyes over your shoulder',
+                  trailing: Switch(
+                    value: hidden,
+                    onChanged: CurrencyService.setPrivacyMode,
                   ),
                 ),
-                const SizedBox(height: 12),
-                Text(
-                  WesiLocale.get('created_by'),
-                  style: TextStyle(
-                      fontSize: 13, color: AppTheme.textMuted),
+              ),
+              const SizedBox(height: 24),
+              _section(WesiLocale.isRussian ? 'Обновление' : 'Updates'),
+              const GitHubAuthSection(),
+              const AppUpdateCard(),
+              const SizedBox(height: 8),
+              _section(WesiLocale.get('engine_settings_section')),
+              const ForecastEnginesSection(),
+              const SizedBox(height: 24),
+              _section(WesiLocale.get('about_app')),
+              GlassCard(
+                child: Column(
+                  children: [
+                    Text(
+                      'WesiOS',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.textPrimary,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      WesiLocale.get('business_os'),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: AppTheme.textSecondary,
+                        letterSpacing: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accent.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        AppVersion.display,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: AppTheme.accent,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      WesiLocale.get('created_by'),
+                      style: TextStyle(
+                          fontSize: 13, color: AppTheme.textMuted),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          Navigator.pushNamed(context, '/founder'),
+                      child: Text(
+                        WesiLocale.get('founder_story'),
+                        style: TextStyle(color: AppTheme.accent),
+                      ),
+                    ),
+                  ],
                 ),
-                TextButton(
-                  onPressed: () => Navigator.pushNamed(context, '/founder'),
-                  child: Text(
-                    WesiLocale.get('founder_story'),
-                    style: TextStyle(color: AppTheme.accentOrange),
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 24),
+              _section(WesiLocale.get('data')),
+              _tile(
+                icon: Icons.key,
+                title: WesiLocale.get('firebase_config'),
+                subtitle: WesiLocale.get('change_access_keys'),
+                onTap: () => Navigator.pushNamed(context, '/profile'),
+              ),
+              _tile(
+                icon: Icons.backup,
+                title: WesiLocale.get('export_backup'),
+                subtitle: ru
+                    ? 'JSON: операции, задачи, счета и ваши статьи'
+                    : 'JSON: operations, tasks, accounts and your articles',
+                onTap: _exportBackup,
+              ),
+              _tile(
+                icon: Icons.delete_forever,
+                title: WesiLocale.get('clear_cache'),
+                subtitle: WesiLocale.get('delete_local_data'),
+                onTap: _clearLocalData,
+                textColor: AppTheme.accentRed,
+              ),
+              const SizedBox(height: 32),
+            ],
           ),
-          const SizedBox(height: 24),
-          _section(WesiLocale.get('data')),
-          _tile(
-            icon: Icons.key,
-            title: WesiLocale.get('firebase_config'),
-            subtitle: WesiLocale.get('change_access_keys'),
-            onTap: () => Navigator.pushNamed(context, '/profile'),
-          ),
-          _tile(
-            icon: Icons.backup,
-            title: WesiLocale.get('export_backup'),
-            subtitle: ru
-                ? 'JSON: операции, задачи, счета и ваши статьи'
-                : 'JSON: operations, tasks, accounts and your articles',
-            onTap: _exportBackup,
-          ),
-          _tile(
-            icon: Icons.delete_forever,
-            title: WesiLocale.get('clear_cache'),
-            subtitle: WesiLocale.get('delete_local_data'),
-            onTap: _clearLocalData,
-            textColor: AppTheme.accentRed,
-          ),
-          const SizedBox(height: 32),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -211,7 +224,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Color? textColor,
   }) {
     return ListTile(
-      leading: Icon(icon, color: AppTheme.accentOrange),
+      leading: Icon(icon, color: AppTheme.accent),
       title: Text(title,
           style: TextStyle(color: textColor ?? AppTheme.textPrimary)),
       subtitle: Text(subtitle,
@@ -219,18 +232,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: (textColor ?? AppTheme.textMuted).withOpacity(0.8),
               fontSize: 13)),
       trailing: trailing ??
-          const Icon(Icons.arrow_forward_ios,
-              size: 14, color: AppTheme.textMuted),
+          Icon(Icons.arrow_forward_ios, size: 14, color: AppTheme.textMuted),
       onTap: onTap,
     );
   }
 
-  /// Пункт, которого пока нет.
-  ///
-  /// Стрелка справа обещает, что по нажатию что-то откроется. Раньше такие
-  /// пункты нажимались и молчали, а два из них ещё и писали «включены» —
-  /// про то, чего в приложении нет вовсе. Здесь вместо стрелки честная
-  /// пометка, и нажимать нечего.
   Widget _plannedTile({
     required IconData icon,
     required String title,
@@ -262,9 +268,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       final result = await BackupService.export();
       if (!mounted) return;
-      // Файл во временном каталоге: системное «поделиться» — единственный
-      // способ, работающий и на Android, и на десктопе без отдельного
-      // диалога сохранения под каждую платформу.
       await Share.shareXFiles(
         [XFile(result.path)],
         subject: 'WesiOS backup',
@@ -332,12 +335,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed != true) return;
 
     await BackupService.clearLocalData();
-    // Экраны, которые слушают revision, перечитают пустые данные сами.
     TreasuryService.revision.value++;
     TaskService.revision.value++;
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(ru ? 'Локальные данные удалены' : 'Local data deleted')),
+      SnackBar(
+          content:
+              Text(ru ? 'Локальные данные удалены' : 'Local data deleted')),
     );
   }
 
@@ -364,10 +368,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               ListTile(
                 leading: const Text('🇷🇺', style: TextStyle(fontSize: 24)),
-                title: const Text('Русский',
+                title: Text('Русский',
                     style: TextStyle(color: AppTheme.textPrimary)),
                 trailing: WesiLocale.isRussian
-                    ? const Icon(Icons.check, color: AppTheme.accentOrange)
+                    ? Icon(Icons.check, color: AppTheme.accent)
                     : null,
                 onTap: () async {
                   final nav = Navigator.of(ctx);
@@ -379,10 +383,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               ListTile(
                 leading: const Text('🇬🇧', style: TextStyle(fontSize: 24)),
-                title: const Text('English',
+                title: Text('English',
                     style: TextStyle(color: AppTheme.textPrimary)),
                 trailing: WesiLocale.isEnglish
-                    ? const Icon(Icons.check, color: AppTheme.accentOrange)
+                    ? Icon(Icons.check, color: AppTheme.accent)
                     : null,
                 onTap: () async {
                   final nav = Navigator.of(ctx);

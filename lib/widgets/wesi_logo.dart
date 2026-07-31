@@ -35,7 +35,7 @@ class WesiLogo extends StatelessWidget {
                       : [
                           const Color(0xFFE8EEF8),
                           const Color(0xFFD6E2F5),
-                          const Color(0xFF monochrom e),
+                          const Color(0xFFC5D4ED),
                         ],
                 ),
                 border: Border.all(
