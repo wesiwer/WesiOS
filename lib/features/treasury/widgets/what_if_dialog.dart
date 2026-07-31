@@ -127,7 +127,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
             children: [
               Text(
                 'what_if'.w,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
@@ -135,7 +135,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
               const SizedBox(height: 6),
               Text(
                 'what_if_hint'.w,
-                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
               const SizedBox(height: 20),
               Row(
@@ -293,7 +293,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
           children: [
             Expanded(
               child: Text(label,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13, color: AppTheme.textSecondary)),
             ),
             Text(pctLabel,
