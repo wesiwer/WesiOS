@@ -25,17 +25,18 @@ if (flutterVersionName == null) {
 
 // Подпись релиза. В CI workflow кладёт keystore во временный файл и
 // выставляет KEYSTORE_PATH / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD.
-// Локально без этих переменных release остаётся на debug-ключе — удобно
-// для ручных сборок, но в Play/обновлениях нужен один постоянный ключ.
-def keystorePath = System.getenv("KEYSTORE_PATH")
-def keystorePassword = System.getenv("KEYSTORE_PASSWORD")
-def keyAlias = System.getenv("KEY_ALIAS")
-def keyPassword = System.getenv("KEY_PASSWORD")
-def hasReleaseKey = keystorePath != null &&
-        keystorePassword != null &&
-        keyAlias != null &&
-        keyPassword != null &&
-        file(keystorePath).exists()
+// Имена локальных переменных намеренно НЕ совпадают с keyAlias/keyPassword —
+// иначе Groovy считает вызов `keyAlias keyAlias` вызовом String.call() и
+// сборка падает с «No signature of method: java.lang.String.call()».
+def ksPath = System.getenv("KEYSTORE_PATH")
+def ksStorePassword = System.getenv("KEYSTORE_PASSWORD")
+def ksAlias = System.getenv("KEY_ALIAS")
+def ksKeyPassword = System.getenv("KEY_PASSWORD")
+def hasReleaseKey = ksPath != null &&
+        ksStorePassword != null &&
+        ksAlias != null &&
+        ksKeyPassword != null &&
+        file(ksPath).exists()
 
 android {
     namespace "com.wesi.wesios"
@@ -67,10 +68,10 @@ android {
     signingConfigs {
         if (hasReleaseKey) {
             release {
-                storeFile file(keystorePath)
-                storePassword keystorePassword
-                keyAlias keyAlias
-                keyPassword keyPassword
+                storeFile file(ksPath)
+                storePassword ksStorePassword
+                keyAlias ksAlias
+                keyPassword ksKeyPassword
             }
         }
     }
