@@ -176,7 +176,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                   ),
                   child: Text(
                     '$_sym ${_currency.toUpperCase()}',
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.accentOrange,
@@ -238,7 +238,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 Expanded(
                   child: Text(
                     WesiLocale.get('forecast_p10_p50_p90'),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary),
@@ -261,7 +261,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 Expanded(
                   child: Text(
                     WesiLocale.get('wesi_sandbox_title'),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary),
@@ -277,7 +277,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             children: [
               Text(
                 WesiLocale.get('recent_transactions'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
@@ -287,7 +287,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 onTap: () => Navigator.pushNamed(context, '/treasury/operations'),
                 child: Text(
                   WesiLocale.isRussian ? 'Все операции →' : 'All operations →',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 13,
                     color: AppTheme.accentOrange,
                     fontWeight: FontWeight.w600,
@@ -316,12 +316,12 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(WesiLocale.get('current_balance'),
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13, color: AppTheme.textSecondary)),
           const SizedBox(height: 12),
           Text(
             '$_sym${shown.toStringAsFixed(2)}',
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 36,
               fontWeight: FontWeight.w800,
               color: AppTheme.textPrimary,
@@ -375,7 +375,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 overflow: TextOverflow.ellipsis),
             const SizedBox(height: 2),
             Text(value,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary)),
@@ -426,7 +426,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           Icon(icon, color: color, size: 28),
           const SizedBox(height: 8),
           Text(label,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12, color: AppTheme.textSecondary)),
         ],
       ),
@@ -453,10 +453,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(tx.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 14, color: AppTheme.textPrimary)),
                 Text(tx.category ?? WesiLocale.get('uncategorized'),
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11, color: AppTheme.textMuted)),
               ],
             ),
