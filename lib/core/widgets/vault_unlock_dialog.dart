@@ -134,7 +134,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                       widget.setupMode
                           ? (ru ? 'Создайте пароль' : 'Create a password')
                           : (ru ? 'Введите пароль' : 'Enter password'),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.textPrimary),
@@ -151,7 +151,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                     : (ru
                         ? 'Ключи Firebase защищены паролем.'
                         : 'Firebase keys are password protected.'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12, color: AppTheme.textMuted, height: 1.4),
               ),
               const SizedBox(height: 18),
@@ -187,7 +187,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
               if (_error != null) ...[
                 const SizedBox(height: 10),
                 Text(_error!,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: AppTheme.accentRed)),
               ],
               if (!widget.setupMode && _bioAvailable) ...[
@@ -217,7 +217,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                       widget.setupMode
                           ? (ru ? 'Установить' : 'Set')
                           : (ru ? 'Открыть' : 'Unlock'),
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AppTheme.accentOrange,
                           fontWeight: FontWeight.w700),
                     ),
