@@ -591,7 +591,7 @@ class _KeysScreenState extends State<KeysScreen> {
           controller: ctrl,
           autofocus: true,
           obscureText: obscure,
-          style: const TextStyle(color: AppTheme.textPrimary),
+          style: TextStyle(color: AppTheme.textPrimary),
           decoration: InputDecoration(hintText: hint),
           onSubmitted: (v) => Navigator.pop(ctx, v),
         ),
@@ -599,12 +599,12 @@ class _KeysScreenState extends State<KeysScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx),
             child: Text(WesiLocale.get('cancel'),
-                style: const TextStyle(color: AppTheme.textMuted)),
+                style: TextStyle(color: AppTheme.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
             child: Text(WesiLocale.get('save'),
-                style: const TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accentOrange)),
           ),
         ],
       ),
