@@ -286,7 +286,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                   onPressed: () => _skip(release.version),
                   child: Text(
                     ru ? 'Пропустить' : 'Skip',
-                    style: const TextStyle(color: AppTheme.textMuted),
+                    style: TextStyle(color: AppTheme.textMuted),
                   ),
                 ),
               ],
