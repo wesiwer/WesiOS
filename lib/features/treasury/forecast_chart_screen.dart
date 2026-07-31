@@ -72,7 +72,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   /// Фон графика — сплошной цвет, каким контейнер реально рендерится
   /// (surface@0.4 поверх background). Нужен, чтобы «стереть» лишнюю заливку
   /// под P10 и получить полосу ровно между P10 и P90, а не до низа графика.
-  static final Color _chartBg = Color.alphaBlend(
+  static Color get _chartBg => Color.alphaBlend(
     AppTheme.surface.withOpacity(0.4),
     AppTheme.background,
   );
@@ -142,8 +142,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         p10: runningBalance,
         p50: runningBalance,
         p90: runningBalance,
-        actual: runningBalance,
         isForecast: false,
+        actual: runningBalance,
       ));
     }
 
@@ -278,7 +278,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         backgroundColor: AppTheme.background,
         body: Center(
           child: CircularProgressIndicator(
-              color: AppTheme.accentOrange.withOpacity(0.5)),
+              color: AppTheme.accent.withOpacity(0.5)),
         ),
       );
     }
@@ -336,7 +336,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         actions: [
           IconButton(
             icon: Icon(Icons.alt_route,
-                color: _whatIf.isEmpty ? null : AppTheme.accentOrange),
+                color: _whatIf.isEmpty ? null : AppTheme.accent),
             tooltip: 'what_if'.w,
             onPressed: _openWhatIf,
           ),
@@ -415,7 +415,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
-            color: AppTheme.accentOrange,
+            color: AppTheme.accent,
           ),
         ),
       ),
@@ -429,18 +429,18 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        color: AppTheme.accentOrange.withOpacity(0.12),
+        color: AppTheme.accent.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.accentOrange.withOpacity(0.4)),
+        border: Border.all(color: AppTheme.accent.withOpacity(0.4)),
       ),
       child: Row(
         children: [
-          const Icon(Icons.alt_route, size: 18, color: AppTheme.accentOrange),
+          Icon(Icons.alt_route, size: 18, color: AppTheme.accent),
           const SizedBox(width: 10),
           Expanded(
             child: Text('what_if_active'.w,
                 style: TextStyle(
-                    color: AppTheme.accentOrange,
+                    color: AppTheme.accent,
                     fontSize: 13,
                     fontWeight: FontWeight.w600)),
           ),
@@ -451,7 +451,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             },
             child: Text('what_if_reset'.w,
                 style: TextStyle(
-                    color: AppTheme.accentOrange,
+                    color: AppTheme.accent,
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
                     decoration: TextDecoration.underline)),
@@ -703,7 +703,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         _stat(
           'P50',
           last != null ? CurrencyService.format(last.p50) : '—',
-          AppTheme.accentOrange,
+          AppTheme.accent,
           Tooltip(
             message: WesiLocale.isRussian
                 ? 'P50 — медианный сценарий (50% вероятность)'
@@ -845,12 +845,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: selected
-              ? AppTheme.accentOrange.withOpacity(0.2)
+              ? AppTheme.accent.withOpacity(0.2)
               : AppTheme.surface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
               color: selected
-                  ? AppTheme.accentOrange.withOpacity(0.5)
+                  ? AppTheme.accent.withOpacity(0.5)
                   : AppTheme.glassBorder),
         ),
         child: Row(
@@ -860,7 +860,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               Icon(icon,
                   size: 14,
                   color:
-                      selected ? AppTheme.accentOrange : AppTheme.textSecondary),
+                      selected ? AppTheme.accent : AppTheme.textSecondary),
               const SizedBox(width: 6),
             ],
             Text(
@@ -869,7 +869,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
                 color:
-                    selected ? AppTheme.accentOrange : AppTheme.textSecondary,
+                    selected ? AppTheme.accent : AppTheme.textSecondary,
               ),
             ),
           ],
@@ -910,14 +910,13 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               start: start, end: start.add(Duration(days: _forecastDays))),
       locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
       builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.dark(
-            primary: AppTheme.accentOrange,
-            onPrimary: AppTheme.background,
+        data: AppTheme.themeData.copyWith(
+          colorScheme: AppTheme.themeData.colorScheme.copyWith(
+            primary: AppTheme.accent,
+            onPrimary: Colors.white,
             surface: AppTheme.surface,
             onSurface: AppTheme.textPrimary,
           ),
-          scaffoldBackgroundColor: AppTheme.background,
         ),
         child: child!,
       ),
@@ -946,7 +945,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     final singleResult =
         singleEngine != null ? _engineCache[singleEngine] : null;
     final singleColor =
-        singleEngine != null ? _engineColor[singleEngine]! : AppTheme.accentOrange;
+        singleEngine != null ? _engineColor[singleEngine]! : AppTheme.accent;
 
     final allY = <double>[
       for (final d in history) ...[d.p10, d.p50, d.p90],
@@ -1130,7 +1129,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                   .map((d) => FlSpot(d.day.toDouble(), d.actual ?? d.p50))
                   .toList(),
               isCurved: true,
-              color: Colors.white.withOpacity(0.75),
+              color: AppTheme.textPrimary.withOpacity(0.75),
               barWidth: 2,
               dotData: const FlDotData(show: false),
             ),
@@ -1159,12 +1158,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: sel
-                  ? AppTheme.accentOrange.withOpacity(0.2)
+                  ? AppTheme.accent.withOpacity(0.2)
                   : AppTheme.surface,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                   color: sel
-                      ? AppTheme.accentOrange.withOpacity(0.5)
+                      ? AppTheme.accent.withOpacity(0.5)
                       : AppTheme.glassBorder),
             ),
             child: Text(
@@ -1172,7 +1171,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
-                color: sel ? AppTheme.accentOrange : AppTheme.textSecondary,
+                color: sel ? AppTheme.accent : AppTheme.textSecondary,
               ),
             ),
           ),
@@ -1371,12 +1370,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             LineChartBarData(
               spots: spots,
               isCurved: true,
-              color: AppTheme.accentOrange,
+              color: AppTheme.accent,
               barWidth: 2,
               dotData: const FlDotData(show: false),
               belowBarData: BarAreaData(
                 show: true,
-                color: AppTheme.accentOrange.withOpacity(0.10),
+                color: AppTheme.accent.withOpacity(0.10),
               ),
             ),
           ],
@@ -1515,19 +1514,19 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: value
-              ? AppTheme.accentOrange.withOpacity(0.15)
+              ? AppTheme.accent.withOpacity(0.15)
               : AppTheme.surface,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
               color: value
-                  ? AppTheme.accentOrange.withOpacity(0.4)
+                  ? AppTheme.accent.withOpacity(0.4)
                   : AppTheme.glassBorder),
         ),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 12,
-            color: value ? AppTheme.accentOrange : AppTheme.textSecondary,
+            color: value ? AppTheme.accent : AppTheme.textSecondary,
           ),
         ),
       ),
