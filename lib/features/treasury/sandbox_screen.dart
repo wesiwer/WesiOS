@@ -257,21 +257,27 @@ class _SandboxScreenState extends State<SandboxScreen> {
     );
   }
 
-  /// Баннер БЕЗ слова «Сценарий:»
+  /// Баннер БЕЗ слова «Сценарий:» — градиент адаптируется под тему.
   Widget _banner() {
     final parts = <String>[
       if (_currentScenario.isNotEmpty) _currentScenario,
       WesiLocale.get('data_isolated'),
       WesiLocale.get('no_impact'),
     ];
+    final isDark = ThemeNotifier.instance.isDark;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [
-            const Color(0xFF4D3D00).withOpacity(0.8),
-            const Color(0xFF2D1F00).withOpacity(0.6)
-          ],
+          colors: isDark
+              ? [
+                  const Color(0xFF4D3D00).withOpacity(0.8),
+                  const Color(0xFF2D1F00).withOpacity(0.6),
+                ]
+              : [
+                  AppTheme.accentOrange.withOpacity(0.18),
+                  AppTheme.accentOrange.withOpacity(0.08),
+                ],
         ),
         border: Border(
             bottom: BorderSide(color: AppTheme.accentOrange.withOpacity(0.3))),
