@@ -122,7 +122,7 @@ class _HomeScreenState extends State<HomeScreen>
           backgroundColor: Colors.transparent,
           elevation: 0,
           type: BottomNavigationBarType.fixed,
-          selectedItemColor: AppTheme.accentOrange,
+          selectedItemColor: AppTheme.accent,
           unselectedItemColor: AppTheme.textMuted,
           // Пять вкладок делят ширину телефона поровну, и «Аналитика» при
           // системном размере шрифта в подпись не влезала — обрезалась в
@@ -434,8 +434,10 @@ class _DashboardTabState extends State<_DashboardTab> {
             Text(label, style: TextStyle(fontSize: 11, color: color)),
             const SizedBox(height: 4),
             Text(amount,
-                style: const TextStyle(
-                    fontSize: 14, fontWeight: FontWeight.w600)),
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary)),
           ],
         ),
       ),
@@ -485,16 +487,16 @@ class _QuickState extends State<_Quick> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: _f
-                  ? AppTheme.accentOrange
+                  ? AppTheme.accent
                   : _h
-                      ? AppTheme.accentOrange.withOpacity(0.5)
+                      ? AppTheme.accent.withOpacity(0.5)
                       : AppTheme.glassBorder,
               width: _f ? 2 : 1,
             ),
           ),
           child: Column(
             children: [
-              Icon(widget.icon, color: AppTheme.accentOrange, size: 28),
+              Icon(widget.icon, color: AppTheme.accent, size: 28),
               const SizedBox(height: 8),
               Text(
                 widget.label,
@@ -540,7 +542,7 @@ class _HoverIconButtonState extends State<_HoverIconButton> {
           ),
           child: Icon(
             widget.icon,
-            color: _h ? AppTheme.accentOrange : AppTheme.textPrimary,
+            color: _h ? AppTheme.accent : AppTheme.textPrimary,
             size: 24,
           ),
         ),
@@ -624,7 +626,7 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: _h
-                  ? AppTheme.accentOrange.withOpacity(0.4)
+                  ? AppTheme.accent.withOpacity(0.4)
                   : Colors.transparent,
             ),
           ),
