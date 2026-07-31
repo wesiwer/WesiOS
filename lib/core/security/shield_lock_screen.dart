@@ -121,7 +121,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                   const SizedBox(height: 18),
                   Text(
                     _ru ? 'Wesi Shield' : 'Wesi Shield',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                         color: AppTheme.textPrimary),
@@ -207,7 +207,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                       _ru
                           ? 'Неудачных попыток: $fails'
                           : 'Failed attempts: $fails',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 11, color: AppTheme.accentRed),
                     ),
                   ],
@@ -220,7 +220,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                           : 'Data is wiped after '
                               '${ShieldService.wipeAfterAttempts} failed attempts',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 11, color: AppTheme.accentRed),
                     ),
                   ],
