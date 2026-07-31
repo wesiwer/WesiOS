@@ -139,7 +139,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
                     size: 16, color: AppTheme.accentOrange),
                 label: Text(
                   ru ? 'Создать первую задачу' : 'Create the first task',
-                  style: const TextStyle(color: AppTheme.accentOrange),
+                  style: TextStyle(color: AppTheme.accentOrange),
                 ),
               ),
             ),
@@ -200,7 +200,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
         TextButton(
           onPressed: onAll,
           child: Text(WesiLocale.get('all'),
-              style: const TextStyle(color: AppTheme.accentOrange)),
+              style: TextStyle(color: AppTheme.accentOrange)),
         ),
       ],
     );
