@@ -56,7 +56,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
                   child: Text(
                     text,
                     key: ValueKey(text),
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       height: 1.45,
                       color: AppTheme.textPrimary,
@@ -70,7 +70,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
                   const SizedBox(height: 6),
                   Text(
                     '— ${quote.author}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: AppTheme.textMuted),
                   ),
                 ],
