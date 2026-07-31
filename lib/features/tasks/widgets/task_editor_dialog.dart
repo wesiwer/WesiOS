@@ -153,7 +153,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                 widget.initial == null
                     ? (ru ? 'Новая задача' : 'New task')
                     : (ru ? 'Редактировать задачу' : 'Edit task'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
@@ -176,7 +176,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
               ),
               const SizedBox(height: 16),
               Text(ru ? 'Приоритет' : 'Priority',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Wrap(
@@ -213,7 +213,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
               ),
               const SizedBox(height: 16),
               Text(ru ? 'Колонка' : 'Column',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Wrap(
@@ -272,7 +272,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                                 _dueDate == null
                                     ? (ru ? 'Срок не задан' : 'No due date')
                                     : TaskLabels.date(_dueDate!),
-                                style: const TextStyle(
+                                style: TextStyle(
                                     fontSize: 13,
                                     color: AppTheme.textPrimary),
                               ),
@@ -301,7 +301,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
               ),
               const SizedBox(height: 18),
               Text(ru ? 'Чек-лист' : 'Checklist',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 6),
               ...List.generate(_subtasks.length, (i) {
