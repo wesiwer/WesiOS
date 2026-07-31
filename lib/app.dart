@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/theme_transition.dart';
 import 'core/localization/wesi_locale.dart';
 import 'core/routes/app_router.dart';
 import 'core/security/shield_lock_screen.dart';
@@ -32,12 +33,15 @@ class WesiOSApp extends StatelessWidget {
       DeviceOrientation.landscapeRight,
     ]);
 
-    return MaterialApp(
-      title: 'WesiOS',
-      debugShowCheckedModeBanner: false,
-      theme: AppTheme.darkTheme,
-      darkTheme: AppTheme.darkTheme,
-      themeMode: ThemeMode.dark,
+    return ValueListenableBuilder<AppThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (context, mode, _) {
+        return MaterialApp(
+          title: 'WesiOS',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.themeData,
+          darkTheme: AppTheme.themeData,
+          themeMode: ThemeMode.light,
       // Без этих делегатов встроенные виджеты Material (календарь
       // showDatePicker, диалоги выбора времени и т.п.) остаются на английском
       // независимо от языка интерфейса — свой WesiLocale на них не влияет.
