@@ -254,13 +254,13 @@ class _OperationsScreenState extends State<OperationsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(tx.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                           color: AppTheme.textPrimary,
                           fontWeight: FontWeight.w600)),
                   const SizedBox(height: 4),
                   Text(
                     '${tx.category ?? WesiLocale.get('uncategorized')} · ${_formatDate(tx.date)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         color: AppTheme.textMuted, fontSize: 11),
                   ),
                 ],
@@ -305,7 +305,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
         insetPadding:
             const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
         title: Text(ru ? 'Удалить операцию?' : 'Delete operation?',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 17, color: AppTheme.textPrimary)),
         content: Text(
           ru
