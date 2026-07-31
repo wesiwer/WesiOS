@@ -162,7 +162,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
               TextField(
                 controller: _titleCtrl,
                 autofocus: true,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                     labelText: ru ? 'Название' : 'Title'),
               ),
@@ -170,7 +170,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
               TextField(
                 controller: _descCtrl,
                 maxLines: 3,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                     labelText: ru ? 'Описание' : 'Description'),
               ),
@@ -292,7 +292,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   Expanded(
                     child: TextField(
                       controller: _assigneeCtrl,
-                      style: const TextStyle(color: AppTheme.textPrimary),
+                      style: TextStyle(color: AppTheme.textPrimary),
                       decoration: InputDecoration(
                           labelText: ru ? 'Исполнитель' : 'Assignee'),
                     ),
@@ -340,12 +340,12 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   Expanded(
                     child: TextField(
                       controller: _subtaskCtrl,
-                      style: const TextStyle(color: AppTheme.textPrimary),
+                      style: TextStyle(color: AppTheme.textPrimary),
                       onSubmitted: (_) => _addSubtask(),
                       decoration: InputDecoration(
                         isDense: true,
                         hintText: ru ? 'Добавить пункт' : 'Add an item',
-                        hintStyle: const TextStyle(color: AppTheme.textMuted),
+                        hintStyle: TextStyle(color: AppTheme.textMuted),
                       ),
                     ),
                   ),
@@ -362,7 +362,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(WesiLocale.get('cancel'),
-                        style: const TextStyle(color: AppTheme.textMuted)),
+                        style: TextStyle(color: AppTheme.textMuted)),
                   ),
                   const Spacer(),
                   HoverButton(
