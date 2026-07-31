@@ -12,6 +12,7 @@ import 'features/treasury/models/account_model.dart';
 import 'features/knowledge/models/article_model.dart';
 import 'features/knowledge/services/knowledge_service.dart';
 import 'core/services/app_update_service.dart';
+import 'core/services/app_icon_service.dart';
 import 'core/theme/app_theme.dart';
 import 'app.dart';
 import 'core/services/currency_service.dart';
@@ -59,10 +60,10 @@ void main() async {
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
 
-  // Режим приватности и тема — до первого кадра, чтобы не мелькнули
-  // чужие суммы и тёмный фон поверх сохранённой светлой темы.
   CurrencyService.loadPrivacyMode();
   ThemeNotifier.load();
+  // После темы: auto-режим читает ThemeNotifier.
+  AppIconService.load();
 
   ExchangeRateService.refresh();
   AppUpdateService.check();

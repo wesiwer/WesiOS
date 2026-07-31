@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../services/app_icon_service.dart';
+
 /// Theme mode enum
 enum AppThemeMode { dark, light }
 
@@ -31,6 +33,8 @@ class ThemeNotifier extends ValueNotifier<AppThemeMode> {
     value = mode;
     _persist(mode);
     AppTheme.applySystemOverlay();
+    // В режиме auto иконка на рабочем столе следует за темой.
+    AppIconService.apply();
   }
 
   /// Вызывать после открытия Hive-бокса, до первого кадра UI.
@@ -93,12 +97,9 @@ class AppTheme {
   static const Color accentRed = Color(0xFFEF4444);
   static const Color lightAccentBlue = Color(0xFF3B82F6);
 
-  /// Цвет основного текста/заголовков (раньше был всегда белым — на light
-  /// балансы и «WesiOS» в About пропадали).
   static Color get primary =>
       ThemeNotifier.instance.isDark ? _darkTextPrimary : _lightTextPrimary;
 
-  // ─── Current Theme Colors (computed) ───
   static Color get background =>
       ThemeNotifier.instance.isDark ? _darkBackground : _lightBackground;
   static Color get surface =>
@@ -125,16 +126,13 @@ class AppTheme {
       ? _darkCarbonHighlight
       : _lightCarbonHighlight;
 
-  /// Акцент UI: оранжевый в dark, синий в light.
   static Color get accent =>
       ThemeNotifier.instance.isDark ? accentOrange : lightAccentBlue;
 
-  /// Основной штрих логотипа (W-mark): белый на тёмном, серо-синий на светлом.
   static Color get logoStroke => ThemeNotifier.instance.isDark
       ? const Color(0xFFFFFFFF)
-      : const Color(0xFF334155); // slate-700
+      : const Color(0xFF334155);
 
-  /// Акцентный штрих логотипа (восходящий «хвост»).
   static Color get logoAccent =>
       ThemeNotifier.instance.isDark ? accentOrange : lightAccentBlue;
 
