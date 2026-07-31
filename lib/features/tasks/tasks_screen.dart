@@ -94,17 +94,17 @@ class _TasksScreenState extends State<TasksScreen> {
         title: Text(ru ? 'Удалить задачу?' : 'Delete task?',
             style: const TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: Text('«${task.title}»',
-            style: const TextStyle(color: AppTheme.textSecondary)),
+            style: TextStyle(color: AppTheme.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
             child: Text(WesiLocale.get('cancel'),
-                style: const TextStyle(color: AppTheme.textMuted)),
+                style: TextStyle(color: AppTheme.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
             child: Text(ru ? 'Удалить' : 'Delete',
-                style: const TextStyle(color: AppTheme.accentRed)),
+                style: TextStyle(color: AppTheme.accentRed)),
           ),
         ],
       ),
@@ -232,7 +232,7 @@ class _TasksScreenState extends State<TasksScreen> {
             PopupMenuItem(
               value: null,
               child: Text(ru ? 'Любой приоритет' : 'Any priority',
-                  style: const TextStyle(color: AppTheme.textPrimary)),
+                  style: TextStyle(color: AppTheme.textPrimary)),
             ),
             ...TaskPriority.values.map((p) => PopupMenuItem(
                   value: p,
@@ -562,7 +562,7 @@ class _TasksScreenState extends State<TasksScreen> {
         PopupMenuItem(
           value: 'edit',
           child: Text(ru ? 'Изменить' : 'Edit',
-              style: const TextStyle(color: AppTheme.textPrimary)),
+              style: TextStyle(color: AppTheme.textPrimary)),
         ),
         const PopupMenuDivider(),
         ...TaskStatus.values.where((s) => s != task.status).map(
@@ -570,7 +570,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 value: s.name,
                 child: Text(
                   '${ru ? 'В' : 'To'} «${TaskLabels.status(s, ru)}»',
-                  style: const TextStyle(color: AppTheme.textSecondary),
+                  style: TextStyle(color: AppTheme.textSecondary),
                 ),
               ),
             ),
@@ -578,7 +578,7 @@ class _TasksScreenState extends State<TasksScreen> {
         PopupMenuItem(
           value: 'delete',
           child: Text(ru ? 'Удалить' : 'Delete',
-              style: const TextStyle(color: AppTheme.accentRed)),
+              style: TextStyle(color: AppTheme.accentRed)),
         ),
       ],
     );
