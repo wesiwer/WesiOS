@@ -66,7 +66,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
           ru
               ? 'Автообновление доступно только в сборках для Windows и Android.'
               : 'Auto-update is available in the Windows and Android builds only.',
-          style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
         ),
       );
     }
@@ -117,7 +117,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                         ? 'Доступна версия ${release.version}'
                         : 'Version ${release.version} is available')
                     : (ru ? 'Обновления WesiOS' : 'WesiOS updates'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
               ),
             ),
@@ -128,7 +128,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
           ru
               ? 'Установлена ${AppUpdateService.currentVersion} (сборка ${AppUpdateService.currentBuild})'
               : 'Installed ${AppUpdateService.currentVersion} (build ${AppUpdateService.currentBuild})',
-          style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
         ),
         // Changelog — показываем всегда, когда есть обновление и notes.
         // И в баннере на главной, и в настройках: обновление не должно
@@ -162,7 +162,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
         children: [
           Text(
             ru ? 'Что нового' : "What's new",
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
               color: AppTheme.accentOrange,
@@ -174,7 +174,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
             notes,
             maxLines: showFull ? null : 3,
             overflow: showFull ? TextOverflow.visible : TextOverflow.ellipsis,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12.5,
               height: 1.35,
               color: AppTheme.textSecondary,
@@ -188,7 +188,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                 _notesExpanded
                     ? (ru ? 'Свернуть' : 'Show less')
                     : (ru ? 'Подробнее' : 'Show more'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.accentOrange,
@@ -225,7 +225,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                 '${_size(p.bytesDownloaded)}${p.totalBytes != null ? ' / ${_size(p.totalBytes)}' : ''}',
                 _speed(p.bytesPerSecond),
               ].where((s) => s.isNotEmpty).join(' · '),
-              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
             ),
           ],
         );
@@ -233,7 +233,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
       case UpdateStage.installing:
         return Text(
           ru ? 'Запуск установки…' : 'Starting the installer…',
-          style: const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
         );
 
       case UpdateStage.ready:
@@ -241,7 +241,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
           ru
               ? 'Установщик запущен. Следуйте подсказкам системы.'
               : 'The installer has started. Follow the system prompts.',
-          style: const TextStyle(fontSize: 12, color: AppTheme.accentGreen),
+          style: TextStyle(fontSize: 12, color: AppTheme.accentGreen),
         );
 
       case UpdateStage.failed:
