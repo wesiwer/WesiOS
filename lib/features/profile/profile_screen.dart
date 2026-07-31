@@ -217,7 +217,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (_savedHint != null)
                 Text(
                   _savedHint!,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 12, color: AppTheme.accentGreen),
                 ),
             ],
@@ -338,7 +338,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ShieldService.isConfigured
                       ? 'Ключи защищены'
                       : 'Защитите ключи паролем',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary),
@@ -352,7 +352,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ? 'Введите пароль, чтобы посмотреть или изменить ключи Firebase.'
                 : 'Ключи Firebase дают доступ к бэкенду проекта. Задайте пароль, '
                     'чтобы их нельзя было прочитать с разблокированного устройства.',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12, color: AppTheme.textMuted, height: 1.4),
           ),
           const SizedBox(height: 14),
@@ -440,7 +440,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget _section(String t) => Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(t,
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textPrimary)),
@@ -475,7 +475,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             helperText: tip,
             helperMaxLines: 2,
             helperStyle:
-                const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                TextStyle(fontSize: 11, color: AppTheme.textMuted),
             labelStyle: TextStyle(color: AppTheme.textSecondary),
           ),
         ),
@@ -502,11 +502,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(label,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12, color: AppTheme.textSecondary)),
                     const SizedBox(height: 4),
                     Text(value,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 16, color: AppTheme.textPrimary)),
                   ],
                 ),
@@ -534,7 +534,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Padding(
               padding: const EdgeInsets.all(16),
               child: Text(title,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textPrimary)),
@@ -571,7 +571,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(width: 8),
               Text(
                 WesiLocale.get('upload_avatar'),
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 13, color: AppTheme.textSecondary),
               ),
             ],
@@ -594,7 +594,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 const SizedBox(width: 8),
                 Text(
                   WesiLocale.get('reset_avatar'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13, color: AppTheme.textSecondary),
                 ),
               ],
