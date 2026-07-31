@@ -158,7 +158,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           },
           child: Text(
             ru ? 'Сегодня' : 'Today',
-            style: const TextStyle(color: AppTheme.accentOrange, fontSize: 12),
+            style: TextStyle(color: AppTheme.accentOrange, fontSize: 12),
           ),
         ),
         const SizedBox(width: 4),
