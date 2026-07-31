@@ -44,8 +44,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     icon: isDark ? Icons.dark_mode : Icons.light_mode,
                     title: WesiLocale.get('theme'),
                     subtitle: isDark
-                        ? WesiLocale.get('theme_dark')
-                        : WesiLocale.get('theme_light'),
+                        ? (ru ? 'Тёмная' : 'Dark')
+                        : (ru ? 'Светлая' : 'Light'),
                     trailing: Switch(
                       value: !isDark,
                       onChanged: (light) {
