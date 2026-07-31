@@ -92,7 +92,7 @@ class _TasksScreenState extends State<TasksScreen> {
         insetPadding:
             const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
         title: Text(ru ? 'Удалить задачу?' : 'Delete task?',
-            style: const TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
+            style: TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: Text('«${task.title}»',
             style: TextStyle(color: AppTheme.textSecondary)),
         actions: [
@@ -196,7 +196,7 @@ class _TasksScreenState extends State<TasksScreen> {
           child: SizedBox(
             height: 38,
             child: TextField(
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13, color: AppTheme.textPrimary),
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
@@ -205,7 +205,7 @@ class _TasksScreenState extends State<TasksScreen> {
                     size: 17, color: AppTheme.textMuted),
                 hintText: ru ? 'Поиск по задачам' : 'Search tasks',
                 hintStyle:
-                    const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                    TextStyle(fontSize: 13, color: AppTheme.textMuted),
                 filled: true,
                 fillColor: AppTheme.surface.withOpacity(0.5),
                 border: OutlineInputBorder(
@@ -351,14 +351,14 @@ class _TasksScreenState extends State<TasksScreen> {
                   Expanded(
                     child: Text(
                       TaskLabels.status(status, ru),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.textSecondary),
                     ),
                   ),
                   Text('${items.length}',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12, color: AppTheme.textMuted)),
                   const SizedBox(width: 4),
                   GestureDetector(
@@ -375,7 +375,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   child: Center(
                     child: Text(
                       ru ? 'Пусто' : 'Empty',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 11, color: AppTheme.textMuted),
                     ),
                   ),
@@ -481,7 +481,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   const SizedBox(width: 8),
                   Text(
                     '${task.subtasks.where((s) => s.done).length}/${task.subtasks.length}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 10, color: AppTheme.textMuted),
                   ),
                 ],
@@ -526,7 +526,7 @@ class _TasksScreenState extends State<TasksScreen> {
                             size: 11, color: AppTheme.textMuted),
                         const SizedBox(width: 4),
                         Text(task.assignee!,
-                            style: const TextStyle(
+                            style: TextStyle(
                                 fontSize: 10, color: AppTheme.textMuted)),
                       ],
                     ),
