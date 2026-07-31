@@ -156,7 +156,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
                       padding: const EdgeInsets.all(28),
                       child: Text(
                         _ru ? 'Читаю данные…' : 'Reading data…',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 12, color: AppTheme.textMuted),
                       ),
                     )
@@ -185,7 +185,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
           children: [
             Text(
               _ru ? 'Что можно найти' : 'What you can find',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textSecondary),
@@ -223,7 +223,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(e.$2,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12, color: AppTheme.textMuted)),
                     ),
                   ],
@@ -238,7 +238,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
         padding: const EdgeInsets.all(28),
         child: Text(
           _ru ? 'Ничего не найдено' : 'Nothing found',
-          style: const TextStyle(fontSize: 13, color: AppTheme.textMuted),
+          style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
         ),
       );
 
@@ -258,7 +258,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
                       hit.title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13, color: AppTheme.textPrimary),
                     ),
                     if (hit.subtitle != null && hit.subtitle!.isNotEmpty)
@@ -266,7 +266,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
                         hit.subtitle!,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 11, color: AppTheme.textMuted),
                       ),
                   ],
