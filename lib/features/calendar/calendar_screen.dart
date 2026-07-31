@@ -139,7 +139,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       children: [
         Text(
           '$name ${_visibleMonth.year}',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
             color: AppTheme.textPrimary,
@@ -333,7 +333,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textPrimary,
@@ -345,7 +345,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 ru
                     ? '${tasks.length + payments.length} событ.'
                     : '${tasks.length + payments.length} events',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 11, color: AppTheme.textMuted),
               ),
           ],
@@ -363,7 +363,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
             child: Text(
               ru ? 'В этот день ничего не запланировано' : 'Nothing on this day',
               textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
           )
         else ...[
@@ -430,13 +430,13 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   title,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13, color: AppTheme.textPrimary),
                 ),
               ),
               const SizedBox(width: 10),
               Text(trailing,
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11, color: AppTheme.textMuted)),
             ],
           ),
