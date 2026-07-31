@@ -128,7 +128,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
                 focusNode: _focus,
                 autofocus: true,
                 onChanged: _run,
-                style: const TextStyle(color: AppTheme.textPrimary),
+                style: TextStyle(color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                   hintText: _ru
                       ? 'Операции, задачи, статьи, счета, разделы…'
