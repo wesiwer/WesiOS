@@ -154,11 +154,19 @@ jobs:
             "configuration_version": "1"
           }' > android/app/google-services.json
 
-      - name: Decode release keystore
+      # Декодируем keystore и СРАЗУ проверяем пароль через keytool.
+      # Частая ловушка: при вставке в GitHub Secrets появляется хвостовой
+      # перевод строки — тогда storePassword «не тот», хотя визуально
+      # секрет выглядит правильным. Поэтому всё trim'им.
+      - name: Decode and verify release keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
+
           if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
             echo "::error::Секрет ANDROID_KEYSTORE_BASE64 не задан."
             echo "Добавь в Settings → Secrets and variables → Actions:"
@@ -166,8 +174,55 @@ jobs:
             echo "  ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD"
             exit 1
           fi
-          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/wesios-release.jks"
-          echo "KEYSTORE_PATH=$RUNNER_TEMP/wesios-release.jks" >> "$GITHUB_ENV"
+
+          # Убираем все пробельные символы из base64 (переносы от base64 без -w0
+          # и хвостовой newline от вставки в UI).
+          B64=$(printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]')
+          printf '%s' "$B64" | base64 -d > "$RUNNER_TEMP/wesios-release.jks"
+
+          # Пароли и alias — тоже без хвостовых пробелов/переносов.
+          STORE_PASS=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n')
+          KEY_PASS=$(printf '%s' "$ANDROID_KEY_PASSWORD" | tr -d '\r\n')
+          ALIAS=$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '[:space:]')
+
+          if [ -z "$STORE_PASS" ] || [ -z "$KEY_PASS" ] || [ -z "$ALIAS" ]; then
+            echo "::error::Один из секретов пароля/alias пуст после trim."
+            exit 1
+          fi
+
+          echo "Keystore size: $(stat -c%s "$RUNNER_TEMP/wesios-release.jks") bytes"
+          echo "Alias (length ${#ALIAS}): ok"
+
+          # Проверка store password + наличие alias — без печати секретов.
+          if ! keytool -list \
+              -keystore "$RUNNER_TEMP/wesios-release.jks" \
+              -storepass "$STORE_PASS" \
+              -alias "$ALIAS" > /dev/null 2>&1; then
+            echo "::error::keytool не смог открыть keystore с данным store password и alias."
+            echo "Проверь локально:"
+            echo "  keytool -list -keystore your.jks -storepass '...' -alias '...'"
+            echo "Частые причины: хвостовой newline в секрете, другой .jks в base64,"
+            echo "перепутан store password и key password, неверный alias."
+            # Покажем только список alias (если store pass всё же подошёл, а alias нет).
+            if keytool -list -keystore "$RUNNER_TEMP/wesios-release.jks" -storepass "$STORE_PASS" > "$RUNNER_TEMP/kt.txt" 2>&1; then
+              echo "Store password подходит. Alias в keystore:"
+              grep -E 'Alias name:|Keystore type:' "$RUNNER_TEMP/kt.txt" || true
+              echo "Ожидался alias: (длина ${#ALIAS})"
+            else
+              echo "Store password НЕ подходит (или файл keystore битый)."
+            fi
+            exit 1
+          fi
+
+          echo "Keystore + alias + store password — ок"
+
+          # Экспорт в env для Gradle (уже без хвостовых символов).
+          {
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/wesios-release.jks"
+            echo "KEYSTORE_PASSWORD=$STORE_PASS"
+            echo "KEY_ALIAS=$ALIAS"
+            echo "KEY_PASSWORD=$KEY_PASS"
+          } >> "$GITHUB_ENV"
 
       - name: Setup Android NDK
         uses: android-actions/setup-android@v3
@@ -175,9 +230,6 @@ jobs:
       - name: Build signed APK
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false'
-          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: flutter build apk --release
 
       - name: Rename APK
