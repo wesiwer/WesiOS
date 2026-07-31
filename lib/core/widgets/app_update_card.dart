@@ -8,11 +8,13 @@ import 'hover_button.dart';
 /// Карточка обновления WesiOS.
 ///
 /// Ведёт себя как загрузка моделей прогноза, которую пользователь уже видел:
-/// проверка → предложение с версией и размером → прогресс со скоростью →
+/// проверка → предложение с версией, размером и changelog → прогресс →
 /// установка. Показывается в настройках всегда, на главной — только когда
 /// обновление реально есть (см. [AppUpdateBanner]).
 class AppUpdateCard extends StatefulWidget {
-  /// Компактный режим: без описания и кнопки «Пропустить» — для баннера.
+  /// Компактный режим: без кнопки «Пропустить» — для баннера на главной.
+  /// Changelog показывается в обоих режимах, чтобы обновление не ставилось
+  /// вслепую.
   final bool compact;
 
   const AppUpdateCard({super.key, this.compact = false});
@@ -23,6 +25,7 @@ class AppUpdateCard extends StatefulWidget {
 
 class _AppUpdateCardState extends State<AppUpdateCard> {
   bool _checking = false;
+  bool _notesExpanded = false;
 
   Future<void> _check() async {
     setState(() => _checking = true);
@@ -93,6 +96,8 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
 
   Widget _content(bool ru, UpdateProgress p, AppRelease? release) {
     final hasUpdate = AppUpdateService.updateAvailable && release != null;
+    final notes = release?.notes?.trim();
+    final hasNotes = notes != null && notes.isNotEmpty;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -125,17 +130,74 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
               : 'Installed ${AppUpdateService.currentVersion} (build ${AppUpdateService.currentBuild})',
           style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
         ),
-        if (hasUpdate && !widget.compact && release.notes != null) ...[
-          const SizedBox(height: 10),
-          Text(
-            release.notes!,
-            style:
-                const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-          ),
+        // Changelog — показываем всегда, когда есть обновление и notes.
+        // И в баннере на главной, и в настройках: обновление не должно
+        // ставиться вслепую.
+        if (hasUpdate && hasNotes) ...[
+          const SizedBox(height: 12),
+          _changelogBlock(ru, notes),
         ],
         const SizedBox(height: 14),
         _body(ru, p, release, hasUpdate),
       ],
+    );
+  }
+
+  Widget _changelogBlock(bool ru, String notes) {
+    // В компактном баннере длинный текст сворачиваем, чтобы не занять
+    // полэкрана. В настройках показываем полностью.
+    final isLong = notes.length > 160 || notes.split('\n').length > 3;
+    final showFull = !widget.compact || _notesExpanded || !isLong;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: AppTheme.background.withOpacity(0.55),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppTheme.glassBorder.withOpacity(0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            ru ? 'Что нового' : "What's new",
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.accentOrange,
+              letterSpacing: 0.3,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            notes,
+            maxLines: showFull ? null : 3,
+            overflow: showFull ? TextOverflow.visible : TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 12.5,
+              height: 1.35,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          if (widget.compact && isLong) ...[
+            const SizedBox(height: 6),
+            GestureDetector(
+              onTap: () => setState(() => _notesExpanded = !_notesExpanded),
+              child: Text(
+                _notesExpanded
+                    ? (ru ? 'Свернуть' : 'Show less')
+                    : (ru ? 'Подробнее' : 'Show more'),
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.accentOrange,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 
