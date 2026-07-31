@@ -12,6 +12,7 @@ import 'features/treasury/models/account_model.dart';
 import 'features/knowledge/models/article_model.dart';
 import 'features/knowledge/services/knowledge_service.dart';
 import 'core/services/app_update_service.dart';
+import 'core/theme/app_theme.dart';
 import 'app.dart';
 import 'core/services/currency_service.dart';
 
@@ -35,12 +36,6 @@ void main() async {
     );
     await windowManager.waitUntilReadyToShow(windowOptions, () async {
       await windowManager.setPreventClose(false);
-      // Настоящий OS fullscreen по запросу пользователя. Плагин на Win32
-      // намеренно не даёт свернуть fullscreen-окно (WindowManager::Minimize
-      // делает ранний return, если IsFullScreen() — как у Chromium), поэтому
-      // сама минимизация обходит это в WindowControls: перед minimize()
-      // сначала выходит из fullscreen, а при восстановлении из трея —
-      // возвращается в него (см. window_controls.dart).
       await windowManager.setFullScreen(true);
       await windowManager.show();
       await windowManager.focus();
@@ -64,16 +59,13 @@ void main() async {
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
 
-  // Режим приватности читается сразу: суммы не должны мелькнуть открытыми
-  // на первом кадре у того, кто его включил.
+  // Режим приватности и тема — до первого кадра, чтобы не мелькнули
+  // чужие суммы и тёмный фон поверх сохранённой светлой темы.
   CurrencyService.loadPrivacyMode();
+  ThemeNotifier.load();
 
-  // Курсы в фоне — не блокируем старт
   ExchangeRateService.refresh();
-  // Проверка обновления тоже фоном: если сети нет или релиз ещё не
-  // опубликован, check() просто вернёт null и ничего не покажет.
   AppUpdateService.check();
-  // Встроенная справка обновляется вместе с приложением.
   KnowledgeService.seed();
 
   final configService = FirebaseConfigService();

@@ -4,9 +4,9 @@ import '../theme/app_theme.dart';
 /// Логотип WesiOS: геометрический знак + название.
 ///
 /// Знак — монограмма W, у которой последний штрих уходит выше остальных:
-/// буква читается, но силуэт одновременно похож на восходящий график, что
-/// уместно для финансового продукта. Раньше «логотипом» была просто строка
-/// текста, из-за чего у приложения не было узнаваемого знака вообще.
+/// буква читается, но силуэт одновременно похож на восходящий график.
+/// Цвета зависят от темы: dark — белый + оранжевый акцент; light —
+/// серо-синий (slate) + голубой акцент.
 class WesiWordmark extends StatelessWidget {
   /// Высота знака. Текст масштабируется от неё.
   final double size;
@@ -14,86 +14,98 @@ class WesiWordmark extends StatelessWidget {
   /// Показывать ли надпись рядом со знаком.
   final bool showText;
 
-  final Color textColor;
+  /// Цвет надписи. `null` — [AppTheme.textPrimary] (адаптируется к теме).
+  final Color? textColor;
 
-  /// Знак слева от надписи. По умолчанию false — надпись идёт первой, знак
-  /// замыкает; так строка читается слева направо как «WesiOS ▶», а сам знак
-  /// не спорит за внимание с текстом на старте строки.
+  /// Знак слева от надписи. По умолчанию false — надпись идёт первой.
   final bool markFirst;
 
   const WesiWordmark({
     super.key,
     this.size = 32,
     this.showText = true,
-    this.textColor = Colors.white,
+    this.textColor,
     this.markFirst = false,
   });
 
-  /// Стиль надписи — вынесен, чтобы заголовки экранов могли использовать
-  /// ровно тот же шрифт и трекинг, что и логотип (см. [WesiTitle]).
-  static TextStyle textStyle(double size, [Color color = Colors.white]) =>
-      TextStyle(
+  static TextStyle textStyle(double size, [Color? color]) => TextStyle(
         fontSize: size * 0.78,
         fontWeight: FontWeight.w800,
-        color: color,
+        color: color ?? AppTheme.textPrimary,
         letterSpacing: size * 0.06,
       );
 
   @override
   Widget build(BuildContext context) {
-    final mark = SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(painter: _WesiMarkPainter()),
-    );
+    return ValueListenableBuilder<AppThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (context, mode, _) {
+        final mark = SizedBox(
+          width: size,
+          height: size,
+          child: CustomPaint(
+            painter: _WesiMarkPainter(
+              stroke: AppTheme.logoStroke,
+              accent: AppTheme.logoAccent,
+            ),
+          ),
+        );
 
-    if (!showText) return mark;
+        if (!showText) return mark;
 
-    final text = Text('WesiOS', style: textStyle(size, textColor));
-    final gap = SizedBox(width: size * 0.34);
+        final text = Text(
+          'WesiOS',
+          style: textStyle(size, textColor ?? AppTheme.textPrimary),
+        );
+        final gap = SizedBox(width: size * 0.34);
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: markFirst ? [mark, gap, text] : [text, gap, mark],
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: markFirst ? [mark, gap, text] : [text, gap, mark],
+        );
+      },
     );
   }
 }
 
 /// Заголовок экрана в фирменном стиле.
-///
-/// Раньше каждая вкладка задавала свой размер и насыщенность, и названия
-/// разъезжались между экранами. Здесь один стиль на всё приложение — тот же,
-/// что у надписи в логотипе.
 class WesiTitle extends StatelessWidget {
   final String text;
   final double size;
-  final Color color;
+  final Color? color;
 
   const WesiTitle(
     this.text, {
     super.key,
     this.size = 26,
-    this.color = AppTheme.textPrimary,
+    this.color,
   });
 
   @override
-  Widget build(BuildContext context) => Text(
-        text,
-        style: WesiWordmark.textStyle(size, color),
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
+  Widget build(BuildContext context) => ValueListenableBuilder<AppThemeMode>(
+        valueListenable: ThemeNotifier.instance,
+        builder: (context, _, __) => Text(
+          text,
+          style: WesiWordmark.textStyle(size, color ?? AppTheme.textPrimary),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
       );
 }
 
-/// Рисует знак векторно, а не картинкой: он остаётся чётким на любом
-/// размере и автоматически совпадает с иконкой приложения по геометрии.
+/// Рисует знак векторно: остаётся чётким на любом размере и совпадает
+/// с геометрией app_icon.
 class _WesiMarkPainter extends CustomPainter {
+  final Color stroke;
+  final Color accent;
+
+  _WesiMarkPainter({required this.stroke, required this.accent});
+
   @override
   void paint(Canvas canvas, Size size) {
     final s = size.shortestSide;
     final w = s * 0.155;
 
-    // Те же пропорции, что у app_icon.png.
     final top = s * 0.20;
     final bottom = s * 0.80;
     final x0 = s * 0.06;
@@ -106,15 +118,15 @@ class _WesiMarkPainter extends CustomPainter {
     final p3 = Offset(x1 - span * 0.235, bottom);
     final p4 = Offset(x1, top - (bottom - top) * 0.42);
 
-    final white = Paint()
-      ..color = Colors.white
+    final mainPaint = Paint()
+      ..color = stroke
       ..strokeWidth = w
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..style = PaintingStyle.stroke;
 
-    final accent = Paint()
-      ..color = AppTheme.accentOrange
+    final accentPaint = Paint()
+      ..color = accent
       ..strokeWidth = w
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
@@ -126,11 +138,12 @@ class _WesiMarkPainter extends CustomPainter {
         ..lineTo(p1.dx, p1.dy)
         ..lineTo(p2.dx, p2.dy)
         ..lineTo(p3.dx, p3.dy),
-      white,
+      mainPaint,
     );
-    canvas.drawLine(p3, p4, accent);
+    canvas.drawLine(p3, p4, accentPaint);
   }
 
   @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+  bool shouldRepaint(covariant _WesiMarkPainter oldDelegate) =>
+      oldDelegate.stroke != stroke || oldDelegate.accent != accent;
 }

@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme/app_theme.dart';
-import 'core/theme/theme_transition.dart';
 import 'core/localization/wesi_locale.dart';
 import 'core/routes/app_router.dart';
 import 'core/security/shield_lock_screen.dart';
@@ -33,6 +32,8 @@ class WesiOSApp extends StatelessWidget {
       DeviceOrientation.landscapeRight,
     ]);
 
+    // Тема живёт в ThemeNotifier: один ValueListenableBuilder перестраивает
+    // MaterialApp и всё дерево, когда пользователь переключает dark/light.
     return ValueListenableBuilder<AppThemeMode>(
       valueListenable: ThemeNotifier.instance,
       builder: (context, mode, _) {
@@ -40,72 +41,61 @@ class WesiOSApp extends StatelessWidget {
           title: 'WesiOS',
           debugShowCheckedModeBanner: false,
           theme: AppTheme.themeData,
-          darkTheme: AppTheme.themeData,
+          // Одна палитра из AppTheme — themeMode не нужен: данные уже
+          // соответствуют текущему режиму notifier'а.
           themeMode: ThemeMode.light,
-      // Без этих делегатов встроенные виджеты Material (календарь
-      // showDatePicker, диалоги выбора времени и т.п.) остаются на английском
-      // независимо от языка интерфейса — свой WesiLocale на них не влияет.
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      supportedLocales: const [Locale('ru'), Locale('en')],
-      locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
-      onGenerateRoute: AppRouter.onGenerateRoute,
-      home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
-      builder: (context, child) {
-        return Stack(
-          children: [
-            // Режим приватности меняет только вывод сумм, но вкладки живут в
-            // IndexedStack и сами по себе не перестраиваются. Перестроение
-            // всего дерева здесь дешевле, чем подписка в каждом экране, где
-            // показана хоть одна сумма, — и не забудется в новом экране.
-            if (child != null)
-              ValueListenableBuilder<bool>(
-                valueListenable: CurrencyService.privacyMode,
-                builder: (context, _, __) => ShieldGate(child: child),
-              ),
-            // Собственный Overlay обязателен: `builder` находится ВЫШЕ Navigator,
-            // поэтому Overlay.of() отсюда не виден, а Tooltip его требует —
-            // без этого подсказки на кнопках окна падают с
-            // «No Overlay widget found» (в debug — ассертом при build).
-            Positioned.fill(
-              child: Overlay(
-                initialEntries: [
-                  // Калькулятор — глобальный оверлей поверх IndexedStack:
-                  // закреплённый переживает переключение вкладок.
-                  OverlayEntry(
-                    builder: (_) => ValueListenableBuilder<bool>(
-                      valueListenable: CalculatorOverlay.visible,
-                      builder: (context, visible, _) => visible
-                          ? const CalculatorScreen(asOverlay: true)
-                          : const SizedBox.shrink(),
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('ru'), Locale('en')],
+          locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
+          onGenerateRoute: AppRouter.onGenerateRoute,
+          home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
+          builder: (context, child) {
+            return AnimatedTheme(
+              data: AppTheme.themeData,
+              duration: const Duration(milliseconds: 350),
+              curve: Curves.easeInOutCubic,
+              child: Stack(
+                children: [
+                  if (child != null)
+                    ValueListenableBuilder<bool>(
+                      valueListenable: CurrencyService.privacyMode,
+                      builder: (context, _, __) => ShieldGate(child: child),
+                    ),
+                  Positioned.fill(
+                    child: Overlay(
+                      initialEntries: [
+                        OverlayEntry(
+                          builder: (_) => ValueListenableBuilder<bool>(
+                            valueListenable: CalculatorOverlay.visible,
+                            builder: (context, visible, _) => visible
+                                ? const CalculatorScreen(asOverlay: true)
+                                : const SizedBox.shrink(),
+                          ),
+                        ),
+                        if (isDesktop)
+                          OverlayEntry(
+                              builder: (_) => const EngineDownloadOverlay()),
+                        OverlayEntry(builder: (_) => const ShieldOverlay()),
+                        if (isDesktop)
+                          OverlayEntry(
+                            builder: (_) => const Positioned(
+                              top: 0,
+                              left: 0,
+                              right: 0,
+                              child: WindowControls(),
+                            ),
+                          ),
+                      ],
                     ),
                   ),
-                  // Прогресс закачки движков прогноза — виден поверх ЛЮБОГО
-                  // экрана, не только Forecast, ровно тем же приёмом, что
-                  // и калькулятор выше.
-                  if (isDesktop)
-                    OverlayEntry(builder: (_) => const EngineDownloadOverlay()),
-                  // Замок Wesi Shield: выше содержимого и калькулятора, но ниже
-                  // кнопок окна — заблокированное приложение всё ещё можно
-                  // свернуть и закрыть.
-                  OverlayEntry(builder: (_) => const ShieldOverlay()),
-                  // Кнопки окна остаются выше калькулятора и всегда кликабельны
-                  if (isDesktop)
-                    OverlayEntry(
-                      builder: (_) => const Positioned(
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        child: WindowControls(),
-                      ),
-                    ),
                 ],
               ),
-            ),
-          ],
+            );
+          },
         );
       },
     );
