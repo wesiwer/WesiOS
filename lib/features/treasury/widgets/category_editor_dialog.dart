@@ -66,12 +66,12 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: Text(WesiLocale.get('cancel'),
-                style: const TextStyle(color: AppTheme.textMuted)),
+                style: TextStyle(color: AppTheme.textMuted)),
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, ctrl.text),
             child: Text(WesiLocale.get('save'),
-                style: const TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accentOrange)),
           ),
         ],
       ),
@@ -191,13 +191,13 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                       _reload();
                     },
                     child: Text(ru ? 'Сбросить' : 'Reset',
-                        style: const TextStyle(color: AppTheme.textMuted)),
+                        style: TextStyle(color: AppTheme.textMuted)),
                   ),
                   const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(ru ? 'Готово' : 'Done',
-                        style: const TextStyle(color: AppTheme.accentOrange)),
+                        style: TextStyle(color: AppTheme.accentOrange)),
                   ),
                 ],
               ),
