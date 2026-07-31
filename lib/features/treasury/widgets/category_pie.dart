@@ -190,7 +190,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
             const SizedBox(height: 14),
             Text(
               _ru ? 'Операций пока нет' : 'No operations yet',
-              style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
           ],
         ),
@@ -219,7 +219,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
                 : (_ru
                     ? 'Внутри категории «${drilled.label}»'
                     : 'Inside “${drilled.label}”'),
-            style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
           ),
           const SizedBox(height: 12),
           SizedBox(
@@ -292,7 +292,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
                         textAlign: TextAlign.center,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 10, color: AppTheme.textMuted),
                       ),
                     ),
@@ -344,7 +344,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
               const SizedBox(width: 8),
               Text(
                 _ru ? 'Доходы против расходов' : 'Income vs expenses',
-                style: const TextStyle(
+                style: TextStyle(
                     fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
               ),
             ],
@@ -399,7 +399,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
                     ),
                     Text(
                       _ru ? 'чистый' : 'net',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 10, color: AppTheme.textMuted),
                     ),
                   ],
@@ -437,7 +437,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
         Expanded(
           child: Text(
             title,
-            style: const TextStyle(
+            style: TextStyle(
                 fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
           ),
         ),
@@ -454,7 +454,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
             label: Text(
               _ru ? 'Категории' : 'Categories',
               style:
-                  const TextStyle(fontSize: 11, color: AppTheme.accentOrange),
+                  TextStyle(fontSize: 11, color: AppTheme.accentOrange),
             ),
           ),
       ],
@@ -485,7 +485,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style:
-                  const TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                  TextStyle(fontSize: 12, color: AppTheme.textSecondary),
             ),
           ),
           if (expandable) ...[
@@ -494,7 +494,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
           ],
           Text(
             '${(share * 100).round()}%',
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textMuted),
@@ -502,7 +502,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
           const SizedBox(width: 10),
           Text(
             CurrencyService.format(value),
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 color: AppTheme.textPrimary),
