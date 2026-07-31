@@ -175,7 +175,7 @@ class AlertsSheet extends StatelessWidget {
                   Expanded(
                     child: Text(
                       ru ? 'Уведомления' : 'Notifications',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 17,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.textPrimary),
@@ -206,7 +206,7 @@ class AlertsSheet extends StatelessWidget {
                                       'баланс в плюсе, защита настроена.'
                                   : 'All clear: nothing overdue, balance is '
                                       'positive, protection is on.',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 13,
                                   height: 1.4,
                                   color: AppTheme.textSecondary),
@@ -257,7 +257,7 @@ class AlertsSheet extends StatelessWidget {
                                           a.detail,
                                           maxLines: 2,
                                           overflow: TextOverflow.ellipsis,
-                                          style: const TextStyle(
+                                          style: TextStyle(
                                               fontSize: 11,
                                               height: 1.35,
                                               color: AppTheme.textMuted),
