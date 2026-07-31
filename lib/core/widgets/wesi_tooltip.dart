@@ -63,7 +63,7 @@ class _WesiTooltipState extends State<WesiTooltip> {
               ),
               child: Text(
                 widget.message,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   color: AppTheme.textSecondary,
                   height: 1.4,
