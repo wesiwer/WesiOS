@@ -601,7 +601,7 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
           const SizedBox(width: 12),
           Text(
             label,
-            style: const TextStyle(color: AppTheme.textPrimary, fontSize: 14),
+            style: TextStyle(color: AppTheme.textPrimary, fontSize: 14),
           ),
         ],
       ),
