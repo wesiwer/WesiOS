@@ -119,7 +119,7 @@ class ModuleScaffold extends StatelessWidget {
                     const SizedBox(height: 4),
                     Text(
                       subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13, color: AppTheme.textSecondary),
                     ),
                   ],
@@ -135,7 +135,7 @@ class ModuleScaffold extends StatelessWidget {
             const SizedBox(height: 28),
             Text(
               ru ? 'Что здесь будет' : 'What goes here',
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textMuted,
@@ -198,7 +198,7 @@ class ModuleScaffold extends StatelessWidget {
           Expanded(
             child: Text(
               text,
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 13, height: 1.4, color: AppTheme.textSecondary),
             ),
           ),
@@ -229,7 +229,7 @@ class ModuleScaffold extends StatelessWidget {
                   : 'This is a layout preview: the structure is in place, but '
                       'no live data is wired up yet — intentionally, so the '
                       'shape of the module is visible early.',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12, height: 1.4, color: AppTheme.textMuted),
             ),
           ),
