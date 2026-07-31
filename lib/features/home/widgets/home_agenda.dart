@@ -171,7 +171,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
       children: [
         Text(
           title,
-          style: const TextStyle(
+          style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
               color: AppTheme.textPrimary),
@@ -209,7 +209,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
   Widget _placeholder(String text) => Padding(
         padding: const EdgeInsets.symmetric(vertical: 6),
         child: Text(text,
-            style: const TextStyle(fontSize: 13, color: AppTheme.textMuted)),
+            style: TextStyle(fontSize: 13, color: AppTheme.textMuted)),
       );
 
   Widget _row({
