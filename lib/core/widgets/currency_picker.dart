@@ -39,7 +39,7 @@ class CurrencyPicker extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(24, 22, 24, 6),
               child: Text(
                 ru ? 'Валюта' : 'Currency',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
@@ -49,7 +49,7 @@ class CurrencyPicker extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
               child: Text(
                 _sourceLabel(ru),
-                style: const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
             ),
             Flexible(
@@ -118,7 +118,7 @@ class CurrencyPicker extends StatelessWidget {
                       Flexible(
                         child: Text(
                           CurrencyService.currencyName(code, russian: ru),
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 13, color: AppTheme.textSecondary),
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -128,7 +128,7 @@ class CurrencyPicker extends StatelessWidget {
                   const SizedBox(height: 2),
                   Text(
                     '${CurrencyService.countryName(code, russian: ru)} · $rateLabel',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11, color: AppTheme.textMuted),
                   ),
                 ],
