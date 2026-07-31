@@ -164,7 +164,7 @@ class _SplashScreenState extends State<SplashScreen>
                           child: Text(
                             _loadingTexts[_currentTextIndex],
                             key: ValueKey<int>(_currentTextIndex),
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 14,
                               color: AppTheme.textMuted,
                               fontStyle: FontStyle.italic,
