@@ -77,7 +77,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
                   Expanded(
                     child: Text(
                       'engine_downloading_title'.w,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: AppTheme.textPrimary),
@@ -118,14 +118,14 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
               Expanded(
                 child: Text(
                   '$label — $stageLabel',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11, color: AppTheme.textSecondary),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
               Text(
                 pct,
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.accentOrange),
@@ -146,7 +146,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
             const SizedBox(height: 2),
             Text(
               '${speedMb.toStringAsFixed(1)} $speedUnit',
-              style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
             ),
           ],
         ],
