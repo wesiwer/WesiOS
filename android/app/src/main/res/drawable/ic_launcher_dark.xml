@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Полная иконка (legacy + alias). Тёмный фон + W-mark. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/ic_bg_dark" />
+        </shape>
+    </item>
+    <item android:drawable="@drawable/ic_wesi_fg_dark" />
+</layer-list>

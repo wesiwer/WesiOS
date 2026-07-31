@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- W-mark на тёмном фоне: белые штрихи + оранжевый восходящий хвост.
+     Геометрия совпадает с _WesiMarkPainter в Flutter. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Safe zone ~66dp по центру adaptive icon -->
+    <group
+        android:translateX="18"
+        android:translateY="18">
+        <!-- Основная ломаная W (белая), толщина ≈ 11 -->
+        <path
+            android:pathData="M4.3,14.4 L20.2,57.6 L36,31.7 L51.8,57.6"
+            android:strokeWidth="11"
+            android:strokeColor="@color/ic_mark_dark"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000" />
+        <!-- Восходящий хвост (оранжевый) -->
+        <path
+            android:pathData="M51.8,57.6 L67.7,-6.5"
+            android:strokeWidth="11"
+            android:strokeColor="@color/ic_accent_dark"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round"
+            android:fillColor="#00000000" />
+    </group>
+</vector>

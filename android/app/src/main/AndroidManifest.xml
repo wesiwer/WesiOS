@@ -14,7 +14,12 @@
     <application
         android:label="WesiOS"
         android:name="${applicationName}"
-        android:icon="@mipmap/launcher_icon">
+        android:icon="@drawable/ic_launcher_dark"
+        android:roundIcon="@drawable/ic_launcher_dark">
+
+        <!-- Основная activity без LAUNCHER: ярлык на рабочем столе
+             создаётся activity-alias'ами ниже, чтобы можно было
+             переключать иконку (тёмная / светлая) без переустановки. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -27,11 +32,38 @@
               android:name="io.flutter.embedding.android.NormalTheme"
               android:resource="@style/NormalTheme"
               />
+        </activity>
+
+        <!-- Тёмная иконка (по умолчанию включена). -->
+        <activity-alias
+            android:name=".IconDark"
+            android:enabled="true"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_dark"
+            android:roundIcon="@drawable/ic_launcher_dark"
+            android:label="WesiOS"
+            android:targetActivity=".MainActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-        </activity>
+        </activity-alias>
+
+        <!-- Светлая иконка (выключена, пока пользователь / auto-тема не включит). -->
+        <activity-alias
+            android:name=".IconLight"
+            android:enabled="false"
+            android:exported="true"
+            android:icon="@drawable/ic_launcher_light"
+            android:roundIcon="@drawable/ic_launcher_light"
+            android:label="WesiOS"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity-alias>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
