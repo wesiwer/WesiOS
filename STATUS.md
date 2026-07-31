@@ -1,10 +1,34 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-07-31 (сессия 3: подпись Android, dual clock, adaptive header, changelog в UI обновлений)  
+**Обновлено:** 2026-07-31 (сессия 3 + правило «не билд без проверки»)  
 **Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.10.x α  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
 Читай этот файл **перед** любыми правками. Не помечай задачу ✅, пока пользователь не подтвердил на билде.
+
+---
+
+## Правило: перед запуском билда / релиза
+
+**Запрос владельца (2026-07-31):** перед любым билдом (push, workflow_dispatch
+`build.yml` / `release-app.yml`) агент **обязан** сначала всё проверить.
+Запускать сборку только если уверен, что она пройдёт.
+
+### Чеклист перед билдом (обязателен)
+
+1. **Статический анализ** — `flutter analyze` → **0** замечаний.
+2. **Юнит-тесты** — `flutter test` → все тесты зелёные (как делает Claude).
+3. **Ревью затронутых файлов** — особенно:
+   - `android/app/build.gradle` (подпись: `ks*` vars, не `keyAlias`/`keyPassword` — иначе Groovy shadowing);
+   - `.github/workflows/*.yml` (секреты, env, шаги decode keystore);
+   - любые правки в `lib/` — не ломают Hive typeId, open boxes, known bugs из STATUS.
+4. **Если Flutter недоступен в среде агента** — минимум:
+   - прочитать diff и убедиться, что нет известных ловушек (shadowing, debug signing, overwrite google-services.json);
+   - дождаться зелёного `Build WesiOS` на push (если правки уже запушены);
+   - **не** запускать `release-app.yml`, пока analyze/test не подтверждены.
+5. **Только после зелёного чеклиста** — `workflow_dispatch` на `release-app.yml` (с осмысленными `notes`).
+
+Не «запустить и посмотреть». Сначала проверка — потом билд.
 
 ---
 
@@ -26,7 +50,7 @@ Debug-ключ разный на каждом CI-раннере и на лока
 
 | Файл | Изменение |
 |---|---|
-| `android/app/build.gradle` | `signingConfigs.release` читает `KEYSTORE_PATH` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD` из env. Если переменных нет — fallback на debug (удобно для локальных сборок). Если есть — подписывает release-ключом. |
+| `android/app/build.gradle` | `signingConfigs.release` читает `KEYSTORE_PATH` / `KEYSTORE_PASSWORD` / `KEY_ALIAS` / `KEY_PASSWORD` из env. Если переменных нет — fallback на debug (удобно для локальных сборок). Если есть — подписывает release-ключом. Имена локальных vars: `ksPath`/`ksAlias`/`ksStorePassword`/`ksKeyPassword` — **не** `keyAlias`/`keyPassword`, иначе Groovy shadowing и `No signature of method: java.lang.String.call()`. |
 | `.github/workflows/release-app.yml` | Шаг «Decode release keystore»: base64 → `$RUNNER_TEMP/wesios-release.jks`, выставляет `KEYSTORE_PATH`. Без секрета `ANDROID_KEYSTORE_BASE64` job **падает явно**, а не молча собирает debug. |
 
 **Секреты репозитория (уже добавлены владельцем):**
@@ -268,6 +292,7 @@ Python подпроцессом — desktop-специфичный паттер�
 10. **Android release подписывается постоянным ключом из Secrets.** Не откатывать на debug. Первый переход с debug → release требует одноразового удаления приложения у пользователя.
 11. **Changelog обновления** — блок «Что нового» в `AppUpdateCard` обязателен при непустых `notes`. Не убирать «для компактности».
 12. **Часы:** два стиля (digital/analog), long-press, Hive `clock_style`. Не ломать без запроса.
+13. **Перед билдом/релизом** — чеклист выше (`flutter analyze` + `flutter test` + ревью). Запускать workflow только если уверен, что пройдёт. Не «запустить и посмотреть».
 
 ---
 
