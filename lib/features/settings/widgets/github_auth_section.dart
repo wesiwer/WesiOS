@@ -138,7 +138,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                       'It is not a secret: in device flow the client is '
                       'public by design, and the client_id alone grants '
                       'nothing without your approval in the browser.',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 12, height: 1.4, color: AppTheme.textMuted),
             ),
             const SizedBox(height: 14),
@@ -200,7 +200,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                           ? 'GitHub подключён${GitHubAuthService.login == null ? '' : ' — ${GitHubAuthService.login}'}'
                           : 'GitHub connected${GitHubAuthService.login == null ? '' : ' — ${GitHubAuthService.login}'}')
                       : (_ru ? 'Вход в GitHub' : 'GitHub sign-in'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary),
@@ -223,7 +223,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                     : 'Releases live in a private repository and are invisible '
                         'without sign-in. No manual token needed — you approve '
                         'once in the browser.'),
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12, height: 1.4, color: AppTheme.textMuted),
           ),
           if (configured && !signedIn) ...[
@@ -238,7 +238,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                 Expanded(
                   child: SelectableText(
                     GitHubAuthService.clientId,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 11,
                       color: AppTheme.textSecondary,
                       letterSpacing: 0.4,
@@ -296,7 +296,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                   backgroundColor: AppTheme.surface,
                   child: Text(
                     _ru ? 'Выйти' : 'Sign out',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 13, color: AppTheme.textPrimary),
                   ),
                 ),
@@ -325,7 +325,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                       'один раз и занимает пару минут.'
                   : 'A GitHub app client_id is required first — a one-time, '
                       'two-minute step.',
-              style: const TextStyle(fontSize: 11, color: AppTheme.accentOrange),
+              style: TextStyle(fontSize: 11, color: AppTheme.accentOrange),
             ),
           ],
         ],
@@ -348,12 +348,12 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
               _ru
                   ? 'Введите этот код на странице GitHub (он уже скопирован):'
                   : 'Enter this code on the GitHub page (already copied):',
-              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
             ),
             const SizedBox(height: 8),
             SelectableText(
               code.userCode,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 4,
@@ -366,7 +366,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                 Expanded(
                   child: SelectableText(
                     code.verificationUri,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11, color: AppTheme.textSecondary),
                   ),
                 ),
@@ -374,7 +374,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                   onPressed: () => _openBrowser(code.verificationUri),
                   child: Text(
                     _ru ? 'Открыть' : 'Open',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: AppTheme.accentOrange),
                   ),
                 ),
