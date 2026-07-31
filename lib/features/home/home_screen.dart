@@ -205,42 +205,56 @@ class _DashboardTabState extends State<_DashboardTab> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 8, 16, 16),
-              child: Row(
-                children: [
-                  WesiContextMenu(
-                    title: 'WesiOS',
-                    description: WesiLocale.isRussian
-                        ? 'WesiOS — Business Operating System. Управляйте бизнесом по-новому.'
-                        : 'WesiOS — Business Operating System. Manage your business in a new way.',
-                    purpose: WesiLocale.isRussian
-                        ? 'Центральная панель управления всеми системами Wesi'
-                        : 'Central dashboard for all Wesi systems',
-                    children: const [
-                      WesiWordmark(size: 26),
+              // На телефоне kTitleBarInset = 0, SafeArea уже дал отступ под
+              // статус-бар. Раньше +8 и огромные часы 34px давили всё сверху.
+              padding: EdgeInsets.fromLTRB(12, kTitleBarInset + 6, 12, 12),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final narrow = constraints.maxWidth < 400;
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // Лого не сжимаем в ноль, но даём ему уступить место.
+                      Flexible(
+                        flex: narrow ? 0 : 1,
+                        child: WesiContextMenu(
+                          title: 'WesiOS',
+                          description: WesiLocale.isRussian
+                              ? 'WesiOS — Business Operating System. Управляйте бизнесом по-новому.'
+                              : 'WesiOS — Business Operating System. Manage your business in a new way.',
+                          purpose: WesiLocale.isRussian
+                              ? 'Центральная панель управления всеми системами Wesi'
+                              : 'Central dashboard for all Wesi systems',
+                          children: [
+                            WesiWordmark(size: narrow ? 22 : 26),
+                          ],
+                        ),
+                      ),
+                      SizedBox(width: narrow ? 8 : 12),
+                      // Часы — заодно самый естественный вход в календарь.
+                      // Долгий тап переключает digital ↔ analog.
+                      Tooltip(
+                        message: WesiLocale.isRussian
+                            ? 'Открыть календарь · долгий тап — стиль часов'
+                            : 'Open calendar · long-press for clock style',
+                        child: GestureDetector(
+                          onTap: () =>
+                              Navigator.pushNamed(context, '/calendar'),
+                          child: const WesiClock(),
+                        ),
+                      ),
+                      SizedBox(width: narrow ? 6 : 12),
+                      _HoverIconButton(
+                        icon: Icons.search,
+                        onTap: () => GlobalSearchSheet.show(context),
+                      ),
+                      const SizedBox(width: 4),
+                      const AlertsBell(),
+                      const SizedBox(width: 4),
+                      const _ProfileDropdown(),
                     ],
-                  ),
-                  const Spacer(),
-                  // Часы — заодно самый естественный вход в календарь.
-                  Tooltip(
-                    message: WesiLocale.isRussian
-                        ? 'Открыть календарь'
-                        : 'Open calendar',
-                    child: GestureDetector(
-                      onTap: () => Navigator.pushNamed(context, '/calendar'),
-                      child: const WesiClock(),
-                    ),
-                  ),
-                  const SizedBox(width: 20),
-                  _HoverIconButton(
-                    icon: Icons.search,
-                    onTap: () => GlobalSearchSheet.show(context),
-                  ),
-                  const SizedBox(width: 8),
-                  const AlertsBell(),
-                  const SizedBox(width: 8),
-                  const _ProfileDropdown(),
-                ],
+                  );
+                },
               ),
             ),
           ),
