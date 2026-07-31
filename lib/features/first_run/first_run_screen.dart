@@ -162,7 +162,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppTheme.accentRed.withOpacity(0.3)),
                       ),
-                      child: Text(_error!, style: const TextStyle(color: AppTheme.accentRed)),
+                      child: Text(_error!, style: TextStyle(color: AppTheme.accentRed)),
                     ),
                   ],
                   const SizedBox(height: 24),
@@ -257,7 +257,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               if (ok == true && mounted) setState(() => _passwordSet = true);
             },
             child: Text(_passwordSet ? 'Сменить' : 'Задать',
-                style: const TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accentOrange)),
           ),
         ],
       ),
@@ -276,12 +276,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                 child: TextFormField(
                   controller: ctrl,
                   validator: label.contains('*') ? (v) => v == null || v.isEmpty ? 'Обязательное поле' : null : null,
-                  style: const TextStyle(color: AppTheme.textPrimary),
+                  style: TextStyle(color: AppTheme.textPrimary),
                   decoration: InputDecoration(
                     labelText: label,
                     hintText: hint,
-                    labelStyle: const TextStyle(color: AppTheme.textSecondary),
-                    hintStyle: const TextStyle(color: AppTheme.textMuted),
+                    labelStyle: TextStyle(color: AppTheme.textSecondary),
+                    hintStyle: TextStyle(color: AppTheme.textMuted),
                   ),
                 ),
               ),
