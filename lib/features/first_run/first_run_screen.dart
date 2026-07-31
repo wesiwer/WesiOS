@@ -231,7 +231,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   _passwordSet
                       ? 'Пароль установлен'
                       : 'Защитить ключи паролем',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textPrimary),
@@ -241,7 +241,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   _passwordSet
                       ? 'Ключи будут скрыты до ввода пароля. На телефоне можно открывать отпечатком.'
                       : 'Иначе ключи сможет прочитать любой, кто возьмёт разблокированное устройство.',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11, color: AppTheme.textMuted, height: 1.35),
                 ),
               ],
