@@ -105,14 +105,14 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
             const SizedBox(height: 20),
             TextField(
               controller: _titleCtrl,
-              style: const TextStyle(color: AppTheme.textPrimary),
+              style: TextStyle(color: AppTheme.textPrimary),
               decoration: InputDecoration(labelText: WesiLocale.get('title')),
             ),
             const SizedBox(height: 12),
             TextField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
-              style: const TextStyle(color: AppTheme.textPrimary),
+              style: TextStyle(color: AppTheme.textPrimary),
               decoration: InputDecoration(
                 labelText: WesiLocale.get('amount'),
                 prefixText: '${widget.symbol} ',
@@ -167,7 +167,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: _descCtrl,
-              style: const TextStyle(color: AppTheme.textPrimary),
+              style: TextStyle(color: AppTheme.textPrimary),
               decoration: InputDecoration(
                   labelText: WesiLocale.get('description_optional')),
             ),
@@ -178,7 +178,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                   child: TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(WesiLocale.get('cancel'),
-                        style: const TextStyle(color: AppTheme.textMuted)),
+                        style: TextStyle(color: AppTheme.textMuted)),
                   ),
                 ),
                 Expanded(
