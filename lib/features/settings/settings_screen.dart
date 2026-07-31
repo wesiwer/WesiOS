@@ -119,7 +119,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 4),
                 Text(
                   WesiLocale.get('business_os'),
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12,
                     color: AppTheme.textSecondary,
                     letterSpacing: 1,
@@ -145,7 +145,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 const SizedBox(height: 12),
                 Text(
                   WesiLocale.get('created_by'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 13, color: AppTheme.textMuted),
                 ),
                 TextButton(
@@ -192,7 +192,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       padding: const EdgeInsets.only(left: 8, bottom: 8),
       child: Text(
         title.toUpperCase(),
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w600,
           color: AppTheme.textMuted,
@@ -251,7 +251,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
         child: Text(
           ru ? 'в планах' : 'planned',
-          style: const TextStyle(fontSize: 10, color: AppTheme.textMuted),
+          style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
         ),
       ),
     );
@@ -356,7 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 12),
               Text(
                 WesiLocale.get('select_language'),
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textPrimary,
