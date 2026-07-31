@@ -115,7 +115,7 @@ class _KeysScreenState extends State<KeysScreen> {
                         'не нужны — оно работает локально.'
                     : 'Keys for external services. The app does not need them '
                         'to work — it runs locally.',
-                style: const TextStyle(
+                style: TextStyle(
                     fontSize: 12, color: AppTheme.textSecondary),
               ),
             ),
@@ -133,7 +133,7 @@ class _KeysScreenState extends State<KeysScreen> {
                     const SizedBox(width: 11),
                     Expanded(
                       child: Text(_error!,
-                          style: const TextStyle(
+                          style: TextStyle(
                               fontSize: 12, color: AppTheme.accentRed)),
                     ),
                   ],
@@ -171,7 +171,7 @@ class _KeysScreenState extends State<KeysScreen> {
                   open
                       ? (_ru ? 'Хранилище открыто' : 'Vault unlocked')
                       : (_ru ? 'Хранилище закрыто' : 'Vault locked'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary),
@@ -195,7 +195,7 @@ class _KeysScreenState extends State<KeysScreen> {
                       'локальную копию.'
                   : 'Enter the Wesi Shield password to decrypt the local copy.',
             },
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12, height: 1.4, color: AppTheme.textMuted),
           ),
           const SizedBox(height: 14),
@@ -233,7 +233,7 @@ class _KeysScreenState extends State<KeysScreen> {
                         horizontal: 18, vertical: 11),
                     backgroundColor: AppTheme.surface,
                     child: Text(_ru ? 'Закрыть' : 'Lock',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13, color: AppTheme.textPrimary)),
                   ),
                 const Spacer(),
@@ -241,7 +241,7 @@ class _KeysScreenState extends State<KeysScreen> {
                   _ru
                       ? 'локально: ${SecretVault.names.length}'
                       : 'local: ${SecretVault.names.length}',
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 11, color: AppTheme.textMuted),
                 ),
               ],
@@ -284,7 +284,7 @@ class _KeysScreenState extends State<KeysScreen> {
                   signedIn
                       ? FirebaseRestService.session!.email
                       : (_ru ? 'Вход в Firebase' : 'Firebase sign-in'),
-                  style: const TextStyle(
+                  style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: AppTheme.textPrimary),
@@ -308,14 +308,14 @@ class _KeysScreenState extends State<KeysScreen> {
                             'Регистрации из приложения нет намеренно.'
                         : 'Accounts are created in the Firebase console. '
                             'Sign-up from the app is deliberately absent.'),
-            style: const TextStyle(
+            style: TextStyle(
                 fontSize: 12, height: 1.4, color: AppTheme.textMuted),
           ),
           if (signedIn) ...[
             const SizedBox(height: 8),
             SelectableText(
               'UID: ${FirebaseRestService.session!.uid}',
-              style: const TextStyle(
+              style: TextStyle(
                   fontSize: 11, color: AppTheme.textSecondary),
             ),
             const SizedBox(height: 4),
@@ -325,7 +325,7 @@ class _KeysScreenState extends State<KeysScreen> {
                       'в консоли Firebase — без него доступа не будет.'
                   : 'This UID is what you create the admins/<UID> document '
                       'from in the Firebase console.',
-              style: const TextStyle(fontSize: 11, color: AppTheme.textMuted),
+              style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
             ),
           ],
           const SizedBox(height: 14),
@@ -380,7 +380,7 @@ class _KeysScreenState extends State<KeysScreen> {
                       horizontal: 18, vertical: 11),
                   backgroundColor: AppTheme.surface,
                   child: Text(_ru ? 'Выйти' : 'Sign out',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13, color: AppTheme.textPrimary)),
                 ),
               ],
@@ -460,14 +460,14 @@ class _KeysScreenState extends State<KeysScreen> {
             children: [
               Expanded(
                 child: Text(_ru ? 'Ключи' : 'Keys',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: AppTheme.textPrimary)),
               ),
               TextButton(
                 onPressed: _addSecret,
                 child: Text(_ru ? 'Добавить' : 'Add',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 12, color: AppTheme.accentOrange)),
               ),
             ],
@@ -478,7 +478,7 @@ class _KeysScreenState extends State<KeysScreen> {
               child: Text(
                 _ru ? 'Пока ни одного' : 'None yet',
                 style:
-                    const TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
             )
           else
@@ -500,7 +500,7 @@ class _KeysScreenState extends State<KeysScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(name,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13, color: AppTheme.textPrimary)),
                   Text(
                     // Показываем только хвост: подсмотреть через плечо целый
@@ -509,7 +509,7 @@ class _KeysScreenState extends State<KeysScreen> {
                     value.length <= 6
                         ? '••••'
                         : '••••${value.substring(value.length - 4)}',
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11, color: AppTheme.textMuted),
                   ),
                 ],
@@ -585,7 +585,7 @@ class _KeysScreenState extends State<KeysScreen> {
       builder: (ctx) => AlertDialog(
         backgroundColor: AppTheme.surface,
         title: Text(title,
-            style: const TextStyle(
+            style: TextStyle(
                 color: AppTheme.textPrimary, fontSize: 16)),
         content: TextField(
           controller: ctrl,
