@@ -279,7 +279,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                   children: [
                     Text(
                       WesiLocale.get('balance_wesi_inc'),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         color: AppTheme.textSecondary,
                       ),
@@ -287,7 +287,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                     const SizedBox(height: 8),
                     Text(
                       CurrencyService.format(_balance),
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
                         color: AppTheme.primary,
