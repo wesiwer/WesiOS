@@ -1,6 +1,6 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-01 (сессия 7 — Windows UI + калькулятор accent/minimize, Grok)  
+**Обновлено:** 2026-08-01 (сессия 7 — home white-on-white + calculator, Grok)  
 **Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.7 α · **build:** 23  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
@@ -93,7 +93,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 ---
 
-## Сессия 7 (2026-08-01) — Windows UI + акценты светлой темы + калькулятор
+## Сессия 7 (2026-08-01) — Windows UI + акценты светлой темы + калькулятор + home
 
 Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
 **Не откатывать и не «улучшать» без явной просьбы пользователя.**
@@ -151,12 +151,26 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 | Плавающая полоска | `_minimizedBar()`: иконка + title + результат + expand + close; без блюра, не блокирует клики по приложению |
 | Развернуть | `Icons.open_in_full` на полоске → `_minimized = false` |
 
-### 7. Чего НЕ делать
+### 7. Главная: «Календарь» / «Задачи» белые на белом ✅
+
+**Проблема:** на светлой теме заголовки карточек Календарь/Задачи нечитаемы (белый на белом).
+
+**Причина:** `HomeAgenda` / `HomePulse` не слушали `ThemeNotifier` — после смены темы оставались цвета предыдущей (тёмной) темы.
+
+**Исправление:**
+
+| Файл | Изменение |
+|---|---|
+| `lib/features/home/widgets/home_agenda.dart` | `ValueListenableBuilder` на `ThemeNotifier`; заголовки секций → `AppTheme.textSecondary` (серый) |
+| `lib/features/home/widgets/home_pulse.dart` | `ValueListenableBuilder` на `ThemeNotifier`; runway color → `AppTheme.accent` вместо hardcoded orange |
+
+### 8. Чего НЕ делать
 
 - Не запускать release/build CI без явного запроса пользователя.
 - Не возвращать hardcoded `accentOrange` в UI-хром светлой темы (warnings/anomalies — ок).
 - Не убирать `ModuleHeader` / back button с push-экранов.
 - Не ломать pin / history / blur / scale / minimize калькулятора.
+- Виджеты с `AppTheme.*` на главной **должны** слушать `ThemeNotifier` (IndexedStack + const child иначе не перекрашиваются).
 
 ---
 
@@ -259,6 +273,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 18. **Релизы/билды** — только по явному запросу пользователя; мелкие фиксы накапливаем (сессия 7).
 19. **Акценты UI** на светлой теме — `AppTheme.accent` (голубой), не hardcoded orange (кроме warnings).
 20. **ModuleHeader** — стандарт шапки для push-экранов с back.
+21. **Home карточки** (`HomeAgenda`, `HomePulse`) — всегда `ValueListenableBuilder` на `ThemeNotifier` (IndexedStack иначе не перекрашивает).
 
 ---
 
@@ -268,6 +283,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 |-----|------|
 | Тема + AnimatedTheme | `lib/app.dart`, `lib/core/theme/app_theme.dart` |
 | Home + theme rebuild | `lib/features/home/home_screen.dart` |
+| Home agenda / pulse | `lib/features/home/widgets/home_agenda.dart`, `home_pulse.dart` |
 | ModuleHeader (back) | `lib/core/widgets/module_header.dart` |
 | Window controls (Win) | `lib/core/widgets/window_controls.dart` |
 | Подпись Android | `android/app/build.gradle` |
@@ -300,5 +316,6 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 ## Открытые TODO (сессия 7)
 
 - [x] Калькулятор: minimize → floating bar (expand / close); `accentOrange` → `AppTheme.accent` на операторах/пине/истории.
+- [x] Главная: белый текст «Календарь»/«Задачи» на светлой теме → `textSecondary` + listen ThemeNotifier.
 - [ ] Knowledge: полный rich-editor (Quill toolbar + insert link/table/image/video + wesios://) — body view уже есть.
 - [ ] Релизный билд — **только по запросу** пользователя после накопления фиксов.
