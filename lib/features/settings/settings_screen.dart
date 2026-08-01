@@ -29,8 +29,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return ValueListenableBuilder<AppThemeMode>(
       valueListenable: ThemeNotifier.instance,
       builder: (context, mode, _) {
+        final bg = Theme.of(context).scaffoldBackgroundColor;
         return Scaffold(
-          backgroundColor: AppTheme.background,
+          backgroundColor: bg,
           body: ListView(
             padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 16),
             children: [
@@ -355,7 +356,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(
                       fontSize: 18,
                       fontWeight: FontWeight.w600,
-                      color: AppTheme.textPrimary,
+                      color: AppTheme.accent,
                     ),
                   ),
                   SizedBox(height: 4),
