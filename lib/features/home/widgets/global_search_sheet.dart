@@ -149,7 +149,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
                 ),
               ),
             ),
-            const Divider(height: 1, color: AppTheme.glassBorder),
+            Divider(height: 1, color: AppTheme.glassBorder),
             Flexible(
               child: _loading
                   ? Padding(
