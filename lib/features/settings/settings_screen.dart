@@ -143,8 +143,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const AppUpdateCard(),
               const SizedBox(height: 8),
               _section(WesiLocale.get('engine_settings_section')),
-              const ForecastEnginesSection(),
-              const SizedBox(height: 24),
+              ForecastEnginesSection(),
+              SizedBox(height: 24),
               _section(WesiLocale.get('about_app')),
               GlassCard(
                 child: Column(
@@ -157,7 +157,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         color: AppTheme.textPrimary,
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
                       WesiLocale.get('business_os'),
                       style: TextStyle(
@@ -166,9 +166,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         letterSpacing: 1,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     Container(
-                      padding: const EdgeInsets.symmetric(
+                      padding: EdgeInsets.symmetric(
                           horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
                         color: AppTheme.accent.withOpacity(0.1),
@@ -183,7 +183,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ),
-                    const SizedBox(height: 12),
+                    SizedBox(height: 12),
                     Text(
                       WesiLocale.get('created_by'),
                       style: TextStyle(
@@ -233,7 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _section(String title) {
     return Padding(
-      padding: const EdgeInsets.only(left: 8, bottom: 8),
+      padding: EdgeInsets.only(left: 8, bottom: 8),
       child: Text(
         title.toUpperCase(),
         style: TextStyle(
@@ -283,7 +283,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       subtitle: Text(subtitle,
           style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
       trailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           color: AppTheme.surface,
           borderRadius: BorderRadius.circular(7),
@@ -349,7 +349,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Text(
                     ru ? 'Иконка приложения' : 'App icon',
                     style: TextStyle(
@@ -358,9 +358,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: AppTheme.textPrimary,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: EdgeInsets.symmetric(horizontal: 20),
                     child: Text(
                       ru
                           ? 'Тёмная — чёрный фон и белый знак. Светлая — белый фон и серо-синий знак.'
@@ -495,7 +495,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Text(
                 WesiLocale.get('select_language'),
                 style: TextStyle(
@@ -505,7 +505,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               ListTile(
-                leading: const Text('🇷🇺', style: TextStyle(fontSize: 24)),
+                leading: Text('🇷🇺', style: TextStyle(fontSize: 24)),
                 title: Text('Русский',
                     style: TextStyle(color: AppTheme.textPrimary)),
                 trailing: WesiLocale.isRussian
@@ -520,7 +520,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
               ListTile(
-                leading: const Text('🇬🇧', style: TextStyle(fontSize: 24)),
+                leading: Text('🇬🇧', style: TextStyle(fontSize: 24)),
                 title: Text('English',
                     style: TextStyle(color: AppTheme.textPrimary)),
                 trailing: WesiLocale.isEnglish

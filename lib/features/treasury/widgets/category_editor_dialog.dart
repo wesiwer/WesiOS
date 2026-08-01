@@ -54,7 +54,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         insetPadding:
-            const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
+            EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
         title: Text(WesiLocale.isRussian ? 'Переименовать' : 'Rename',
             style: TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: TextField(
@@ -105,13 +105,13 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       insetPadding: const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 460, maxHeight: 560),
+        constraints: BoxConstraints(maxWidth: 460, maxHeight: 560),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 22, 24, 4),
+              padding: EdgeInsets.fromLTRB(24, 22, 24, 4),
               child: Text(ru ? 'Категории' : 'Categories',
                   style: TextStyle(
                       fontSize: 20,
@@ -119,7 +119,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                       color: AppTheme.textPrimary)),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              padding: EdgeInsets.fromLTRB(24, 0, 24, 12),
               child: Text(
                 ru
                     ? 'Свой список для текущего языка интерфейса'
@@ -141,12 +141,12 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               IconButton(
-                                icon: const Icon(Icons.edit,
+                                icon: Icon(Icons.edit,
                                     size: 17, color: AppTheme.textMuted),
                                 onPressed: () => _rename(c),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete_outline,
+                                icon: Icon(Icons.delete_outline,
                                     size: 17, color: AppTheme.accentRed),
                                 onPressed: () => _remove(c),
                               ),
@@ -158,7 +158,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
             ),
             Divider(height: 1, color: AppTheme.glassBorder),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+              padding: EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
                 children: [
                   Expanded(
@@ -174,7 +174,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.add_circle,
+                    icon: Icon(Icons.add_circle,
                         color: AppTheme.accentOrange),
                     onPressed: _add,
                   ),
@@ -182,7 +182,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: Row(
                 children: [
                   TextButton(
@@ -193,7 +193,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                     child: Text(ru ? 'Сбросить' : 'Reset',
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(ru ? 'Готово' : 'Done',

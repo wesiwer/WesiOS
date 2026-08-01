@@ -48,7 +48,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
             color: Colors.transparent,
             child: Container(
               width: 300,
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               decoration: BoxDecoration(
                 color: AppTheme.carbonDark.withOpacity(0.98),
                 borderRadius: BorderRadius.circular(14),
@@ -71,15 +71,15 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                         width: 28,
                         height: 28,
                         decoration: BoxDecoration(
-                          gradient: const LinearGradient(
+                          gradient: LinearGradient(
                             colors: [AppTheme.accentOrange, Color(0xFFFFD700)],
                           ),
                           borderRadius: BorderRadius.circular(7),
                         ),
-                        child: const Icon(Icons.info_outline,
+                        child: Icon(Icons.info_outline,
                             color: Colors.white, size: 16),
                       ),
-                      const SizedBox(width: 10),
+                      SizedBox(width: 10),
                       Expanded(
                         child: Text(
                           widget.title,
@@ -92,7 +92,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   Text(
                     widget.description,
                     style: TextStyle(
@@ -101,7 +101,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                       height: 1.45,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   Text(
                     widget.purpose,
                     style: TextStyle(
@@ -111,9 +111,9 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                       height: 1.35,
                     ),
                   ),
-                  const SizedBox(height: 10),
+                  SizedBox(height: 10),
                   Divider(color: AppTheme.glassBorder.withOpacity(0.5)),
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   Text(
                     WesiLocale.get('click_to_open'),
                     style: TextStyle(
@@ -167,7 +167,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
       items: [
         PopupMenuItem(
           enabled: false,
-          padding: const EdgeInsets.all(20),
+          padding: EdgeInsets.all(20),
           child: SizedBox(
             width: 280,
             child: Column(
@@ -179,13 +179,13 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                         fontSize: 16,
                         fontWeight: FontWeight.w700,
                         color: AppTheme.textPrimary)),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 Text(widget.description,
                     style: TextStyle(
                         fontSize: 13,
                         color: AppTheme.textSecondary,
                         height: 1.5)),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 Text(widget.purpose,
                     style: TextStyle(
                         fontSize: 12,

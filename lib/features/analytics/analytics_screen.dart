@@ -84,7 +84,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 12, 16, 32),
                 children: [
                   WesiTitle(_ru ? 'Аналитика' : 'Analytics'),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Text(
                     _ru
                         ? 'Сводная картина: деньги, работа, тенденции'
@@ -122,8 +122,8 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           return GestureDetector(
             onTap: () => _setPeriod(d),
             child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+              duration: Duration(milliseconds: 160),
+              padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
               decoration: BoxDecoration(
                 color: sel
                     ? AppTheme.accentOrange.withOpacity(0.16)
@@ -150,14 +150,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   Widget _emptyState() => _card(
         child: Column(
           children: [
-            const Icon(Icons.insights, size: 34, color: AppTheme.textMuted),
-            const SizedBox(height: 12),
+            Icon(Icons.insights, size: 34, color: AppTheme.textMuted),
+            SizedBox(height: 12),
             Text(
               _ru ? 'Пока нечего анализировать' : 'Nothing to analyse yet',
               style: TextStyle(
                   fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             Text(
               _ru
                   ? 'Добавьте операции в «Финансы» или задачи — аналитика '
@@ -205,7 +205,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     // рост доходов зелёный.
     final good = higherIsBetter ? kpi.isUp : !kpi.isUp;
     return _card(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -219,7 +219,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             style: TextStyle(
                 fontSize: 19, fontWeight: FontWeight.w800, color: color),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Row(
             children: [
               Icon(
@@ -231,7 +231,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     ? AppTheme.textMuted
                     : (good ? AppTheme.accentGreen : AppTheme.accentRed),
               ),
-              const SizedBox(width: 4),
+              SizedBox(width: 4),
               Expanded(
                 child: Text(
                   change == null
@@ -262,7 +262,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _cardTitle(_ru ? 'Динамика по месяцам' : 'Monthly trend'),
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             Text(
               _ru
                   ? 'Нужно хотя бы два месяца данных в выбранном периоде.'
@@ -283,7 +283,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _cardTitle(_ru ? 'Динамика по месяцам' : 'Monthly trend'),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           SizedBox(
             height: 190,
             child: BarChart(
@@ -298,9 +298,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 ),
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
-                  topTitles: const AxisTitles(
+                  topTitles: AxisTitles(
                       sideTitles: SideTitles(showTitles: false)),
-                  rightTitles: const AxisTitles(
+                  rightTitles: AxisTitles(
                       sideTitles: SideTitles(showTitles: false)),
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
@@ -320,11 +320,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       getTitlesWidget: (v, meta) {
                         final i = v.toInt();
                         if (i < 0 || i >= d.months.length) {
-                          return const SizedBox.shrink();
+                          return SizedBox.shrink();
                         }
                         final m = d.months[i].month;
                         return Padding(
-                          padding: const EdgeInsets.only(top: 6),
+                          padding: EdgeInsets.only(top: 6),
                           child: Text(
                             '${m.month.toString().padLeft(2, '0')}.'
                             '${m.year % 100}',
@@ -375,11 +375,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Row(
             children: [
               _legendDot(AppTheme.accentGreen, _ru ? 'Доходы' : 'Income'),
-              const SizedBox(width: 18),
+              SizedBox(width: 18),
               _legendDot(AppTheme.accentRed, _ru ? 'Расходы' : 'Expenses'),
             ],
           ),
@@ -396,7 +396,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _cardTitle(_ru ? 'Здоровье' : 'Health'),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           _statRow(
             icon: Icons.local_fire_department_outlined,
             color: AppTheme.accentRed,
@@ -420,9 +420,9 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 : (_ru ? '$runway дн.' : '$runway days'),
           ),
           if (runway != null && runway < 60) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Container(
-              padding: const EdgeInsets.all(12),
+              padding: EdgeInsets.all(12),
               decoration: BoxDecoration(
                 color: AppTheme.accentRed.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(10),
@@ -451,7 +451,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         children: [
           _cardTitle(
               _ru ? 'Куда уходит и откуда приходит' : 'Where money moves'),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           if (d.topExpenseCategories.isEmpty && d.topIncomeCategories.isEmpty)
             Text(
               _ru ? 'Нет операций за период' : 'No operations in this period',
@@ -461,15 +461,15 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
             Text(_ru ? 'Расходы' : 'Expenses',
                 style:
                     TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             ..._bars(d.topExpenseCategories, AppTheme.accentRed),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
           ],
           if (d.topIncomeCategories.isNotEmpty) ...[
             Text(_ru ? 'Доходы' : 'Income',
                 style:
                     TextStyle(fontSize: 11, color: AppTheme.textMuted)),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             ..._bars(d.topIncomeCategories, AppTheme.accentGreen),
           ],
         ],
@@ -482,7 +482,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return rows.map((e) {
       final share = max == 0 ? 0.0 : e.value / max;
       return Padding(
-        padding: const EdgeInsets.only(bottom: 9),
+        padding: EdgeInsets.only(bottom: 9),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -502,7 +502,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                         color: AppTheme.textPrimary)),
               ],
             ),
-            const SizedBox(height: 5),
+            SizedBox(height: 5),
             ClipRRect(
               borderRadius: BorderRadius.circular(3),
               child: LinearProgressIndicator(
@@ -524,7 +524,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _cardTitle(_ru ? 'Продуктивность' : 'Productivity'),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           if (d.tasksTotal == 0)
             Text(
               _ru
@@ -543,11 +543,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                       minHeight: 7,
                       backgroundColor: AppTheme.background,
                       valueColor:
-                          const AlwaysStoppedAnimation(AppTheme.accentOrange),
+                          AlwaysStoppedAnimation(AppTheme.accentOrange),
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Text(
                   '${(d.taskCompletion * 100).round()}%',
                   style: TextStyle(
@@ -557,7 +557,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             _statRow(
               icon: Icons.check_circle_outline,
               color: AppTheme.accentGreen,
@@ -590,11 +590,11 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     required String value,
   }) =>
       Padding(
-        padding: const EdgeInsets.only(bottom: 10),
+        padding: EdgeInsets.only(bottom: 10),
         child: Row(
           children: [
             Icon(icon, size: 16, color: color),
-            const SizedBox(width: 10),
+            SizedBox(width: 10),
             Expanded(
               child: Text(label,
                   style: TextStyle(
@@ -617,7 +617,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
               height: 9,
               decoration:
                   BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 6),
+          SizedBox(width: 6),
           Text(label,
               style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
         ],
@@ -633,7 +633,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   Widget _card({required Widget child, EdgeInsets? padding}) => Container(
         width: double.infinity,
-        padding: padding ?? const EdgeInsets.all(16),
+        padding: padding ?? EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.35),
           borderRadius: BorderRadius.circular(14),

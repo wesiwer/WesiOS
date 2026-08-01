@@ -117,7 +117,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
   Widget build(BuildContext context) {
     final income = _of(TransactionType.income);
     final expense = _of(TransactionType.expense);
-    if (income.isEmpty && expense.isEmpty) return const SizedBox.shrink();
+    if (income.isEmpty && expense.isEmpty) return SizedBox.shrink();
 
     return LayoutBuilder(
       builder: (context, c) {
@@ -187,7 +187,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _cardHeader(title, accent, null, onDrill),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             Text(
               _ru ? 'Операций пока нет' : 'No operations yet',
               style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
@@ -210,7 +210,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _cardHeader(title, accent, drilled?.label, onDrill),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             drilled == null
                 ? (_ru
@@ -325,7 +325,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
     final incomeSum = income.fold<double>(0, (s, t) => s + t.amount);
     final expenseSum = expense.fold<double>(0, (s, t) => s + t.amount);
     final total = incomeSum + expenseSum;
-    if (total == 0) return const SizedBox.shrink();
+    if (total == 0) return SizedBox.shrink();
 
     final net = incomeSum - expenseSum;
     final slices = <(String, double, Color)>[
@@ -339,9 +339,9 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
         children: [
           Row(
             children: [
-              const Icon(Icons.compare_arrows,
+              Icon(Icons.compare_arrows,
                   size: 17, color: AppTheme.textMuted),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Text(
                 _ru ? 'Доходы против расходов' : 'Income vs expenses',
                 style: TextStyle(
@@ -433,7 +433,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
           height: 8,
           decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: 8),
         Expanded(
           child: Text(
             title,
@@ -445,11 +445,11 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
           TextButton.icon(
             onPressed: () => onDrill(null),
             style: TextButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: EdgeInsets.symmetric(horizontal: 8),
               minimumSize: Size.zero,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
-            icon: const Icon(Icons.arrow_back,
+            icon: Icon(Icons.arrow_back,
                 size: 14, color: AppTheme.accentOrange),
             label: Text(
               _ru ? 'Категории' : 'Categories',
@@ -478,7 +478,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
             height: 9,
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
-          const SizedBox(width: 9),
+          SizedBox(width: 9),
           Expanded(
             child: Text(
               label,
@@ -489,8 +489,8 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
             ),
           ),
           if (expandable) ...[
-            const Icon(Icons.unfold_more, size: 13, color: AppTheme.textMuted),
-            const SizedBox(width: 6),
+            Icon(Icons.unfold_more, size: 13, color: AppTheme.textMuted),
+            SizedBox(width: 6),
           ],
           Text(
             '${(share * 100).round()}%',
@@ -499,7 +499,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textMuted),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Text(
             CurrencyService.format(value),
             style: TextStyle(
@@ -519,7 +519,7 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
   }
 
   Widget _shell({required Widget child}) => Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.32),
           borderRadius: BorderRadius.circular(14),

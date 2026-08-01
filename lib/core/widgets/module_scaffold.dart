@@ -112,11 +112,11 @@ class ModuleScaffold extends StatelessWidget {
                     Row(
                       children: [
                         Flexible(child: WesiTitle(title, size: 20)),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         _stageBadge(ru),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
                       subtitle,
                       style: TextStyle(
@@ -128,11 +128,11 @@ class ModuleScaffold extends StatelessWidget {
             ],
           ),
           if (child != null) ...[
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
             child!,
           ],
           if (plannedFeatures.isNotEmpty) ...[
-            const SizedBox(height: 28),
+            SizedBox(height: 28),
             Text(
               ru ? 'Что здесь будет' : 'What goes here',
               style: TextStyle(
@@ -181,12 +181,12 @@ class ModuleScaffold extends StatelessWidget {
 
   Widget _featureRow(String text) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.only(bottom: 10),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            margin: const EdgeInsets.only(top: 6),
+            margin: EdgeInsets.only(top: 6),
             width: 5,
             height: 5,
             decoration: BoxDecoration(
@@ -194,7 +194,7 @@ class ModuleScaffold extends StatelessWidget {
               color: AppTheme.accentOrange.withOpacity(0.7),
             ),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Expanded(
             child: Text(
               text,
@@ -209,7 +209,7 @@ class ModuleScaffold extends StatelessWidget {
 
   Widget _stubNotice(bool ru) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.4),
         borderRadius: BorderRadius.circular(12),
@@ -219,7 +219,7 @@ class ModuleScaffold extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(Icons.info_outline, size: 16, color: AppTheme.textMuted),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Expanded(
             child: Text(
               ru
@@ -269,9 +269,9 @@ class StubBlock extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, size: 22, color: AppTheme.textMuted.withOpacity(0.6)),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: EdgeInsets.symmetric(horizontal: 16),
             child: Text(
               label,
               textAlign: TextAlign.center,

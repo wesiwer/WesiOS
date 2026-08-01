@@ -60,7 +60,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
             Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.arrow_back,
+                  icon: Icon(Icons.arrow_back,
                       color: AppTheme.textPrimary),
                   onPressed: () => Navigator.pop(context),
                 ),
@@ -68,9 +68,9 @@ class _ShieldScreenState extends State<ShieldScreen> {
                 SizedBox(width: kHasCustomTitleBar ? 140 : 0),
               ],
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: EdgeInsets.symmetric(horizontal: 8),
               child: Text(
                 _ru
                     ? 'Защита доступа к WesiOS: пароль, биометрия, '
@@ -88,7 +88,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
               _settingsCard(),
               const SizedBox(height: 16),
               _logCard(),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               _dangerCard(),
             ],
           ],
@@ -109,7 +109,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
           Row(
             children: [
               Icon(Icons.shield, color: color, size: 22),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   _ru ? 'Уровень защиты' : 'Protection level',
@@ -125,7 +125,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                       color: color)),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           ClipRRect(
             borderRadius: BorderRadius.circular(4),
             child: LinearProgressIndicator(
@@ -136,12 +136,12 @@ class _ShieldScreenState extends State<ShieldScreen> {
             ),
           ),
           if (a.good.isNotEmpty) ...[
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             ...a.good.map((t) => _bullet(t, Icons.check_circle_outline,
                 AppTheme.accentGreen)),
           ],
           if (a.advice.isNotEmpty) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             ...a.advice.map((t) =>
                 _bullet(t, Icons.lightbulb_outline, AppTheme.accentOrange)),
           ],
@@ -151,12 +151,12 @@ class _ShieldScreenState extends State<ShieldScreen> {
   }
 
   Widget _bullet(String text, IconData icon, Color color) => Padding(
-        padding: const EdgeInsets.only(bottom: 7),
+        padding: EdgeInsets.only(bottom: 7),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon, size: 15, color: color),
-            const SizedBox(width: 9),
+            SizedBox(width: 9),
             Expanded(
               child: Text(text,
                   style: TextStyle(
@@ -177,7 +177,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
               style: TextStyle(
                   fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
             ),
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             Text(
               _ru
                   ? 'Пока пароль не задан, любой, кто взял устройство, видит '
@@ -187,11 +187,11 @@ class _ShieldScreenState extends State<ShieldScreen> {
               style:
                   TextStyle(fontSize: 12, color: AppTheme.textMuted),
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16),
             HoverButton(
               onTap: _setPassword,
               padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               backgroundColor: AppTheme.accentOrange,
               child: Text(
                 _ru ? 'Задать пароль' : 'Set a password',
@@ -239,7 +239,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                 ? (v) => ShieldService.setBiometricsEnabled(v)
                 : null,
           ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             _ru ? 'Автоблокировка' : 'Auto-lock',
             style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
@@ -253,7 +253,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
               return GestureDetector(
                 onTap: () => ShieldService.setTimeoutMinutes(m),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
+                  padding: EdgeInsets.symmetric(
                       horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     color: sel
@@ -280,12 +280,12 @@ class _ShieldScreenState extends State<ShieldScreen> {
               );
             }).toList(),
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Text(
             _ru ? 'Стереть данные после неудачных попыток' : 'Wipe after failures',
             style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             _ru
                 ? 'Необратимо. Включайте только если понимаете, что забытый '
@@ -303,7 +303,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
               return GestureDetector(
                 onTap: () => ShieldService.setWipeAfterAttempts(n),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
+                  padding: EdgeInsets.symmetric(
                       horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     color: sel
@@ -342,7 +342,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
     ValueChanged<bool>? onChanged,
   }) =>
       Padding(
-        padding: const EdgeInsets.only(bottom: 6),
+        padding: EdgeInsets.only(bottom: 6),
         child: Row(
           children: [
             Icon(icon,
@@ -350,7 +350,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                 color: onChanged == null
                     ? AppTheme.textMuted
                     : AppTheme.accentOrange),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -399,7 +399,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                 ),
             ],
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           if (log.isEmpty)
             Text(
               _ru ? 'Событий пока нет' : 'No events yet',
@@ -436,7 +436,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
         '${d.hour.toString().padLeft(2, '0')}:'
         '${d.minute.toString().padLeft(2, '0')}';
     return Padding(
-      padding: const EdgeInsets.only(bottom: 7),
+      padding: EdgeInsets.only(bottom: 7),
       child: Row(
         children: [
           Icon(
@@ -444,7 +444,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
             size: 14,
             color: e.success ? AppTheme.accentGreen : AppTheme.accentRed,
           ),
-          const SizedBox(width: 9),
+          SizedBox(width: 9),
           Expanded(
             child: Text(
               e.detail == null
@@ -473,7 +473,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                 Expanded(
                   child: HoverButton(
                     onTap: _setPassword,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: EdgeInsets.symmetric(vertical: 12),
                     backgroundColor: AppTheme.surface,
                     child: Center(
                       child: Text(
@@ -484,11 +484,11 @@ class _ShieldScreenState extends State<ShieldScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 Expanded(
                   child: HoverButton(
                     onTap: _disable,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    padding: EdgeInsets.symmetric(vertical: 12),
                     backgroundColor: AppTheme.accentRed.withOpacity(0.14),
                     child: Center(
                       child: Text(
@@ -536,7 +536,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
 
   Widget _card({required Widget child}) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.35),
           borderRadius: BorderRadius.circular(14),
@@ -626,7 +626,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                     color: AppTheme.textPrimary),
               ),
               if (!widget.confirmOnly) ...[
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 Text(
                   _ru
                       ? 'Пароль не хранится — только производный ключ. '
@@ -637,7 +637,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                       fontSize: 11, color: AppTheme.textMuted),
                 ),
               ],
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               TextField(
                 controller: _first,
                 autofocus: true,
@@ -651,7 +651,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                 ),
               ),
               if (!widget.confirmOnly) ...[
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
@@ -674,7 +674,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: _second,
                   obscureText: true,
@@ -685,7 +685,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                   ),
                 ),
               ],
-              const SizedBox(height: 22),
+              SizedBox(height: 22),
               Row(
                 children: [
                   TextButton(
@@ -693,10 +693,10 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                     child: Text(WesiLocale.get('cancel'),
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   HoverButton(
                     onTap: _submit,
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                         horizontal: 22, vertical: 11),
                     backgroundColor: AppTheme.accentOrange,
                     child: Text(

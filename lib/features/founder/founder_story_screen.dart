@@ -4,7 +4,7 @@ import '../../widgets/glass_card.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 
 class FounderStoryScreen extends StatelessWidget {
-  const FounderStoryScreen({super.key});
+  FounderStoryScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -64,13 +64,13 @@ class FounderStoryScreen extends StatelessWidget {
                         'С ранних лет Влад понял, что способен на многое, в 14 лет начал делать первые шаги к своему великому будущему, в 15 лет начал заниматься битмейкингом и активно заниматься саморазвитием.',
                         style: TextStyle(fontSize: 16, height: 1.6),
                       ),
-                      const SizedBox(height: 16),
-                      const Text(
+                      SizedBox(height: 16),
+                      Text(
                         'К 20 годам набрался опыта в нише и в 21 год основал компанию Wesi Inc.',
                         style: TextStyle(fontSize: 16, height: 1.6),
                       ),
-                      const SizedBox(height: 16),
-                      const Text(
+                      SizedBox(height: 16),
+                      Text(
                         'В 2026 году в день его рождения родилась система Wesi OS, которая помогает компании сворачивать горы и менять этот мир!',
                         style: TextStyle(
                           fontSize: 18,
@@ -79,8 +79,8 @@ class FounderStoryScreen extends StatelessWidget {
                           height: 1.6,
                         ),
                       ),
-                      const SizedBox(height: 32),
-                      const Center(
+                      SizedBox(height: 32),
+                      Center(
                         child: Text(
                           '«Система, которая помогает менять мир!»',
                           style: TextStyle(

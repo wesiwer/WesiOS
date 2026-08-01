@@ -90,7 +90,7 @@ class _TasksScreenState extends State<TasksScreen> {
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         insetPadding:
-            const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
+            EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
         title: Text(ru ? 'Удалить задачу?' : 'Delete task?',
             style: TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: Text('«${task.title}»',
@@ -201,7 +201,7 @@ class _TasksScreenState extends State<TasksScreen> {
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
                 isDense: true,
-                prefixIcon: const Icon(Icons.search,
+                prefixIcon: Icon(Icons.search,
                     size: 17, color: AppTheme.textMuted),
                 hintText: ru ? 'Поиск по задачам' : 'Search tasks',
                 hintStyle:
@@ -216,14 +216,14 @@ class _TasksScreenState extends State<TasksScreen> {
             ),
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: 10),
         _chip(
           label: ru ? 'Просроченные' : 'Overdue',
           selected: _onlyOverdue,
           color: AppTheme.accentRed,
           onTap: () => setState(() => _onlyOverdue = !_onlyOverdue),
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: 8),
         PopupMenuButton<TaskPriority?>(
           color: AppTheme.surface,
           tooltip: ru ? 'Приоритет' : 'Priority',
@@ -263,7 +263,7 @@ class _TasksScreenState extends State<TasksScreen> {
     VoidCallback? onTap,
   }) {
     final content = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: selected ? color.withOpacity(0.16) : AppTheme.surface,
         borderRadius: BorderRadius.circular(10),
@@ -323,7 +323,7 @@ class _TasksScreenState extends State<TasksScreen> {
       builder: (context, candidate, rejected) {
         final hovering = candidate.isNotEmpty;
         return Container(
-          padding: const EdgeInsets.all(10),
+          padding: EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: hovering
                 ? AppTheme.accentOrange.withOpacity(0.08)
@@ -347,7 +347,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 children: [
                   Icon(TaskLabels.statusIcon(status),
                       size: 15, color: AppTheme.textMuted),
-                  const SizedBox(width: 7),
+                  SizedBox(width: 7),
                   Expanded(
                     child: Text(
                       TaskLabels.status(status, ru),
@@ -360,18 +360,18 @@ class _TasksScreenState extends State<TasksScreen> {
                   Text('${items.length}',
                       style: TextStyle(
                           fontSize: 12, color: AppTheme.textMuted)),
-                  const SizedBox(width: 4),
+                  SizedBox(width: 4),
                   GestureDetector(
                     onTap: () => _create(status),
-                    child: const Icon(Icons.add,
+                    child: Icon(Icons.add,
                         size: 16, color: AppTheme.accentOrange),
                   ),
                 ],
               ),
-              const SizedBox(height: 10),
+              SizedBox(height: 10),
               if (items.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 18),
+                  padding: EdgeInsets.symmetric(vertical: 18),
                   child: Center(
                     child: Text(
                       ru ? 'Пусто' : 'Empty',
@@ -420,7 +420,7 @@ class _TasksScreenState extends State<TasksScreen> {
     return GestureDetector(
       onTap: () => _edit(task),
       child: Container(
-        padding: const EdgeInsets.all(11),
+        padding: EdgeInsets.all(11),
         decoration: BoxDecoration(
           color: AppTheme.surface,
           borderRadius: BorderRadius.circular(11),
@@ -443,7 +443,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   decoration:
                       BoxDecoration(shape: BoxShape.circle, color: pColor),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     task.title,
@@ -463,7 +463,7 @@ class _TasksScreenState extends State<TasksScreen> {
               ],
             ),
             if (task.subtasks.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(
@@ -473,12 +473,12 @@ class _TasksScreenState extends State<TasksScreen> {
                         value: task.checklistProgress,
                         minHeight: 3,
                         backgroundColor: AppTheme.background,
-                        valueColor: const AlwaysStoppedAnimation(
+                        valueColor: AlwaysStoppedAnimation(
                             AppTheme.accentOrange),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Text(
                     '${task.subtasks.where((s) => s.done).length}/${task.subtasks.length}',
                     style: TextStyle(
@@ -503,7 +503,7 @@ class _TasksScreenState extends State<TasksScreen> {
                             color: task.isOverdue
                                 ? AppTheme.accentRed
                                 : AppTheme.textMuted),
-                        const SizedBox(width: 4),
+                        SizedBox(width: 4),
                         Text(
                           TaskLabels.dueLabel(task.dueDate!, ru),
                           style: TextStyle(
@@ -522,9 +522,9 @@ class _TasksScreenState extends State<TasksScreen> {
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        const Icon(Icons.person_outline,
+                        Icon(Icons.person_outline,
                             size: 11, color: AppTheme.textMuted),
-                        const SizedBox(width: 4),
+                        SizedBox(width: 4),
                         Text(task.assignee!,
                             style: TextStyle(
                                 fontSize: 10, color: AppTheme.textMuted)),
@@ -546,7 +546,7 @@ class _TasksScreenState extends State<TasksScreen> {
       color: AppTheme.surface,
       padding: EdgeInsets.zero,
       iconSize: 15,
-      icon: const Icon(Icons.more_vert, color: AppTheme.textMuted),
+      icon: Icon(Icons.more_vert, color: AppTheme.textMuted),
       onSelected: (value) {
         if (value == 'edit') {
           _edit(task);
@@ -564,7 +564,7 @@ class _TasksScreenState extends State<TasksScreen> {
           child: Text(ru ? 'Изменить' : 'Edit',
               style: TextStyle(color: AppTheme.textPrimary)),
         ),
-        const PopupMenuDivider(),
+        PopupMenuDivider(),
         ...TaskStatus.values.where((s) => s != task.status).map(
               (s) => PopupMenuItem(
                 value: s.name,
@@ -574,7 +574,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 ),
               ),
             ),
-        const PopupMenuDivider(),
+        PopupMenuDivider(),
         PopupMenuItem(
           value: 'delete',
           child: Text(ru ? 'Удалить' : 'Delete',

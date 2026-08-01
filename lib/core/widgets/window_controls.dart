@@ -173,7 +173,7 @@ class _WinBtnState extends State<_WinBtn> {
             height: kTitleBarHeight,
             color: _hovered
                 ? (widget.isClose
-                    ? const Color(0xFFE81123)
+                    ? Color(0xFFE81123)
                     : Colors.white.withOpacity(0.12))
                 : Colors.transparent,
             child: Icon(

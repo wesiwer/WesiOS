@@ -141,12 +141,12 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
               style: TextStyle(
                   fontSize: 12, height: 1.4, color: AppTheme.textMuted),
             ),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             TextField(
               controller: ctrl,
               autofocus: true,
               style: TextStyle(color: AppTheme.textPrimary),
-              decoration: const InputDecoration(labelText: 'Client ID'),
+              decoration: InputDecoration(labelText: 'Client ID'),
             ),
           ],
         ),
@@ -175,8 +175,8 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      margin: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.all(16),
+      margin: EdgeInsets.only(bottom: 8),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.3),
         borderRadius: BorderRadius.circular(14),
@@ -192,7 +192,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                 size: 18,
                 color: signedIn ? AppTheme.accentGreen : AppTheme.accentOrange,
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   signedIn
@@ -227,14 +227,14 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                 fontSize: 12, height: 1.4, color: AppTheme.textMuted),
           ),
           if (configured && !signedIn) ...[
-            const SizedBox(height: 10),
+            SizedBox(height: 10),
             // Показан целиком намеренно: секрета здесь нет, а сверить его
             // с GitHub глазами — самый быстрый способ поймать расхождение,
             // если приложение когда-нибудь пересоздадут.
             Row(
               children: [
-                const Icon(Icons.tag, size: 13, color: AppTheme.textMuted),
-                const SizedBox(width: 8),
+                Icon(Icons.tag, size: 13, color: AppTheme.textMuted),
+                SizedBox(width: 8),
                 Expanded(
                   child: SelectableText(
                     GitHubAuthService.clientId,
@@ -249,11 +249,11 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
             ),
           ],
           if (_code != null) ...[
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             _codeBlock(_code!),
           ],
           if (_message != null) ...[
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Text(
               _message!,
               style: TextStyle(
@@ -264,13 +264,13 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
               ),
             ),
           ],
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           Row(
             children: [
               if (!signedIn)
                 HoverButton(
                   onTap: configured && !_waiting ? _signIn : () {},
-                  padding: const EdgeInsets.symmetric(
+                  padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
                   backgroundColor: configured && !_waiting
                       ? AppTheme.accentOrange
@@ -291,7 +291,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
               else
                 HoverButton(
                   onTap: GitHubAuthService.signOut,
-                  padding: const EdgeInsets.symmetric(
+                  padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
                   backgroundColor: AppTheme.surface,
                   child: Text(
@@ -300,7 +300,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                         fontSize: 13, color: AppTheme.textPrimary),
                   ),
                 ),
-              const Spacer(),
+              Spacer(),
               TextButton(
                 onPressed: _editClientId,
                 child: Text(
@@ -318,7 +318,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
             ],
           ),
           if (!configured) ...[
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             Text(
               _ru
                   ? 'Сначала нужен client_id приложения GitHub — это делается '
@@ -335,7 +335,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
 
   Widget _codeBlock(DeviceCode code) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppTheme.background,
           borderRadius: BorderRadius.circular(12),
@@ -350,7 +350,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                   : 'Enter this code on the GitHub page (already copied):',
               style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             SelectableText(
               code.userCode,
               style: TextStyle(
@@ -360,7 +360,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                 color: AppTheme.accentOrange,
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Row(
               children: [
                 Expanded(

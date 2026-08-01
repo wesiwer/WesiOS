@@ -56,9 +56,9 @@ class _HoverButtonState extends State<HoverButton> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+          duration: Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
-          padding: widget.padding ?? const EdgeInsets.all(12),
+          padding: widget.padding ?? EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: _active
                 ? (widget.hoverColor ?? AppTheme.surfaceLight)
@@ -139,8 +139,8 @@ class _HoverIconButtonState extends State<HoverIconButton> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(8),
+          duration: Duration(milliseconds: 150),
+          padding: EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: _active ? AppTheme.surfaceLight : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
@@ -155,7 +155,7 @@ class _HoverIconButtonState extends State<HoverIconButton> {
           ),
           child: AnimatedScale(
             scale: _active ? 1.15 : 1.0,
-            duration: const Duration(milliseconds: 150),
+            duration: Duration(milliseconds: 150),
             curve: Curves.easeOutCubic,
             child: Icon(
               widget.icon,

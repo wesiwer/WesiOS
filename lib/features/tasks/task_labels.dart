@@ -30,7 +30,7 @@ class TaskLabels {
 
   static Color priorityColor(TaskPriority p) => switch (p) {
         TaskPriority.low => AppTheme.textMuted,
-        TaskPriority.normal => const Color(0xFF38BDF8),
+        TaskPriority.normal => Color(0xFF38BDF8),
         TaskPriority.high => AppTheme.accentOrange,
         TaskPriority.urgent => AppTheme.accentRed,
       };

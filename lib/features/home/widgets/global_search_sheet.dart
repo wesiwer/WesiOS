@@ -117,12 +117,12 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
       insetPadding: const EdgeInsets.fromLTRB(20, kTitleBarHeight + 24, 20, 24),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 560),
+        constraints: BoxConstraints(maxWidth: 560, maxHeight: 560),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
+              padding: EdgeInsets.fromLTRB(18, 18, 18, 10),
               child: TextField(
                 controller: _ctrl,
                 focusNode: _focus,
@@ -133,12 +133,12 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
                   hintText: _ru
                       ? 'Операции, задачи, статьи, счета, разделы…'
                       : 'Operations, tasks, articles, accounts, sections…',
-                  prefixIcon: const Icon(Icons.search,
+                  prefixIcon: Icon(Icons.search,
                       size: 18, color: AppTheme.textMuted),
                   suffixIcon: _ctrl.text.isEmpty
                       ? null
                       : IconButton(
-                          icon: const Icon(Icons.close,
+                          icon: Icon(Icons.close,
                               size: 16, color: AppTheme.textMuted),
                           onPressed: () {
                             _ctrl.clear();
@@ -153,7 +153,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
             Flexible(
               child: _loading
                   ? Padding(
-                      padding: const EdgeInsets.all(28),
+                      padding: EdgeInsets.all(28),
                       child: Text(
                         _ru ? 'Читаю данные…' : 'Reading data…',
                         style: TextStyle(
@@ -178,7 +178,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
   }
 
   Widget _hint() => Padding(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -216,11 +216,11 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
               ),
             ].map(
               (e) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: EdgeInsets.only(bottom: 8),
                 child: Row(
                   children: [
                     Icon(e.$1, size: 15, color: AppTheme.textMuted),
-                    const SizedBox(width: 10),
+                    SizedBox(width: 10),
                     Expanded(
                       child: Text(e.$2,
                           style: TextStyle(
@@ -235,7 +235,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
       );
 
   Widget _empty() => Padding(
-        padding: const EdgeInsets.all(28),
+        padding: EdgeInsets.all(28),
         child: Text(
           _ru ? 'Ничего не найдено' : 'Nothing found',
           style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
@@ -249,7 +249,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
           child: Row(
             children: [
               Icon(_icon(hit.kind), size: 17, color: _color(hit.kind)),
-              const SizedBox(width: 13),
+              SizedBox(width: 13),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -272,7 +272,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
                   ],
                 ),
               ),
-              const Icon(Icons.chevron_right,
+              Icon(Icons.chevron_right,
                   size: 16, color: AppTheme.textMuted),
             ],
           ),

@@ -45,9 +45,9 @@ class _WesiTooltipState extends State<WesiTooltip> {
           child: Material(
             color: Colors.transparent,
             child: Container(
-              constraints: const BoxConstraints(maxWidth: 220),
+              constraints: BoxConstraints(maxWidth: 220),
               padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
                 color: AppTheme.carbonDark.withOpacity(0.96),
                 borderRadius: BorderRadius.circular(8),

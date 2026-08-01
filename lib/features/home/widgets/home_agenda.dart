@@ -130,12 +130,12 @@ class _HomeAgendaState extends State<HomeAgenda> {
             _placeholder(ru
                 ? 'Активных задач нет'
                 : 'No active tasks'),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 onPressed: _createTask,
-                icon: const Icon(Icons.add,
+                icon: Icon(Icons.add,
                     size: 16, color: AppTheme.accentOrange),
                 label: Text(
                   ru ? 'Создать первую задачу' : 'Create the first task',
@@ -177,9 +177,9 @@ class _HomeAgendaState extends State<HomeAgenda> {
               color: AppTheme.textPrimary),
         ),
         if (trailing != null) ...[
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
               color: (trailingIsAlert ? AppTheme.accentRed : AppTheme.accentOrange)
                   .withOpacity(0.15),
@@ -196,7 +196,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
             ),
           ),
         ],
-        const Spacer(),
+        Spacer(),
         TextButton(
           onPressed: onAll,
           child: Text(WesiLocale.get('all'),
@@ -207,7 +207,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
   }
 
   Widget _placeholder(String text) => Padding(
-        padding: const EdgeInsets.symmetric(vertical: 6),
+        padding: EdgeInsets.symmetric(vertical: 6),
         child: Text(text,
             style: TextStyle(fontSize: 13, color: AppTheme.textMuted)),
       );
@@ -233,7 +233,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
             ),
             child: Icon(icon, size: 17, color: color),
           ),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,

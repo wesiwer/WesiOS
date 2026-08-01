@@ -91,7 +91,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back,
+                    icon: Icon(Icons.arrow_back,
                         color: AppTheme.textPrimary),
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -103,7 +103,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
               child: SizedBox(
                 height: 40,
                 child: TextField(
@@ -115,7 +115,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   },
                   decoration: InputDecoration(
                     isDense: true,
-                    prefixIcon: const Icon(Icons.search,
+                    prefixIcon: Icon(Icons.search,
                         size: 18, color: AppTheme.textMuted),
                     hintText: _ru
                         ? 'Поиск по заголовку, тексту и тегам'
@@ -145,7 +145,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                 ],
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Expanded(
               child: _loading
                   ? Center(
@@ -168,14 +168,14 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   Widget _chip(ArticleSection? s, String label) {
     final sel = s == _section;
     return Padding(
-      padding: const EdgeInsets.only(right: 8),
+      padding: EdgeInsets.only(right: 8),
       child: GestureDetector(
         onTap: () {
           setState(() => _section = s);
           _load();
         },
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+          padding: EdgeInsets.symmetric(horizontal: 13, vertical: 8),
           decoration: BoxDecoration(
             color: sel
                 ? AppTheme.accentOrange.withOpacity(0.16)
@@ -201,12 +201,12 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Widget _empty() => Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: EdgeInsets.all(32),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.menu_book, size: 34, color: AppTheme.textMuted),
-              const SizedBox(height: 12),
+              Icon(Icons.menu_book, size: 34, color: AppTheme.textMuted),
+              SizedBox(height: 12),
               Text(
                 _query.isEmpty
                     ? (_ru ? 'Здесь пока пусто' : 'Nothing here yet')
@@ -214,7 +214,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                 style: TextStyle(
                     fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               Text(
                 _ru
                     ? 'Запишите регламент, инструкцию или разбор — то, что '
@@ -231,14 +231,14 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
 
   Widget _tile(ArticleModel a) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.only(bottom: 10),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => _open(a),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.36),
               borderRadius: BorderRadius.circular(14),
@@ -255,7 +255,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   children: [
                     Icon(_sectionIcon(a.section),
                         size: 15, color: AppTheme.accentOrange),
-                    const SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         a.title,
@@ -268,7 +268,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                     ),
                     if (a.builtIn)
                       Container(
-                        padding: const EdgeInsets.symmetric(
+                        padding: EdgeInsets.symmetric(
                             horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
                           color: AppTheme.textMuted.withOpacity(0.14),
@@ -289,12 +289,12 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                             : AppTheme.textMuted,
                       ),
                       onPressed: () => KnowledgeService.togglePin(a),
-                      constraints: const BoxConstraints(),
-                      padding: const EdgeInsets.only(left: 8),
+                      constraints: BoxConstraints(),
+                      padding: EdgeInsets.only(left: 8),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 Text(
                   a.excerpt,
                   maxLines: 2,
@@ -303,7 +303,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                       fontSize: 12, color: AppTheme.textSecondary),
                 ),
                 if (a.tags.isNotEmpty) ...[
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   Wrap(
                     spacing: 6,
                     children: a.tags
@@ -413,13 +413,13 @@ class _ArticleScreenState extends State<ArticleScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back,
+                    icon: Icon(Icons.arrow_back,
                         color: AppTheme.textPrimary),
                     onPressed: () => Navigator.pop(context),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   IconButton(
-                    icon: const Icon(Icons.edit_outlined,
+                    icon: Icon(Icons.edit_outlined,
                         size: 19, color: AppTheme.textMuted),
                     onPressed: _edit,
                   ),
@@ -427,7 +427,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
                   // было бы нечем.
                   if (!_article.builtIn)
                     IconButton(
-                      icon: const Icon(Icons.delete_outline,
+                      icon: Icon(Icons.delete_outline,
                           size: 19, color: AppTheme.textMuted),
                       onPressed: _delete,
                     ),
@@ -437,7 +437,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
             ),
             Expanded(
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+                padding: EdgeInsets.fromLTRB(20, 8, 20, 40),
                 children: [
                   Text(
                     _article.title,
@@ -467,12 +467,12 @@ class _ArticleScreenState extends State<ArticleScreen> {
     for (final rawLine in body.split('\n')) {
       final line = rawLine.trimRight();
       if (line.trim().isEmpty) {
-        widgets.add(const SizedBox(height: 10));
+        widgets.add(SizedBox(height: 10));
         continue;
       }
       if (line.startsWith('## ')) {
         widgets.add(Padding(
-          padding: const EdgeInsets.only(top: 14, bottom: 6),
+          padding: EdgeInsets.only(top: 14, bottom: 6),
           child: Text(line.substring(3),
               style: TextStyle(
                   fontSize: 16,
@@ -483,7 +483,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
       }
       if (line.startsWith('# ')) {
         widgets.add(Padding(
-          padding: const EdgeInsets.only(top: 8, bottom: 8),
+          padding: EdgeInsets.only(top: 8, bottom: 8),
           child: Text(line.substring(2),
               style: TextStyle(
                   fontSize: 19,
@@ -494,12 +494,12 @@ class _ArticleScreenState extends State<ArticleScreen> {
       }
       if (line.startsWith('- ') || line.startsWith('* ')) {
         widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 6, left: 4),
+          padding: EdgeInsets.only(bottom: 6, left: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('•', style: TextStyle(color: AppTheme.accentOrange)),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(_stripMarks(line.substring(2)),
                     style: TextStyle(
@@ -515,13 +515,13 @@ class _ArticleScreenState extends State<ArticleScreen> {
       final numbered = RegExp(r'^(\d+)\.\s+(.*)$').firstMatch(line);
       if (numbered != null) {
         widgets.add(Padding(
-          padding: const EdgeInsets.only(bottom: 6, left: 4),
+          padding: EdgeInsets.only(bottom: 6, left: 4),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('${numbered.group(1)}.',
                   style: TextStyle(color: AppTheme.accentOrange)),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: Text(_stripMarks(numbered.group(2)!),
                     style: TextStyle(
@@ -535,7 +535,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
         continue;
       }
       widgets.add(Padding(
-        padding: const EdgeInsets.only(bottom: 6),
+        padding: EdgeInsets.only(bottom: 6),
         child: Text(_stripMarks(line),
             style: TextStyle(
                 fontSize: 13, height: 1.55, color: AppTheme.textSecondary)),
@@ -656,7 +656,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               TextField(
                 controller: _titleCtrl,
                 autofocus: true,
@@ -664,7 +664,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                 decoration:
                     InputDecoration(labelText: _ru ? 'Заголовок' : 'Title'),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: _bodyCtrl,
                 maxLines: 10,
@@ -680,7 +680,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                       TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: _tagsCtrl,
                 style: TextStyle(color: AppTheme.textPrimary),
@@ -689,7 +689,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                       _ru ? 'Теги через запятую' : 'Comma-separated tags',
                 ),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Text(_ru ? 'Раздел' : 'Section',
                   style:
                       TextStyle(fontSize: 12, color: AppTheme.textMuted)),
@@ -702,7 +702,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                   return GestureDetector(
                     onTap: () => setState(() => _section = s),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
+                      padding: EdgeInsets.symmetric(
                           horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
                         color: sel
@@ -727,7 +727,7 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 22),
+              SizedBox(height: 22),
               Row(
                 children: [
                   TextButton(
@@ -735,10 +735,10 @@ class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
                     child: Text(WesiLocale.get('cancel'),
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   HoverButton(
                     onTap: _submit,
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                         horizontal: 24, vertical: 12),
                     backgroundColor: AppTheme.accentOrange,
                     child: Text(WesiLocale.get('save'),

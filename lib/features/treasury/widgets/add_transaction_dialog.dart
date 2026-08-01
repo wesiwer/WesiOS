@@ -92,7 +92,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
       insetPadding: const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
       child: Container(
         width: 400,
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -102,13 +102,13 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                     fontSize: 20,
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary)),
-            const SizedBox(height: 20),
+            SizedBox(height: 20),
             TextField(
               controller: _titleCtrl,
               style: TextStyle(color: AppTheme.textPrimary),
               decoration: InputDecoration(labelText: WesiLocale.get('title')),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             TextField(
               controller: _amountCtrl,
               keyboardType: TextInputType.number,
@@ -118,7 +118,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                 prefixText: '${widget.symbol} ',
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             Row(
               children: [
                 Expanded(
@@ -150,7 +150,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                   tooltip: WesiLocale.isRussian
                       ? 'Изменить категории'
                       : 'Edit categories',
-                  icon: const Icon(Icons.tune,
+                  icon: Icon(Icons.tune,
                       size: 18, color: AppTheme.accentOrange),
                   onPressed: () async {
                     await CategoryEditorDialog.show(context, widget.type);
@@ -164,14 +164,14 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: 12),
             TextField(
               controller: _descCtrl,
               style: TextStyle(color: AppTheme.textPrimary),
               decoration: InputDecoration(
                   labelText: WesiLocale.get('description_optional')),
             ),
-            const SizedBox(height: 24),
+            SizedBox(height: 24),
             Row(
               children: [
                 Expanded(
@@ -197,7 +197,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                         });
                       }
                     },
-                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    padding: EdgeInsets.symmetric(vertical: 14),
                     backgroundColor:
                         isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
                     child: Center(

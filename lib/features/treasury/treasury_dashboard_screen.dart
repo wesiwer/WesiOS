@@ -6,7 +6,7 @@ import '../../core/widgets/wesi_wordmark.dart';
 /// Wesi Treasury Dashboard — полноэкранный дашборд с заглушками
 /// Показывает расположение всех будущих модулей по ТЗ
 class TreasuryDashboardScreen extends StatelessWidget {
-  const TreasuryDashboardScreen({super.key});
+  TreasuryDashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -74,16 +74,16 @@ class TreasuryDashboardScreen extends StatelessWidget {
       ),
       child: Column(
         children: [
-          const SizedBox(height: 24),
+          SizedBox(height: 24),
           // Logo
           Row(
             children: [
-              const SizedBox(width: 20),
+              SizedBox(width: 20),
               Container(
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     colors: [AppTheme.accentOrange, Color(0xFFFFD700)],
                   ),
                   borderRadius: BorderRadius.circular(8),
@@ -94,14 +94,14 @@ class TreasuryDashboardScreen extends StatelessWidget {
               const WesiTitle('Wesi Treasury', size: 16),
             ],
           ),
-          const SizedBox(height: 32),
+          SizedBox(height: 32),
           // Nav Items
           ...items.map((item) => _buildNavItem(item.$1, item.$2, item.$3)),
-          const Spacer(),
+          Spacer(),
           // User mini profile
           Container(
-            margin: const EdgeInsets.all(16),
-            padding: const EdgeInsets.all(12),
+            margin: EdgeInsets.all(16),
+            padding: EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.3),
               borderRadius: BorderRadius.circular(12),
@@ -113,16 +113,16 @@ class TreasuryDashboardScreen extends StatelessWidget {
                   width: 32,
                   height: 32,
                   decoration: BoxDecoration(
-                    gradient: const LinearGradient(
+                    gradient: LinearGradient(
                       colors: [AppTheme.carbonDark, AppTheme.carbonMid],
                     ),
                     shape: BoxShape.circle,
                     border: Border.all(color: AppTheme.accentOrange.withOpacity(0.4)),
                   ),
-                  child: const Icon(Icons.person, size: 16, color: AppTheme.textSecondary),
+                  child: Icon(Icons.person, size: 16, color: AppTheme.textSecondary),
                 ),
-                const SizedBox(width: 10),
-                const Expanded(
+                SizedBox(width: 10),
+                Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -147,7 +147,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
 
   Widget _buildNavItem(String label, IconData icon, bool isActive) {
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      margin: EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: BoxDecoration(
         color: isActive ? AppTheme.accentOrange.withOpacity(0.1) : Colors.transparent,
         borderRadius: BorderRadius.circular(10),
@@ -174,14 +174,14 @@ class TreasuryDashboardScreen extends StatelessWidget {
   Widget _buildTopBar() {
     return Container(
       height: 60,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      padding: EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
         color: AppTheme.background.withOpacity(0.9),
         border: Border(bottom: BorderSide(color: AppTheme.glassBorder)),
       ),
       child: Row(
         children: [
-          const Text(
+          Text(
             'Dashboard Overview',
             style: TextStyle(
               fontSize: 18,
@@ -189,18 +189,18 @@ class TreasuryDashboardScreen extends StatelessWidget {
               color: AppTheme.textPrimary,
             ),
           ),
-          const Spacer(),
+          Spacer(),
           // Search placeholder
           Container(
             width: 280,
             height: 36,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: EdgeInsets.symmetric(horizontal: 12),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.3),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(color: AppTheme.glassBorder),
             ),
-            child: const Row(
+            child: Row(
               children: [
                 Icon(Icons.search, size: 16, color: AppTheme.textMuted),
                 SizedBox(width: 8),
@@ -211,7 +211,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: 16),
           // Notifications placeholder
           Container(
             width: 36,
@@ -224,14 +224,14 @@ class TreasuryDashboardScreen extends StatelessWidget {
             child: Stack(
               alignment: Alignment.center,
               children: [
-                const Icon(Icons.notifications_outlined, size: 18, color: AppTheme.textSecondary),
+                Icon(Icons.notifications_outlined, size: 18, color: AppTheme.textSecondary),
                 Positioned(
                   top: 8,
                   right: 8,
                   child: Container(
                     width: 8,
                     height: 8,
-                    decoration: const BoxDecoration(
+                    decoration: BoxDecoration(
                       color: AppTheme.accentRed,
                       shape: BoxShape.circle,
                     ),
@@ -256,8 +256,8 @@ class TreasuryDashboardScreen extends StatelessWidget {
     return Row(
       children: metrics.map((m) => Expanded(
         child: Container(
-          margin: const EdgeInsets.only(right: 16),
-          padding: const EdgeInsets.all(20),
+          margin: EdgeInsets.only(right: 16),
+          padding: EdgeInsets.all(20),
           decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -276,14 +276,14 @@ class TreasuryDashboardScreen extends StatelessWidget {
               Row(
                 children: [
                   Icon(m.$5, size: 16, color: m.$4.withOpacity(0.7)),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Text(
                     m.$1,
                     style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               Text(
                 m.$2,
                 style: TextStyle(
@@ -323,7 +323,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
           flex: 2,
           child: Container(
             height: 320,
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.3),
               borderRadius: BorderRadius.circular(16),
@@ -332,7 +332,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
@@ -352,7 +352,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 Expanded(
                   child: Container(
                     decoration: BoxDecoration(
@@ -375,7 +375,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
                             size: 48,
                             color: AppTheme.accentOrange.withOpacity(0.3),
                           ),
-                          const SizedBox(height: 12),
+                          SizedBox(height: 12),
                           Text(
                             'P10 / P50 / P90 Forecast Chart',
                             style: TextStyle(
@@ -383,7 +383,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
                               color: AppTheme.textMuted,
                             ),
                           ),
-                          const SizedBox(height: 4),
+                          SizedBox(height: 4),
                           Text(
                             'Monte-Carlo simulation with confidence intervals',
                             style: TextStyle(
@@ -400,12 +400,12 @@ class TreasuryDashboardScreen extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: 16),
         // Secondary Chart placeholder
         Expanded(
           child: Container(
             height: 320,
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.3),
               borderRadius: BorderRadius.circular(16),
@@ -414,7 +414,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Expense Breakdown',
                   style: TextStyle(
                     fontSize: 14,
@@ -422,7 +422,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 Expanded(
                   child: Center(
                     child: Column(
@@ -433,7 +433,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
                           size: 48,
                           color: AppTheme.accentOrange.withOpacity(0.3),
                         ),
-                        const SizedBox(height: 12),
+                        SizedBox(height: 12),
                         Text(
                           'Category Distribution',
                           style: TextStyle(
@@ -461,7 +461,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
           flex: 3,
           child: Container(
             height: 280,
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.3),
               borderRadius: BorderRadius.circular(16),
@@ -470,7 +470,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text(
@@ -490,15 +490,15 @@ class TreasuryDashboardScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 // Table header
                 Container(
-                  padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+                  padding: EdgeInsets.symmetric(vertical: 8, horizontal: 12),
                   decoration: BoxDecoration(
                     color: AppTheme.carbonDark.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Row(
+                  child: Row(
                     children: [
                       Expanded(flex: 2, child: Text('Date', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600))),
                       Expanded(flex: 3, child: Text('Description', style: TextStyle(fontSize: 11, color: AppTheme.textMuted, fontWeight: FontWeight.w600))),
@@ -507,11 +507,11 @@ class TreasuryDashboardScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 // Placeholder rows
                 ...List.generate(4, (i) => Container(
-                  margin: const EdgeInsets.only(bottom: 6),
-                  padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                  margin: EdgeInsets.only(bottom: 6),
+                  padding: EdgeInsets.symmetric(vertical: 10, horizontal: 12),
                   decoration: BoxDecoration(
                     color: AppTheme.surface.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(8),
@@ -521,7 +521,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
                       Expanded(flex: 2, child: Text('2026-07-${20 + i}', style: TextStyle(fontSize: 12, color: AppTheme.textSecondary))),
                       Expanded(flex: 3, child: Text('Transaction ${i + 1}', style: TextStyle(fontSize: 12, color: AppTheme.textPrimary))),
                       Expanded(flex: 2, child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(
                           color: AppTheme.accentOrange.withOpacity(0.1),
                           borderRadius: BorderRadius.circular(4),
@@ -547,12 +547,12 @@ class TreasuryDashboardScreen extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: 16),
         // Quick Actions
         Expanded(
           child: Container(
             height: 280,
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.3),
               borderRadius: BorderRadius.circular(16),
@@ -561,7 +561,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Quick Actions',
                   style: TextStyle(
                     fontSize: 14,
@@ -569,13 +569,13 @@ class TreasuryDashboardScreen extends StatelessWidget {
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 _buildQuickActionBtn('Add Income', Icons.add_circle, AppTheme.accentGreen),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _buildQuickActionBtn('Add Expense', Icons.remove_circle, AppTheme.accentRed),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _buildQuickActionBtn('Set Recurring', Icons.repeat, AppTheme.accentOrange),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 _buildQuickActionBtn('Export Report', Icons.download, AppTheme.textSecondary),
               ],
             ),
@@ -588,13 +588,13 @@ class TreasuryDashboardScreen extends StatelessWidget {
   Widget _buildQuickActionBtn(String label, IconData icon, Color color) {
     return HoverButton(
       onTap: () {},
-      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 14),
+      padding: EdgeInsets.symmetric(vertical: 12, horizontal: 14),
       backgroundColor: AppTheme.surface.withOpacity(0.3),
       hoverColor: color.withOpacity(0.1),
       child: Row(
         children: [
           Icon(icon, size: 18, color: color),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Text(
             label,
             style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
@@ -611,7 +611,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
         Expanded(
           child: Container(
             height: 200,
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -630,15 +630,15 @@ class TreasuryDashboardScreen extends StatelessWidget {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: AppTheme.accentOrange.withOpacity(0.15),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.auto_awesome, size: 18, color: AppTheme.accentOrange),
+                      child: Icon(Icons.auto_awesome, size: 18, color: AppTheme.accentOrange),
                     ),
-                    const SizedBox(width: 12),
-                    const Text(
+                    SizedBox(width: 12),
+                    Text(
                       'AI Insights',
                       style: TextStyle(
                         fontSize: 14,
@@ -648,16 +648,16 @@ class TreasuryDashboardScreen extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                const Text(
+                SizedBox(height: 16),
+                Text(
                   '• Your spending on Software increased by 23% this month',
                   style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.6),
                 ),
-                const Text(
+                Text(
                   '• Projected to reach \$52k by end of quarter (P50)',
                   style: TextStyle(fontSize: 12, color: AppTheme.textSecondary, height: 1.6),
                 ),
-                const Text(
+                Text(
                   '• 2 anomalies detected in recurring payments',
                   style: TextStyle(fontSize: 12, color: AppTheme.accentRed, height: 1.6),
                 ),
@@ -665,12 +665,12 @@ class TreasuryDashboardScreen extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(width: 16),
+        SizedBox(width: 16),
         // Alerts
         Expanded(
           child: Container(
             height: 200,
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -689,15 +689,15 @@ class TreasuryDashboardScreen extends StatelessWidget {
                 Row(
                   children: [
                     Container(
-                      padding: const EdgeInsets.all(8),
+                      padding: EdgeInsets.all(8),
                       decoration: BoxDecoration(
                         color: AppTheme.accentRed.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Icon(Icons.notifications_active, size: 18, color: AppTheme.accentRed.withOpacity(0.8)),
                     ),
-                    const SizedBox(width: 12),
-                    const Text(
+                    SizedBox(width: 12),
+                    Text(
                       'Alerts',
                       style: TextStyle(
                         fontSize: 14,
@@ -732,7 +732,7 @@ class TreasuryDashboardScreen extends StatelessWidget {
             shape: BoxShape.circle,
           ),
         ),
-        const SizedBox(width: 10),
+        SizedBox(width: 10),
         Expanded(
           child: Text(
             message,
@@ -762,7 +762,7 @@ class _LegendDot extends StatelessWidget {
           height: 8,
           decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
         ),
-        const SizedBox(width: 6),
+        SizedBox(width: 6),
         Text(label, style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
       ],
     );

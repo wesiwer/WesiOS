@@ -184,11 +184,11 @@ class _SandboxScreenState extends State<SandboxScreen> {
                       onPressed: () => Navigator.pop(context),
                     ),
                     WesiTitle(WesiLocale.get('wesi_sandbox_title'), size: 22),
-                    const Spacer(),
+                    Spacer(),
                     GestureDetector(
                       onTap: _toggleCurrency,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
+                        padding: EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
                         // Место под кнопки окна резервируем только там, где
                         // они есть — на телефоне этот отступ просто съедал
@@ -207,11 +207,11 @@ class _SandboxScreenState extends State<SandboxScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 _scenarios(),
-                const SizedBox(height: 20),
+                SizedBox(height: 20),
                 _balanceCard(),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 Row(
                   children: [
                     Expanded(
@@ -222,7 +222,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                         () => _addTransaction(TransactionType.income),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    SizedBox(width: 12),
                     Expanded(
                       child: _action(
                         Icons.remove_circle,
@@ -233,12 +233,12 @@ class _SandboxScreenState extends State<SandboxScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 // Прогноз песочницы отдельным экраном: там же конструктор
                 // собственных сценариев «Что если?» с автоматическими
                 // графиками. Данные — только песочницы, Treasury не трогает.
-                const SandboxForecastButton(),
-                const SizedBox(height: 20),
+                SandboxForecastButton(),
+                SizedBox(height: 20),
                 Text(
                   '${WesiLocale.get('sandbox_transactions')} (${_transactions.length})',
                   style: TextStyle(
@@ -266,13 +266,13 @@ class _SandboxScreenState extends State<SandboxScreen> {
     ];
     final isDark = ThemeNotifier.instance.isDark;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 10),
+      padding: EdgeInsets.symmetric(horizontal: 24, vertical: 10),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: isDark
               ? [
-                  const Color(0xFF4D3D00).withOpacity(0.8),
-                  const Color(0xFF2D1F00).withOpacity(0.6),
+                  Color(0xFF4D3D00).withOpacity(0.8),
+                  Color(0xFF2D1F00).withOpacity(0.6),
                 ]
               : [
                   AppTheme.accentOrange.withOpacity(0.18),
@@ -285,7 +285,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+            padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
               color: AppTheme.accentOrange.withOpacity(0.2),
               borderRadius: BorderRadius.circular(6),
@@ -294,9 +294,9 @@ class _SandboxScreenState extends State<SandboxScreen> {
             ),
             child: Row(
               children: [
-                const Icon(Icons.science,
+                Icon(Icons.science,
                     size: 14, color: AppTheme.accentOrange),
-                const SizedBox(width: 6),
+                SizedBox(width: 6),
                 Text(
                   WesiLocale.get('sandbox_mode'),
                   style: TextStyle(
@@ -308,7 +308,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 16),
+          SizedBox(width: 16),
           Expanded(
             child: Text(
               parts.join(' • '),
@@ -318,7 +318,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline,
+            icon: Icon(Icons.delete_outline,
                 size: 18, color: AppTheme.textMuted),
             onPressed: () => _runScenario('clear'),
             tooltip: WesiLocale.get('clear_sandbox'),
@@ -340,12 +340,12 @@ class _SandboxScreenState extends State<SandboxScreen> {
       child: Row(
         children: list
             .map((s) => Padding(
-                  padding: const EdgeInsets.only(right: 10),
+                  padding: EdgeInsets.only(right: 10),
                   child: GestureDetector(
                     onTap: () => _runScenario(s.$1),
                     child: Container(
                       width: 150,
-                      padding: const EdgeInsets.all(14),
+                      padding: EdgeInsets.all(14),
                       decoration: BoxDecoration(
                         color: AppTheme.surface.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(14),
@@ -357,7 +357,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                         children: [
                           Icon(s.$3,
                               size: 22, color: AppTheme.accentOrange),
-                          const SizedBox(height: 8),
+                          SizedBox(height: 8),
                           Text(s.$2,
                               style: TextStyle(
                                   fontWeight: FontWeight.w600,
@@ -377,7 +377,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
 
   Widget _balanceCard() {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.4),
         borderRadius: BorderRadius.circular(20),
@@ -389,7 +389,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
           Text(WesiLocale.get('sandbox_balance'),
               style: TextStyle(
                   fontSize: 13, color: AppTheme.textSecondary)),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             CurrencyService.formatExact(_balance),
             style: TextStyle(
@@ -397,7 +397,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 fontWeight: FontWeight.w800,
                 color: AppTheme.textPrimary),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           Row(
             children: [
               _miniStat(
@@ -405,14 +405,14 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 CurrencyService.format(_breakdown['income'] ?? 0),
                 AppTheme.accentGreen,
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               _miniStat(
                 WesiLocale.get('total_expenses'),
                 CurrencyService.format(_breakdown['expense'] ?? 0),
                 AppTheme.accentRed,
               ),
               if (_anomalies.isNotEmpty) ...[
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 _miniStat(
                   WesiLocale.get('anomalies_detected'),
                   '${_anomalies.length}',
@@ -442,7 +442,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 style: TextStyle(fontSize: 10, color: color),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 2),
+            SizedBox(height: 2),
             Text(value,
                 style: TextStyle(
                     fontSize: 13,
@@ -458,12 +458,12 @@ class _SandboxScreenState extends State<SandboxScreen> {
       IconData icon, String label, Color color, VoidCallback onTap) {
     return HoverButton(
       onTap: onTap,
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: EdgeInsets.symmetric(vertical: 16),
       backgroundColor: AppTheme.surface.withOpacity(0.3),
       child: Column(
         children: [
           Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(label,
               style: TextStyle(
                   fontSize: 12, color: AppTheme.textSecondary)),
@@ -475,8 +475,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
   Widget _tx(TransactionModel tx) {
     final isIncome = tx.type == TransactionType.income;
     return Container(
-      margin: const EdgeInsets.only(bottom: 6),
-      padding: const EdgeInsets.all(12),
+      margin: EdgeInsets.only(bottom: 6),
+      padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.25),
         borderRadius: BorderRadius.circular(10),
@@ -487,7 +487,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
           Icon(isIncome ? Icons.arrow_upward : Icons.arrow_downward,
               color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
               size: 18),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Expanded(
             child: Text(tx.title,
                 style: TextStyle(color: AppTheme.textPrimary)),
@@ -500,16 +500,16 @@ class _SandboxScreenState extends State<SandboxScreen> {
               color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           GestureDetector(
             onTap: () => _editTransaction(tx),
-            child: const Icon(Icons.edit,
+            child: Icon(Icons.edit,
                 size: 16, color: AppTheme.textMuted),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           GestureDetector(
             onTap: () => _deleteTransaction(tx.id),
-            child: const Icon(Icons.close,
+            child: Icon(Icons.close,
                 size: 16, color: AppTheme.textMuted),
           ),
         ],

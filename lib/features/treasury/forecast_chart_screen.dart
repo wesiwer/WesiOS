@@ -62,7 +62,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   final Set<ForecastEngineKind> _loadingEngines = {};
   final Set<ForecastEngineKind> _unavailableEngines = {};
 
-  static const Map<ForecastEngineKind, Color> _engineColor = {
+  static Map<ForecastEngineKind, Color> _engineColor = {
     ForecastEngineKind.wesiHorizon: AppTheme.accentOrange,
     ForecastEngineKind.prophet: Color(0xFF38BDF8),
     ForecastEngineKind.sarimax: Color(0xFFC084FC),
@@ -292,13 +292,13 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         ),
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(32),
+            padding: EdgeInsets.all(32),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Icon(Icons.query_stats,
                     size: 48, color: AppTheme.textMuted.withOpacity(0.5)),
-                const SizedBox(height: 16),
+                SizedBox(height: 16),
                 Text(
                   'insufficient_data'.w,
                   textAlign: TextAlign.center,
@@ -307,7 +307,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textPrimary),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 Text(
                   'insufficient_data_hint'.w,
                   textAlign: TextAlign.center,
@@ -380,10 +380,10 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             _engineLegend(),
           ],
           if (_selectedChart == 'forecast') ...[
-            const SizedBox(height: 20),
+            SizedBox(height: 20),
             _comparisonTable(),
           ],
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           Text('display_options'.w,
               style: TextStyle(
                   fontSize: 12,
@@ -404,7 +404,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     return GestureDetector(
       onTap: _cycleCurrency,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.5),
           borderRadius: BorderRadius.circular(10),
@@ -426,8 +426,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   /// гипотетические цифры с реальным прогнозом.
   Widget _whatIfBanner() {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      margin: EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
         color: AppTheme.accent.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
@@ -436,7 +436,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       child: Row(
         children: [
           Icon(Icons.alt_route, size: 18, color: AppTheme.accent),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Expanded(
             child: Text('what_if_active'.w,
                 style: TextStyle(
@@ -465,13 +465,13 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   /// в минус в какой-то день прогноза превышает 5% симулированных путей.
   Widget _riskBanner() {
     final alertDay = _forecast.riskAlertDay;
-    if (alertDay == null) return const SizedBox.shrink();
+    if (alertDay == null) return SizedBox.shrink();
     final date = DateTime.now().add(Duration(days: alertDay));
     final dateLabel = '${date.day.toString().padLeft(2, '0')}.'
         '${date.month.toString().padLeft(2, '0')}.${date.year}';
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.accentRed.withOpacity(0.12),
         borderRadius: BorderRadius.circular(12),
@@ -480,8 +480,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Icon(Icons.warning_amber_rounded, color: AppTheme.accentRed),
-          const SizedBox(width: 12),
+          Icon(Icons.warning_amber_rounded, color: AppTheme.accentRed),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -491,7 +491,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                         color: AppTheme.accentRed,
                         fontSize: 14,
                         fontWeight: FontWeight.w700)),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Text(
                   'cash_gap_risk_detail'.w
                       .replaceAll('{days}', '$alertDay')
@@ -560,8 +560,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         final chip = GestureDetector(
           onTap: () => _toggleEngine(kind),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            duration: Duration(milliseconds: 180),
+            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
               color: active ? color.withOpacity(0.15) : AppTheme.surface,
               borderRadius: BorderRadius.circular(10),
@@ -572,7 +572,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 leading,
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   label,
                   style: TextStyle(
@@ -613,7 +613,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               height: 3,
               color: color,
             ),
-            const SizedBox(width: 6),
+            SizedBox(width: 6),
             Text(label,
                 style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
           ],
@@ -632,7 +632,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
 
     if (active.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(20),
+        padding: EdgeInsets.all(20),
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.3),
@@ -708,12 +708,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             message: WesiLocale.isRussian
                 ? 'P50 — медианный сценарий (50% вероятность)'
                 : 'P50 — median scenario (50% probability)',
-            child: const Icon(Icons.info_outline,
+            child: Icon(Icons.info_outline,
                 size: 14, color: AppTheme.textMuted),
           ),
           growth: growth,
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: 8),
         _stat(
           'P10',
           last != null ? CurrencyService.format(last.p10) : '—',
@@ -722,11 +722,11 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             message: WesiLocale.isRussian
                 ? 'P10 — пессимистичный сценарий (10% хуже)'
                 : 'P10 — worst-case (10th percentile)',
-            child: const Icon(Icons.info_outline,
+            child: Icon(Icons.info_outline,
                 size: 14, color: AppTheme.textMuted),
           ),
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: 8),
         _stat(
           'P90',
           last != null ? CurrencyService.format(last.p90) : '—',
@@ -735,7 +735,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             message: WesiLocale.isRussian
                 ? 'P90 — оптимистичный сценарий (90% лучше)'
                 : 'P90 — best-case (90th percentile)',
-            child: const Icon(Icons.info_outline,
+            child: Icon(Icons.info_outline,
                 size: 14, color: AppTheme.textMuted),
           ),
         ),
@@ -747,7 +747,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       {double? growth}) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.5),
           borderRadius: BorderRadius.circular(12),
@@ -765,12 +765,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 tip,
               ],
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             Text(value,
                 style: TextStyle(
                     fontSize: 16, fontWeight: FontWeight.w800, color: color)),
             if (growth != null) ...[
-              const SizedBox(height: 2),
+              SizedBox(height: 2),
               Text(
                 '${growth >= 0 ? '▲' : '▼'} ${growth.abs().toStringAsFixed(1)}% ${'growth_over_period'.w}',
                 style: TextStyle(
@@ -841,8 +841,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        duration: Duration(milliseconds: 180),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: selected
               ? AppTheme.accent.withOpacity(0.2)
@@ -861,7 +861,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                   size: 14,
                   color:
                       selected ? AppTheme.accent : AppTheme.textSecondary),
-              const SizedBox(width: 6),
+              SizedBox(width: 6),
             ],
             Text(
               label,
@@ -904,11 +904,11 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       context: context,
       firstDate: start,
       // Пять лет вперёд: столько же, сколько даёт самый длинный chip.
-      lastDate: start.add(const Duration(days: 1825)),
+      lastDate: start.add(Duration(days: 1825)),
       initialDateRange: _customRange ??
           DateTimeRange(
               start: start, end: start.add(Duration(days: _forecastDays))),
-      locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
+      locale: WesiLocale.isRussian ? Locale('ru') : const Locale('en'),
       builder: (context, child) => Theme(
         data: AppTheme.themeData.copyWith(
           colorScheme: AppTheme.themeData.colorScheme.copyWith(
@@ -969,7 +969,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
 
     return Container(
       height: 340,
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.4),
         borderRadius: BorderRadius.circular(16),
@@ -1019,9 +1019,9 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               ),
             ),
             rightTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                AxisTitles(sideTitles: SideTitles(showTitles: false)),
             topTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
           borderData: FlBorderData(show: false),
           // Свой тултип: дефолтный у fl_chart светло-голубой (нечитаемо на
@@ -1122,7 +1122,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                     isCurved: true,
                     color: _engineColor[kind]!,
                     barWidth: 2.2,
-                    dotData: const FlDotData(show: false),
+                    dotData: FlDotData(show: false),
                   ),
             LineChartBarData(
               spots: history
@@ -1154,8 +1154,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           // Только смена содержимого графика, экран не перестраивается
           onTap: () => setState(() => _selectedChart = m),
           child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            duration: Duration(milliseconds: 180),
+            padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: sel
                   ? AppTheme.accent.withOpacity(0.2)
@@ -1196,7 +1196,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   Widget _chartFrame({required Widget child}) {
     return Container(
       height: 340,
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.4),
         borderRadius: BorderRadius.circular(16),
@@ -1257,9 +1257,9 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 reservedSize: 46,
                 getTitlesWidget: (v, _) {
                   final i = v.toInt();
-                  if (i < 0 || i >= top.length) return const SizedBox.shrink();
+                  if (i < 0 || i >= top.length) return SizedBox.shrink();
                   return Padding(
-                    padding: const EdgeInsets.only(top: 6),
+                    padding: EdgeInsets.only(top: 6),
                     child: Text(
                       top[i].key.length > 8
                           ? '${top[i].key.substring(0, 7)}…'
@@ -1359,9 +1359,9 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               ),
             ),
             rightTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                AxisTitles(sideTitles: SideTitles(showTitles: false)),
             topTitles:
-                const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
           borderData: FlBorderData(show: false),
           minY: minY - pad,
@@ -1372,7 +1372,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               isCurved: true,
               color: AppTheme.accent,
               barWidth: 2,
-              dotData: const FlDotData(show: false),
+              dotData: FlDotData(show: false),
               belowBarData: BarAreaData(
                 show: true,
                 color: AppTheme.accent.withOpacity(0.10),
@@ -1414,7 +1414,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                   color: AppTheme.textSecondary)),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Expanded(
             child: BarChart(
               BarChartData(
@@ -1447,7 +1447,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                       getTitlesWidget: (v, _) {
                         final i = v.toInt();
                         if (i < 0 || i >= labels.length) {
-                          return const SizedBox.shrink();
+                          return SizedBox.shrink();
                         }
                         return Text(labels[i],
                             style: TextStyle(
@@ -1511,7 +1511,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     return GestureDetector(
       onTap: () => onChanged(!value),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: value
               ? AppTheme.accent.withOpacity(0.15)
@@ -1544,9 +1544,9 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 fontSize: 16,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textPrimary)),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         ...sorted.take(5).map((e) => Padding(
-              padding: const EdgeInsets.only(bottom: 6),
+              padding: EdgeInsets.only(bottom: 6),
               child: Row(
                 children: [
                   Expanded(
@@ -1567,7 +1567,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   }
 
   Widget _anomaliesSection() {
-    if (_anomalies.isEmpty) return const SizedBox.shrink();
+    if (_anomalies.isEmpty) return SizedBox.shrink();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1580,7 +1580,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               fontWeight: FontWeight.w700,
               color: AppTheme.accentRed),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: 8),
         ..._anomalies.map((a) => Text(
               '• ${a.title}: ${CurrencyService.format(a.amount)}',
               style: TextStyle(

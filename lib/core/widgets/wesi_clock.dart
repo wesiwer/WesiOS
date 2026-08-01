@@ -150,7 +150,7 @@ class _WesiClockState extends State<WesiClock> {
             mainAxisSize: MainAxisSize.min,
             children: [
               clock,
-              const SizedBox(height: 2),
+              SizedBox(height: 2),
               Text(
                 date,
                 style: TextStyle(
@@ -168,7 +168,7 @@ class _WesiClockState extends State<WesiClock> {
             ],
           ),
         ),
-        const SizedBox(width: 8),
+        SizedBox(width: 8),
         // Переключатель стиля часов
         GestureDetector(
           onTap: _toggleStyle,

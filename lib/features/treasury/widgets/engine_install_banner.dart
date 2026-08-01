@@ -76,15 +76,15 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
             _installed[k] == true && EngineInstallService.updateAvailable(k))
         .toList();
     final actionable = [...missing, ...outdated];
-    if (actionable.isEmpty) return const SizedBox.shrink();
+    if (actionable.isEmpty) return SizedBox.shrink();
 
     // Если ставить нечего и речь только про обновление — меняем текст,
     // чтобы не предлагать «установить» уже установленное.
     final updateOnly = missing.isEmpty;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
+      margin: EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.5),
         borderRadius: BorderRadius.circular(12),
@@ -98,7 +98,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
             children: [
               Icon(updateOnly ? Icons.system_update_alt : Icons.auto_awesome,
                   size: 18, color: AppTheme.accentOrange),
-              const SizedBox(width: 8),
+              SizedBox(width: 8),
               Expanded(
                 child: Text(
                   updateOnly
@@ -112,12 +112,12 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
               ),
               GestureDetector(
                 onTap: _dismiss,
-                child: const Icon(Icons.close,
+                child: Icon(Icons.close,
                     size: 18, color: AppTheme.textMuted),
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             updateOnly
                 ? 'engine_update_banner_hint'.w
@@ -155,7 +155,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
           ? 'engine_stage_extracting'.w
           : 'engine_stage_downloading'.w;
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: AppTheme.accentOrange.withOpacity(0.1),
           borderRadius: BorderRadius.circular(10),
@@ -164,13 +164,13 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const SizedBox(
+            SizedBox(
               width: 12,
               height: 12,
               child: CircularProgressIndicator(
                   strokeWidth: 1.5, color: AppTheme.accentOrange),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             Text(
               '$label · $stageLabel$pct',
               style: TextStyle(
@@ -186,7 +186,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
     return GestureDetector(
       onTap: () => EngineInstallService.install(kind),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: AppTheme.surface,
           borderRadius: BorderRadius.circular(10),
@@ -204,7 +204,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
                     : (isUpdate ? Icons.system_update_alt : Icons.download),
                 size: 14,
                 color: failed ? AppTheme.accentRed : AppTheme.accentOrange),
-            const SizedBox(width: 6),
+            SizedBox(width: 6),
             Text(
               failed
                   ? '${'engine_retry'.w} $label'

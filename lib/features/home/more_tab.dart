@@ -174,17 +174,17 @@ class MoreTab extends StatelessWidget {
         padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 32),
         children: [
           WesiTitle(ru ? 'Ещё' : 'More'),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           Text(
             ru
                 ? 'Все модули WesiOS. Пометка у каждого показывает, что уже работает, а что пока макет.'
                 : 'Every WesiOS module. The badge on each shows what already works and what is still a mock-up.',
             style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: 24),
           for (final section in sections) ...[
             Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 10),
+              padding: EdgeInsets.only(left: 4, bottom: 10),
               child: Text(
                 section.title.toUpperCase(),
                 style: TextStyle(
@@ -205,14 +205,14 @@ class MoreTab extends StatelessWidget {
 
   Widget _tile(BuildContext context, _ModuleItem item, bool ru) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: 8),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => Navigator.pushNamed(context, item.route),
           child: Container(
-            padding: const EdgeInsets.all(14),
+            padding: EdgeInsets.all(14),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.4),
               borderRadius: BorderRadius.circular(14),
@@ -246,11 +246,11 @@ class MoreTab extends StatelessWidget {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          SizedBox(width: 8),
                           _badge(item.stage, ru),
                         ],
                       ),
-                      const SizedBox(height: 2),
+                      SizedBox(height: 2),
                       Text(
                         item.subtitle,
                         style: TextStyle(
@@ -259,7 +259,7 @@ class MoreTab extends StatelessWidget {
                     ],
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios,
+                Icon(Icons.arrow_forward_ios,
                     size: 13, color: AppTheme.textMuted),
               ],
             ),

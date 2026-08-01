@@ -112,7 +112,7 @@ class _HomeScreenState extends State<HomeScreen>
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.95),
-          border: const Border(
+          border: Border(
             top: BorderSide(color: AppTheme.glassBorder, width: 1),
           ),
         ),
@@ -272,7 +272,7 @@ class _DashboardTabState extends State<_DashboardTab> {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: EdgeInsets.symmetric(horizontal: 16),
               child: GlassCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -284,7 +284,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                         color: AppTheme.textSecondary,
                       ),
                     ),
-                    const SizedBox(height: 8),
+                    SizedBox(height: 8),
                     Text(
                       CurrencyService.format(_balance),
                       style: TextStyle(
@@ -293,7 +293,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                         color: AppTheme.primary,
                       ),
                     ),
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     Row(
                       children: [
                         _chip(
@@ -301,13 +301,13 @@ class _DashboardTabState extends State<_DashboardTab> {
                           CurrencyService.format(_breakdown['income'] ?? 0),
                           AppTheme.accentGreen,
                         ),
-                        const SizedBox(width: 12),
+                        SizedBox(width: 12),
                         _chip(
                           WesiLocale.get('total_expenses'),
                           CurrencyService.format(_breakdown['expense'] ?? 0),
                           AppTheme.accentRed,
                         ),
-                        const SizedBox(width: 12),
+                        SizedBox(width: 12),
                         _chip(
                           WesiLocale.get('net'),
                           CurrencyService.format(_breakdown['net'] ?? 0),
@@ -432,7 +432,7 @@ class _DashboardTabState extends State<_DashboardTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: TextStyle(fontSize: 11, color: color)),
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             Text(amount,
                 style: TextStyle(
                     fontSize: 14,
@@ -480,8 +480,8 @@ class _QuickState extends State<_Quick> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          duration: Duration(milliseconds: 180),
+          padding: EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
             color: _active ? AppTheme.surfaceLight : AppTheme.surface,
             borderRadius: BorderRadius.circular(12),
@@ -497,7 +497,7 @@ class _QuickState extends State<_Quick> {
           child: Column(
             children: [
               Icon(widget.icon, color: AppTheme.accent, size: 28),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 widget.label,
                 style: TextStyle(
@@ -534,8 +534,8 @@ class _HoverIconButtonState extends State<_HoverIconButton> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(8),
+          duration: Duration(milliseconds: 150),
+          padding: EdgeInsets.all(8),
           decoration: BoxDecoration(
             color: _h ? AppTheme.surfaceLight : Colors.transparent,
             borderRadius: BorderRadius.circular(10),
@@ -600,7 +600,7 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
       child: Row(
         children: [
           Icon(icon, size: 18, color: AppTheme.textSecondary),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Text(
             label,
             style: TextStyle(color: AppTheme.textPrimary, fontSize: 14),
@@ -619,8 +619,8 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
       child: GestureDetector(
         onTap: () => _menu(context),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.all(4),
+          duration: Duration(milliseconds: 150),
+          padding: EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: _h ? AppTheme.surfaceLight : Colors.transparent,
             borderRadius: BorderRadius.circular(20),

@@ -47,7 +47,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
             e.value.stage == InstallStage.downloading ||
             e.value.stage == InstallStage.extracting)
         .toList();
-    if (active.isEmpty) return const SizedBox.shrink();
+    if (active.isEmpty) return SizedBox.shrink();
 
     return Positioned(
       right: 16,
@@ -56,7 +56,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
         color: Colors.transparent,
         child: Container(
           width: 260,
-          padding: const EdgeInsets.all(14),
+          padding: EdgeInsets.all(14),
           decoration: BoxDecoration(
             color: AppTheme.surface.withOpacity(0.97),
             borderRadius: BorderRadius.circular(16),
@@ -71,9 +71,9 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.downloading,
+                  Icon(Icons.downloading,
                       size: 16, color: AppTheme.accentOrange),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       'engine_downloading_title'.w,
@@ -85,7 +85,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
                   ),
                   GestureDetector(
                     onTap: () => EngineInstallService.overlayHidden.value = true,
-                    child: const Icon(Icons.remove,
+                    child: Icon(Icons.remove,
                         size: 16, color: AppTheme.textMuted),
                   ),
                 ],
@@ -109,7 +109,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
     final speedUnit = WesiLocale.isRussian ? 'МБ/с' : 'MB/s';
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -132,7 +132,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
               ),
             ],
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: 4),
           ClipRRect(
             borderRadius: BorderRadius.circular(3),
             child: LinearProgressIndicator(
@@ -143,7 +143,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
             ),
           ),
           if (p.stage == InstallStage.downloading) ...[
-            const SizedBox(height: 2),
+            SizedBox(height: 2),
             Text(
               '${speedMb.toStringAsFixed(1)} $speedUnit',
               style: TextStyle(fontSize: 10, color: AppTheme.textMuted),

@@ -16,7 +16,7 @@ class CurrencyPicker extends StatelessWidget {
   static Future<String?> show(BuildContext context) {
     return showDialog<String>(
       context: context,
-      builder: (_) => const CurrencyPicker(),
+      builder: (_) => CurrencyPicker(),
     );
   }
 
@@ -36,7 +36,7 @@ class CurrencyPicker extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 22, 24, 6),
+              padding: EdgeInsets.fromLTRB(24, 22, 24, 6),
               child: Text(
                 ru ? 'Валюта' : 'Currency',
                 style: TextStyle(
@@ -46,7 +46,7 @@ class CurrencyPicker extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+              padding: EdgeInsets.fromLTRB(24, 0, 24, 12),
               child: Text(
                 _sourceLabel(ru),
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
@@ -89,7 +89,7 @@ class CurrencyPicker extends StatelessWidget {
     return InkWell(
       onTap: () => Navigator.pop(context, code),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+        padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         color: selected
             ? AppTheme.accentOrange.withOpacity(0.10)
             : Colors.transparent,
@@ -114,7 +114,7 @@ class CurrencyPicker extends StatelessWidget {
                               : AppTheme.textPrimary,
                         ),
                       ),
-                      const SizedBox(width: 8),
+                      SizedBox(width: 8),
                       Flexible(
                         child: Text(
                           CurrencyService.currencyName(code, russian: ru),
@@ -125,7 +125,7 @@ class CurrencyPicker extends StatelessWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 2),
+                  SizedBox(height: 2),
                   Text(
                     '${CurrencyService.countryName(code, russian: ru)} · $rateLabel',
                     style: TextStyle(
@@ -135,7 +135,7 @@ class CurrencyPicker extends StatelessWidget {
               ),
             ),
             if (selected)
-              const Icon(Icons.check_circle,
+              Icon(Icons.check_circle,
                   size: 18, color: AppTheme.accentOrange),
           ],
         ),

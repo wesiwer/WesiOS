@@ -122,7 +122,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
         actions: [
           // Sort button
           PopupMenuButton<String>(
-            icon: const Icon(Icons.sort, color: AppTheme.textSecondary),
+            icon: Icon(Icons.sort, color: AppTheme.textSecondary),
             onSelected: (v) {
               setState(() {
                 _sortBy = v;
@@ -141,7 +141,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
         children: [
           // Search bar
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: EdgeInsets.all(16),
             child: TextField(
               onChanged: (v) {
                 setState(() {
@@ -153,7 +153,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
               decoration: InputDecoration(
                 hintText: WesiLocale.get('search_operations'),
                 hintStyle: TextStyle(color: AppTheme.textMuted),
-                prefixIcon: const Icon(Icons.search, color: AppTheme.textMuted),
+                prefixIcon: Icon(Icons.search, color: AppTheme.textMuted),
                 filled: true,
                 fillColor: AppTheme.surface.withOpacity(0.5),
                 border: OutlineInputBorder(
@@ -194,7 +194,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
                 ],
               ),
             ),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           // Transactions list
           Expanded(
             child: _filtered.isEmpty
@@ -229,14 +229,14 @@ class _OperationsScreenState extends State<OperationsScreen> {
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 20),
+        padding: EdgeInsets.only(right: 20),
         color: AppTheme.accentRed.withOpacity(0.3),
-        child: const Icon(Icons.delete, color: AppTheme.accentRed),
+        child: Icon(Icons.delete, color: AppTheme.accentRed),
       ),
       onDismissed: (_) => _deleteTx(tx.id),
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
+        margin: EdgeInsets.only(bottom: 8),
+        padding: EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.3),
           borderRadius: BorderRadius.circular(12),
@@ -248,7 +248,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
               isIncome ? Icons.arrow_upward : Icons.arrow_downward,
               color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -257,7 +257,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
                       style: TextStyle(
                           color: AppTheme.textPrimary,
                           fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 4),
+                  SizedBox(height: 4),
                   Text(
                     '${tx.category ?? WesiLocale.get('uncategorized')} · ${_formatDate(tx.date)}',
                     style: TextStyle(
@@ -273,19 +273,19 @@ class _OperationsScreenState extends State<OperationsScreen> {
                 color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
               ),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: 8),
             GestureDetector(
               onTap: () => _editTx(tx),
-              child: const Icon(Icons.edit, size: 18, color: AppTheme.textMuted),
+              child: Icon(Icons.edit, size: 18, color: AppTheme.textMuted),
             ),
-            const SizedBox(width: 12),
+            SizedBox(width: 12),
             // Явная кнопка удаления. Свайп (Dismissible) остаётся, но на
             // десктопе он неочевиден, а на телефоне о нём надо догадаться —
             // из-за этого удалять операции получалось только во вкладке
             // «Финансы».
             GestureDetector(
               onTap: () => _confirmDelete(tx),
-              child: const Icon(Icons.delete_outline,
+              child: Icon(Icons.delete_outline,
                   size: 18, color: AppTheme.accentRed),
             ),
           ],
@@ -303,7 +303,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
         shape:
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         insetPadding:
-            const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
+            EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
         title: Text(ru ? 'Удалить операцию?' : 'Delete operation?',
             style: TextStyle(
                 fontSize: 17, color: AppTheme.textPrimary)),

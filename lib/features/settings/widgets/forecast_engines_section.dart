@@ -132,7 +132,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
       trailing: !Platform.isWindows
           ? null
           : installing
-              ? const SizedBox(
+              ? SizedBox(
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(
@@ -154,7 +154,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
 
   Widget _overlayToggleTile() {
     return ListTile(
-      leading: const Icon(Icons.picture_in_picture,
+      leading: Icon(Icons.picture_in_picture,
           color: AppTheme.accentOrange),
       title: Text('engine_show_download_overlay'.w,
           style: TextStyle(color: AppTheme.textPrimary)),

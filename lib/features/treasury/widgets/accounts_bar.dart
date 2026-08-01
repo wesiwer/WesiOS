@@ -100,15 +100,15 @@ class _AccountsBarState extends State<AccountsBar> {
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textSecondary),
             ),
-            const Spacer(),
+            Spacer(),
             TextButton.icon(
               onPressed: _createAccount,
               style: TextButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
+                padding: EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              icon: const Icon(Icons.add, size: 15,
+              icon: Icon(Icons.add, size: 15,
                   color: AppTheme.accentOrange),
               label: Text(_ru ? 'Счёт' : 'Account',
                   style: TextStyle(
@@ -173,14 +173,14 @@ class _AccountsBarState extends State<AccountsBar> {
     VoidCallback? onEdit,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(right: 10),
+      padding: EdgeInsets.only(right: 10),
       child: GestureDetector(
         onTap: onTap,
         onLongPress: onEdit,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          duration: Duration(milliseconds: 180),
           width: 168,
-          padding: const EdgeInsets.all(12),
+          padding: EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: selected
                 ? color.withOpacity(0.15)
@@ -197,7 +197,7 @@ class _AccountsBarState extends State<AccountsBar> {
               Row(
                 children: [
                   Icon(icon, size: 16, color: color),
-                  const SizedBox(width: 7),
+                  SizedBox(width: 7),
                   Expanded(
                     child: Text(
                       title,
@@ -213,12 +213,12 @@ class _AccountsBarState extends State<AccountsBar> {
                   if (onEdit != null)
                     GestureDetector(
                       onTap: onEdit,
-                      child: const Icon(Icons.more_horiz,
+                      child: Icon(Icons.more_horiz,
                           size: 15, color: AppTheme.textMuted),
                     ),
                 ],
               ),
-              const Spacer(),
+              Spacer(),
               Text(
                 CurrencyService.formatExact(amount, decimals: 0),
                 style: TextStyle(
@@ -384,7 +384,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               TextField(
                 controller: _nameCtrl,
                 autofocus: true,
@@ -392,7 +392,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                 decoration: InputDecoration(
                     labelText: _ru ? 'Название' : 'Name'),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: _openingCtrl,
                 keyboardType: TextInputType.number,
@@ -406,7 +406,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                       fontSize: 11, color: AppTheme.textMuted),
                 ),
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               Text(_ru ? 'Тип' : 'Kind',
                   style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
@@ -419,7 +419,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                   return GestureDetector(
                     onTap: () => setState(() => _kind = k),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
+                      padding: EdgeInsets.symmetric(
                           horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
                         color: sel
@@ -451,7 +451,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               Text(_ru ? 'Цвет' : 'Colour',
                   style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
@@ -500,16 +500,16 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                           style:
                               TextStyle(color: AppTheme.accentRed)),
                     ),
-                  const Spacer(),
+                  Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(WesiLocale.get('cancel'),
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   HoverButton(
                     onTap: _submit,
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                         horizontal: 24, vertical: 12),
                     backgroundColor: AppTheme.accentOrange,
                     child: Text(WesiLocale.get('save'),

@@ -99,12 +99,12 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(28),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 380),
+              constraints: BoxConstraints(maxWidth: 380),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const WesiWordmark(size: 30),
-                  const SizedBox(height: 28),
+                  WesiWordmark(size: 30),
+                  SizedBox(height: 28),
                   Container(
                     width: 58,
                     height: 58,
@@ -118,7 +118,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                       size: 28,
                     ),
                   ),
-                  const SizedBox(height: 18),
+                  SizedBox(height: 18),
                   Text(
                     _ru ? 'Wesi Shield' : 'Wesi Shield',
                     style: TextStyle(
@@ -142,7 +142,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                           blocked ? AppTheme.accentOrange : AppTheme.textMuted,
                     ),
                   ),
-                  const SizedBox(height: 22),
+                  SizedBox(height: 22),
                   TextField(
                     controller: _ctrl,
                     focusNode: _focus,
@@ -156,22 +156,22 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                       errorText: _error
                           ? (_ru ? 'Неверный пароль' : 'Wrong password')
                           : null,
-                      prefixIcon: const Icon(Icons.key,
+                      prefixIcon: Icon(Icons.key,
                           size: 18, color: AppTheme.textMuted),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   SizedBox(
                     width: double.infinity,
                     child: HoverButton(
                       onTap: blocked ? () {} : _submit,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      padding: EdgeInsets.symmetric(vertical: 14),
                       backgroundColor: blocked
                           ? AppTheme.surface
                           : AppTheme.accentOrange,
                       child: Center(
                         child: _busy
-                            ? const SizedBox(
+                            ? SizedBox(
                                 width: 18,
                                 height: 18,
                                 child: CircularProgressIndicator(
@@ -190,10 +190,10 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                     ),
                   ),
                   if (ShieldService.biometricsEnabled && !blocked) ...[
-                    const SizedBox(height: 10),
+                    SizedBox(height: 10),
                     TextButton.icon(
                       onPressed: _tryBiometrics,
-                      icon: const Icon(Icons.fingerprint,
+                      icon: Icon(Icons.fingerprint,
                           size: 18, color: AppTheme.accentOrange),
                       label: Text(
                         _ru ? 'Отпечаток или лицо' : 'Fingerprint or face',
@@ -202,7 +202,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                     ),
                   ],
                   if (fails > 0) ...[
-                    const SizedBox(height: 14),
+                    SizedBox(height: 14),
                     Text(
                       _ru
                           ? 'Неудачных попыток: $fails'
@@ -212,7 +212,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                     ),
                   ],
                   if (ShieldService.wipeAfterAttempts != null) ...[
-                    const SizedBox(height: 6),
+                    SizedBox(height: 6),
                     Text(
                       _ru
                           ? 'Данные будут стёрты после '

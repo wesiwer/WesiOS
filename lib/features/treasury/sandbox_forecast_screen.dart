@@ -223,12 +223,12 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
         onPressed: () => _createPreset(),
         icon: const Icon(Icons.auto_graph, color: Colors.white),
         label: Text(_ru ? 'Свой сценарий' : 'New scenario',
-            style: const TextStyle(color: Colors.white)),
+            style: TextStyle(color: Colors.white)),
       ),
       body: SafeArea(
         child: Column(
           children: [
-            if (kHasCustomTitleBar) const SizedBox(height: kTitleBarHeight),
+            if (kHasCustomTitleBar) SizedBox(height: kTitleBarHeight),
             _header(),
             Expanded(
               child: _loading
@@ -264,7 +264,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
       child: Row(
         children: [
           IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+            icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
             onPressed: () => Navigator.pop(context),
           ),
           Expanded(
@@ -315,7 +315,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
         return GestureDetector(
           onTap: () => _setDays(d),
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: sel
                   ? AppTheme.accentOrange.withOpacity(0.16)
@@ -342,7 +342,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
 
   Widget _emptyState() {
     return Container(
-      padding: const EdgeInsets.all(28),
+      padding: EdgeInsets.all(28),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.3),
         borderRadius: BorderRadius.circular(16),
@@ -350,8 +350,8 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
       ),
       child: Column(
         children: [
-          const Icon(Icons.insights, size: 34, color: AppTheme.textMuted),
-          const SizedBox(height: 12),
+          Icon(Icons.insights, size: 34, color: AppTheme.textMuted),
+          SizedBox(height: 12),
           Text(
             _ru
                 ? 'Данных в песочнице пока мало'
@@ -359,7 +359,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             style: TextStyle(
                 fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             _ru
                 ? 'Запустите готовый сценарий (Startup, Freelancer, Crisis) '
@@ -404,7 +404,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     final pad = ((hi - lo).abs() * 0.12) + 1;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(8, 20, 18, 8),
+      padding: EdgeInsets.fromLTRB(8, 20, 18, 8),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.3),
         borderRadius: BorderRadius.circular(16),
@@ -431,9 +431,9 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                 borderData: FlBorderData(show: false),
                 titlesData: FlTitlesData(
                   topTitles:
-                      const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   rightTitles:
-                      const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                      AxisTitles(sideTitles: SideTitles(showTitles: false)),
                   leftTitles: AxisTitles(
                     sideTitles: SideTitles(
                       showTitles: true,
@@ -453,11 +453,11 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                       getTitlesWidget: (value, meta) {
                         final day = value.toInt();
                         if (day < 0 || day > _days) {
-                          return const SizedBox.shrink();
+                          return SizedBox.shrink();
                         }
                         final d = DateTime.now().add(Duration(days: day));
                         return Padding(
-                          padding: const EdgeInsets.only(top: 6),
+                          padding: EdgeInsets.only(top: 6),
                           child: Text(
                             '${d.day.toString().padLeft(2, '0')}.'
                             '${d.month.toString().padLeft(2, '0')}',
@@ -541,7 +541,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                       mainAxisSize: MainAxisSize.min,
                       children: [
                         Container(width: 12, height: 3, color: s.color),
-                        const SizedBox(width: 6),
+                        SizedBox(width: 6),
                         Text(s.label,
                             style: TextStyle(
                                 fontSize: 11, color: AppTheme.textMuted)),
@@ -574,7 +574,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
               fontWeight: FontWeight.w700,
               color: AppTheme.textPrimary),
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         _verdictCard(
           label: _ru ? 'Базовый прогноз' : 'Baseline',
           color: AppTheme.accentOrange,
@@ -600,7 +600,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
           ),
         ],
         if (active.isEmpty) ...[
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             _ru
                 ? 'Включите сценарий ниже — он появится на графике рядом с базовым.'
@@ -644,7 +644,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     final danger = runway != null || riskDay != null;
 
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.32),
         borderRadius: BorderRadius.circular(12),
@@ -654,7 +654,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
       child: Row(
         children: [
           Container(width: 4, height: 34, color: color),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -663,7 +663,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                     style: TextStyle(
                         fontWeight: FontWeight.w700,
                         color: AppTheme.textPrimary)),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Text(
                   notes.join(' · '),
                   style: TextStyle(
@@ -674,7 +674,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -710,18 +710,18 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textPrimary),
             ),
-            const Spacer(),
+            Spacer(),
             if (_presets.isNotEmpty)
               Text('${_enabled.length}/${_presets.length}',
                   style:
                       TextStyle(fontSize: 12, color: AppTheme.textMuted)),
           ],
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         if (_presets.isEmpty)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.25),
               borderRadius: BorderRadius.circular(12),
@@ -737,7 +737,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textSecondary),
                 ),
-                const SizedBox(height: 6),
+                SizedBox(height: 6),
                 Text(
                   _ru
                       ? '«Свой сценарий» внизу — задайте разовое событие '
@@ -763,8 +763,8 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     final on = _enabled.contains(preset.id);
     final color = _colorFor(preset.id);
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.fromLTRB(6, 6, 6, 6),
+      margin: EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.fromLTRB(6, 6, 6, 6),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(on ? 0.4 : 0.22),
         borderRadius: BorderRadius.circular(12),
@@ -786,7 +786,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                     style: TextStyle(
                         fontWeight: FontWeight.w600,
                         color: AppTheme.textPrimary)),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Text(
                   preset.summary(_sym, _ru),
                   style:
@@ -798,13 +798,13 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             ),
           ),
           IconButton(
-            icon: const Icon(Icons.edit_outlined,
+            icon: Icon(Icons.edit_outlined,
                 size: 17, color: AppTheme.textMuted),
             tooltip: _ru ? 'Изменить' : 'Edit',
             onPressed: () => _createPreset(editing: preset),
           ),
           IconButton(
-            icon: const Icon(Icons.delete_outline,
+            icon: Icon(Icons.delete_outline,
                 size: 17, color: AppTheme.textMuted),
             tooltip: _ru ? 'Удалить' : 'Delete',
             onPressed: () => _deletePreset(preset),
@@ -842,7 +842,7 @@ class _Series {
 /// Кнопка входа в прогноз песочницы — чтобы не дублировать оформление
 /// в самом экране песочницы.
 class SandboxForecastButton extends StatelessWidget {
-  const SandboxForecastButton({super.key});
+  SandboxForecastButton({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -850,14 +850,14 @@ class SandboxForecastButton extends StatelessWidget {
     return HoverButton(
       onTap: () => Navigator.push(
         context,
-        MaterialPageRoute(builder: (_) => const SandboxForecastScreen()),
+        MaterialPageRoute(builder: (_) => SandboxForecastScreen()),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+      padding: EdgeInsets.symmetric(vertical: 16, horizontal: 16),
       backgroundColor: AppTheme.surface.withOpacity(0.3),
       child: Row(
         children: [
-          const Icon(Icons.auto_graph, color: AppTheme.accentOrange, size: 24),
-          const SizedBox(width: 12),
+          Icon(Icons.auto_graph, color: AppTheme.accentOrange, size: 24),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -878,7 +878,7 @@ class SandboxForecastButton extends StatelessWidget {
               ],
             ),
           ),
-          const Icon(Icons.chevron_right, color: AppTheme.textMuted),
+          Icon(Icons.chevron_right, color: AppTheme.textMuted),
         ],
       ),
     );

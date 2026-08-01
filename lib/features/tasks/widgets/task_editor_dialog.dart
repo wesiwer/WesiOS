@@ -76,10 +76,10 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
       initialDate: _dueDate ?? now,
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 5),
-      locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
+      locale: WesiLocale.isRussian ? Locale('ru') : const Locale('en'),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.dark(
+          colorScheme: ColorScheme.dark(
             primary: AppTheme.accentOrange,
             onPrimary: AppTheme.background,
             surface: AppTheme.surface,
@@ -158,7 +158,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               TextField(
                 controller: _titleCtrl,
                 autofocus: true,
@@ -166,7 +166,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                 decoration: InputDecoration(
                     labelText: ru ? 'Название' : 'Title'),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               TextField(
                 controller: _descCtrl,
                 maxLines: 3,
@@ -174,7 +174,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                 decoration: InputDecoration(
                     labelText: ru ? 'Описание' : 'Description'),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Text(ru ? 'Приоритет' : 'Priority',
                   style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
@@ -187,7 +187,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   return GestureDetector(
                     onTap: () => setState(() => _priority = p),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
+                      padding: EdgeInsets.symmetric(
                           horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
                         color: sel
@@ -211,7 +211,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Text(ru ? 'Колонка' : 'Column',
                   style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
@@ -224,7 +224,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   return GestureDetector(
                     onTap: () => setState(() => _status = s),
                     child: Container(
-                      padding: const EdgeInsets.symmetric(
+                      padding: EdgeInsets.symmetric(
                           horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
                         color: sel
@@ -249,14 +249,14 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   );
                 }).toList(),
               ),
-              const SizedBox(height: 16),
+              SizedBox(height: 16),
               Row(
                 children: [
                   Expanded(
                     child: GestureDetector(
                       onTap: _pickDue,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(
+                        padding: EdgeInsets.symmetric(
                             horizontal: 14, vertical: 14),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10),
@@ -264,9 +264,9 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(Icons.event,
+                            Icon(Icons.event,
                                 size: 17, color: AppTheme.textMuted),
-                            const SizedBox(width: 10),
+                            SizedBox(width: 10),
                             Expanded(
                               child: Text(
                                 _dueDate == null
@@ -280,7 +280,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                             if (_dueDate != null)
                               GestureDetector(
                                 onTap: () => setState(() => _dueDate = null),
-                                child: const Icon(Icons.close,
+                                child: Icon(Icons.close,
                                     size: 16, color: AppTheme.textMuted),
                               ),
                           ],
@@ -288,7 +288,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  SizedBox(width: 12),
                   Expanded(
                     child: TextField(
                       controller: _assigneeCtrl,
@@ -299,11 +299,11 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               Text(ru ? 'Чек-лист' : 'Checklist',
                   style: TextStyle(
                       fontSize: 12, color: AppTheme.textMuted)),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               ...List.generate(_subtasks.length, (i) {
                 final st = _subtasks[i];
                 return Row(
@@ -328,7 +328,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close,
+                      icon: Icon(Icons.close,
                           size: 15, color: AppTheme.textMuted),
                       onPressed: () => setState(() => _subtasks.removeAt(i)),
                     ),
@@ -350,13 +350,13 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.add_circle,
+                    icon: Icon(Icons.add_circle,
                         color: AppTheme.accentOrange),
                     onPressed: _addSubtask,
                   ),
                 ],
               ),
-              const SizedBox(height: 22),
+              SizedBox(height: 22),
               Row(
                 children: [
                   TextButton(
@@ -364,10 +364,10 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                     child: Text(WesiLocale.get('cancel'),
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   HoverButton(
                     onTap: _submit,
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                         horizontal: 26, vertical: 12),
                     backgroundColor: AppTheme.accentOrange,
                     child: Text(WesiLocale.get('save'),

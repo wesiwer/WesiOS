@@ -162,13 +162,13 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         title: WesiTitle(WesiLocale.get('wesi_treasury_title'), size: 18),
         actions: [
           Padding(
-            padding: const EdgeInsets.only(right: 140),
+            padding: EdgeInsets.only(right: 140),
             child: Center(
               child: GestureDetector(
                 onTap: _cycleCurrency,
                 child: Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppTheme.surface.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(10),
@@ -196,9 +196,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             selectedId: _accountId,
             onSelect: _selectAccount,
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           _balanceCard(),
-          const SizedBox(height: 20),
+          SizedBox(height: 20),
           Row(
             children: [
               Expanded(
@@ -212,7 +212,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                   ),
                 ),
               ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               Expanded(
                 child: WesiTooltip(
                   message: WesiLocale.get('record_expense'),
@@ -226,15 +226,15 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          SizedBox(height: 16),
           HoverButton(
             onTap: () => Navigator.pushNamed(context, '/treasury/forecast'),
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             backgroundColor: AppTheme.surface,
             child: Row(
               children: [
-                const Icon(Icons.trending_up, color: AppTheme.accentOrange),
-                const SizedBox(width: 16),
+                Icon(Icons.trending_up, color: AppTheme.accentOrange),
+                SizedBox(width: 16),
                 Expanded(
                   child: Text(
                     WesiLocale.get('forecast_p10_p50_p90'),
@@ -244,20 +244,20 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                         color: AppTheme.textPrimary),
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios,
+                Icon(Icons.arrow_forward_ios,
                     size: 16, color: AppTheme.textMuted),
               ],
             ),
           ),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           HoverButton(
             onTap: () => Navigator.pushNamed(context, '/treasury/sandbox'),
-            padding: const EdgeInsets.all(20),
+            padding: EdgeInsets.all(20),
             backgroundColor: AppTheme.surface,
             child: Row(
               children: [
-                const Icon(Icons.science, color: AppTheme.accentOrange),
-                const SizedBox(width: 16),
+                Icon(Icons.science, color: AppTheme.accentOrange),
+                SizedBox(width: 16),
                 Expanded(
                   child: Text(
                     WesiLocale.get('wesi_sandbox_title'),
@@ -267,12 +267,12 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                         color: AppTheme.textPrimary),
                   ),
                 ),
-                const Icon(Icons.arrow_forward_ios,
+                Icon(Icons.arrow_forward_ios,
                     size: 16, color: AppTheme.textMuted),
               ],
             ),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: 24),
           Row(
             children: [
               Text(
@@ -282,7 +282,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
               ),
-              const Spacer(),
+              Spacer(),
               GestureDetector(
                 onTap: () => Navigator.pushNamed(context, '/treasury/operations'),
                 child: Text(
@@ -306,7 +306,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   Widget _balanceCard() {
     final shown = CurrencyService.fromRub(_balance);
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.5),
         borderRadius: BorderRadius.circular(20),
@@ -318,7 +318,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           Text(WesiLocale.get('current_balance'),
               style: TextStyle(
                   fontSize: 13, color: AppTheme.textSecondary)),
-          const SizedBox(height: 12),
+          SizedBox(height: 12),
           Text(
             '$_sym${shown.toStringAsFixed(2)}',
             style: TextStyle(
@@ -328,7 +328,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             ),
           ),
           _rateLine(),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           Row(
             children: [
               _miniStat(
@@ -336,14 +336,14 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 CurrencyService.format(_breakdown['income'] ?? 0),
                 AppTheme.accentGreen,
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               _miniStat(
                 WesiLocale.get('total_expenses'),
                 CurrencyService.format(_breakdown['expense'] ?? 0),
                 AppTheme.accentRed,
               ),
               if (_anomalies.isNotEmpty) ...[
-                const SizedBox(width: 10),
+                SizedBox(width: 10),
                 _miniStat(
                   WesiLocale.get('anomalies_detected'),
                   '${_anomalies.length}',
@@ -373,7 +373,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 style: TextStyle(fontSize: 10, color: color),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
-            const SizedBox(height: 2),
+            SizedBox(height: 2),
             Text(value,
                 style: TextStyle(
                     fontSize: 13,
@@ -400,7 +400,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             : '${WesiLocale.get('rate_cbr_on')} ${date ?? ''}'.trim();
 
         return Padding(
-          padding: const EdgeInsets.only(top: 8),
+          padding: EdgeInsets.only(top: 8),
           child: Text(
             '$rate · $prefix',
             style: TextStyle(
@@ -419,12 +419,12 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       IconData icon, String label, Color color, VoidCallback onTap) {
     return HoverButton(
       onTap: onTap,
-      padding: const EdgeInsets.symmetric(vertical: 16),
+      padding: EdgeInsets.symmetric(vertical: 16),
       backgroundColor: AppTheme.surface.withOpacity(0.3),
       child: Column(
         children: [
           Icon(icon, color: color, size: 28),
-          const SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(label,
               style: TextStyle(
                   fontSize: 12, color: AppTheme.textSecondary)),
@@ -436,8 +436,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   Widget _txItem(TransactionModel tx) {
     final isIncome = tx.type == TransactionType.income;
     return Container(
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.all(14),
+      margin: EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.3),
         borderRadius: BorderRadius.circular(12),
@@ -447,7 +447,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         children: [
           Icon(isIncome ? Icons.arrow_upward : Icons.arrow_downward,
               color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed),
-          const SizedBox(width: 12),
+          SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -468,10 +468,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           GestureDetector(
             onTap: () => _deleteTx(tx.id),
-            child: const Icon(Icons.delete_outline,
+            child: Icon(Icons.delete_outline,
                 size: 18, color: AppTheme.textMuted),
           ),
         ],

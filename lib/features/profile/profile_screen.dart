@@ -174,11 +174,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Календарь на языке приложения. Без явной локали Flutter показывает
       // системную, из-за чего при русском интерфейсе месяцы и кнопки
       // оставались английскими.
-      locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
+      locale: WesiLocale.isRussian ? Locale('ru') : const Locale('en'),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.dark(
+            colorScheme: ColorScheme.dark(
               primary: AppTheme.accentOrange,
               onPrimary: AppTheme.background,
               surface: AppTheme.surface,
@@ -212,8 +212,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Row(
             children: [
-              const WesiTitle('Wesi Профиль', size: 22),
-              const Spacer(),
+              WesiTitle('Wesi Профиль', size: 22),
+              Spacer(),
               if (_savedHint != null)
                 Text(
                   _savedHint!,
@@ -255,14 +255,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _scheduleSave();
             }),
           ),
-          const SizedBox(height: 24),
+          SizedBox(height: 24),
           _section('Ключи Firebase (автосохранение)'),
           // Ключи Firebase — это доступ к бэкенду проекта, поэтому секция
           // закрыта: значения не рисуются, пока не подтвердили пароль
           // (или отпечаток/Face ID на телефоне).
           if (!_vaultUnlocked) _lockedVault(),
           if (_vaultUnlocked) ...[
-          const Text(
+          Text(
             'Наведи на поле — подсказка где взять значение. Сохраняется само.',
             style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
           ),
@@ -302,9 +302,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _storageBucketCtrl.clear();
               _measurementIdCtrl.clear();
             },
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: EdgeInsets.symmetric(vertical: 14),
             backgroundColor: AppTheme.surface,
-            child: const Center(
+            child: Center(
               child: Text('Очистить Firebase-ключи',
                   style: TextStyle(color: AppTheme.accentRed)),
             ),
@@ -320,7 +320,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Заглушка вместо полей, пока доступ не подтверждён.
   Widget _lockedVault() {
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.4),
         borderRadius: BorderRadius.circular(14),
@@ -331,8 +331,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Row(
             children: [
-              const Icon(Icons.lock, size: 18, color: AppTheme.accentOrange),
-              const SizedBox(width: 10),
+              Icon(Icons.lock, size: 18, color: AppTheme.accentOrange),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   ShieldService.isConfigured
@@ -346,7 +346,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             ShieldService.isConfigured
                 ? 'Введите пароль, чтобы посмотреть или изменить ключи Firebase.'
@@ -355,10 +355,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: TextStyle(
                 fontSize: 12, color: AppTheme.textMuted, height: 1.4),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           HoverButton(
             onTap: _unlockVault,
-            padding: const EdgeInsets.symmetric(vertical: 12),
+            padding: EdgeInsets.symmetric(vertical: 12),
             backgroundColor: AppTheme.accentOrange,
             child: Center(
               child: Text(
@@ -385,10 +385,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
             contentPadding: EdgeInsets.zero,
             value: ShieldService.biometricsEnabled,
             activeColor: AppTheme.accentOrange,
-            title: const Text('Отпечаток или Face ID',
+            title: Text('Отпечаток или Face ID',
                 style: TextStyle(
                     fontSize: 14, color: AppTheme.textPrimary)),
-            subtitle: const Text(
+            subtitle: Text(
                 'Открывать ключи биометрией вместо ввода пароля',
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
             onChanged: (v) async {
@@ -400,15 +400,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onPressed: () async {
             final ok = await showDialog<bool>(
               context: context,
-              builder: (_) => const VaultUnlockDialog(setupMode: true),
+              builder: (_) => VaultUnlockDialog(setupMode: true),
             );
             if (ok == true && mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Пароль обновлён')),
+                SnackBar(content: Text('Пароль обновлён')),
               );
             }
           },
-          child: const Text('Сменить пароль',
+          child: Text('Сменить пароль',
               style: TextStyle(color: AppTheme.accentOrange)),
         ),
         // Всё остальное — автоблокировка, журнал, область защиты — живёт в
@@ -416,9 +416,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         // разойтись с ними в поведении.
         TextButton.icon(
           onPressed: () => Navigator.pushNamed(context, '/shield'),
-          icon: const Icon(Icons.shield_outlined,
+          icon: Icon(Icons.shield_outlined,
               size: 16, color: AppTheme.textSecondary),
-          label: const Text('Все настройки защиты — Wesi Shield',
+          label: Text('Все настройки защиты — Wesi Shield',
               style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         ),
       ],
@@ -438,7 +438,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _section(String t) => Padding(
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: EdgeInsets.only(bottom: 12),
         child: Text(t,
             style: TextStyle(
                 fontSize: 16,
@@ -448,7 +448,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _field(TextEditingController c, String label, [String? hint]) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: c,
         style: TextStyle(color: AppTheme.textPrimary),
@@ -463,10 +463,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _fieldTip(TextEditingController c, String label, String tip) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(bottom: 12),
       child: Tooltip(
         message: tip,
-        waitDuration: const Duration(milliseconds: 300),
+        waitDuration: Duration(milliseconds: 300),
         child: TextField(
           controller: c,
           style: TextStyle(color: AppTheme.textPrimary),
@@ -485,11 +485,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _dropdown(String label, String value, VoidCallback onTap) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: EdgeInsets.only(bottom: 12),
       child: GestureDetector(
         onTap: onTap,
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           decoration: BoxDecoration(
             color: AppTheme.surfaceLight,
             borderRadius: BorderRadius.circular(12),
@@ -504,14 +504,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Text(label,
                         style: TextStyle(
                             fontSize: 12, color: AppTheme.textSecondary)),
-                    const SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(value,
                         style: TextStyle(
                             fontSize: 16, color: AppTheme.textPrimary)),
                   ],
                 ),
               ),
-              const Icon(Icons.arrow_drop_down, color: AppTheme.textMuted),
+              Icon(Icons.arrow_drop_down, color: AppTheme.textMuted),
             ],
           ),
         ),
@@ -532,7 +532,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: EdgeInsets.all(16),
               child: Text(title,
                   style: TextStyle(
                       fontSize: 18,
@@ -562,13 +562,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         HoverButton(
           onTap: _pickCustomAvatar,
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           backgroundColor: AppTheme.surface,
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.upload, size: 16, color: AppTheme.accentOrange),
-              const SizedBox(width: 8),
+              Icon(Icons.upload, size: 16, color: AppTheme.accentOrange),
+              SizedBox(width: 8),
               Text(
                 WesiLocale.get('upload_avatar'),
                 style: TextStyle(
@@ -578,20 +578,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         if (hasCustom) ...[
-          const SizedBox(width: 10),
+          SizedBox(width: 10),
           HoverButton(
             onTap: () async {
               await WesiAvatar.clearCustom();
               if (mounted) setState(() {});
             },
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             backgroundColor: AppTheme.surface,
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.restart_alt,
+                Icon(Icons.restart_alt,
                     size: 16, color: AppTheme.textMuted),
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 Text(
                   WesiLocale.get('reset_avatar'),
                   style: TextStyle(

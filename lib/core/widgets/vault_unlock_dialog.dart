@@ -117,18 +117,18 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       insetPadding: const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 400),
+        constraints: BoxConstraints(maxWidth: 400),
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Row(
                 children: [
-                  const Icon(Icons.lock_outline,
+                  Icon(Icons.lock_outline,
                       size: 20, color: AppTheme.accentOrange),
-                  const SizedBox(width: 10),
+                  SizedBox(width: 10),
                   Expanded(
                     child: Text(
                       widget.setupMode
@@ -142,7 +142,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 widget.setupMode
                     ? (ru
@@ -154,7 +154,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                 style: TextStyle(
                     fontSize: 12, color: AppTheme.textMuted, height: 1.4),
               ),
-              const SizedBox(height: 18),
+              SizedBox(height: 18),
               TextField(
                 controller: _passCtrl,
                 obscureText: _obscure,
@@ -173,7 +173,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                 ),
               ),
               if (widget.setupMode) ...[
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 TextField(
                   controller: _confirmCtrl,
                   obscureText: _obscure,
@@ -185,16 +185,16 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                 ),
               ],
               if (_error != null) ...[
-                const SizedBox(height: 10),
+                SizedBox(height: 10),
                 Text(_error!,
                     style: TextStyle(
                         fontSize: 12, color: AppTheme.accentRed)),
               ],
               if (!widget.setupMode && _bioAvailable) ...[
-                const SizedBox(height: 14),
+                SizedBox(height: 14),
                 TextButton.icon(
                   onPressed: _tryBiometric,
-                  icon: const Icon(Icons.fingerprint,
+                  icon: Icon(Icons.fingerprint,
                       size: 18, color: AppTheme.accentOrange),
                   label: Text(
                     ru ? 'Отпечаток или Face ID' : 'Fingerprint or Face ID',
@@ -202,7 +202,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                   ),
                 ),
               ],
-              const SizedBox(height: 20),
+              SizedBox(height: 20),
               Row(
                 children: [
                   TextButton(
@@ -210,7 +210,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                     child: Text(WesiLocale.get('cancel'),
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   TextButton(
                     onPressed: _submit,
                     child: Text(

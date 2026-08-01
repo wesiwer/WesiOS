@@ -147,7 +147,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
         ),
         const Spacer(),
         _navButton(Icons.chevron_left, () => _shiftMonth(-1)),
-        const SizedBox(width: 4),
+        SizedBox(width: 4),
         TextButton(
           onPressed: () {
             final now = DateTime.now();
@@ -260,7 +260,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
       onTap: () => setState(() => _selected = date),
       child: Container(
         height: 42,
-        margin: const EdgeInsets.all(2),
+        margin: EdgeInsets.all(2),
         decoration: BoxDecoration(
           color: isSelected
               ? AppTheme.accentOrange.withOpacity(0.2)
@@ -291,14 +291,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
             // Точки, а не числа: в ячейке 42 px цифра рядом с датой читается
             // как часть даты. Цвет отделяет задачи от денег.
             if (tasks.isNotEmpty || payments.isNotEmpty) ...[
-              const SizedBox(height: 3),
+              SizedBox(height: 3),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   if (tasks.isNotEmpty)
                     _dot(hasOverdue ? AppTheme.accentRed : AppTheme.primary),
                   if (tasks.isNotEmpty && payments.isNotEmpty)
-                    const SizedBox(width: 3),
+                    SizedBox(width: 3),
                   if (payments.isNotEmpty) _dot(AppTheme.accentOrange),
                 ],
               ),
@@ -350,11 +350,11 @@ class _CalendarScreenState extends State<CalendarScreen> {
               ),
           ],
         ),
-        const SizedBox(height: 10),
+        SizedBox(height: 10),
         if (tasks.isEmpty && payments.isEmpty)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(vertical: 22, horizontal: 16),
+            padding: EdgeInsets.symmetric(vertical: 22, horizontal: 16),
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.3),
               borderRadius: BorderRadius.circular(12),
@@ -414,8 +414,8 @@ class _CalendarScreenState extends State<CalendarScreen> {
         onTap: onTap,
         borderRadius: BorderRadius.circular(10),
         child: Container(
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+          margin: EdgeInsets.only(bottom: 8),
+          padding: EdgeInsets.symmetric(horizontal: 14, vertical: 11),
           decoration: BoxDecoration(
             color: AppTheme.surface.withOpacity(0.3),
             borderRadius: BorderRadius.circular(10),
@@ -424,7 +424,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           child: Row(
             children: [
               Icon(icon, size: 15, color: color),
-              const SizedBox(width: 11),
+              SizedBox(width: 11),
               Expanded(
                 child: Text(
                   title,
@@ -434,7 +434,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                       fontSize: 13, color: AppTheme.textPrimary),
                 ),
               ),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Text(trailing,
                   style: TextStyle(
                       fontSize: 11, color: AppTheme.textMuted)),

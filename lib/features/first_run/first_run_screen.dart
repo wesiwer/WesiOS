@@ -81,7 +81,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
 
   Future<void> _skip() async {
     Navigator.of(context).pushReplacement(
-      MaterialPageRoute(builder: (_) => const SplashScreen()),
+      MaterialPageRoute(builder: (_) => SplashScreen()),
     );
   }
 
@@ -139,24 +139,24 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 40),
+                  SizedBox(height: 40),
                   _buildField(_apiKeyCtrl, 'API Key *', 'AIzaSy...', 'API Key для доступа к Firebase services. Найдите в Project Settings > General > Web API Key.'),
                   _buildField(_appIdCtrl, 'App ID *', '1:123456789:web:abc123...', 'Уникальный ID приложения. Найдите в Project Settings > General > Your Apps > App ID.'),
                   _buildField(_projectIdCtrl, 'Project ID *', 'my-project-id', 'ID проекта Firebase. Найдите в Project Settings > General > Project ID.'),
                   _buildField(_messagingSenderIdCtrl, 'Messaging Sender ID *', '123456789', 'ID отправителя для FCM. Найдите в Project Settings > Cloud Messaging > Sender ID.'),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   Text(
                     'Дополнительные поля (опционально):',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(color: AppTheme.textMuted),
                   ),
-                  const SizedBox(height: 12),
+                  SizedBox(height: 12),
                   _buildField(_authDomainCtrl, 'Auth Domain', 'my-project.firebaseapp.com', 'Домен для аутентификации. Автоматически генерируется Firebase.'),
                   _buildField(_storageBucketCtrl, 'Storage Bucket', 'my-project.appspot.com', 'Bucket для Cloud Storage. Найдите в Storage > Get Started.'),
                   _buildField(_measurementIdCtrl, 'Measurement ID', 'G-XXXXXXXX', 'ID для Google Analytics. Найдите в Project Settings > Integrations > Google Analytics, либо в конфиге веб-приложения.'),
                   if (_error != null) ...[
-                    const SizedBox(height: 16),
+                    SizedBox(height: 16),
                     Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: EdgeInsets.all(12),
                       decoration: BoxDecoration(
                         color: AppTheme.accentRed.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
@@ -165,21 +165,21 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                       child: Text(_error!, style: TextStyle(color: AppTheme.accentRed)),
                     ),
                   ],
-                  const SizedBox(height: 24),
+                  SizedBox(height: 24),
                   _passwordOffer(),
-                  const SizedBox(height: 32),
+                  SizedBox(height: 32),
                   HoverButton(
                     onTap: _isLoading ? null : _saveAndProceed,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: EdgeInsets.symmetric(vertical: 16),
                     backgroundColor: AppTheme.accentOrange,
                     hoverColor: AppTheme.accentOrange.withOpacity(0.8),
                     child: Center(
                       child: _isLoading
-                        ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Text('Сохранить и продолжить', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
+                        ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                        : Text('Сохранить и продолжить', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white)),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  SizedBox(height: 16),
                   Center(
                     child: TextButton(
                       onPressed: _skip,
@@ -205,7 +205,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   /// в профиле.
   Widget _passwordOffer() {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.4),
         borderRadius: BorderRadius.circular(12),
@@ -236,7 +236,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textPrimary),
                 ),
-                const SizedBox(height: 2),
+                SizedBox(height: 2),
                 Text(
                   _passwordSet
                       ? 'Ключи будут скрыты до ввода пароля. На телефоне можно открывать отпечатком.'
@@ -247,12 +247,12 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           TextButton(
             onPressed: () async {
               final ok = await showDialog<bool>(
                 context: context,
-                builder: (_) => const VaultUnlockDialog(setupMode: true),
+                builder: (_) => VaultUnlockDialog(setupMode: true),
               );
               if (ok == true && mounted) setState(() => _passwordSet = true);
             },
@@ -266,7 +266,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
 
   Widget _buildField(TextEditingController ctrl, String label, [String? hint, String? tooltip]) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: EdgeInsets.only(bottom: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -288,13 +288,13 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               if (tooltip != null)
                 Tooltip(
                   message: tooltip,
-                  textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+                  textStyle: TextStyle(color: Colors.white, fontSize: 12),
                   decoration: BoxDecoration(
                     color: AppTheme.carbonDark.withOpacity(0.95),
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3)),
                   ),
-                  child: const Padding(
+                  child: Padding(
                     padding: EdgeInsets.only(left: 8),
                     child: Icon(Icons.info_outline, size: 18, color: AppTheme.textMuted),
                   ),

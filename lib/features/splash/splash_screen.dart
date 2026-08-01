@@ -148,8 +148,8 @@ class _SplashScreenState extends State<SplashScreen>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const WesiWordmark(size: 46),
-                        const SizedBox(height: 8),
+                        WesiWordmark(size: 46),
+                        SizedBox(height: 8),
                         Text(
                           'Business Operating System',
                           style: TextStyle(
@@ -158,9 +158,9 @@ class _SplashScreenState extends State<SplashScreen>
                             letterSpacing: 2,
                           ),
                         ),
-                        const SizedBox(height: 48),
+                        SizedBox(height: 48),
                         AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 400),
+                          duration: Duration(milliseconds: 400),
                           child: Text(
                             _loadingTexts[_currentTextIndex],
                             key: ValueKey<int>(_currentTextIndex),
@@ -172,7 +172,7 @@ class _SplashScreenState extends State<SplashScreen>
                             textAlign: TextAlign.center,
                           ),
                         ),
-                        const SizedBox(height: 20),
+                        SizedBox(height: 20),
                         // Progress bar
                         SizedBox(
                           width: 220,
@@ -181,7 +181,7 @@ class _SplashScreenState extends State<SplashScreen>
                             child: LinearProgressIndicator(
                               value: _fadeController.value,
                               backgroundColor: AppTheme.surfaceLight,
-                              valueColor: const AlwaysStoppedAnimation<Color>(
+                              valueColor: AlwaysStoppedAnimation<Color>(
                                   AppTheme.accentOrange),
                               minHeight: 3,
                             ),
@@ -198,7 +198,7 @@ class _SplashScreenState extends State<SplashScreen>
                               RotationTransition(
                                 turns: _ringController1,
                                 child: CustomPaint(
-                                  size: const Size(110, 110),
+                                  size: Size(110, 110),
                                   painter: RingPainter(
                                     radius: 48,
                                     strokeWidth: 5,
@@ -211,7 +211,7 @@ class _SplashScreenState extends State<SplashScreen>
                               RotationTransition(
                                 turns: ReverseAnimation(_ringController2),
                                 child: CustomPaint(
-                                  size: const Size(110, 110),
+                                  size: Size(110, 110),
                                   painter: RingPainter(
                                     radius: 34,
                                     strokeWidth: 4.5,
@@ -224,7 +224,7 @@ class _SplashScreenState extends State<SplashScreen>
                               RotationTransition(
                                 turns: _ringController3,
                                 child: CustomPaint(
-                                  size: const Size(110, 110),
+                                  size: Size(110, 110),
                                   painter: RingPainter(
                                     radius: 20,
                                     strokeWidth: 4,
@@ -237,8 +237,8 @@ class _SplashScreenState extends State<SplashScreen>
                             ],
                           ),
                         ),
-                        const SizedBox(height: 20),
-                        const Text(
+                        SizedBox(height: 20),
+                        Text(
                           AppVersion.display,
                           style: TextStyle(
                             fontSize: 12,

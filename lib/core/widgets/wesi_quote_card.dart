@@ -24,7 +24,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
     final text = WesiLocale.isRussian ? quote.ru : quote.en;
 
     return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
+      padding: EdgeInsets.fromLTRB(18, 16, 12, 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.glassBorder),
@@ -41,7 +41,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(top: 2),
+            padding: EdgeInsets.only(top: 2),
             child: Icon(Icons.format_quote,
                 size: 18, color: AppTheme.accentOrange.withOpacity(0.8)),
           ),
@@ -52,7 +52,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 250),
+                  duration: Duration(milliseconds: 250),
                   child: Text(
                     text,
                     key: ValueKey(text),
@@ -67,7 +67,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
                 // Автор рисуется только если он есть — у народных фраз
                 // подпись не нужна вовсе, пустой прочерк выглядел бы багом.
                 if (quote.author != null) ...[
-                  const SizedBox(height: 6),
+                  SizedBox(height: 6),
                   Text(
                     '— ${quote.author}',
                     style: TextStyle(
@@ -77,7 +77,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
               ],
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: 8),
           IconButton(
             tooltip: WesiLocale.isRussian ? 'Другая фраза' : 'Another quote',
             icon: Icon(Icons.refresh,

@@ -20,7 +20,7 @@ class WesiWordmark extends StatelessWidget {
   /// Знак слева от надписи. По умолчанию false — надпись идёт первой.
   final bool markFirst;
 
-  const WesiWordmark({
+  WesiWordmark({
     super.key,
     this.size = 32,
     this.showText = true,

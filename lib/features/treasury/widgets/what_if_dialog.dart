@@ -66,12 +66,12 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
     final picked = await showDatePicker(
       context: context,
       initialDate: _eventDate,
-      firstDate: start.add(const Duration(days: 1)),
+      firstDate: start.add(Duration(days: 1)),
       lastDate: start.add(Duration(days: widget.forecastDays)),
-      locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
+      locale: WesiLocale.isRussian ? Locale('ru') : const Locale('en'),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.dark(
+          colorScheme: ColorScheme.dark(
             primary: AppTheme.accentOrange,
             onPrimary: AppTheme.background,
             surface: AppTheme.surface,
@@ -120,7 +120,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 440, maxHeight: 640),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
+          padding: EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -132,12 +132,12 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
               ),
-              const SizedBox(height: 6),
+              SizedBox(height: 6),
               Text(
                 'what_if_hint'.w,
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
-              const SizedBox(height: 20),
+              SizedBox(height: 20),
               Row(
                 children: [
                   Switch(
@@ -152,14 +152,14 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                 ],
               ),
               if (_includeEvent) ...[
-                const SizedBox(height: 8),
+                SizedBox(height: 8),
                 TextField(
                   controller: _titleCtrl,
                   style: TextStyle(color: AppTheme.textPrimary),
                   decoration: InputDecoration(
                       labelText: 'what_if_event_title'.w),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 Row(
                   children: [
                     Expanded(
@@ -177,11 +177,11 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                     _typeToggle(),
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: 12),
                 GestureDetector(
                   onTap: _pickDate,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                         horizontal: 14, vertical: 14),
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(12),
@@ -189,9 +189,9 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.calendar_month,
+                        Icon(Icons.calendar_month,
                             size: 18, color: AppTheme.textMuted),
-                        const SizedBox(width: 10),
+                        SizedBox(width: 10),
                         Text(
                           '${'what_if_event_date'.w}: '
                           '${_eventDate.day.toString().padLeft(2, '0')}.'
@@ -204,7 +204,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                   ),
                 ),
               ],
-              const SizedBox(height: 24),
+              SizedBox(height: 24),
               _slider(
                 label: 'what_if_income_adjust'.w,
                 value: _incomeMult,
@@ -213,7 +213,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                 color: AppTheme.accentGreen,
                 onChanged: (v) => setState(() => _incomeMult = v),
               ),
-              const SizedBox(height: 12),
+              SizedBox(height: 12),
               _slider(
                 label: 'what_if_expense_adjust'.w,
                 value: _expenseMult,
@@ -222,7 +222,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                 color: AppTheme.accentRed,
                 onChanged: (v) => setState(() => _expenseMult = v),
               ),
-              const SizedBox(height: 24),
+              SizedBox(height: 24),
               Row(
                 children: [
                   TextButton(
@@ -230,16 +230,16 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                     child: Text('what_if_reset'.w,
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text('cancel'.w,
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  const SizedBox(width: 8),
+                  SizedBox(width: 8),
                   HoverButton(
                     onTap: _apply,
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                         horizontal: 24, vertical: 12),
                     backgroundColor: AppTheme.accentOrange,
                     child: Text('what_if_apply'.w,

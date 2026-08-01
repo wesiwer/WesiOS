@@ -85,7 +85,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
   }
 
   Widget _shell({required Widget child}) => Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.4),
           borderRadius: BorderRadius.circular(14),
@@ -109,7 +109,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
               size: 20,
               color: hasUpdate ? AppTheme.accentOrange : AppTheme.accentGreen,
             ),
-            const SizedBox(width: 10),
+            SizedBox(width: 10),
             Expanded(
               child: Text(
                 hasUpdate
@@ -123,7 +123,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        SizedBox(height: 4),
         Text(
           ru
               ? 'Установлена ${AppUpdateService.currentVersion} (сборка ${AppUpdateService.currentBuild})'
@@ -151,7 +151,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
 
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
         color: AppTheme.background.withOpacity(0.55),
         borderRadius: BorderRadius.circular(10),
@@ -169,7 +169,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
               letterSpacing: 0.3,
             ),
           ),
-          const SizedBox(height: 6),
+          SizedBox(height: 6),
           Text(
             notes,
             maxLines: showFull ? null : 3,
@@ -181,7 +181,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
             ),
           ),
           if (widget.compact && isLong) ...[
-            const SizedBox(height: 6),
+            SizedBox(height: 6),
             GestureDetector(
               onTap: () => setState(() => _notesExpanded = !_notesExpanded),
               child: Text(
@@ -215,10 +215,10 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                 minHeight: 6,
                 backgroundColor: AppTheme.background,
                 valueColor:
-                    const AlwaysStoppedAnimation(AppTheme.accentOrange),
+                    AlwaysStoppedAnimation(AppTheme.accentOrange),
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               [
                 if (f != null) '${(f * 100).toStringAsFixed(0)}%',
@@ -281,7 +281,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                 _install,
               ),
               if (!widget.compact) ...[
-                const SizedBox(width: 8),
+                SizedBox(width: 8),
                 TextButton(
                   onPressed: () => _skip(release.version),
                   child: Text(
@@ -308,7 +308,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
 
   Widget _button(String label, VoidCallback? onTap) => HoverButton(
         onTap: onTap ?? () {},
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+        padding: EdgeInsets.symmetric(horizontal: 18, vertical: 11),
         backgroundColor: onTap == null
             ? AppTheme.surface
             : AppTheme.accentOrange.withOpacity(0.16),

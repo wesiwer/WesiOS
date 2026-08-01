@@ -64,7 +64,7 @@ class _AlertsBellState extends State<AlertsBell> {
           _load();
         },
         child: Padding(
-          padding: const EdgeInsets.all(6),
+          padding: EdgeInsets.all(6),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -80,9 +80,9 @@ class _AlertsBellState extends State<AlertsBell> {
                   right: -3,
                   top: -3,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                         horizontal: 4, vertical: 1),
-                    constraints: const BoxConstraints(minWidth: 14),
+                    constraints: BoxConstraints(minWidth: 14),
                     decoration: BoxDecoration(
                       color: urgent > 0
                           ? AppTheme.accentRed
@@ -169,7 +169,7 @@ class AlertsSheet extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+              padding: EdgeInsets.fromLTRB(20, 20, 20, 12),
               child: Row(
                 children: [
                   Expanded(
@@ -193,12 +193,12 @@ class AlertsSheet extends StatelessWidget {
             Flexible(
               child: alerts.isEmpty
                   ? Padding(
-                      padding: const EdgeInsets.all(28),
+                      padding: EdgeInsets.all(28),
                       child: Row(
                         children: [
-                          const Icon(Icons.check_circle_outline,
+                          Icon(Icons.check_circle_outline,
                               size: 18, color: AppTheme.accentGreen),
-                          const SizedBox(width: 12),
+                          SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               ru
@@ -216,7 +216,7 @@ class AlertsSheet extends StatelessWidget {
                       ),
                     )
                   : ListView.separated(
-                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      padding: EdgeInsets.symmetric(vertical: 6),
                       shrinkWrap: true,
                       itemCount: alerts.length,
                       separatorBuilder: (_, __) => Divider(
@@ -252,7 +252,7 @@ class AlertsSheet extends StatelessWidget {
                                             color: _color(a.level)),
                                       ),
                                       if (a.detail.isNotEmpty) ...[
-                                        const SizedBox(height: 3),
+                                        SizedBox(height: 3),
                                         Text(
                                           a.detail,
                                           maxLines: 2,

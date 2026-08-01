@@ -104,7 +104,7 @@ class _HomePulseState extends State<HomePulse> {
           Text(title,
               style: TextStyle(
                   fontSize: 11, color: AppTheme.textMuted)),
-          const SizedBox(height: 7),
+          SizedBox(height: 7),
           Text(
             CurrencyService.format(kpi.value),
             maxLines: 1,
@@ -190,7 +190,7 @@ class _HomePulseState extends State<HomePulse> {
   }
 
   Widget _shell({required Widget child}) => Container(
-        padding: const EdgeInsets.all(14),
+        padding: EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.35),
           borderRadius: BorderRadius.circular(14),

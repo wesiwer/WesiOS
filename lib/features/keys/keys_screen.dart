@@ -96,7 +96,7 @@ class _KeysScreenState extends State<KeysScreen> {
             Row(
               children: [
                 IconButton(
-                  icon: const Icon(Icons.arrow_back,
+                  icon: Icon(Icons.arrow_back,
                       color: AppTheme.textPrimary),
                   onPressed: () => Navigator.pop(context),
                 ),
@@ -106,9 +106,9 @@ class _KeysScreenState extends State<KeysScreen> {
                 SizedBox(width: kHasCustomTitleBar ? 140 : 0),
               ],
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8),
+              padding: EdgeInsets.symmetric(horizontal: 8),
               child: Text(
                 _ru
                     ? 'Ключи от внешних сервисов. Приложению для работы они '
@@ -119,18 +119,18 @@ class _KeysScreenState extends State<KeysScreen> {
                     fontSize: 12, color: AppTheme.textSecondary),
               ),
             ),
-            const SizedBox(height: 18),
+            SizedBox(height: 18),
             _vaultCard(),
-            const SizedBox(height: 14),
+            SizedBox(height: 14),
             _firebaseCard(),
             if (_error != null) ...[
-              const SizedBox(height: 14),
+              SizedBox(height: 14),
               _card(
                 child: Row(
                   children: [
-                    const Icon(Icons.block,
+                    Icon(Icons.block,
                         size: 17, color: AppTheme.accentRed),
-                    const SizedBox(width: 11),
+                    SizedBox(width: 11),
                     Expanded(
                       child: Text(_error!,
                           style: TextStyle(
@@ -165,7 +165,7 @@ class _KeysScreenState extends State<KeysScreen> {
               Icon(open ? Icons.lock_open : Icons.lock,
                   size: 18,
                   color: open ? AppTheme.accentGreen : AppTheme.accentOrange),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   open
@@ -198,12 +198,12 @@ class _KeysScreenState extends State<KeysScreen> {
             style: TextStyle(
                 fontSize: 12, height: 1.4, color: AppTheme.textMuted),
           ),
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           if (reason == VaultLockReason.noPassword)
             HoverButton(
               onTap: () => Navigator.pushNamed(context, '/shield'),
               padding:
-                  const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                  EdgeInsets.symmetric(horizontal: 18, vertical: 11),
               backgroundColor: AppTheme.accentOrange,
               child: Text(_ru ? 'Открыть Wesi Shield' : 'Open Wesi Shield',
                   style: const TextStyle(
@@ -217,11 +217,11 @@ class _KeysScreenState extends State<KeysScreen> {
                 if (!open)
                   HoverButton(
                     onTap: _unlockVault,
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                         horizontal: 18, vertical: 11),
                     backgroundColor: AppTheme.accentOrange,
                     child: Text(_ru ? 'Разблокировать' : 'Unlock',
-                        style: const TextStyle(
+                        style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
                             color: Colors.white)),
@@ -229,14 +229,14 @@ class _KeysScreenState extends State<KeysScreen> {
                 else
                   HoverButton(
                     onTap: () => setState(SecretVault.lock),
-                    padding: const EdgeInsets.symmetric(
+                    padding: EdgeInsets.symmetric(
                         horizontal: 18, vertical: 11),
                     backgroundColor: AppTheme.surface,
                     child: Text(_ru ? 'Закрыть' : 'Lock',
                         style: TextStyle(
                             fontSize: 13, color: AppTheme.textPrimary)),
                   ),
-                const Spacer(),
+                Spacer(),
                 Text(
                   _ru
                       ? 'локально: ${SecretVault.names.length}'
@@ -278,7 +278,7 @@ class _KeysScreenState extends State<KeysScreen> {
                   size: 18,
                   color:
                       signedIn ? AppTheme.accentGreen : AppTheme.textMuted),
-              const SizedBox(width: 10),
+              SizedBox(width: 10),
               Expanded(
                 child: Text(
                   signedIn
@@ -312,13 +312,13 @@ class _KeysScreenState extends State<KeysScreen> {
                 fontSize: 12, height: 1.4, color: AppTheme.textMuted),
           ),
           if (signedIn) ...[
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             SelectableText(
               'UID: ${FirebaseRestService.session!.uid}',
               style: TextStyle(
                   fontSize: 11, color: AppTheme.textSecondary),
             ),
-            const SizedBox(height: 4),
+            SizedBox(height: 4),
             Text(
               _ru
                   ? 'Этот UID нужен, чтобы создать документ admins/<UID> '
@@ -328,13 +328,13 @@ class _KeysScreenState extends State<KeysScreen> {
               style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
             ),
           ],
-          const SizedBox(height: 14),
+          SizedBox(height: 14),
           Row(
             children: [
               if (!signedIn)
                 HoverButton(
                   onTap: configured ? _signIn : () {},
-                  padding: const EdgeInsets.symmetric(
+                  padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
                   backgroundColor:
                       configured ? AppTheme.accentOrange : AppTheme.surface,
@@ -351,7 +351,7 @@ class _KeysScreenState extends State<KeysScreen> {
               else ...[
                 HoverButton(
                   onTap: _load,
-                  padding: const EdgeInsets.symmetric(
+                  padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
                   backgroundColor: AppTheme.accentOrange,
                   child: Text(
@@ -376,7 +376,7 @@ class _KeysScreenState extends State<KeysScreen> {
                       });
                     }
                   },
-                  padding: const EdgeInsets.symmetric(
+                  padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
                   backgroundColor: AppTheme.surface,
                   child: Text(_ru ? 'Выйти' : 'Sign out',
@@ -384,7 +384,7 @@ class _KeysScreenState extends State<KeysScreen> {
                           fontSize: 13, color: AppTheme.textPrimary)),
                 ),
               ],
-              const Spacer(),
+              Spacer(),
               TextButton(
                 onPressed: _configureProject,
                 child: Text(
@@ -474,7 +474,7 @@ class _KeysScreenState extends State<KeysScreen> {
           ),
           if (remote.isEmpty)
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 10),
+              padding: EdgeInsets.symmetric(vertical: 10),
               child: Text(
                 _ru ? 'Пока ни одного' : 'None yet',
                 style:
@@ -489,12 +489,12 @@ class _KeysScreenState extends State<KeysScreen> {
   }
 
   Widget _secretRow(String name, String value, bool open) => Padding(
-        padding: const EdgeInsets.only(top: 10),
+        padding: EdgeInsets.only(top: 10),
         child: Row(
           children: [
-            const Icon(Icons.vpn_key_outlined,
+            Icon(Icons.vpn_key_outlined,
                 size: 15, color: AppTheme.accentOrange),
-            const SizedBox(width: 11),
+            SizedBox(width: 11),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -516,7 +516,7 @@ class _KeysScreenState extends State<KeysScreen> {
               ),
             ),
             IconButton(
-              icon: const Icon(Icons.copy,
+              icon: Icon(Icons.copy,
                   size: 15, color: AppTheme.textMuted),
               tooltip: _ru ? 'Скопировать' : 'Copy',
               onPressed: () async {
@@ -530,7 +530,7 @@ class _KeysScreenState extends State<KeysScreen> {
               },
             ),
             IconButton(
-              icon: const Icon(Icons.edit,
+              icon: Icon(Icons.edit,
                   size: 15, color: AppTheme.textMuted),
               onPressed: () => _editSecret(name, value),
             ),
@@ -615,7 +615,7 @@ class _KeysScreenState extends State<KeysScreen> {
 
   Widget _card({required Widget child}) => Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.35),
           borderRadius: BorderRadius.circular(14),

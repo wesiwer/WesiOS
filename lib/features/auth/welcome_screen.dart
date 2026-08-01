@@ -48,7 +48,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
         children: [
           // Carbon background
           Container(
-            decoration: const BoxDecoration(
+            decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -153,7 +153,7 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                       );
                     },
                   ),
-                  const SizedBox(height: 8),
+                  SizedBox(height: 8),
                   Text(
                     'Business Operating System',
                     style: TextStyle(
@@ -162,14 +162,14 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                       letterSpacing: 3,
                     ),
                   ),
-                  const Spacer(),
+                  Spacer(),
                   // Start button with hover
                   HoverButton(
                     onTap: () => Navigator.pushReplacementNamed(context, '/login'),
-                    padding: const EdgeInsets.symmetric(vertical: 18, horizontal: 48),
+                    padding: EdgeInsets.symmetric(vertical: 18, horizontal: 48),
                     backgroundColor: AppTheme.surface,
                     hoverColor: AppTheme.surfaceLight,
-                    child: const Text(
+                    child: Text(
                       'Начать работу',
                       style: TextStyle(
                         fontSize: 18,
@@ -178,8 +178,8 @@ class _WelcomeScreenState extends State<WelcomeScreen>
                       ),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  const Text(
+                  SizedBox(height: 16),
+                  Text(
                     'v0.1 α',
                     style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                   ),

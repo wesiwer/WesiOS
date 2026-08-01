@@ -202,7 +202,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           child: Stack(
             children: [
               Container(
-                constraints: const BoxConstraints(maxWidth: 400, maxHeight: 600),
+                constraints: BoxConstraints(maxWidth: 400, maxHeight: 600),
                 decoration: BoxDecoration(
                   color: AppTheme.background,
                   borderRadius: BorderRadius.circular(20),
@@ -226,12 +226,12 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                       // Header
                       Container(
                         height: 44,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        padding: EdgeInsets.symmetric(horizontal: 8),
                         color: AppTheme.surface,
                         child: Row(
                           children: [
-                            const SizedBox(width: 8),
-                            const Text(
+                            SizedBox(width: 8),
+                            Text(
                               'Wesi Calculator',
                               style: TextStyle(
                                 fontSize: 14,
@@ -239,7 +239,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                                 color: AppTheme.textPrimary,
                               ),
                             ),
-                            const Spacer(),
+                            Spacer(),
                             IconButton(
                               tooltip: _showHistory
                                   ? 'Скрыть историю'
@@ -280,14 +280,14 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                             ),
                             IconButton(
                               tooltip: 'Уменьшить',
-                              icon: const Icon(Icons.remove, size: 18,
+                              icon: Icon(Icons.remove, size: 18,
                                   color: AppTheme.textMuted),
                               onPressed: () => setState(
                                   () => _scale = (_scale - 0.1).clamp(0.7, 1.4)),
                             ),
                             IconButton(
                               tooltip: 'Увеличить',
-                              icon: const Icon(Icons.add, size: 18,
+                              icon: Icon(Icons.add, size: 18,
                                   color: AppTheme.textMuted),
                               onPressed: () => setState(
                                   () => _scale = (_scale + 0.1).clamp(0.7, 1.4)),
@@ -301,7 +301,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                       ),
                       // Display
                       Padding(
-                        padding: const EdgeInsets.all(20),
+                        padding: EdgeInsets.all(20),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.end,
                           children: [
@@ -312,7 +312,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                             ),
-                            const SizedBox(height: 6),
+                            SizedBox(height: 6),
                             Text(
                               _result,
                               style: TextStyle(
@@ -411,15 +411,15 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   /// прошлой. Тап по строке возвращает её результат в текущий расчёт.
   Widget _historyPanel() {
     return Container(
-      constraints: const BoxConstraints(maxHeight: 150),
-      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+      constraints: BoxConstraints(maxHeight: 150),
+      margin: EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.6),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: AppTheme.glassBorder),
       ),
       child: _history.isEmpty
-          ? const Padding(
+          ? Padding(
               padding: EdgeInsets.symmetric(vertical: 18),
               child: Center(
                 child: Text('История пуста',
@@ -431,18 +431,18 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
+                  padding: EdgeInsets.fromLTRB(12, 8, 8, 4),
                   child: Row(
                     children: [
-                      const Text('История',
+                      Text('История',
                           style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w700,
                               color: AppTheme.textMuted)),
-                      const Spacer(),
+                      Spacer(),
                       GestureDetector(
                         onTap: () => setState(_history.clear),
-                        child: const Text('Очистить',
+                        child: Text('Очистить',
                             style: TextStyle(
                                 fontSize: 11, color: AppTheme.accentOrange)),
                       ),
@@ -463,7 +463,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                           _justEvaluated = true;
                         }),
                         child: Padding(
-                          padding: const EdgeInsets.symmetric(
+                          padding: EdgeInsets.symmetric(
                               horizontal: 12, vertical: 6),
                           child: Row(
                             children: [
@@ -476,7 +476,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              SizedBox(width: 8),
                               Text(
                                 '= ${e.result}',
                                 style: TextStyle(
@@ -509,7 +509,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           width: 22,
           height: 22,
           alignment: Alignment.bottomRight,
-          padding: const EdgeInsets.all(3),
+          padding: EdgeInsets.all(3),
           color: Colors.transparent,
           child: Icon(
             Icons.open_in_full,
@@ -526,7 +526,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       children: keys
           .map((t) => Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  padding: EdgeInsets.symmetric(horizontal: 3),
                   child: _btn(t),
                 ),
               ))

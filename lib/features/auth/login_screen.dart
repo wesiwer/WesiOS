@@ -3,7 +3,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 
 class LoginScreen extends StatelessWidget {
-  const LoginScreen({super.key});
+  LoginScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -35,7 +35,7 @@ class LoginScreen extends StatelessWidget {
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               'Business Operating System',
               style: TextStyle(
@@ -44,13 +44,13 @@ class LoginScreen extends StatelessWidget {
                 letterSpacing: 2,
               ),
             ),
-            const SizedBox(height: 48),
+            SizedBox(height: 48),
             HoverButton(
               onTap: () => Navigator.pushReplacementNamed(context, '/home'),
-              padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 48),
+              padding: EdgeInsets.symmetric(vertical: 16, horizontal: 48),
               backgroundColor: AppTheme.surface,
               hoverColor: AppTheme.surfaceLight,
-              child: const Text(
+              child: Text(
                 'Войти',
                 style: TextStyle(
                   fontSize: 18,
