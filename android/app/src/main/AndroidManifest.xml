@@ -14,8 +14,8 @@
     <application
         android:label="WesiOS"
         android:name="${applicationName}"
-        android:icon="@drawable/ic_launcher_dark"
-        android:roundIcon="@drawable/ic_launcher_dark">
+        android:icon="@mipmap/ic_launcher_dark"
+        android:roundIcon="@mipmap/ic_launcher_dark">
 
         <!-- Основная activity без LAUNCHER: ярлык на рабочем столе
              создаётся activity-alias'ами ниже, чтобы можно было
@@ -34,13 +34,17 @@
               />
         </activity>
 
-        <!-- Тёмная иконка (по умолчанию включена). -->
+        <!-- Тёмная иконка (по умолчанию включена).
+             @mipmap/* → на API 26+ берётся adaptive-icon из anydpi-v26
+             (launcher применяет скруглённую маску: круг / squircle / и т.д.).
+             На старых API (<26) нужен fallback PNG; при отсутствии —
+             система может показать дефолтную. -->
         <activity-alias
             android:name=".IconDark"
             android:enabled="true"
             android:exported="true"
-            android:icon="@drawable/ic_launcher_dark"
-            android:roundIcon="@drawable/ic_launcher_dark"
+            android:icon="@mipmap/ic_launcher_dark"
+            android:roundIcon="@mipmap/ic_launcher_dark"
             android:label="WesiOS"
             android:targetActivity=".MainActivity">
             <intent-filter>
@@ -54,8 +58,8 @@
             android:name=".IconLight"
             android:enabled="false"
             android:exported="true"
-            android:icon="@drawable/ic_launcher_light"
-            android:roundIcon="@drawable/ic_launcher_light"
+            android:icon="@mipmap/ic_launcher_light"
+            android:roundIcon="@mipmap/ic_launcher_light"
             android:label="WesiOS"
             android:targetActivity=".MainActivity">
             <intent-filter>
