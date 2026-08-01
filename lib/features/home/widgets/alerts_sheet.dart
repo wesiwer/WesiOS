@@ -189,7 +189,7 @@ class AlertsSheet extends StatelessWidget {
                 ],
               ),
             ),
-            const Divider(height: 1, color: AppTheme.glassBorder),
+            Divider(height: 1, color: AppTheme.glassBorder),
             Flexible(
               child: alerts.isEmpty
                   ? Padding(
