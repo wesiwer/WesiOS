@@ -76,12 +76,22 @@ class ModuleScaffold extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Слушаем тему: иначе push-роуты с ModuleScaffold не перекрашиваются
+    // до pop/push, потому что сами AppTheme.* не создают InheritedWidget.
+    return ValueListenableBuilder<AppThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (context, _, __) => _buildScaffold(context),
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context) {
     final ru = WesiLocale.isRussian;
+    final bg = Theme.of(context).scaffoldBackgroundColor;
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: bg,
       appBar: AppBar(
-        backgroundColor: AppTheme.background,
+        backgroundColor: bg,
         title: WesiTitle(title, size: 18),
         // Резерв справа под системные кнопки окна — иначе заголовок/действия
         // уезжают под «свернуть/закрыть» кастомного title bar.
