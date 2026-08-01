@@ -1,7 +1,7 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-07-31 (сессия 3 + правило «не билд без проверки»)  
-**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.10.x α  
+**Обновлено:** 2026-08-01 (сессия 4 — светлая тема, UI-правки)  
+**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.4 α · **build:** 20  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
 Читай этот файл **перед** любыми правками. Не помечай задачу ✅, пока пользователь не подтвердил на билде.
@@ -42,11 +42,11 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 | # | Файл | Пример строки |
 |---|------|---------------|
-| 1 | `lib/core/constants/app_version.dart` | `static const String number = '0.11.0';` |
-| 2 | `lib/core/constants/app_version.dart` | `static const int build = 14;` |
-| 3 | `pubspec.yaml` | `version: 0.11.0+14` |
+| 1 | `lib/core/constants/app_version.dart` | `static const String number = '0.11.4';` |
+| 2 | `lib/core/constants/app_version.dart` | `static const int build = 20;` |
+| 3 | `pubspec.yaml` | `version: 0.11.4+20` |
 | 4 | `README.md` | строка с версией (если есть) |
-| 5 | `STATUS.md` | строка `**UI:** v0.11.0 α` в шапке |
+| 5 | `STATUS.md` | строка `**UI:** v0.11.4 α` в шапке |
 
 ### Алгоритм бампа версии
 
@@ -192,6 +192,113 @@ Keystore сгенерирован один раз (RSA 2048, validity 10000 дн
 
 ---
 
+---
+
+## Сессия 4 (2026-07-31 — 2026-08-01) — UI-правки, светлая тема, агент Kimi
+
+Сессия велась агентом **Kimi** (Moonshot AI). Ниже — всё, что сделано, с причинами.
+**Не откатывать и не «улучшать» без явной просьбы пользователя.**
+
+### 1. Часы под логотипом + переключатель стиля рядом
+
+**Запрос ТЗ:** часы с датой под логотипом WesiOS, два формата (цифровой + циферблат), переключатель — маленькая иконка рядом с часами (не long-press).
+
+**Файл:** `lib/features/home/home_screen.dart`
+
+| Что | Как |
+|---|---|
+| Расположение | `WesiClock` перенесён из правой части header в `Column` под `WesiLogo` |
+| Размер лого | `WesiLogo(size: 40)` → `size: 56` |
+| Размер иконок справа | `_HoverIconButton` icon size: 24 → 28; `_ProfileDropdown` avatar: 28×28 → 36×36 |
+| Переключатель | Иконка `Icons.watch` / `Icons.watch_later` рядом с часами, тап переключает стиль |
+
+**Файл:** `lib/core/widgets/wesi_clock.dart`
+
+- Переключение теперь через тап по иконке рядом (не long-press). Long-press оставлен как fallback.
+- Сохранение стиля: Hive `wesios_settings` → ключ `clock_style`.
+
+### 2. Убран WelcomeScreen
+
+**Запрос ТЗ:** убрать экран «Начать работу», сразу переход к приложению.
+
+| Файл | Изменение |
+|---|---|
+| `lib/features/splash/splash_screen.dart` | `Navigator.pushReplacementNamed(context, '/welcome')` → `'/login'` |
+| `lib/core/routes/app_router.dart` | Маршрут `/welcome` оставлен для обратной совместимости, но не используется при старте |
+
+### 3. Лого «смерть с косой» в Истории создания
+
+**Запрос ТЗ:** Easter-egg лого (`assets/images/wesi_logo_easter.png`) вместо оранжевого круга с W на экране Founder Story.
+
+| Файл | Изменение |
+|---|---|
+| `lib/features/profile/founder_story_screen.dart` | Оранжевый круг с буквой «W» → `Image.asset('assets/images/wesi_logo_easter.png')` |
+
+### 4. Светлая тема (Light Theme)
+
+**Запрос ТЗ:** белый фон, серые элементы, голубые акценты. Плавная анимация переключения (~0.5–1 сек), элементы перекрашиваются по очереди.
+
+**Файл:** `lib/core/theme/app_theme.dart`
+
+| Что | Как |
+|---|---|
+| `ThemeNotifier` | `ValueNotifier<bool>` для `isDark`; `toggle()` переключает + сохраняет в Hive `wesios_settings` → ключ `theme_dark` |
+| `AppTheme` | Все цвета стали **геттерами** (`get textMuted => isDark ? dark : light`), а не `static const`. Это критично: `const TextStyle(color: AppTheme.xxx)` больше невозможен. |
+| Цвета светлой темы | Фон `#FFFFFF`, поверхность `#F5F5F7`, текст `#1A1A2E`, акцент `#3B82F6` (голубой), стекло — полупрозрачный чёрный |
+
+**Файл:** `lib/app.dart`
+
+- `AnimatedTheme` с `duration: 600ms`, `curve: Curves.easeInOutCubic` — плавный переход всех элементов.
+- `ValueListenableBuilder` на `ThemeNotifier.instance`.
+
+**Файл:** `lib/features/settings/settings_screen.dart`
+
+- Переключатель темы: Switch с иконками `Icons.dark_mode` / `Icons.light_mode`.
+- Подписи локализованы (`theme_dark`, `theme_light` в `wesi_locale.dart`).
+
+**Последствие (критично для следующих AI):**
+`AppTheme.xxx` теперь геттеры. Любой `const TextStyle(color: AppTheme.xxx)` сломает компиляцию.
+Было проведено массовое исправление ~90 файлов: `const TextStyle(...)` → `TextStyle(...)`.
+Если добавляешь новый виджет — **не используй `const` с `AppTheme` цветами**.
+
+### 5. App Icon Mode (auto / dark / light)
+
+**Запрос ТЗ:** иконка приложения на Android должна переключаться вместе с темой.
+
+| Файл | Роль |
+|---|---|
+| `lib/core/services/app_icon_service.dart` | `AppIconMode` (`auto`/`dark`/`light`), `setIconMode()`, слушает `ThemeNotifier` при `auto` |
+| `android/app/src/main/res/mipmap-*/` | Два набора иконок: `ic_launcher` (тёмная) + `ic_launcher_light` (светлая) |
+| `lib/features/settings/settings_screen.dart` | Пикер: Auto / Dark / Light |
+
+### 6. Массовый фикс `const` → `TextStyle`
+
+**Причина:** `AppTheme` цвета стали геттерами → `const TextStyle(color: AppTheme.xxx)` невозможен.
+
+**Коммиты:** `fix(theme): remove const from widgets using AppTheme getters` × 5+ файлов.
+
+**Файлы:** `category_editor_dialog.dart`, `knowledge_base_screen.dart`, `global_search_sheet.dart`, `alerts_sheet.dart`, `engine_download_overlay.dart`, и др.
+
+### 7. Версии в этой сессии
+
+| Версия | Что |
+|---|---|
+| v0.11.0+14 α | Первый релиз сессии (часы, лого, иконки) |
+| v0.11.1+15 α | Часы под логотипом, переключатель рядом |
+| v0.11.2+17 α | Убран WelcomeScreen, лого смерти в Истории |
+| v0.11.3+18 α | Светлая тема, переключатель в настройках |
+| v0.11.4+20 α | App icon mode, mass `const` fix, light theme polish |
+
+### 8. Чего НЕ делать следующим AI
+
+- Не возвращать `const` с `AppTheme` геттерами — сломает компиляцию.
+- Не менять расположение часов без запроса (сейчас под логотипом).
+- Не возвращать WelcomeScreen как стартовый экран.
+- Не менять цвета светлой темы без запроса.
+- Не удалять `AppIconService` или dual-иконки Android.
+
+---
+
 ## Сессия 2, часть 3 — подтверждённые архитектурные решения
 
 Пользователю заданы 2 вопроса (см. предыдущую часть) — оба решены:
@@ -329,12 +436,14 @@ Python подпроцессом — desktop-специфичный паттер�
 9. Нативные папки `windows/` и `android/` — неполные шаблоны. Прежде чем чинить платформенный баг правкой там, сверься с п. 5 «Архитектуры».
 10. **Android release подписывается постоянным ключом из Secrets.** Не откатывать на debug. Первый переход с debug → release требует одноразового удаления приложения у пользователя.
 11. **Changelog обновления** — блок «Что нового» в `AppUpdateCard` обязателен при непустых `notes`. Не убирать «для компактности».
-12. **Часы:** два стиля (digital/analog), long-press, Hive `clock_style`. Не ломать без запроса.
-13. **Перед билдом/релизом** — чеклист выше (`flutter analyze` + `flutter test` + ревью). Запускать workflow только если уверен, что пройдёт. Не «запустить и посмотреть».
+12. **Часы:** два стиля (digital/analog), переключатель рядом с часами, Hive `clock_style`. Не ломать без запроса.
+13. **Тема:** `AppTheme` цвета — геттеры (не `const`). `const TextStyle(color: AppTheme.xxx)` сломает компиляцию. Используй `TextStyle(...)` без `const`.
+14. **App Icon Mode:** Auto/Dark/Light в настройках. Не удалять dual-иконки Android.
+15. **Перед билдом/релизом** — чеклист выше (`flutter analyze` + `flutter test` + ревью). Запускать workflow только если уверен, что пройдёт. Не «запустить и посмотреть».
 
 ---
 
-## Ключевые файлы (дополнение сессии 3)
+## Ключевые файлы (дополнение сессии 4)
 
 | Что | Путь |
 |-----|------|
