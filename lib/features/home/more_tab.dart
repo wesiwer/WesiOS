@@ -169,7 +169,7 @@ class MoreTab extends StatelessWidget {
     ];
 
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: ListView(
         padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 32),
         children: [
