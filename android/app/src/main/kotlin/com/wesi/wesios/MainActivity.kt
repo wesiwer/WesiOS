@@ -16,10 +16,18 @@ import java.io.File
  * Нативные мосты:
  *  - wesios/updater — установка скачанного APK
  *  - wesios/icon    — переключение activity-alias'ов (тёмная / светлая иконка)
+ *
+ * Смена иконки откладывается до onPause: на многих лаунчерах
+ * disable активного alias'а во время работы приложения выкидывает
+ * процесс на рабочий стол даже при DONT_KILL_APP. Когда activity
+ * уходит в фон — смена безопасна и происходит «на фоне».
  */
 class MainActivity : FlutterActivity() {
     private val updaterChannel = "wesios/updater"
     private val iconChannel = "wesios/icon"
+
+    /** Pending light/dark icon; applied in onPause. */
+    private var pendingLightIcon: Boolean? = null
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -57,17 +65,26 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "setIcon" -> {
                         val variant = call.argument<String>("variant") ?: "dark"
-                        try {
-                            setLauncherIcon(variant == "light")
-                            result.success(true)
-                        } catch (e: Exception) {
-                            result.error("icon_failed", e.message, null)
-                        }
+                        // Не применяем сразу — откладываем до ухода в фон.
+                        pendingLightIcon = (variant == "light")
+                        result.success(true)
                     }
                     "isSupported" -> result.success(true)
                     else -> result.notImplemented()
                 }
             }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        pendingLightIcon?.let { light ->
+            try {
+                setLauncherIcon(light)
+            } catch (_: Exception) {
+                // ignore — лаунчер может быть недоступен
+            }
+            pendingLightIcon = null
+        }
     }
 
     /**

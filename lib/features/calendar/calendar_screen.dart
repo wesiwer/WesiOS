@@ -158,7 +158,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
           },
           child: Text(
             ru ? 'Сегодня' : 'Today',
-            style: TextStyle(color: AppTheme.accentOrange, fontSize: 12),
+            style: TextStyle(color: AppTheme.accent, fontSize: 12),
           ),
         ),
         const SizedBox(width: 4),
@@ -263,14 +263,14 @@ class _CalendarScreenState extends State<CalendarScreen> {
         margin: EdgeInsets.all(2),
         decoration: BoxDecoration(
           color: isSelected
-              ? AppTheme.accentOrange.withOpacity(0.2)
+              ? AppTheme.accent.withOpacity(0.2)
               : Colors.transparent,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
             color: isSelected
-                ? AppTheme.accentOrange.withOpacity(0.6)
+                ? AppTheme.accent.withOpacity(0.6)
                 : (isToday
-                    ? AppTheme.accentOrange.withOpacity(0.35)
+                    ? AppTheme.accent.withOpacity(0.35)
                     : Colors.transparent),
           ),
         ),
@@ -284,7 +284,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                 fontWeight:
                     isToday || isSelected ? FontWeight.w800 : FontWeight.w400,
                 color: isSelected || isToday
-                    ? AppTheme.accentOrange
+                    ? AppTheme.accent
                     : (isWeekend ? AppTheme.textMuted : AppTheme.textPrimary),
               ),
             ),
@@ -299,7 +299,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     _dot(hasOverdue ? AppTheme.accentRed : AppTheme.primary),
                   if (tasks.isNotEmpty && payments.isNotEmpty)
                     SizedBox(width: 3),
-                  if (payments.isNotEmpty) _dot(AppTheme.accentOrange),
+                  if (payments.isNotEmpty) _dot(AppTheme.accent),
                 ],
               ),
             ] else
@@ -382,7 +382,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                     : Icons.arrow_upward,
                 color: t.type == TransactionType.income
                     ? AppTheme.accentGreen
-                    : AppTheme.accentOrange,
+                    : AppTheme.accent,
                 title: t.title,
                 trailing: CurrencyService.format(t.amount),
                 onTap: () =>

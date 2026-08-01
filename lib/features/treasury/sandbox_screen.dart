@@ -155,14 +155,14 @@ class _SandboxScreenState extends State<SandboxScreen> {
         backgroundColor: AppTheme.background,
         body: Center(
           child: CircularProgressIndicator(
-              color: AppTheme.accentOrange.withOpacity(0.5)),
+              color: AppTheme.accent.withOpacity(0.5)),
         ),
       );
     }
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      // SafeArea — иначе на телефоне оранжевый баннер «РЕЖИМ ПЕСОЧНИЦЫ»
+      // SafeArea — иначе на телефоне баннер «РЕЖИМ ПЕСОЧНИЦЫ»
       // залезал под статус-бар с часами, вырезом камеры и значками связи.
       // Экран строит Column напрямую, без AppBar, поэтому системные отступы
       // сам никто не учитывал.
@@ -202,7 +202,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                         child: Text('$_sym ${_currency.toUpperCase()}',
                             style: TextStyle(
                                 fontWeight: FontWeight.w700,
-                                color: AppTheme.accentOrange)),
+                                color: AppTheme.accent)),
                       ),
                     ),
                   ],
@@ -275,34 +275,34 @@ class _SandboxScreenState extends State<SandboxScreen> {
                   Color(0xFF2D1F00).withOpacity(0.6),
                 ]
               : [
-                  AppTheme.accentOrange.withOpacity(0.18),
-                  AppTheme.accentOrange.withOpacity(0.08),
+                  AppTheme.accent.withOpacity(0.18),
+                  AppTheme.accent.withOpacity(0.08),
                 ],
         ),
         border: Border(
-            bottom: BorderSide(color: AppTheme.accentOrange.withOpacity(0.3))),
+            bottom: BorderSide(color: AppTheme.accent.withOpacity(0.3))),
       ),
       child: Row(
         children: [
           Container(
             padding: EdgeInsets.symmetric(horizontal: 10, vertical: 4),
             decoration: BoxDecoration(
-              color: AppTheme.accentOrange.withOpacity(0.2),
+              color: AppTheme.accent.withOpacity(0.2),
               borderRadius: BorderRadius.circular(6),
               border:
-                  Border.all(color: AppTheme.accentOrange.withOpacity(0.4)),
+                  Border.all(color: AppTheme.accent.withOpacity(0.4)),
             ),
             child: Row(
               children: [
                 Icon(Icons.science,
-                    size: 14, color: AppTheme.accentOrange),
+                    size: 14, color: AppTheme.accent),
                 SizedBox(width: 6),
                 Text(
                   WesiLocale.get('sandbox_mode'),
                   style: TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w800,
-                      color: AppTheme.accentOrange,
+                      color: AppTheme.accent,
                       letterSpacing: 1.2),
                 ),
               ],
@@ -350,13 +350,13 @@ class _SandboxScreenState extends State<SandboxScreen> {
                         color: AppTheme.surface.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                            color: AppTheme.accentOrange.withOpacity(0.2)),
+                            color: AppTheme.accent.withOpacity(0.2)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Icon(s.$3,
-                              size: 22, color: AppTheme.accentOrange),
+                              size: 22, color: AppTheme.accent),
                           SizedBox(height: 8),
                           Text(s.$2,
                               style: TextStyle(
@@ -381,7 +381,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.4),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: AppTheme.accentOrange.withOpacity(0.2)),
+        border: Border.all(color: AppTheme.accent.withOpacity(0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -416,7 +416,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 _miniStat(
                   WesiLocale.get('anomalies_detected'),
                   '${_anomalies.length}',
-                  AppTheme.accentOrange,
+                  AppTheme.accentOrange, // semantic warning color
                 ),
               ],
             ],

@@ -136,10 +136,10 @@ class _HomeAgendaState extends State<HomeAgenda> {
               child: TextButton.icon(
                 onPressed: _createTask,
                 icon: Icon(Icons.add,
-                    size: 16, color: AppTheme.accentOrange),
+                    size: 16, color: AppTheme.accent),
                 label: Text(
                   ru ? 'Создать первую задачу' : 'Create the first task',
-                  style: TextStyle(color: AppTheme.accentOrange),
+                  style: TextStyle(color: AppTheme.accent),
                 ),
               ),
             ),
@@ -181,7 +181,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
           Container(
             padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
-              color: (trailingIsAlert ? AppTheme.accentRed : AppTheme.accentOrange)
+              color: (trailingIsAlert ? AppTheme.accentRed : AppTheme.accent)
                   .withOpacity(0.15),
               borderRadius: BorderRadius.circular(7),
             ),
@@ -191,7 +191,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
                 fontSize: 11,
                 fontWeight: FontWeight.w700,
                 color:
-                    trailingIsAlert ? AppTheme.accentRed : AppTheme.accentOrange,
+                    trailingIsAlert ? AppTheme.accentRed : AppTheme.accent,
               ),
             ),
           ),
@@ -200,7 +200,7 @@ class _HomeAgendaState extends State<HomeAgenda> {
         TextButton(
           onPressed: onAll,
           child: Text(WesiLocale.get('all'),
-              style: TextStyle(color: AppTheme.accentOrange)),
+              style: TextStyle(color: AppTheme.accent)),
         ),
       ],
     );

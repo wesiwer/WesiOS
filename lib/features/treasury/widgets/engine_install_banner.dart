@@ -97,7 +97,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(updateOnly ? Icons.system_update_alt : Icons.auto_awesome,
-                  size: 18, color: AppTheme.accentOrange),
+                  size: 18, color: AppTheme.accent),
               SizedBox(width: 8),
               Expanded(
                 child: Text(
@@ -157,9 +157,9 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
       return Container(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: AppTheme.accentOrange.withOpacity(0.1),
+          color: AppTheme.accent.withOpacity(0.1),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3)),
+          border: Border.all(color: AppTheme.accent.withOpacity(0.3)),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,
@@ -168,14 +168,14 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
               width: 12,
               height: 12,
               child: CircularProgressIndicator(
-                  strokeWidth: 1.5, color: AppTheme.accentOrange),
+                  strokeWidth: 1.5, color: AppTheme.accent),
             ),
             SizedBox(width: 8),
             Text(
               '$label · $stageLabel$pct',
               style: TextStyle(
                   fontSize: 12,
-                  color: AppTheme.accentOrange,
+                  color: AppTheme.accent,
                   fontWeight: FontWeight.w600),
             ),
           ],
@@ -203,7 +203,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
                     ? Icons.refresh
                     : (isUpdate ? Icons.system_update_alt : Icons.download),
                 size: 14,
-                color: failed ? AppTheme.accentRed : AppTheme.accentOrange),
+                color: failed ? AppTheme.accentRed : AppTheme.accent),
             SizedBox(width: 6),
             Text(
               failed

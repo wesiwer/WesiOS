@@ -120,7 +120,7 @@ class _TasksScreenState extends State<TasksScreen> {
         backgroundColor: AppTheme.background,
         body: Center(
           child: CircularProgressIndicator(
-              color: AppTheme.accentOrange.withOpacity(0.5)),
+              color: AppTheme.accent.withOpacity(0.5)),
         ),
       );
     }
@@ -129,7 +129,7 @@ class _TasksScreenState extends State<TasksScreen> {
       backgroundColor: AppTheme.background,
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _create,
-        backgroundColor: AppTheme.accentOrange,
+        backgroundColor: AppTheme.accent,
         icon: const Icon(Icons.add, color: Colors.white),
         label: Text(ru ? 'Задача' : 'Task',
             style: const TextStyle(color: Colors.white)),
@@ -247,7 +247,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 : TaskLabels.priority(_priorityFilter!, ru),
             selected: _priorityFilter != null,
             color: _priorityFilter == null
-                ? AppTheme.accentOrange
+                ? AppTheme.accent
                 : TaskLabels.priorityColor(_priorityFilter!),
             onTap: null,
           ),
@@ -326,12 +326,12 @@ class _TasksScreenState extends State<TasksScreen> {
           padding: EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: hovering
-                ? AppTheme.accentOrange.withOpacity(0.08)
+                ? AppTheme.accent.withOpacity(0.08)
                 : AppTheme.surface.withOpacity(0.3),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: hovering
-                  ? AppTheme.accentOrange.withOpacity(0.5)
+                  ? AppTheme.accent.withOpacity(0.5)
                   : AppTheme.glassBorder,
             ),
           ),
@@ -364,7 +364,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   GestureDetector(
                     onTap: () => _create(status),
                     child: Icon(Icons.add,
-                        size: 16, color: AppTheme.accentOrange),
+                        size: 16, color: AppTheme.accent),
                   ),
                 ],
               ),
@@ -474,7 +474,7 @@ class _TasksScreenState extends State<TasksScreen> {
                         minHeight: 3,
                         backgroundColor: AppTheme.background,
                         valueColor: AlwaysStoppedAnimation(
-                            AppTheme.accentOrange),
+                            AppTheme.accent),
                       ),
                     ),
                   ),
