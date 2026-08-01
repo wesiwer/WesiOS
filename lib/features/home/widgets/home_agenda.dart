@@ -68,13 +68,21 @@ class _HomeAgendaState extends State<HomeAgenda> {
 
   @override
   Widget build(BuildContext context) {
-    final ru = WesiLocale.isRussian;
-    return Column(
-      children: [
-        _calendarCard(ru),
-        const SizedBox(height: 16),
-        _tasksCard(ru),
-      ],
+    // Обязательно слушаем тему: иначе после переключения light/dark
+    // заголовки «Календарь»/«Задачи» остаются с цветом предыдущей темы
+    // (белый на белом в light).
+    return ValueListenableBuilder<AppThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (context, _, __) {
+        final ru = WesiLocale.isRussian;
+        return Column(
+          children: [
+            _calendarCard(ru),
+            const SizedBox(height: 16),
+            _tasksCard(ru),
+          ],
+        );
+      },
     );
   }
 
@@ -172,9 +180,12 @@ class _HomeAgendaState extends State<HomeAgenda> {
         Text(
           title,
           style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: AppTheme.textPrimary),
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            // Серый на светлой теме, читаемый secondary на тёмной —
+            // не textPrimary (белый), иначе «белый на белом».
+            color: AppTheme.textSecondary,
+          ),
         ),
         if (trailing != null) ...[
           SizedBox(width: 10),
