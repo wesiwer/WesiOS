@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -52,6 +53,18 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   Offset _offset = Offset.zero;
   double _scale = 1.0;
 
+  /// false = классический, true = научный (как на скрине).
+  bool _scientific = false;
+
+  /// 2nd-функции (asin вместо sin и т.п.).
+  bool _second = false;
+
+  /// true = радианы, false = градусы.
+  bool _radians = true;
+
+  /// Память калькулятора (mc / m+ / m- / mr).
+  double _memory = 0;
+
   @override
   void initState() {
     super.initState();
@@ -64,74 +77,330 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     super.dispose();
   }
 
+  // ─── Input handling ───────────────────────────────────────────────────────
+
   void _onPressed(String value) {
     setState(() {
-      if (value == 'C' || value == 'c') {
-        _expression = '';
-        _result = '0';
-        _justEvaluated = false;
-      } else if (value == 'Delete' || value == 'DEL') {
-        _expression = '';
-        _result = '0';
-        _justEvaluated = false;
-      } else if (value == '=' || value == 'Enter') {
-        _calculate();
-      } else if (value == '⌫' || value == 'Backspace') {
-        if (_expression.isNotEmpty) {
-          _expression = _expression.substring(0, _expression.length - 1);
-        }
-        _justEvaluated = false;
-      } else if (_isValidInput(value)) {
-        // Продолжение счёта от результата: после «=» набранный оператор
-        // должен применяться К РЕЗУЛЬТАТУ, а не дописываться к старому
-        // выражению. Раньше «10+5 =» давало 15, а следующее «*2» превращало
-        // строку в «10+5*2» — по приоритету операций получалось 20 вместо
-        // ожидаемых 30. Теперь после «=» выражение начинается с результата.
-        if (_justEvaluated) {
-          if (_isOperator(value)) {
-            _expression = '$_result$value';
-          } else {
-            // Новая цифра после «=» — это начало нового вычисления.
-            _expression = value;
-            _result = '0';
+      switch (value) {
+        case 'C':
+        case 'AC':
+        case 'c':
+          _expression = '';
+          _result = '0';
+          _justEvaluated = false;
+          break;
+        case 'Delete':
+        case 'DEL':
+          _expression = '';
+          _result = '0';
+          _justEvaluated = false;
+          break;
+        case '=':
+        case 'Enter':
+          _calculate();
+          break;
+        case '⌫':
+        case 'Backspace':
+          if (_expression.isNotEmpty) {
+            _expression = _expression.substring(0, _expression.length - 1);
           }
           _justEvaluated = false;
-        } else {
-          _expression += value;
-        }
+          break;
+        case '2nd':
+          _second = !_second;
+          break;
+        case 'Rad':
+        case 'Deg':
+          _radians = !_radians;
+          break;
+        case 'mc':
+          _memory = 0;
+          break;
+        case 'm+':
+          _memory += _currentNumber();
+          break;
+        case 'm-':
+          _memory -= _currentNumber();
+          break;
+        case 'mr':
+          _insertToken(_formatNum(_memory));
+          break;
+        case '±':
+        case '+/-':
+          _toggleSign();
+          break;
+        case 'π':
+          _insertToken(math.pi.toString());
+          break;
+        case 'e':
+          _insertToken(math.e.toString());
+          break;
+        case 'Rand':
+          _insertToken(math.Random().nextDouble().toStringAsFixed(8));
+          break;
+        // Unary / postfix scientific tokens
+        case 'x²':
+          _insertPostfix('^2');
+          break;
+        case 'x³':
+          _insertPostfix('^3');
+          break;
+        case 'xʸ':
+        case 'x^y':
+          _insertPostfix('^');
+          break;
+        case 'eˣ':
+          _insertFunc('exp');
+          break;
+        case '10ˣ':
+          _insertToken('10^');
+          break;
+        case '1/x':
+          _insertFunc('1/');
+          break;
+        case '√':
+        case '²√x':
+          _insertFunc('sqrt');
+          break;
+        case '∛':
+        case '³√x':
+          _insertToken('^(1/3)');
+          break;
+        case 'ʸ√x':
+          _insertToken('^(1/');
+          break;
+        case 'ln':
+          _insertFunc(_second ? 'exp' : 'ln');
+          break;
+        case 'log':
+        case 'log₁₀':
+          _insertFunc('log');
+          break;
+        case 'x!':
+          _insertPostfix('!');
+          break;
+        case 'sin':
+          _insertFunc(_second ? 'asin' : 'sin');
+          break;
+        case 'cos':
+          _insertFunc(_second ? 'acos' : 'cos');
+          break;
+        case 'tg':
+        case 'tan':
+          _insertFunc(_second ? 'atan' : 'tan');
+          break;
+        case 'sh':
+        case 'sinh':
+          _insertFunc('sinh');
+          break;
+        case 'ch':
+        case 'cosh':
+          _insertFunc('cosh');
+          break;
+        case 'th':
+        case 'tanh':
+          _insertFunc('tanh');
+          break;
+        case 'EE':
+          _insertToken('*10^');
+          break;
+        case '%':
+          _insertPostfix('%');
+          break;
+        default:
+          if (_isValidInput(value)) {
+            if (_justEvaluated) {
+              if (_isOperator(value)) {
+                _expression = '$_result$value';
+              } else {
+                _expression = value;
+                _result = '0';
+              }
+              _justEvaluated = false;
+            } else {
+              _expression += value;
+            }
+          }
       }
     });
   }
 
+  void _insertToken(String token) {
+    if (_justEvaluated) {
+      _expression = token;
+      _result = '0';
+      _justEvaluated = false;
+    } else {
+      _expression += token;
+    }
+  }
+
+  void _insertFunc(String name) {
+    // 1/ special-case: wrap current or open paren
+    if (name == '1/') {
+      if (_justEvaluated) {
+        _expression = '1/($_result)';
+        _justEvaluated = false;
+      } else if (_expression.isEmpty) {
+        _expression = '1/(';
+      } else {
+        _expression = '1/($_expression)';
+      }
+      return;
+    }
+    if (_justEvaluated) {
+      _expression = '$name($_result)';
+      _justEvaluated = false;
+    } else {
+      _expression += '$name(';
+    }
+  }
+
+  void _insertPostfix(String op) {
+    if (_justEvaluated) {
+      _expression = '$_result$op';
+      _justEvaluated = false;
+    } else if (_expression.isEmpty) {
+      _expression = '0$op';
+    } else {
+      _expression += op;
+    }
+  }
+
+  void _toggleSign() {
+    if (_justEvaluated) {
+      if (_result.startsWith('-')) {
+        _result = _result.substring(1);
+      } else if (_result != '0') {
+        _result = '-$_result';
+      }
+      _expression = _result;
+      return;
+    }
+    if (_expression.isEmpty) {
+      _expression = '-';
+      return;
+    }
+    // Simple: prepend/remove leading -
+    if (_expression.startsWith('-')) {
+      _expression = _expression.substring(1);
+    } else {
+      _expression = '-$_expression';
+    }
+  }
+
+  double _currentNumber() {
+    try {
+      final v = double.tryParse(_result.replaceAll(',', '.')) ?? 0;
+      return v;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  String _formatNum(double v) {
+    if (v == v.roundToDouble()) return v.toInt().toString();
+    return v.toString();
+  }
+
   bool _isValidInput(String value) {
-    const valid = '0123456789.+-*/()^%';
+    const valid = '0123456789.+-*/()^%,';
     return valid.contains(value);
   }
 
-  static bool _isOperator(String v) => '+-*/^%'.contains(v) && v.length == 1;
+  static bool _isOperator(String v) =>
+      '+-*/^%'.contains(v) && v.length == 1;
+
+  // ─── Evaluation ───────────────────────────────────────────────────────────
 
   void _calculate() {
     if (_expression.isEmpty) return;
     try {
+      var expr = _expression
+          .replaceAll(',', '.')
+          .replaceAll('×', '*')
+          .replaceAll('÷', '/')
+          .replaceAll('−', '-');
+
+      // Factorial: simple integer only, replace n! with factorial value
+      expr = _expandFactorials(expr);
+
+      // Hyperbolic via rewrite (math_expressions has no sinh/cosh/tanh)
+      expr = expr
+          .replaceAllMapped(RegExp(r'sinh\(([^)]+)\)'), (m) {
+            final x = m[1]!;
+            return '((exp($x)-exp(-($x)))/2)';
+          })
+          .replaceAllMapped(RegExp(r'cosh\(([^)]+)\)'), (m) {
+            final x = m[1]!;
+            return '((exp($x)+exp(-($x)))/2)';
+          })
+          .replaceAllMapped(RegExp(r'tanh\(([^)]+)\)'), (m) {
+            final x = m[1]!;
+            return '((exp($x)-exp(-($x)))/(exp($x)+exp(-($x))))';
+          });
+
+      // Percent: n% → (n/100)
+      expr = expr.replaceAllMapped(RegExp(r'(\d+(?:\.\d+)?)%'), (m) {
+        return '(${m[1]}/100)';
+      });
+
+      // Degree mode: wrap trig args
+      if (!_radians) {
+        expr = _wrapTrigForDegrees(expr);
+      }
+
       final p = Parser();
-      final exp = p.parse(_expression);
+      final exp = p.parse(expr);
       final cm = ContextModel();
+      // Provide common constants if needed
+      cm.bindVariableName('pi', Number(math.pi));
+      cm.bindVariableName('e', Number(math.e));
+
       final eval = exp.evaluate(EvaluationType.REAL, cm);
       final formatted =
-          eval == eval.toInt() ? eval.toInt().toString() : eval.toString();
-      // Каждое «=» — отдельная запись в истории, а не продолжение прошлой.
-      _history.insert(0, _CalcEntry(expression: _expression, result: formatted));
+          (eval is num && eval == eval.roundToDouble())
+              ? eval.round().toString()
+              : eval.toString();
+
+      _history.insert(
+          0, _CalcEntry(expression: _expression, result: formatted));
       if (_history.length > _historyLimit) _history.removeLast();
       _result = formatted;
       _justEvaluated = true;
-    } catch (_) {
+    } catch (e) {
       _result = 'Error';
       _justEvaluated = false;
     }
   }
 
-  /// LogicalKeyboardKey не имеет primitive equality → const-мапа невозможна.
-  /// static final: строится один раз, а не на каждое нажатие.
+  String _expandFactorials(String expr) {
+    return expr.replaceAllMapped(RegExp(r'(\d+)!'), (m) {
+      final n = int.tryParse(m[1]!) ?? 0;
+      if (n < 0 || n > 20) return m[0]!;
+      int f = 1;
+      for (int i = 2; i <= n; i++) f *= i;
+      return f.toString();
+    });
+  }
+
+  /// Convert sin(x) → sin(x * pi/180) etc. when in degree mode.
+  String _wrapTrigForDegrees(String expr) {
+    for (final fn in ['sin', 'cos', 'tan', 'asin', 'acos', 'atan']) {
+      expr = expr.replaceAllMapped(RegExp('$fn\\(([^)]+)\\)'), (m) {
+        final arg = m[1]!;
+        if (fn.startsWith('a')) {
+          // inverse: result is in rad → convert to deg
+          return '((180/pi)*$fn($arg))';
+        }
+        return '$fn(($arg)*pi/180)';
+      });
+    }
+    return expr;
+  }
+
+  // ─── Keyboard ─────────────────────────────────────────────────────────────
+
   static final Map<LogicalKeyboardKey, String> _numpadMap = {
     LogicalKeyboardKey.numpad0: '0',
     LogicalKeyboardKey.numpad1: '1',
@@ -154,7 +423,6 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
   String? _mapNumpad(LogicalKeyboardKey key) => _numpadMap[key];
 
-  /// Закрытие: в оверлей-режиме прячем оверлей, иначе — обычный pop.
   void _close() {
     if (widget.asOverlay) {
       CalculatorOverlay.hide();
@@ -191,8 +459,13 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     }
   }
 
+  // ─── UI ───────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
+    final maxW = _scientific ? 420.0 : 360.0;
+    final maxH = _scientific ? 720.0 : 600.0;
+
     final panel = Transform.translate(
       offset: _offset,
       child: Transform.scale(
@@ -202,7 +475,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           child: Stack(
             children: [
               Container(
-                constraints: BoxConstraints(maxWidth: 400, maxHeight: 600),
+                constraints: BoxConstraints(maxWidth: maxW, maxHeight: maxH),
                 decoration: BoxDecoration(
                   color: AppTheme.background,
                   borderRadius: BorderRadius.circular(20),
@@ -223,132 +496,19 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Header
-                      Container(
-                        height: 44,
-                        padding: EdgeInsets.symmetric(horizontal: 8),
-                        color: AppTheme.surface,
-                        child: Row(
-                          children: [
-                            SizedBox(width: 8),
-                            Text(
-                              'Wesi Calculator',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                                color: AppTheme.textPrimary,
-                              ),
-                            ),
-                            Spacer(),
-                            IconButton(
-                              tooltip: _showHistory
-                                  ? 'Скрыть историю'
-                                  : 'История вычислений',
-                              icon: Icon(
-                                Icons.history,
-                                size: 18,
-                                color: _showHistory
-                                    ? AppTheme.accentOrange
-                                    : AppTheme.textMuted,
-                              ),
-                              onPressed: () =>
-                                  setState(() => _showHistory = !_showHistory),
-                            ),
-                            IconButton(
-                              tooltip: _showBlur ? 'Убрать блюр' : 'Включить блюр',
-                              icon: Icon(
-                                _showBlur ? Icons.blur_on : Icons.blur_off,
-                                size: 18,
-                                color: AppTheme.textMuted,
-                              ),
-                              onPressed: () =>
-                                  setState(() => _showBlur = !_showBlur),
-                            ),
-                            IconButton(
-                              tooltip: _pinned ? 'Открепить' : 'Закрепить',
-                              icon: Icon(
-                                _pinned
-                                    ? Icons.push_pin
-                                    : Icons.push_pin_outlined,
-                                size: 18,
-                                color: _pinned
-                                    ? AppTheme.accentOrange
-                                    : AppTheme.textMuted,
-                              ),
-                              onPressed: () =>
-                                  setState(() => _pinned = !_pinned),
-                            ),
-                            IconButton(
-                              tooltip: 'Уменьшить',
-                              icon: Icon(Icons.remove, size: 18,
-                                  color: AppTheme.textMuted),
-                              onPressed: () => setState(
-                                  () => _scale = (_scale - 0.1).clamp(0.7, 1.4)),
-                            ),
-                            IconButton(
-                              tooltip: 'Увеличить',
-                              icon: Icon(Icons.add, size: 18,
-                                  color: AppTheme.textMuted),
-                              onPressed: () => setState(
-                                  () => _scale = (_scale + 0.1).clamp(0.7, 1.4)),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.close, size: 18),
-                              onPressed: _close,
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Display
-                      Padding(
-                        padding: EdgeInsets.all(20),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            Text(
-                              _expression,
-                              style: TextStyle(
-                                  fontSize: 20, color: AppTheme.textSecondary),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              _result,
-                              style: TextStyle(
-                                fontSize: 40,
-                                fontWeight: FontWeight.bold,
-                                color: AppTheme.textPrimary,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      ),
+                      _buildHeader(),
+                      _buildDisplay(),
                       if (_showHistory) _historyPanel(),
-                      // Keys
                       Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 16),
-                        child: Column(
-                          children: [
-                            _row(['C', 'DEL', '(', ')', '⌫']),
-                            const SizedBox(height: 8),
-                            _row(['7', '8', '9', '/']),
-                            const SizedBox(height: 8),
-                            _row(['4', '5', '6', '*']),
-                            const SizedBox(height: 8),
-                            _row(['1', '2', '3', '-']),
-                            const SizedBox(height: 8),
-                            _row(['0', '.', '=', '+']),
-                          ],
-                        ),
+                        padding: const EdgeInsets.fromLTRB(10, 0, 10, 14),
+                        child: _scientific
+                            ? _scientificKeypad()
+                            : _classicKeypad(),
                       ),
                     ],
                   ),
                 ),
               ),
-              // Resize за угол — пропорционально, тот же clamp что и у +/−
               Positioned(right: 2, bottom: 2, child: _resizeHandle()),
             ],
           ),
@@ -358,18 +518,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
     final content = Stack(
       children: [
-        // Закреплённый калькулятор не перехватывает клики по приложению —
-        // backdrop рисуем только когда он не закреплён.
         if (!_pinned)
           GestureDetector(
             onTap: _close,
-            // Настоящее размытие фона, а не просто затемнение.
-            //
-            // Плавность даёт TweenAnimationBuilder: sigma растёт от 0 до
-            // целевого значения за 260 мс. Резкое включение BackdropFilter
-            // на полную силу — это один тяжёлый кадр, который и читался как
-            // «блюр с зависанием»; постепенный рост распределяет нагрузку и
-            // выглядит как плавное появление.
             child: TweenAnimationBuilder<double>(
               tween: Tween(begin: 0, end: _showBlur ? 14 : 0),
               duration: const Duration(milliseconds: 260),
@@ -407,12 +558,177 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     );
   }
 
-  /// История вычислений: каждое «=» — отдельная строка, а не продолжение
-  /// прошлой. Тап по строке возвращает её результат в текущий расчёт.
+  Widget _buildHeader() {
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 6),
+      color: AppTheme.surface,
+      child: Row(
+        children: [
+          const SizedBox(width: 6),
+          Text(
+            _scientific ? 'Wesi Scientific' : 'Wesi Calculator',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+          const Spacer(),
+          // Mode toggle
+          IconButton(
+            tooltip: _scientific ? 'Классический' : 'Научный',
+            icon: Icon(
+              _scientific ? Icons.calculate_outlined : Icons.science_outlined,
+              size: 18,
+              color: _scientific ? AppTheme.accentOrange : AppTheme.textMuted,
+            ),
+            onPressed: () => setState(() {
+              _scientific = !_scientific;
+              _second = false;
+            }),
+          ),
+          IconButton(
+            tooltip: _showHistory ? 'Скрыть историю' : 'История вычислений',
+            icon: Icon(
+              Icons.history,
+              size: 18,
+              color: _showHistory ? AppTheme.accentOrange : AppTheme.textMuted,
+            ),
+            onPressed: () => setState(() => _showHistory = !_showHistory),
+          ),
+          IconButton(
+            tooltip: _showBlur ? 'Убрать блюр' : 'Включить блюр',
+            icon: Icon(
+              _showBlur ? Icons.blur_on : Icons.blur_off,
+              size: 18,
+              color: AppTheme.textMuted,
+            ),
+            onPressed: () => setState(() => _showBlur = !_showBlur),
+          ),
+          IconButton(
+            tooltip: _pinned ? 'Открепить' : 'Закрепить',
+            icon: Icon(
+              _pinned ? Icons.push_pin : Icons.push_pin_outlined,
+              size: 18,
+              color: _pinned ? AppTheme.accentOrange : AppTheme.textMuted,
+            ),
+            onPressed: () => setState(() => _pinned = !_pinned),
+          ),
+          IconButton(
+            tooltip: 'Уменьшить',
+            icon: Icon(Icons.remove, size: 18, color: AppTheme.textMuted),
+            onPressed: () =>
+                setState(() => _scale = (_scale - 0.1).clamp(0.7, 1.4)),
+          ),
+          IconButton(
+            tooltip: 'Увеличить',
+            icon: Icon(Icons.add, size: 18, color: AppTheme.textMuted),
+            onPressed: () =>
+                setState(() => _scale = (_scale + 0.1).clamp(0.7, 1.4)),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close, size: 18),
+            onPressed: _close,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDisplay() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          if (_memory != 0)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'M',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.accentOrange,
+                ),
+              ),
+            ),
+          Text(
+            _expression.isEmpty ? ' ' : _expression,
+            style: TextStyle(fontSize: 16, color: AppTheme.textSecondary),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            textAlign: TextAlign.right,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _result,
+            style: TextStyle(
+              fontSize: _scientific ? 36 : 40,
+              fontWeight: FontWeight.bold,
+              color: AppTheme.textPrimary,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _classicKeypad() {
+    return Column(
+      children: [
+        _row(['C', 'DEL', '(', ')', '⌫']),
+        const SizedBox(height: 8),
+        _row(['7', '8', '9', '/']),
+        const SizedBox(height: 8),
+        _row(['4', '5', '6', '*']),
+        const SizedBox(height: 8),
+        _row(['1', '2', '3', '-']),
+        const SizedBox(height: 8),
+        _row(['0', '.', '=', '+']),
+      ],
+    );
+  }
+
+  /// Раскладка максимально близка к присланному скрину.
+  Widget _scientificKeypad() {
+    final sinLabel = _second ? 'asin' : 'sin';
+    final cosLabel = _second ? 'acos' : 'cos';
+    final tanLabel = _second ? 'atan' : 'tg';
+    final radLabel = _radians ? 'Rad' : 'Deg';
+
+    return Column(
+      children: [
+        _row(['(', ')', 'mc', 'm+', 'm-', 'mr'], compact: true),
+        const SizedBox(height: 5),
+        _row(['2nd', 'x²', 'x³', 'xʸ', 'eˣ', '10ˣ'], compact: true),
+        const SizedBox(height: 5),
+        _row(['1/x', '√', '∛', 'ʸ√x', 'ln', 'log'], compact: true),
+        const SizedBox(height: 5),
+        _row(['x!', sinLabel, cosLabel, tanLabel, 'e', 'EE'], compact: true),
+        const SizedBox(height: 5),
+        _row(['Rand', 'sh', 'ch', 'th', 'π', radLabel], compact: true),
+        const SizedBox(height: 8),
+        _row(['⌫', 'AC', '%', '÷'], orangeOps: true),
+        const SizedBox(height: 6),
+        _row(['7', '8', '9', '×'], orangeOps: true),
+        const SizedBox(height: 6),
+        _row(['4', '5', '6', '−'], orangeOps: true),
+        const SizedBox(height: 6),
+        _row(['1', '2', '3', '+'], orangeOps: true),
+        const SizedBox(height: 6),
+        _row(['±', '0', '.', '='], orangeOps: true),
+      ],
+    );
+  }
+
   Widget _historyPanel() {
     return Container(
-      constraints: BoxConstraints(maxHeight: 150),
-      margin: EdgeInsets.fromLTRB(12, 0, 12, 12),
+      constraints: const BoxConstraints(maxHeight: 140),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 10),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.6),
         borderRadius: BorderRadius.circular(12),
@@ -420,31 +736,37 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       ),
       child: _history.isEmpty
           ? Padding(
-              padding: EdgeInsets.symmetric(vertical: 18),
+              padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
-                child: Text('История пуста',
-                    style: TextStyle(
-                        fontSize: 12, color: AppTheme.textMuted)),
+                child: Text(
+                  'История пуста',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                ),
               ),
             )
           : Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 Padding(
-                  padding: EdgeInsets.fromLTRB(12, 8, 8, 4),
+                  padding: const EdgeInsets.fromLTRB(12, 8, 8, 4),
                   child: Row(
                     children: [
-                      Text('История',
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.textMuted)),
-                      Spacer(),
+                      Text(
+                        'История',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textMuted,
+                        ),
+                      ),
+                      const Spacer(),
                       GestureDetector(
                         onTap: () => setState(_history.clear),
-                        child: Text('Очистить',
-                            style: TextStyle(
-                                fontSize: 11, color: AppTheme.accentOrange)),
+                        child: Text(
+                          'Очистить',
+                          style: TextStyle(
+                              fontSize: 11, color: AppTheme.accentOrange),
+                        ),
                       ),
                     ],
                   ),
@@ -463,26 +785,26 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                           _justEvaluated = true;
                         }),
                         child: Padding(
-                          padding: EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 5),
                           child: Row(
                             children: [
                               Expanded(
                                 child: Text(
                                   e.expression,
                                   style: TextStyle(
-                                      fontSize: 12,
-                                      color: AppTheme.textMuted),
+                                      fontSize: 12, color: AppTheme.textMuted),
                                   overflow: TextOverflow.ellipsis,
                                 ),
                               ),
-                              SizedBox(width: 8),
+                              const SizedBox(width: 8),
                               Text(
                                 '= ${e.result}',
                                 style: TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w700,
-                                    color: AppTheme.textPrimary),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.textPrimary,
+                                ),
                               ),
                             ],
                           ),
@@ -501,7 +823,6 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       cursor: SystemMouseCursors.resizeDownRight,
       child: GestureDetector(
         onPanUpdate: (d) => setState(() {
-          // Усредняем смещение по осям — пропорции панели не плывут
           final delta = (d.delta.dx + d.delta.dy) / 2;
           _scale = (_scale + delta / 300).clamp(0.7, 1.4);
         }),
@@ -509,7 +830,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           width: 22,
           height: 22,
           alignment: Alignment.bottomRight,
-          padding: EdgeInsets.all(3),
+          padding: const EdgeInsets.all(3),
           color: Colors.transparent,
           child: Icon(
             Icons.open_in_full,
@@ -521,45 +842,75 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     );
   }
 
-  Widget _row(List<String> keys) {
+  Widget _row(
+    List<String> keys, {
+    bool compact = false,
+    bool orangeOps = false,
+  }) {
     return Row(
       children: keys
           .map((t) => Expanded(
                 child: Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 3),
-                  child: _btn(t),
+                  padding: EdgeInsets.symmetric(horizontal: compact ? 2 : 3),
+                  child: _btn(t, compact: compact, orangeOps: orangeOps),
                 ),
               ))
           .toList(),
     );
   }
 
-  Widget _btn(String text) {
+  Widget _btn(String text, {bool compact = false, bool orangeOps = false}) {
     Color? color;
-    if (text == 'C' || text == 'DEL') {
+    final isOp = ['÷', '×', '−', '+', '=', '%'].contains(text);
+    final isAc = text == 'AC' || text == 'C' || text == 'DEL' || text == '⌫';
+    final isSecond = text == '2nd' && _second;
+    final isRad = (text == 'Rad' || text == 'Deg');
+
+    if (isAc) {
       color = AppTheme.accentRed;
     } else if (text == '=') {
       color = AppTheme.accentGreen;
-    } else if (['/', '*', '-', '+', '⌫'].contains(text)) {
+    } else if (orangeOps && isOp) {
+      color = AppTheme.accentOrange;
+    } else if (isSecond || (isRad && !_radians)) {
       color = AppTheme.accentOrange;
     }
 
+    // Normalize display labels for operators
+    String label = text;
+    if (text == '÷') label = '÷';
+    if (text == '×') label = '×';
+    if (text == '−') label = '−';
+
+    // Map visual ops to internal tokens
+    final token = switch (text) {
+      '÷' => '/',
+      '×' => '*',
+      '−' => '-',
+      '±' => '+/-',
+      _ => text,
+    };
+
+    final h = compact ? 38.0 : 50.0;
+    final fs = compact ? 13.0 : 17.0;
+
     return GestureDetector(
-      onTap: () => _onPressed(text),
+      onTap: () => _onPressed(token),
       child: Container(
-        height: 52,
+        height: h,
         decoration: BoxDecoration(
-          color: color != null ? color.withOpacity(0.15) : AppTheme.surface,
-          borderRadius: BorderRadius.circular(12),
+          color: color != null ? color.withOpacity(0.18) : AppTheme.surface,
+          borderRadius: BorderRadius.circular(compact ? 10 : 12),
           border: Border.all(
-            color: color != null ? color.withOpacity(0.3) : AppTheme.glassBorder,
+            color:
+                color != null ? color.withOpacity(0.35) : AppTheme.glassBorder,
           ),
         ),
         child: Center(
           child: Text(
-            text,
+            label,
             style: TextStyle(
-              fontSize: 18,
+              fontSize: fs,
               fontWeight: FontWeight.w600,
               color: color ?? AppTheme.primary,
             ),
