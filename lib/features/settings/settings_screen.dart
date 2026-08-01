@@ -376,7 +376,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: ru ? 'Авто' : 'Auto',
                     subtitle: ru
                         ? 'Меняется вместе с темой приложения'
-                        : 'Changes with the app theme',
+                        : WesiLocale.get('theme_changes_with_app'),
                   ),
                   option(
                     value: AppIconMode.dark,
