@@ -182,7 +182,7 @@ class AlertsSheet extends StatelessWidget {
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close,
+                    icon: Icon(Icons.close,
                         size: 18, color: AppTheme.textMuted),
                     onPressed: () => Navigator.pop(context),
                   ),
@@ -219,7 +219,7 @@ class AlertsSheet extends StatelessWidget {
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       shrinkWrap: true,
                       itemCount: alerts.length,
-                      separatorBuilder: (_, __) => const Divider(
+                      separatorBuilder: (_, __) => Divider(
                           height: 1, color: AppTheme.glassBorder),
                       itemBuilder: (_, i) {
                         final a = alerts[i];
@@ -267,7 +267,7 @@ class AlertsSheet extends StatelessWidget {
                                   ),
                                 ),
                                 if (a.route != null)
-                                  const Icon(Icons.chevron_right,
+                                  Icon(Icons.chevron_right,
                                       size: 16, color: AppTheme.textMuted),
                               ],
                             ),
