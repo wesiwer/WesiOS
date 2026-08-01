@@ -53,6 +53,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   Offset _offset = Offset.zero;
   double _scale = 1.0;
 
+  /// Свёрнут в плавающую полоску (результат + expand / close).
+  bool _minimized = false;
+
   /// false = классический, true = научный (как на скрине).
   bool _scientific = false;
 
@@ -463,6 +466,32 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Свёрнутая полоска — компактный бар внизу/по центру, без блюра.
+    if (_minimized) {
+      final bar = _minimizedBar();
+      final listener = KeyboardListener(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: _handleKey,
+        child: Stack(
+          children: [
+            // Не блокируем клики по приложению, когда свёрнут
+            const SizedBox.expand(),
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 24,
+              child: Center(child: bar),
+            ),
+          ],
+        ),
+      );
+      if (widget.asOverlay) {
+        return Material(type: MaterialType.transparency, child: listener);
+      }
+      return Scaffold(backgroundColor: Colors.transparent, body: listener);
+    }
+
     final maxW = _scientific ? 420.0 : 360.0;
     final maxH = _scientific ? 720.0 : 600.0;
 
@@ -481,7 +510,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                   borderRadius: BorderRadius.circular(20),
                   border: Border.all(
                     color: _pinned
-                        ? AppTheme.accentOrange.withOpacity(0.5)
+                        ? AppTheme.accent.withOpacity(0.5)
                         : AppTheme.glassBorder,
                   ),
                   boxShadow: [
@@ -558,6 +587,82 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     );
   }
 
+  /// Плавающая полоска: заголовок / результат + развернуть + закрыть.
+  Widget _minimizedBar() {
+    return GestureDetector(
+      onPanUpdate: (d) => setState(() => _offset += d.delta),
+      child: Material(
+        color: Colors.transparent,
+        child: Container(
+          constraints: const BoxConstraints(maxWidth: 320),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: AppTheme.surface.withOpacity(0.96),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.accent.withOpacity(0.45)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.35),
+                blurRadius: 18,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.calculate_outlined, size: 18, color: AppTheme.accent),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _scientific ? 'Wesi Scientific' : 'Wesi Calculator',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                    Text(
+                      _result,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: AppTheme.textPrimary,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              IconButton(
+                tooltip: 'Развернуть',
+                icon: Icon(Icons.open_in_full, size: 18, color: AppTheme.accent),
+                onPressed: () => setState(() => _minimized = false),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              IconButton(
+                tooltip: 'Закрыть',
+                icon: Icon(Icons.close, size: 18, color: AppTheme.textMuted),
+                onPressed: _close,
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildHeader() {
     return Container(
       height: 44,
@@ -581,7 +686,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             icon: Icon(
               _scientific ? Icons.calculate_outlined : Icons.science_outlined,
               size: 18,
-              color: _scientific ? AppTheme.accentOrange : AppTheme.textMuted,
+              color: _scientific ? AppTheme.accent : AppTheme.textMuted,
             ),
             onPressed: () => setState(() {
               _scientific = !_scientific;
@@ -593,7 +698,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             icon: Icon(
               Icons.history,
               size: 18,
-              color: _showHistory ? AppTheme.accentOrange : AppTheme.textMuted,
+              color: _showHistory ? AppTheme.accent : AppTheme.textMuted,
             ),
             onPressed: () => setState(() => _showHistory = !_showHistory),
           ),
@@ -611,9 +716,15 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             icon: Icon(
               _pinned ? Icons.push_pin : Icons.push_pin_outlined,
               size: 18,
-              color: _pinned ? AppTheme.accentOrange : AppTheme.textMuted,
+              color: _pinned ? AppTheme.accent : AppTheme.textMuted,
             ),
             onPressed: () => setState(() => _pinned = !_pinned),
+          ),
+          // Свернуть в полоску
+          IconButton(
+            tooltip: 'Свернуть',
+            icon: Icon(Icons.minimize, size: 18, color: AppTheme.textMuted),
+            onPressed: () => setState(() => _minimized = true),
           ),
           IconButton(
             tooltip: 'Уменьшить',
@@ -650,7 +761,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.accentOrange,
+                  color: AppTheme.accent,
                 ),
               ),
             ),
@@ -682,13 +793,13 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       children: [
         _row(['C', 'DEL', '(', ')', '⌫']),
         const SizedBox(height: 8),
-        _row(['7', '8', '9', '/']),
+        _row(['7', '8', '9', '/'], accentOps: true),
         const SizedBox(height: 8),
-        _row(['4', '5', '6', '*']),
+        _row(['4', '5', '6', '*'], accentOps: true),
         const SizedBox(height: 8),
-        _row(['1', '2', '3', '-']),
+        _row(['1', '2', '3', '-'], accentOps: true),
         const SizedBox(height: 8),
-        _row(['0', '.', '=', '+']),
+        _row(['0', '.', '=', '+'], accentOps: true),
       ],
     );
   }
@@ -712,15 +823,15 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
         const SizedBox(height: 5),
         _row(['Rand', 'sh', 'ch', 'th', 'π', radLabel], compact: true),
         const SizedBox(height: 8),
-        _row(['⌫', 'AC', '%', '÷'], orangeOps: true),
+        _row(['⌫', 'AC', '%', '÷'], accentOps: true),
         const SizedBox(height: 6),
-        _row(['7', '8', '9', '×'], orangeOps: true),
+        _row(['7', '8', '9', '×'], accentOps: true),
         const SizedBox(height: 6),
-        _row(['4', '5', '6', '−'], orangeOps: true),
+        _row(['4', '5', '6', '−'], accentOps: true),
         const SizedBox(height: 6),
-        _row(['1', '2', '3', '+'], orangeOps: true),
+        _row(['1', '2', '3', '+'], accentOps: true),
         const SizedBox(height: 6),
-        _row(['±', '0', '.', '='], orangeOps: true),
+        _row(['±', '0', '.', '='], accentOps: true),
       ],
     );
   }
@@ -765,7 +876,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
                         child: Text(
                           'Очистить',
                           style: TextStyle(
-                              fontSize: 11, color: AppTheme.accentOrange),
+                              fontSize: 11, color: AppTheme.accent),
                         ),
                       ),
                     ],
@@ -845,23 +956,23 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   Widget _row(
     List<String> keys, {
     bool compact = false,
-    bool orangeOps = false,
+    bool accentOps = false,
   }) {
     return Row(
       children: keys
           .map((t) => Expanded(
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: compact ? 2 : 3),
-                  child: _btn(t, compact: compact, orangeOps: orangeOps),
+                  child: _btn(t, compact: compact, accentOps: accentOps),
                 ),
               ))
           .toList(),
     );
   }
 
-  Widget _btn(String text, {bool compact = false, bool orangeOps = false}) {
+  Widget _btn(String text, {bool compact = false, bool accentOps = false}) {
     Color? color;
-    final isOp = ['÷', '×', '−', '+', '=', '%'].contains(text);
+    final isOp = ['÷', '×', '−', '+', '=', '%', '/', '*', '-'].contains(text);
     final isAc = text == 'AC' || text == 'C' || text == 'DEL' || text == '⌫';
     final isSecond = text == '2nd' && _second;
     final isRad = (text == 'Rad' || text == 'Deg');
@@ -870,10 +981,10 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       color = AppTheme.accentRed;
     } else if (text == '=') {
       color = AppTheme.accentGreen;
-    } else if (orangeOps && isOp) {
-      color = AppTheme.accentOrange;
+    } else if (accentOps && isOp) {
+      color = AppTheme.accent; // follows theme: orange dark / blue light
     } else if (isSecond || (isRad && !_radians)) {
-      color = AppTheme.accentOrange;
+      color = AppTheme.accent;
     }
 
     // Normalize display labels for operators
