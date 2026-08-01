@@ -88,15 +88,24 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<String>(
-      valueListenable: WesiLocale.localeNotifier,
-      builder: (context, lang, _) => _buildScaffold(context, lang),
+    // Слушаем и локаль, и тему: иначе при смене темы Scaffold/вкладки
+    // остаются со старыми AppTheme.* цветами до setState (смена вкладки).
+    return ValueListenableBuilder<AppThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (context, _, __) {
+        return ValueListenableBuilder<String>(
+          valueListenable: WesiLocale.localeNotifier,
+          builder: (context, lang, _) => _buildScaffold(context, lang),
+        );
+      },
     );
   }
 
   Widget _buildScaffold(BuildContext context, String lang) {
+    // scaffoldBackgroundColor из Theme — AnimatedTheme плавно интерполирует.
+    final bg = Theme.of(context).scaffoldBackgroundColor;
     return Scaffold(
-      backgroundColor: AppTheme.background,
+      backgroundColor: bg,
       body: FadeTransition(
         opacity: _fade,
         child: IndexedStack(
@@ -104,7 +113,9 @@ class _HomeScreenState extends State<HomeScreen>
           children: List.generate(5, (i) => _tab(i, lang)),
         ),
       ),
-      bottomNavigationBar: Container(
+      bottomNavigationBar: AnimatedContainer(
+        duration: const Duration(milliseconds: 600),
+        curve: Curves.easeInOutCubic,
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.95),
           border: Border(
