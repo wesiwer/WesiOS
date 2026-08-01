@@ -1,6 +1,6 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-01 (сессия 7 — home white-on-white + calculator, Grok)  
+**Обновлено:** 2026-08-02 (сессия 8 — QuoteMindCharge, Grok)  
 **Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.7 α · **build:** 23  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
@@ -90,6 +90,33 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 Если `app_version.dart` и `pubspec.yaml` расходятся — OTA-обновление ломается:
 приложение видит `0.10.1` в коде, а в релизе `0.11.0`, и считает, что релиз
 **старше** установленной версии → отказывается обновляться.
+
+---
+
+## Сессия 8 (2026-08-02) — QuoteMindCharge на главной
+
+Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
+**Не откатывать и не «улучшать» без явной просьбы пользователя.**
+
+### 1. Виджет «Заряд умных мыслей»
+
+**Запрос:** в пустом промежутке над цитатами и правее часов — текст «Зарядись умными мыслями на сегодня!», прогресс-бар (10 цитат = полный), салют + «Молодец, заряд умных мыслей получен!» на 10, секретная надпись на 40.
+
+| Что | Как |
+|---|---|
+| Сервис (уже был) | `lib/core/services/quote_mind_charge_service.dart` — Hive count, milestones 10/40, ValueNotifier celebrate |
+| Виджет | `lib/core/widgets/quote_mind_charge.dart` — текст + LinearProgressIndicator + счётчик + сообщения + CustomPainter салют (цвет = `AppTheme.accent`) |
+| Размещение | `home_screen.dart` header Row: logo/clock \| **QuoteMindCharge** \| search/bell/avatar |
+| Учёт прочтений | `wesi_quote_card.dart` — кнопка refresh → `QuoteMindChargeService.registerRead()` |
+| Load | `main.dart` — `QuoteMindChargeService.load()` после Hive open |
+
+Цвет салюта и акцента прогресса следует теме (orange dark / blue light).
+
+### 2. Чего НЕ делать
+
+- Не сбрасывать счётчик без явной просьбы.
+- Не добавлять confetti-пакет — салют на CustomPainter, без новых зависимостей.
+- Не запускать release без запроса.
 
 ---
 
@@ -274,6 +301,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 19. **Акценты UI** на светлой теме — `AppTheme.accent` (голубой), не hardcoded orange (кроме warnings).
 20. **ModuleHeader** — стандарт шапки для push-экранов с back.
 21. **Home карточки** (`HomeAgenda`, `HomePulse`) — всегда `ValueListenableBuilder` на `ThemeNotifier` (IndexedStack иначе не перекрашивает).
+22. **QuoteMindCharge** — справа от часов на Home; refresh цитаты = +1 к счётчику; салют на 10, секрет на 40 (сессия 8).
 
 ---
 
@@ -284,6 +312,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 | Тема + AnimatedTheme | `lib/app.dart`, `lib/core/theme/app_theme.dart` |
 | Home + theme rebuild | `lib/features/home/home_screen.dart` |
 | Home agenda / pulse | `lib/features/home/widgets/home_agenda.dart`, `home_pulse.dart` |
+| QuoteMindCharge | `lib/core/widgets/quote_mind_charge.dart`, `lib/core/services/quote_mind_charge_service.dart` |
 | ModuleHeader (back) | `lib/core/widgets/module_header.dart` |
 | Window controls (Win) | `lib/core/widgets/window_controls.dart` |
 | Подпись Android | `android/app/build.gradle` |
@@ -309,13 +338,14 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 | 16 | `ArticleSection` |
 | 17 | `ArticleModel` |
 
-Доп. ключи в `wesios_settings`: `clock_style`, `app_theme`, `update_skipped_version`, и др.
+Доп. ключи в `wesios_settings`: `clock_style`, `app_theme`, `update_skipped_version`, `quotes_read_count`, `quotes_milestone_10_seen`, `quotes_milestone_40_seen`, и др.
 
 ---
 
-## Открытые TODO (сессия 7)
+## Открытые TODO
 
-- [x] Калькулятор: minimize → floating bar (expand / close); `accentOrange` → `AppTheme.accent` на операторах/пине/истории.
-- [x] Главная: белый текст «Календарь»/«Задачи» на светлой теме → `textSecondary` + listen ThemeNotifier.
+- [x] Калькулятор: minimize → floating bar; accent на операторах.
+- [x] Главная: белый текст «Календарь»/«Задачи» → textSecondary + ThemeNotifier.
+- [x] QuoteMindCharge: виджет + прогресс 10 + салют + секрет 40 (сессия 8).
 - [ ] Knowledge: полный rich-editor (Quill toolbar + insert link/table/image/video + wesios://) — body view уже есть.
 - [ ] Релизный билд — **только по запросу** пользователя после накопления фиксов.
