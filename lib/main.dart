@@ -13,6 +13,7 @@ import 'features/knowledge/models/article_model.dart';
 import 'features/knowledge/services/knowledge_service.dart';
 import 'core/services/app_update_service.dart';
 import 'core/services/app_icon_service.dart';
+import 'core/services/quote_mind_charge_service.dart';
 import 'core/theme/app_theme.dart';
 import 'app.dart';
 import 'core/services/currency_service.dart';
@@ -63,6 +64,7 @@ void main() async {
   CurrencyService.loadPrivacyMode();
   ThemeNotifier.load();
   AppIconService.load();
+  QuoteMindChargeService.load();
 
   // Auto-иконка: при смене темы переключаем activity-alias на Android.
   ThemeNotifier.instance.addListener(() {

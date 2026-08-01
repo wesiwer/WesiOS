@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import '../data/wesi_quotes.dart';
 import '../theme/app_theme.dart';
 import '../localization/wesi_locale.dart';
+import '../services/quote_mind_charge_service.dart';
 
 /// Карточка с фразой дня на главном экране.
 ///
 /// По умолчанию берёт фразу текущего слота ([WesiQuotes.current]) — она
 /// стабильна в пределах нескольких часов, поэтому экран не мельтешит. Кнопка
 /// «обновить» показывает случайную, если захотелось другую прямо сейчас.
+/// Каждый refresh учитывается в [QuoteMindChargeService] (прогресс «заряда»).
 class WesiQuoteCard extends StatefulWidget {
   const WesiQuoteCard({super.key});
 
@@ -17,6 +19,11 @@ class WesiQuoteCard extends StatefulWidget {
 
 class _WesiQuoteCardState extends State<WesiQuoteCard> {
   WesiQuote? _manual; // выбранная вручную, перебивает фразу слота
+
+  Future<void> _refresh() async {
+    setState(() => _manual = WesiQuotes.random());
+    await QuoteMindChargeService.registerRead();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +89,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
             tooltip: WesiLocale.isRussian ? 'Другая фраза' : 'Another quote',
             icon: Icon(Icons.refresh,
                 size: 16, color: AppTheme.textMuted.withOpacity(0.8)),
-            onPressed: () => setState(() => _manual = WesiQuotes.random()),
+            onPressed: _refresh,
           ),
         ],
       ),

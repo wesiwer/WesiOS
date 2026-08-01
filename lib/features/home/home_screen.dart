@@ -22,6 +22,7 @@ import 'more_tab.dart';
 import '../../core/widgets/wesi_clock.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/wesi_quote_card.dart';
+import '../../core/widgets/quote_mind_charge.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -202,6 +203,7 @@ class _DashboardTabState extends State<_DashboardTab> {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
+          // Header: logo+clock | mind-charge | icons
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 10, 12, 12),
@@ -210,6 +212,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                 children: [
                   // Левая колонка: лого сверху, часы под ним
                   Expanded(
+                    flex: 5,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -235,12 +238,11 @@ class _DashboardTabState extends State<_DashboardTab> {
                             onTap: () =>
                                 Navigator.pushNamed(context, '/calendar'),
                             onLongPress: () {
-                              // Переключение digital ↔ analog через сохранённый стиль
-                              final next = WesiClock.savedStyle == ClockStyle.digital
-                                  ? ClockStyle.analog
-                                  : ClockStyle.digital;
+                              final next =
+                                  WesiClock.savedStyle == ClockStyle.digital
+                                      ? ClockStyle.analog
+                                      : ClockStyle.digital;
                               WesiClock.setStyle(next);
-                              // Пересоздаём виджет часов через setState родителя
                               setState(() {});
                             },
                             child: const WesiClock(),
@@ -249,7 +251,17 @@ class _DashboardTabState extends State<_DashboardTab> {
                       ],
                     ),
                   ),
-                  // Правая группа иконок — крупнее
+                  // Пустой промежуток над цитатой / правее часов — заряд мыслей
+                  const SizedBox(width: 8),
+                  const Flexible(
+                    flex: 4,
+                    child: Align(
+                      alignment: Alignment.topRight,
+                      child: QuoteMindCharge(),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  // Правая группа иконок
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
@@ -394,7 +406,8 @@ class _DashboardTabState extends State<_DashboardTab> {
     );
   }
 
-  Future<void> _showAddTransaction(BuildContext context, TransactionType type) async {
+  Future<void> _showAddTransaction(
+      BuildContext context, TransactionType type) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => AddTransactionDialog(
