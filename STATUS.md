@@ -1,6 +1,6 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-01 (сессия 7 — Windows UI-фиксы + акценты графиков, Grok)  
+**Обновлено:** 2026-08-01 (сессия 7 — Windows UI + калькулятор accent/minimize, Grok)  
 **Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.7 α · **build:** 23  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
@@ -93,7 +93,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 ---
 
-## Сессия 7 (2026-08-01) — Windows UI + акценты светлой темы + навигация
+## Сессия 7 (2026-08-01) — Windows UI + акценты светлой темы + калькулятор
 
 Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
 **Не откатывать и не «улучшать» без явной просьбы пользователя.**
@@ -109,7 +109,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 | Analytics period chips / header | `lib/features/analytics/analytics_screen.dart` |
 | Treasury currency badge, links | `lib/features/treasury/treasury_screen.dart`, `widgets/accounts_bar.dart` |
 | Forecast Wesi Horizon chart color | `lib/features/treasury/forecast_chart_screen.dart` — `_engineColorOf()` вместо static map с `accentOrange` |
-| Calculator operators / pin / history (частично) | `lib/features/calculator/calculator_screen.dart` — ещё есть hardcoded `accentOrange` на операторах/пине; доделать |
+| Calculator chrome / ops / pin / history / M | `lib/features/calculator/calculator_screen.dart` — **готово** (`AppTheme.accent`, `accentOps`) |
 
 ### 2. Заголовок Analytics → «Wesi Analytics»
 
@@ -139,18 +139,24 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 На Windows смена launcher-иконки ограничена ОС (не как на Android adaptive). Документировано как OS-limitation; `AppIconService` остаётся для платформ, где поддерживается.
 
-### 6. Калькулятор — сворачивание (в процессе)
+### 6. Калькулятор — accent + minimize-to-bar ✅
 
-**Запрос:** возможность сворачивать калькулятор в плавающую полоску и разворачивать обратно; кнопки свернуть/закрыть/окно работали некорректно.
+**Файл:** `lib/features/calculator/calculator_screen.dart` (коммит `7d751b3e`)
 
-**Статус:** window controls поправлены; minimize-to-bar для самого калькулятора — **ещё не смержено** (нужно `_minimized` + floating strip с expand/close). Оставлено в TODO сессии 7.
+| Что | Как |
+|---|---|
+| Акценты | Все `accentOrange` в хроме/операторах/пине/истории/M → `AppTheme.accent` (следует теме) |
+| Параметр рядов | `orangeOps` → `accentOps` |
+| Свернуть | кнопка `Icons.minimize` в header → `_minimized = true` |
+| Плавающая полоска | `_minimizedBar()`: иконка + title + результат + expand + close; без блюра, не блокирует клики по приложению |
+| Развернуть | `Icons.open_in_full` на полоске → `_minimized = false` |
 
 ### 7. Чего НЕ делать
 
 - Не запускать release/build CI без явного запроса пользователя.
 - Не возвращать hardcoded `accentOrange` в UI-хром светлой темы (warnings/anomalies — ок).
 - Не убирать `ModuleHeader` / back button с push-экранов.
-- Не ломать pin / history / blur / scale калькулятора.
+- Не ломать pin / history / blur / scale / minimize калькулятора.
 
 ---
 
@@ -249,7 +255,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 14. **App Icon Mode:** Auto/Dark/Light.
 15. **Перед билдом/релизом** — чеклист analyze + test + ревью.
 16. **Артефакты** в release-app.yml обязательны (сессия 5).
-17. **Калькулятор:** Classic / Scientific (сессия 6).
+17. **Калькулятор:** Classic / Scientific + minimize-to-bar + theme accent (сессии 6–7).
 18. **Релизы/билды** — только по явному запросу пользователя; мелкие фиксы накапливаем (сессия 7).
 19. **Акценты UI** на светлой теме — `AppTheme.accent` (голубой), не hardcoded orange (кроме warnings).
 20. **ModuleHeader** — стандарт шапки для push-экранов с back.
@@ -293,6 +299,6 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 ## Открытые TODO (сессия 7)
 
-- [ ] Калькулятор: minimize → floating bar (expand / close); дочистить `accentOrange` → `AppTheme.accent` на операторах/пине/истории.
+- [x] Калькулятор: minimize → floating bar (expand / close); `accentOrange` → `AppTheme.accent` на операторах/пине/истории.
 - [ ] Knowledge: полный rich-editor (Quill toolbar + insert link/table/image/video + wesios://) — body view уже есть.
 - [ ] Релизный билд — **только по запросу** пользователя после накопления фиксов.
