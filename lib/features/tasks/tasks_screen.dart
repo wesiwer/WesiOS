@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../core/widgets/wesi_wordmark.dart';
+import '../../core/widgets/module_header.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/window_controls.dart';
@@ -10,10 +10,6 @@ import 'widgets/task_editor_dialog.dart';
 
 /// Задачи — канбан-доска с приоритетами, сроками, исполнителями и
 /// чек-листами.
-///
-/// Карточки переносятся между колонками перетаскиванием (на десктопе) и
-/// через меню на карточке (на телефоне, где четыре колонки в ряд не
-/// помещаются и драг между ними неудобен).
 class TasksScreen extends StatefulWidget {
   const TasksScreen({super.key});
 
@@ -26,7 +22,6 @@ class _TasksScreenState extends State<TasksScreen> {
   List<TaskModel> _tasks = [];
   bool _loading = true;
 
-  /// Фильтры. null — показывать всё.
   TaskPriority? _priorityFilter;
   bool _onlyOverdue = false;
   String _search = '';
@@ -157,35 +152,18 @@ class _TasksScreenState extends State<TasksScreen> {
     final today = _tasks.where((t) => t.isDueToday).length;
     final done = _tasks.where((t) => t.status == TaskStatus.done).length;
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              WesiTitle(ru ? 'Задачи' : 'Tasks'),
-              const SizedBox(height: 2),
-              Text(
-                _tasks.isEmpty
-                    ? (ru
-                        ? 'Пока пусто — создайте первую задачу'
-                        : 'Nothing yet — create the first task')
-                    : '${_tasks.length} ${ru ? 'всего' : 'total'} · '
-                        '$done ${ru ? 'готово' : 'done'}'
-                        '${overdue > 0 ? ' · $overdue ${ru ? 'просрочено' : 'overdue'}' : ''}'
-                        '${today > 0 ? ' · $today ${ru ? 'на сегодня' : 'due today'}' : ''}',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: overdue > 0
-                      ? AppTheme.accentRed
-                      : AppTheme.textSecondary,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
+    final subtitle = _tasks.isEmpty
+        ? (ru
+            ? 'Пока пусто — создайте первую задачу'
+            : 'Nothing yet — create the first task')
+        : '${_tasks.length} ${ru ? 'всего' : 'total'} · '
+            '$done ${ru ? 'готово' : 'done'}'
+            '${overdue > 0 ? ' · $overdue ${ru ? 'просрочено' : 'overdue'}' : ''}'
+            '${today > 0 ? ' · $today ${ru ? 'на сегодня' : 'due today'}' : ''}';
+
+    return ModuleHeader(
+      title: ru ? 'Задачи' : 'Tasks',
+      subtitle: subtitle,
     );
   }
 
@@ -216,14 +194,14 @@ class _TasksScreenState extends State<TasksScreen> {
             ),
           ),
         ),
-        SizedBox(width: 10),
+        const SizedBox(width: 10),
         _chip(
           label: ru ? 'Просроченные' : 'Overdue',
           selected: _onlyOverdue,
           color: AppTheme.accentRed,
           onTap: () => setState(() => _onlyOverdue = !_onlyOverdue),
         ),
-        SizedBox(width: 8),
+        const SizedBox(width: 8),
         PopupMenuButton<TaskPriority?>(
           color: AppTheme.surface,
           tooltip: ru ? 'Приоритет' : 'Priority',
@@ -263,7 +241,7 @@ class _TasksScreenState extends State<TasksScreen> {
     VoidCallback? onTap,
   }) {
     final content = Container(
-      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
       decoration: BoxDecoration(
         color: selected ? color.withOpacity(0.16) : AppTheme.surface,
         borderRadius: BorderRadius.circular(10),
@@ -284,8 +262,6 @@ class _TasksScreenState extends State<TasksScreen> {
   Widget _board(bool ru) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        // Четыре колонки в ряд требуют ширины: на телефоне вместо доски
-        // показываем колонки одну под другой, иначе карточки нечитаемы.
         final narrow = constraints.maxWidth < 720;
         if (narrow) {
           return ListView(
@@ -315,15 +291,13 @@ class _TasksScreenState extends State<TasksScreen> {
   Widget _columnWidget(TaskStatus status, bool ru, {bool narrow = false}) {
     final items = _column(status);
 
-    // DragTarget принимает карточку из другой колонки — перенос
-    // перетаскиванием на десктопе.
     return DragTarget<TaskModel>(
       onWillAcceptWithDetails: (d) => d.data.status != status,
       onAcceptWithDetails: (d) => _service.move(d.data, status),
       builder: (context, candidate, rejected) {
         final hovering = candidate.isNotEmpty;
         return Container(
-          padding: EdgeInsets.all(10),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: hovering
                 ? AppTheme.accent.withOpacity(0.08)
@@ -336,10 +310,6 @@ class _TasksScreenState extends State<TasksScreen> {
             ),
           ),
           child: Column(
-            // На телефоне колонка обжимается по содержимому — скроллит общий
-            // ListView снаружи. На доске колонка занимает всю высоту и
-            // скроллится внутри себя, иначе четыре колонки разной высоты
-            // выглядят рвано.
             mainAxisSize: narrow ? MainAxisSize.min : MainAxisSize.max,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -347,7 +317,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 children: [
                   Icon(TaskLabels.statusIcon(status),
                       size: 15, color: AppTheme.textMuted),
-                  SizedBox(width: 7),
+                  const SizedBox(width: 7),
                   Expanded(
                     child: Text(
                       TaskLabels.status(status, ru),
@@ -360,7 +330,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   Text('${items.length}',
                       style: TextStyle(
                           fontSize: 12, color: AppTheme.textMuted)),
-                  SizedBox(width: 4),
+                  const SizedBox(width: 4),
                   GestureDetector(
                     onTap: () => _create(status),
                     child: Icon(Icons.add,
@@ -368,10 +338,10 @@ class _TasksScreenState extends State<TasksScreen> {
                   ),
                 ],
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 10),
               if (items.isEmpty)
                 Padding(
-                  padding: EdgeInsets.symmetric(vertical: 18),
+                  padding: const EdgeInsets.symmetric(vertical: 18),
                   child: Center(
                     child: Text(
                       ru ? 'Пусто' : 'Empty',
@@ -420,7 +390,7 @@ class _TasksScreenState extends State<TasksScreen> {
     return GestureDetector(
       onTap: () => _edit(task),
       child: Container(
-        padding: EdgeInsets.all(11),
+        padding: const EdgeInsets.all(11),
         decoration: BoxDecoration(
           color: AppTheme.surface,
           borderRadius: BorderRadius.circular(11),
@@ -443,7 +413,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   decoration:
                       BoxDecoration(shape: BoxShape.circle, color: pColor),
                 ),
-                SizedBox(width: 8),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     task.title,
@@ -463,7 +433,7 @@ class _TasksScreenState extends State<TasksScreen> {
               ],
             ),
             if (task.subtasks.isNotEmpty) ...[
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Row(
                 children: [
                   Expanded(
@@ -473,12 +443,11 @@ class _TasksScreenState extends State<TasksScreen> {
                         value: task.checklistProgress,
                         minHeight: 3,
                         backgroundColor: AppTheme.background,
-                        valueColor: AlwaysStoppedAnimation(
-                            AppTheme.accent),
+                        valueColor: AlwaysStoppedAnimation(AppTheme.accent),
                       ),
                     ),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Text(
                     '${task.subtasks.where((s) => s.done).length}/${task.subtasks.length}',
                     style: TextStyle(
@@ -503,7 +472,7 @@ class _TasksScreenState extends State<TasksScreen> {
                             color: task.isOverdue
                                 ? AppTheme.accentRed
                                 : AppTheme.textMuted),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Text(
                           TaskLabels.dueLabel(task.dueDate!, ru),
                           style: TextStyle(
@@ -524,7 +493,7 @@ class _TasksScreenState extends State<TasksScreen> {
                       children: [
                         Icon(Icons.person_outline,
                             size: 11, color: AppTheme.textMuted),
-                        SizedBox(width: 4),
+                        const SizedBox(width: 4),
                         Text(task.assignee!,
                             style: TextStyle(
                                 fontSize: 10, color: AppTheme.textMuted)),
@@ -539,8 +508,6 @@ class _TasksScreenState extends State<TasksScreen> {
     );
   }
 
-  /// Меню на карточке — способ перенести задачу там, где перетаскивание
-  /// неудобно (телефон), плюс удаление.
   Widget _cardMenu(TaskModel task, bool ru) {
     return PopupMenuButton<String>(
       color: AppTheme.surface,
@@ -564,7 +531,7 @@ class _TasksScreenState extends State<TasksScreen> {
           child: Text(ru ? 'Изменить' : 'Edit',
               style: TextStyle(color: AppTheme.textPrimary)),
         ),
-        PopupMenuDivider(),
+        const PopupMenuDivider(),
         ...TaskStatus.values.where((s) => s != task.status).map(
               (s) => PopupMenuItem(
                 value: s.name,
@@ -574,7 +541,7 @@ class _TasksScreenState extends State<TasksScreen> {
                 ),
               ),
             ),
-        PopupMenuDivider(),
+        const PopupMenuDivider(),
         PopupMenuItem(
           value: 'delete',
           child: Text(ru ? 'Удалить' : 'Delete',
