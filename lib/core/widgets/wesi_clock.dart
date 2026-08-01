@@ -10,20 +10,11 @@ enum ClockStyle { digital, analog }
 
 /// Живые часы с датой для главного экрана.
 ///
-/// Два режима: цифровые (как раньше) и аналоговый циферблат.
-/// Переключение — долгий тап. Выбор пишется в Hive и переживает рестарт.
-///
-/// Тикает раз в секунду и **только пока виджет на экране**: таймер
-/// заводится в initState и гасится в dispose, иначе он продолжал бы будить
-/// UI, когда пользователь ушёл на другую вкладку (вкладки живут в
-/// IndexedStack и не уничтожаются).
+/// Два режима: цифровые и аналоговый циферблат с цифрами.
+/// Переключение — долгий тап (обрабатывает родитель) или кнопка рядом.
+/// Выбор пишется в Hive и переживает рестарт.
 class WesiClock extends StatefulWidget {
-  /// Показывать ли секунды в цифровом режиме. На главном они уместны —
-  /// экран «живой», но в компактных местах лишняя перерисовка каждую
-  /// секунду не нужна.
   final bool showSeconds;
-
-  /// Принудительный стиль. null — берём из настроек пользователя.
   final ClockStyle? forceStyle;
 
   const WesiClock({
@@ -89,6 +80,14 @@ class _WesiClockState extends State<WesiClock> {
   }
 
   @override
+  void didUpdateWidget(covariant WesiClock oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Подхватываем смену стиля извне (long-press на родителе).
+    final next = widget.forceStyle ?? WesiClock.savedStyle;
+    if (next != _style) _style = next;
+  }
+
+  @override
   void dispose() {
     _timer?.cancel();
     super.dispose();
@@ -113,8 +112,6 @@ class _WesiClockState extends State<WesiClock> {
         ? '${_now.day} $month ${_now.year}'
         : '$month ${_now.day}, ${_now.year}';
 
-    // На узких экранах цифровой шрифт не должен быть 34 — иначе шапка
-    // давит статус-бар и лого.
     final width = MediaQuery.sizeOf(context).width;
     final digitalSize = width < 380
         ? 22.0
@@ -122,8 +119,11 @@ class _WesiClockState extends State<WesiClock> {
             ? 26.0
             : 32.0;
 
+    // Аналоговый циферблат чуть крупнее, чтобы цифры читались
+    final analogSize = width < 400 ? 64.0 : 72.0;
+
     final clock = _style == ClockStyle.analog
-        ? _AnalogFace(now: _now, size: width < 400 ? 52.0 : 60.0)
+        ? _AnalogFace(now: _now, size: analogSize)
         : Text(
             widget.showSeconds
                 ? '${_two(_now.hour)}:${_two(_now.minute)}:${_two(_now.second)}'
@@ -141,35 +141,29 @@ class _WesiClockState extends State<WesiClock> {
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Часы и дата
-        GestureDetector(
-          onTap: () {}, // Родитель обработает тап
-          behavior: HitTestBehavior.opaque,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              clock,
-              SizedBox(height: 2),
-              Text(
-                date,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: AppTheme.textSecondary,
-                ),
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            clock,
+            SizedBox(height: 2),
+            Text(
+              date,
+              style: TextStyle(
+                fontSize: 11,
+                color: AppTheme.textSecondary,
               ),
-              Text(
-                weekday,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: AppTheme.textMuted.withOpacity(0.8),
-                ),
+            ),
+            Text(
+              weekday,
+              style: TextStyle(
+                fontSize: 10,
+                color: AppTheme.textMuted.withOpacity(0.8),
               ),
-            ],
-          ),
+            ),
+          ],
         ),
         SizedBox(width: 8),
-        // Переключатель стиля часов
         GestureDetector(
           onTap: _toggleStyle,
           child: Container(
@@ -188,7 +182,7 @@ class _WesiClockState extends State<WesiClock> {
                   ? Icons.access_time
                   : Icons.timer,
               size: 16,
-              color: AppTheme.accentOrange,
+              color: AppTheme.accent,
             ),
           ),
         ),
@@ -197,7 +191,7 @@ class _WesiClockState extends State<WesiClock> {
   }
 }
 
-/// Простой аналоговый циферблат: круг, часовые/минутные деления, три стрелки.
+/// Аналоговый циферблат с цифрами 1–12.
 class _AnalogFace extends StatelessWidget {
   final DateTime now;
   final double size;
@@ -238,22 +232,44 @@ class _AnalogPainter extends CustomPainter {
       ..strokeWidth = 1.5;
     canvas.drawCircle(c, r - 0.75, border);
 
-    // Часовые деления
-    final tick = Paint()
-      ..color = AppTheme.textMuted
-      ..strokeWidth = 1.5
+    // Минутные деления (тонкие)
+    final minorTick = Paint()
+      ..color = AppTheme.textMuted.withOpacity(0.45)
+      ..strokeWidth = 1.0
       ..strokeCap = StrokeCap.round;
-    for (var i = 0; i < 12; i++) {
-      final a = (i * 30 - 90) * math.pi / 180;
+    for (var i = 0; i < 60; i++) {
+      if (i % 5 == 0) continue; // часовые — цифры
+      final a = (i * 6 - 90) * math.pi / 180;
       final outer = Offset(
-        c.dx + (r - 3) * math.cos(a),
-        c.dy + (r - 3) * math.sin(a),
+        c.dx + (r - 2.5) * math.cos(a),
+        c.dy + (r - 2.5) * math.sin(a),
       );
       final inner = Offset(
-        c.dx + (r - 8) * math.cos(a),
-        c.dy + (r - 8) * math.sin(a),
+        c.dx + (r - 5.5) * math.cos(a),
+        c.dy + (r - 5.5) * math.sin(a),
       );
-      canvas.drawLine(inner, outer, tick);
+      canvas.drawLine(inner, outer, minorTick);
+    }
+
+    // Цифры 1–12
+    final textStyle = TextStyle(
+      color: AppTheme.textPrimary,
+      fontSize: r * 0.22,
+      fontWeight: FontWeight.w600,
+      height: 1.0,
+    );
+    for (var h = 1; h <= 12; h++) {
+      final a = (h * 30 - 90) * math.pi / 180;
+      final label = '$h';
+      final tp = TextPainter(
+        text: TextSpan(text: label, style: textStyle),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final pos = Offset(
+        c.dx + (r - r * 0.28) * math.cos(a) - tp.width / 2,
+        c.dy + (r - r * 0.28) * math.sin(a) - tp.height / 2,
+      );
+      tp.paint(canvas, pos);
     }
 
     // Углы стрелок
@@ -272,8 +288,8 @@ class _AnalogPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(
       c,
-      Offset(c.dx + r * 0.45 * math.cos(hourA),
-          c.dy + r * 0.45 * math.sin(hourA)),
+      Offset(c.dx + r * 0.40 * math.cos(hourA),
+          c.dy + r * 0.40 * math.sin(hourA)),
       hourPaint,
     );
 
@@ -284,25 +300,25 @@ class _AnalogPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(
       c,
-      Offset(c.dx + r * 0.68 * math.cos(minA),
-          c.dy + r * 0.68 * math.sin(minA)),
+      Offset(c.dx + r * 0.58 * math.cos(minA),
+          c.dy + r * 0.58 * math.sin(minA)),
       minPaint,
     );
 
-    // Секундная (оранжевая)
+    // Секундная
     final secPaint = Paint()
-      ..color = AppTheme.accentOrange
+      ..color = AppTheme.accent
       ..strokeWidth = 1.2
       ..strokeCap = StrokeCap.round;
     canvas.drawLine(
       c,
-      Offset(c.dx + r * 0.78 * math.cos(secA),
-          c.dy + r * 0.78 * math.sin(secA)),
+      Offset(c.dx + r * 0.70 * math.cos(secA),
+          c.dy + r * 0.70 * math.sin(secA)),
       secPaint,
     );
 
     // Центральная точка
-    canvas.drawCircle(c, 2.5, Paint()..color = AppTheme.accentOrange);
+    canvas.drawCircle(c, 2.5, Paint()..color = AppTheme.accent);
   }
 
   @override

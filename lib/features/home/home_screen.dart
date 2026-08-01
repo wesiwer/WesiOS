@@ -66,12 +66,9 @@ class _HomeScreenState extends State<HomeScreen>
       _selectedIndex = i;
       _built.add(i);
     });
-    // Лёгкий cross-fade вместо жёсткой подмены — без full-screen loader.
     _fadeCtrl.forward(from: 0);
   }
 
-  /// [lang] входит в key каждой вкладки: при смене языка вкладка
-  /// пересоздаётся и перечитывает строки через WesiLocale.
   Widget _tab(int i, String lang) {
     if (!_built.contains(i)) return const SizedBox.shrink();
     final key = ValueKey('tab_${i}_$lang');
@@ -85,8 +82,6 @@ class _HomeScreenState extends State<HomeScreen>
       case 3:
         return AnalyticsScreen(key: key);
       default:
-        // «Ещё» — витрина всех модулей, а не сразу Настройки: иначе о
-        // существовании базы знаний, CRM, ИИ и прочего никак не узнать.
         return MoreTab(key: key);
     }
   }
@@ -124,10 +119,6 @@ class _HomeScreenState extends State<HomeScreen>
           type: BottomNavigationBarType.fixed,
           selectedItemColor: AppTheme.accent,
           unselectedItemColor: AppTheme.textMuted,
-          // Пять вкладок делят ширину телефона поровну, и «Аналитика» при
-          // системном размере шрифта в подпись не влезала — обрезалась в
-          // «Аналити…». Уменьшенный кегль плюс запрет масштабирования именно
-          // здесь оставляет все пять подписей целыми на узких экранах.
           selectedFontSize: 11,
           unselectedFontSize: 11,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
@@ -175,9 +166,6 @@ class _DashboardTabState extends State<_DashboardTab> {
   void initState() {
     super.initState();
     _loadBalance();
-    // Вкладка живёт в IndexedStack и больше не пересоздаётся, поэтому
-    // одного initState мало: операция, добавленная в Treasury, должна
-    // подтянуться сюда сама (см. TreasuryService.revision).
     TreasuryService.revision.addListener(_loadBalance);
   }
 
@@ -205,19 +193,16 @@ class _DashboardTabState extends State<_DashboardTab> {
         slivers: [
           SliverToBoxAdapter(
             child: Padding(
-              // На телефоне kTitleBarInset = 0, SafeArea уже дал отступ под
-              // статус-бар. Раньше +8 и огромные часы 34px давили всё сверху.
-              padding: EdgeInsets.fromLTRB(12, kTitleBarInset + 6, 12, 12),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final narrow = constraints.maxWidth < 400;
-                  return Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      // Лого не сжимаем в ноль, но даём ему уступить место.
-                      Flexible(
-                        flex: narrow ? 0 : 1,
-                        child: WesiContextMenu(
+              padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 10, 12, 12),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Левая колонка: лого сверху, часы под ним
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        WesiContextMenu(
                           title: 'WesiOS',
                           description: WesiLocale.isRussian
                               ? 'WesiOS — Business Operating System. Управляйте бизнесом по-новому.'
@@ -226,35 +211,48 @@ class _DashboardTabState extends State<_DashboardTab> {
                               ? 'Центральная панель управления всеми системами Wesi'
                               : 'Central dashboard for all Wesi systems',
                           children: [
-                            WesiWordmark(size: narrow ? 22 : 26),
+                            WesiWordmark(size: 26),
                           ],
                         ),
-                      ),
-                      SizedBox(width: narrow ? 8 : 12),
-                      // Часы — заодно самый естественный вход в календарь.
-                      // Долгий тап переключает digital ↔ analog.
-                      Tooltip(
-                        message: WesiLocale.isRussian
-                            ? 'Открыть календарь · долгий тап — стиль часов'
-                            : 'Open calendar · long-press for clock style',
-                        child: GestureDetector(
-                          onTap: () =>
-                              Navigator.pushNamed(context, '/calendar'),
-                          child: const WesiClock(),
+                        const SizedBox(height: 10),
+                        // Часы — вход в календарь; долгий тап переключает стиль
+                        Tooltip(
+                          message: WesiLocale.isRussian
+                              ? 'Открыть календарь · долгий тап — стиль часов'
+                              : 'Open calendar · long-press for clock style',
+                          child: GestureDetector(
+                            onTap: () =>
+                                Navigator.pushNamed(context, '/calendar'),
+                            onLongPress: () {
+                              // Переключение digital ↔ analog через сохранённый стиль
+                              final next = WesiClock.savedStyle == ClockStyle.digital
+                                  ? ClockStyle.analog
+                                  : ClockStyle.digital;
+                              WesiClock.setStyle(next);
+                              // Пересоздаём виджет часов через setState родителя
+                              setState(() {});
+                            },
+                            child: const WesiClock(),
+                          ),
                         ),
-                      ),
-                      SizedBox(width: narrow ? 6 : 12),
+                      ],
+                    ),
+                  ),
+                  // Правая группа иконок — крупнее
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                       _HoverIconButton(
                         icon: Icons.search,
                         onTap: () => GlobalSearchSheet.show(context),
                       ),
-                      const SizedBox(width: 4),
-                      const AlertsBell(),
-                      const SizedBox(width: 4),
+                      const SizedBox(width: 6),
+                      const AlertsBell(size: 28),
+                      const SizedBox(width: 6),
                       const _ProfileDropdown(),
                     ],
-                  );
-                },
+                  ),
+                ],
               ),
             ),
           ),
@@ -324,10 +322,6 @@ class _DashboardTabState extends State<_DashboardTab> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              // Раньше это были четыре Expanded в одном Row: на телефоне
-              // каждой кнопке доставалось ~80 px, и «Wesi Calculator» уезжал
-              // за правый край. Теперь сетка сама решает, сколько колонок
-              // помещается — на телефоне две, на планшете/десктопе четыре.
               child: LayoutBuilder(
                 builder: (context, c) {
                   final columns = c.maxWidth >= 560 ? 4 : 2;
@@ -347,9 +341,6 @@ class _DashboardTabState extends State<_DashboardTab> {
                       onTap: () =>
                           _showAddTransaction(context, TransactionType.expense),
                     ),
-                    // Была кнопка «Wesi Voice» с микрофоном, которая вела в
-                    // задачи: голосового ввода нет, и подпись обещала не то,
-                    // что произойдёт. Теперь честно — задача.
                     _Quick(
                       icon: Icons.playlist_add_check,
                       label: WesiLocale.isRussian ? 'Задача' : 'Task',
@@ -380,8 +371,6 @@ class _DashboardTabState extends State<_DashboardTab> {
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          // Календарь и задачи вернулись на главную — но уже не заглушками:
-          // обе карточки читают реальные задачи (см. HomeAgenda).
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
@@ -393,7 +382,6 @@ class _DashboardTabState extends State<_DashboardTab> {
       ),
     );
   }
-
 
   Future<void> _showAddTransaction(BuildContext context, TransactionType type) async {
     final result = await showDialog<Map<String, dynamic>>(
@@ -464,7 +452,6 @@ class _QuickState extends State<_Quick> {
 
   @override
   Widget build(BuildContext context) {
-    // Быстрые действия доступны с клавиатуры: стрелки + Enter/Space
     return FocusableActionDetector(
       mouseCursor: SystemMouseCursors.click,
       onShowHoverHighlight: (v) => setState(() => _h = v),
@@ -535,15 +522,15 @@ class _HoverIconButtonState extends State<_HoverIconButton> {
         onTap: widget.onTap,
         child: AnimatedContainer(
           duration: Duration(milliseconds: 150),
-          padding: EdgeInsets.all(8),
+          padding: EdgeInsets.all(10),
           decoration: BoxDecoration(
             color: _h ? AppTheme.surfaceLight : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
+            borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             widget.icon,
             color: _h ? AppTheme.accent : AppTheme.textPrimary,
-            size: 24,
+            size: 28,
           ),
         ),
       ),
@@ -589,7 +576,6 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
         _item(WesiLocale.get('about_wesios'), Icons.info_outline, '/founder'),
       ],
     ).then((r) {
-      // navigator захвачен до await — BuildContext через async gap не тащим
       if (r != null) navigator.pushNamed(r);
     });
   }
@@ -623,14 +609,14 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
           padding: EdgeInsets.all(4),
           decoration: BoxDecoration(
             color: _h ? AppTheme.surfaceLight : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
               color: _h
                   ? AppTheme.accent.withOpacity(0.4)
                   : Colors.transparent,
             ),
           ),
-          child: const WesiAvatar(size: 32),
+          child: const WesiAvatar(size: 36),
         ),
       ),
     );

@@ -80,9 +80,10 @@ class _SplashScreenState extends State<SplashScreen>
     _fadeController.forward();
     _startTextRotation();
 
+    // Сразу на главную — экран «Начать работу» убран.
     Future.delayed(const Duration(seconds: 8), () {
       if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/welcome');
+        Navigator.of(context).pushReplacementNamed('/home');
       }
     });
   }
@@ -113,7 +114,6 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: AppTheme.background,
       body: Stack(
         children: [
-          // Ambient glow follows current accent (orange in dark, blue in light)
           AnimatedBuilder(
             animation: _glowAnimation,
             builder: (context, child) {
@@ -173,7 +173,6 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                         ),
                         SizedBox(height: 20),
-                        // Progress bar
                         SizedBox(
                           width: 220,
                           child: ClipRRect(
@@ -188,7 +187,6 @@ class _SplashScreenState extends State<SplashScreen>
                           ),
                         ),
                         const SizedBox(height: 28),
-                        // Rings below the bar
                         SizedBox(
                           width: 110,
                           height: 110,

@@ -32,42 +32,61 @@ class FounderStoryScreen extends StatelessWidget {
                     children: [
                       Center(
                         child: Container(
-                          width: 120,
-                          height: 120,
+                          width: 140,
+                          height: 140,
                           decoration: BoxDecoration(
                             shape: BoxShape.circle,
-                            border: Border.all(color: AppTheme.accentOrange, width: 3),
+                            border: Border.all(color: AppTheme.accent, width: 3),
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.accentOrange.withOpacity(0.3),
+                                color: AppTheme.accent.withOpacity(0.3),
                                 blurRadius: 30,
                               ),
                             ],
                           ),
-                          child: const Center(
-                            child: Text('W', style: TextStyle(fontSize: 48, fontWeight: FontWeight.bold)),
+                          child: ClipOval(
+                            child: Image.asset(
+                              'assets/images/wesi_logo_easter.png',
+                              fit: BoxFit.cover,
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(height: 24),
-                      const Text(
+                      Text(
                         'Эту систему создал Байдин Владислав Евгеньевич, выступающий под псевдонимом Wesi, именно в его честь названа данная система.',
-                        style: TextStyle(fontSize: 16, height: 1.6),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.6,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'Влад родился в городе Коряжма 9 июля 2004 года, но всю молодость прожил в поселке городского типа Урдома в Архангельской области, именно там началась история создания личного бренда Wesi и личностного становления Владислава.',
-                        style: TextStyle(fontSize: 16, height: 1.6),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.6,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                       const SizedBox(height: 16),
-                      const Text(
+                      Text(
                         'С ранних лет Влад понял, что способен на многое, в 14 лет начал делать первые шаги к своему великому будущему, в 15 лет начал заниматься битмейкингом и активно заниматься саморазвитием.',
-                        style: TextStyle(fontSize: 16, height: 1.6),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.6,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                       SizedBox(height: 16),
                       Text(
                         'К 20 годам набрался опыта в нише и в 21 год основал компанию Wesi Inc.',
-                        style: TextStyle(fontSize: 16, height: 1.6),
+                        style: TextStyle(
+                          fontSize: 16,
+                          height: 1.6,
+                          color: AppTheme.textPrimary,
+                        ),
                       ),
                       SizedBox(height: 16),
                       Text(
@@ -75,7 +94,7 @@ class FounderStoryScreen extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.accentOrange,
+                          color: AppTheme.accent,
                           height: 1.6,
                         ),
                       ),
