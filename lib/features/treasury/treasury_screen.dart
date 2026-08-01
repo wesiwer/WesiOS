@@ -31,10 +31,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   bool _isLoading = true;
   String _currency = CurrencyService.current;
 
-  /// Выбранный счёт. null — «все счета».
   String? _accountId = AccountService.selectedId;
 
-  /// Операции выбранного счёта: на них считается и баланс, и разрезы.
   List<TransactionModel> get _visible =>
       AccountService.filter(_transactions, _accountId);
 
@@ -60,9 +58,6 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     await _recalc();
   }
 
-  /// Баланс и разрезы считаются по ВЫБРАННОМУ счёту, а не по всей базе:
-  /// иначе переключение счёта меняло бы только список операций, а цифры
-  /// сверху оставались бы общими и противоречили ему.
   Future<void> _recalc() async {
     final visible = _visible;
     var income = 0.0;
@@ -75,7 +70,6 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       }
     }
 
-    // Начальные остатки счетов — часть баланса, но не часть оборота.
     final summaries = await AccountService.summaries(_transactions);
     var opening = 0.0;
     for (final s in summaries) {
@@ -101,8 +95,6 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     await _recalc();
   }
 
-  /// Выбор валюты списком (флаг, страна, название, курс) вместо перебора
-  /// по кругу — по одному коду было непонятно, о какой стране речь.
   Future<void> _cycleCurrency() async {
     final picked = await CurrencyPicker.show(context);
     if (picked == null) return;
@@ -126,8 +118,6 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         description: result['description'],
         isRecurring: result['isRecurring'] ?? false,
         recurringPeriod: result['recurringPeriod'],
-        // В режиме «Все счета» операция уходит на основной — иначе её
-        // некуда положить, а спрашивать счёт ради каждой траты навязчиво.
         accountId: _accountId ?? AccountModel.mainId,
       );
       await _service.addTransaction(tx);
@@ -147,7 +137,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         backgroundColor: AppTheme.background,
         body: Center(
           child: CircularProgressIndicator(
-              color: AppTheme.accentOrange.withOpacity(0.5)),
+              color: AppTheme.accent.withOpacity(0.5)),
         ),
       );
     }
@@ -162,13 +152,13 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         title: WesiTitle(WesiLocale.get('wesi_treasury_title'), size: 18),
         actions: [
           Padding(
-            padding: EdgeInsets.only(right: 140),
+            padding: const EdgeInsets.only(right: 140),
             child: Center(
               child: GestureDetector(
                 onTap: _cycleCurrency,
                 child: Container(
                   padding:
-                      EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
                     color: AppTheme.surface.withOpacity(0.5),
                     borderRadius: BorderRadius.circular(10),
@@ -179,7 +169,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                     style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
-                      color: AppTheme.accentOrange,
+                      color: AppTheme.accent,
                     ),
                   ),
                 ),
@@ -196,9 +186,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             selectedId: _accountId,
             onSelect: _selectAccount,
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           _balanceCard(),
-          SizedBox(height: 20),
+          const SizedBox(height: 20),
           Row(
             children: [
               Expanded(
@@ -212,7 +202,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                   ),
                 ),
               ),
-              SizedBox(width: 12),
+              const SizedBox(width: 12),
               Expanded(
                 child: WesiTooltip(
                   message: WesiLocale.get('record_expense'),
@@ -226,15 +216,15 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               ),
             ],
           ),
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
           HoverButton(
             onTap: () => Navigator.pushNamed(context, '/treasury/forecast'),
-            padding: EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
             backgroundColor: AppTheme.surface,
             child: Row(
               children: [
-                Icon(Icons.trending_up, color: AppTheme.accentOrange),
-                SizedBox(width: 16),
+                Icon(Icons.trending_up, color: AppTheme.accent),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Text(
                     WesiLocale.get('forecast_p10_p50_p90'),
@@ -249,15 +239,15 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               ],
             ),
           ),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           HoverButton(
             onTap: () => Navigator.pushNamed(context, '/treasury/sandbox'),
-            padding: EdgeInsets.all(20),
+            padding: const EdgeInsets.all(20),
             backgroundColor: AppTheme.surface,
             child: Row(
               children: [
-                Icon(Icons.science, color: AppTheme.accentOrange),
-                SizedBox(width: 16),
+                Icon(Icons.science, color: AppTheme.accent),
+                const SizedBox(width: 16),
                 Expanded(
                   child: Text(
                     WesiLocale.get('wesi_sandbox_title'),
@@ -272,7 +262,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               ],
             ),
           ),
-          SizedBox(height: 24),
+          const SizedBox(height: 24),
           Row(
             children: [
               Text(
@@ -282,14 +272,15 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
               ),
-              Spacer(),
+              const Spacer(),
               GestureDetector(
-                onTap: () => Navigator.pushNamed(context, '/treasury/operations'),
+                onTap: () =>
+                    Navigator.pushNamed(context, '/treasury/operations'),
                 child: Text(
                   WesiLocale.isRussian ? 'Все операции →' : 'All operations →',
                   style: TextStyle(
                     fontSize: 13,
-                    color: AppTheme.accentOrange,
+                    color: AppTheme.accent,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -306,7 +297,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   Widget _balanceCard() {
     final shown = CurrencyService.fromRub(_balance);
     return Container(
-      padding: EdgeInsets.all(24),
+      padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.5),
         borderRadius: BorderRadius.circular(20),
@@ -318,7 +309,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           Text(WesiLocale.get('current_balance'),
               style: TextStyle(
                   fontSize: 13, color: AppTheme.textSecondary)),
-          SizedBox(height: 12),
+          const SizedBox(height: 12),
           Text(
             '$_sym${shown.toStringAsFixed(2)}',
             style: TextStyle(
@@ -328,7 +319,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             ),
           ),
           _rateLine(),
-          SizedBox(height: 14),
+          const SizedBox(height: 14),
           Row(
             children: [
               _miniStat(
@@ -336,14 +327,14 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 CurrencyService.format(_breakdown['income'] ?? 0),
                 AppTheme.accentGreen,
               ),
-              SizedBox(width: 10),
+              const SizedBox(width: 10),
               _miniStat(
                 WesiLocale.get('total_expenses'),
                 CurrencyService.format(_breakdown['expense'] ?? 0),
                 AppTheme.accentRed,
               ),
               if (_anomalies.isNotEmpty) ...[
-                SizedBox(width: 10),
+                const SizedBox(width: 10),
                 _miniStat(
                   WesiLocale.get('anomalies_detected'),
                   '${_anomalies.length}',
@@ -373,7 +364,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 style: TextStyle(fontSize: 10, color: color),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis),
-            SizedBox(height: 2),
+            const SizedBox(height: 2),
             Text(value,
                 style: TextStyle(
                     fontSize: 13,
@@ -385,8 +376,6 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     );
   }
 
-  /// Реальный курс + дата ЦБ, а не только символ валюты.
-  /// Подписан на revision — курс приезжает уже после старта приложения.
   Widget _rateLine() {
     return ValueListenableBuilder<int>(
       valueListenable: ExchangeRateService.revision,
@@ -400,7 +389,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             : '${WesiLocale.get('rate_cbr_on')} ${date ?? ''}'.trim();
 
         return Padding(
-          padding: EdgeInsets.only(top: 8),
+          padding: const EdgeInsets.only(top: 8),
           child: Text(
             '$rate · $prefix',
             style: TextStyle(
@@ -419,12 +408,12 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       IconData icon, String label, Color color, VoidCallback onTap) {
     return HoverButton(
       onTap: onTap,
-      padding: EdgeInsets.symmetric(vertical: 16),
+      padding: const EdgeInsets.symmetric(vertical: 16),
       backgroundColor: AppTheme.surface.withOpacity(0.3),
       child: Column(
         children: [
           Icon(icon, color: color, size: 28),
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
           Text(label,
               style: TextStyle(
                   fontSize: 12, color: AppTheme.textSecondary)),
@@ -436,8 +425,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   Widget _txItem(TransactionModel tx) {
     final isIncome = tx.type == TransactionType.income;
     return Container(
-      margin: EdgeInsets.only(bottom: 8),
-      padding: EdgeInsets.all(14),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(0.3),
         borderRadius: BorderRadius.circular(12),
@@ -447,7 +436,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         children: [
           Icon(isIncome ? Icons.arrow_upward : Icons.arrow_downward,
               color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -468,7 +457,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
             ),
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           GestureDetector(
             onTap: () => _deleteTx(tx.id),
             child: Icon(Icons.delete_outline,
