@@ -1,6 +1,6 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-01 (сессия 6 — калькулятор + фикс анимации темы, Grok)  
+**Обновлено:** 2026-08-01 (сессия 7 — Windows UI-фиксы + акценты графиков, Grok)  
 **Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.7 α · **build:** 23  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
@@ -8,27 +8,54 @@
 
 ---
 
+## Правило: журнал (STATUS.md) вести всегда
+
+**Запрос владельца (2026-08-01):** после **каждого** изменения агент **обязан** обновить этот STATUS.md, чтобы в нём всегда была актуальная информация:
+
+- что сделано в текущей сессии;
+- какие файлы затронуты;
+- известные ограничения / TODO;
+- новые правила от владельца.
+
+Не откладывать «на потом». Журнал — единый источник правды для следующих агентов и для владельца.
+
+---
+
+## Правило: релизы и билды — только по запросу пользователя
+
+**Запрос владельца (2026-08-01):** с этого момента:
+
+1. **Не запускать** workflow `release-app.yml` / `build.yml` / любые CI-сборки **самостоятельно**.
+2. Билды (особенно релизные, пригодные для OTA-обновления) — **только по явному запросу** пользователя.
+3. Все мелкие фиксы, UI-правки, багфиксы **сначала накапливаем** в `main` коммитами.
+4. Когда пользователь попросит релиз — тогда:
+   - прогнать чеклист (analyze + test + ревью);
+   - при необходимости бампнуть версию (см. правило версий);
+   - запустить `release-app.yml` с осмысленными `notes`.
+
+**Причина:** экономия лимита GitHub Actions (минуты компиляции).
+
+---
+
 ## Правило: перед запуском билда / релиза
 
-**Запрос владельца (2026-07-31):** перед любым билдом (push, workflow_dispatch
-`build.yml` / `release-app.yml`) агент **обязан** сначала всё проверить.
-Запускать сборку только если уверен, что она пройдёт.
+**Запрос владельца (2026-07-31):** перед любым билдом (push-триггер не в счёт; `workflow_dispatch` `build.yml` / `release-app.yml`) агент **обязан** сначала всё проверить.
+Запускать сборку только если уверен, что она пройдёт. **И только если пользователь явно попросил билд.**
 
 ### Чеклист перед билдом (обязателен)
 
 1. **Статический анализ** — `flutter analyze` → **0** замечаний.
-2. **Юнит-тесты** — `flutter test` → все тесты зелёные (как делает Claude).
+2. **Юнит-тесты** — `flutter test` → все тесты зелёные.
 3. **Ревью затронутых файлов** — особенно:
    - `android/app/build.gradle` (подпись: `ks*` vars, не `keyAlias`/`keyPassword` — иначе Groovy shadowing);
    - `.github/workflows/*.yml` (секреты, env, шаги decode keystore);
    - любые правки в `lib/` — не ломают Hive typeId, open boxes, known bugs из STATUS.
 4. **Если Flutter недоступен в среде агента** — минимум:
    - прочитать diff и убедиться, что нет известных ловушек (shadowing, debug signing, overwrite google-services.json);
-   - дождаться зелёного `Build WesiOS` на push (если правки уже запушены);
-   - **не** запускать `release-app.yml`, пока analyze/test не подтверждены.
-5. **Только после зелёного чеклиста** — `workflow_dispatch` на `release-app.yml` (с осмысленными `notes`).
+   - **не** запускать `release-app.yml`, пока analyze/test не подтверждены и пользователь не попросил.
+5. **Только после зелёного чеклиста и явного запроса пользователя** — `workflow_dispatch` на `release-app.yml` (с осмысленными `notes`).
 
-Не «запустить и посмотреть». Сначала проверка — потом билд.
+Не «запустить и посмотреть». Сначала проверка — потом билд. Билд — только по запросу.
 
 ---
 
@@ -56,7 +83,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 3. Увеличить `build` на +1 (даже если `number` не меняется — новая сборка).
 4. Записать новые значения **во все 5 файлов**.
 5. Коммит с сообщением: `chore(release): bump version to X.Y.Z+B`.
-6. Только после этого — запускать `release-app.yml`.
+6. Только после этого (и по запросу пользователя) — запускать `release-app.yml`.
 
 ### Последствия нарушения
 
@@ -66,7 +93,68 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 ---
 
-## Сессия 6 (2026-08-01) — научный калькулятор + фикс смены темы
+## Сессия 7 (2026-08-01) — Windows UI + акценты светлой темы + навигация
+
+Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
+**Не откатывать и не «улучшать» без явной просьбы пользователя.**
+
+### 1. Оранжевые акценты на светлой теме → `AppTheme.accent`
+
+**Проблема:** на светлой теме оставались оранжевые места (чипы периодов Analytics, badge/ссылки Treasury, операторы калькулятора, линия Wesi Horizon в прогнозе).
+
+**Решение:** везде, где UI-хром/выделение (не warning/anomaly), использовать `AppTheme.accent` (dark → orange, light → blue `lightAccentBlue`).
+
+| Область | Файлы |
+|---|---|
+| Analytics period chips / header | `lib/features/analytics/analytics_screen.dart` |
+| Treasury currency badge, links | `lib/features/treasury/treasury_screen.dart`, `widgets/accounts_bar.dart` |
+| Forecast Wesi Horizon chart color | `lib/features/treasury/forecast_chart_screen.dart` — `_engineColorOf()` вместо static map с `accentOrange` |
+| Calculator operators / pin / history (частично) | `lib/features/calculator/calculator_screen.dart` — ещё есть hardcoded `accentOrange` на операторах/пине; доделать |
+
+### 2. Заголовок Analytics → «Wesi Analytics»
+
+В шапке модуля: **Wesi Analytics**. В нижней панели навигации остаётся «Аналитика».
+
+### 3. Кнопка «Назад» в Analytics / Settings / Tasks
+
+**Проблема:** при push-навигации не было способа выйти назад.
+
+**Решение:** виджет `ModuleHeader` (`lib/core/widgets/module_header.dart`) — AppBar-like с `BackButton` при `Navigator.canPop`, title, actions, запас под WindowControls.
+
+Подключено в:
+- `analytics_screen.dart`
+- `settings_screen.dart`
+- `tasks_screen.dart`
+
+### 4. Кнопки окна Windows (свернуть / развернуть / закрыть)
+
+**Файл:** `lib/core/widgets/window_controls.dart`
+
+- Hover-цвета адаптированы под light/dark.
+- Minimize: корректный выход из fullscreen перед minimize.
+- Maximize / restore + sync state.
+- Hit-testing через GestureDetector (надёжнее, чем голый Listener).
+
+### 5. Иконка приложения при смене темы
+
+На Windows смена launcher-иконки ограничена ОС (не как на Android adaptive). Документировано как OS-limitation; `AppIconService` остаётся для платформ, где поддерживается.
+
+### 6. Калькулятор — сворачивание (в процессе)
+
+**Запрос:** возможность сворачивать калькулятор в плавающую полоску и разворачивать обратно; кнопки свернуть/закрыть/окно работали некорректно.
+
+**Статус:** window controls поправлены; minimize-to-bar для самого калькулятора — **ещё не смержено** (нужно `_minimized` + floating strip с expand/close). Оставлено в TODO сессии 7.
+
+### 7. Чего НЕ делать
+
+- Не запускать release/build CI без явного запроса пользователя.
+- Не возвращать hardcoded `accentOrange` в UI-хром светлой темы (warnings/anomalies — ок).
+- Не убирать `ModuleHeader` / back button с push-экранов.
+- Не ломать pin / history / blur / scale калькулятора.
+
+---
+
+## Сессия 6 (2026-08-01) — научный калькулятор + фикс анимации темы
 
 Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
 **Не откатывать и не «улучшать» без явной просьбы пользователя.**
@@ -150,7 +238,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 3. Только `MainAxisSize.min`, никогда `MainAxis.min`.
 4. Overlay-тултипы → всегда `IgnorePointer`.
 5. Forecast period change → не full-screen loader.
-6. После правок — обновить **этот** STATUS.md.
+6. После **каждой** правки — обновить **этот** STATUS.md (журнал всегда актуален).
 7. Не ставить ✅ без проверки на билде пользователем.
 8. `flutter analyze` → 0 замечаний.
 9. Нативные папки `windows/` и `android/` — неполные шаблоны.
@@ -162,6 +250,9 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 15. **Перед билдом/релизом** — чеклист analyze + test + ревью.
 16. **Артефакты** в release-app.yml обязательны (сессия 5).
 17. **Калькулятор:** Classic / Scientific (сессия 6).
+18. **Релизы/билды** — только по явному запросу пользователя; мелкие фиксы накапливаем (сессия 7).
+19. **Акценты UI** на светлой теме — `AppTheme.accent` (голубой), не hardcoded orange (кроме warnings).
+20. **ModuleHeader** — стандарт шапки для push-экранов с back.
 
 ---
 
@@ -171,9 +262,12 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 |-----|------|
 | Тема + AnimatedTheme | `lib/app.dart`, `lib/core/theme/app_theme.dart` |
 | Home + theme rebuild | `lib/features/home/home_screen.dart` |
+| ModuleHeader (back) | `lib/core/widgets/module_header.dart` |
+| Window controls (Win) | `lib/core/widgets/window_controls.dart` |
 | Подпись Android | `android/app/build.gradle` |
 | CI релиза + artifacts | `.github/workflows/release-app.yml` |
 | Калькулятор | `lib/features/calculator/calculator_screen.dart` |
+| Forecast charts | `lib/features/treasury/forecast_chart_screen.dart` |
 | Часы | `lib/core/widgets/wesi_clock.dart` |
 | Changelog обновления | `lib/core/widgets/app_update_card.dart` |
 
@@ -194,3 +288,11 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 | 17 | `ArticleModel` |
 
 Доп. ключи в `wesios_settings`: `clock_style`, `app_theme`, `update_skipped_version`, и др.
+
+---
+
+## Открытые TODO (сессия 7)
+
+- [ ] Калькулятор: minimize → floating bar (expand / close); дочистить `accentOrange` → `AppTheme.accent` на операторах/пине/истории.
+- [ ] Knowledge: полный rich-editor (Quill toolbar + insert link/table/image/video + wesios://) — body view уже есть.
+- [ ] Релизный билд — **только по запросу** пользователя после накопления фиксов.
