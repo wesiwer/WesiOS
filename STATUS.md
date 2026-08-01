@@ -1,7 +1,7 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-01 (сессия 5 — артефакты в релизном workflow, Grok)  
-**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.5 α · **build:** 21  
+**Обновлено:** 2026-08-01 (сессия 6 — научный калькулятор, Grok)  
+**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.7 α · **build:** 23  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
 Читай этот файл **перед** любыми правками. Не помечай задачу ✅, пока пользователь не подтвердил на билде.
@@ -42,11 +42,11 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 | # | Файл | Пример строки |
 |---|------|---------------|
-| 1 | `lib/core/constants/app_version.dart` | `static const String number = '0.11.5';` |
-| 2 | `lib/core/constants/app_version.dart` | `static const int build = 21;` |
-| 3 | `pubspec.yaml` | `version: 0.11.5+21` |
+| 1 | `lib/core/constants/app_version.dart` | `static const String number = '0.11.7';` |
+| 2 | `lib/core/constants/app_version.dart` | `static const int build = 23;` |
+| 3 | `pubspec.yaml` | `version: 0.11.7+23` |
 | 4 | `README.md` | строка с версией (если есть) |
-| 5 | `STATUS.md` | строка `**UI:** v0.11.5 α` в шапке |
+| 5 | `STATUS.md` | строка `**UI:** v0.11.7 α` в шапке |
 
 ### Алгоритм бампа версии
 
@@ -66,7 +66,51 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 ---
 
+## Сессия 6 (2026-08-01) — научный калькулятор
 
+Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
+**Не откатывать и не «улучшать» без явной просьбы пользователя.**
+
+### 1. Переключатель Classic ↔ Scientific
+
+**Запрос:** улучшить калькулятор — выбор классического (текущий) и научного (как на присланном скрине), чтобы можно было писать обыкновенные дроби и т.д.
+
+**Файл:** `lib/features/calculator/calculator_screen.dart`
+
+| Что | Как |
+|---|---|
+| Режим | `_scientific` bool, переключатель в header (иконка `Icons.science_outlined` / `Icons.calculate_outlined`) |
+| Заголовок | «Wesi Calculator» / «Wesi Scientific» |
+| Размер панели | classic maxW 360 / scientific maxW 420, maxH выше |
+
+### 2. Научная раскладка (по скриншоту)
+
+Кнопки (сверху вниз):
+
+1. `( ) mc m+ m- mr`
+2. `2nd x² x³ xʸ eˣ 10ˣ`
+3. `1/x √ ∛ ʸ√x ln log`
+4. `x! sin/cos/tg e EE` (2nd → asin/acos/atan)
+5. `Rand sh ch th π Rad/Deg`
+6. `⌫ AC % ÷`
+7–10. цифры + `× − + = ± .`
+
+**Функции:**
+- Память: mc / m+ / m- / mr (индикатор «M» на дисплее)
+- 2nd: переключает sin↔asin и т.п.
+- Rad/Deg: режим углов (триг пересчитывается)
+- Факториал (целые ≤ 20), гиперболические (через exp-rewrite), % , EE (*10^), Rand, π, e
+- Обыкновенные дроби: через `/` и скобки (1/2, (3+1)/4 и т.д.)
+
+Классический режим сохранён без изменений по логике.
+
+**Коммит:** `feat(calculator): classic / scientific mode switch + full scientific keypad (Grok)`
+
+### 3. Чего НЕ делать
+
+- Не убирать переключатель режимов.
+- Не ломать историю / pin / blur / scale / keyboard.
+- Не менять визуальный стиль кнопок «под iOS» без запроса — придерживаться AppTheme.
 
 ---
 
@@ -225,8 +269,6 @@ Keystore сгенерирован один раз (RSA 2048, validity 10000 дн
   одноразовую переустановку на release-подпись.
 - Не дублировать логику notes в другом виджете — источник один:
   `AppRelease.notes` → `AppUpdateCard`.
-
----
 
 ---
 
@@ -477,10 +519,11 @@ Python подпроцессом — desktop-специфичный паттер�
 14. **App Icon Mode:** Auto/Dark/Light в настройках. Не удалять dual-иконки Android.
 15. **Перед билдом/релизом** — чеклист выше (`flutter analyze` + `flutter test` + ревью). Запускать workflow только если уверен, что пройдёт. Не «запустить и посмотреть».
 16. **Артефакты в release-app.yml** — `upload-artifact` для WesiOS-Android и WesiOS-Windows обязателен (сессия 5, Grok). Не убирать.
+17. **Калькулятор:** режимы Classic / Scientific, научная раскладка по скрину (сессия 6, Grok). Не убирать переключатель.
 
 ---
 
-## Ключевые файлы (дополнение сессии 4 + 5)
+## Ключевые файлы (дополнение сессий 4–6)
 
 | Что | Путь |
 |-----|------|
@@ -490,6 +533,7 @@ Python подпроцессом — desktop-специфичный паттер�
 | Шапка главной | `lib/features/home/home_screen.dart` |
 | UI обновления + changelog | `lib/core/widgets/app_update_card.dart` |
 | Сервис обновлений | `lib/core/services/app_update_service.dart` |
+| Калькулятор (classic + scientific) | `lib/features/calculator/calculator_screen.dart` |
 
 ## Занятые Hive typeId
 
