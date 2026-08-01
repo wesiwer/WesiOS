@@ -46,7 +46,7 @@ class _QuillBody extends StatefulWidget {
 }
 
 class _QuillBodyState extends State<_QuillBody> {
-  late final QuillController _controller;
+  late QuillController _controller;
 
   @override
   void initState() {
@@ -115,8 +115,8 @@ class _QuillBodyState extends State<_QuillBody> {
   @override
   Widget build(BuildContext context) {
     return QuillEditor.basic(
-      controller: _controller,
-      config: QuillEditorConfig(
+      configurations: QuillEditorConfigurations(
+        controller: _controller,
         padding: EdgeInsets.zero,
         showCursor: false,
         enableInteractiveSelection: true,
@@ -132,7 +132,6 @@ class _QuillBodyState extends State<_QuillBody> {
               fontWeight: FontWeight.w800,
               color: AppTheme.textPrimary,
             ),
-            const HorizontalSpacing(0, 0),
             const VerticalSpacing(10, 6),
             const VerticalSpacing(0, 0),
             null,
@@ -143,7 +142,6 @@ class _QuillBodyState extends State<_QuillBody> {
               fontWeight: FontWeight.w700,
               color: AppTheme.accentOrange,
             ),
-            const HorizontalSpacing(0, 0),
             const VerticalSpacing(10, 4),
             const VerticalSpacing(0, 0),
             null,
@@ -154,7 +152,6 @@ class _QuillBodyState extends State<_QuillBody> {
               fontWeight: FontWeight.w700,
               color: AppTheme.textPrimary,
             ),
-            const HorizontalSpacing(0, 0),
             const VerticalSpacing(8, 4),
             const VerticalSpacing(0, 0),
             null,
@@ -165,7 +162,6 @@ class _QuillBodyState extends State<_QuillBody> {
               height: 1.55,
               color: AppTheme.textSecondary,
             ),
-            const HorizontalSpacing(0, 0),
             const VerticalSpacing(0, 6),
             const VerticalSpacing(0, 0),
             null,
@@ -188,8 +184,15 @@ class _ImageEmbedBuilder extends EmbedBuilder {
   String get key => BlockEmbed.imageType;
 
   @override
-  Widget build(BuildContext context, EmbedContext embedContext) {
-    final url = embedContext.node.value.data;
+  Widget build(
+    BuildContext context,
+    QuillController controller,
+    Embed node,
+    bool readOnly,
+    bool inline,
+    TextStyle textStyle,
+  ) {
+    final url = node.value.data;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: ClipRRect(
@@ -212,8 +215,15 @@ class _VideoEmbedBuilder extends EmbedBuilder {
   String get key => 'video';
 
   @override
-  Widget build(BuildContext context, EmbedContext embedContext) {
-    final data = embedContext.node.value.data;
+  Widget build(
+    BuildContext context,
+    QuillController controller,
+    Embed node,
+    bool readOnly,
+    bool inline,
+    TextStyle textStyle,
+  ) {
+    final data = node.value.data;
     String url = data;
     if (data is String && data.trim().startsWith('{')) {
       try {
@@ -232,8 +242,15 @@ class _TableEmbedBuilder extends EmbedBuilder {
   String get key => 'table';
 
   @override
-  Widget build(BuildContext context, EmbedContext embedContext) {
-    final raw = embedContext.node.value.data.toString();
+  Widget build(
+    BuildContext context,
+    QuillController controller,
+    Embed node,
+    bool readOnly,
+    bool inline,
+    TextStyle textStyle,
+  ) {
+    final raw = node.value.data.toString();
     List<List<String>> rows = [];
     try {
       final decoded = jsonDecode(raw);
