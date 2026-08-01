@@ -1,7 +1,7 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-02 (сессия 8 — QuoteMindCharge, Grok)  
-**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.7 α · **build:** 23  
+**Обновлено:** 2026-08-01 (сессия 9 — adaptive icons + centering, Grok)  
+**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.8 α · **build:** 24  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
 Читай этот файл **перед** любыми правками. Не помечай задачу ✅, пока пользователь не подтвердил на билде.
@@ -69,11 +69,11 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 | # | Файл | Пример строки |
 |---|------|---------------|
-| 1 | `lib/core/constants/app_version.dart` | `static const String number = '0.11.7';` |
-| 2 | `lib/core/constants/app_version.dart` | `static const int build = 23;` |
-| 3 | `pubspec.yaml` | `version: 0.11.7+23` |
+| 1 | `lib/core/constants/app_version.dart` | `static const String number = '0.11.8';` |
+| 2 | `lib/core/constants/app_version.dart` | `static const int build = 24;` |
+| 3 | `pubspec.yaml` | `version: 0.11.8+24` |
 | 4 | `README.md` | строка с версией (если есть) |
-| 5 | `STATUS.md` | строка `**UI:** v0.11.7 α` в шапке |
+| 5 | `STATUS.md` | строка `**UI:** v0.11.8 α` в шапке |
 
 ### Алгоритм бампа версии
 
@@ -90,6 +90,43 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 Если `app_version.dart` и `pubspec.yaml` расходятся — OTA-обновление ломается:
 приложение видит `0.10.1` в коде, а в релизе `0.11.0`, и считает, что релиз
 **старше** установленной версии → отказывается обновляться.
+
+---
+
+## Сессия 9 (2026-08-01) — Adaptive icon + центрирование лого
+
+Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
+**Не откатывать и не «улучшать» без явной просьбы пользователя.**
+
+### 1. Почему иконка была квадратной, а у остальных — закруглённая
+
+**Причина:** в `AndroidManifest.xml` (и activity-alias) стояло `android:icon="@drawable/ic_launcher_dark"` / `roundIcon` на тот же drawable.
+
+`@drawable/ic_launcher_*` — это `layer-list` с `<shape android:shape="rectangle">` (жёсткий квадрат + фон). Система **не применяет** adaptive mask (круг / squircle / rounded square) к обычным drawable — маска работает только для ресурса типа `<adaptive-icon>`.
+
+Adaptive-иконки уже лежали в `mipmap-anydpi-v26/ic_launcher_dark.xml` и `ic_launcher_light.xml`, но на них никто не ссылался.
+
+**Исправление:**
+- `android:icon` и `android:roundIcon` → `@mipmap/ic_launcher_dark` / `@mipmap/ic_launcher_light`
+- На API 26+ launcher берёт adaptive-icon и накладывает маску лаунчера (как у всех остальных приложений).
+- На очень старых API (<26) при отсутствии density-PNG с тем же именем возможен fallback на системную иконку — большинство устройств уже API 26+.
+
+### 2. Лого чуть выше центра
+
+В `ic_wesi_fg_dark.xml` / `ic_wesi_fg_light.xml` группа была `translateY="18"`. Восходящий оранжевый/синий хвост уходит вверх (path y=-6.5), из-за чего визуальный вес смещался вверх.
+
+**Исправление:** `translateY="22"` — сдвиг вниз ~4 dp, лого визуально ближе к центру safe-zone.
+
+### 3. Версия
+
+bump → **0.11.8+24** (patch: icon fix).
+
+Файлы: `app_version.dart`, `pubspec.yaml`, `STATUS.md`.
+
+### 4. Чего НЕ делать
+
+- Не возвращать `@drawable/ic_launcher_*` в icon/roundIcon (снова будет квадрат).
+- Не запускать release без запроса (здесь запрос есть — после фикса).
 
 ---
 
@@ -302,6 +339,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 20. **ModuleHeader** — стандарт шапки для push-экранов с back.
 21. **Home карточки** (`HomeAgenda`, `HomePulse`) — всегда `ValueListenableBuilder` на `ThemeNotifier` (IndexedStack иначе не перекрашивает).
 22. **QuoteMindCharge** — справа от часов на Home; refresh цитаты = +1 к счётчику; салют на 10, секрет на 40 (сессия 8).
+23. **Android launcher icon** — только `@mipmap/ic_launcher_*` (adaptive), не `@drawable` (иначе квадрат) (сессия 9).
 
 ---
 
@@ -321,6 +359,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 | Forecast charts | `lib/features/treasury/forecast_chart_screen.dart` |
 | Часы | `lib/core/widgets/wesi_clock.dart` |
 | Changelog обновления | `lib/core/widgets/app_update_card.dart` |
+| Adaptive icons | `android/app/src/main/res/mipmap-anydpi-v26/`, `drawable/ic_wesi_fg_*.xml`, `AndroidManifest.xml` |
 
 ## Занятые Hive typeId
 
@@ -347,5 +386,6 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 - [x] Калькулятор: minimize → floating bar; accent на операторах.
 - [x] Главная: белый текст «Календарь»/«Задачи» → textSecondary + ThemeNotifier.
 - [x] QuoteMindCharge: виджет + прогресс 10 + салют + секрет 40 (сессия 8).
+- [x] Android adaptive icon (квадрат → скруглённая маска лаунчера) + центрирование лого (сессия 9).
 - [ ] Knowledge: полный rich-editor (Quill toolbar + insert link/table/image/video + wesios://) — body view уже есть.
 - [ ] Релизный билд — **только по запросу** пользователя после накопления фиксов.
