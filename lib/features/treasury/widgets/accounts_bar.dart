@@ -10,10 +10,6 @@ import '../models/transaction_model.dart';
 import '../services/account_service.dart';
 
 /// Полоса счетов над балансом: «Все счета» плюс карточка на каждый счёт.
-///
-/// Тап переключает разрез — весь экран Treasury начинает показывать только
-/// выбранный счёт. Долгий тап (или иконка на карточке) открывает
-/// редактирование.
 class AccountsBar extends StatefulWidget {
   final List<TransactionModel> transactions;
   final String? selectedId;
@@ -46,7 +42,6 @@ class _AccountsBarState extends State<AccountsBar> {
   @override
   void didUpdateWidget(covariant AccountsBar old) {
     super.didUpdateWidget(old);
-    // Операции поменялись — суммы по счетам надо пересчитать.
     if (old.transactions.length != widget.transactions.length) _load();
   }
 
@@ -100,19 +95,17 @@ class _AccountsBarState extends State<AccountsBar> {
                   fontWeight: FontWeight.w700,
                   color: AppTheme.textSecondary),
             ),
-            Spacer(),
+            const Spacer(),
             TextButton.icon(
               onPressed: _createAccount,
               style: TextButton.styleFrom(
-                padding: EdgeInsets.symmetric(horizontal: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 8),
                 minimumSize: Size.zero,
                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               ),
-              icon: Icon(Icons.add, size: 15,
-                  color: AppTheme.accentOrange),
+              icon: Icon(Icons.add, size: 15, color: AppTheme.accent),
               label: Text(_ru ? 'Счёт' : 'Account',
-                  style: TextStyle(
-                      fontSize: 12, color: AppTheme.accentOrange)),
+                  style: TextStyle(fontSize: 12, color: AppTheme.accent)),
             ),
           ],
         ),
@@ -137,7 +130,7 @@ class _AccountsBarState extends State<AccountsBar> {
     final selected = widget.selectedId == null;
     return _card(
       selected: selected,
-      color: AppTheme.accentOrange,
+      color: AppTheme.accent,
       icon: Icons.dashboard_customize_outlined,
       title: _ru ? 'Все счета' : 'All accounts',
       subtitle: '${_summaries.length} ${_ru ? 'шт.' : 'total'}',
@@ -173,14 +166,14 @@ class _AccountsBarState extends State<AccountsBar> {
     VoidCallback? onEdit,
   }) {
     return Padding(
-      padding: EdgeInsets.only(right: 10),
+      padding: const EdgeInsets.only(right: 10),
       child: GestureDetector(
         onTap: onTap,
         onLongPress: onEdit,
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 180),
+          duration: const Duration(milliseconds: 180),
           width: 168,
-          padding: EdgeInsets.all(12),
+          padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
             color: selected
                 ? color.withOpacity(0.15)
@@ -197,7 +190,7 @@ class _AccountsBarState extends State<AccountsBar> {
               Row(
                 children: [
                   Icon(icon, size: 16, color: color),
-                  SizedBox(width: 7),
+                  const SizedBox(width: 7),
                   Expanded(
                     child: Text(
                       title,
@@ -218,7 +211,7 @@ class _AccountsBarState extends State<AccountsBar> {
                     ),
                 ],
               ),
-              Spacer(),
+              const Spacer(),
               Text(
                 CurrencyService.formatExact(amount, decimals: 0),
                 style: TextStyle(
@@ -230,8 +223,7 @@ class _AccountsBarState extends State<AccountsBar> {
                 subtitle,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style:
-                    TextStyle(fontSize: 10, color: AppTheme.textMuted),
+                style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
               ),
             ],
           ),
@@ -274,7 +266,6 @@ class _AccountsBarState extends State<AccountsBar> {
   }
 }
 
-/// Результат редактора счёта.
 class AccountEditResult {
   final String name;
   final AccountKind kind;
@@ -384,15 +375,15 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                     fontWeight: FontWeight.w700,
                     color: AppTheme.textPrimary),
               ),
-              SizedBox(height: 18),
+              const SizedBox(height: 18),
               TextField(
                 controller: _nameCtrl,
                 autofocus: true,
                 style: TextStyle(color: AppTheme.textPrimary),
-                decoration: InputDecoration(
-                    labelText: _ru ? 'Название' : 'Name'),
+                decoration:
+                    InputDecoration(labelText: _ru ? 'Название' : 'Name'),
               ),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               TextField(
                 controller: _openingCtrl,
                 keyboardType: TextInputType.number,
@@ -402,14 +393,13 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                   helperText: _ru
                       ? 'Сколько уже лежало на счёте до первой операции'
                       : 'What was already there before the first operation',
-                  helperStyle: TextStyle(
-                      fontSize: 11, color: AppTheme.textMuted),
+                  helperStyle:
+                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
               ),
-              SizedBox(height: 18),
+              const SizedBox(height: 18),
               Text(_ru ? 'Тип' : 'Kind',
-                  style: TextStyle(
-                      fontSize: 12, color: AppTheme.textMuted)),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -419,16 +409,16 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                   return GestureDetector(
                     onTap: () => setState(() => _kind = k),
                     child: Container(
-                      padding: EdgeInsets.symmetric(
+                      padding: const EdgeInsets.symmetric(
                           horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
                         color: sel
-                            ? AppTheme.accentOrange.withOpacity(0.18)
+                            ? AppTheme.accent.withOpacity(0.18)
                             : AppTheme.background,
                         borderRadius: BorderRadius.circular(9),
                         border: Border.all(
                             color: sel
-                                ? AppTheme.accentOrange.withOpacity(0.6)
+                                ? AppTheme.accent.withOpacity(0.6)
                                 : AppTheme.glassBorder),
                       ),
                       child: Text(
@@ -442,19 +432,16 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                         },
                         style: TextStyle(
                           fontSize: 12,
-                          color: sel
-                              ? AppTheme.accentOrange
-                              : AppTheme.textSecondary,
+                          color: sel ? AppTheme.accent : AppTheme.textSecondary,
                         ),
                       ),
                     ),
                   );
                 }).toList(),
               ),
-              SizedBox(height: 18),
+              const SizedBox(height: 18),
               Text(_ru ? 'Цвет' : 'Colour',
-                  style: TextStyle(
-                      fontSize: 12, color: AppTheme.textMuted)),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Row(
                 children: _colors.map((c) {
@@ -482,8 +469,6 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
               const SizedBox(height: 24),
               Row(
                 children: [
-                  // Основной счёт удалить нельзя: на него ссылаются все
-                  // операции, созданные до появления счетов.
                   if (widget.initial != null && !_isMain)
                     TextButton(
                       onPressed: () => Navigator.pop(
@@ -497,21 +482,20 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                         ),
                       ),
                       child: Text(_ru ? 'Удалить' : 'Delete',
-                          style:
-                              TextStyle(color: AppTheme.accentRed)),
+                          style: TextStyle(color: AppTheme.accentRed)),
                     ),
-                  Spacer(),
+                  const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(WesiLocale.get('cancel'),
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   HoverButton(
                     onTap: _submit,
-                    padding: EdgeInsets.symmetric(
+                    padding: const EdgeInsets.symmetric(
                         horizontal: 24, vertical: 12),
-                    backgroundColor: AppTheme.accentOrange,
+                    backgroundColor: AppTheme.accent,
                     child: Text(WesiLocale.get('save'),
                         style: const TextStyle(
                             color: Colors.white,
