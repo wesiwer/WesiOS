@@ -30,7 +30,7 @@ class SandboxForecastScreen extends StatefulWidget {
 class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
   final SandboxService _service = SandboxService();
 
-  /// Палитра для линий сценариев. Базовый прогноз всегда оранжевый, сценарии
+  /// Палитра для линий сценариев. Базовый прогноз — accent темы, сценарии
   /// разбираются по кругу — цветов достаточно, чтобы шесть штук на графике не
   /// сливались.
   static const List<Color> _palette = [
@@ -168,7 +168,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
               Navigator.pop(context, v.isEmpty ? null : v);
             },
             child: Text(WesiLocale.get('save'),
-                style: TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),
@@ -219,7 +219,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppTheme.accentOrange,
+        backgroundColor: AppTheme.accent,
         onPressed: () => _createPreset(),
         icon: const Icon(Icons.auto_graph, color: Colors.white),
         label: Text(_ru ? 'Свой сценарий' : 'New scenario',
@@ -234,7 +234,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
               child: _loading
                   ? Center(
                       child: CircularProgressIndicator(
-                          color: AppTheme.accentOrange.withOpacity(0.5)))
+                          color: AppTheme.accent.withOpacity(0.5)))
                   : ListView(
                       padding: const EdgeInsets.fromLTRB(24, 8, 24, 96),
                       children: [
@@ -318,12 +318,12 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
               color: sel
-                  ? AppTheme.accentOrange.withOpacity(0.16)
+                  ? AppTheme.accent.withOpacity(0.16)
                   : AppTheme.surface.withOpacity(0.4),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
                   color: sel
-                      ? AppTheme.accentOrange.withOpacity(0.5)
+                      ? AppTheme.accent.withOpacity(0.5)
                       : AppTheme.glassBorder),
             ),
             child: Text(
@@ -331,7 +331,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: sel ? FontWeight.w700 : FontWeight.w400,
-                color: sel ? AppTheme.accentOrange : AppTheme.textSecondary,
+                color: sel ? AppTheme.accent : AppTheme.textSecondary,
               ),
             ),
           ),
@@ -381,7 +381,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     final series = <_Series>[
       _Series(
         label: _ru ? 'Базовый' : 'Baseline',
-        color: AppTheme.accentOrange,
+        color: AppTheme.accent,
         values: _baseline.p50,
         dashed: false,
       ),
@@ -483,7 +483,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                   touchTooltipData: LineTouchTooltipData(
                     tooltipBgColor: AppTheme.surface.withOpacity(0.96),
                     tooltipBorder:
-                        BorderSide(color: AppTheme.accentOrange.withOpacity(0.4)),
+                        BorderSide(color: AppTheme.accent.withOpacity(0.4)),
                     tooltipRoundedRadius: 10,
                     getTooltipItems: (spots) {
                       final day = spots.first.x.toInt();
@@ -577,7 +577,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
         SizedBox(height: 10),
         _verdictCard(
           label: _ru ? 'Базовый прогноз' : 'Baseline',
-          color: AppTheme.accentOrange,
+          color: AppTheme.accent,
           end: baseEnd,
           delta: null,
           runway: _baseline.runwayDays,
@@ -856,7 +856,7 @@ class SandboxForecastButton extends StatelessWidget {
       backgroundColor: AppTheme.surface.withOpacity(0.3),
       child: Row(
         children: [
-          Icon(Icons.auto_graph, color: AppTheme.accentOrange, size: 24),
+          Icon(Icons.auto_graph, color: AppTheme.accent, size: 24),
           SizedBox(width: 12),
           Expanded(
             child: Column(
