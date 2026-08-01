@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- W-mark на светлом фоне: slate + синий акцент. -->
+<!-- W-mark на светлом фоне: slate + синий акцент.
+     translateY=22 (было 18) — визуальный центр чуть ниже. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
@@ -7,7 +8,7 @@
     android:viewportHeight="108">
     <group
         android:translateX="18"
-        android:translateY="18">
+        android:translateY="22">
         <path
             android:pathData="M4.3,14.4 L20.2,57.6 L36,31.7 L51.8,57.6"
             android:strokeWidth="11"
