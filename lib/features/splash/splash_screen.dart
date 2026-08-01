@@ -113,7 +113,7 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: AppTheme.background,
       body: Stack(
         children: [
-          // Яркий оранжевый ambient glow
+          // Ambient glow follows current accent (orange in dark, blue in light)
           AnimatedBuilder(
             animation: _glowAnimation,
             builder: (context, child) {
@@ -123,11 +123,11 @@ class _SplashScreenState extends State<SplashScreen>
                     center: Alignment.center,
                     radius: 1.1,
                     colors: [
-                      AppTheme.accentOrange
+                      AppTheme.accent
                           .withOpacity(0.45 * _glowAnimation.value),
-                      AppTheme.accentOrange
+                      AppTheme.accent
                           .withOpacity(0.18 * _glowAnimation.value),
-                      AppTheme.accentOrange
+                      AppTheme.accent
                           .withOpacity(0.05 * _glowAnimation.value),
                       Colors.transparent,
                     ],
@@ -182,13 +182,13 @@ class _SplashScreenState extends State<SplashScreen>
                               value: _fadeController.value,
                               backgroundColor: AppTheme.surfaceLight,
                               valueColor: AlwaysStoppedAnimation<Color>(
-                                  AppTheme.accentOrange),
+                                  AppTheme.accent),
                               minHeight: 3,
                             ),
                           ),
                         ),
                         const SizedBox(height: 28),
-                        // Кольца НИЖЕ шкалы: толще, меньше, без центральной W
+                        // Rings below the bar
                         SizedBox(
                           width: 110,
                           height: 110,
@@ -202,7 +202,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   painter: RingPainter(
                                     radius: 48,
                                     strokeWidth: 5,
-                                    color: AppTheme.accentOrange,
+                                    color: AppTheme.accent,
                                     segments: 3,
                                     gapAngle: 0.35,
                                   ),
@@ -215,7 +215,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   painter: RingPainter(
                                     radius: 34,
                                     strokeWidth: 4.5,
-                                    color: AppTheme.accentOrange.withOpacity(0.85),
+                                    color: AppTheme.accent.withOpacity(0.85),
                                     segments: 4,
                                     gapAngle: 0.28,
                                   ),
@@ -228,7 +228,7 @@ class _SplashScreenState extends State<SplashScreen>
                                   painter: RingPainter(
                                     radius: 20,
                                     strokeWidth: 4,
-                                    color: AppTheme.accentOrange.withOpacity(0.7),
+                                    color: AppTheme.accent.withOpacity(0.7),
                                     segments: 2,
                                     gapAngle: 0.45,
                                   ),

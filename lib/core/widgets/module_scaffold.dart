@@ -34,7 +34,7 @@ extension ModuleStageX on ModuleStage {
 
   Color get color => switch (this) {
         ModuleStage.planned => AppTheme.textMuted,
-        ModuleStage.partial => AppTheme.accentOrange,
+        ModuleStage.partial => AppTheme.accent,
         ModuleStage.ready => AppTheme.accentGreen,
       };
 
@@ -98,11 +98,11 @@ class ModuleScaffold extends StatelessWidget {
                 height: 46,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
-                  color: AppTheme.accentOrange.withOpacity(0.12),
+                  color: AppTheme.accent.withOpacity(0.12),
                   border: Border.all(
-                      color: AppTheme.accentOrange.withOpacity(0.3)),
+                      color: AppTheme.accent.withOpacity(0.3)),
                 ),
-                child: Icon(icon, color: AppTheme.accentOrange, size: 22),
+                child: Icon(icon, color: AppTheme.accent, size: 22),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -191,7 +191,7 @@ class ModuleScaffold extends StatelessWidget {
             height: 5,
             decoration: BoxDecoration(
               shape: BoxShape.circle,
-              color: AppTheme.accentOrange.withOpacity(0.7),
+              color: AppTheme.accent.withOpacity(0.7),
             ),
           ),
           SizedBox(width: 12),

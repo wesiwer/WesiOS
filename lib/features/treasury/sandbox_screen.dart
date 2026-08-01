@@ -52,10 +52,6 @@ class _SandboxScreenState extends State<SandboxScreen> {
   }
 
   /// Открывает выбор из ВСЕХ поддерживаемых валют.
-  ///
-  /// Раньше здесь был жёсткий переключатель rub↔usd, из-за чего в песочнице
-  /// были доступны только рубль и доллар, хотя `CurrencyService` знает
-  /// восемь валют.
   Future<void> _toggleCurrency() async {
     final picked = await CurrencyPicker.show(context);
     if (picked == null) return;
@@ -113,8 +109,6 @@ class _SandboxScreenState extends State<SandboxScreen> {
     }
   }
 
-  /// Идентично Operations screen у Treasury: предзаполненный диалог,
-  /// сохранение по тому же id — не delete+add с новым id.
   Future<void> _editTransaction(TransactionModel tx) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
@@ -162,15 +156,9 @@ class _SandboxScreenState extends State<SandboxScreen> {
 
     return Scaffold(
       backgroundColor: AppTheme.background,
-      // SafeArea — иначе на телефоне баннер «РЕЖИМ ПЕСОЧНИЦЫ»
-      // залезал под статус-бар с часами, вырезом камеры и значками связи.
-      // Экран строит Column напрямую, без AppBar, поэтому системные отступы
-      // сам никто не учитывал.
       body: SafeArea(
         child: Column(
           children: [
-            // На десктопе сверху висит кастомный title bar с кнопками окна —
-            // на мобильных его нет, поэтому отступ только для десктопа.
             if (kHasCustomTitleBar) const SizedBox(height: kTitleBarHeight),
             _banner(),
           Expanded(
@@ -190,9 +178,6 @@ class _SandboxScreenState extends State<SandboxScreen> {
                       child: Container(
                         padding: EdgeInsets.symmetric(
                             horizontal: 12, vertical: 6),
-                        // Место под кнопки окна резервируем только там, где
-                        // они есть — на телефоне этот отступ просто съедал
-                        // ширину экрана.
                         margin: EdgeInsets.only(right: kHasCustomTitleBar ? 140 : 0),
                         decoration: BoxDecoration(
                           color: AppTheme.surface.withOpacity(0.5),
@@ -234,9 +219,6 @@ class _SandboxScreenState extends State<SandboxScreen> {
                   ],
                 ),
                 SizedBox(height: 12),
-                // Прогноз песочницы отдельным экраном: там же конструктор
-                // собственных сценариев «Что если?» с автоматическими
-                // графиками. Данные — только песочницы, Treasury не трогает.
                 SandboxForecastButton(),
                 SizedBox(height: 20),
                 Text(
@@ -257,7 +239,6 @@ class _SandboxScreenState extends State<SandboxScreen> {
     );
   }
 
-  /// Баннер БЕЗ слова «Сценарий:» — градиент адаптируется под тему.
   Widget _banner() {
     final parts = <String>[
       if (_currentScenario.isNotEmpty) _currentScenario,
@@ -271,8 +252,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
         gradient: LinearGradient(
           colors: isDark
               ? [
-                  Color(0xFF4D3D00).withOpacity(0.8),
-                  Color(0xFF2D1F00).withOpacity(0.6),
+                  AppTheme.accent.withOpacity(0.22),
+                  AppTheme.accent.withOpacity(0.10),
                 ]
               : [
                   AppTheme.accent.withOpacity(0.18),
@@ -416,7 +397,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
                 _miniStat(
                   WesiLocale.get('anomalies_detected'),
                   '${_anomalies.length}',
-                  AppTheme.accentOrange, // semantic warning color
+                  AppTheme.accent,
                 ),
               ],
             ],

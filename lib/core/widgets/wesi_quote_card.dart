@@ -32,7 +32,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppTheme.accentOrange.withOpacity(0.10),
+            AppTheme.accent.withOpacity(0.10),
             AppTheme.surface.withOpacity(0.35),
           ],
         ),
@@ -43,7 +43,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
           Padding(
             padding: EdgeInsets.only(top: 2),
             child: Icon(Icons.format_quote,
-                size: 18, color: AppTheme.accentOrange.withOpacity(0.8)),
+                size: 18, color: AppTheme.accent.withOpacity(0.8)),
           ),
           const SizedBox(width: 12),
           Expanded(

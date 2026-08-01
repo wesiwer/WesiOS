@@ -171,8 +171,8 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   HoverButton(
                     onTap: _isLoading ? null : _saveAndProceed,
                     padding: EdgeInsets.symmetric(vertical: 16),
-                    backgroundColor: AppTheme.accentOrange,
-                    hoverColor: AppTheme.accentOrange.withOpacity(0.8),
+                    backgroundColor: AppTheme.accent,
+                    hoverColor: AppTheme.accent.withOpacity(0.8),
                     child: Center(
                       child: _isLoading
                         ? SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
@@ -199,10 +199,6 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
   }
 
   /// Предложение сразу закрыть ключи паролем.
-  ///
-  /// Именно здесь это уместнее всего: ключи только что введены и лежат
-  /// открытыми. Не обязательное — пропустить можно, пароль ставится позже
-  /// в профиле.
   Widget _passwordOffer() {
     return Container(
       padding: EdgeInsets.all(16),
@@ -221,7 +217,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               size: 18,
               color: _passwordSet
                   ? AppTheme.accentGreen
-                  : AppTheme.accentOrange),
+                  : AppTheme.accent),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -257,7 +253,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
               if (ok == true && mounted) setState(() => _passwordSet = true);
             },
             child: Text(_passwordSet ? 'Сменить' : 'Задать',
-                style: TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),
@@ -292,7 +288,7 @@ class _FirstRunScreenState extends State<FirstRunScreen> {
                   decoration: BoxDecoration(
                     color: AppTheme.carbonDark.withOpacity(0.95),
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: AppTheme.accentOrange.withOpacity(0.3)),
+                    border: Border.all(color: AppTheme.accent.withOpacity(0.3)),
                   ),
                   child: Padding(
                     padding: EdgeInsets.only(left: 8),
