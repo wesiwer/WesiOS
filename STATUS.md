@@ -1,6 +1,6 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-01 (сессия 9 — adaptive icons + centering, Grok)  
+**Обновлено:** 2026-08-01 (сессия 9 — adaptive icons + quill API fix, Grok)  
 **Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.8 α · **build:** 24  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
@@ -93,7 +93,7 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 ---
 
-## Сессия 9 (2026-08-01) — Adaptive icon + центрирование лого
+## Сессия 9 (2026-08-01) — Adaptive icon + центрирование лого + quill fix
 
 Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
 **Не откатывать и не «улучшать» без явной просьбы пользователя.**
@@ -123,9 +123,19 @@ bump → **0.11.8+24** (patch: icon fix).
 
 Файлы: `app_version.dart`, `pubspec.yaml`, `STATUS.md`.
 
-### 4. Чего НЕ делать
+### 4. Release failed (красный) — flutter_quill API
+
+**Причина:** `lib/features/knowledge/widgets/article_body_view.dart` был написан под API flutter_quill ≥10/11 (`EmbedContext`, `HorizontalSpacing`, `QuillEditor.basic(controller:, config:)`), а в pubspec зафиксирован **9.6.0**.
+
+**Исправление (коммит после red run):**
+- `EmbedBuilder.build` → старая сигнатура `(context, controller, node, readOnly, inline, textStyle)`
+- `DefaultTextBlockStyle` → 4 аргумента (style, verticalSpacing, lineSpacing, decoration); убран `HorizontalSpacing`
+- `QuillEditor.basic(configurations: QuillEditorConfigurations(controller: …))` вместо `controller:` + `config:`
+
+### 5. Чего НЕ делать
 
 - Не возвращать `@drawable/ic_launcher_*` в icon/roundIcon (снова будет квадрат).
+- Не писать под новый API Quill без поднятия версии пакета.
 - Не запускать release без запроса (здесь запрос есть — после фикса).
 
 ---
@@ -340,6 +350,7 @@ bump → **0.11.8+24** (patch: icon fix).
 21. **Home карточки** (`HomeAgenda`, `HomePulse`) — всегда `ValueListenableBuilder` на `ThemeNotifier` (IndexedStack иначе не перекрашивает).
 22. **QuoteMindCharge** — справа от часов на Home; refresh цитаты = +1 к счётчику; салют на 10, секрет на 40 (сессия 8).
 23. **Android launcher icon** — только `@mipmap/ic_launcher_*` (adaptive), не `@drawable` (иначе квадрат) (сессия 9).
+24. **flutter_quill 9.6.0** — старый API EmbedBuilder / DefaultTextBlockStyle / QuillEditorConfigurations; не использовать EmbedContext / HorizontalSpacing / config: без апгрейда пакета.
 
 ---
 
@@ -360,6 +371,7 @@ bump → **0.11.8+24** (patch: icon fix).
 | Часы | `lib/core/widgets/wesi_clock.dart` |
 | Changelog обновления | `lib/core/widgets/app_update_card.dart` |
 | Adaptive icons | `android/app/src/main/res/mipmap-anydpi-v26/`, `drawable/ic_wesi_fg_*.xml`, `AndroidManifest.xml` |
+| Article body (Quill) | `lib/features/knowledge/widgets/article_body_view.dart` |
 
 ## Занятые Hive typeId
 
@@ -387,5 +399,6 @@ bump → **0.11.8+24** (patch: icon fix).
 - [x] Главная: белый текст «Календарь»/«Задачи» → textSecondary + ThemeNotifier.
 - [x] QuoteMindCharge: виджет + прогресс 10 + салют + секрет 40 (сессия 8).
 - [x] Android adaptive icon (квадрат → скруглённая маска лаунчера) + центрирование лого (сессия 9).
+- [x] ArticleBodyView — совместимость с flutter_quill 9.6.0 (сессия 9 follow-up).
 - [ ] Knowledge: полный rich-editor (Quill toolbar + insert link/table/image/video + wesios://) — body view уже есть.
 - [ ] Релизный билд — **только по запросу** пользователя после накопления фиксов.
