@@ -95,14 +95,12 @@ class ArticleModel {
     if (plain.trimLeft().startsWith('[')) {
       try {
         final buf = StringBuffer();
-        // Лёгкий разбор без полного jsonDecode-цикла по ops — достаточно
-        // для превью: все "insert":"..." текстовые куски.
         final re = RegExp(r'"insert"\s*:\s*"((?:\\.|[^"\\])*)"');
         for (final m in re.allMatches(plain)) {
-          buf.write(m.group(1)!\
+          final chunk = m.group(1)!;
+          buf.write(chunk
               .replaceAll(r'\n', ' ')
-              .replaceAll(r'\"', '"')
-              .replaceAll(r'\\', '\\'));
+              .replaceAll(r'\"', '"'));
         }
         plain = buf.toString();
       } catch (_) {}
