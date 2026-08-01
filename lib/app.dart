@@ -32,31 +32,36 @@ class WesiOSApp extends StatelessWidget {
       DeviceOrientation.landscapeRight,
     ]);
 
-    // Тема живёт в ThemeNotifier: один ValueListenableBuilder перестраивает
-    // MaterialApp и всё дерево, когда пользователь переключает dark/light.
-    // AnimatedTheme снаружи MaterialApp делает плавный переход цветов.
+    // Тема живёт в ThemeNotifier. ValueListenableBuilder перестраивает
+    // MaterialApp при смене dark/light.
+    //
+    // AnimatedTheme ОБЯЗАН быть ВНУТРИ MaterialApp.builder — иначе
+    // MaterialApp вставляет свой Theme(data: theme) поверх и мгновенно
+    // перекрывает интерполяцию. Тогда экран «прыгает» цветом только
+    // после setState (смена вкладки), а не плавно.
     return ValueListenableBuilder<AppThemeMode>(
       valueListenable: ThemeNotifier.instance,
       builder: (context, mode, _) {
-        return AnimatedTheme(
-          data: AppTheme.themeData,
-          duration: const Duration(milliseconds: 600),
-          curve: Curves.easeInOutCubic,
-          child: MaterialApp(
-            title: 'WesiOS',
-            debugShowCheckedModeBanner: false,
-            theme: AppTheme.themeData,
-            localizationsDelegates: const [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            supportedLocales: const [Locale('ru'), Locale('en')],
-            locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
-            onGenerateRoute: AppRouter.onGenerateRoute,
-            home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
-            builder: (context, child) {
-              return Stack(
+        final theme = AppTheme.themeData;
+        return MaterialApp(
+          title: 'WesiOS',
+          debugShowCheckedModeBanner: false,
+          theme: theme,
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          supportedLocales: const [Locale('ru'), Locale('en')],
+          locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
+          onGenerateRoute: AppRouter.onGenerateRoute,
+          home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
+          builder: (context, child) {
+            return AnimatedTheme(
+              data: theme,
+              duration: const Duration(milliseconds: 600),
+              curve: Curves.easeInOutCubic,
+              child: Stack(
                 children: [
                   if (child != null)
                     ValueListenableBuilder<bool>(
@@ -91,9 +96,9 @@ class WesiOSApp extends StatelessWidget {
                     ),
                   ),
                 ],
-              );
-            },
-          ),
+              ),
+            );
+          },
         );
       },
     );
