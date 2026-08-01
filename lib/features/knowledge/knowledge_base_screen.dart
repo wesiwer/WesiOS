@@ -498,7 +498,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('•', style: TextStyle(color: AppTheme.accentOrange)),
+              Text('•', style: TextStyle(color: AppTheme.accentOrange)),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(_stripMarks(line.substring(2)),
