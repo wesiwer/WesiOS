@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- W-mark на тёмном фоне: белые штрихи + оранжевый восходящий хвост.
-     Геометрия совпадает с _WesiMarkPainter в Flutter. -->
+     Геометрия совпадает с _WesiMarkPainter в Flutter.
+     translateY=22 (было 18) — визуальный центр чуть ниже, лого не «висит» сверху. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Safe zone ~66dp по центру adaptive icon -->
+    <!-- Safe zone ~66–72dp по центру adaptive icon -->
     <group
         android:translateX="18"
-        android:translateY="18">
+        android:translateY="22">
         <!-- Основная ломаная W (белая), толщина ≈ 11 -->
         <path
             android:pathData="M4.3,14.4 L20.2,57.6 L36,31.7 L51.8,57.6"
