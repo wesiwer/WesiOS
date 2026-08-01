@@ -156,7 +156,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                     .toList(),
               ),
             ),
-            const Divider(height: 1, color: AppTheme.glassBorder),
+            Divider(height: 1, color: AppTheme.glassBorder),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
               child: Row(
