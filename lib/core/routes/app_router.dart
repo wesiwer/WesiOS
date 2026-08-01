@@ -29,45 +29,45 @@ class AppRouter {
       case '/':
         return MaterialPageRoute(builder: (_) => const SplashScreen());
       case '/welcome':
-        return _slideUpRoute(const WelcomeScreen());
+        return _slideUpRoute(WelcomeScreen());
       case '/login':
-        return _slideUpRoute(const LoginScreen());
+        return _slideUpRoute(LoginScreen());
       case '/home':
-        return _fadeRoute(const HomeScreen());
+        return _fadeRoute(HomeScreen());
       case '/treasury':
-        return _slideUpRoute(const TreasuryScreen());
+        return _slideUpRoute(TreasuryScreen());
       case '/treasury/forecast':
-        return _slideUpRoute(const TreasuryForecastScreen());
+        return _slideUpRoute(TreasuryForecastScreen());
       case '/treasury/dashboard':
-        return _slideUpRoute(const TreasuryDashboardScreen());
+        return _slideUpRoute(TreasuryDashboardScreen());
       case '/treasury/sandbox':
-        return _slideUpRoute(const SandboxScreen());
+        return _slideUpRoute(SandboxScreen());
       case '/treasury/operations':
-        return _slideUpRoute(const OperationsScreen());
+        return _slideUpRoute(OperationsScreen());
       case '/tasks':
-        return _slideUpRoute(const TasksScreen());
+        return _slideUpRoute(TasksScreen());
       case '/roadmap':
-        return _slideUpRoute(const RoadmapScreen());
+        return _slideUpRoute(RoadmapScreen());
       case '/analytics':
-        return _slideUpRoute(const AnalyticsScreen());
+        return _slideUpRoute(AnalyticsScreen());
       case '/knowledge':
-        return _slideUpRoute(const KnowledgeBaseScreen());
+        return _slideUpRoute(KnowledgeBaseScreen());
       case '/ai':
-        return _slideUpRoute(const AiAssistantScreen());
+        return _slideUpRoute(AiAssistantScreen());
       case '/shield':
-        return _slideUpRoute(const ShieldScreen());
+        return _slideUpRoute(ShieldScreen());
       case '/keys':
-        return _slideUpRoute(const KeysScreen());
+        return _slideUpRoute(KeysScreen());
       case '/settings':
-        return _slideUpRoute(const SettingsScreen());
+        return _slideUpRoute(SettingsScreen());
       case '/profile':
-        return _slideUpRoute(const ProfileScreen());
+        return _slideUpRoute(ProfileScreen());
       case '/calculator':
         // Калькулятор сам рисует backdrop — без BackdropFilter в роутере
         return PageRouteBuilder(
           opaque: false,
           barrierDismissible: true,
-          pageBuilder: (_, __, ___) => const CalculatorScreen(),
+          pageBuilder: (_, __, ___) => CalculatorScreen(),
           transitionsBuilder: (_, anim, __, child) {
             return FadeTransition(
               opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
@@ -77,13 +77,13 @@ class AppRouter {
           transitionDuration: const Duration(milliseconds: 220),
         );
       case '/audio':
-        return _slideUpRoute(const AudioVaultScreen());
+        return _slideUpRoute(AudioVaultScreen());
       case '/crm':
-        return _slideUpRoute(const CrmScreen());
+        return _slideUpRoute(CrmScreen());
       case '/calendar':
-        return _slideUpRoute(const CalendarScreen());
+        return _slideUpRoute(CalendarScreen());
       case '/founder':
-        return _fadeRoute(const FounderStoryScreen());
+        return _fadeRoute(FounderStoryScreen());
       default:
         return MaterialPageRoute(
           builder: (_) => Scaffold(
