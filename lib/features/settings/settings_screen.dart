@@ -8,12 +8,12 @@ import '../tasks/services/task_service.dart';
 import '../treasury/services/treasury_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
+import '../../core/widgets/module_header.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../widgets/glass_card.dart';
 import 'widgets/forecast_engines_section.dart';
 import 'widgets/github_auth_section.dart';
 import '../../core/widgets/app_update_card.dart';
-import '../../core/widgets/wesi_wordmark.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -35,7 +35,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           body: ListView(
             padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 16),
             children: [
-              WesiTitle(WesiLocale.get('settings')),
+              ModuleHeader(title: WesiLocale.get('settings')),
               const SizedBox(height: 24),
               _section(WesiLocale.get('appearance')),
               ValueListenableBuilder<AppThemeMode>(
@@ -81,9 +81,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         : (ru
                             ? 'Смена иконки доступна на Android'
                             : 'Icon change is available on Android'),
-                    onTap: AppIconService.isSupported
-                        ? _showIconPicker
-                        : null,
+                    onTap: AppIconService.isSupported ? _showIconPicker : null,
                     trailing: AppIconService.isSupported
                         ? Icon(Icons.arrow_forward_ios,
                             size: 14, color: AppTheme.textMuted)
@@ -145,7 +143,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const SizedBox(height: 8),
               _section(WesiLocale.get('engine_settings_section')),
               ForecastEnginesSection(),
-              SizedBox(height: 24),
+              const SizedBox(height: 24),
               _section(WesiLocale.get('about_app')),
               GlassCard(
                 child: Column(
@@ -158,7 +156,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         color: AppTheme.textPrimary,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
                     Text(
                       WesiLocale.get('business_os'),
                       style: TextStyle(
@@ -167,10 +165,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         letterSpacing: 1,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 4),
+                      padding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                       decoration: BoxDecoration(
                         color: AppTheme.accent.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(20),
@@ -184,11 +182,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                       ),
                     ),
-                    SizedBox(height: 12),
+                    const SizedBox(height: 12),
                     Text(
                       WesiLocale.get('created_by'),
-                      style: TextStyle(
-                          fontSize: 13, color: AppTheme.textMuted),
+                      style:
+                          TextStyle(fontSize: 13, color: AppTheme.textMuted),
                     ),
                     TextButton(
                       onPressed: () =>
@@ -234,7 +232,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _section(String title) {
     return Padding(
-      padding: EdgeInsets.only(left: 8, bottom: 8),
+      padding: const EdgeInsets.only(left: 8, bottom: 8),
       child: Text(
         title.toUpperCase(),
         style: TextStyle(
@@ -284,7 +282,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       subtitle: Text(subtitle,
           style: TextStyle(color: AppTheme.textMuted, fontSize: 13)),
       trailing: Container(
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
         decoration: BoxDecoration(
           color: AppTheme.surface,
           borderRadius: BorderRadius.circular(7),
@@ -350,7 +348,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               return Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  SizedBox(height: 12),
+                  const SizedBox(height: 12),
                   Text(
                     ru ? 'Иконка приложения' : 'App icon',
                     style: TextStyle(
@@ -359,16 +357,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: AppTheme.accent,
                     ),
                   ),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: Text(
                       ru
                           ? 'Тёмная — чёрный фон и белый знак. Светлая — белый фон и серо-синий знак.'
                           : 'Dark — black background, white mark. Light — white background, slate-blue mark.',
                       textAlign: TextAlign.center,
-                      style: TextStyle(
-                          fontSize: 12, color: AppTheme.textMuted),
+                      style:
+                          TextStyle(fontSize: 12, color: AppTheme.textMuted),
                     ),
                   ),
                   option(
@@ -383,7 +381,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     value: AppIconMode.dark,
                     icon: Icons.dark_mode,
                     title: ru ? 'Тёмная' : 'Dark',
-                    subtitle: ru ? 'Всегда чёрный фон' : 'Always black background',
+                    subtitle:
+                        ru ? 'Всегда чёрный фон' : 'Always black background',
                   ),
                   option(
                     value: AppIconMode.light,
@@ -496,7 +495,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               Text(
                 WesiLocale.get('select_language'),
                 style: TextStyle(
@@ -506,7 +505,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               ListTile(
-                leading: Text('🇷🇺', style: TextStyle(fontSize: 24)),
+                leading: const Text('🇷🇺', style: TextStyle(fontSize: 24)),
                 title: Text('Русский',
                     style: TextStyle(color: AppTheme.textPrimary)),
                 trailing: WesiLocale.isRussian
@@ -521,7 +520,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 },
               ),
               ListTile(
-                leading: Text('🇬🇧', style: TextStyle(fontSize: 24)),
+                leading: const Text('🇬🇧', style: TextStyle(fontSize: 24)),
                 title: Text('English',
                     style: TextStyle(color: AppTheme.textPrimary)),
                 trailing: WesiLocale.isEnglish
