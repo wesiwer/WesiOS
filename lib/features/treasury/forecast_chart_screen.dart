@@ -62,12 +62,20 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   final Set<ForecastEngineKind> _loadingEngines = {};
   final Set<ForecastEngineKind> _unavailableEngines = {};
 
-  static Map<ForecastEngineKind, Color> _engineColor = {
-    ForecastEngineKind.wesiHorizon: AppTheme.accentOrange,
-    ForecastEngineKind.prophet: Color(0xFF38BDF8),
-    ForecastEngineKind.sarimax: Color(0xFFC084FC),
-    ForecastEngineKind.combined: Color(0xFF2DD4BF),
-  };
+  /// Цвета движков: Wesi Horizon следует теме (оранжевый dark / голубой light),
+  /// остальные — фиксированная палитра, чтобы линии не сливались.
+  Color _engineColorOf(ForecastEngineKind kind) {
+    switch (kind) {
+      case ForecastEngineKind.wesiHorizon:
+        return AppTheme.accent;
+      case ForecastEngineKind.prophet:
+        return const Color(0xFF38BDF8);
+      case ForecastEngineKind.sarimax:
+        return const Color(0xFFC084FC);
+      case ForecastEngineKind.combined:
+        return const Color(0xFF2DD4BF);
+    }
+  }
 
   /// Фон графика — сплошной цвет, каким контейнер реально рендерится
   /// (surface@0.4 поверх background). Нужен, чтобы «стереть» лишнюю заливку
@@ -534,7 +542,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         final active = _activeEngines.contains(kind);
         final loading = _loadingEngines.contains(kind);
         final unavailable = _unavailableEngines.contains(kind);
-        final color = _engineColor[kind]!;
+        final color = _engineColorOf(kind);
         final label = WesiLocale.isRussian ? kind.nameRu : kind.nameEn;
 
         Widget leading;
@@ -603,7 +611,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       spacing: 14,
       runSpacing: 6,
       children: active.map((kind) {
-        final color = _engineColor[kind]!;
+        final color = _engineColorOf(kind);
         final label = WesiLocale.isRussian ? kind.nameRu : kind.nameEn;
         return Row(
           mainAxisSize: MainAxisSize.min,
@@ -673,7 +681,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: _engineColor[kind]),
+                    color: _engineColorOf(kind)),
               ),
             ),
         ],
@@ -945,7 +953,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     final singleResult =
         singleEngine != null ? _engineCache[singleEngine] : null;
     final singleColor =
-        singleEngine != null ? _engineColor[singleEngine]! : AppTheme.accent;
+        singleEngine != null ? _engineColorOf(singleEngine) : AppTheme.accent;
 
     final allY = <double>[
       for (final d in history) ...[d.p10, d.p50, d.p90],
@@ -1120,7 +1128,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                   LineChartBarData(
                     spots: spotsFor(_engineCache[kind]!.p50),
                     isCurved: true,
-                    color: _engineColor[kind]!,
+                    color: _engineColorOf(kind),
                     barWidth: 2.2,
                     dotData: FlDotData(show: false),
                   ),
