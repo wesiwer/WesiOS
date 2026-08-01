@@ -19,9 +19,8 @@ enum ArticleSection {
 
 /// Статья базы знаний.
 ///
-/// Намеренно простая: заголовок, текст в Markdown-подобном виде, раздел и
-/// теги. Редактор форматирования здесь был бы отдельным продуктом, а
-/// регламент и инструкция читаются и в простом тексте.
+/// [body] — либо Quill Delta JSON (после rich-редактора), либо старый
+/// plain/Markdown текст. Рендерер сам определяет формат.
 @HiveType(typeId: 17)
 class ArticleModel {
   @HiveField(0)
@@ -81,19 +80,40 @@ class ArticleModel {
         section: section ?? this.section,
         tags: tags ?? this.tags,
         createdAt: createdAt,
-        updatedAt: updatedAt ?? DateTime.now(),
+        // Важно: не подставлять DateTime.now() по умолчанию — иначе seed()
+        // при каждом открытии списка менял updatedAt у всех встроенных
+        // статей и сортировка «прыгала».
+        updatedAt: updatedAt ?? this.updatedAt,
         builtIn: builtIn,
         pinned: pinned ?? this.pinned,
       );
 
   /// Первые строки для превью в списке.
   String get excerpt {
-    final plain = body
+    var plain = body;
+    // Quill Delta JSON → вытащить insert-строки.
+    if (plain.trimLeft().startsWith('[')) {
+      try {
+        final buf = StringBuffer();
+        // Лёгкий разбор без полного jsonDecode-цикла по ops — достаточно
+        // для превью: все "insert":"..." текстовые куски.
+        final re = RegExp(r'"insert"\s*:\s*"((?:\\.|[^"\\])*)"');
+        for (final m in re.allMatches(plain)) {
+          buf.write(m.group(1)!\
+              .replaceAll(r'\n', ' ')
+              .replaceAll(r'\"', '"')
+              .replaceAll(r'\\', '\\'));
+        }
+        plain = buf.toString();
+      } catch (_) {}
+    }
+    plain = plain
         .replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '')
         .replaceAll(RegExp(r'[*_`]'), '')
+        .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
-    if (plain.length <= 140) return plain.replaceAll('\n', ' ');
-    return '${plain.substring(0, 140).replaceAll('\n', ' ')}…';
+    if (plain.length <= 140) return plain;
+    return '${plain.substring(0, 140)}…';
   }
 
   bool matches(String query) {
@@ -102,5 +122,11 @@ class ArticleModel {
     return title.toLowerCase().contains(q) ||
         body.toLowerCase().contains(q) ||
         tags.any((t) => t.toLowerCase().contains(q));
+  }
+
+  /// true, если body — Quill Delta JSON.
+  bool get isRichBody {
+    final t = body.trimLeft();
+    return t.startsWith('[') || t.startsWith('{');
   }
 }
