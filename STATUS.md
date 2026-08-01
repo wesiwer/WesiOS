@@ -1,7 +1,7 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
 **Обновлено:** 2026-08-01 (сессия 4 — светлая тема, UI-правки)  
-**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.4 α · **build:** 20  
+**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.5 α · **build:** 21  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
 Читай этот файл **перед** любыми правками. Не помечай задачу ✅, пока пользователь не подтвердил на билде.
@@ -42,11 +42,11 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 
 | # | Файл | Пример строки |
 |---|------|---------------|
-| 1 | `lib/core/constants/app_version.dart` | `static const String number = '0.11.4';` |
-| 2 | `lib/core/constants/app_version.dart` | `static const int build = 20;` |
-| 3 | `pubspec.yaml` | `version: 0.11.4+20` |
+| 1 | `lib/core/constants/app_version.dart` | `static const String number = '0.11.5';` |
+| 2 | `lib/core/constants/app_version.dart` | `static const int build = 21;` |
+| 3 | `pubspec.yaml` | `version: 0.11.5+21` |
 | 4 | `README.md` | строка с версией (если есть) |
-| 5 | `STATUS.md` | строка `**UI:** v0.11.4 α` в шапке |
+| 5 | `STATUS.md` | строка `**UI:** v0.11.5 α` в шапке |
 
 ### Алгоритм бампа версии
 
