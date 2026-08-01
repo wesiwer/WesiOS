@@ -17,6 +17,10 @@ name: Publish WesiOS Release
 #   ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD
 # Без них сборка падает — лучше явный сбой, чем debug-подпись, из-за
 # которой обновление на телефоне отказывается ставиться.
+#
+# Дополнительно каждый job кладёт артефакты в Actions (upload-artifact),
+# чтобы можно было скачать APK/ZIP прямо со страницы прогона, не только
+# из Releases.
 
 on:
   workflow_dispatch:
@@ -83,6 +87,13 @@ jobs:
         run: |
           Compress-Archive -Path build/windows/x64/runner/Release/* `
             -DestinationPath wesios-windows-x64.zip -Force
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WesiOS-Windows
+          path: wesios-windows-x64.zip
+          retention-days: 30
 
       - name: Publish to GitHub Release
         env:
@@ -234,6 +245,13 @@ jobs:
 
       - name: Rename APK
         run: cp build/app/outputs/flutter-apk/app-release.apk wesios-android.apk
+
+      - name: Upload Android artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: WesiOS-Android
+          path: wesios-android.apk
+          retention-days: 30
 
       - name: Publish to GitHub Release
         env:
