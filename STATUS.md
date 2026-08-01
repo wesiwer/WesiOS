@@ -1,6 +1,6 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-01 (сессия 4 — светлая тема, UI-правки)  
+**Обновлено:** 2026-08-01 (сессия 5 — артефакты в релизном workflow, Grok)  
 **Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.5 α · **build:** 21  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
@@ -67,6 +67,42 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 ---
 
 
+
+---
+
+## Сессия 5 (2026-08-01) — артефакты в релизном workflow
+
+Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
+**Не откатывать и не «улучшать» без явной просьбы пользователя.**
+
+### 1. Upload-artifact в `release-app.yml`
+
+**Запрос владельца:** «при создании релизной версии всё равно делались артифакты» — чтобы APK и Windows ZIP были доступны для скачивания со страницы прогона Actions, а не только из постоянного Release `app-latest`.
+
+**Что сделано:**
+
+| Job | Шаг | Что |
+|-----|-----|-----|
+| `build-windows` | `Upload Windows artifact` | `actions/upload-artifact@v4`, name: `WesiOS-Windows`, path: `wesios-windows-x64.zip`, retention-days: 30 |
+| `build-android` | `Upload Android artifact` | `actions/upload-artifact@v4`, name: `WesiOS-Android`, path: `wesios-android.apk`, retention-days: 30 |
+
+Артефакты кладутся **после** сборки и **до/параллельно** с `gh release upload --clobber`.  
+APK в артефакте — **тот же подписанный** файл, что уходит в Release (после шага Decode+verify keystore и `flutter build apk --release`). Windows ZIP — тот же portable-архив.
+
+**Коммит:** изменения в `.github/workflows/release-app.yml` (SHA около `3de37d90…` / последующие).  
+**Прогон:** `workflow_dispatch` run #24 — https://github.com/wesiwer/WesiOS/actions/runs/30718231331
+
+**Важно для следующих AI:**
+
+- Не убирать `upload-artifact` «чтобы workflow был короче» — владелец явно попросил.
+- Артефакты живут 30 дней на странице run; Release `app-latest` — постоянный источник для OTA.
+- Подпись APK в артефакте идентична релизу (один и тот же путь после keystore decode).
+
+### 2. Чего НЕ делать
+
+- Не возвращать только-Release без artifacts.
+- Не менять retention-days без запроса.
+- Не дублировать keystore-логику — артефакт берёт уже готовый подписанный APK.
 
 ---
 
@@ -440,15 +476,16 @@ Python подпроцессом — desktop-специфичный паттер�
 13. **Тема:** `AppTheme` цвета — геттеры (не `const`). `const TextStyle(color: AppTheme.xxx)` сломает компиляцию. Используй `TextStyle(...)` без `const`.
 14. **App Icon Mode:** Auto/Dark/Light в настройках. Не удалять dual-иконки Android.
 15. **Перед билдом/релизом** — чеклист выше (`flutter analyze` + `flutter test` + ревью). Запускать workflow только если уверен, что пройдёт. Не «запустить и посмотреть».
+16. **Артефакты в release-app.yml** — `upload-artifact` для WesiOS-Android и WesiOS-Windows обязателен (сессия 5, Grok). Не убирать.
 
 ---
 
-## Ключевые файлы (дополнение сессии 4)
+## Ключевые файлы (дополнение сессии 4 + 5)
 
 | Что | Путь |
 |-----|------|
 | Подпись Android | `android/app/build.gradle` |
-| CI релиза + keystore | `.github/workflows/release-app.yml` |
+| CI релиза + keystore + artifacts | `.github/workflows/release-app.yml` |
 | Часы (digital + analog) | `lib/core/widgets/wesi_clock.dart` |
 | Шапка главной | `lib/features/home/home_screen.dart` |
 | UI обновления + changelog | `lib/core/widgets/app_update_card.dart` |
