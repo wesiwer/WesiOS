@@ -48,36 +48,41 @@ class _HomePulseState extends State<HomePulse> {
 
   @override
   Widget build(BuildContext context) {
-    final s = _snapshot;
-    // Пока данных нет — не место для спиннера: пустая карточка на главной
-    // мигала бы при каждом возврате на вкладку.
-    if (s == null || s.isEmpty) return const SizedBox.shrink();
+    return ValueListenableBuilder<AppThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (context, _, __) {
+        final s = _snapshot;
+        // Пока данных нет — не место для спиннера: пустая карточка на главной
+        // мигала бы при каждом возврате на вкладку.
+        if (s == null || s.isEmpty) return const SizedBox.shrink();
 
-    return LayoutBuilder(
-      builder: (context, c) {
-        final columns = c.maxWidth >= 560 ? 3 : 1;
-        const gap = 12.0;
-        final width = (c.maxWidth - gap * (columns - 1)) / columns;
+        return LayoutBuilder(
+          builder: (context, c) {
+            final columns = c.maxWidth >= 560 ? 3 : 1;
+            const gap = 12.0;
+            final width = (c.maxWidth - gap * (columns - 1)) / columns;
 
-        final cards = <Widget>[
-          _kpiCard(
-            title: _ru ? 'Доход за 30 дней' : 'Income, 30 days',
-            kpi: s.income,
-            positiveIsGood: true,
-          ),
-          _kpiCard(
-            title: _ru ? 'Расход за 30 дней' : 'Spending, 30 days',
-            kpi: s.expense,
-            positiveIsGood: false,
-          ),
-          _runwayCard(s),
-        ];
+            final cards = <Widget>[
+              _kpiCard(
+                title: _ru ? 'Доход за 30 дней' : 'Income, 30 days',
+                kpi: s.income,
+                positiveIsGood: true,
+              ),
+              _kpiCard(
+                title: _ru ? 'Расход за 30 дней' : 'Spending, 30 days',
+                kpi: s.expense,
+                positiveIsGood: false,
+              ),
+              _runwayCard(s),
+            ];
 
-        return Wrap(
-          spacing: gap,
-          runSpacing: gap,
-          children:
-              cards.map((w) => SizedBox(width: width, child: w)).toList(),
+            return Wrap(
+              spacing: gap,
+              runSpacing: gap,
+              children:
+                  cards.map((w) => SizedBox(width: width, child: w)).toList(),
+            );
+          },
         );
       },
     );
@@ -147,9 +152,10 @@ class _HomePulseState extends State<HomePulse> {
 
   Widget _runwayCard(AnalyticsSnapshot s) {
     final days = s.runwayDays;
+    // ≤30 дней — красный (риск); иначе theme accent (не hardcoded orange).
     final color = days == null
         ? AppTheme.accentGreen
-        : (days <= 30 ? AppTheme.accentRed : AppTheme.accentOrange);
+        : (days <= 30 ? AppTheme.accentRed : AppTheme.accent);
 
     return _shell(
       child: Column(
