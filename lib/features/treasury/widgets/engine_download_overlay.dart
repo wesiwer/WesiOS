@@ -139,7 +139,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
               value: p.fraction,
               minHeight: 4,
               backgroundColor: AppTheme.surfaceLight,
-              valueColor: const AlwaysStoppedAnimation(AppTheme.accentOrange),
+              valueColor: AlwaysStoppedAnimation(AppTheme.accentOrange),
             ),
           ),
           if (p.stage == InstallStage.downloading) ...[
