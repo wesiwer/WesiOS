@@ -10,11 +10,11 @@ import '../../treasury/services/treasury_service.dart';
 import '../services/alert_service.dart';
 
 /// Колокольчик на главной: сколько сейчас требует внимания.
-///
-/// Считает по тем же данным, что и панель, но не держит их: иначе счётчик и
-/// содержимое расходились бы после любой правки в другой вкладке.
 class AlertsBell extends StatefulWidget {
-  const AlertsBell({super.key});
+  /// Размер иконки. По умолчанию 20, на главной делаем крупнее.
+  final double size;
+
+  const AlertsBell({super.key, this.size = 20});
 
   @override
   State<AlertsBell> createState() => _AlertsBellState();
@@ -27,8 +27,6 @@ class _AlertsBellState extends State<AlertsBell> {
   void initState() {
     super.initState();
     _load();
-    // Вкладка живёт в IndexedStack и не пересоздаётся: без подписок счётчик
-    // застыл бы на значении первого открытия.
     TreasuryService.revision.addListener(_load);
     TaskService.revision.addListener(_load);
     ShieldService.revision.addListener(_load);
@@ -64,7 +62,7 @@ class _AlertsBellState extends State<AlertsBell> {
           _load();
         },
         child: Padding(
-          padding: EdgeInsets.all(6),
+          padding: EdgeInsets.all(8),
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -72,7 +70,7 @@ class _AlertsBellState extends State<AlertsBell> {
                 count == 0
                     ? Icons.notifications_outlined
                     : Icons.notifications_active_outlined,
-                size: 20,
+                size: widget.size,
                 color: count == 0 ? AppTheme.textMuted : AppTheme.textPrimary,
               ),
               if (count > 0)
@@ -86,7 +84,7 @@ class _AlertsBellState extends State<AlertsBell> {
                     decoration: BoxDecoration(
                       color: urgent > 0
                           ? AppTheme.accentRed
-                          : AppTheme.accentOrange,
+                          : AppTheme.accent,
                       borderRadius: BorderRadius.circular(7),
                     ),
                     child: Text(
@@ -113,7 +111,6 @@ class AlertsSheet extends StatelessWidget {
 
   const AlertsSheet({super.key, required this.alerts});
 
-  /// Собирает уведомления из всех источников.
   static Future<List<Alert>> collect() async {
     try {
       final service = TreasuryService();
@@ -131,7 +128,6 @@ class AlertsSheet extends StatelessWidget {
         updateVersion: release?.version,
       );
     } catch (_) {
-      // Колокольчик — вспомогательная вещь: его отказ не должен ронять главную.
       return const [];
     }
   }
@@ -144,7 +140,7 @@ class AlertsSheet extends StatelessWidget {
 
   Color _color(AlertLevel level) => switch (level) {
         AlertLevel.danger => AppTheme.accentRed,
-        AlertLevel.warning => AppTheme.accentOrange,
+        AlertLevel.warning => AppTheme.accent,
         AlertLevel.info => AppTheme.textSecondary,
       };
 
