@@ -8,6 +8,7 @@ import '../../core/widgets/window_controls.dart';
 import 'models/article_model.dart';
 import 'services/knowledge_service.dart';
 import 'widgets/article_body_view.dart';
+import 'screens/article_editor_screen.dart';
 
 /// База знаний. Jitter fixed in KnowledgeService.seed (idempotent + preserve updatedAt).
 class KnowledgeBaseScreen extends StatefulWidget {
@@ -218,10 +219,8 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   }
 
   Future<void> _create() async {
-    final result = await ArticleEditorDialog.show(context);
-    if (result == null) return;
-    await KnowledgeService.create(title: result.title, body: result.body, section: result.section, tags: result.tags);
-    await _load();
+    final result = await ArticleEditorScreen.open(context);
+    if (result != null) await _load();
   }
 }
 
@@ -237,11 +236,11 @@ class _ArticleScreenState extends State<ArticleScreen> {
   bool get _ru => WesiLocale.isRussian;
 
   Future<void> _edit() async {
-    final result = await ArticleEditorDialog.show(context, initial: _article);
-    if (result == null) return;
-    final updated = _article.copyWith(title: result.title, body: result.body, section: result.section, tags: result.tags, updatedAt: DateTime.now());
-    await KnowledgeService.save(updated);
-    if (mounted) setState(() => _article = updated);
+    final result = await ArticleEditorScreen.open(context, initial: _article);
+    if (result != null) {
+      setState(() => _article = result);
+      await _load();
+    }
   }
 
   Future<void> _delete() async {
@@ -304,116 +303,6 @@ class _ArticleScreenState extends State<ArticleScreen> {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-// Temporary simple editor until full Quill one is committed in next step.
-// Full rich editor code is ready in local /tmp/article_editor.dart
-class ArticleEditResult {
-  final String title;
-  final String body;
-  final ArticleSection section;
-  final List<String> tags;
-  const ArticleEditResult({required this.title, required this.body, required this.section, required this.tags});
-}
-
-class ArticleEditorDialog extends StatefulWidget {
-  final ArticleModel? initial;
-  const ArticleEditorDialog({super.key, this.initial});
-  static Future<ArticleEditResult?> show(BuildContext context, {ArticleModel? initial}) {
-    return showDialog<ArticleEditResult>(context: context, builder: (_) => ArticleEditorDialog(initial: initial));
-  }
-  @override
-  State<ArticleEditorDialog> createState() => _ArticleEditorDialogState();
-}
-
-class _ArticleEditorDialogState extends State<ArticleEditorDialog> {
-  final _titleCtrl = TextEditingController();
-  final _bodyCtrl = TextEditingController();
-  final _tagsCtrl = TextEditingController();
-  late ArticleSection _section;
-  bool get _ru => WesiLocale.isRussian;
-
-  @override
-  void initState() {
-    super.initState();
-    final a = widget.initial;
-    _section = a?.section ?? ArticleSection.playbook;
-    if (a != null) {
-      _titleCtrl.text = a.title;
-      _bodyCtrl.text = a.body;
-      _tagsCtrl.text = a.tags.join(', ');
-    }
-  }
-
-  @override
-  void dispose() {
-    _titleCtrl.dispose();
-    _bodyCtrl.dispose();
-    _tagsCtrl.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final title = _titleCtrl.text.trim();
-    if (title.isEmpty) return;
-    Navigator.pop(context, ArticleEditResult(title: title, body: _bodyCtrl.text, section: _section, tags: _tagsCtrl.text.split(',').map((t) => t.trim()).where((t) => t.isNotEmpty).toList()));
-  }
-
-  String _label(ArticleSection s) => switch (s) {
-        ArticleSection.about => _ru ? 'О программе' : 'About',
-        ArticleSection.playbook => _ru ? 'Регламенты' : 'Playbooks',
-        ArticleSection.guide => _ru ? 'Инструкции' : 'Guides',
-        ArticleSection.finance => _ru ? 'Финансы' : 'Finance',
-        ArticleSection.personal => _ru ? 'Личное' : 'Personal',
-      };
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: AppTheme.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      insetPadding: const EdgeInsets.fromLTRB(30, kTitleBarHeight + 24, 30, 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 640),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(widget.initial == null ? (_ru ? 'Новая статья' : 'New article') : (_ru ? 'Статья' : 'Article'), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: AppTheme.textPrimary)),
-              SizedBox(height: 18),
-              TextField(controller: _titleCtrl, autofocus: true, style: TextStyle(color: AppTheme.textPrimary), decoration: InputDecoration(labelText: _ru ? 'Заголовок' : 'Title')),
-              SizedBox(height: 12),
-              TextField(controller: _bodyCtrl, maxLines: 10, minLines: 6, style: TextStyle(fontSize: 13, color: AppTheme.textPrimary), decoration: InputDecoration(labelText: _ru ? 'Текст' : 'Body', helperText: _ru ? '# заголовок, ## подзаголовок, - список' : '# heading, ## subheading, - list', helperStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted))),
-              SizedBox(height: 12),
-              TextField(controller: _tagsCtrl, style: TextStyle(color: AppTheme.textPrimary), decoration: InputDecoration(labelText: _ru ? 'Теги через запятую' : 'Comma-separated tags')),
-              SizedBox(height: 16),
-              Text(_ru ? 'Раздел' : 'Section', style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
-              const SizedBox(height: 8),
-              Wrap(spacing: 8, runSpacing: 8, children: ArticleSection.values.map((s) {
-                final sel = s == _section;
-                return GestureDetector(
-                  onTap: () => setState(() => _section = s),
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-                    decoration: BoxDecoration(color: sel ? AppTheme.accentOrange.withOpacity(0.18) : AppTheme.background, borderRadius: BorderRadius.circular(9), border: Border.all(color: sel ? AppTheme.accentOrange.withOpacity(0.6) : AppTheme.glassBorder)),
-                    child: Text(_label(s), style: TextStyle(fontSize: 12, color: sel ? AppTheme.accentOrange : AppTheme.textSecondary)),
-                  ),
-                );
-              }).toList()),
-              SizedBox(height: 22),
-              Row(children: [
-                TextButton(onPressed: () => Navigator.pop(context), child: Text(WesiLocale.get('cancel'), style: TextStyle(color: AppTheme.textMuted))),
-                Spacer(),
-                HoverButton(onTap: _submit, padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12), backgroundColor: AppTheme.accentOrange, child: Text(WesiLocale.get('save'), style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600))),
-              ]),
-            ],
-          ),
         ),
       ),
     );
