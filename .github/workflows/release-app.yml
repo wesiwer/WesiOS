@@ -147,6 +147,9 @@ jobs:
 
       - run: flutter pub get
 
+      - name: Accept Android SDK licenses
+        run: yes | flutter doctor --android-licenses || true
+
       # Настоящий google-services.json лежит в репозитории. Раньше этот шаг
       # затирал его через `>`, и в каждом APK оказывался проект wesios-dummy:
       # Firebase не работал ни в одной выпущенной сборке. Заглушка нужна
