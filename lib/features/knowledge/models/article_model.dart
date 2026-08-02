@@ -21,6 +21,9 @@ enum ArticleSection {
 ///
 /// [body] — либо Quill Delta JSON (после rich-редактора), либо старый
 /// plain/Markdown текст. Рендерер сам определяет формат.
+///
+/// [parentId] — ID родительской статьи. Если null — корневая.
+/// [isFolder] — true = папка (может содержать дочерние статьи).
 @HiveType(typeId: 17)
 class ArticleModel {
   @HiveField(0)
@@ -53,6 +56,15 @@ class ArticleModel {
   @HiveField(8)
   final bool pinned;
 
+  /// ID родительской статьи. null = корневая (верхний уровень).
+  @HiveField(9)
+  final String? parentId;
+
+  /// true = папка (контейнер для дочерних статей).
+  /// Папки имеют body, но основное назначение — группировка.
+  @HiveField(10)
+  final bool isFolder;
+
   const ArticleModel({
     required this.id,
     required this.title,
@@ -63,6 +75,8 @@ class ArticleModel {
     required this.updatedAt,
     this.builtIn = false,
     this.pinned = false,
+    this.parentId,
+    this.isFolder = false,
   });
 
   ArticleModel copyWith({
@@ -72,6 +86,8 @@ class ArticleModel {
     List<String>? tags,
     DateTime? updatedAt,
     bool? pinned,
+    String? parentId,
+    bool? isFolder,
   }) =>
       ArticleModel(
         id: id,
@@ -80,27 +96,26 @@ class ArticleModel {
         section: section ?? this.section,
         tags: tags ?? this.tags,
         createdAt: createdAt,
-        // Важно: не подставлять DateTime.now() по умолчанию — иначе seed()
-        // при каждом открытии списка менял updatedAt у всех встроенных
-        // статей и сортировка «прыгала».
         updatedAt: updatedAt ?? this.updatedAt,
         builtIn: builtIn,
         pinned: pinned ?? this.pinned,
+        parentId: parentId ?? this.parentId,
+        isFolder: isFolder ?? this.isFolder,
       );
 
   /// Первые строки для превью в списке.
   String get excerpt {
     var plain = body;
-    // Quill Delta JSON → вытащить insert-строки.
     if (plain.trimLeft().startsWith('[')) {
       try {
         final buf = StringBuffer();
-        final re = RegExp(r'"insert"\s*:\s*"((?:\\.|[^"\\])*)"');
+        final re = RegExp(r'"insert"\s*:\s*"((?:\.|[^"\])*)"');
         for (final m in re.allMatches(plain)) {
           final chunk = m.group(1)!;
           buf.write(chunk
-              .replaceAll(r'\n', ' ')
-              .replaceAll(r'\"', '"'));
+              .replaceAll(r'
+', ' ')
+              .replaceAll(r'"', '"'));
         }
         plain = buf.toString();
       } catch (_) {}
@@ -122,7 +137,6 @@ class ArticleModel {
         tags.any((t) => t.toLowerCase().contains(q));
   }
 
-  /// true, если body — Quill Delta JSON.
   bool get isRichBody {
     final t = body.trimLeft();
     return t.startsWith('[') || t.startsWith('{');
