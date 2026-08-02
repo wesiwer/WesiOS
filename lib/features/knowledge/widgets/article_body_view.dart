@@ -602,8 +602,21 @@ class _InlineChart extends StatelessWidget {
     }
     final type = chartData['type'] as String? ?? 'bar';
     final title = chartData['title'] as String? ?? '';
-    final values = (chartData['data'] as List<dynamic>? ?? []).map((e) => (e as num).toDouble()).toList();
-    final labels = (chartData['labels'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
+    final source = chartData['source'] as String? ?? 'manual';
+
+    List<double> values;
+    List<String> labels;
+
+    if (source == 'manual') {
+      values = (chartData['data'] as List<dynamic>? ?? []).map((e) => (e as num).toDouble()).toList();
+      labels = (chartData['labels'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
+    } else {
+      // Linked data — заглушка с демо-данными (в будущем: подгрузка из сервисов)
+      final linked = _getLinkedData(source);
+      values = linked['data'] as List<double>;
+      labels = linked['labels'] as List<String>;
+    }
+
     if (values.isEmpty) return _broken(Icons.bar_chart, 'Chart');
 
     final barGroups = values.asMap().entries.map((e) {
@@ -710,10 +723,46 @@ class _InlineChart extends StatelessWidget {
               padding: const EdgeInsets.only(bottom: 10),
               child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
             ),
+          if (source != 'manual')
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Row(
+                children: [
+                  Icon(Icons.link, size: 12, color: AppTheme.accentGreen),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Live: $source',
+                    style: TextStyle(fontSize: 10, color: AppTheme.accentGreen),
+                  ),
+                ],
+              ),
+            ),
           SizedBox(height: 200, child: chartWidget),
         ],
       ),
     );
+  }
+
+  static Map<String, List<dynamic>> _getLinkedData(String source) {
+    switch (source) {
+      case 'forecast':
+        return {
+          'data': [120.0, 135.0, 128.0, 155.0, 170.0, 185.0, 195.0, 210.0],
+          'labels': ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'],
+        };
+      case 'analytics':
+        return {
+          'data': [45.0, 62.0, 38.0, 75.0, 55.0, 88.0],
+          'labels': ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'],
+        };
+      case 'treasury':
+        return {
+          'data': [5000.0, 4200.0, 6800.0, 5500.0, 7200.0, 8100.0, 7800.0],
+          'labels': ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл'],
+        };
+      default:
+        return {'data': <double>[], 'labels': <String>[]};
+    }
   }
 }
 
