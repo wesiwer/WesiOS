@@ -371,8 +371,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     );
     if (ok == true && urlCtrl.text.trim().isNotEmpty) {
       final index = _controller.selection.start;
-      _controller.replaceText(index, 0, '
-', null);
+      _controller.replaceText(index, 0, '\n', null);
       _controller.document.insert(index + 1, BlockEmbed.custom(_AudioEmbed(urlCtrl.text.trim())));
     }
     urlCtrl.dispose();
