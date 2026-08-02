@@ -89,6 +89,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
   final _titleCtrl = TextEditingController();
   final _tagsCtrl = TextEditingController();
   late ArticleSection _section;
+  String? _parentId;
+  bool _isFolder = false;
   bool _saving = false;
   bool _emojiVisible = false;
   bool get _ru => WesiLocale.isRussian;
@@ -98,6 +100,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     super.initState();
     final a = widget.initial;
     _section = a?.section ?? ArticleSection.playbook;
+    _parentId = a?.parentId;
+    _isFolder = a?.isFolder ?? false;
     if (a != null) {
       _titleCtrl.text = a.title;
       _tagsCtrl.text = a.tags.join(', ');
@@ -160,6 +164,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
           section: _section,
           tags: tags,
           updatedAt: DateTime.now(),
+          parentId: _parentId,
+          isFolder: _isFolder,
         );
         await KnowledgeService.save(article);
       } else {
@@ -168,6 +174,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
           body: body,
           section: _section,
           tags: tags,
+          parentId: _parentId,
+          isFolder: _isFolder,
         );
       }
       if (mounted) Navigator.pop(context, article);
@@ -510,6 +518,80 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
         ArticleSection.personal => _ru ? 'Личное' : 'Personal',
       };
 
+  Future<void> _selectParent() async {
+    final all = KnowledgeService.getAll();
+    final folders = all.where((a) => a.isFolder && a.id != widget.initial?.id).toList();
+    if (folders.isEmpty) {
+      _showError(_ru ? 'Нет папок. Создайте папку сначала.' : 'No folders. Create a folder first.');
+      return;
+    }
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400, maxHeight: 500),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
+                child: Text(
+                  _ru ? 'Выбрать родительскую папку' : 'Select parent folder',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                ),
+              ),
+              const Divider(height: 1),
+              Flexible(
+                child: ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: folders.length + 1,
+                  itemBuilder: (context, i) {
+                    if (i == 0) {
+                      return ListTile(
+                        leading: Icon(Icons.folder_off, color: AppTheme.textMuted, size: 20),
+                        title: Text(
+                          _ru ? 'Без папки (корень)' : 'No folder (root)',
+                          style: TextStyle(color: AppTheme.textSecondary, fontSize: 14),
+                        ),
+                        onTap: () => Navigator.pop(context, ''),
+                        dense: true,
+                      );
+                    }
+                    final f = folders[i - 1];
+                    return ListTile(
+                      leading: Icon(Icons.folder, color: AppTheme.accent, size: 20),
+                      title: Text(f.title, style: TextStyle(color: AppTheme.textPrimary, fontSize: 14)),
+                      subtitle: Text(
+                        _sectionLabel(f.section),
+                        style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                      ),
+                      onTap: () => Navigator.pop(context, f.id),
+                      dense: true,
+                    );
+                  },
+                ),
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.all(12),
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: Text(WesiLocale.get('cancel'), style: TextStyle(color: AppTheme.textMuted)),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    if (selected != null) {
+      setState(() => _parentId = selected.isEmpty ? null : selected);
+    }
+  }
+
   // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
@@ -613,6 +695,79 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                       isDense: true,
                       contentPadding: EdgeInsets.zero,
                     ),
+                  ),
+                  const SizedBox(height: 10),
+                  // Parent folder + isFolder
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: _selectParent,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: AppTheme.surface.withOpacity(0.3),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: AppTheme.glassBorder),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.folder_open, size: 14, color: AppTheme.accent),
+                                const SizedBox(width: 6),
+                                Flexible(
+                                  child: Text(
+                                    _parentId == null
+                                        ? (_ru ? 'Без папки' : 'No folder')
+                                        : (KnowledgeService.getAll().firstWhere(
+                                            (a) => a.id == _parentId,
+                                            orElse: () => ArticleModel(
+                                              id: '', title: _ru ? 'Не найдено' : 'Not found',
+                                              body: '', createdAt: DateTime.now(), updatedAt: DateTime.now(),
+                                            ),
+                                          )).title,
+                                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      GestureDetector(
+                        onTap: () => setState(() => _isFolder = !_isFolder),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _isFolder ? AppTheme.accent.withOpacity(0.18) : AppTheme.surface.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(
+                              color: _isFolder ? AppTheme.accent.withOpacity(0.6) : AppTheme.glassBorder,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _isFolder ? Icons.check_box : Icons.check_box_outline_blank,
+                                size: 14,
+                                color: _isFolder ? AppTheme.accent : AppTheme.textMuted,
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                _ru ? 'Папка' : 'Folder',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _isFolder ? AppTheme.accent : AppTheme.textSecondary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
