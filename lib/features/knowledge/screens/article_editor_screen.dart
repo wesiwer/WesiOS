@@ -76,12 +76,13 @@ const _emojiList = [
 /// - Сохранение в Quill Delta JSON
 class ArticleEditorScreen extends StatefulWidget {
   final ArticleModel? initial;
-  const ArticleEditorScreen({super.key, this.initial});
+  final String? initialParentId;
+  const ArticleEditorScreen({super.key, this.initial, this.initialParentId});
 
-  static Future<ArticleModel?> open(BuildContext context, {ArticleModel? initial}) {
+  static Future<ArticleModel?> open(BuildContext context, {ArticleModel? initial, String? initialParentId}) {
     return Navigator.push<ArticleModel>(
       context,
-      MaterialPageRoute(builder: (_) => ArticleEditorScreen(initial: initial)),
+      MaterialPageRoute(builder: (_) => ArticleEditorScreen(initial: initial, initialParentId: initialParentId)),
     );
   }
 
@@ -105,7 +106,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     super.initState();
     final a = widget.initial;
     _section = a?.section ?? ArticleSection.playbook;
-    _parentId = a?.parentId;
+    _parentId = a?.parentId ?? widget.initialParentId;
     _isFolder = a?.isFolder ?? false;
     if (a != null) {
       _titleCtrl.text = a.title;
