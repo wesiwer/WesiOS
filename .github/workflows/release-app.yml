@@ -51,7 +51,7 @@ jobs:
         name: Read version from pubspec
         run: |
           set -euo pipefail
-          RAW=$(grep -E "^version:" pubspec.yaml | head -1 | awk "{print $2}")
+          RAW=$(grep -E "^version:" pubspec.yaml | head -1 | awk '{print $2}')
           echo "version=${RAW%%+*}" >> "$GITHUB_OUTPUT"
           echo "build=${RAW##*+}" >> "$GITHUB_OUTPUT"
           echo "pubspec version: $RAW"
