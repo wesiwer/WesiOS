@@ -1364,6 +1364,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                       ),
                     ),
               ),
+                    ],
+                  ),
                   ],
                 ),
               ),
