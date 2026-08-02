@@ -467,11 +467,10 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
               child: Container(
                 color: AppTheme.background,
                 child: QuillEditor.basic(
+                  controller: _controller,
                   configurations: QuillEditorConfigurations(
-                    controller: _controller,
                     scrollable: true,
                     autoFocus: widget.initial != null,
-                    readOnly: false,
                     expands: true,
                     padding: const EdgeInsets.all(16),
                     customStyles: DefaultStyles(
