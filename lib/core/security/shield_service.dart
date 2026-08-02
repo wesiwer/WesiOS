@@ -9,6 +9,7 @@ import 'package:local_auth/local_auth.dart';
 
 import '../services/backup_service.dart';
 import '../services/github_auth_service.dart';
+import 'package:flutter/services.dart';
 
 /// Что именно закрывает Wesi Shield.
 enum ShieldScope {
