@@ -145,7 +145,10 @@ jobs:
       - run: flutter pub get
 
       - name: Accept Android SDK licenses
-        run: yes | flutter doctor --android-licenses || true
+        run: |
+          export ANDROID_HOME=$ANDROID_SDK_ROOT
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" || true
 
       # Настоящий google-services.json лежит в репозитории. Раньше этот шаг
       # затирал его через `>`, и в каждом APK оказывался проект wesios-dummy:
