@@ -107,6 +107,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
   final _tagsCtrl = TextEditingController();
   late ArticleSection _section;
   String? _parentId;
+  String? _parentName;
   bool _isFolder = false;
   bool _saving = false;
   bool _emojiVisible = false;
@@ -119,6 +120,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     _section = a?.section ?? ArticleSection.playbook;
     _parentId = a?.parentId ?? widget.initialParentId;
     _isFolder = a?.isFolder ?? false;
+    _loadParentName();
     if (a != null) {
       _titleCtrl.text = a.title;
       _tagsCtrl.text = a.tags.join(', ');
@@ -310,6 +312,90 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
       _controller.document.insert(index + 1, BlockEmbed.image(urlCtrl.text.trim()));
     }
     urlCtrl.dispose();
+  }
+
+  Future<void> _insertAudioFromUrl() async {
+    final urlCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Padding(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _ru ? 'Вставить аудио' : 'Insert audio',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                ),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: urlCtrl,
+                  style: TextStyle(color: AppTheme.textPrimary),
+                  decoration: InputDecoration(
+                    labelText: 'URL аудио (MP3)',
+                    labelStyle: TextStyle(color: AppTheme.textMuted),
+                    helperText: _ru ? 'Прямая ссылка на аудио-файл' : 'Direct link to audio file',
+                    helperStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context, false),
+                      child: Text(WesiLocale.get('cancel'), style: TextStyle(color: AppTheme.textMuted)),
+                    ),
+                    const Spacer(),
+                    HoverButton(
+                      onTap: () => Navigator.pop(context, true),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      backgroundColor: AppTheme.accent,
+                      child: Text(
+                        WesiLocale.get('insert'),
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+    if (ok == true && urlCtrl.text.trim().isNotEmpty) {
+      final index = _controller.selection.start;
+      _controller.replaceText(index, 0, '
+', null);
+      _controller.document.insert(index + 1, BlockEmbed.custom(_AudioEmbed(urlCtrl.text.trim())));
+    }
+    urlCtrl.dispose();
+  }
+
+  Future<void> _pickAudioFromDevice() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.single;
+      if (file.path == null) return;
+      final appDir = await getApplicationDocumentsDirectory();
+      final destDir = Directory('${appDir.path}/knowledge/audio');
+      if (!await destDir.exists()) await destDir.create(recursive: true);
+      final dest = File('${destDir.path}/${DateTime.now().millisecondsSinceEpoch}_${file.name}');
+      await File(file.path!).copy(dest.path);
+      final index = _controller.selection.start;
+      _controller.replaceText(index, 0, '
+', null);
+      _controller.document.insert(index + 1, BlockEmbed.custom(_AudioEmbed(dest.path)));
+    } catch (e) {
+      _showError(_ru ? 'Ошибка загрузки аудио' : 'Audio upload error');
+    }
   }
 
   Future<void> _insertVideoFromUrl() async {
@@ -882,6 +968,22 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     };
   }
 
+  Future<void> _loadParentName() async {
+    if (_parentId == null) {
+      setState(() => _parentName = null);
+      return;
+    }
+    final all = await KnowledgeService.getAll();
+    final parent = all.firstWhere(
+      (a) => a.id == _parentId,
+      orElse: () => ArticleModel(
+        id: '', title: WesiLocale.isRussian ? 'Не найдено' : 'Not found',
+        body: '', createdAt: DateTime.now(), updatedAt: DateTime.now(),
+      ),
+    );
+    setState(() => _parentName = parent.title);
+  }
+
   Future<void> _selectParent() async {
     final all = await KnowledgeService.getAll();
     final folders = all.where((a) => a.isFolder && a.id != widget.initial?.id).toList();
@@ -1081,15 +1183,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                                 const SizedBox(width: 6),
                                 Flexible(
                                   child: Text(
-                                    _parentId == null
-                                        ? (_ru ? 'Без папки' : 'No folder')
-                                        : ((await KnowledgeService.getAll()).firstWhere(
-                                            (a) => a.id == _parentId,
-                                            orElse: () => ArticleModel(
-                                              id: '', title: _ru ? 'Не найдено' : 'Not found',
-                                              body: '', createdAt: DateTime.now(), updatedAt: DateTime.now(),
-                                            ),
-                                          )).title,
+                                    _parentName ?? (_ru ? 'Без папки' : 'No folder'),
                                     style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
                                     overflow: TextOverflow.ellipsis,
                                   ),
