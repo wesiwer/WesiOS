@@ -11,6 +11,17 @@ import '../../../core/widgets/window_controls.dart';
 import '../models/article_model.dart';
 import '../services/knowledge_service.dart';
 
+// ─── Chart Row Helper ─────────────────────────────────────────────────────
+
+class _ChartRow {
+  final String label;
+  final double value;
+  const _ChartRow({required this.label, required this.value});
+  _ChartRow copyWith({String? label, double? value}) =>
+      _ChartRow(label: label ?? this.label, value: value ?? this.value);
+}
+
+
 // ─── Custom Block Embeds ────────────────────────────────────────────────────
 
 class _TableEmbed extends CustomBlockEmbed {
@@ -872,7 +883,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
   }
 
   Future<void> _selectParent() async {
-    final all = KnowledgeService.getAll();
+    final all = await KnowledgeService.getAll();
     final folders = all.where((a) => a.isFolder && a.id != widget.initial?.id).toList();
     if (folders.isEmpty) {
       _showError(_ru ? 'Нет папок. Создайте папку сначала.' : 'No folders. Create a folder first.');
@@ -1072,7 +1083,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                                   child: Text(
                                     _parentId == null
                                         ? (_ru ? 'Без папки' : 'No folder')
-                                        : (KnowledgeService.getAll().firstWhere(
+                                        : ((await KnowledgeService.getAll()).firstWhere(
                                             (a) => a.id == _parentId,
                                             orElse: () => ArticleModel(
                                               id: '', title: _ru ? 'Не найдено' : 'Not found',
@@ -1142,9 +1153,9 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                     _tool(Icons.format_underline, _ru ? 'Подчёркнутый' : 'Underline', () => _controller.formatSelection(Attribute.underline)),
                     _tool(Icons.format_strikethrough, _ru ? 'Зачёркнутый' : 'Strikethrough', () => _controller.formatSelection(Attribute.strikeThrough)),
                     _divider(),
-                    _tool(Icons.format_h1, 'H1', () => _controller.formatSelection(Attribute.h1)),
-                    _tool(Icons.format_h2, 'H2', () => _controller.formatSelection(Attribute.h2)),
-                    _tool(Icons.format_h3, 'H3', () => _controller.formatSelection(Attribute.h3)),
+                    _tool(Icons.looks_one, 'H1', () => _controller.formatSelection(Attribute.h1)),
+                    _tool(Icons.looks_two, 'H2', () => _controller.formatSelection(Attribute.h2)),
+                    _tool(Icons.looks_3, 'H3', () => _controller.formatSelection(Attribute.h3)),
                     _divider(),
                     _tool(Icons.format_list_bulleted, _ru ? 'Список' : 'Bullet', () => _controller.formatSelection(Attribute.ul)),
                     _tool(Icons.format_list_numbered, _ru ? 'Нумерация' : 'Numbered', () => _controller.formatSelection(Attribute.ol)),
@@ -1169,9 +1180,9 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
             Expanded(
               child: Container(
                 color: AppTheme.background,
-                child: QuillEditor(
+                child: QuillEditor.basic(
                   controller: _controller,
-                  scrollController: ScrollController(),
+                  configurations: QuillEditorConfigurations(
                   scrollable: true,
                   focusNode: FocusNode(),
                   autoFocus: widget.initial != null,
@@ -1259,6 +1270,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                         ),
                       ),
                     ),
+              ),
                   ],
                 ),
               ),
@@ -1294,13 +1306,4 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     );
   }
 
-// ─── Chart Row Helper ───────────────────────────────────────────────────────
-
-class _ChartRow {
-  final String label;
-  final double value;
-  const _ChartRow({required this.label, required this.value});
-  _ChartRow copyWith({String? label, double? value}) =>
-      _ChartRow(label: label ?? this.label, value: value ?? this.value);
-}
 }
