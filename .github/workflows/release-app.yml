@@ -38,7 +38,7 @@ env:
 
 jobs:
   version:
-        runs-on: self-hosted
+    runs-on: self-hosted
     outputs:
       version: ${{ steps.v.outputs.version }}
       build: ${{ steps.v.outputs.build }}
@@ -55,7 +55,7 @@ jobs:
 
   build-windows:
     needs: version
-        runs-on: self-hosted
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -118,7 +118,7 @@ jobs:
 
   build-android:
     needs: version
-        runs-on: self-hosted
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -273,7 +273,7 @@ jobs:
 
   publish-manifest:
     needs: [version, build-windows, build-android]
-        runs-on: self-hosted
+    runs-on: self-hosted
     # Манифест публикуется ПОСЛЕДНИМ и только если обе сборки прошли: иначе
     # приложение предложило бы обновиться на версию, ассета которой нет.
     steps:
