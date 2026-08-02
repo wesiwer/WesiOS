@@ -86,7 +86,7 @@ class BuiltinArticles {
     final aboutBody = '[${h1(ru ? 'WesiOS — персональная операционная система' : 'WesiOS — Personal Operating System')},'
         '${p(ru ? 'WesiOS — это комплексная система управления личными и профессиональными процессами. Объединяет финансы, задачи, аналитику, базу знаний и инструменты в едином интерфейсе.' : 'WesiOS is a comprehensive system for managing personal and professional processes. Combines finance, tasks, analytics, knowledge base and tools in a unified interface.')},'
         '${h2(ru ? 'Версия' : 'Version')},'
-        '${p('${AppVersion.fullLabel}')},'
+        '${p('v0.11.9 α')},'
         '${h2(ru ? 'Ключевые принципы' : 'Key Principles')},'
         '${bullet(ru ? 'Все данные хранятся локально (Hive) — приватность по умолчанию' : 'All data stored locally (Hive) — privacy by default')},'
         '${bullet(ru ? 'Firebase — опционально, для облачных функций' : 'Firebase — optional, for cloud functions')},'
