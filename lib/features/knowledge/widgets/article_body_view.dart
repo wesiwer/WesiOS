@@ -5,6 +5,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:fl_chart/fl_chart.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../models/article_model.dart';
@@ -125,6 +126,7 @@ class _QuillBodyState extends State<_QuillBody> {
           _ImageEmbedBuilder(),
           _VideoEmbedBuilder(),
           _AudioEmbedBuilder(),
+          _ChartEmbedBuilder(),
           _TableEmbedBuilder(),
         ],
         customStyles: DefaultStyles(
@@ -266,6 +268,27 @@ class _AudioEmbedBuilder extends EmbedBuilder {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: _InlineAudio(source: source),
+    );
+  }
+}
+
+class _ChartEmbedBuilder extends EmbedBuilder {
+  @override
+  String get key => 'chart';
+
+  @override
+  Widget build(
+    BuildContext context,
+    QuillController controller,
+    Embed node,
+    bool readOnly,
+    bool inline,
+    TextStyle textStyle,
+  ) {
+    final data = node.value.data.toString();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: _InlineChart(data: data),
     );
   }
 }
@@ -559,6 +582,135 @@ class _InlineAudioState extends State<_InlineAudio> {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InlineChart extends StatelessWidget {
+  final String data;
+  const _InlineChart({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    Map<String, dynamic> chartData;
+    try {
+      chartData = jsonDecode(data);
+    } catch (_) {
+      return _broken(Icons.bar_chart, 'Chart');
+    }
+    final type = chartData['type'] as String? ?? 'bar';
+    final title = chartData['title'] as String? ?? '';
+    final values = (chartData['data'] as List<dynamic>? ?? []).map((e) => (e as num).toDouble()).toList();
+    final labels = (chartData['labels'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
+    if (values.isEmpty) return _broken(Icons.bar_chart, 'Chart');
+
+    final barGroups = values.asMap().entries.map((e) {
+      return BarChartGroupData(
+        x: e.key,
+        barRods: [BarChartRodData(toY: e.value, color: AppTheme.accent, width: 16)],
+      );
+    }).toList();
+
+    Widget chartWidget;
+    switch (type) {
+      case 'line':
+        chartWidget = LineChart(
+          LineChartData(
+            gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.glassBorder)),
+            titlesData: FlTitlesData(
+              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(labels.length > v.toInt() ? labels[v.toInt()] : '', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
+              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, _) => Text(v.toInt().toString(), style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
+              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              LineChartBarData(
+                spots: values.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList(),
+                color: AppTheme.accent,
+                barWidth: 2,
+                dotData: FlDotData(show: true),
+              ),
+            ],
+          ),
+        );
+        break;
+      case 'pie':
+        final total = values.fold<double>(0, (s, v) => s + v);
+        chartWidget = PieChart(
+          PieChartData(
+            sections: values.asMap().entries.map((e) {
+              final pct = total > 0 ? e.value / total : 0;
+              return PieChartSectionData(
+                value: e.value,
+                title: '${(pct * 100).toStringAsFixed(0)}%',
+                color: [AppTheme.accent, AppTheme.accentGreen, AppTheme.accentOrange, AppTheme.accentRed, AppTheme.lightAccentBlue][e.key % 5],
+                radius: 60,
+                titleStyle: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600),
+              );
+            }).toList(),
+          ),
+        );
+        break;
+      case 'area':
+        chartWidget = LineChart(
+          LineChartData(
+            gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.glassBorder)),
+            titlesData: FlTitlesData(
+              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(labels.length > v.toInt() ? labels[v.toInt()] : '', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
+              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, _) => Text(v.toInt().toString(), style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
+              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ),
+            borderData: FlBorderData(show: false),
+            lineBarsData: [
+              LineChartBarData(
+                spots: values.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList(),
+                color: AppTheme.accent,
+                barWidth: 2,
+                belowBarData: BarAreaData(show: true, color: AppTheme.accent.withOpacity(0.2)),
+                dotData: FlDotData(show: false),
+              ),
+            ],
+          ),
+        );
+        break;
+      case 'bar':
+      default:
+        chartWidget = BarChart(
+          BarChartData(
+            gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.glassBorder)),
+            titlesData: FlTitlesData(
+              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(labels.length > v.toInt() ? labels[v.toInt()] : '', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
+              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, _) => Text(v.toInt().toString(), style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
+              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            ),
+            borderData: FlBorderData(show: false),
+            barGroups: barGroups,
+          ),
+        );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (title.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+            ),
+          SizedBox(height: 200, child: chartWidget),
         ],
       ),
     );
