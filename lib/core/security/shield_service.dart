@@ -391,7 +391,7 @@ class ShieldService {
         unlock();
       }
       return ok;
-    } on LocalAuthException catch (e) {
+    } on PlatformException catch (e) {
       await _log('unlock_biometric', false, e.code.toString());
       return false;
     } catch (_) {
