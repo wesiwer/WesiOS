@@ -10,6 +10,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/article_model.dart';
 import '../services/knowledge_service.dart';
+import 'dart:io';
 
 /// Рендер тела статьи: Quill Delta JSON или legacy plain/Markdown.
 ///
