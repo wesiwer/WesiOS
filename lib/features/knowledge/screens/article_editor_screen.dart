@@ -23,6 +23,11 @@ class _VideoEmbed extends CustomBlockEmbed {
   static const String _type = 'video';
 }
 
+class _AudioEmbed extends CustomBlockEmbed {
+  const _AudioEmbed(String value) : super(_type, value);
+  static const String _type = 'audio';
+}
+
 // ─── Emoji Data ─────────────────────────────────────────────────────────────
 
 const _emojiList = [
@@ -641,6 +646,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                     _tool(Icons.perm_media, _ru ? 'Фото с устройства' : 'Photo from device', _pickImageFromDevice),
                     _tool(Icons.video_library, _ru ? 'Видео URL' : 'Video URL', _insertVideoFromUrl),
                     _tool(Icons.video_file, _ru ? 'Видео с устройства' : 'Video from device', _pickVideoFromDevice),
+                    _tool(Icons.audiotrack, _ru ? 'Аудио URL' : 'Audio URL', _insertAudioFromUrl),
+                    _tool(Icons.library_music, _ru ? 'Аудио с устройства' : 'Audio from device', _pickAudioFromDevice),
                     _tool(Icons.table_chart, _ru ? 'Таблица' : 'Table', _insertTable),
                     _tool(Icons.emoji_emotions, _ru ? 'Emoji' : 'Emoji', _toggleEmoji),
                     _divider(),
