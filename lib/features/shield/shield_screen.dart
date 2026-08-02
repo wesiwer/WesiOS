@@ -560,6 +560,7 @@ class _PasswordDialog extends StatefulWidget {
 class _PasswordDialogState extends State<_PasswordDialog> {
   final _first = TextEditingController();
   final _second = TextEditingController();
+  final _hint = TextEditingController();
   String? _error;
 
   bool get _ru => WesiLocale.isRussian;
@@ -568,6 +569,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
   void dispose() {
     _first.dispose();
     _second.dispose();
+    _hint.dispose();
     super.dispose();
   }
 
@@ -587,6 +589,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
       setState(() => _error = _ru ? 'Пароли не совпадают' : 'Passwords differ');
       return;
     }
+    await ShieldService.setPasswordHint(_hint.text);
     Navigator.pop(context, value);
   }
 
@@ -638,6 +641,29 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                 ),
               ],
               SizedBox(height: 18),
+              if (widget.confirmOnly && ShieldService.passwordHint != null) ...[
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: AppTheme.accent.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(color: AppTheme.accent.withOpacity(0.2)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.lightbulb_outline, size: 16, color: AppTheme.accent),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          '${_ru ? 'Подсказка' : 'Hint'}: ${ShieldService.passwordHint}',
+                          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+              ],
               TextField(
                 controller: _first,
                 autofocus: true,
