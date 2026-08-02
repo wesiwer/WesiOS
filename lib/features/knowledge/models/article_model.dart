@@ -113,8 +113,7 @@ class ArticleModel {
         for (final m in re.allMatches(plain)) {
           final chunk = m.group(1)!;
           buf.write(chunk
-              .replaceAll('
-', ' ')
+              .replaceAll(r'\n', ' ')
               .replaceAll(r'"', '"'));
         }
         plain = buf.toString();
