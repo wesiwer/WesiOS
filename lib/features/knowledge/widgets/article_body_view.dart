@@ -118,8 +118,8 @@ class _QuillBodyState extends State<_QuillBody> {
   @override
   Widget build(BuildContext context) {
     return QuillEditor.basic(
-      controller: _controller,
       configurations: QuillEditorConfigurations(
+        controller: _controller,
         padding: EdgeInsets.zero,
         showCursor: false,
         enableInteractiveSelection: true,
