@@ -100,6 +100,7 @@ class ShieldService {
   static const String _lastFailKey = 'shield_last_failure';
   static const String _logKey = 'shield_log';
   static const String _wipeKey = 'shield_wipe_after';
+  static const String _hintKey = 'shield_password_hint';
 
   // Ключи прежнего замка на секции Firebase. Нужны только для переноса: у тех,
   // кто уже задал пароль, он должен продолжить работать после обновления.
@@ -432,6 +433,28 @@ class ShieldService {
   static Future<void> setTimeoutMinutes(int minutes) async {
     await Hive.box(_box).put(_timeoutKey, minutes);
     await _log('timeout', true, '$minutes мин.');
+    revision.value++;
+  }
+
+  // --------------------------------------------------------------- подсказка
+
+  static String? get passwordHint {
+    try {
+      final v = Hive.box(_box).get(_hintKey);
+      return v is String && v.isNotEmpty ? v : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<void> setPasswordHint(String? hint) async {
+    final box = Hive.box(_box);
+    if (hint == null || hint.trim().isEmpty) {
+      await box.delete(_hintKey);
+    } else {
+      await box.put(_hintKey, hint.trim());
+      await _log('password_hint', true, hint == null ? 'removed' : 'set');
+    }
     revision.value++;
   }
 
