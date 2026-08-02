@@ -131,6 +131,14 @@ KnowledgeBaseScreen
                     └── Delta JSON → Hive
 ```
 
+### Фикс API совместимости (follow-up)
+
+| Проблема | Решение |
+|---|---|
+| `BlockEmbed.custom('table', ...)` — не компилируется | `_TableEmbed extends CustomBlockEmbed` + `BlockEmbed.custom(_TableEmbed(...))` |
+| `BlockEmbed.custom('video', ...)` — не компилируется | `_VideoEmbed extends CustomBlockEmbed` + `BlockEmbed.custom(_VideoEmbed(...))` |
+| `Attribute.clone(Attribute.inlineCode, null)` — не работает | `_clearFormat()` убирает bold/italic/underline/strike/link по очереди |
+
 ### Чего НЕ делать
 
 - Не удалять `ArticleBodyView` — он уже работает с embed'ами (image, video, table)
