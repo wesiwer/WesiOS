@@ -1,7 +1,7 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
 **Обновлено:** 2026-08-02 (сессия 10 — Knowledge rich-editor, Kimi)  
-**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.8 α · **build:** 24  
+**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.9 α · **build:** 25  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
 Читай этот файл **перед** любыми правками. Не помечай задачу ✅, пока пользователь не подтвердил на билде.
