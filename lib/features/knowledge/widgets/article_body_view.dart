@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
+import 'package:audioplayers/audioplayers.dart';
 
 import '../../../core/theme/app_theme.dart';
 import '../models/article_model.dart';
@@ -123,6 +124,7 @@ class _QuillBodyState extends State<_QuillBody> {
         embedBuilders: [
           _ImageEmbedBuilder(),
           _VideoEmbedBuilder(),
+          _AudioEmbedBuilder(),
           _TableEmbedBuilder(),
         ],
         customStyles: DefaultStyles(
@@ -247,6 +249,27 @@ class _VideoEmbedBuilder extends EmbedBuilder {
   }
 }
 
+class _AudioEmbedBuilder extends EmbedBuilder {
+  @override
+  String get key => 'audio';
+
+  @override
+  Widget build(
+    BuildContext context,
+    QuillController controller,
+    Embed node,
+    bool readOnly,
+    bool inline,
+    TextStyle textStyle,
+  ) {
+    final source = node.value.data.toString();
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: _InlineAudio(source: source),
+    );
+  }
+}
+
 class _TableEmbedBuilder extends EmbedBuilder {
   @override
   String get key => 'table';
@@ -326,6 +349,14 @@ class _InlineVideo extends StatefulWidget {
 
   @override
   State<_InlineVideo> createState() => _InlineVideoState();
+}
+
+class _InlineAudio extends StatefulWidget {
+  final String source;
+  const _InlineAudio({required this.source});
+
+  @override
+  State<_InlineAudio> createState() => _InlineAudioState();
 }
 
 class _InlineVideoState extends State<_InlineVideo> {
@@ -410,6 +441,125 @@ class _InlineVideoState extends State<_InlineVideo> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _InlineAudioState extends State<_InlineAudio> {
+  final AudioPlayer _player = AudioPlayer();
+  bool _isPlaying = false;
+  Duration _duration = Duration.zero;
+  Duration _position = Duration.zero;
+  bool _isLocal = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isLocal = !widget.source.startsWith('http') && File(widget.source).existsSync();
+    _initPlayer();
+  }
+
+  Future<void> _initPlayer() async {
+    try {
+      if (_isLocal) {
+        await _player.setSource(DeviceFileSource(widget.source));
+      } else {
+        await _player.setSource(UrlSource(widget.source));
+      }
+      _player.onDurationChanged.listen((d) {
+        if (mounted) setState(() => _duration = d);
+      });
+      _player.onPositionChanged.listen((p) {
+        if (mounted) setState(() => _position = p);
+      });
+      _player.onPlayerStateChanged.listen((state) {
+        if (mounted) setState(() => _isPlaying = state == PlayerState.playing);
+      });
+    } catch (e) {
+      debugPrint('Audio init error: $e');
+    }
+  }
+
+  Future<void> _togglePlay() async {
+    if (_isPlaying) {
+      await _player.pause();
+    } else {
+      await _player.resume();
+    }
+  }
+
+  Future<void> _seek(double value) async {
+    final position = Duration(milliseconds: (value * _duration.inMilliseconds).toInt());
+    await _player.seek(position);
+  }
+
+  String _formatDuration(Duration d) {
+    final m = d.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$m:$s';
+  }
+
+  @override
+  void dispose() {
+    _player.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final progress = _duration.inMilliseconds > 0
+        ? _position.inMilliseconds / _duration.inMilliseconds
+        : 0.0;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: Row(
+        children: [
+          IconButton(
+            icon: Icon(
+              _isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+              color: AppTheme.accent,
+              size: 36,
+            ),
+            onPressed: _togglePlay,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Slider(
+                  value: progress.clamp(0.0, 1.0),
+                  onChanged: _seek,
+                  activeColor: AppTheme.accent,
+                  inactiveColor: AppTheme.glassBorder,
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        _formatDuration(_position),
+                        style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                      Text(
+                        _formatDuration(_duration),
+                        style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
