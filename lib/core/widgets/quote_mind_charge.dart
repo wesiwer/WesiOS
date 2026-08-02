@@ -105,7 +105,7 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  constraints: const BoxConstraints(maxWidth: 168),
+                  constraints: const BoxConstraints(maxWidth: 200),
                   padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
@@ -121,12 +121,13 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
                             ? 'Зарядись умными мыслями на сегодня!'
                             : 'Charge up with smart thoughts today!',
                         style: TextStyle(
-                          fontSize: 10.5,
-                          height: 1.25,
+                          fontSize: 9.5,
+                          height: 1.2,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.textSecondary,
                         ),
                         maxLines: 2,
+                        softWrap: true,
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 7),
