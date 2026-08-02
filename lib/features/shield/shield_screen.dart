@@ -573,7 +573,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     super.dispose();
   }
 
-  void _submit() {
+  Future<void> _submit() async {
     final value = _first.text;
     if (widget.confirmOnly) {
       if (value.isEmpty) return;
@@ -711,6 +711,15 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                   ),
                 ),
               ],
+              SizedBox(height: 12),
+              TextField(
+                controller: _hint,
+                style: TextStyle(color: AppTheme.textPrimary),
+                decoration: InputDecoration(
+                  labelText: _ru ? "Подсказка к паролю (необязательно)" : "Password hint (optional)",
+                  hintText: _ru ? "Например: дата рождения сестры" : "e.g. sister's birth date",
+                ),
+              ),
               SizedBox(height: 22),
               Row(
                 children: [
@@ -721,7 +730,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                   ),
                   Spacer(),
                   HoverButton(
-                    onTap: _submit,
+                    onTap: () => _submit(),
                     padding: EdgeInsets.symmetric(
                         horizontal: 22, vertical: 11),
                     backgroundColor: AppTheme.accentOrange,
