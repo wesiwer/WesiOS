@@ -47,11 +47,14 @@ jobs:
       - id: v
         name: Read version from pubspec
         run: |
-          set -euo pipefail
-          RAW=$(grep -E '^version:' pubspec.yaml | head -1 | awk '{print $2}')
-          echo "version=${RAW%%+*}" >> "$GITHUB_OUTPUT"
-          echo "build=${RAW##*+}" >> "$GITHUB_OUTPUT"
-          echo "pubspec version: $RAW"
+          $ErrorActionPreference = "Stop"
+          $raw = (Select-String -Path pubspec.yaml -Pattern "^version:").Line
+          $raw = $raw -replace "version:\s*", ""
+          $ver = $raw.Split("+")[0]
+          $build = $raw.Split("+")[1]
+          "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "build=$build" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Write-Host "pubspec version: $raw"
 
   build-windows:
     needs: version
@@ -141,13 +144,12 @@ jobs:
       # только там, где файла нет вовсе, иначе Gradle не соберёт проект.
       - name: Ensure google-services.json exists
         run: |
-          if [ -f android/app/google-services.json ]; then
-            echo "Использую настоящий google-services.json из репозитория"
+          if (Test-Path android/app/google-services.json) {
+            Write-Host "Использую настоящий google-services.json из репозитория"
             exit 0
-          fi
-          echo "Настоящего конфига нет — кладу заглушку, Firebase работать не будет"
-          mkdir -p android/app
-          echo '{
+          }
+          Write-Host "Настоящего конфига нет — кладу заглушку"
+          New-Item -ItemType Directory -Force -Path android/app | Out-Null
             "project_info": {
               "project_number": "123456789",
               "project_id": "wesios-dummy",
@@ -244,7 +246,7 @@ jobs:
         run: flutter build apk --release
 
       - name: Rename APK
-        run: cp build/app/outputs/flutter-apk/app-release.apk wesios-android.apk
+        run: Copy-Item build/app/outputs/flutter-apk/app-release.apk wesios-android.apk -Force
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
@@ -287,7 +289,11 @@ jobs:
           APK_SIZE: ${{ needs.build-android.outputs.size }}
           NOTES: ${{ github.event.inputs.notes }}
         run: |
-          python3 - <<'PY'
+        run: |
+          python3 -c "
+          import json, os
+          notes = os.environ.get("NOTES") or None
+          "
           import json, os
           notes = os.environ.get("NOTES") or None
           def size(v):
