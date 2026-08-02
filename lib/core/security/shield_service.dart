@@ -366,12 +366,23 @@ class ShieldService {
 
   static Future<bool> authenticateBiometric(String reason) async {
     if (!await isBiometricAvailable) return false;
+
+    // Проверяем, есть ли реально зарегистрированные биометрии
+    try {
+      final available = await _auth.getAvailableBiometrics();
+      if (available.isEmpty) return false;
+    } catch (_) {
+      return false;
+    }
+
     try {
       final ok = await _auth.authenticate(
         localizedReason: reason,
         options: const AuthenticationOptions(
-          biometricOnly: false,
+          biometricOnly: true,
           stickyAuth: true,
+          useErrorDialogs: true,
+          sensitiveTransaction: true,
         ),
       );
       await _log('unlock_biometric', ok);
@@ -380,8 +391,10 @@ class ShieldService {
         unlock();
       }
       return ok;
+    } on LocalAuthException catch (e) {
+      await _log('unlock_biometric', false, e.code.toString());
+      return false;
     } catch (_) {
-      // Отказ или отсутствие датчика — не ошибка сценария: остаётся пароль.
       return false;
     }
   }
