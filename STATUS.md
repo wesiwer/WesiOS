@@ -1,6 +1,6 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-01 (сессия 9 — adaptive icons + quill API fix, Grok)  
+**Обновлено:** 2026-08-02 (сессия 10 — Knowledge rich-editor, Kimi)  
 **Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.8 α · **build:** 24  
 **Тесты:** `flutter analyze` / `flutter test` — проверять после каждой правки.  
 
@@ -90,6 +90,53 @@ hotfix / alpha → beta и т.д.) агент **обязан** обновить 
 Если `app_version.dart` и `pubspec.yaml` расходятся — OTA-обновление ломается:
 приложение видит `0.10.1` в коде, а в релизе `0.11.0`, и считает, что релиз
 **старше** установленной версии → отказывается обновляться.
+
+---
+
+## Сессия 10 (2026-08-02) — Knowledge rich-editor
+
+Сессия ведётся агентом **Kimi**.
+
+### Что сделано
+
+| Что | Файл | Описание |
+|---|---|---|
+| Полноэкранный rich-editor | `lib/features/knowledge/screens/article_editor_screen.dart` — новый | Quill-based редактор с кастомным toolbar |
+| Замена simple dialog → editor | `lib/features/knowledge/knowledge_base_screen.dart` | `_create()` и `_edit()` теперь открывают `ArticleEditorScreen` |
+| Локализация toolbar | `lib/core/localization/wesi_locale.dart` | 14 новых ключей RU/EN для редактора |
+
+**Функции редактора:**
+- Жирный, курсив, подчёркнутый, зачёркнутый
+- Заголовки H1/H2/H3
+- Маркированный и нумерованный списки
+- Вставка ссылок (`https://` и `wesios://article/ID`)
+- Вставка изображений по URL
+- Вставка видео по URL (MP4, WebM)
+- Вставка таблиц (диалог: строки × столбцы)
+- Очистка форматирования
+- Выбор раздела (About/Playbook/Guide/Finance/Personal)
+- Теги
+- Сохранение в Quill Delta JSON (совместимо с `ArticleBodyView`)
+
+### Архитектура
+
+```
+KnowledgeBaseScreen
+  └── FAB / Tile tap
+        └── ArticleEditorScreen.open(context, initial: article?)
+              ├── Header (back, title, save)
+              ├── Meta (title input, section chips, tags)
+              ├── Custom Toolbar (icons row)
+              └── QuillEditor (readOnly: false, expands: true)
+                    └── Delta JSON → Hive
+```
+
+### Чего НЕ делать
+
+- Не удалять `ArticleBodyView` — он уже работает с embed'ами (image, video, table)
+- Не менять `flutter_quill` версию без адаптации API (см. правило 24)
+- Не забывать `ValueListenableBuilder` на `ThemeNotifier` в Home-карточках
+- Не запускать билд без запроса пользователя
 
 ---
 
