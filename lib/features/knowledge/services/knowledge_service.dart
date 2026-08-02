@@ -154,4 +154,57 @@ class KnowledgeService {
         s: all.where((a) => a.section == s).length,
     };
   }
+
+  // ─── Tree / Hierarchy ─────────────────────────────────────────────────────
+
+  /// Все корневые статьи (parentId == null).
+  static List<ArticleModel> getRoots() {
+    final box = _box;
+    if (box == null) return [];
+    return box.values.where((a) => a.parentId == null).toList();
+  }
+
+  /// Дочерние статьи по parentId.
+  static List<ArticleModel> getChildren(String parentId) {
+    final box = _box;
+    if (box == null) return [];
+    return box.values.where((a) => a.parentId == parentId).toList();
+  }
+
+  /// true, если у статьи есть дочерние элементы.
+  static bool hasChildren(String parentId) {
+    final box = _box;
+    if (box == null) return false;
+    return box.values.any((a) => a.parentId == parentId);
+  }
+
+  /// Хлебные крошки: список предков от корня до текущей статьи.
+  static List<ArticleModel> getBreadcrumb(String articleId) {
+    final box = _box;
+    if (box == null) return [];
+    final result = <ArticleModel>[];
+    var current = box.get(articleId);
+    while (current != null) {
+      result.insert(0, current);
+      if (current.parentId == null) break;
+      current = box.get(current.parentId);
+    }
+    return result;
+  }
+
+  /// Все статьи в поддереве (рекурсивно).
+  static List<ArticleModel> getSubtree(String rootId) {
+    final box = _box;
+    if (box == null) return [];
+    final result = <ArticleModel>[];
+    void collect(String pid) {
+      final children = box.values.where((a) => a.parentId == pid).toList();
+      for (final child in children) {
+        result.add(child);
+        collect(child.id);
+      }
+    }
+    collect(rootId);
+    return result;
+  }
 }
