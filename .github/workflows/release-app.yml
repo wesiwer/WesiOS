@@ -75,12 +75,14 @@ jobs:
       # Локальная windows/ — неполный огрызок, поэтому CI её пересоздаёт.
       # Любая ручная правка внутри windows/runner в сборку не попадает.
       - name: Wipe broken Windows platform stub
+        shell: pwsh
         run: if (Test-Path windows) { Remove-Item -Recurse -Force windows }
 
       - name: Regenerate Windows platform files
         run: flutter create --platforms=windows --project-name=wesios .
 
       - name: Restore custom Windows icon
+        shell: pwsh
         run: |
           if (Test-Path assets/images/app_icon.ico) {
             Copy-Item assets/images/app_icon.ico windows/runner/resources/app_icon.ico -Force
@@ -90,6 +92,7 @@ jobs:
       - run: flutter build windows --release
 
       - name: Pack the portable build
+        shell: pwsh
         run: |
           Compress-Archive -Path build/windows/x64/runner/Release/* `
             -DestinationPath wesios-windows-x64.zip -Force
@@ -102,6 +105,7 @@ jobs:
           retention-days: 30
 
       - name: Publish to GitHub Release
+        shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -116,6 +120,7 @@ jobs:
 
       - name: Collect metadata
         id: meta
+        shell: pwsh
         run: |
           $size = (Get-Item wesios-windows-x64.zip).Length
           "size=$size" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
@@ -124,7 +129,7 @@ jobs:
 
   build-android:
     needs: version
-    runs-on: windows-2022
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
@@ -144,24 +149,20 @@ jobs:
 
       - run: flutter pub get
 
-      - name: Accept Android SDK licenses
-        run: |
-          export ANDROID_HOME=$ANDROID_SDK_ROOT
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platforms;android-33" "build-tools;33.0.0" || true
-
       # Настоящий google-services.json лежит в репозитории. Раньше этот шаг
       # затирал его через `>`, и в каждом APK оказывался проект wesios-dummy:
       # Firebase не работал ни в одной выпущенной сборке. Заглушка нужна
       # только там, где файла нет вовсе, иначе Gradle не соберёт проект.
       - name: Ensure google-services.json exists
         run: |
-          if (Test-Path android/app/google-services.json) {
-            Write-Host "Использую настоящий google-services.json из репозитория"
+          if [ -f android/app/google-services.json ]; then
+            echo "Использую настоящий google-services.json из репозитория"
             exit 0
-          }
-          Write-Host "Настоящего конфига нет — кладу заглушку"
-          New-Item -ItemType Directory -Force -Path android/app | Out-Null
+          fi
+          echo "Настоящего конфига нет — кладу заглушку"
+          mkdir -p android/app
+          cat > android/app/google-services.json << 'EOF'
+          {
             "project_info": {
               "project_number": "123456789",
               "project_id": "wesios-dummy",
@@ -177,7 +178,8 @@ jobs:
               "services": { "appinvite_service": { "other_platform_oauth_client": [] } }
             }],
             "configuration_version": "1"
-          }' > android/app/google-services.json
+          }
+          EOF
 
       # Декодируем keystore и СРАЗУ проверяем пароль через keytool.
       # Частая ловушка: при вставке в GitHub Secrets появляется хвостовой
@@ -258,7 +260,7 @@ jobs:
         run: flutter build apk --release
 
       - name: Rename APK
-        run: Copy-Item build/app/outputs/flutter-apk/app-release.apk wesios-android.apk -Force
+        run: cp build/app/outputs/flutter-apk/app-release.apk wesios-android.apk
 
       - name: Upload Android artifact
         uses: actions/upload-artifact@v4
@@ -304,10 +306,9 @@ jobs:
           APK_SIZE: ${{ needs.build-android.outputs.size }}
           NOTES: ${{ github.event.inputs.notes }}
         run: |
-          python3 -c "
+          python3 << 'PY'
           import json, os
           notes = os.environ.get("NOTES") or None
-          "
           def size(v):
               try:
                   return int(v)
