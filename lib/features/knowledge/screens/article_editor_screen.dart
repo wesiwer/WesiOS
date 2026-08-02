@@ -8,6 +8,20 @@ import '../../../core/widgets/window_controls.dart';
 import '../models/article_model.dart';
 import '../services/knowledge_service.dart';
 
+// ─── Custom Block Embeds ────────────────────────────────────────────────────
+
+class _TableEmbed extends CustomBlockEmbed {
+  const _TableEmbed(String value) : super(_type, value);
+  static const String _type = 'table';
+}
+
+class _VideoEmbed extends CustomBlockEmbed {
+  const _VideoEmbed(String value) : super(_type, value);
+  static const String _type = 'video';
+}
+
+// ─── Editor Screen ──────────────────────────────────────────────────────────
+
 /// Полноэкранный rich-редактор статей.
 ///
 /// Создаёт новую статью или редактирует существующую.
@@ -220,7 +234,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
       _controller.replaceText(index, 0, '\n', null);
       _controller.document.insert(
         index + 1,
-        BlockEmbed.custom('table', jsonEncode(tableData)),
+        BlockEmbed.custom(_TableEmbed(jsonEncode(tableData))),
       );
     }
     rowsCtrl.dispose();
@@ -282,13 +296,21 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     if (ok == true && urlCtrl.text.trim().isNotEmpty) {
       final index = _controller.selection.start;
       _controller.replaceText(index, 0, '\n', null);
-      _controller.document.insert(index + 1, BlockEmbed.custom('video', urlCtrl.text.trim()));
+      _controller.document.insert(
+        index + 1,
+        BlockEmbed.custom(_VideoEmbed(urlCtrl.text.trim())),
+      );
     }
     urlCtrl.dispose();
   }
 
   void _clearFormat() {
-    _controller.formatSelection(Attribute.clone(Attribute.inlineCode, null));
+    // Убираем все inline-атрибуты из выделения
+    _controller.formatSelection(Attribute.bold);
+    _controller.formatSelection(Attribute.italic);
+    _controller.formatSelection(Attribute.underline);
+    _controller.formatSelection(Attribute.strikeThrough);
+    _controller.formatSelection(Attribute.link);
   }
 
   Widget _editorDialog({
