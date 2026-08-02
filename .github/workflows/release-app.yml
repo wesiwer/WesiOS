@@ -44,6 +44,9 @@ jobs:
       build: ${{ steps.v.outputs.build }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
       - id: v
         name: Read version from pubspec
         run: |
@@ -61,6 +64,9 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
 
       - uses: subosito/flutter-action@v2
         with:
@@ -124,6 +130,9 @@ jobs:
     runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
 
       - name: Setup Java
         uses: actions/setup-java@v4
@@ -280,6 +289,9 @@ jobs:
     # приложение предложило бы обновиться на версию, ассета которой нет.
     steps:
       - uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
 
       - name: Write app-manifest.json
         env:
