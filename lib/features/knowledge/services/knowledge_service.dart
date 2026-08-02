@@ -113,6 +113,8 @@ class KnowledgeService {
     required String body,
     ArticleSection section = ArticleSection.playbook,
     List<String> tags = const [],
+    String? parentId,
+    bool isFolder = false,
   }) async {
     final now = DateTime.now();
     final article = ArticleModel(
@@ -123,6 +125,8 @@ class KnowledgeService {
       tags: tags,
       createdAt: now,
       updatedAt: now,
+      parentId: parentId,
+      isFolder: isFolder,
     );
     await save(article);
     return article;
