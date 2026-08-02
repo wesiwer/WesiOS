@@ -140,6 +140,30 @@ KnowledgeBaseScreen
 
 ---
 
+
+
+### Follow-up (2026-08-02) — Tree view + UI fixes
+
+| Что | Файл | Описание |
+|---|---|---|
+| Древовидная структура | `lib/features/knowledge/knowledge_base_screen.dart` | Breadcrumb, expand/collapse, folder icons, indent levels, child count badges |
+| `initialParentId` в редакторе | `lib/features/knowledge/screens/article_editor_screen.dart` | Создание статьи внутри текущей папки |
+| Хлебные крошки в ArticleScreen | `lib/features/knowledge/knowledge_base_screen.dart` | Путь от корня до статьи, список дочерних элементов |
+| QuoteMindCharge layout | `lib/core/widgets/quote_mind_charge.dart` | maxWidth 168→200, font 10.5→9.5, softWrap — фикс обрезки текста |
+| AppUpdateCard accent | `lib/core/widgets/app_update_card.dart` | accentOrange→accent для кнопок/иконок на светлой теме |
+
+**Как работает дерево:**
+1. **Корень** — показывает все статьи без `parentId`
+2. **Папка** — тап → вход в папку (breadcrumb появляется)
+3. **Expand/collapse** — тап на папку с детьми в дереве → раскрыть без входа
+4. **Отступы** — каждый уровень +20px
+5. **Создание** — FAB создаёт статью в текущей папке (`initialParentId`)
+
+**Чего НЕ делать:**
+- Не удалять `ArticleBodyView` — он уже работает с embed'ами
+- Не менять `flutter_quill` версию без адаптации API
+- Не забывать `ValueListenableBuilder` на `ThemeNotifier` в Home-карточках
+
 ## Сессия 9 (2026-08-01) — Adaptive icon + центрирование лого + quill fix
 
 Сессия велась агентом **Grok** (xAI) по прямому запросу владельца.  
