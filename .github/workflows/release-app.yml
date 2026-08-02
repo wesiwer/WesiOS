@@ -50,14 +50,11 @@ jobs:
       - id: v
         name: Read version from pubspec
         run: |
-          $ErrorActionPreference = "Stop"
-          $raw = (Select-String -Path pubspec.yaml -Pattern "^version:").Line
-          $raw = $raw -replace "version:\s*", ""
-          $ver = $raw.Split("+")[0]
-          $build = $raw.Split("+")[1]
-          "version=$ver" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "build=$build" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          Write-Host "pubspec version: $raw"
+          set -euo pipefail
+          RAW=$(grep -E "^version:" pubspec.yaml | head -1 | awk "{print $2}")
+          echo "version=${RAW%%+*}" >> "$GITHUB_OUTPUT"
+          echo "build=${RAW##*+}" >> "$GITHUB_OUTPUT"
+          echo "pubspec version: $RAW"
 
   build-windows:
     needs: version
