@@ -1,6 +1,9 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_quill/flutter_quill.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../core/localization/wesi_locale.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/hover_button.dart';
@@ -20,12 +23,47 @@ class _VideoEmbed extends CustomBlockEmbed {
   static const String _type = 'video';
 }
 
+// ─── Emoji Data ─────────────────────────────────────────────────────────────
+
+const _emojiList = [
+  '😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩',
+  '😘','😗','😚','😙','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','🤨',
+  '😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕',
+  '🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','😎','🤓','🧐','😕','😟','🙁',
+  '☹️','😮','😯','😲','😳','🥺','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣',
+  '😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','☠️','💩','🤡','👹',
+  '👺','👻','👽','👾','🤖','😺','😸','😹','😻','😼','😽','🙀','😿','😾','❤️','🧡',
+  '💛','💚','💙','💜','🖤','🤍','🤎','💔','❣️','💕','💞','💓','💗','💖','💘','💝',
+  '💟','☮️','✝️','☪️','🕉️','☸️','✡️','🔯','🕎','☯️','☦️','🛐','⛎','♈','♉','♊',
+  '♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','🉑','☢️','☣️','📴','📳',
+  '🈶','🈚','🈸','🈺','🈷️','✴️','🆚','💮','🉐','㊙️','㊗️','🈴','🈵','🈹','🈲','🅰️',
+  '🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯',
+  '🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','🔅','🔆','〽️','⚠️','🚸',
+  '🔱','⚜️','🔰','♻️','✅','🈯','💹','❇️','✳️','❎','🌐','💠','Ⓜ️','🌀','💤','🏧',
+  '🚾','♿','🅿️','🈳','🈂','🛂','🛃','🛄','🛅','🛗','🔄','🔃','➡️','⬅️','⬆️','⬇️',
+  '↗️','↘️','↙️','↖️','↕️','↔️','↪️','↩️','⤴️','⤵️','🔀','🔁','🔂','🔄','🔃','🎵',
+  '🎶','➕','➖','➗','✖️','💲','💱','™️','©️','®️','〰️','➰','➿','🔚','🔙','🔛',
+  '🔝','🔜','✔️','☑️','🔘','🔴','🟠','🟡','🟢','🔵','🟣','⚫','⚪','🟤','🔺','🔻',
+  '🔸','🔹','🔶','🔷','🔳','🔲','▪️','▫️','◾','◽','◼️','◻️','🟥','🟧','🟨','🟩',
+  '🟦','🟪','⬛','⬜','🟫','🔈','🔇','🔉','🔊','🔔','🔕','📣','📢','💬','💭','🗯️',
+  '♠️','♣️','♥️','♦️','🃏','🎴','🀄','🕐','🕑','🕒','🕓','🕔','🕕','🕖','🕗','🕘',
+  '🕙','🕚','🕛','🕜','🕝','🕞','🕟','🕠','🕡','🕢','🕣','🕤','🕥','🕦','🕧',
+];
+
 // ─── Editor Screen ──────────────────────────────────────────────────────────
 
 /// Полноэкранный rich-редактор статей.
 ///
-/// Создаёт новую статью или редактирует существующую.
-/// body сохраняется как Quill Delta JSON.
+/// Поддерживает:
+/// - Форматирование текста (bold, italic, underline, strike)
+/// - Заголовки H1/H2/H3
+/// - Списки (bullet, numbered)
+/// - Ссылки (https:// и wesios://article/ID)
+/// - Изображения: по URL или из галереи/папки устройства
+/// - Видео: по URL или из галереи/папки устройства
+/// - Таблицы (диалог строки×столбцы)
+/// - Emoji
+/// - Сохранение в Quill Delta JSON
 class ArticleEditorScreen extends StatefulWidget {
   final ArticleModel? initial;
   const ArticleEditorScreen({super.key, this.initial});
@@ -47,6 +85,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
   final _tagsCtrl = TextEditingController();
   late ArticleSection _section;
   bool _saving = false;
+  bool _emojiVisible = false;
   bool get _ru => WesiLocale.isRussian;
 
   @override
@@ -87,6 +126,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     _tagsCtrl.dispose();
     super.dispose();
   }
+
+  // ─── Save ─────────────────────────────────────────────────────────────────
 
   Future<void> _save() async {
     final title = _titleCtrl.text.trim();
@@ -140,6 +181,141 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     );
   }
 
+  // ─── File Pickers (Gallery / Folder) ──────────────────────────────────────
+
+  Future<void> _pickImageFromDevice() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      allowMultiple: false,
+      withData: false,
+      withReadStream: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    final path = file.path;
+    if (path == null) {
+      _showError(_ru ? 'Не удалось получить файл' : 'Could not access file');
+      return;
+    }
+    // Копируем во временную директорию приложения, чтобы путь был стабильным
+    final savedPath = await _copyToAppDir(path, 'images');
+    if (savedPath == null) {
+      _showError(_ru ? 'Не удалось сохранить файл' : 'Could not save file');
+      return;
+    }
+    final index = _controller.selection.start;
+    _controller.replaceText(index, 0, '\n', null);
+    _controller.document.insert(index + 1, BlockEmbed.image(savedPath));
+  }
+
+  Future<void> _pickVideoFromDevice() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.video,
+      allowMultiple: false,
+      withData: false,
+    );
+    if (result == null || result.files.isEmpty) return;
+    final file = result.files.first;
+    final path = file.path;
+    if (path == null) {
+      _showError(_ru ? 'Не удалось получить файл' : 'Could not access file');
+      return;
+    }
+    final savedPath = await _copyToAppDir(path, 'videos');
+    if (savedPath == null) {
+      _showError(_ru ? 'Не удалось сохранить файл' : 'Could not save file');
+      return;
+    }
+    final index = _controller.selection.start;
+    _controller.replaceText(index, 0, '\n', null);
+    _controller.document.insert(
+      index + 1,
+      BlockEmbed.custom(_VideoEmbed(savedPath)),
+    );
+  }
+
+  Future<String?> _copyToAppDir(String sourcePath, String subDir) async {
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final targetDir = Directory('${appDir.path}/knowledge/$subDir');
+      if (!targetDir.existsSync()) targetDir.createSync(recursive: true);
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}_${sourcePath.split(Platform.pathSeparator).last}';
+      final targetPath = '${targetDir.path}/$fileName';
+      await File(sourcePath).copy(targetPath);
+      return targetPath;
+    } catch (e) {
+      debugPrint('Copy error: $e');
+      return null;
+    }
+  }
+
+  // ─── Insert by URL ────────────────────────────────────────────────────────
+
+  Future<void> _insertImageFromUrl() async {
+    final urlCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => _editorDialog(
+        title: _ru ? 'Вставить изображение по ссылке' : 'Insert image from URL',
+        children: [
+          TextField(
+            controller: urlCtrl,
+            style: TextStyle(color: AppTheme.textPrimary),
+            decoration: InputDecoration(
+              labelText: 'URL',
+              labelStyle: TextStyle(color: AppTheme.textMuted),
+              helperText: _ru
+                  ? 'Ссылка на изображение в интернете'
+                  : 'Link to image on the web',
+              helperStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+          ),
+        ],
+        onConfirm: () => urlCtrl.text.trim().isNotEmpty,
+      ),
+    );
+    if (ok == true && urlCtrl.text.trim().isNotEmpty) {
+      final index = _controller.selection.start;
+      _controller.replaceText(index, 0, '\n', null);
+      _controller.document.insert(index + 1, BlockEmbed.image(urlCtrl.text.trim()));
+    }
+    urlCtrl.dispose();
+  }
+
+  Future<void> _insertVideoFromUrl() async {
+    final urlCtrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => _editorDialog(
+        title: _ru ? 'Вставить видео по ссылке' : 'Insert video from URL',
+        children: [
+          TextField(
+            controller: urlCtrl,
+            style: TextStyle(color: AppTheme.textPrimary),
+            decoration: InputDecoration(
+              labelText: 'URL (MP4, WebM)',
+              labelStyle: TextStyle(color: AppTheme.textMuted),
+              helperText: _ru ? 'Прямая ссылка на видео' : 'Direct video link',
+              helperStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            ),
+          ),
+        ],
+        onConfirm: () => urlCtrl.text.trim().isNotEmpty,
+      ),
+    );
+    if (ok == true && urlCtrl.text.trim().isNotEmpty) {
+      final index = _controller.selection.start;
+      _controller.replaceText(index, 0, '\n', null);
+      _controller.document.insert(
+        index + 1,
+        BlockEmbed.custom(_VideoEmbed(urlCtrl.text.trim())),
+      );
+    }
+    urlCtrl.dispose();
+  }
+
+  // ─── Link ─────────────────────────────────────────────────────────────────
+
   Future<void> _insertLink() async {
     final urlCtrl = TextEditingController();
     final textCtrl = TextEditingController();
@@ -183,6 +359,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     urlCtrl.dispose();
     textCtrl.dispose();
   }
+
+  // ─── Table ────────────────────────────────────────────────────────────────
 
   Future<void> _insertTable() async {
     final rowsCtrl = TextEditingController(text: '3');
@@ -241,77 +419,31 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     colsCtrl.dispose();
   }
 
-  Future<void> _insertImage() async {
-    final urlCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => _editorDialog(
-        title: _ru ? 'Вставить изображение' : 'Insert image',
-        children: [
-          TextField(
-            controller: urlCtrl,
-            style: TextStyle(color: AppTheme.textPrimary),
-            decoration: InputDecoration(
-              labelText: _ru ? 'URL изображения' : 'Image URL',
-              labelStyle: TextStyle(color: AppTheme.textMuted),
-              helperText: _ru
-                  ? 'Поддерживаются ссылки на изображения в интернете'
-                  : 'Image URLs from the web',
-              helperStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted),
-            ),
-          ),
-        ],
-        onConfirm: () => urlCtrl.text.trim().isNotEmpty,
-      ),
-    );
-    if (ok == true && urlCtrl.text.trim().isNotEmpty) {
-      final index = _controller.selection.start;
-      _controller.replaceText(index, 0, '\n', null);
-      _controller.document.insert(index + 1, BlockEmbed.image(urlCtrl.text.trim()));
-    }
-    urlCtrl.dispose();
+  // ─── Emoji ────────────────────────────────────────────────────────────────
+
+  void _insertEmoji(String emoji) {
+    final index = _controller.selection.start;
+    _controller.replaceText(index, 0, emoji, null);
   }
 
-  Future<void> _insertVideo() async {
-    final urlCtrl = TextEditingController();
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (context) => _editorDialog(
-        title: _ru ? 'Вставить видео' : 'Insert video',
-        children: [
-          TextField(
-            controller: urlCtrl,
-            style: TextStyle(color: AppTheme.textPrimary),
-            decoration: InputDecoration(
-              labelText: _ru ? 'URL видео (MP4, WebM)' : 'Video URL (MP4, WebM)',
-              labelStyle: TextStyle(color: AppTheme.textMuted),
-              helperText: _ru ? 'Прямая ссылка на видео-файл' : 'Direct link to video file',
-              helperStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted),
-            ),
-          ),
-        ],
-        onConfirm: () => urlCtrl.text.trim().isNotEmpty,
-      ),
-    );
-    if (ok == true && urlCtrl.text.trim().isNotEmpty) {
-      final index = _controller.selection.start;
-      _controller.replaceText(index, 0, '\n', null);
-      _controller.document.insert(
-        index + 1,
-        BlockEmbed.custom(_VideoEmbed(urlCtrl.text.trim())),
-      );
+  void _toggleEmoji() {
+    setState(() => _emojiVisible = !_emojiVisible);
+    if (_emojiVisible) {
+      FocusScope.of(context).unfocus();
     }
-    urlCtrl.dispose();
   }
+
+  // ─── Clear Format ─────────────────────────────────────────────────────────
 
   void _clearFormat() {
-    // Убираем все inline-атрибуты из выделения
     _controller.formatSelection(Attribute.bold);
     _controller.formatSelection(Attribute.italic);
     _controller.formatSelection(Attribute.underline);
     _controller.formatSelection(Attribute.strikeThrough);
     _controller.formatSelection(Attribute.link);
   }
+
+  // ─── Dialog helper ────────────────────────────────────────────────────────
 
   Widget _editorDialog({
     required String title,
@@ -363,6 +495,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     );
   }
 
+  // ─── Section label ────────────────────────────────────────────────────────
+
   String _sectionLabel(ArticleSection s) => switch (s) {
         ArticleSection.about => _ru ? 'О программе' : 'About',
         ArticleSection.playbook => _ru ? 'Регламенты' : 'Playbooks',
@@ -370,6 +504,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
         ArticleSection.finance => _ru ? 'Финансы' : 'Finance',
         ArticleSection.personal => _ru ? 'Личное' : 'Personal',
       };
+
+  // ─── Build ────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -477,7 +613,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
               ),
             ),
             const Divider(height: 1, color: Colors.transparent),
-            // Custom toolbar
+            // Toolbar
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               decoration: BoxDecoration(
@@ -501,9 +637,12 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                     _tool(Icons.format_list_numbered, _ru ? 'Нумерация' : 'Numbered', () => _controller.formatSelection(Attribute.ol)),
                     _divider(),
                     _tool(Icons.link, _ru ? 'Ссылка' : 'Link', _insertLink),
-                    _tool(Icons.image, _ru ? 'Изображение' : 'Image', _insertImage),
-                    _tool(Icons.video_library, _ru ? 'Видео' : 'Video', _insertVideo),
+                    _tool(Icons.image, _ru ? 'Фото URL' : 'Photo URL', _insertImageFromUrl),
+                    _tool(Icons.perm_media, _ru ? 'Фото с устройства' : 'Photo from device', _pickImageFromDevice),
+                    _tool(Icons.video_library, _ru ? 'Видео URL' : 'Video URL', _insertVideoFromUrl),
+                    _tool(Icons.video_file, _ru ? 'Видео с устройства' : 'Video from device', _pickVideoFromDevice),
                     _tool(Icons.table_chart, _ru ? 'Таблица' : 'Table', _insertTable),
+                    _tool(Icons.emoji_emotions, _ru ? 'Emoji' : 'Emoji', _toggleEmoji),
                     _divider(),
                     _tool(Icons.format_clear, _ru ? 'Очистить' : 'Clear', _clearFormat),
                   ],
@@ -559,6 +698,54 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                 ),
               ),
             ),
+            // Emoji panel
+            if (_emojiVisible)
+              Container(
+                height: 220,
+                decoration: BoxDecoration(
+                  color: AppTheme.surface.withOpacity(0.5),
+                  border: Border(top: BorderSide(color: AppTheme.glassBorder)),
+                ),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                      child: Row(
+                        children: [
+                          Text(
+                            _ru ? 'Смайлики' : 'Emoji',
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppTheme.textSecondary),
+                          ),
+                          const Spacer(),
+                          IconButton(
+                            icon: Icon(Icons.close, size: 18, color: AppTheme.textMuted),
+                            onPressed: () => setState(() => _emojiVisible = false),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 10,
+                          childAspectRatio: 1.2,
+                        ),
+                        itemCount: _emojiList.length,
+                        itemBuilder: (context, i) => InkWell(
+                          borderRadius: BorderRadius.circular(6),
+                          onTap: () => _insertEmoji(_emojiList[i]),
+                          child: Center(
+                            child: Text(_emojiList[i], style: const TextStyle(fontSize: 20)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       ),
