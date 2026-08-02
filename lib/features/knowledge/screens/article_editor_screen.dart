@@ -28,6 +28,11 @@ class _AudioEmbed extends CustomBlockEmbed {
   static const String _type = 'audio';
 }
 
+class _ChartEmbed extends CustomBlockEmbed {
+  const _ChartEmbed(String value) : super(_type, value);
+  static const String _type = 'chart';
+}
+
 // ─── Emoji Data ─────────────────────────────────────────────────────────────
 
 const _emojiList = [
@@ -803,6 +808,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                     _tool(Icons.video_file, _ru ? 'Видео с устройства' : 'Video from device', _pickVideoFromDevice),
                     _tool(Icons.audiotrack, _ru ? 'Аудио URL' : 'Audio URL', _insertAudioFromUrl),
                     _tool(Icons.library_music, _ru ? 'Аудио с устройства' : 'Audio from device', _pickAudioFromDevice),
+                    _tool(Icons.insert_chart, _ru ? 'График' : 'Chart', _insertChart),
                     _tool(Icons.table_chart, _ru ? 'Таблица' : 'Table', _insertTable),
                     _tool(Icons.emoji_emotions, _ru ? 'Emoji' : 'Emoji', _toggleEmoji),
                     _divider(),
