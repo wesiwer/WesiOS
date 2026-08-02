@@ -165,7 +165,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w700,
-              color: AppTheme.accentOrange,
+              color: AppTheme.accent,
               letterSpacing: 0.3,
             ),
           ),
@@ -191,7 +191,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
-                  color: AppTheme.accentOrange,
+                  color: AppTheme.accent,
                 ),
               ),
             ),
@@ -215,7 +215,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                 minHeight: 6,
                 backgroundColor: AppTheme.background,
                 valueColor:
-                    AlwaysStoppedAnimation(AppTheme.accentOrange),
+                    AlwaysStoppedAnimation(AppTheme.accent),
               ),
             ),
             SizedBox(height: 8),
@@ -259,7 +259,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                       : 'Update failed: ${p.error}'),
               style: TextStyle(
                 fontSize: 12,
-                color: permission ? AppTheme.accentOrange : AppTheme.accentRed,
+                color: permission ? AppTheme.accent : AppTheme.accentRed,
               ),
             ),
             const SizedBox(height: 10),
@@ -311,13 +311,13 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
         padding: EdgeInsets.symmetric(horizontal: 18, vertical: 11),
         backgroundColor: onTap == null
             ? AppTheme.surface
-            : AppTheme.accentOrange.withOpacity(0.16),
+            : AppTheme.accent.withOpacity(0.16),
         child: Text(
           label,
           style: TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w600,
-            color: onTap == null ? AppTheme.textMuted : AppTheme.accentOrange,
+            color: onTap == null ? AppTheme.textMuted : AppTheme.accent,
           ),
         ),
       );
