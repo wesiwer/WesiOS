@@ -289,13 +289,10 @@ jobs:
           APK_SIZE: ${{ needs.build-android.outputs.size }}
           NOTES: ${{ github.event.inputs.notes }}
         run: |
-        run: |
           python3 -c "
           import json, os
           notes = os.environ.get("NOTES") or None
           "
-          import json, os
-          notes = os.environ.get("NOTES") or None
           def size(v):
               try:
                   return int(v)
