@@ -192,19 +192,29 @@ class _ImageEmbedBuilder extends EmbedBuilder {
     bool inline,
     TextStyle textStyle,
   ) {
-    final url = node.value.data;
+    final source = node.value.data.toString();
+    final isLocal = !source.startsWith('http') && File(source).existsSync();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
-        child: Image.network(
-          url,
-          fit: BoxFit.contain,
-          errorBuilder: (_, __, ___) => _broken(
-            Icons.broken_image_outlined,
-            'Image',
-          ),
-        ),
+        child: isLocal
+            ? Image.file(
+                File(source),
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => _broken(
+                  Icons.broken_image_outlined,
+                  'Image',
+                ),
+              )
+            : Image.network(
+                source,
+                fit: BoxFit.contain,
+                errorBuilder: (_, __, ___) => _broken(
+                  Icons.broken_image_outlined,
+                  'Image',
+                ),
+              ),
       ),
     );
   }
@@ -224,15 +234,15 @@ class _VideoEmbedBuilder extends EmbedBuilder {
     TextStyle textStyle,
   ) {
     final data = node.value.data;
-    String url = data;
-    if (data is String && data.trim().startsWith('{')) {
+    String source = data is String ? data : data.toString();
+    if (source.trim().startsWith('{')) {
       try {
-        url = (jsonDecode(data) as Map)['url'] as String? ?? data;
+        source = (jsonDecode(source) as Map)['url'] as String? ?? source;
       } catch (_) {}
     }
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
-      child: _InlineVideo(url: url.toString()),
+      child: _InlineVideo(source: source),
     );
   }
 }
@@ -311,8 +321,8 @@ class _TableEmbedBuilder extends EmbedBuilder {
 }
 
 class _InlineVideo extends StatefulWidget {
-  final String url;
-  const _InlineVideo({required this.url});
+  final String source;
+  const _InlineVideo({required this.source});
 
   @override
   State<_InlineVideo> createState() => _InlineVideoState();
@@ -330,8 +340,10 @@ class _InlineVideoState extends State<_InlineVideo> {
 
   Future<void> _init() async {
     try {
-      final uri = Uri.parse(widget.url);
-      final c = VideoPlayerController.networkUrl(uri);
+      final isLocal = !widget.source.startsWith('http') && File(widget.source).existsSync();
+      final c = isLocal
+          ? VideoPlayerController.file(File(widget.source))
+          : VideoPlayerController.networkUrl(Uri.parse(widget.source));
       await c.initialize();
       if (!mounted) {
         await c.dispose();
