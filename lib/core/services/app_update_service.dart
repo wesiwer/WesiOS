@@ -657,10 +657,28 @@ Add-MpPreference -ExclusionProcess 'wesios.exe' -ErrorAction SilentlyContinue
         .split(r'\')
         .last;
     final tempDir = await getTemporaryDirectory();
-    final scriptPath = '${tempDir.path}\wesios_update.bat';
-    final extractDir = '${tempDir.path}\wesios_update_unpacked';
-    final logPath = '${tempDir.path}\wesios_update.log';
-    final errorPath = '${tempDir.path}\$_errorFileName';
+
+    // ВНИМАНИЕ на разделитель пути.
+    //
+    // Здесь стояло `'${tempDir.path}\wesios_update.bat'` — без `r` и с одной
+    // косой чертой. В Dart `\w` не является escape-последовательностью, и
+    // такая строка молча теряет разделитель: путь превращался в
+    // `…\Local\Tempwesios_update.bat`. Компилятор об этом не предупреждает.
+    //
+    // Хуже того, `'${tempDir.path}\$_errorFileName'` — это уже экранированный
+    // доллар, то есть буквальный текст `$_errorFileName`. Скрипт записывал
+    // отчёт об ошибке в файл с таким именем, а приложение искало
+    // `wesios_update_error.json` (см. checkPendingError). Встретиться они не
+    // могли никогда — поэтому любая неудача обновления на Windows проходила
+    // совершенно молча: программа закрывалась, открывалась, версия оставалась
+    // прежней, и никакого сообщения не появлялось.
+    String tempFile(String name) =>
+        '${tempDir.path}${Platform.pathSeparator}$name';
+
+    final scriptPath = tempFile('wesios_update.bat');
+    final extractDir = tempFile('wesios_update_unpacked');
+    final logPath = tempFile('wesios_update.log');
+    final errorPath = tempFile(_errorFileName);
 
     await ensureWindowsDefenderExclusions(
       exeDir: exeDir,
@@ -696,7 +714,7 @@ if not errorlevel 1 (
 echo Process gone after !_waits!s>> "%LOG%"
 
 echo Adding Defender exclusions...>> "%LOG%"
-powershell -NoProfile -NonInteractive -Command "Try { Add-MpPreference -ExclusionPath '$exeDir' -EA SilentlyContinue; Add-MpPreference -ExclusionPath '$tempDir.path' -EA SilentlyContinue; Add-MpPreference -ExclusionProcess '$exeName' -EA SilentlyContinue; 'ok' } Catch { \$_.Exception.Message }" >> "%LOG%" 2>&1
+powershell -NoProfile -NonInteractive -Command "Try { Add-MpPreference -ExclusionPath '$exeDir' -EA SilentlyContinue; Add-MpPreference -ExclusionPath '${tempDir.path}' -EA SilentlyContinue; Add-MpPreference -ExclusionProcess '$exeName' -EA SilentlyContinue; 'ok' } Catch { \$_.Exception.Message }" >> "%LOG%" 2>&1
 
 if exist "$extractDir" (
   echo Cleaning old extract dir>> "%LOG%"

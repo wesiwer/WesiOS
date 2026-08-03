@@ -1,4 +1,6 @@
 import '../../../core/constants/app_version.dart';
+import 'dart:convert';
+
 import '../models/article_model.dart';
 
 /// Полная документация WesiOS — встроенные статьи базы знаний.
@@ -43,36 +45,77 @@ class BuiltinArticles {
         );
 
     // ─── Rich content helpers ───────────────────────────────────────────────
-    String h1(String t) => '{"insert":"$t\\n","attributes":{"header":1}}';
-    String h2(String t) => '{"insert":"$t\\n","attributes":{"header":2}}';
-    String h3(String t) => '{"insert":"$t\\n","attributes":{"header":3}}';
-    String p(String t) => '{"insert":"$t\\n"}';
-    String bold(String t) => '{"insert":"$t","attributes":{"bold":true}}';
-    String italic(String t) => '{"insert":"$t","attributes":{"italic":true}}';
-    String link(String text, String url) => '{"insert":"$text","attributes":{"link":"$url"}}';
-    String bullet(String t) => '{"insert":"$t\\n","attributes":{"list":"bullet"}}';
-    String numbered(String t) => '{"insert":"$t\\n","attributes":{"list":"ordered"}}';
-    String br() => '{"insert":"\\n"}';
-    String embedImage(String url) => '{"insert":{"image":"$url"}}';
-    String embedVideo(String url) => '{"insert":{"video":"$url"}}';
-    String embedTable(String json) => '{"insert":{"table":"$json"}}';
-    String embedChart(String json) => '{"insert":{"chart":"$json"}}';
+    //
+    // ПОЧЕМУ ЭТО ВЫГЛЯДИТ ИМЕННО ТАК. В формате Delta, которым Quill хранит
+    // документ, атрибуты БЛОКА (заголовок, маркер списка) ставятся не на сам
+    // текст, а на перевод строки, который этот блок закрывает. Здесь было
+    // написано наоборот — `{"insert":"Заголовок\n","attributes":{"header":1}}`
+    // одной операцией, — и редактор такую разметку читал неверно: заголовки и
+    // списки в статьях выглядели не тем, чем должны были.
+    //
+    // Правильная форма: текст отдельной операцией, а перевод строки —
+    // отдельной, и атрибут висит именно на ней.
+    //
+    // Текст ещё и экранируется через jsonEncode: собранный вручную JSON
+    // ломался от любой кавычки внутри строки.
+    String esc(String t) => jsonEncode(t);
+    String lineBreak([String? attrs]) => attrs == null
+        ? '{"insert":"\\n"}'
+        : '{"insert":"\\n","attributes":$attrs}';
+
+    String header(String t, int level) =>
+        '{"insert":${esc(t)}},${lineBreak('{"header":$level}')}';
+
+    String h1(String t) => header(t, 1);
+    String h2(String t) => header(t, 2);
+    String h3(String t) => header(t, 3);
+    String p(String t) => '{"insert":${esc(t)}},${lineBreak()}';
+    String bold(String t) =>
+        '{"insert":${esc(t)},"attributes":{"bold":true}}';
+    String italic(String t) =>
+        '{"insert":${esc(t)},"attributes":{"italic":true}}';
+    String link(String text, String url) =>
+        '{"insert":${esc(text)},"attributes":{"link":${esc(url)}}}';
+    String bullet(String t) =>
+        '{"insert":${esc(t)}},${lineBreak('{"list":"bullet"}')}';
+    String numbered(String t) =>
+        '{"insert":${esc(t)}},${lineBreak('{"list":"ordered"}')}';
+    String br() => lineBreak();
+    // Вложенный JSON обязан быть ЭКРАНИРОВАН. Здесь стояло
+    // `{"insert":{"chart":"$json"}}` — то есть готовый JSON диаграммы
+    // вставлялся внутрь строкового значения как есть, со всеми своими
+    // кавычками. Всё тело статьи после этого переставало разбираться, и
+    // статья показывалась сырым текстом.
+    String embedImage(String url) => '{"insert":{"image":${esc(url)}}}';
+    String embedVideo(String url) => '{"insert":{"video":${esc(url)}}}';
+    String embedTable(String json) => '{"insert":{"table":${esc(json)}}}';
+    String embedChart(String json) => '{"insert":{"chart":${esc(json)}}}';
 
     // ─── Chart data helpers ─────────────────────────────────────────────────
+    // Собираются jsonEncode, а не склейкой: заголовок с кавычкой или
+    // подпись с апострофом ломали разметку целиком.
+    String chart(String type, String title, List<String> labels,
+            List<double> values,
+            {String source = 'manual'}) =>
+        jsonEncode({
+          'type': type,
+          'title': title,
+          'source': source,
+          'data': values,
+          'labels': labels,
+        });
+
     String chartBar(String title, List<String> labels, List<double> values) =>
-        '{"type":"bar","title":"$title","source":"manual","data":${values.toString()},"labels":${labels.map((l) => '"$l"').toList().toString()}}';
+        chart('bar', title, labels, values);
     String chartLine(String title, List<String> labels, List<double> values) =>
-        '{"type":"line","title":"$title","source":"manual","data":${values.toString()},"labels":${labels.map((l) => '"$l"').toList().toString()}}';
+        chart('line', title, labels, values);
     String chartPie(String title, List<String> labels, List<double> values) =>
-        '{"type":"pie","title":"$title","source":"manual","data":${values.toString()},"labels":${labels.map((l) => '"$l"').toList().toString()}}';
+        chart('pie', title, labels, values);
     String chartLinked(String type, String source, String title) =>
-        '{"type":"$type","title":"$title","source":"$source","data":[],"labels":[]}';
+        chart(type, title, const [], const [], source: source);
 
     // ─── Table data helper ──────────────────────────────────────────────────
-    String tableJson(List<List<String>> rows) {
-      final encoded = rows.map((r) => r.map((c) => '"$c"').join(',')).join('],[');
-      return '[[$encoded]]';
-    }
+    String tableJson(List<List<String>> rows) => jsonEncode(rows);
 
 
     // ═══════════════════════════════════════════════════════════════════════
@@ -86,7 +129,7 @@ class BuiltinArticles {
     final aboutBody = '[${h1(ru ? 'WesiOS — персональная операционная система' : 'WesiOS — Personal Operating System')},'
         '${p(ru ? 'WesiOS — это комплексная система управления личными и профессиональными процессами. Объединяет финансы, задачи, аналитику, базу знаний и инструменты в едином интерфейсе.' : 'WesiOS is a comprehensive system for managing personal and professional processes. Combines finance, tasks, analytics, knowledge base and tools in a unified interface.')},'
         '${h2(ru ? 'Версия' : 'Version')},'
-        '${p('v0.11.9 α')},'
+        '${p(AppVersion.display)},'
         '${h2(ru ? 'Ключевые принципы' : 'Key Principles')},'
         '${bullet(ru ? 'Все данные хранятся локально (Hive) — приватность по умолчанию' : 'All data stored locally (Hive) — privacy by default')},'
         '${bullet(ru ? 'Firebase — опционально, для облачных функций' : 'Firebase — optional, for cloud functions')},'

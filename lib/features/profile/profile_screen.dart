@@ -179,7 +179,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return Theme(
           data: Theme.of(context).copyWith(
             colorScheme: ColorScheme.dark(
-              primary: AppTheme.accentOrange,
+              primary: AppTheme.accent,
               onPrimary: AppTheme.background,
               surface: AppTheme.surface,
               onSurface: AppTheme.textPrimary,
@@ -331,7 +331,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         children: [
           Row(
             children: [
-              Icon(Icons.lock, size: 18, color: AppTheme.accentOrange),
+              Icon(Icons.lock, size: 18, color: AppTheme.accent),
               SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -359,7 +359,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           HoverButton(
             onTap: _unlockVault,
             padding: EdgeInsets.symmetric(vertical: 12),
-            backgroundColor: AppTheme.accentOrange,
+            backgroundColor: AppTheme.accent,
             child: Center(
               child: Text(
                 ShieldService.isConfigured
@@ -384,7 +384,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
             value: ShieldService.biometricsEnabled,
-            activeColor: AppTheme.accentOrange,
+            activeColor: AppTheme.accent,
             title: Text('Отпечаток или Face ID',
                 style: TextStyle(
                     fontSize: 14, color: AppTheme.textPrimary)),
@@ -409,7 +409,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             }
           },
           child: Text('Сменить пароль',
-              style: TextStyle(color: AppTheme.accentOrange)),
+              style: TextStyle(color: AppTheme.accent)),
         ),
         // Всё остальное — автоблокировка, журнал, область защиты — живёт в
         // Wesi Shield; дублировать те же переключатели здесь значит однажды
@@ -567,7 +567,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.upload, size: 16, color: AppTheme.accentOrange),
+              Icon(Icons.upload, size: 16, color: AppTheme.accent),
               SizedBox(width: 8),
               Text(
                 WesiLocale.get('upload_avatar'),
@@ -637,7 +637,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               shape: BoxShape.circle,
               gradient: preset.gradient,
               border: Border.all(
-                color: sel ? AppTheme.accentOrange : Colors.transparent,
+                color: sel ? AppTheme.accent : Colors.transparent,
                 width: 2.5,
               ),
             ),

@@ -145,7 +145,7 @@ class _QuillBodyState extends State<_QuillBody> {
             TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
-              color: AppTheme.accentOrange,
+              color: AppTheme.accent,
             ),
             const VerticalSpacing(10, 4),
             const VerticalSpacing(0, 0),
@@ -172,7 +172,7 @@ class _QuillBodyState extends State<_QuillBody> {
             null,
           ),
           link: TextStyle(
-            color: AppTheme.accentOrange,
+            color: AppTheme.accent,
             decoration: TextDecoration.underline,
           ),
         ),
@@ -431,7 +431,7 @@ class _InlineVideoState extends State<_InlineVideo> {
           borderRadius: BorderRadius.circular(12),
         ),
         child: CircularProgressIndicator(
-            color: AppTheme.accentOrange.withOpacity(0.5)),
+            color: AppTheme.accent.withOpacity(0.5)),
       );
     }
     return ClipRRect(
@@ -660,7 +660,7 @@ class _InlineChart extends StatelessWidget {
               return PieChartSectionData(
                 value: e.value,
                 title: '${(pct * 100).toStringAsFixed(0)}%',
-                color: [AppTheme.accent, AppTheme.accentGreen, AppTheme.accentOrange, AppTheme.accentRed, AppTheme.lightAccentBlue][e.key % 5],
+                color: [AppTheme.accent, AppTheme.accentGreen, AppTheme.accent, AppTheme.accentRed, AppTheme.lightAccentBlue][e.key % 5],
                 radius: 60,
                 titleStyle: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600),
               );
@@ -807,7 +807,7 @@ class _LegacyMarkdownBody extends StatelessWidget {
               style: TextStyle(
                   fontSize: 16,
                   fontWeight: FontWeight.w700,
-                  color: AppTheme.accentOrange)),
+                  color: AppTheme.accent)),
         ));
         continue;
       }
@@ -828,7 +828,7 @@ class _LegacyMarkdownBody extends StatelessWidget {
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('•', style: TextStyle(color: AppTheme.accentOrange)),
+              Text('•', style: TextStyle(color: AppTheme.accent)),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(line.substring(2).replaceAll('**', ''),

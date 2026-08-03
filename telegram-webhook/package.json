@@ -4,6 +4,6 @@
   "description": "Webhook server for WesiOS Telegram notifications",
   "main": "api/send-message.js",
   "dependencies": {
-    "@vercel/postgres": "^0.5.1"
+    "jose": "^5.9.6"
   }
 }

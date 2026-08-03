@@ -198,12 +198,20 @@ class _DashboardTabState extends State<_DashboardTab> {
     }
   }
 
+  /// Помещается ли заряд мыслей в шапку рядом с часами.
+  ///
+  /// Блок не уже 170 px, иконки справа занимают ~120 px, лого и часам нужно
+  /// хотя бы 130 px. Ниже этой суммы он в строку не влезает и уезжает под
+  /// шапку отдельной строкой — иначе он давит на часы и на иконки.
+  static bool _chargeBelowHeader(BuildContext context) =>
+      MediaQuery.sizeOf(context).width < 460;
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          // Header: logo+clock | mind-charge | icons
+          // Header: logo+clock | icons над зарядом мыслей
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 10, 12, 12),
@@ -251,34 +259,56 @@ class _DashboardTabState extends State<_DashboardTab> {
                       ],
                     ),
                   ),
-                  // Пустой промежуток над цитатой / правее часов — заряд мыслей
                   const SizedBox(width: 8),
-                  const Flexible(
+                  // Правая колонка: иконки сверху, заряд мыслей под ними.
+                  //
+                  // Раньше заряд стоял отдельным Flexible В ОДНОМ РЯДУ с
+                  // иконками и прижимался к верху — то есть оказывался на
+                  // одной линии с поиском, колокольчиком и профилем и налезал
+                  // на них. Теперь он там, где ему и место: под иконками,
+                  // правее часов и над самой цитатой.
+                  Flexible(
                     flex: 4,
-                    child: Align(
-                      alignment: Alignment.topRight,
-                      child: QuoteMindCharge(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _HoverIconButton(
+                              icon: Icons.search,
+                              onTap: () => GlobalSearchSheet.show(context),
+                            ),
+                            const SizedBox(width: 6),
+                            const AlertsBell(size: 28),
+                            const SizedBox(width: 6),
+                            const _ProfileDropdown(),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
+                        // На узком экране блоку в 170 px рядом с часами уже
+                        // не хватает места — там он уезжает отдельной
+                        // строкой ниже (см. sliver под шапкой).
+                        if (!_chargeBelowHeader(context))
+                          const QuoteMindCharge(),
+                      ],
                     ),
-                  ),
-                  const SizedBox(width: 6),
-                  // Правая группа иконок
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _HoverIconButton(
-                        icon: Icons.search,
-                        onTap: () => GlobalSearchSheet.show(context),
-                      ),
-                      const SizedBox(width: 6),
-                      const AlertsBell(size: 28),
-                      const SizedBox(width: 6),
-                      const _ProfileDropdown(),
-                    ],
                   ),
                 ],
               ),
             ),
           ),
+          if (_chargeBelowHeader(context))
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 12, 12),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: QuoteMindCharge(),
+                ),
+              ),
+            ),
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -421,7 +451,10 @@ class _DashboardTabState extends State<_DashboardTab> {
         title: result['title'],
         amount: result['amount'],
         type: type,
-        date: DateTime.now(),
+        // Дата из диалога, а не «сейчас»: в диалоге есть календарь, и раньше
+        // выбранное в нём молча выбрасывалось — операция всегда получалась
+        // сегодняшней и вставала в начало истории вместо своего места.
+        date: result['date'] as DateTime? ?? DateTime.now(),
         category: result['category'],
         description: result['description'],
         isRecurring: result['isRecurring'] ?? false,

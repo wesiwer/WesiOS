@@ -53,7 +53,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                 color: AppTheme.carbonDark.withOpacity(0.98),
                 borderRadius: BorderRadius.circular(14),
                 border: Border.all(
-                    color: AppTheme.accentOrange.withOpacity(0.35)),
+                    color: AppTheme.accent.withOpacity(0.35)),
                 boxShadow: [
                   BoxShadow(
                     color: Colors.black.withOpacity(0.45),
@@ -72,7 +72,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                         height: 28,
                         decoration: BoxDecoration(
                           gradient: LinearGradient(
-                            colors: [AppTheme.accentOrange, Color(0xFFFFD700)],
+                            colors: [AppTheme.accent, Color(0xFFFFD700)],
                           ),
                           borderRadius: BorderRadius.circular(7),
                         ),
@@ -106,7 +106,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                     widget.purpose,
                     style: TextStyle(
                       fontSize: 12,
-                      color: AppTheme.accentOrange.withOpacity(0.85),
+                      color: AppTheme.accent.withOpacity(0.85),
                       fontStyle: FontStyle.italic,
                       height: 1.35,
                     ),
@@ -162,7 +162,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
       color: AppTheme.carbonDark.withOpacity(0.98),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: AppTheme.accentOrange.withOpacity(0.3)),
+        side: BorderSide(color: AppTheme.accent.withOpacity(0.3)),
       ),
       items: [
         PopupMenuItem(
@@ -189,7 +189,7 @@ class _WesiContextMenuState extends State<WesiContextMenu> {
                 Text(widget.purpose,
                     style: TextStyle(
                         fontSize: 12,
-                        color: AppTheme.accentOrange.withOpacity(0.8),
+                        color: AppTheme.accent.withOpacity(0.8),
                         fontStyle: FontStyle.italic)),
               ],
             ),

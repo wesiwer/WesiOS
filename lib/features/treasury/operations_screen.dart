@@ -79,19 +79,19 @@ class _OperationsScreenState extends State<OperationsScreen> {
       ),
     );
     if (result != null) {
-      // Тот же id — box.put перезаписывает запись, а не плодит дубли.
-      final updated = TransactionModel(
-        id: tx.id,
-        title: result['title'],
-        amount: result['amount'],
-        type: tx.type,
-        date: tx.date,
-        category: result['category'],
-        description: result['description'],
-        isRecurring: result['isRecurring'] ?? false,
-        recurringPeriod: result['recurringPeriod'],
-        isAnomaly: tx.isAnomaly,
-        zScore: tx.zScore,
+      // copyWith, а не сборка новой модели по полям: при ручной сборке
+      // достаточно забыть одно поле, чтобы оно молча обнулилось. Так уже
+      // терялся accountId — операция со второго счёта после правки
+      // переезжала на основной, и балансы обоих счетов менялись без
+      // единого сообщения.
+      final updated = tx.copyWith(
+        title: result['title'] as String,
+        amount: result['amount'] as double,
+        date: result['date'] as DateTime?,
+        category: result['category'] as String?,
+        description: result['description'] as String?,
+        isRecurring: result['isRecurring'] as bool?,
+        recurringPeriod: result['recurringPeriod'] as RecurringPeriod?,
       );
       await _service.addTransaction(updated);
       await _loadData();
@@ -109,7 +109,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
         backgroundColor: AppTheme.background,
         body: Center(
           child: CircularProgressIndicator(
-            color: AppTheme.accentOrange.withOpacity(0.5)),
+            color: AppTheme.accent.withOpacity(0.5)),
         ),
       );
     }

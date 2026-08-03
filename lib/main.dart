@@ -17,6 +17,8 @@ import 'core/services/quote_mind_charge_service.dart';
 import 'core/theme/app_theme.dart';
 import 'app.dart';
 import 'core/services/currency_service.dart';
+import 'core/services/firebase_rest_service.dart';
+import 'core/services/secrets_service.dart';
 
 bool get isDesktop {
   if (kIsWeb) return false;
@@ -65,10 +67,30 @@ void main() async {
   ThemeNotifier.load();
   AppIconService.load();
   QuoteMindChargeService.load();
-
-  ThemeNotifier.instance.addListener(() {
-    AppIconService.apply();
+  // Ключи от внешних сервисов: сперва поднимаем локальную копию (работает
+  // без сети), затем в фоне тянем свежие из облака. Человек при этом не
+  // вводит ничего — в том и смысл.
+  SecretsService.loadCached();
+  SecretsService.sync();
+  // При входе и выходе набор ключей меняется вместе с аккаунтом.
+  FirebaseRestService.revision.addListener(() {
+    if (FirebaseRestService.isSignedIn) {
+      SecretsService.sync();
+    } else {
+      SecretsService.forget();
+    }
   });
+
+  // Иконка запуска НАМЕРЕННО не переключается вместе с темой.
+  //
+  // Смена activity-alias на Android — это setComponentEnabledSetting, а он
+  // убирает задачу приложения из списка недавних даже с DONT_KILL_APP:
+  // DONT_KILL_APP бережёт процесс, но не задачу. Нативная часть уже
+  // откладывает смену до onPause, и всё равно получалось так, что после
+  // переключения темы приложение «вылетало и заходило заново».
+  //
+  // В режиме «auto» нужная иконка ставится на СЛЕДУЮЩЕМ запуске — там
+  // перезапуск задачи никому не виден (см. AppIconService.load).
 
   ExchangeRateService.refresh();
   // Сначала читаем маркер ошибки от bat (если OTA на Windows упала),

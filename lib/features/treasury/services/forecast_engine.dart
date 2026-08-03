@@ -305,10 +305,18 @@ class ForecastEngine {
     /// номинальных деньгах, это вопрос "хватит ли денег", а не "сколько они
     /// стоят сегодня".
     double annualDiscountRate = 0.0,
+
+    /// Какой день считать «сегодня».
+    ///
+    /// По умолчанию — настоящее сегодня. Параметр нужен ретро-проверке
+    /// (см. ForecastBacktest): чтобы спросить «а что бы прогноз сказал месяц
+    /// назад», движок должен уметь встать на ту дату. Заодно это делает
+    /// расчёт проверяемым: без него любой тест зависел бы от системных часов.
+    DateTime? asOf,
   }) {
     if (days <= 0 || transactions.length < 3) return ForecastResult.empty();
 
-    final today = DateTime.now();
+    final today = asOf ?? DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
 
     DateTime minDay = todayOnly;

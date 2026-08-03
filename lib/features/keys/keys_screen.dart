@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/security/secret_vault.dart';
 import '../../core/services/firebase_rest_service.dart';
+import '../../core/services/secrets_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_wordmark.dart';
@@ -62,27 +63,25 @@ class _KeysScreenState extends State<KeysScreen> {
       _error = null;
     });
     final admin = await FirebaseRestService.isAdmin();
-    final doc = admin
-        ? await FirebaseRestService.getDocument('secrets/default')
-        : null;
+    // Ключи тянет SecretsService — он же делает это сам при запуске и при
+    // входе. Здесь просто просим обновить, чтобы экран показывал свежее.
+    await SecretsService.sync();
+    final doc = SecretsService.all;
     if (!mounted) return;
     setState(() {
       _isAdmin = admin;
-      _remote = doc ?? const {};
+      _remote = doc;
       _loading = false;
       if (!admin) {
+        // Не «нет доступа»: читать рабочий набор может любой вошедший — на
+        // том и построено автоподключение. Закрыто именно ИЗМЕНЕНИЕ.
         _error = _ru
-            ? 'У этой учётной записи нет доступа к ключам.'
-            : 'This account has no access to the keys.';
+            ? 'Менять ключи может только владелец. Приложение пользуется ими '
+                'само — вводить ничего не нужно.'
+            : 'Only the owner can change the keys. The app uses them '
+                'automatically — nothing to enter.';
       }
     });
-    // Локальная копия нужна, чтобы ключи работали без сети. Пишется только
-    // если хранилище открыто — иначе шифровать нечем.
-    if (admin && doc != null && SecretVault.unlocked.value) {
-      for (final e in doc.entries) {
-        await SecretVault.write(e.key, e.value);
-      }
-    }
   }
 
   @override
@@ -164,7 +163,7 @@ class _KeysScreenState extends State<KeysScreen> {
             children: [
               Icon(open ? Icons.lock_open : Icons.lock,
                   size: 18,
-                  color: open ? AppTheme.accentGreen : AppTheme.accentOrange),
+                  color: open ? AppTheme.accentGreen : AppTheme.accent),
               SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -204,7 +203,7 @@ class _KeysScreenState extends State<KeysScreen> {
               onTap: () => Navigator.pushNamed(context, '/shield'),
               padding:
                   EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-              backgroundColor: AppTheme.accentOrange,
+              backgroundColor: AppTheme.accent,
               child: Text(_ru ? 'Открыть Wesi Shield' : 'Open Wesi Shield',
                   style: const TextStyle(
                       fontSize: 13,
@@ -219,7 +218,7 @@ class _KeysScreenState extends State<KeysScreen> {
                     onTap: _unlockVault,
                     padding: EdgeInsets.symmetric(
                         horizontal: 18, vertical: 11),
-                    backgroundColor: AppTheme.accentOrange,
+                    backgroundColor: AppTheme.accent,
                     child: Text(_ru ? 'Разблокировать' : 'Unlock',
                         style: TextStyle(
                             fontSize: 13,
@@ -311,6 +310,54 @@ class _KeysScreenState extends State<KeysScreen> {
             style: TextStyle(
                 fontSize: 12, height: 1.4, color: AppTheme.textMuted),
           ),
+          // Пока учётной записи не существует, вход отвечает «неверная почта
+          // или пароль» — и это читается как «вход сломан». Показываем прямо
+          // здесь, что и где нужно один раз завести.
+          if (configured && !signedIn) ...[
+            SizedBox(height: 10),
+            Container(
+              padding: EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceLight.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.glassBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _ru ? 'Если войти не удаётся' : 'If sign-in fails',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textSecondary),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    _ru
+                        ? 'Скорее всего, учётной записи ещё нет. Один раз:\n'
+                            '1. console.firebase.google.com → проект '
+                            '${FirebaseProject.projectId}\n'
+                            '2. Authentication → Sign-in method → включить '
+                            'Email/Password\n'
+                            '3. Authentication → Users → Add user: почта и пароль\n'
+                            '4. Войти здесь этой парой, скопировать UID снизу\n'
+                            '5. Firestore → создать документ admins/<UID>'
+                        : 'Most likely the account does not exist yet. Once:\n'
+                            '1. console.firebase.google.com → project '
+                            '${FirebaseProject.projectId}\n'
+                            '2. Authentication → Sign-in method → enable '
+                            'Email/Password\n'
+                            '3. Authentication → Users → Add user\n'
+                            '4. Sign in here, copy the UID shown below\n'
+                            '5. Firestore → create document admins/<UID>',
+                    style: TextStyle(
+                        fontSize: 11, height: 1.5, color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (signedIn) ...[
             SizedBox(height: 8),
             SelectableText(
@@ -337,7 +384,7 @@ class _KeysScreenState extends State<KeysScreen> {
                   padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
                   backgroundColor:
-                      configured ? AppTheme.accentOrange : AppTheme.surface,
+                      configured ? AppTheme.accent : AppTheme.surface,
                   child: Text(
                     _ru ? 'Войти' : 'Sign in',
                     style: TextStyle(
@@ -353,7 +400,7 @@ class _KeysScreenState extends State<KeysScreen> {
                   onTap: _load,
                   padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
-                  backgroundColor: AppTheme.accentOrange,
+                  backgroundColor: AppTheme.accent,
                   child: Text(
                     _loading
                         ? (_ru ? 'Читаю…' : 'Loading…')
@@ -393,7 +440,7 @@ class _KeysScreenState extends State<KeysScreen> {
                     fontSize: 12,
                     color: configured
                         ? AppTheme.textMuted
-                        : AppTheme.accentOrange,
+                        : AppTheme.accent,
                   ),
                 ),
               ),
@@ -468,7 +515,7 @@ class _KeysScreenState extends State<KeysScreen> {
                 onPressed: _addSecret,
                 child: Text(_ru ? 'Добавить' : 'Add',
                     style: TextStyle(
-                        fontSize: 12, color: AppTheme.accentOrange)),
+                        fontSize: 12, color: AppTheme.accent)),
               ),
             ],
           ),
@@ -493,7 +540,7 @@ class _KeysScreenState extends State<KeysScreen> {
         child: Row(
           children: [
             Icon(Icons.vpn_key_outlined,
-                size: 15, color: AppTheme.accentOrange),
+                size: 15, color: AppTheme.accent),
             SizedBox(width: 11),
             Expanded(
               child: Column(
@@ -604,7 +651,7 @@ class _KeysScreenState extends State<KeysScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
             child: Text(WesiLocale.get('save'),
-                style: TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),

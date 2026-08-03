@@ -113,7 +113,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         title: result['title'],
         amount: result['amount'],
         type: type,
-        date: DateTime.now(),
+        date: result['date'] as DateTime? ?? DateTime.now(),
         category: result['category'],
         description: result['description'],
         isRecurring: result['isRecurring'] ?? false,
@@ -338,7 +338,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
                 _miniStat(
                   WesiLocale.get('anomalies_detected'),
                   '${_anomalies.length}',
-                  AppTheme.accentOrange,
+                  AppTheme.accent,
                 ),
               ],
             ],
@@ -395,7 +395,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
             style: TextStyle(
               fontSize: 11,
               color: ExchangeRateService.usingFallback
-                  ? AppTheme.accentOrange.withOpacity(0.8)
+                  ? AppTheme.accent.withOpacity(0.8)
                   : AppTheme.textMuted,
             ),
           ),

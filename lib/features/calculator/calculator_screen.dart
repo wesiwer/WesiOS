@@ -325,6 +325,13 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
           .replaceAll('÷', '/')
           .replaceAll('−', '-');
 
+      // Незакрытые скобки дописываются сами.
+      //
+      // «√4» вставляется как «sqrt(4», и без закрывающей скобки разбор падал
+      // в Error. Человек, нажавший «=», уже сказал, что выражение закончено —
+      // спрашивать у него ещё и скобку незачем, конец строки и есть ответ.
+      expr = _closeOpenParens(expr);
+
       // Factorial: simple integer only, replace n! with factorial value
       expr = _expandFactorials(expr);
 
@@ -375,6 +382,19 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       _result = 'Error';
       _justEvaluated = false;
     }
+  }
+
+  /// Дописывает недостающие «)» в конец выражения.
+  ///
+  /// Лишние закрывающие не трогаем: «4)» — это опечатка, а не сокращение,
+  /// и молча превращать её во что-то другое хуже, чем честно показать ошибку.
+  static String _closeOpenParens(String expr) {
+    var depth = 0;
+    for (final ch in expr.split('')) {
+      if (ch == '(') depth++;
+      if (ch == ')') depth--;
+    }
+    return depth > 0 ? expr + ')' * depth : expr;
   }
 
   String _expandFactorials(String expr) {

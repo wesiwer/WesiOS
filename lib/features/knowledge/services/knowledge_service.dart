@@ -177,8 +177,13 @@ class KnowledgeService {
     final box = _box;
     if (box == null) return [];
     final result = <ArticleModel>[];
+    // Защита от петли в данных: если A лежит в B, а B — в A, этот цикл
+    // крутился бы вечно и вешал экран намертво. Петлю на диске мог оставить
+    // любой прежний билд, поэтому обход обязан быть устойчивым сам по себе,
+    // а не только полагаться на проверку при выборе родителя.
+    final seen = <String>{};
     var current = box.get(articleId);
-    while (current != null) {
+    while (current != null && seen.add(current.id)) {
       result.insert(0, current);
       if (current.parentId == null) break;
       current = box.get(current.parentId);
@@ -186,13 +191,35 @@ class KnowledgeService {
     return result;
   }
 
+  /// Все потомки статьи, включая её саму — для проверки «не кладём папку
+  /// внутрь самой себя».
+  static Set<String> subtreeIds(String rootId) {
+    final box = _box;
+    if (box == null) return {rootId};
+    final ids = <String>{rootId};
+    var grew = true;
+    // Обход волнами вместо рекурсии: на петле рекурсия переполнила бы стек,
+    // а здесь множество просто перестаёт расти.
+    while (grew) {
+      grew = false;
+      for (final a in box.values) {
+        final p = a.parentId;
+        if (p != null && ids.contains(p) && ids.add(a.id)) grew = true;
+      }
+    }
+    return ids;
+  }
+
   static List<ArticleModel> getSubtree(String rootId) {
     final box = _box;
     if (box == null) return [];
     final result = <ArticleModel>[];
+    // seen — та же защита от петли: без него рекурсия переполняла бы стек.
+    final seen = <String>{rootId};
     void collect(String pid) {
       final children = box.values.where((a) => a.parentId == pid).toList();
       for (final child in children) {
+        if (!seen.add(child.id)) continue;
         result.add(child);
         collect(child.id);
       }

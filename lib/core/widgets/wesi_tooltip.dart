@@ -52,7 +52,7 @@ class _WesiTooltipState extends State<WesiTooltip> {
                 color: AppTheme.carbonDark.withOpacity(0.96),
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: AppTheme.accentOrange.withOpacity(0.3),
+                  color: AppTheme.accent.withOpacity(0.3),
                 ),
                 boxShadow: [
                   BoxShadow(

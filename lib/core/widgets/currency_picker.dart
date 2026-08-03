@@ -91,7 +91,7 @@ class CurrencyPicker extends StatelessWidget {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
         color: selected
-            ? AppTheme.accentOrange.withOpacity(0.10)
+            ? AppTheme.accent.withOpacity(0.10)
             : Colors.transparent,
         child: Row(
           children: [
@@ -110,7 +110,7 @@ class CurrencyPicker extends StatelessWidget {
                           fontSize: 14,
                           fontWeight: FontWeight.w800,
                           color: selected
-                              ? AppTheme.accentOrange
+                              ? AppTheme.accent
                               : AppTheme.textPrimary,
                         ),
                       ),
@@ -136,7 +136,7 @@ class CurrencyPicker extends StatelessWidget {
             ),
             if (selected)
               Icon(Icons.check_circle,
-                  size: 18, color: AppTheme.accentOrange),
+                  size: 18, color: AppTheme.accent),
           ],
         ),
       ),

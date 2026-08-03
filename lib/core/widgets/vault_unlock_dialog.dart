@@ -127,7 +127,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
               Row(
                 children: [
                   Icon(Icons.lock_outline,
-                      size: 20, color: AppTheme.accentOrange),
+                      size: 20, color: AppTheme.accent),
                   SizedBox(width: 10),
                   Expanded(
                     child: Text(
@@ -195,10 +195,10 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                 TextButton.icon(
                   onPressed: _tryBiometric,
                   icon: Icon(Icons.fingerprint,
-                      size: 18, color: AppTheme.accentOrange),
+                      size: 18, color: AppTheme.accent),
                   label: Text(
                     ru ? 'Отпечаток или Face ID' : 'Fingerprint or Face ID',
-                    style: TextStyle(color: AppTheme.accentOrange),
+                    style: TextStyle(color: AppTheme.accent),
                   ),
                 ),
               ],
@@ -218,7 +218,7 @@ class _VaultUnlockDialogState extends State<VaultUnlockDialog> {
                           ? (ru ? 'Установить' : 'Set')
                           : (ru ? 'Открыть' : 'Unlock'),
                       style: TextStyle(
-                          color: AppTheme.accentOrange,
+                          color: AppTheme.accent,
                           fontWeight: FontWeight.w700),
                     ),
                   ),

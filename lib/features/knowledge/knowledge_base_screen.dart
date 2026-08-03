@@ -129,7 +129,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppTheme.accentOrange,
+        backgroundColor: AppTheme.accent,
         onPressed: _create,
         icon: const Icon(Icons.add, color: Colors.white),
         label: Text(_ru ? 'Статья' : 'Article', style: const TextStyle(color: Colors.white)),
@@ -203,7 +203,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
             // Content
             Expanded(
               child: _loading
-                  ? Center(child: CircularProgressIndicator(color: AppTheme.accentOrange.withOpacity(0.5)))
+                  ? Center(child: CircularProgressIndicator(color: AppTheme.accent.withOpacity(0.5)))
                   : visible.isEmpty
                       ? _empty()
                       : _query.isNotEmpty
@@ -225,11 +225,11 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
           decoration: BoxDecoration(
-            color: sel ? AppTheme.accentOrange.withOpacity(0.16) : AppTheme.surface.withOpacity(0.4),
+            color: sel ? AppTheme.accent.withOpacity(0.16) : AppTheme.surface.withOpacity(0.4),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: sel ? AppTheme.accentOrange.withOpacity(0.5) : AppTheme.glassBorder),
+            border: Border.all(color: sel ? AppTheme.accent.withOpacity(0.5) : AppTheme.glassBorder),
           ),
-          child: Text(label, style: TextStyle(fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w400, color: sel ? AppTheme.accentOrange : AppTheme.textSecondary)),
+          child: Text(label, style: TextStyle(fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w400, color: sel ? AppTheme.accent : AppTheme.textSecondary)),
         ),
       ),
     );
@@ -332,8 +332,15 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   }
 
   /// Рекурсивный тайл дерева: папка → expand/collapse → дочерние.
+  ///
+  /// Глубина ограничена: петля в данных (A внутри B, B внутри A) раскрывала
+  /// бы вложенность бесконечно и роняла бы экран переполнением стека.
+  /// Ограничение стоит здесь, а не только в проверке при выборе родителя,
+  /// потому что петлю на диске мог оставить прежний билд.
+  static const int _maxTreeDepth = 12;
+
   Widget _treeTile(ArticleModel a, {required int level}) {
-    final hasChildren = KnowledgeService.hasChildren(a.id);
+    if (level > _maxTreeDepth) return const SizedBox.shrink();
     final isExpanded = _expanded.contains(a.id);
     final children = isExpanded ? KnowledgeService.getChildren(a.id) : <ArticleModel>[];
 
@@ -380,7 +387,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
             decoration: BoxDecoration(
               color: AppTheme.surface.withOpacity(0.36),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: a.pinned ? AppTheme.accentOrange.withOpacity(0.4) : AppTheme.glassBorder),
+              border: Border.all(color: a.pinned ? AppTheme.accent.withOpacity(0.4) : AppTheme.glassBorder),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -392,7 +399,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                           ? (isExpanded ? Icons.folder_open : Icons.folder)
                           : _sectionIcon(a.section),
                       size: 18,
-                      color: isFolder ? AppTheme.accent : AppTheme.accentOrange,
+                      color: isFolder ? AppTheme.accent : AppTheme.accent,
                     ),
                     const SizedBox(width: 8),
                     Expanded(
@@ -431,7 +438,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                         icon: Icon(
                           a.pinned ? Icons.push_pin : Icons.push_pin_outlined,
                           size: 15,
-                          color: a.pinned ? AppTheme.accentOrange : AppTheme.textMuted,
+                          color: a.pinned ? AppTheme.accent : AppTheme.textMuted,
                         ),
                         onPressed: () => KnowledgeService.togglePin(a),
                         constraints: const BoxConstraints(),
@@ -692,7 +699,7 @@ class _ArticleScreenState extends State<ArticleScreen> {
                 Icon(
                   isFolder ? Icons.folder : Icons.article_outlined,
                   size: 18,
-                  color: isFolder ? AppTheme.accent : AppTheme.accentOrange,
+                  color: isFolder ? AppTheme.accent : AppTheme.accent,
                 ),
                 const SizedBox(width: 10),
                 Expanded(

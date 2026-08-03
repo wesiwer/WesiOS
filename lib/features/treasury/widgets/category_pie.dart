@@ -450,11 +450,11 @@ class _CategoryPieSectionState extends State<CategoryPieSection> {
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
             ),
             icon: Icon(Icons.arrow_back,
-                size: 14, color: AppTheme.accentOrange),
+                size: 14, color: AppTheme.accent),
             label: Text(
               _ru ? 'Категории' : 'Categories',
               style:
-                  TextStyle(fontSize: 11, color: AppTheme.accentOrange),
+                  TextStyle(fontSize: 11, color: AppTheme.accent),
             ),
           ),
       ],

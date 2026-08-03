@@ -117,7 +117,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
             : Icons.cloud_download_outlined,
         color: installed && !hasUpdate
             ? AppTheme.accentGreen
-            : AppTheme.accentOrange,
+            : AppTheme.accent,
       ),
       title: Text(label, style: TextStyle(color: AppTheme.textPrimary)),
       subtitle: Text(subtitle,
@@ -125,7 +125,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
               color: (failed
                       ? AppTheme.accentRed
                       : (hasUpdate
-                          ? AppTheme.accentOrange
+                          ? AppTheme.accent
                           : AppTheme.textMuted))
                   .withOpacity(0.9),
               fontSize: 13)),
@@ -136,7 +136,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
                   width: 18,
                   height: 18,
                   child: CircularProgressIndicator(
-                      strokeWidth: 2, color: AppTheme.accentOrange),
+                      strokeWidth: 2, color: AppTheme.accent),
                 )
               : TextButton(
                   onPressed: () => EngineInstallService.install(kind),
@@ -146,7 +146,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
                         : (installed
                             ? 'engine_reinstall_button'.w
                             : 'engine_install_button'.w),
-                    style: TextStyle(color: AppTheme.accentOrange),
+                    style: TextStyle(color: AppTheme.accent),
                   ),
                 ),
     );
@@ -155,7 +155,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
   Widget _overlayToggleTile() {
     return ListTile(
       leading: Icon(Icons.picture_in_picture,
-          color: AppTheme.accentOrange),
+          color: AppTheme.accent),
       title: Text('engine_show_download_overlay'.w,
           style: TextStyle(color: AppTheme.textPrimary)),
       subtitle: Text('engine_show_download_overlay_hint'.w,
@@ -165,7 +165,7 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
         builder: (context, hidden, _) => Switch(
           value: !hidden,
           onChanged: (v) => EngineInstallService.overlayHidden.value = !v,
-          activeColor: AppTheme.accentOrange,
+          activeColor: AppTheme.accent,
         ),
       ),
     );

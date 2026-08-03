@@ -67,16 +67,16 @@ class _HoverButtonState extends State<HoverButton> {
             border: Border.all(
               // Фокус — заметнее наведения, чтобы было видно, где ты стрелками
               color: _isFocused
-                  ? AppTheme.accentOrange
+                  ? AppTheme.accent
                   : _isHovered
-                      ? AppTheme.accentOrange.withOpacity(0.5)
+                      ? AppTheme.accent.withOpacity(0.5)
                       : AppTheme.glassBorder,
               width: _isFocused ? 2 : (_isHovered ? 1.5 : 1),
             ),
             boxShadow: _active
                 ? [
                     BoxShadow(
-                      color: AppTheme.accentOrange.withOpacity(0.1),
+                      color: AppTheme.accent.withOpacity(0.1),
                       blurRadius: 12,
                       spreadRadius: 1,
                     ),
@@ -146,9 +146,9 @@ class _HoverIconButtonState extends State<HoverIconButton> {
             borderRadius: BorderRadius.circular(10),
             border: Border.all(
               color: _isFocused
-                  ? AppTheme.accentOrange
+                  ? AppTheme.accent
                   : _isHovered
-                      ? AppTheme.accentOrange.withOpacity(0.4)
+                      ? AppTheme.accent.withOpacity(0.4)
                       : Colors.transparent,
               width: _isFocused ? 2 : 1,
             ),

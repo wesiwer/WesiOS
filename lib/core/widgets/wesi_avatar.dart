@@ -70,13 +70,13 @@ class WesiAvatar extends StatelessWidget {
       builder: (context, Box box, _) {
         final border = showBorder
             ? Border.all(
-                color: AppTheme.accentOrange.withOpacity(0.55),
+                color: AppTheme.accent.withOpacity(0.55),
                 width: size > 40 ? 2.2 : 1.5,
               )
             : null;
         final shadow = [
           BoxShadow(
-            color: AppTheme.accentOrange.withOpacity(0.12),
+            color: AppTheme.accent.withOpacity(0.12),
             blurRadius: size * 0.25,
             spreadRadius: 1,
           ),

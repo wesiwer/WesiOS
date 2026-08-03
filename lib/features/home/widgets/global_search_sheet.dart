@@ -104,7 +104,7 @@ class _GlobalSearchSheetState extends State<GlobalSearchSheet> {
         SearchKind.transaction => AppTheme.accentGreen,
         SearchKind.task => AppTheme.primary,
         SearchKind.article => AppTheme.textSecondary,
-        SearchKind.account => AppTheme.accentOrange,
+        SearchKind.account => AppTheme.accent,
         SearchKind.module => AppTheme.textMuted,
       };
 
