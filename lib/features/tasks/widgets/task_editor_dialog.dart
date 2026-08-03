@@ -80,7 +80,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: ColorScheme.dark(
-            primary: AppTheme.accentOrange,
+            primary: AppTheme.accent,
             onPrimary: AppTheme.background,
             surface: AppTheme.surface,
             onSurface: AppTheme.textPrimary,
@@ -228,12 +228,12 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                           horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
                         color: sel
-                            ? AppTheme.accentOrange.withOpacity(0.18)
+                            ? AppTheme.accent.withOpacity(0.18)
                             : AppTheme.background,
                         borderRadius: BorderRadius.circular(9),
                         border: Border.all(
                             color: sel
-                                ? AppTheme.accentOrange.withOpacity(0.6)
+                                ? AppTheme.accent.withOpacity(0.6)
                                 : AppTheme.glassBorder),
                       ),
                       child: Text(
@@ -241,7 +241,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                         style: TextStyle(
                           fontSize: 12,
                           color: sel
-                              ? AppTheme.accentOrange
+                              ? AppTheme.accent
                               : AppTheme.textSecondary,
                         ),
                       ),
@@ -310,7 +310,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   children: [
                     Checkbox(
                       value: st.done,
-                      activeColor: AppTheme.accentOrange,
+                      activeColor: AppTheme.accent,
                       onChanged: (v) => setState(
                           () => _subtasks[i] = st.copyWith(done: v ?? false)),
                     ),
@@ -351,7 +351,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   ),
                   IconButton(
                     icon: Icon(Icons.add_circle,
-                        color: AppTheme.accentOrange),
+                        color: AppTheme.accent),
                     onPressed: _addSubtask,
                   ),
                 ],
@@ -369,7 +369,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                     onTap: _submit,
                     padding: EdgeInsets.symmetric(
                         horizontal: 26, vertical: 12),
-                    backgroundColor: AppTheme.accentOrange,
+                    backgroundColor: AppTheme.accent,
                     child: Text(WesiLocale.get('save'),
                         style: const TextStyle(
                             color: Colors.white,

@@ -109,12 +109,12 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                     width: 58,
                     height: 58,
                     decoration: BoxDecoration(
-                      color: AppTheme.accentOrange.withOpacity(0.14),
+                      color: AppTheme.accent.withOpacity(0.14),
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
                       blocked ? Icons.lock_clock : Icons.shield_outlined,
-                      color: AppTheme.accentOrange,
+                      color: AppTheme.accent,
                       size: 28,
                     ),
                   ),
@@ -139,7 +139,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       color:
-                          blocked ? AppTheme.accentOrange : AppTheme.textMuted,
+                          blocked ? AppTheme.accent : AppTheme.textMuted,
                     ),
                   ),
                   SizedBox(height: 22),
@@ -168,7 +168,7 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                       padding: EdgeInsets.symmetric(vertical: 14),
                       backgroundColor: blocked
                           ? AppTheme.surface
-                          : AppTheme.accentOrange,
+                          : AppTheme.accent,
                       child: Center(
                         child: _busy
                             ? SizedBox(
@@ -194,10 +194,10 @@ class _ShieldLockScreenState extends State<ShieldLockScreen> {
                     TextButton.icon(
                       onPressed: _tryBiometrics,
                       icon: Icon(Icons.fingerprint,
-                          size: 18, color: AppTheme.accentOrange),
+                          size: 18, color: AppTheme.accent),
                       label: Text(
                         _ru ? 'Отпечаток или лицо' : 'Fingerprint or face',
-                        style: TextStyle(color: AppTheme.accentOrange),
+                        style: TextStyle(color: AppTheme.accent),
                       ),
                     ),
                   ],

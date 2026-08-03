@@ -99,7 +99,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
             Icon(
               hasUpdate ? Icons.system_update : Icons.verified_outlined,
               size: 20,
-              color: hasUpdate ? AppTheme.accentOrange : AppTheme.accentGreen,
+              color: hasUpdate ? AppTheme.accent : AppTheme.accentGreen,
             ),
             SizedBox(width: 10),
             Expanded(

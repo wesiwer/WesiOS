@@ -72,7 +72,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: ColorScheme.dark(
-            primary: AppTheme.accentOrange,
+            primary: AppTheme.accent,
             onPrimary: AppTheme.background,
             surface: AppTheme.surface,
             onSurface: AppTheme.textPrimary,
@@ -142,7 +142,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                 children: [
                   Switch(
                     value: _includeEvent,
-                    activeColor: AppTheme.accentOrange,
+                    activeColor: AppTheme.accent,
                     onChanged: (v) => setState(() => _includeEvent = v),
                   ),
                   Expanded(
@@ -241,7 +241,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                     onTap: _apply,
                     padding: EdgeInsets.symmetric(
                         horizontal: 24, vertical: 12),
-                    backgroundColor: AppTheme.accentOrange,
+                    backgroundColor: AppTheme.accent,
                     child: Text('what_if_apply'.w,
                         style: const TextStyle(color: Colors.white)),
                   ),

@@ -191,7 +191,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                       ? 'Изменить категории'
                       : 'Edit categories',
                   icon: Icon(Icons.tune,
-                      size: 18, color: AppTheme.accentOrange),
+                      size: 18, color: AppTheme.accent),
                   onPressed: () async {
                     await CategoryEditorDialog.show(context, widget.type);
                     if (!mounted) return;
@@ -236,12 +236,12 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: AppTheme.accentOrange.withOpacity(0.15),
+                          color: AppTheme.accent.withOpacity(0.15),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           WesiLocale.isRussian ? 'Запланировано' : 'Planned',
-                          style: TextStyle(fontSize: 10, color: AppTheme.accentOrange, fontWeight: FontWeight.w600),
+                          style: TextStyle(fontSize: 10, color: AppTheme.accent, fontWeight: FontWeight.w600),
                         ),
                       ),
                   ],

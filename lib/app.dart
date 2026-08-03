@@ -52,17 +52,18 @@ class WesiOSApp extends StatelessWidget {
           onGenerateRoute: AppRouter.onGenerateRoute,
           home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
           builder: (context, child) {
-            return TweenAnimationBuilder<AnimatedAppTheme>(
-              tween: Tween<AnimatedAppTheme>(
-                begin: AnimatedAppTheme.lerp(ThemeNotifier.instance.isDark ? 0.0 : 1.0),
-                end: AnimatedAppTheme.lerp(ThemeNotifier.instance.isDark ? 0.0 : 1.0),
-              ),
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeInOutCubic,
-              builder: (context, animatedTheme, _) {
-                return AnimatedThemeProvider(
-                  theme: animatedTheme,
-                  child: Stack(
+            // Здесь стоял TweenAnimationBuilder, у которого begin и end были
+            // ОДНИМ И ТЕМ ЖЕ значением — то есть анимации не происходило
+            // вовсе, а перестроение всего дерева на 600 мс происходило.
+            // Плавность всё равно недостижима, пока виджеты читают цвета
+            // статическими геттерами AppTheme.*, а не отсюда: провайдер ниже
+            // не читает никто, кроме этой строки.
+            return AnimatedThemeProvider(
+              theme: AnimatedAppTheme.lerp(
+                  ThemeNotifier.instance.isDark ? 0.0 : 1.0),
+              child: Builder(
+                builder: (context) {
+                  return Stack(
                     children: [
                       if (child != null)
                         ValueListenableBuilder<bool>(
@@ -99,9 +100,9 @@ class WesiOSApp extends StatelessWidget {
                         ),
                       ),
                     ],
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             );
           },
         );

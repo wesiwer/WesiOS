@@ -66,9 +66,16 @@ void main() async {
   AppIconService.load();
   QuoteMindChargeService.load();
 
-  ThemeNotifier.instance.addListener(() {
-    AppIconService.apply();
-  });
+  // Иконка запуска НАМЕРЕННО не переключается вместе с темой.
+  //
+  // Смена activity-alias на Android — это setComponentEnabledSetting, а он
+  // убирает задачу приложения из списка недавних даже с DONT_KILL_APP:
+  // DONT_KILL_APP бережёт процесс, но не задачу. Нативная часть уже
+  // откладывает смену до onPause, и всё равно получалось так, что после
+  // переключения темы приложение «вылетало и заходило заново».
+  //
+  // В режиме «auto» нужная иконка ставится на СЛЕДУЮЩЕМ запуске — там
+  // перезапуск задачи никому не виден (см. AppIconService.load).
 
   ExchangeRateService.refresh();
   // Сначала читаем маркер ошибки от bat (если OTA на Windows упала),

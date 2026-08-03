@@ -100,7 +100,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
   Widget _scoreCard(ShieldAssessment a) {
     final color = a.score >= 80
         ? AppTheme.accentGreen
-        : (a.score >= 45 ? AppTheme.accentOrange : AppTheme.accentRed);
+        : (a.score >= 45 ? AppTheme.accent : AppTheme.accentRed);
 
     return _card(
       child: Column(
@@ -143,7 +143,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
           if (a.advice.isNotEmpty) ...[
             SizedBox(height: 10),
             ...a.advice.map((t) =>
-                _bullet(t, Icons.lightbulb_outline, AppTheme.accentOrange)),
+                _bullet(t, Icons.lightbulb_outline, AppTheme.accent)),
           ],
         ],
       ),
@@ -192,7 +192,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
               onTap: _setPassword,
               padding:
                   EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              backgroundColor: AppTheme.accentOrange,
+              backgroundColor: AppTheme.accent,
               child: Text(
                 _ru ? 'Задать пароль' : 'Set a password',
                 style: const TextStyle(
@@ -257,12 +257,12 @@ class _ShieldScreenState extends State<ShieldScreen> {
                       horizontal: 12, vertical: 7),
                   decoration: BoxDecoration(
                     color: sel
-                        ? AppTheme.accentOrange.withOpacity(0.18)
+                        ? AppTheme.accent.withOpacity(0.18)
                         : AppTheme.background,
                     borderRadius: BorderRadius.circular(9),
                     border: Border.all(
                         color: sel
-                            ? AppTheme.accentOrange.withOpacity(0.6)
+                            ? AppTheme.accent.withOpacity(0.6)
                             : AppTheme.glassBorder),
                   ),
                   child: Text(
@@ -272,7 +272,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                     style: TextStyle(
                       fontSize: 12,
                       color: sel
-                          ? AppTheme.accentOrange
+                          ? AppTheme.accent
                           : AppTheme.textSecondary,
                     ),
                   ),
@@ -349,7 +349,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
                 size: 18,
                 color: onChanged == null
                     ? AppTheme.textMuted
-                    : AppTheme.accentOrange),
+                    : AppTheme.accent),
             SizedBox(width: 12),
             Expanded(
               child: Column(
@@ -369,7 +369,7 @@ class _ShieldScreenState extends State<ShieldScreen> {
             ),
             Switch(
               value: value,
-              activeColor: AppTheme.accentOrange,
+              activeColor: AppTheme.accent,
               onChanged: onChanged,
             ),
           ],
@@ -602,7 +602,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
     final colors = [
       AppTheme.accentRed,
       AppTheme.accentRed,
-      AppTheme.accentOrange,
+      AppTheme.accent,
       AppTheme.accentGreen,
       AppTheme.accentGreen,
     ];
@@ -733,7 +733,7 @@ class _PasswordDialogState extends State<_PasswordDialog> {
                     onTap: () => _submit(),
                     padding: EdgeInsets.symmetric(
                         horizontal: 22, vertical: 11),
-                    backgroundColor: AppTheme.accentOrange,
+                    backgroundColor: AppTheme.accent,
                     child: Text(
                       widget.confirmOnly
                           ? (_ru ? 'Подтвердить' : 'Confirm')

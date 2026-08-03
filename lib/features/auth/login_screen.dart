@@ -103,12 +103,12 @@ class _LoginScreenState extends State<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Center(child: WesiWordmark(size: 34)),
+                  Center(child: WesiWordmark(size: 34)),
                   const SizedBox(height: 10),
                   Center(
                     child: Text(
                       _ru ? 'Вход в профиль' : 'Sign in',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13, color: AppTheme.textSecondary),
                     ),
                   ),
@@ -120,10 +120,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
                     onSubmitted: (_) => _passwordFocus.requestFocus(),
-                    style: const TextStyle(color: AppTheme.textPrimary),
+                    style: TextStyle(color: AppTheme.textPrimary),
                     decoration: InputDecoration(
                       labelText: _ru ? 'Почта' : 'Email',
-                      prefixIcon: const Icon(Icons.alternate_email,
+                      prefixIcon: Icon(Icons.alternate_email,
                           size: 18, color: AppTheme.textMuted),
                     ),
                   ),
@@ -134,10 +134,10 @@ class _LoginScreenState extends State<LoginScreen> {
                     enabled: !_busy,
                     obscureText: _obscure,
                     onSubmitted: (_) => _signIn(),
-                    style: const TextStyle(color: AppTheme.textPrimary),
+                    style: TextStyle(color: AppTheme.textPrimary),
                     decoration: InputDecoration(
                       labelText: _ru ? 'Пароль' : 'Password',
-                      prefixIcon: const Icon(Icons.key,
+                      prefixIcon: Icon(Icons.key,
                           size: 18, color: AppTheme.textMuted),
                       suffixIcon: IconButton(
                         icon: Icon(
@@ -168,7 +168,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         children: [
                           Checkbox(
                             value: _remember,
-                            activeColor: AppTheme.accentOrange,
+                            activeColor: AppTheme.accent,
                             onChanged: _busy
                                 ? null
                                 : (v) => setState(() => _remember = v ?? true),
@@ -176,7 +176,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           Expanded(
                             child: Text(
                               _ru ? 'Запомнить меня' : 'Remember me',
-                              style: const TextStyle(
+                              style: TextStyle(
                                   fontSize: 13, color: AppTheme.textSecondary),
                             ),
                           ),
@@ -189,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onTap: _busy ? () {} : _signIn,
                     padding: const EdgeInsets.symmetric(vertical: 15),
                     backgroundColor:
-                        _busy ? AppTheme.surface : AppTheme.accentOrange,
+                        _busy ? AppTheme.surface : AppTheme.accent,
                     child: Center(
                       child: _busy
                           ? const SizedBox(
@@ -214,7 +214,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       _ru
                           ? 'Продолжить без аккаунта'
                           : 'Continue without an account',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 13, color: AppTheme.textMuted),
                     ),
                   ),
@@ -228,7 +228,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             'this device only. An account is what keeps the '
                             'numbers in step across devices.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(
+                    style: TextStyle(
                         fontSize: 11, height: 1.4, color: AppTheme.textMuted),
                   ),
                 ],

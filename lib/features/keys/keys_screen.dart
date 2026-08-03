@@ -164,7 +164,7 @@ class _KeysScreenState extends State<KeysScreen> {
             children: [
               Icon(open ? Icons.lock_open : Icons.lock,
                   size: 18,
-                  color: open ? AppTheme.accentGreen : AppTheme.accentOrange),
+                  color: open ? AppTheme.accentGreen : AppTheme.accent),
               SizedBox(width: 10),
               Expanded(
                 child: Text(
@@ -204,7 +204,7 @@ class _KeysScreenState extends State<KeysScreen> {
               onTap: () => Navigator.pushNamed(context, '/shield'),
               padding:
                   EdgeInsets.symmetric(horizontal: 18, vertical: 11),
-              backgroundColor: AppTheme.accentOrange,
+              backgroundColor: AppTheme.accent,
               child: Text(_ru ? 'Открыть Wesi Shield' : 'Open Wesi Shield',
                   style: const TextStyle(
                       fontSize: 13,
@@ -219,7 +219,7 @@ class _KeysScreenState extends State<KeysScreen> {
                     onTap: _unlockVault,
                     padding: EdgeInsets.symmetric(
                         horizontal: 18, vertical: 11),
-                    backgroundColor: AppTheme.accentOrange,
+                    backgroundColor: AppTheme.accent,
                     child: Text(_ru ? 'Разблокировать' : 'Unlock',
                         style: TextStyle(
                             fontSize: 13,
@@ -337,7 +337,7 @@ class _KeysScreenState extends State<KeysScreen> {
                   padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
                   backgroundColor:
-                      configured ? AppTheme.accentOrange : AppTheme.surface,
+                      configured ? AppTheme.accent : AppTheme.surface,
                   child: Text(
                     _ru ? 'Войти' : 'Sign in',
                     style: TextStyle(
@@ -353,7 +353,7 @@ class _KeysScreenState extends State<KeysScreen> {
                   onTap: _load,
                   padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
-                  backgroundColor: AppTheme.accentOrange,
+                  backgroundColor: AppTheme.accent,
                   child: Text(
                     _loading
                         ? (_ru ? 'Читаю…' : 'Loading…')
@@ -393,7 +393,7 @@ class _KeysScreenState extends State<KeysScreen> {
                     fontSize: 12,
                     color: configured
                         ? AppTheme.textMuted
-                        : AppTheme.accentOrange,
+                        : AppTheme.accent,
                   ),
                 ),
               ),
@@ -468,7 +468,7 @@ class _KeysScreenState extends State<KeysScreen> {
                 onPressed: _addSecret,
                 child: Text(_ru ? 'Добавить' : 'Add',
                     style: TextStyle(
-                        fontSize: 12, color: AppTheme.accentOrange)),
+                        fontSize: 12, color: AppTheme.accent)),
               ),
             ],
           ),
@@ -493,7 +493,7 @@ class _KeysScreenState extends State<KeysScreen> {
         child: Row(
           children: [
             Icon(Icons.vpn_key_outlined,
-                size: 15, color: AppTheme.accentOrange),
+                size: 15, color: AppTheme.accent),
             SizedBox(width: 11),
             Expanded(
               child: Column(
@@ -604,7 +604,7 @@ class _KeysScreenState extends State<KeysScreen> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
             child: Text(WesiLocale.get('save'),
-                style: TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),

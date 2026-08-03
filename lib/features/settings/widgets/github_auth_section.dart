@@ -159,7 +159,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, ctrl.text),
             child: Text(WesiLocale.get('save'),
-                style: TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),
@@ -190,7 +190,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
               Icon(
                 signedIn ? Icons.verified_user : Icons.lock_outline,
                 size: 18,
-                color: signedIn ? AppTheme.accentGreen : AppTheme.accentOrange,
+                color: signedIn ? AppTheme.accentGreen : AppTheme.accent,
               ),
               SizedBox(width: 10),
               Expanded(
@@ -273,7 +273,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                   padding: EdgeInsets.symmetric(
                       horizontal: 18, vertical: 11),
                   backgroundColor: configured && !_waiting
-                      ? AppTheme.accentOrange
+                      ? AppTheme.accent
                       : AppTheme.surface,
                   child: Text(
                     _waiting
@@ -311,7 +311,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                     fontSize: 12,
                     color: configured
                         ? AppTheme.textMuted
-                        : AppTheme.accentOrange,
+                        : AppTheme.accent,
                   ),
                 ),
               ),
@@ -325,7 +325,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                       'один раз и занимает пару минут.'
                   : 'A GitHub app client_id is required first — a one-time, '
                       'two-minute step.',
-              style: TextStyle(fontSize: 11, color: AppTheme.accentOrange),
+              style: TextStyle(fontSize: 11, color: AppTheme.accent),
             ),
           ],
         ],
@@ -339,7 +339,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
         decoration: BoxDecoration(
           color: AppTheme.background,
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.accentOrange.withOpacity(0.4)),
+          border: Border.all(color: AppTheme.accent.withOpacity(0.4)),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -357,7 +357,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                 fontSize: 24,
                 fontWeight: FontWeight.w800,
                 letterSpacing: 4,
-                color: AppTheme.accentOrange,
+                color: AppTheme.accent,
               ),
             ),
             SizedBox(height: 8),
@@ -375,7 +375,7 @@ class _GitHubAuthSectionState extends State<GitHubAuthSection> {
                   child: Text(
                     _ru ? 'Открыть' : 'Open',
                     style: TextStyle(
-                        fontSize: 12, color: AppTheme.accentOrange),
+                        fontSize: 12, color: AppTheme.accent),
                   ),
                 ),
               ],

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:hive/hive.dart';
 
 part 'article_model.g.dart';
@@ -103,23 +105,41 @@ class ArticleModel {
         isFolder: isFolder ?? this.isFolder,
       );
 
+  /// Текст статьи без разметки — для превью и для поиска.
+  ///
+  /// Тело редактора хранится как Delta-документ Quill (JSON), и раньше его
+  /// разбирали регулярным выражением. Выражение было написано с ошибкой в
+  /// экранировании (`[^"\]` вместо `[^"\\]`), `RegExp` падал прямо на
+  /// создании, исключение глотал `catch`, и в списке вместо текста статьи
+  /// показывался сырой JSON.
+  ///
+  /// Разбирать JSON регулярным выражением не нужно и не следует: любое
+  /// экранирование внутри строки ломает разбор заново. Здесь настоящий
+  /// `jsonDecode` — он же сам снимает `\n` и `\"`.
+  String get plainText {
+    final trimmed = body.trimLeft();
+    if (!trimmed.startsWith('[')) return body;
+    try {
+      final decoded = jsonDecode(body);
+      if (decoded is! List) return body;
+      final buf = StringBuffer();
+      for (final op in decoded) {
+        if (op is! Map) continue;
+        final insert = op['insert'];
+        // Картинки и прочие вставки приходят объектом — в текст не идут.
+        if (insert is String) buf.write(insert);
+      }
+      final text = buf.toString().trim();
+      return text.isEmpty ? body : text;
+    } catch (_) {
+      // Тело не Delta, а просто текст, начинающийся со скобки.
+      return body;
+    }
+  }
+
   /// Первые строки для превью в списке.
   String get excerpt {
-    var plain = body;
-    if (plain.trimLeft().startsWith('[')) {
-      try {
-        final buf = StringBuffer();
-        final re = RegExp(r'"insert"\s*:\s*"((?:\.|[^"\])*)"');
-        for (final m in re.allMatches(plain)) {
-          final chunk = m.group(1)!;
-          buf.write(chunk
-              .replaceAll(r'\n', ' ')
-              .replaceAll(r'"', '"'));
-        }
-        plain = buf.toString();
-      } catch (_) {}
-    }
-    plain = plain
+    final plain = plainText
         .replaceAll(RegExp(r'^#{1,6}\s*', multiLine: true), '')
         .replaceAll(RegExp(r'[*_`]'), '')
         .replaceAll(RegExp(r'\s+'), ' ')
@@ -131,8 +151,11 @@ class ArticleModel {
   bool matches(String query) {
     if (query.trim().isEmpty) return true;
     final q = query.toLowerCase();
+    // По plainText, а не по body: в body лежит JSON, и поиск по нему и
+    // находил служебные слова вроде «insert», и не находил текст, если тот
+    // разбит на несколько фрагментов разметкой.
     return title.toLowerCase().contains(q) ||
-        body.toLowerCase().contains(q) ||
+        plainText.toLowerCase().contains(q) ||
         tags.any((t) => t.toLowerCase().contains(q));
   }
 

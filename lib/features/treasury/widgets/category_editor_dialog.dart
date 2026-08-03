@@ -71,7 +71,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
           TextButton(
             onPressed: () => Navigator.pop(context, ctrl.text),
             child: Text(WesiLocale.get('save'),
-                style: TextStyle(color: AppTheme.accentOrange)),
+                style: TextStyle(color: AppTheme.accent)),
           ),
         ],
       ),
@@ -175,7 +175,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                   ),
                   IconButton(
                     icon: Icon(Icons.add_circle,
-                        color: AppTheme.accentOrange),
+                        color: AppTheme.accent),
                     onPressed: _add,
                   ),
                 ],
@@ -197,7 +197,7 @@ class _CategoryEditorDialogState extends State<CategoryEditorDialog> {
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text(ru ? 'Готово' : 'Done',
-                        style: TextStyle(color: AppTheme.accentOrange)),
+                        style: TextStyle(color: AppTheme.accent)),
                   ),
                 ],
               ),

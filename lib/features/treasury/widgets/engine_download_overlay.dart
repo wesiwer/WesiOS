@@ -72,7 +72,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
               Row(
                 children: [
                   Icon(Icons.downloading,
-                      size: 16, color: AppTheme.accentOrange),
+                      size: 16, color: AppTheme.accent),
                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -128,7 +128,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
                 style: TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
-                    color: AppTheme.accentOrange),
+                    color: AppTheme.accent),
               ),
             ],
           ),
@@ -139,7 +139,7 @@ class _EngineDownloadOverlayState extends State<EngineDownloadOverlay> {
               value: p.fraction,
               minHeight: 4,
               backgroundColor: AppTheme.surfaceLight,
-              valueColor: AlwaysStoppedAnimation(AppTheme.accentOrange),
+              valueColor: AlwaysStoppedAnimation(AppTheme.accent),
             ),
           ),
           if (p.stage == InstallStage.downloading) ...[

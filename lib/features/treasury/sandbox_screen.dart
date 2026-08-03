@@ -98,7 +98,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
         title: result['title'],
         amount: result['amount'],
         type: type,
-        date: DateTime.now(),
+        date: result['date'] as DateTime? ?? DateTime.now(),
         category: result['category'],
         description: result['description'],
         isRecurring: result['isRecurring'] ?? false,
@@ -119,18 +119,16 @@ class _SandboxScreenState extends State<SandboxScreen> {
       ),
     );
     if (result != null) {
-      final updated = TransactionModel(
-        id: tx.id,
-        title: result['title'],
-        amount: result['amount'],
-        type: tx.type,
-        date: tx.date,
-        category: result['category'],
-        description: result['description'],
-        isRecurring: result['isRecurring'] ?? false,
-        recurringPeriod: result['recurringPeriod'],
-        isAnomaly: tx.isAnomaly,
-        zScore: tx.zScore,
+      // copyWith — чтобы поля, которых нет в диалоге (счёт, признак
+      // аномалии), не обнулялись молча при каждой правке.
+      final updated = tx.copyWith(
+        title: result['title'] as String,
+        amount: result['amount'] as double,
+        date: result['date'] as DateTime?,
+        category: result['category'] as String?,
+        description: result['description'] as String?,
+        isRecurring: result['isRecurring'] as bool?,
+        recurringPeriod: result['recurringPeriod'] as RecurringPeriod?,
       );
       await _service.addTransaction(updated);
       await _loadData();
