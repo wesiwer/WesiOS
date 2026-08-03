@@ -148,27 +148,37 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
   void _insertEmoji(String emoji) {
     final index = _controller.selection.start;
     _controller.replaceText(index, 0, emoji, null);
+    _controller.moveCursorToPosition(index + emoji.length);
   }
 
   void _toggleEmoji() {
     setState(() {
       _emojiVisible = !_emojiVisible;
-      if (_emojiVisible) _specialCharsVisible = false;
+      if (_emojiVisible) {
+        _specialCharsVisible = false;
+        FocusScope.of(context).unfocus();
+      } else {
+        _focusEditor();
+      }
     });
-    if (_emojiVisible) FocusScope.of(context).unfocus();
   }
 
   void _insertSpecialChar(String ch) {
     final index = _controller.selection.start;
     _controller.replaceText(index, 0, ch, null);
+    _controller.moveCursorToPosition(index + ch.length);
   }
 
   void _toggleSpecialChars() {
     setState(() {
       _specialCharsVisible = !_specialCharsVisible;
-      if (_specialCharsVisible) _emojiVisible = false;
+      if (_specialCharsVisible) {
+        _emojiVisible = false;
+        FocusScope.of(context).unfocus();
+      } else {
+        _focusEditor();
+      }
     });
-    if (_specialCharsVisible) FocusScope.of(context).unfocus();
   }
 
   void _clearFormat() {
@@ -177,6 +187,15 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     _controller.formatSelection(Attribute.underline);
     _controller.formatSelection(Attribute.strikeThrough);
     _controller.formatSelection(Attribute.link);
+  }
+
+  void _focusEditor() {
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted) {
+        final editorFocus = FocusNode();
+        editorFocus.requestFocus();
+      }
+    });
   }
 
   Widget _editorDialog({required String title, required List<Widget> children, required bool Function() onConfirm}) {
@@ -435,10 +454,10 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
                 scrollDirection: Axis.horizontal,
                 child: Row(
                   children: [
-                    _toolLabeled(Icons.format_bold, _ru ? 'Жирный' : 'Bold', () => _controller.formatSelection(Attribute.bold)),
-                    _toolLabeled(Icons.format_italic, _ru ? 'Курсив' : 'Italic', () => _controller.formatSelection(Attribute.italic)),
-                    _toolLabeled(Icons.format_underline, _ru ? 'Подч.' : 'Underl.', () => _controller.formatSelection(Attribute.underline)),
-                    _toolLabeled(Icons.format_strikethrough, _ru ? 'Зачёрк.' : 'Strike', () => _controller.formatSelection(Attribute.strikeThrough)),
+                    _toolToggle(Icons.format_bold, _ru ? 'Жирный' : 'Bold', Attribute.bold),
+                    _toolToggle(Icons.format_italic, _ru ? 'Курсив' : 'Italic', Attribute.italic),
+                    _toolToggle(Icons.format_underline, _ru ? 'Подч.' : 'Underl.', Attribute.underline),
+                    _toolToggle(Icons.format_strikethrough, _ru ? 'Зачёрк.' : 'Strike', Attribute.strikeThrough),
                     _divider(),
                     _toolLabeled(Icons.looks_one, 'H1', () => _controller.formatSelection(Attribute.h1)),
                     _toolLabeled(Icons.looks_two, 'H2', () => _controller.formatSelection(Attribute.h2)),
@@ -600,6 +619,40 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  /// Toggle-кнопка форматирования (вкл/выкл)
+  Widget _toolToggle(IconData icon, String label, Attribute attribute) {
+    return ValueListenableBuilder(
+      valueListenable: _controller,
+      builder: (context, _, __) {
+        final isActive = _controller.getSelectionStyle().attributes.containsKey(attribute.key);
+        return Tooltip(
+          message: label,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              borderRadius: BorderRadius.circular(6),
+              onTap: () => _controller.formatSelection(attribute),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                decoration: isActive
+                    ? BoxDecoration(color: AppTheme.accent.withOpacity(0.15), borderRadius: BorderRadius.circular(6))
+                    : null,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 18, color: isActive ? AppTheme.accent : AppTheme.textSecondary),
+                    const SizedBox(height: 2),
+                    Text(label, style: TextStyle(fontSize: 8, color: isActive ? AppTheme.accent : AppTheme.textMuted, height: 1)),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
