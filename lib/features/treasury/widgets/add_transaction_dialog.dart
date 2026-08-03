@@ -211,6 +211,43 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
               decoration: InputDecoration(
                   labelText: WesiLocale.get('description_optional')),
             ),
+            SizedBox(height: 12),
+            // Выбор даты транзакции
+            GestureDetector(
+              onTap: _pickDate,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+                decoration: BoxDecoration(
+                  color: AppTheme.surface.withOpacity(0.3),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: AppTheme.glassBorder),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.calendar_today, size: 18, color: AppTheme.accent),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _formatDate(_selectedDate),
+                        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+                      ),
+                    ),
+                    if (_selectedDate.isAfter(DateTime.now().add(const Duration(days: 1))))
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: AppTheme.accentOrange.withOpacity(0.15),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          WesiLocale.isRussian ? 'Запланировано' : 'Planned',
+                          style: TextStyle(fontSize: 10, color: AppTheme.accentOrange, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
             SizedBox(height: 24),
             Row(
               children: [
@@ -234,6 +271,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                           'description': _descCtrl.text,
                           'isRecurring': _isRecurring,
                           'recurringPeriod': _recurringPeriod,
+                          'date': _selectedDate,
                         });
                       }
                     },
