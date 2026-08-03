@@ -85,11 +85,19 @@ class WesiOSApp extends StatelessWidget {
                                   builder: (_) => const EngineDownloadOverlay()),
                             OverlayEntry(builder: (_) => const ShieldOverlay()),
                             // Ошибки OTA — поверх всего, кроме title bar.
-                            OverlayEntry(builder: (_) => const UpdateErrorOverlay()),
+                            OverlayEntry(builder: (_) => const UpdateErrorHost()),
+                            if (isDesktop)
+                              OverlayEntry(
+                                builder: (_) => const Positioned(
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: WindowControls(),
+                                ),
+                              ),
                           ],
                         ),
                       ),
-                      if (isDesktop) const WindowControls(),
                     ],
                   ),
                 );
