@@ -71,25 +71,29 @@ class AppTheme {
   static const Color _darkGlassBorder = Color(0x33FFFFFF);
   static const Color _darkCarbonDark = Color(0xFF0A0A0F);
   static const Color _darkCarbonMid = Color(0xFF1A1A24);
-  static const Color _darkCarbonLight = Color(0xFF2A2A38);
+  static const Color _darkCarbonLight = Color(0xFF2A2A3A);
+  static const Color _darkCarbonHighlight = Color(0xFF3A3A50);
 
-  static const Color _lightBackground = Color(0xFFF8FAFC);
+  static const Color _lightBackground = Color(0xFFF8F9FC);
   static const Color _lightSurface = Color(0xFFFFFFFF);
-  static const Color _lightSurfaceLight = Color(0xFFF1F5F9);
-  static const Color _lightTextPrimary = Color(0xFF0F172A);
-  static const Color _lightTextSecondary = Color(0xFF475569);
-  static const Color _lightTextMuted = Color(0xFF94A3B8);
-  static const Color _lightGlassBg = Color(0x0A0F172A);
+  static const Color _lightSurfaceLight = Color(0xFFEEF1F6);
+  static const Color _lightTextPrimary = Color(0xFF1A1A2E);
+  static const Color _lightTextSecondary = Color(0xFF5B6472);
+  static const Color _lightTextMuted = Color(0xFF8B93A1);
+  static const Color _lightGlassBg = Color(0xB3FFFFFF);
   static const Color _lightGlassBorder = Color(0x1A0F172A);
-  static const Color _lightCarbonDark = Color(0xFFE2E8F0);
-  static const Color _lightCarbonMid = Color(0xFFF1F5F9);
-  static const Color _lightCarbonLight = Color(0xFFF8FAFC);
+  static const Color _lightCarbonDark = Color(0xFFE2E6F0);
+  static const Color _lightCarbonMid = Color(0xFFEDF0F7);
+  static const Color _lightCarbonLight = Color(0xFFF6F7FB);
+  static const Color _lightCarbonHighlight = Color(0xFFFFFFFF);
 
-  static const Color accent = Color(0xFF6366F1);
+  static const Color accentOrange = Color(0xFFF97316);
+  static const Color accentGreen = Color(0xFF84CC16);
   static const Color accentRed = Color(0xFFEF4444);
-  static const Color accentGreen = Color(0xFF22C55E);
-  static const Color accentAmber = Color(0xFFF59E0B);
-  static const Color accentCyan = Color(0xFF06B6D4);
+  static const Color lightAccentBlue = Color(0xFF3B82F6);
+
+  static Color get primary =>
+      ThemeNotifier.instance.isDark ? _darkTextPrimary : _lightTextPrimary;
 
   static Color get background =>
       ThemeNotifier.instance.isDark ? _darkBackground : _lightBackground;
@@ -113,18 +117,19 @@ class AppTheme {
       ThemeNotifier.instance.isDark ? _darkCarbonMid : _lightCarbonMid;
   static Color get carbonLight =>
       ThemeNotifier.instance.isDark ? _darkCarbonLight : _lightCarbonLight;
+  static Color get carbonHighlight => ThemeNotifier.instance.isDark
+      ? _darkCarbonHighlight
+      : _lightCarbonHighlight;
 
-  static void applySystemOverlay() {
-    final isDark = ThemeNotifier.instance.isDark;
-    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
-      statusBarColor: Colors.transparent,
-      statusBarIconBrightness: isDark ? Brightness.light : Brightness.dark,
-      statusBarBrightness: isDark ? Brightness.dark : Brightness.light,
-      systemNavigationBarColor: background,
-      systemNavigationBarIconBrightness:
-          isDark ? Brightness.light : Brightness.dark,
-    ));
-  }
+  static Color get accent =>
+      ThemeNotifier.instance.isDark ? accentOrange : lightAccentBlue;
+
+  static Color get logoStroke => ThemeNotifier.instance.isDark
+      ? const Color(0xFFFFFFFF)
+      : const Color(0xFF334155);
+
+  static Color get logoAccent =>
+      ThemeNotifier.instance.isDark ? accentOrange : lightAccentBlue;
 
   static BoxDecoration get glassDecoration => BoxDecoration(
         color: glassBackground,
@@ -198,29 +203,42 @@ class AppTheme {
         color: glassBorder,
         thickness: 1,
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: surfaceLight,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: glassBorder),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: glassBorder),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: const BorderSide(color: accent, width: 1.5),
-        ),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        hintStyle: TextStyle(color: textMuted),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return accent;
+          return textMuted;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return accent.withOpacity(0.35);
+          }
+          return surfaceLight;
+        }),
       ),
     );
   }
+
+  static SystemUiOverlayStyle get systemOverlayStyle {
+    return ThemeNotifier.instance.isDark
+        ? SystemUiOverlayStyle.light.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: background,
+            systemNavigationBarIconBrightness: Brightness.light,
+          )
+        : SystemUiOverlayStyle.dark.copyWith(
+            statusBarColor: Colors.transparent,
+            systemNavigationBarColor: background,
+            systemNavigationBarIconBrightness: Brightness.dark,
+          );
+  }
+
+  static void applySystemOverlay() {
+    SystemChrome.setSystemUIOverlayStyle(systemOverlayStyle);
+  }
 }
 
-/// Interpolated theme colors for smooth dark↔light transitions.
+/// Интерполированная палитра цветов для плавной анимации смены темы.
+/// Все цвета лерпаются между тёмной и светлой темой одновременно.
 class AnimatedAppTheme {
   final Color background;
   final Color surface;
@@ -233,6 +251,10 @@ class AnimatedAppTheme {
   final Color carbonDark;
   final Color carbonMid;
   final Color carbonLight;
+  final Color carbonHighlight;
+  final Color accent;
+  final Color logoStroke;
+  final Color logoAccent;
 
   const AnimatedAppTheme({
     required this.background,
@@ -246,6 +268,10 @@ class AnimatedAppTheme {
     required this.carbonDark,
     required this.carbonMid,
     required this.carbonLight,
+    required this.carbonHighlight,
+    required this.accent,
+    required this.logoStroke,
+    required this.logoAccent,
   });
 
   static const _dark = AnimatedAppTheme(
@@ -260,6 +286,10 @@ class AnimatedAppTheme {
     carbonDark: AppTheme._darkCarbonDark,
     carbonMid: AppTheme._darkCarbonMid,
     carbonLight: AppTheme._darkCarbonLight,
+    carbonHighlight: AppTheme._darkCarbonHighlight,
+    accent: AppTheme.accentOrange,
+    logoStroke: Color(0xFFFFFFFF),
+    logoAccent: AppTheme.accentOrange,
   );
 
   static const _light = AnimatedAppTheme(
@@ -274,9 +304,13 @@ class AnimatedAppTheme {
     carbonDark: AppTheme._lightCarbonDark,
     carbonMid: AppTheme._lightCarbonMid,
     carbonLight: AppTheme._lightCarbonLight,
+    carbonHighlight: AppTheme._lightCarbonHighlight,
+    accent: AppTheme.lightAccentBlue,
+    logoStroke: Color(0xFF334155),
+    logoAccent: AppTheme.lightAccentBlue,
   );
 
-  /// t=0 → dark, t=1 → light
+  /// Lerp между тёмной и светлой темой. t=0 → dark, t=1 → light.
   static AnimatedAppTheme lerp(double t) {
     return AnimatedAppTheme(
       background: Color.lerp(_dark.background, _light.background, t)!,
@@ -290,15 +324,21 @@ class AnimatedAppTheme {
       carbonDark: Color.lerp(_dark.carbonDark, _light.carbonDark, t)!,
       carbonMid: Color.lerp(_dark.carbonMid, _light.carbonMid, t)!,
       carbonLight: Color.lerp(_dark.carbonLight, _light.carbonLight, t)!,
+      carbonHighlight: Color.lerp(_dark.carbonHighlight, _light.carbonHighlight, t)!,
+      accent: Color.lerp(_dark.accent, _light.accent, t)!,
+      logoStroke: Color.lerp(_dark.logoStroke, _light.logoStroke, t)!,
+      logoAccent: Color.lerp(_dark.logoAccent, _light.logoAccent, t)!,
     );
   }
 
+  /// Текущая анимированная тема на основе ThemeNotifier.
   static AnimatedAppTheme of(BuildContext context) {
     final provider = context.dependOnInheritedWidgetOfExactType<AnimatedThemeProvider>();
-    return provider?.theme ?? (ThemeNotifier.instance.isDark ? _dark : _light);
+    return provider?.theme ?? _dark;
   }
 }
 
+/// InheritedWidget для передачи анимированной темы вниз по дереву.
 class AnimatedThemeProvider extends InheritedWidget {
   final AnimatedAppTheme theme;
   const AnimatedThemeProvider({required this.theme, required super.child});
