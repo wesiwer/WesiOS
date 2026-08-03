@@ -624,8 +624,8 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
 
   /// Toggle-кнопка форматирования (вкл/выкл)
   Widget _toolToggle(IconData icon, String label, Attribute attribute) {
-    return ValueListenableBuilder(
-      valueListenable: _controller,
+    return ListenableBuilder(
+      listenable: _controller,
       builder: (context, _, __) {
         final isActive = _controller.getSelectionStyle().attributes.containsKey(attribute.key);
         return Tooltip(
