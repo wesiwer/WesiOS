@@ -8,6 +8,7 @@ import 'core/localization/wesi_locale.dart';
 import 'core/routes/app_router.dart';
 import 'core/security/shield_lock_screen.dart';
 import 'core/services/currency_service.dart';
+import 'core/widgets/update_error_dialog.dart';
 import 'core/widgets/window_controls.dart';
 import 'features/calculator/calculator_screen.dart';
 import 'features/splash/splash_screen.dart';
@@ -32,13 +33,6 @@ class WesiOSApp extends StatelessWidget {
       DeviceOrientation.landscapeRight,
     ]);
 
-    // Тема живёт в ThemeNotifier. ValueListenableBuilder перестраивает
-    // MaterialApp при смене dark/light.
-    //
-    // AnimatedTheme ОБЯЗАН быть ВНУТРИ MaterialApp.builder — иначе
-    // MaterialApp вставляет свой Theme(data: theme) поверх и мгновенно
-    // перекрывает интерполяцию. Тогда экран «прыгает» цветом только
-    // после setState (смена вкладки), а не плавно.
     return ValueListenableBuilder<AppThemeMode>(
       valueListenable: ThemeNotifier.instance,
       builder: (context, mode, _) {
@@ -83,6 +77,8 @@ class WesiOSApp extends StatelessWidget {
                           OverlayEntry(
                               builder: (_) => const EngineDownloadOverlay()),
                         OverlayEntry(builder: (_) => const ShieldOverlay()),
+                        // Ошибки OTA — поверх всего, кроме title bar.
+                        OverlayEntry(builder: (_) => const UpdateErrorHost()),
                         if (isDesktop)
                           OverlayEntry(
                             builder: (_) => const Positioned(
