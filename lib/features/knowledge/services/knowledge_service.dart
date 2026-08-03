@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/localization/wesi_locale.dart';
 import '../data/builtin_articles.dart';
+import '../data/ota_error_codes_article.dart';
 import '../models/article_model.dart';
 
 /// Хранилище базы знаний.
@@ -25,17 +26,17 @@ class KnowledgeService {
   /// - не трогает пользовательские;
   /// - у встроенных сохраняет pin и updatedAt;
   /// - revision++ только если реально что-то изменилось.
-  ///
-  /// Раньше seed() вызывался из _load() при каждом открытии списка и всегда
-  /// делал revision++ → listener → _load → seed → бесконечный цикл, из-за
-  /// которого карточки «дёргались» и менялись местами после выхода из
-  /// закреплённой статьи.
   static Future<void> seed({bool force = false}) async {
     if (_seeded && !force) return;
     final box = await _articlesBox;
     var changed = false;
 
-    for (final article in BuiltinArticles.all(WesiLocale.isRussian)) {
+    final builtins = [
+      ...BuiltinArticles.all(WesiLocale.isRussian),
+      builtinOtaErrorCodesArticle(WesiLocale.isRussian, DateTime.now()),
+    ];
+
+    for (final article in builtins) {
       final existing = box.get(article.id);
       if (existing == null) {
         await box.put(article.id, article);
@@ -75,8 +76,6 @@ class KnowledgeService {
   static Future<List<ArticleModel>> getAll() async {
     final box = await _articlesBox;
     final list = box.values.toList()
-      // Закреплённые сверху, дальше — по дате изменения: свежее выше.
-      // При равных updatedAt — стабильный порядок по id.
       ..sort((a, b) {
         if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
         final byDate = b.updatedAt.compareTo(a.updatedAt);
@@ -132,8 +131,6 @@ class KnowledgeService {
     return article;
   }
 
-  /// Удаляет статью. Встроенную удалить нельзя: восстановить её было бы
-  /// нечем, а исчезнувшая справка — худший вид пропажи.
   static Future<bool> delete(String id) async {
     final box = await _articlesBox;
     final article = box.get(id);
@@ -150,7 +147,6 @@ class KnowledgeService {
     ));
   }
 
-  /// Сколько статей в каждом разделе — для подписей на фильтрах.
   static Future<Map<ArticleSection, int>> counts() async {
     final all = await getAll();
     return {
@@ -159,30 +155,24 @@ class KnowledgeService {
     };
   }
 
-  // ─── Tree / Hierarchy ─────────────────────────────────────────────────────
-
-  /// Все корневые статьи (parentId == null).
   static List<ArticleModel> getRoots() {
     final box = _box;
     if (box == null) return [];
     return box.values.where((a) => a.parentId == null).toList();
   }
 
-  /// Дочерние статьи по parentId.
   static List<ArticleModel> getChildren(String parentId) {
     final box = _box;
     if (box == null) return [];
     return box.values.where((a) => a.parentId == parentId).toList();
   }
 
-  /// true, если у статьи есть дочерние элементы.
   static bool hasChildren(String parentId) {
     final box = _box;
     if (box == null) return false;
     return box.values.any((a) => a.parentId == parentId);
   }
 
-  /// Хлебные крошки: список предков от корня до текущей статьи.
   static List<ArticleModel> getBreadcrumb(String articleId) {
     final box = _box;
     if (box == null) return [];
@@ -196,7 +186,6 @@ class KnowledgeService {
     return result;
   }
 
-  /// Все статьи в поддереве (рекурсивно).
   static List<ArticleModel> getSubtree(String rootId) {
     final box = _box;
     if (box == null) return [];
@@ -208,6 +197,7 @@ class KnowledgeService {
         collect(child.id);
       }
     }
+
     collect(rootId);
     return result;
   }
