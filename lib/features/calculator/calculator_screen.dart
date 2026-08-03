@@ -641,6 +641,22 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
               ),
               const SizedBox(width: 6),
               IconButton(
+                tooltip: 'Уменьшить',
+                icon: Icon(Icons.remove, size: 18, color: AppTheme.textMuted),
+                onPressed: () => setState(() => _scale = (_scale - 0.1).clamp(0.7, 1.4)),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              IconButton(
+                tooltip: 'Увеличить',
+                icon: Icon(Icons.add, size: 18, color: AppTheme.textMuted),
+                onPressed: () => setState(() => _scale = (_scale + 0.1).clamp(0.7, 1.4)),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
+              ),
+              IconButton(
                 tooltip: 'Развернуть',
                 icon: Icon(Icons.open_in_full, size: 18, color: AppTheme.accent),
                 onPressed: () => setState(() => _minimized = false),
