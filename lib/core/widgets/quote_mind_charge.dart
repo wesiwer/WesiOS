@@ -109,8 +109,8 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.glassBorder),
-                    color: AppTheme.surface.withOpacity(0.55),
+                    border: Border.all(color: glassBorder),
+                    color: surface.withOpacity(0.55),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -124,7 +124,7 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
                           fontSize: 10,
                           height: 1.25,
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.textSecondary,
+                          color: textSecondary,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -136,7 +136,7 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
                           height: 5,
                           child: LinearProgressIndicator(
                             value: progress,
-                            backgroundColor: AppTheme.surfaceLight,
+                            backgroundColor: surfaceLight,
                             valueColor: AlwaysStoppedAnimation(accent),
                             minHeight: 5,
                           ),
@@ -148,7 +148,7 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
                         '/${QuoteMindChargeService.goalPrimary}',
                         style: TextStyle(
                           fontSize: 10,
-                          color: AppTheme.textMuted,
+                          color: textMuted,
                           fontFeatures: const [FontFeature.tabularFigures()],
                         ),
                       ),
@@ -162,7 +162,7 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
                               fontSize: 10.5,
                               height: 1.3,
                               fontWeight: FontWeight.w600,
-                              color: _secret ? accent : AppTheme.textPrimary,
+                              color: _secret ? accent : textPrimary,
                             ),
                           ),
                         ),
