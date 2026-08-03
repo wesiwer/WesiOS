@@ -478,9 +478,9 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             // Не блокируем клики по приложению, когда свёрнут
             const SizedBox.expand(),
             Positioned(
-              left: 0,
-              right: 0,
-              bottom: 24,
+              left: _offset.dx.clamp(0.0, double.infinity),
+              right: -_offset.dx.clamp(double.negativeInfinity, 0.0),
+              bottom: 24 + _offset.dy,
               child: Center(child: bar),
             ),
           ],
