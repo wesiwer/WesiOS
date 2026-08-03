@@ -66,12 +66,14 @@ void main() async {
   AppIconService.load();
   QuoteMindChargeService.load();
 
-  // Auto-иконка: при смене темы переключаем activity-alias на Android.
   ThemeNotifier.instance.addListener(() {
     AppIconService.apply();
   });
 
   ExchangeRateService.refresh();
+  // Сначала читаем маркер ошибки от bat (если OTA на Windows упала),
+  // потом обычная проверка обновлений.
+  await AppUpdateService.consumePendingInstallError();
   AppUpdateService.check();
   KnowledgeService.seed();
 
