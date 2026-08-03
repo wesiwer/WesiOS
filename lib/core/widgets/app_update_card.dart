@@ -6,15 +6,7 @@ import '../theme/app_theme.dart';
 import 'hover_button.dart';
 
 /// Карточка обновления WesiOS.
-///
-/// Ведёт себя как загрузка моделей прогноза, которую пользователь уже видел:
-/// проверка → предложение с версией, размером и changelog → прогресс →
-/// установка. Показывается в настройках всегда, на главной — только когда
-/// обновление реально есть (см. [AppUpdateBanner]).
 class AppUpdateCard extends StatefulWidget {
-  /// Компактный режим: без кнопки «Пропустить» — для баннера на главной.
-  /// Changelog показывается в обоих режимах, чтобы обновление не ставилось
-  /// вслепую.
   final bool compact;
 
   const AppUpdateCard({super.key, this.compact = false});
@@ -130,9 +122,6 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
               : 'Installed ${AppUpdateService.currentVersion} (build ${AppUpdateService.currentBuild})',
           style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
         ),
-        // Changelog — показываем всегда, когда есть обновление и notes.
-        // И в баннере на главной, и в настройках: обновление не должно
-        // ставиться вслепую.
         if (hasUpdate && hasNotes) ...[
           const SizedBox(height: 12),
           _changelogBlock(ru, notes),
@@ -144,8 +133,6 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
   }
 
   Widget _changelogBlock(bool ru, String notes) {
-    // В компактном баннере длинный текст сворачиваем, чтобы не занять
-    // полэкрана. В настройках показываем полностью.
     final isLong = notes.length > 160 || notes.split('\n').length > 3;
     final showFull = !widget.compact || _notesExpanded || !isLong;
 
@@ -214,8 +201,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                 value: f,
                 minHeight: 6,
                 backgroundColor: AppTheme.background,
-                valueColor:
-                    AlwaysStoppedAnimation(AppTheme.accent),
+                valueColor: AlwaysStoppedAnimation(AppTheme.accent),
               ),
             ),
             SizedBox(height: 8),
@@ -245,18 +231,34 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
         );
 
       case UpdateStage.failed:
-        final permission = p.error?.contains('install_permission_required') == true;
+        final code = p.errorCode;
+        final permission = code == 'A201' ||
+            (p.error?.contains('install_permission_required') == true);
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (code != null)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: Text(
+                  ru ? 'Код $code' : 'Code $code',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.4,
+                    color: AppTheme.accentRed,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
             Text(
               permission
                   ? (ru
                       ? 'Нужно разрешить установку из WesiOS — экран настроек уже открыт.'
                       : 'Allow installs from WesiOS — the settings screen is open.')
                   : (ru
-                      ? 'Не удалось обновиться: ${p.error}'
-                      : 'Update failed: ${p.error}'),
+                      ? 'Не удалось обновиться${code != null ? ' ($code)' : ''}. Подробности — в окне ошибки.'
+                      : 'Update failed${code != null ? ' ($code)' : ''}. See the error dialog for details.'),
               style: TextStyle(
                 fontSize: 12,
                 color: permission ? AppTheme.accent : AppTheme.accentRed,
@@ -323,7 +325,6 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
       );
 }
 
-/// Полоска на главной — появляется только когда обновление действительно есть.
 class AppUpdateBanner extends StatelessWidget {
   const AppUpdateBanner({super.key});
 
@@ -333,9 +334,8 @@ class AppUpdateBanner extends StatelessWidget {
       valueListenable: AppUpdateService.latest,
       builder: (context, release, _) {
         if (!AppUpdateService.updateAvailable) {
-          // Пока идёт закачка, баннер обязан остаться на экране, иначе
-          // прогресс исчезнет вместе с ним на середине скачивания.
-          if (!AppUpdateService.progress.value.isBusy) {
+          if (!AppUpdateService.progress.value.isBusy &&
+              AppUpdateService.progress.value.stage != UpdateStage.failed) {
             return const SizedBox.shrink();
           }
         }
