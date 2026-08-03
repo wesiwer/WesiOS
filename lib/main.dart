@@ -10,6 +10,8 @@ import 'features/treasury/models/transaction_model.dart';
 import 'features/tasks/models/task_model.dart';
 import 'features/treasury/models/account_model.dart';
 import 'features/knowledge/models/article_model.dart';
+import 'features/team/models/employee_model.dart';
+import 'features/team/models/team_permissions.dart';
 import 'features/knowledge/services/knowledge_service.dart';
 import 'core/services/app_update_service.dart';
 import 'core/services/app_icon_service.dart';
@@ -19,6 +21,7 @@ import 'app.dart';
 import 'core/services/currency_service.dart';
 import 'core/services/firebase_rest_service.dart';
 import 'core/services/secrets_service.dart';
+import 'features/team/services/team_service.dart';
 
 bool get isDesktop {
   if (kIsWeb) return false;
@@ -59,9 +62,12 @@ void main() async {
   Hive.registerAdapter(AccountModelAdapter());
   Hive.registerAdapter(ArticleSectionAdapter());
   Hive.registerAdapter(ArticleModelAdapter());
+  Hive.registerAdapter(TeamPermissionsAdapter());
+  Hive.registerAdapter(EmployeeModelAdapter());
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
+  await Hive.openBox<EmployeeModel>(TeamService.boxName);
 
   CurrencyService.loadPrivacyMode();
   ThemeNotifier.load();
