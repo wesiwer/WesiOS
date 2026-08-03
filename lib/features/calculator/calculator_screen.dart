@@ -419,7 +419,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
     LogicalKeyboardKey.numpadAdd: '+',
     LogicalKeyboardKey.numpadSubtract: '-',
     LogicalKeyboardKey.numpadMultiply: '*',
-    LogicalKeyboardKey.numpadDivide: '/',
+    LogicalKeyboardKey.numpadDivide: '÷',
     LogicalKeyboardKey.numpadEnter: 'Enter',
     LogicalKeyboardKey.numpadEqual: '=',
   };
