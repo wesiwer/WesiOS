@@ -115,3 +115,30 @@
 - [ ] Убедиться, что `ensureWindowsDefenderExclusions` + help-текст реально в `app_update_service.dart` и вызываются перед install (если нет — долить).
 - [ ] Опционально: добавить `WINDOWS_CERT_PFX` / `WINDOWS_CERT_PASSWORD` и шаг подписи в `release-app.yml`.
 - [ ] После зелёного релиза — smoke: Windows zip install + Android APK update.
+
+
+## Сессия 12 — 2026-08-03 (04:15 МСК)
+
+### Сделано
+1. **Релиз #51** — ✅ SUCCESS (зелёный)
+   - Исправлен `flutter_quill` 9.3.12 API: `controller` в `QuillEditorConfigurations`
+   - Android APK + Windows ZIP опубликованы
+
+2. **Редактор Knowledge** — подписи к кнопкам + выдвижной drawer
+   - `_toolLabeled()` — кнопки с подписями под иконками (8px текст)
+   - `_insertDrawer()` — выдвижная панель вставки медиа/таблиц/графиков
+   - Медиа-кнопки (фото, видео, аудио, график, таблица) спрятаны в drawer
+   - Остальные кнопки (жирный, курсив, H1-H3, списки, ссылка, emoji, спецсимволы) видны сразу
+
+3. **QuoteMindCharge** — исправлен layout
+   - Увеличена ширина карточки: `maxWidth: 200` → `maxWidth: 230`
+   - Текст "Зарядись умными мыслями" в одну строку (убран перенос)
+   - Увеличены отступы: `padding: 10,8` → `padding: 12,10`
+
+### Коммиты
+- `fix(quill): v9.3.12 API — controller in configurations, not .basic()` — article_editor_screen.dart, article_body_view.dart
+- `feat(knowledge): labeled toolbar buttons + slide-out insert drawer in build()` — article_editor_screen.dart
+- `fix(quote): widen mind-charge card, fix text overflow layout` — quote_mind_charge.dart
+
+### Следующий релиз
+- Запустить релиз #52 для проверки новых изменений
