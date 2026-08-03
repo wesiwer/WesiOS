@@ -236,3 +236,113 @@ class AppTheme {
     SystemChrome.setSystemUIOverlayStyle(systemOverlayStyle);
   }
 }
+
+/// Интерполированная палитра цветов для плавной анимации смены темы.
+/// Все цвета лерпаются между тёмной и светлой темой одновременно.
+class AnimatedAppTheme {
+  final Color background;
+  final Color surface;
+  final Color surfaceLight;
+  final Color textPrimary;
+  final Color textSecondary;
+  final Color textMuted;
+  final Color glassBackground;
+  final Color glassBorder;
+  final Color carbonDark;
+  final Color carbonMid;
+  final Color carbonLight;
+  final Color carbonHighlight;
+  final Color accent;
+  final Color logoStroke;
+  final Color logoAccent;
+
+  const AnimatedAppTheme({
+    required this.background,
+    required this.surface,
+    required this.surfaceLight,
+    required this.textPrimary,
+    required this.textSecondary,
+    required this.textMuted,
+    required this.glassBackground,
+    required this.glassBorder,
+    required this.carbonDark,
+    required this.carbonMid,
+    required this.carbonLight,
+    required this.carbonHighlight,
+    required this.accent,
+    required this.logoStroke,
+    required this.logoAccent,
+  });
+
+  static const _dark = AnimatedAppTheme(
+    background: AppTheme._darkBackground,
+    surface: AppTheme._darkSurface,
+    surfaceLight: AppTheme._darkSurfaceLight,
+    textPrimary: AppTheme._darkTextPrimary,
+    textSecondary: AppTheme._darkTextSecondary,
+    textMuted: AppTheme._darkTextMuted,
+    glassBackground: AppTheme._darkGlassBg,
+    glassBorder: AppTheme._darkGlassBorder,
+    carbonDark: AppTheme._darkCarbonDark,
+    carbonMid: AppTheme._darkCarbonMid,
+    carbonLight: AppTheme._darkCarbonLight,
+    carbonHighlight: AppTheme._darkCarbonHighlight,
+    accent: AppTheme.accentOrange,
+    logoStroke: Color(0xFFFFFFFF),
+    logoAccent: AppTheme.accentOrange,
+  );
+
+  static const _light = AnimatedAppTheme(
+    background: AppTheme._lightBackground,
+    surface: AppTheme._lightSurface,
+    surfaceLight: AppTheme._lightSurfaceLight,
+    textPrimary: AppTheme._lightTextPrimary,
+    textSecondary: AppTheme._lightTextSecondary,
+    textMuted: AppTheme._lightTextMuted,
+    glassBackground: AppTheme._lightGlassBg,
+    glassBorder: AppTheme._lightGlassBorder,
+    carbonDark: AppTheme._lightCarbonDark,
+    carbonMid: AppTheme._lightCarbonMid,
+    carbonLight: AppTheme._lightCarbonLight,
+    carbonHighlight: AppTheme._lightCarbonHighlight,
+    accent: AppTheme.lightAccentBlue,
+    logoStroke: Color(0xFF334155),
+    logoAccent: AppTheme.lightAccentBlue,
+  );
+
+  /// Lerp между тёмной и светлой темой. t=0 → dark, t=1 → light.
+  static AnimatedAppTheme lerp(double t) {
+    return AnimatedAppTheme(
+      background: Color.lerp(_dark.background, _light.background, t)!,
+      surface: Color.lerp(_dark.surface, _light.surface, t)!,
+      surfaceLight: Color.lerp(_dark.surfaceLight, _light.surfaceLight, t)!,
+      textPrimary: Color.lerp(_dark.textPrimary, _light.textPrimary, t)!,
+      textSecondary: Color.lerp(_dark.textSecondary, _light.textSecondary, t)!,
+      textMuted: Color.lerp(_dark.textMuted, _light.textMuted, t)!,
+      glassBackground: Color.lerp(_dark.glassBackground, _light.glassBackground, t)!,
+      glassBorder: Color.lerp(_dark.glassBorder, _light.glassBorder, t)!,
+      carbonDark: Color.lerp(_dark.carbonDark, _light.carbonDark, t)!,
+      carbonMid: Color.lerp(_dark.carbonMid, _light.carbonMid, t)!,
+      carbonLight: Color.lerp(_dark.carbonLight, _light.carbonLight, t)!,
+      carbonHighlight: Color.lerp(_dark.carbonHighlight, _light.carbonHighlight, t)!,
+      accent: Color.lerp(_dark.accent, _light.accent, t)!,
+      logoStroke: Color.lerp(_dark.logoStroke, _light.logoStroke, t)!,
+      logoAccent: Color.lerp(_dark.logoAccent, _light.logoAccent, t)!,
+    );
+  }
+
+  /// Текущая анимированная тема на основе ThemeNotifier.
+  static AnimatedAppTheme of(BuildContext context) {
+    final provider = context.dependOnInheritedWidgetOfExactType<_AnimatedThemeProvider>();
+    return provider?.theme ?? _dark;
+  }
+}
+
+/// InheritedWidget для передачи анимированной темы вниз по дереву.
+class _AnimatedThemeProvider extends InheritedWidget {
+  final AnimatedAppTheme theme;
+  const _AnimatedThemeProvider({required this.theme, required super.child});
+
+  @override
+  bool updateShouldNotify(_AnimatedThemeProvider old) => theme != old.theme;
+}
