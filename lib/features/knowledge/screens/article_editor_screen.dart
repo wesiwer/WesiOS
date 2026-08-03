@@ -626,7 +626,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
   Widget _toolToggle(IconData icon, String label, Attribute attribute) {
     return ListenableBuilder(
       listenable: _controller,
-      builder: (context, _, __) {
+      builder: (context, child) {
         final isActive = _controller.getSelectionStyle().attributes.containsKey(attribute.key);
         return Tooltip(
           message: label,
