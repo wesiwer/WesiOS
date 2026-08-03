@@ -10,9 +10,6 @@ import 'package:path_provider/path_provider.dart';
 import '../constants/app_version.dart';
 import 'github_auth_service.dart';
 
-/// Стадия обновления приложения. Сознательно повторяет форму
-/// `InstallStage` у движков прогноза — пользователь уже видел этот сценарий
-/// с загрузкой моделей, и обновление приложения должно вести себя так же.
 enum UpdateStage { idle, checking, available, downloading, ready, installing, failed }
 
 class UpdateProgress {
@@ -21,6 +18,7 @@ class UpdateProgress {
   final int? totalBytes;
   final double bytesPerSecond;
   final String? error;
+  final String? errorCode;
 
   const UpdateProgress({
     this.stage = UpdateStage.idle,
@@ -28,6 +26,7 @@ class UpdateProgress {
     this.totalBytes,
     this.bytesPerSecond = 0,
     this.error,
+    this.errorCode,
   });
 
   double? get fraction => (totalBytes != null && totalBytes! > 0)
@@ -40,19 +39,210 @@ class UpdateProgress {
       stage == UpdateStage.installing;
 }
 
-/// Описание доступной сборки приложения из `app-manifest.json`.
+/// Структурированная ошибка обновления для стилизованного диалога WesiOS.
+class UpdateError {
+  /// Код вида W107 / A201 — показывается пользователю.
+  final String code;
+  final String titleRu;
+  final String titleEn;
+  final String messageRu;
+  final String messageEn;
+  final String? helpRu;
+  final String? helpEn;
+  final String? detail;
+  final String? logPath;
+
+  const UpdateError({
+    required this.code,
+    required this.titleRu,
+    required this.titleEn,
+    required this.messageRu,
+    required this.messageEn,
+    this.helpRu,
+    this.helpEn,
+    this.detail,
+    this.logPath,
+  });
+
+  String title(bool ru) => ru ? titleRu : titleEn;
+  String message(bool ru) => ru ? messageRu : messageEn;
+  String? help(bool ru) {
+    final h = ru ? helpRu : helpEn;
+    if (h == null || h.isEmpty) return null;
+    return h;
+  }
+
+  static UpdateError byCode(String code, {String? detail, String? logPath}) {
+    switch (code) {
+      case 'W101':
+        return UpdateError(
+          code: code,
+          titleRu: 'Нужен вход в GitHub',
+          titleEn: 'GitHub sign-in required',
+          messageRu:
+              'Релизы лежат в репозитории, к которому нет доступа без входа. Открой Настройки → Обновление → Войти.',
+          messageEn:
+              'Releases need authentication. Open Settings → Updates → Sign in.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'W102':
+        return UpdateError(
+          code: code,
+          titleRu: 'В релизе нет файла сборки',
+          titleEn: 'Release asset missing',
+          messageRu:
+              'Манифест ссылается на файл, которого нет в GitHub Release. Запусти Publish ещё раз или проверь app-latest.',
+          messageEn:
+              'The manifest points to a file that is not on the GitHub Release. Re-run Publish or check app-latest.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'W103':
+        return UpdateError(
+          code: code,
+          titleRu: 'Ошибка скачивания',
+          titleEn: 'Download failed',
+          messageRu:
+              'Не удалось скачать сборку с GitHub. Проверь интернет и повтори попытку.',
+          messageEn:
+              'Could not download the build from GitHub. Check the network and try again.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'W104':
+        return UpdateError(
+          code: code,
+          titleRu: 'Сбой обновления',
+          titleEn: 'Update failed',
+          messageRu: 'Во время скачивания или подготовки установки произошла ошибка.',
+          messageEn: 'An error occurred while downloading or preparing the install.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'W105':
+        return UpdateError(
+          code: code,
+          titleRu: 'Не удалось распаковать архив',
+          titleEn: 'Could not unpack archive',
+          messageRu:
+              'Expand-Archive не смог распаковать zip. Файл мог повредиться при скачивании.',
+          messageEn:
+              'Expand-Archive failed to unpack the zip. The file may be corrupted.',
+          helpRu: 'Повтори обновление. Если снова ошибка — скачай zip вручную с GitHub Releases.',
+          helpEn: 'Retry the update. If it fails again, download the zip manually from GitHub Releases.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'W106':
+        return UpdateError(
+          code: code,
+          titleRu: 'В архиве нет WesiOS',
+          titleEn: 'WesiOS not found in archive',
+          messageRu:
+              'После распаковки не найден исполняемый файл. Структура zip неожиданная.',
+          messageEn:
+              'After unpacking, the executable was not found. Unexpected zip layout.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'W107':
+        return UpdateError(
+          code: code,
+          titleRu: 'Не удалось заменить файлы',
+          titleEn: 'Could not replace files',
+          messageRu:
+              'Копирование в папку установки завершилось с ошибкой. Часто виноват Windows Defender или Controlled Folder Access.',
+          messageEn:
+              'Copying into the install folder failed. Windows Defender or Controlled Folder Access is a common cause.',
+          helpRu:
+              'Добавь папку с WesiOS и %TEMP% в исключения Защитника Windows, затем нажми «Повторить».',
+          helpEn:
+              'Add the WesiOS folder and %TEMP% to Windows Defender exclusions, then tap Retry.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'W108':
+        return UpdateError(
+          code: code,
+          titleRu: 'Исполняемый файл пропал после копирования',
+          titleEn: 'Executable missing after copy',
+          messageRu:
+              'После robocopy wesios.exe не найден в папке установки. Возможно, антивирус удалил файл.',
+          messageEn:
+              'After robocopy, wesios.exe is missing from the install folder. Antivirus may have removed it.',
+          helpRu: 'Проверь карантин Защитника и исключения для папки установки.',
+          helpEn: 'Check Defender quarantine and exclusions for the install folder.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'W109':
+        return UpdateError(
+          code: code,
+          titleRu: 'Процесс не завершился вовремя',
+          titleEn: 'Process did not exit in time',
+          messageRu:
+              'Установщик ждал закрытия WesiOS слишком долго. Закрой приложение полностью и обнови снова.',
+          messageEn:
+              'The installer waited too long for WesiOS to exit. Fully quit the app and update again.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'W110':
+        return UpdateError(
+          code: code,
+          titleRu: 'Ошибка установки на Windows',
+          titleEn: 'Windows install error',
+          messageRu: 'Установка новой версии не завершилась. Подробности — в логе.',
+          messageEn: 'Installing the new version did not finish. See the log for details.',
+          helpRu:
+              'Открой лог и при необходимости добавь папку установки в исключения Defender.',
+          helpEn:
+              'Open the log and, if needed, add the install folder to Defender exclusions.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'A201':
+        return UpdateError(
+          code: code,
+          titleRu: 'Нужно разрешение на установку',
+          titleEn: 'Install permission required',
+          messageRu:
+              'Android не даёт ставить APK из WesiOS. Разреши «установку из этого источника» в открывшемся экране настроек.',
+          messageEn:
+              'Android blocked APK installs from WesiOS. Allow “install from this source” in the settings screen that opened.',
+          detail: detail,
+          logPath: logPath,
+        );
+      case 'A202':
+        return UpdateError(
+          code: code,
+          titleRu: 'Не удалось запустить установщик APK',
+          titleEn: 'Could not start APK installer',
+          messageRu: 'Системный установщик Android не открылся или вернул ошибку.',
+          messageEn: 'The system APK installer did not open or returned an error.',
+          detail: detail,
+          logPath: logPath,
+        );
+      default:
+        return UpdateError(
+          code: code,
+          titleRu: 'Ошибка обновления',
+          titleEn: 'Update error',
+          messageRu: 'Не удалось обновить WesiOS.',
+          messageEn: 'Could not update WesiOS.',
+          detail: detail,
+          logPath: logPath,
+        );
+    }
+  }
+}
+
 class AppRelease {
-  /// Версия вида `0.9.0` — сравнивается покомпонентно, не строкой.
   final String version;
-
-  /// Номер сборки (`+N` из pubspec). Нужен, когда версия та же, а сборка новее.
   final int build;
-
-  /// Имя ассета для текущей платформы.
   final String assetName;
   final int? sizeBytes;
-
-  /// Что нового — показываем в диалоге, чтобы обновление не было вслепую.
   final String? notes;
 
   const AppRelease({
@@ -76,11 +266,6 @@ class AppRelease {
     );
   }
 
-  /// Строго ли эта сборка новее установленной.
-  ///
-  /// Сравнение покомпонентное, а не лексикографическое: строкой «0.10.0»
-  /// меньше «0.9.0», и обновление после десятого минора перестало бы
-  /// предлагаться вообще.
   bool isNewerThan(String currentVersion, int currentBuild) {
     final cmp = compareVersions(version, currentVersion);
     if (cmp != 0) return cmp > 0;
@@ -104,43 +289,30 @@ class AppRelease {
   }
 }
 
-/// Проверка, скачивание и установка новой версии самого WesiOS.
-///
-/// Устроено ровно как загрузка движков прогноза: CI публикует сборки как
-/// ассеты GitHub Release под ПОСТОЯННЫМ тегом, рядом лежит `app-manifest.json`
-/// с актуальной версией. Приложению не нужно ничего знать заранее — оно
-/// читает манифест по неизменному адресу и сравнивает версию со своей.
-///
-/// Платформа выбирает свой ассет сама: Android скачивает APK и отдаёт его
-/// системному установщику, Windows — zip, который распаковывается и
-/// подменяет файлы при следующем запуске (см. [_installWindows]).
 class AppUpdateService {
   static const String _releaseTag = 'app-latest';
   static const String _manifestAsset = 'app-manifest.json';
   static const _channel = MethodChannel('wesios/updater');
   static const _box = 'wesios_settings';
   static const _skippedKey = 'update_skipped_version';
+  static const String _errorArgPrefix = '--wesios-update-error=';
+  static const String _errorFileName = 'wesios_update_error.json';
 
   static const String repoOwner = 'wesiwer';
   static const String repoName = 'WesiOS';
 
-  /// Текст помощи, если Defender / Controlled Folder Access мешает подмене файлов.
   static const String windowsDefenderHelp =
       'Windows Defender или Controlled Folder Access мог заблокировать '
       'замену файлов. Открой Защитник Windows → Защита от вирусов → '
       'Управление параметрами → Исключения → Добавить папку с WesiOS '
-      'и %TEMP%. Лог обновления: %TEMP%\\wesios_update.log';
+      'и %TEMP%. Лог: %TEMP%\\wesios_update.log';
 
-  /// Прямая ссылка на файл релиза. Работает только для публичных
-  /// репозиториев; для приватного нужен путь через API — см. [_openAsset].
   static String releaseFileUrl(String asset) =>
       'https://github.com/$repoOwner/$repoName/releases/download/$_releaseTag/$asset';
 
   static String get _releaseApiUrl =>
       'https://api.github.com/repos/$repoOwner/$repoName/releases/tags/$_releaseTag';
 
-  /// id ассетов релиза по именам. Нужны, чтобы скачивать через API: у
-  /// приватного репозитория `browser_download_url` отдаёт 404 без входа.
   static Future<Map<String, int>?> _assetIds(
       HttpClient client, Map<String, String> headers) async {
     final req = await client.getUrl(Uri.parse(_releaseApiUrl));
@@ -158,13 +330,6 @@ class AppUpdateService {
     };
   }
 
-  /// Открывает поток с содержимым ассета.
-  ///
-  /// Редирект обрабатывается вручную и **намеренно**: GitHub отвечает 302 на
-  /// подписанную ссылку в хранилище, а хранилище отклоняет запрос, в котором
-  /// есть ещё и заголовок Authorization — «только один механизм за раз».
-  /// `followRedirects: true` протащил бы наш заголовок дальше и сломал бы
-  /// скачивание именно там, где всё уже почти получилось.
   static Future<HttpClientResponse?> _openAsset(
     HttpClient client,
     int assetId,
@@ -181,7 +346,6 @@ class AppUpdateService {
     if (res.statusCode == 200) return res;
     if (res.statusCode == 302 || res.statusCode == 307) {
       final location = res.headers.value(HttpHeaders.locationHeader);
-      // Тело первого ответа нужно вычитать, иначе соединение зависнет.
       await res.drain<void>();
       if (location == null) return null;
       final redirect = await client.getUrl(Uri.parse(location));
@@ -192,7 +356,6 @@ class AppUpdateService {
     return null;
   }
 
-  /// Ключ платформы в манифесте.
   static String? get platformKey {
     if (kIsWeb) return null;
     if (Platform.isAndroid) return 'android';
@@ -207,10 +370,10 @@ class AppUpdateService {
 
   static final ValueNotifier<AppRelease?> latest = ValueNotifier(null);
 
-  /// Кеш id ассетов текущего релиза — чтобы скачивание не делало ещё
-  /// один запрос к API за тем же списком.
-  static Map<String, int>? _assetIdCache;
+  /// Ошибка для стилизованного диалога (overlay).
+  static final ValueNotifier<UpdateError?> pendingError = ValueNotifier(null);
 
+  static Map<String, int>? _assetIdCache;
   static AppRelease? _release;
   static DateTime? _checkedAt;
   static const Duration _checkTtl = Duration(hours: 6);
@@ -218,8 +381,6 @@ class AppUpdateService {
   static String get currentVersion => AppVersion.number;
   static int get currentBuild => AppVersion.build;
 
-  /// Пользователь нажал «Пропустить эту версию» — больше не дёргаем его,
-  /// пока не выйдет следующая.
   static String? get skippedVersion {
     try {
       return Hive.box(_box).get(_skippedKey) as String?;
@@ -231,10 +392,9 @@ class AppUpdateService {
   static Future<void> skip(String version) async {
     try {
       await Hive.box(_box).put(_skippedKey, version);
-    } catch (_) {/* настройки недоступны — не критично */}
+    } catch (_) {}
   }
 
-  /// Есть ли обновление, которое стоит показать пользователю.
   static bool get updateAvailable {
     final r = _release;
     if (r == null) return false;
@@ -242,7 +402,57 @@ class AppUpdateService {
     return skippedVersion != r.version;
   }
 
-  /// Читает манифест. `force: true` игнорирует кеш — для кнопки «Проверить».
+  static void reportFailure(UpdateError error) {
+    pendingError.value = error;
+    progress.value = UpdateProgress(
+      stage: UpdateStage.failed,
+      error: '${error.code}: ${error.messageRu}',
+      errorCode: error.code,
+    );
+  }
+
+  static void clearPendingError() {
+    pendingError.value = null;
+    if (progress.value.stage == UpdateStage.failed) {
+      progress.value = const UpdateProgress(stage: UpdateStage.idle);
+    }
+  }
+
+  /// Читает маркер ошибки от bat / CLI после рестарта Windows-установки.
+  static Future<void> consumePendingInstallError() async {
+    if (kIsWeb) return;
+
+    String? code;
+    String? detail;
+    String? logPath;
+
+    for (final arg in Platform.executableArguments) {
+      if (arg.startsWith(_errorArgPrefix)) {
+        code = arg.substring(_errorArgPrefix.length).trim();
+        break;
+      }
+    }
+
+    try {
+      final temp = await getTemporaryDirectory();
+      final marker = File('${temp.path}${Platform.pathSeparator}$_errorFileName');
+      if (await marker.exists()) {
+        final raw = await marker.readAsString();
+        final json = jsonDecode(raw);
+        if (json is Map) {
+          code ??= json['code'] as String?;
+          detail = json['detail'] as String?;
+          logPath = json['logPath'] as String?;
+        }
+        await marker.delete();
+      }
+      logPath ??= '${temp.path}${Platform.pathSeparator}wesios_update.log';
+    } catch (_) {}
+
+    if (code == null || code.isEmpty) return;
+    reportFailure(UpdateError.byCode(code, detail: detail, logPath: logPath));
+  }
+
   static Future<AppRelease?> check({bool force = false}) async {
     if (!isSupported) return null;
     if (!force &&
@@ -257,46 +467,35 @@ class AppUpdateService {
     try {
       final headers = await GitHubAuthService.authHeaders();
       if (headers.isEmpty) {
-        // Репозиторий приватный: без входа релиз не увидеть. Говорим об этом
-        // только при явной проверке — «обновлений нет» и «не смог проверить»
-        // снаружи выглядят одинаково, и человек сидел бы на старой версии,
-        // считая её свежей. Но красный баннер при каждом запуске про то, что
-        // требует отдельного действия, — уже шум.
-        progress.value = force
-            ? UpdateProgress(
-                stage: UpdateStage.failed,
-                error: GitHubAuthService.isConfigured
-                    ? 'Нужен вход в GitHub: релизы лежат в приватном '
-                        'репозитории. Настройки → Обновление → Войти.'
-                    : 'Вход в GitHub не настроен — не задан client_id '
-                        'приложения. См. Настройки → Обновление.',
-              )
-            : const UpdateProgress(stage: UpdateStage.idle);
+        if (force) {
+          reportFailure(UpdateError.byCode('W101'));
+        } else {
+          progress.value = const UpdateProgress(stage: UpdateStage.idle);
+        }
         return null;
       }
 
       final assets = await _assetIds(client, headers);
       final manifestId = assets?[_manifestAsset];
       if (manifestId == null) {
-        progress.value = force
-            ? const UpdateProgress(
-                stage: UpdateStage.failed,
-                error: 'Релиз найден, но в нём нет app-manifest.json',
-              )
-            : const UpdateProgress(stage: UpdateStage.idle);
+        if (force) {
+          reportFailure(UpdateError.byCode('W102',
+              detail: 'app-manifest.json missing in release assets'));
+        } else {
+          progress.value = const UpdateProgress(stage: UpdateStage.idle);
+        }
         return null;
       }
       _assetIdCache = assets;
 
       final response = await _openAsset(client, manifestId, headers);
       if (response == null || response.statusCode != 200) {
-        progress.value = force
-            ? UpdateProgress(
-                stage: UpdateStage.failed,
-                error: 'Не удалось прочитать манифест '
-                    '(HTTP ${response?.statusCode ?? '—'})',
-              )
-            : const UpdateProgress(stage: UpdateStage.idle);
+        if (force) {
+          reportFailure(UpdateError.byCode('W103',
+              detail: 'manifest HTTP ${response?.statusCode ?? '—'}'));
+        } else {
+          progress.value = const UpdateProgress(stage: UpdateStage.idle);
+        }
         return null;
       }
       final body = await response.transform(utf8.decoder).join();
@@ -316,8 +515,6 @@ class AppUpdateService {
       );
       return release;
     } catch (e) {
-      // Нет сети или манифест ещё не опубликован — это не ошибка сценария,
-      // просто «обновлений нет». Красный баннер тут был бы враньём.
       progress.value = const UpdateProgress(stage: UpdateStage.idle);
       return null;
     } finally {
@@ -325,7 +522,6 @@ class AppUpdateService {
     }
   }
 
-  /// Скачивает сборку и запускает установку.
   static Future<void> downloadAndInstall() async {
     final release = _release;
     if (release == null || !isSupported) return;
@@ -338,30 +534,21 @@ class AppUpdateService {
     try {
       final headers = await GitHubAuthService.authHeaders();
       if (headers.isEmpty) {
-        progress.value = const UpdateProgress(
-          stage: UpdateStage.failed,
-          error: 'Нужен вход в GitHub: Настройки → Обновление → Войти.',
-        );
+        reportFailure(UpdateError.byCode('W101'));
         return;
       }
-      // Список ассетов уже прочитан при проверке — второй запрос к API за той
-      // же информацией только тратит лимит.
       final assets = _assetIdCache ?? await _assetIds(client, headers);
       final assetId = assets?[release.assetName];
       if (assetId == null) {
-        progress.value = UpdateProgress(
-          stage: UpdateStage.failed,
-          error: 'В релизе нет файла ${release.assetName}',
-        );
+        reportFailure(UpdateError.byCode('W102',
+            detail: release.assetName));
         return;
       }
 
       final response = await _openAsset(client, assetId, headers);
       if (response == null || response.statusCode != 200) {
-        progress.value = UpdateProgress(
-          stage: UpdateStage.failed,
-          error: 'HTTP ${response?.statusCode ?? '—'}',
-        );
+        reportFailure(UpdateError.byCode('W103',
+            detail: 'HTTP ${response?.statusCode ?? '—'}'));
         return;
       }
 
@@ -380,7 +567,6 @@ class AppUpdateService {
         downloaded += chunk.length;
         final now = DateTime.now();
         final elapsedMs = now.difference(lastTick).inMilliseconds;
-        // Тот же троттлинг, что у движков: чаще 3 раз/сек обновлять UI незачем.
         if (elapsedMs >= 300) {
           progress.value = UpdateProgress(
             stage: UpdateStage.downloading,
@@ -413,8 +599,14 @@ class AppUpdateService {
         totalBytes: total,
       );
     } catch (e) {
-      progress.value =
-          UpdateProgress(stage: UpdateStage.failed, error: '$e');
+      final msg = '$e';
+      if (msg.contains('install_permission_required')) {
+        reportFailure(UpdateError.byCode('A201'));
+      } else if (Platform.isAndroid) {
+        reportFailure(UpdateError.byCode('A202', detail: msg));
+      } else {
+        reportFailure(UpdateError.byCode('W104', detail: msg));
+      }
     } finally {
       client.close();
     }
@@ -422,20 +614,12 @@ class AppUpdateService {
 
   static Future<Directory> _downloadDir() async {
     if (Platform.isAndroid) {
-      // Именно external files dir: FileProvider отдаёт наружу только пути из
-      // file_paths.xml, и внутренний getApplicationSupportDirectory туда
-      // не входит.
       final dir = await getExternalStorageDirectory();
       if (dir != null) return dir;
     }
     return getTemporaryDirectory();
   }
 
-  /// Android: отдаём APK системному установщику.
-  ///
-  /// Если у приложения нет разрешения «установка из этого источника»,
-  /// система молча ничего не покажет — поэтому сначала спрашиваем нативно
-  /// и, если нельзя, отправляем пользователя ровно в нужный экран настроек.
   static Future<void> _installAndroid(String path) async {
     final canInstall =
         await _channel.invokeMethod<bool>('canInstall') ?? false;
@@ -446,11 +630,6 @@ class AppUpdateService {
     await _channel.invokeMethod('installApk', {'path': path});
   }
 
-  /// Best-effort: добавить каталог установки и Temp в исключения Defender.
-  ///
-  /// Без прав администратора `Add-MpPreference` падает — это нормально,
-  /// bat потом попробует ещё раз (и при необходимости поднимет UAC).
-  /// Ошибки глотаем: отсутствие исключения не должно блокировать обновление.
   static Future<void> ensureWindowsDefenderExclusions({
     required String exeDir,
     required String tempDir,
@@ -468,24 +647,11 @@ Add-MpPreference -ExclusionProcess 'wesios.exe' -ErrorAction SilentlyContinue
         ['-NoProfile', '-NonInteractive', '-Command', ps],
         runInShell: false,
       ).timeout(const Duration(seconds: 8));
-    } catch (_) {
-      // нет прав / Defender выключен / таймаут — не критично
-    }
+    } catch (_) {}
   }
 
-  /// Windows: портативная сборка, поэтому «установка» — это подмена файлов.
-  ///
-  /// Своё же приложение переписать на ходу нельзя: exe заблокирован, пока
-  /// процесс жив. Поэтому пишем .bat, который:
-  /// 1) ждёт завершения процесса,
-  /// 2) (best-effort) добавляет исключения Defender,
-  /// 3) распаковывает zip,
-  /// 4) robocopy поверх папки установки с retry,
-  /// 5) при успехе перезапускает приложение,
-  /// 6) пишет лог в %TEMP%\\wesios_update.log.
   static Future<void> _installWindows(String zipPath) async {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
-    // На Windows resolvedExecutable почти всегда с `\`, но на всякий случай.
     final exeName = Platform.resolvedExecutable
         .replaceAll('/', r'\')
         .split(r'\')
@@ -494,25 +660,25 @@ Add-MpPreference -ExclusionProcess 'wesios.exe' -ErrorAction SilentlyContinue
     final scriptPath = '${tempDir.path}\wesios_update.bat';
     final extractDir = '${tempDir.path}\wesios_update_unpacked';
     final logPath = '${tempDir.path}\wesios_update.log';
+    final errorPath = '${tempDir.path}\$_errorFileName';
 
     await ensureWindowsDefenderExclusions(
       exeDir: exeDir,
       tempDir: tempDir.path,
     );
 
-    // Экранируем пути для bat: кавычки внутри уже в кавычках не нужны,
-    // достаточно не допускать `"` в путях (Windows-пути их не содержат).
     final script = '''
 @echo off
 setlocal EnableExtensions EnableDelayedExpansion
 set "LOG=$logPath"
+set "ERRFILE=$errorPath"
+set "ERRCODE=W110"
 echo ==== WesiOS update %DATE% %TIME% ==== > "%LOG%"
 echo exeDir=$exeDir>> "%LOG%"
 echo exeName=$exeName>> "%LOG%"
 echo zipPath=$zipPath>> "%LOG%"
 echo extractDir=$extractDir>> "%LOG%"
 
-rem Ждём, пока WesiOS закроется — иначе файлы заняты и копирование упадёт.
 echo Waiting for process to exit...>> "%LOG%"
 set /a _waits=0
 :waitloop
@@ -521,6 +687,7 @@ if not errorlevel 1 (
   set /a _waits+=1
   if !_waits! GEQ 60 (
     echo TIMEOUT waiting for process>> "%LOG%"
+    set "ERRCODE=W109"
     goto :fail
   )
   timeout /t 1 /nobreak >NUL
@@ -528,7 +695,6 @@ if not errorlevel 1 (
 )
 echo Process gone after !_waits!s>> "%LOG%"
 
-rem Best-effort Defender exclusions (может потребовать UAC — пробуем тихо).
 echo Adding Defender exclusions...>> "%LOG%"
 powershell -NoProfile -NonInteractive -Command "Try { Add-MpPreference -ExclusionPath '$exeDir' -EA SilentlyContinue; Add-MpPreference -ExclusionPath '$tempDir.path' -EA SilentlyContinue; Add-MpPreference -ExclusionProcess '$exeName' -EA SilentlyContinue; 'ok' } Catch { \$_.Exception.Message }" >> "%LOG%" 2>&1
 
@@ -539,6 +705,7 @@ if exist "$extractDir" (
 mkdir "$extractDir" 2>> "%LOG%"
 if errorlevel 1 (
   echo Failed to mkdir extract dir>> "%LOG%"
+  set "ERRCODE=W110"
   goto :fail
 )
 
@@ -546,10 +713,10 @@ echo Expanding archive...>> "%LOG%"
 powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '$zipPath' -DestinationPath '$extractDir' -Force" >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo Expand-Archive failed>> "%LOG%"
+  set "ERRCODE=W105"
   goto :fail
 )
 
-rem CI пакует Release/* в корень zip. Иногда бывает одна вложенная папка.
 set "SRC=$extractDir"
 if not exist "%SRC%\\$exeName" (
   for /D %%D in ("$extractDir\\*") do (
@@ -560,26 +727,28 @@ echo SRC=!SRC!>> "%LOG%"
 if not exist "!SRC!\\$exeName" (
   echo ERROR: $exeName not found after extract>> "%LOG%"
   dir /s /b "$extractDir" >> "%LOG%" 2>&1
+  set "ERRCODE=W106"
   goto :fail
 )
 
 echo Robocopy from !SRC! to $exeDir>> "%LOG%"
-rem /E = subdirs, /R:5 = retries, /W:2 = wait, /NFL /NDL = quieter log
 robocopy "!SRC!" "$exeDir" /E /R:5 /W:2 /NFL /NDL /NP >> "%LOG%" 2>&1
 set "RC=!ERRORLEVEL!"
 echo robocopy exit=!RC!>> "%LOG%"
-rem robocopy: 0-7 = success-ish (files copied / same / extras), >=8 = failure
 if !RC! GEQ 8 (
   echo Robocopy failed with code !RC!>> "%LOG%"
+  set "ERRCODE=W107"
   goto :fail
 )
 
 if not exist "$exeDir\\$exeName" (
   echo ERROR: $exeName missing after copy>> "%LOG%"
+  set "ERRCODE=W108"
   goto :fail
 )
 
 echo SUCCESS — starting app>> "%LOG%"
+if exist "%ERRFILE%" del /F /Q "%ERRFILE%" 2>NUL
 start "" "$exeDir\\$exeName"
 rmdir /S /Q "$extractDir" 2>> "%LOG%"
 del /F /Q "$zipPath" 2>> "%LOG%"
@@ -588,12 +757,10 @@ echo Cleanup done>> "%LOG%"
 exit /b 0
 
 :fail
-echo FAIL — not restarting app. See log.>> "%LOG%"
-echo.>> "%LOG%"
-echo If Access Denied: add folder to Defender exclusions:>> "%LOG%"
-echo   $exeDir>> "%LOG%"
-echo   $tempDir.path>> "%LOG%"
-rem Оставляем zip и extract для разбора; bat не удаляем сразу, чтобы лог жил.
+echo FAIL code=!ERRCODE!>> "%LOG%"
+powershell -NoProfile -NonInteractive -Command "@{code='!ERRCODE!'; detail=('bat fail '+'!ERRCODE!'); logPath='$logPath'} | ConvertTo-Json -Compress | Set-Content -LiteralPath '$errorPath' -Encoding UTF8" >> "%LOG%" 2>&1
+echo Restarting app with error flag>> "%LOG%"
+start "" "$exeDir\\$exeName" $_errorArgPrefix!ERRCODE!
 exit /b 1
 ''';
 
@@ -604,12 +771,14 @@ exit /b 1
       mode: ProcessStartMode.detached,
       runInShell: true,
     );
-    // Даём bat-у мгновение стартовать до того, как процесс исчезнет из tasklist.
     await Future<void>.delayed(const Duration(milliseconds: 300));
     exit(0);
   }
 
-  static void reset() => progress.value = const UpdateProgress();
+  static void reset() {
+    progress.value = const UpdateProgress();
+    pendingError.value = null;
+  }
 }
 
 class _UpdateException implements Exception {
