@@ -105,8 +105,8 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  constraints: const BoxConstraints(maxWidth: 200),
-                  padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+                  constraints: const BoxConstraints(minWidth: 170, maxWidth: 230),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(color: AppTheme.glassBorder),
@@ -118,19 +118,18 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
                     children: [
                       Text(
                         isRu
-                            ? 'Зарядись умными мыслями на сегодня!'
-                            : 'Charge up with smart thoughts today!',
+                            ? 'Зарядись умными мыслями'
+                            : 'Charge up with smart thoughts',
                         style: TextStyle(
-                          fontSize: 9.5,
-                          height: 1.2,
+                          fontSize: 10,
+                          height: 1.25,
                           fontWeight: FontWeight.w600,
                           color: AppTheme.textSecondary,
                         ),
-                        maxLines: 2,
-                        softWrap: true,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 7),
+                      const SizedBox(height: 8),
                       ClipRRect(
                         borderRadius: BorderRadius.circular(4),
                         child: SizedBox(
