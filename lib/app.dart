@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'core/theme/app_theme.dart';
+import 'core/theme/app_theme.dart' show _AnimatedThemeProvider;
 import 'core/localization/wesi_locale.dart';
 import 'core/routes/app_router.dart';
 import 'core/security/shield_lock_screen.dart';
