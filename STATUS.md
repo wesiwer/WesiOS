@@ -124,3 +124,52 @@
 - [ ] Smoke: ручная установка zip один раз, затем OTA на следующую сборку
 - [ ] Опционально: `WINDOWS_CERT_PFX` / подпись в CI (SmartScreen)
 - [ ] При OTA-fail — смотреть `%TEMP%\\wesios_update.log`
+
+
+## Сессия 12 — 2026-08-03 (04:50 МСК)
+
+### Сделано
+1. **Релиз #51** — ✅ SUCCESS (зелёный)
+   - Исправлен `flutter_quill` 9.3.12 API: `controller` в `QuillEditorConfigurations`
+
+2. **Редактор Knowledge** — подписи к кнопкам + выдвижной drawer
+   - `_toolLabeled()` — кнопки с подписями под иконками (8px текст)
+   - `_insertDrawer()` — выдвижная панель вставки медиа/таблиц/графиков
+   - Медиа-кнопки (фото, видео, аудио, график, таблица) спрятаны в drawer
+
+3. **QuoteMindCharge** — исправлен layout
+   - Увеличена ширина карточки: `maxWidth: 200` → `maxWidth: 230`
+   - Текст "Зарядись умными мыслями" в одну строку (убран перенос)
+   - Увеличены отступы: `padding: 10,8` → `padding: 12,10`
+
+4. **Редактор Knowledge — UX улучшения**
+   - Клавиатура убирается при открытии emoji/спецсимволов, возвращается при закрытии
+   - Toggle-форматирование: жирный/курсив/подчёркнутый/зачёркнутый — вкл/выкл по тапу
+   - Курсор смещается после вставки emoji/спецсимвола
+
+5. **Treasury — выбор даты**
+   - `showDatePicker` в диалоге транзакции (2020-2030)
+   - Будущие даты → бейдж "Запланировано" (оранжевый)
+   - Дата сохраняется в транзакции
+
+6. **Уведомления — read/unread**
+   - `Alert.read` — флаг прочитанности
+   - `AlertService.markAllRead()` — пометить все прочитанными
+   - `AlertService.unreadCount` — ValueNotifier с числом непрочитанных
+   - При открытии AlertsSheet — автоматически markAllRead
+   - Бейдж "Прочитано" (зелёный) на прочитанных уведомлениях
+   - Badge у колокольчика — только непрочитанные
+
+### Коммиты
+- `fix(quill): v9.3.12 API — controller in configurations, not .basic()`
+- `feat(knowledge): labeled toolbar buttons + slide-out insert drawer in build()`
+- `fix(quote): widen mind-charge card, fix text overflow layout`
+- `feat(editor): keyboard hide/show on emoji/special chars, toggle formatting, cursor move`
+- `feat(treasury): date picker in transaction dialog (past/future/planned)`
+- `feat(treasury): date picker UI in dialog + date in save result`
+- `fix(quote): reactive theme colors — read AppTheme inside ThemeNotifier builder`
+- `feat(alerts): read/unread tracking, unreadCount notifier, markAllRead`
+- `feat(alerts): auto-mark-read on open, read badge, unread-only bell badge`
+
+### Следующий релиз
+- Запустить релиз #53 для проверки всех изменений
