@@ -1,16 +1,48 @@
 # WesiOS — STATUS / ТЗ для AI-агентов
 
-**Обновлено:** 2026-08-02 (сессия 11 — OTA + CI + редактор Knowledge)  
-**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.10 α · **build:** 26  
+**Обновлено:** 2026-08-03 (сессия 13 — Windows OTA install fix)  
+**Репо:** https://github.com/wesiwer/WesiOS · **ветка:** `main` · **UI:** v0.11.11 α · **build:** 27  
 
 Читай этот файл **перед** любыми правками.
+
+---
+
+## Сессия 13 (2026-08-03) — Windows OTA: файлы не подменялись
+
+### Симптом
+Скачивание OK → приложение закрывается → снова открывается → версия старая.
+Причина: `_installWindows` bat глотал ошибки `xcopy` (Defender / CFA / silent fail) и всё равно делал `start` старого exe.
+
+### Фикс (`lib/core/services/app_update_service.dart`)
+- `ensureWindowsDefenderExclusions()` — best-effort `Add-MpPreference` для exeDir + Temp + process (до exit)
+- Bat: лог `%TEMP%\\wesios_update.log` на каждый шаг
+- `Expand-Archive` с проверкой errorlevel
+- Определение SRC: корень zip (CI `Release/*`) или одна вложенная папка
+- `robocopy /E /R:5 /W:2` вместо silent xcopy
+- При fail (RC≥8 или нет exe) — **не** стартовать приложение, оставить лог + zip
+- Константа `windowsDefenderHelp` для UI
+
+### Версия
+- `0.11.11+27` (pubspec + AppVersion)
+
+### Важно (куриный-яичный момент)
+Текущая установленная сборка всё ещё со **старым** bat. Чтобы получить новый установщик:
+1. Один раз вручную поставить zip из свежего Publish, **или**
+2. Добавить папку установки + Temp в исключения Defender → попробовать OTA ещё раз (старый xcopy может пройти)
+
+После того как 0.11.11+27 окажется на диске — дальнейшие OTA идут уже через robocopy+лог.
+
+### Следующий шаг
+- [ ] Запустить **Publish WesiOS Release** (workflow_dispatch) для 0.11.11+27
+- [ ] Smoke: OTA с 0.11.10 → 0.11.11 (или ручная распаковка zip)
+- [ ] При fail — читать `%TEMP%\\wesios_update.log`
 
 ---
 
 ## Сессия 11 (2026-08-02) — OTA, Windows Defender, CI на GitHub-hosted
 
 ### Версия
-- `pubspec.yaml` / `AppVersion`: **0.11.10+26**
+- `pubspec.yaml` / `AppVersion`: **0.11.10+26** (superseded by 0.11.11+27)
 - OTA: постоянный тег `app-latest` + `app-manifest.json` (перезаписывается `--clobber`)
 - Release workflow: `.github/workflows/release-app.yml` — только `workflow_dispatch`
 
@@ -28,58 +60,37 @@
 | Shared embed builders | `lib/features/knowledge/widgets/article_embeds.dart` | DONE |
 | Body view использует те же builders | `article_body_view.dart` | DONE |
 
-**Правило flutter_quill 9.6.0:**  
-`QuillEditorConfigurations`, `DefaultTextBlockStyle` (4 args), без EmbedContext. Не поднимать API без явного решения.
+**Правило flutter_quill 9.6.0 / 9.3.12:**  
+`QuillEditorConfigurations`, controller в configurations, `DefaultTextBlockStyle` (4 args), без EmbedContext. Не поднимать API без явного решения.
 
-**Чего НЕ делать:** не удалять `special_chars.dart` / `emoji_data.dart` / media/charts helpers / `article_embeds.dart`; leftover PLACEHOLDER part-файлы уже удалены.
+**Чего НЕ делать:** не удалять `special_chars.dart` / `emoji_data.dart` / media/charts helpers / `article_embeds.dart`.
 
-### OTA / AppUpdateService
-- Механизм: чтение `app-manifest.json` с тега `app-latest` → сравнение version+build → download asset → install.
-- Windows: portable zip → `.bat` (ждёт exit процесса → Expand-Archive → xcopy поверх exeDir → restart).
-- Android: signed APK → MethodChannel `wesios/updater` → системный installer.
-- Репозиторий публичный; auth headers через `GitHubAuthService` (для приватных сценариев).
-
-### Windows Defender / SmartScreen (проблема обновления)
-**Симптом:** OTA на Windows падал с Access Denied / блокировкой файлов (Controlled Folder Access, Defender real-time) или SmartScreen на неподписанный exe.
-
-**Решение (частично в коде / в плане):**
-1. **Defender exclusions (UAC):**  
-   - Скрипт: `scripts/windows/add-defender-exclusion.ps1`  
-   - Исключения: каталог установки приложения, Temp, процесс WesiOS.  
-   - Вызов: `AppUpdateService.ensureWindowsDefenderExclusions()` перед `_installWindows` (если ещё не влит — добавить).  
-   - При Access Denied — показывать `windowsDefenderHelp` с инструкцией.
-2. **Authenticode (опционально в CI):**  
-   - Скрипт: `scripts/windows/sign-windows-release.ps1` (`signtool` + RFC3161 timestamp).  
-   - Secrets: `WINDOWS_CERT_PFX`, `WINDOWS_CERT_PASSWORD`.  
-   - Без секретов подпись пропускается; пользователь может «Подробнее → Выполнить в любом случае».
-3. **Постоянное:** без code signing SmartScreen будет периодически мешать — это известный trade-off portable unsigned builds.
+### OTA / AppUpdateService (актуально после сессии 13)
+- Механизм: `app-manifest.json` с тега `app-latest` → version+build → download → install.
+- Windows: zip → bat (wait → Defender exclusion → Expand → robocopy → restart / log on fail).
+- Android: signed APK → MethodChannel `wesios/updater`.
 
 ### CI / Release (GitHub-hosted, НЕ self-hosted)
-**Правило:** билды **только на серверах GitHub** (`windows-2022` + `ubuntu-latest`). Self-hosted / локальный runner на ПК пользователя — **отказ** (ошибки runner, нестабильность).
+**Правило:** билды **только** на `windows-2022` + `ubuntu-latest`. Self-hosted — отказ.
 
 | Job | Runner | Артефакт |
 |---|---|---|
 | `version` | ubuntu-latest | version/build из pubspec |
-| `build-windows` | windows-2022 | `wesios-windows-x64.zip` → Release + artifact |
-| `build-android` | ubuntu-latest | `wesios-android.apk` (signed keystore secrets) |
-| `publish-manifest` | ubuntu-latest | `app-manifest.json` только если обе сборки OK |
+| `build-windows` | windows-2022 | `wesios-windows-x64.zip` |
+| `build-android` | ubuntu-latest | `wesios-android.apk` |
+| `publish-manifest` | ubuntu-latest | `app-manifest.json` только если обе OK |
 
-**Секреты Android (обязательны):**  
-`ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
-
-**Недавние CI-фиксы:**  
-- Android перенесён на `ubuntu-latest` (не Windows).  
-- Разделение bash (ubuntu) / PowerShell (windows).  
-- `clean: false`, `fetch-depth: 1` на checkout.  
-- SDK licenses / keystore verify через keytool.  
-- Windows: wipe stub `windows/` → `flutter create --platforms=windows`.
-
-**Статус релизов (2026-08-02 вечер):**  
-- #44 (0.11.10+26, commit version bump) — failure (старый yml).  
-- #45 (после CI-фиксов runner/Android) — in progress / проверять.  
-- Успешные прецеденты OTA: #26, #24, #23…
+**Секреты Android:** `ANDROID_KEYSTORE_BASE64`, `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD`
 
 Ссылка Actions: https://github.com/wesiwer/WesiOS/actions/workflows/release-app.yml
+
+---
+
+## Сессия 12 — 2026-08-03
+
+1. Релиз #51 SUCCESS (quill controller fix + assets)
+2. Knowledge: labeled toolbar + insert drawer
+3. QuoteMindCharge layout fix
 
 ---
 
@@ -88,13 +99,11 @@
 | Что | Файл | Описание |
 |---|---|---|
 | Кнопка «Спецсимволы» | `article_editor_screen.dart` | `Icons.text_fields` в toolbar рядом с Emoji |
-| Панель спецсимволов | тот же файл | высота 260, чипы категорий, сетка 12 колонок, mutually exclusive с emoji |
+| Панель спецсимволов | тот же файл | высота 260, чипы категорий, сетка 12 колонок |
 | Набор символов | `special_chars.dart` | 10 категорий как в Word Symbol |
 | Emoji data | `emoji_data.dart` | вынесен из editor |
-| Media helpers | `article_editor_media.dart` | image/video/audio (URL + device), link, table |
-| Chart dialog | `article_editor_charts.dart` | bar/line/pie/area, manual + linked sources |
-
-**Категории спецсимволов:** Пунктуация · Валюта · Математика · Стрелки · Греческий · Латиница · Кириллица · Бизнес/Право · Фигуры · Разное
+| Media helpers | `article_editor_media.dart` | image/video/audio, link, table |
+| Chart dialog | `article_editor_charts.dart` | bar/line/pie/area |
 
 ---
 
@@ -102,8 +111,8 @@
 
 1. **Релизы/билды — только по явному запросу пользователя.** Мелкие фиксы копятся в `main`.
 2. **STATUS.md обновлять после каждого значимого изменения.**
-3. **flutter_quill 9.6.0** — не ломать API (см. выше).
-4. **Билд только на GitHub-hosted runners** — не предлагать self-hosted / локальный runner на ПК.
+3. **flutter_quill 9.3.12 / 9.6** — не ломать API (controller в configurations).
+4. **Билд только на GitHub-hosted runners** — не предлагать self-hosted.
 5. **Не коммитить secrets, keystore, PFX.** Только через GitHub Secrets.
 6. **Не удалять** shared Knowledge helpers (`article_embeds`, special_chars, emoji_data, media/charts).
 
@@ -111,34 +120,7 @@
 
 ## Открытые / follow-up
 
-- [ ] Дождаться успешного Publish WesiOS Release для 0.11.10+26 → проверить OTA в приложении.
-- [ ] Убедиться, что `ensureWindowsDefenderExclusions` + help-текст реально в `app_update_service.dart` и вызываются перед install (если нет — долить).
-- [ ] Опционально: добавить `WINDOWS_CERT_PFX` / `WINDOWS_CERT_PASSWORD` и шаг подписи в `release-app.yml`.
-- [ ] После зелёного релиза — smoke: Windows zip install + Android APK update.
-
-
-## Сессия 12 — 2026-08-03 (04:15 МСК)
-
-### Сделано
-1. **Релиз #51** — ✅ SUCCESS (зелёный)
-   - Исправлен `flutter_quill` 9.3.12 API: `controller` в `QuillEditorConfigurations`
-   - Android APK + Windows ZIP опубликованы
-
-2. **Редактор Knowledge** — подписи к кнопкам + выдвижной drawer
-   - `_toolLabeled()` — кнопки с подписями под иконками (8px текст)
-   - `_insertDrawer()` — выдвижная панель вставки медиа/таблиц/графиков
-   - Медиа-кнопки (фото, видео, аудио, график, таблица) спрятаны в drawer
-   - Остальные кнопки (жирный, курсив, H1-H3, списки, ссылка, emoji, спецсимволы) видны сразу
-
-3. **QuoteMindCharge** — исправлен layout
-   - Увеличена ширина карточки: `maxWidth: 200` → `maxWidth: 230`
-   - Текст "Зарядись умными мыслями" в одну строку (убран перенос)
-   - Увеличены отступы: `padding: 10,8` → `padding: 12,10`
-
-### Коммиты
-- `fix(quill): v9.3.12 API — controller in configurations, not .basic()` — article_editor_screen.dart, article_body_view.dart
-- `feat(knowledge): labeled toolbar buttons + slide-out insert drawer in build()` — article_editor_screen.dart
-- `fix(quote): widen mind-charge card, fix text overflow layout` — quote_mind_charge.dart
-
-### Следующий релиз
-- Запустить релиз #52 для проверки новых изменений
+- [ ] **Publish** workflow_dispatch для **0.11.11+27** (OTA Windows fix)
+- [ ] Smoke: ручная установка zip один раз, затем OTA на следующую сборку
+- [ ] Опционально: `WINDOWS_CERT_PFX` / подпись в CI (SmartScreen)
+- [ ] При OTA-fail — смотреть `%TEMP%\\wesios_update.log`
