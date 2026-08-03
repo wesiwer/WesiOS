@@ -124,6 +124,13 @@ class AppUpdateService {
   static const String repoOwner = 'wesiwer';
   static const String repoName = 'WesiOS';
 
+  /// Текст помощи, если Defender / Controlled Folder Access мешает подмене файлов.
+  static const String windowsDefenderHelp =
+      'Windows Defender или Controlled Folder Access мог заблокировать '
+      'замену файлов. Открой Защитник Windows → Защита от вирусов → '
+      'Управление параметрами → Исключения → Добавить папку с WesiOS '
+      'и %TEMP%. Лог обновления: %TEMP%\\wesios_update.log';
+
   /// Прямая ссылка на файл релиза. Работает только для публичных
   /// репозиториев; для приватного нужен путь через API — см. [_openAsset].
   static String releaseFileUrl(String asset) =>
@@ -439,43 +446,155 @@ class AppUpdateService {
     await _channel.invokeMethod('installApk', {'path': path});
   }
 
+  /// Best-effort: добавить каталог установки и Temp в исключения Defender.
+  ///
+  /// Без прав администратора `Add-MpPreference` падает — это нормально,
+  /// bat потом попробует ещё раз (и при необходимости поднимет UAC).
+  /// Ошибки глотаем: отсутствие исключения не должно блокировать обновление.
+  static Future<void> ensureWindowsDefenderExclusions({
+    required String exeDir,
+    required String tempDir,
+  }) async {
+    if (!Platform.isWindows) return;
+    try {
+      final ps = '''
+\$ErrorActionPreference = 'SilentlyContinue'
+Add-MpPreference -ExclusionPath '$exeDir' -ErrorAction SilentlyContinue
+Add-MpPreference -ExclusionPath '$tempDir' -ErrorAction SilentlyContinue
+Add-MpPreference -ExclusionProcess 'wesios.exe' -ErrorAction SilentlyContinue
+''';
+      await Process.run(
+        'powershell',
+        ['-NoProfile', '-NonInteractive', '-Command', ps],
+        runInShell: false,
+      ).timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // нет прав / Defender выключен / таймаут — не критично
+    }
+  }
+
   /// Windows: портативная сборка, поэтому «установка» — это подмена файлов.
   ///
   /// Своё же приложение переписать на ходу нельзя: exe заблокирован, пока
-  /// процесс жив. Поэтому пишем .bat, который ждёт завершения процесса,
-  /// распаковывает архив поверх папки установки и запускает приложение
-  /// заново. Скрипт удаляет сам себя последней строкой.
+  /// процесс жив. Поэтому пишем .bat, который:
+  /// 1) ждёт завершения процесса,
+  /// 2) (best-effort) добавляет исключения Defender,
+  /// 3) распаковывает zip,
+  /// 4) robocopy поверх папки установки с retry,
+  /// 5) при успехе перезапускает приложение,
+  /// 6) пишет лог в %TEMP%\\wesios_update.log.
   static Future<void> _installWindows(String zipPath) async {
     final exeDir = File(Platform.resolvedExecutable).parent.path;
-    final exeName = Platform.resolvedExecutable.split(r'\').last;
+    // На Windows resolvedExecutable почти всегда с `\`, но на всякий случай.
+    final exeName = Platform.resolvedExecutable
+        .replaceAll('/', r'\')
+        .split(r'\')
+        .last;
     final tempDir = await getTemporaryDirectory();
-    final scriptPath = '${tempDir.path}\\wesios_update.bat';
-    final extractDir = '${tempDir.path}\\wesios_update_unpacked';
+    final scriptPath = '${tempDir.path}\wesios_update.bat';
+    final extractDir = '${tempDir.path}\wesios_update_unpacked';
+    final logPath = '${tempDir.path}\wesios_update.log';
 
+    await ensureWindowsDefenderExclusions(
+      exeDir: exeDir,
+      tempDir: tempDir.path,
+    );
+
+    // Экранируем пути для bat: кавычки внутри уже в кавычках не нужны,
+    // достаточно не допускать `"` в путях (Windows-пути их не содержат).
     final script = '''
 @echo off
+setlocal EnableExtensions EnableDelayedExpansion
+set "LOG=$logPath"
+echo ==== WesiOS update %DATE% %TIME% ==== > "%LOG%"
+echo exeDir=$exeDir>> "%LOG%"
+echo exeName=$exeName>> "%LOG%"
+echo zipPath=$zipPath>> "%LOG%"
+echo extractDir=$extractDir>> "%LOG%"
+
 rem Ждём, пока WesiOS закроется — иначе файлы заняты и копирование упадёт.
+echo Waiting for process to exit...>> "%LOG%"
+set /a _waits=0
 :waitloop
 tasklist /FI "IMAGENAME eq $exeName" 2>NUL | find /I "$exeName" >NUL
 if not errorlevel 1 (
+  set /a _waits+=1
+  if !_waits! GEQ 60 (
+    echo TIMEOUT waiting for process>> "%LOG%"
+    goto :fail
+  )
   timeout /t 1 /nobreak >NUL
   goto waitloop
 )
+echo Process gone after !_waits!s>> "%LOG%"
 
-if exist "$extractDir" rmdir /S /Q "$extractDir"
-mkdir "$extractDir"
-powershell -NoProfile -Command "Expand-Archive -LiteralPath '$zipPath' -DestinationPath '$extractDir' -Force"
+rem Best-effort Defender exclusions (может потребовать UAC — пробуем тихо).
+echo Adding Defender exclusions...>> "%LOG%"
+powershell -NoProfile -NonInteractive -Command "Try { Add-MpPreference -ExclusionPath '$exeDir' -EA SilentlyContinue; Add-MpPreference -ExclusionPath '$tempDir.path' -EA SilentlyContinue; Add-MpPreference -ExclusionProcess '$exeName' -EA SilentlyContinue; 'ok' } Catch { \$_.Exception.Message }" >> "%LOG%" 2>&1
 
-rem Сборка лежит внутри одной папки — копируем её содержимое, а не саму папку.
-for /D %%D in ("$extractDir\\*") do (
-  xcopy "%%D\\*" "$exeDir\\" /E /Y /I >NUL
+if exist "$extractDir" (
+  echo Cleaning old extract dir>> "%LOG%"
+  rmdir /S /Q "$extractDir" 2>> "%LOG%"
 )
-xcopy "$extractDir\\*.*" "$exeDir\\" /Y >NUL 2>&1
+mkdir "$extractDir" 2>> "%LOG%"
+if errorlevel 1 (
+  echo Failed to mkdir extract dir>> "%LOG%"
+  goto :fail
+)
 
+echo Expanding archive...>> "%LOG%"
+powershell -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '$zipPath' -DestinationPath '$extractDir' -Force" >> "%LOG%" 2>&1
+if errorlevel 1 (
+  echo Expand-Archive failed>> "%LOG%"
+  goto :fail
+)
+
+rem CI пакует Release/* в корень zip. Иногда бывает одна вложенная папка.
+set "SRC=$extractDir"
+if not exist "%SRC%\\$exeName" (
+  for /D %%D in ("$extractDir\\*") do (
+    if exist "%%D\\$exeName" set "SRC=%%D"
+  )
+)
+echo SRC=!SRC!>> "%LOG%"
+if not exist "!SRC!\\$exeName" (
+  echo ERROR: $exeName not found after extract>> "%LOG%"
+  dir /s /b "$extractDir" >> "%LOG%" 2>&1
+  goto :fail
+)
+
+echo Robocopy from !SRC! to $exeDir>> "%LOG%"
+rem /E = subdirs, /R:5 = retries, /W:2 = wait, /NFL /NDL = quieter log
+robocopy "!SRC!" "$exeDir" /E /R:5 /W:2 /NFL /NDL /NP >> "%LOG%" 2>&1
+set "RC=!ERRORLEVEL!"
+echo robocopy exit=!RC!>> "%LOG%"
+rem robocopy: 0-7 = success-ish (files copied / same / extras), >=8 = failure
+if !RC! GEQ 8 (
+  echo Robocopy failed with code !RC!>> "%LOG%"
+  goto :fail
+)
+
+if not exist "$exeDir\\$exeName" (
+  echo ERROR: $exeName missing after copy>> "%LOG%"
+  goto :fail
+)
+
+echo SUCCESS — starting app>> "%LOG%"
 start "" "$exeDir\\$exeName"
-rmdir /S /Q "$extractDir"
-del "$zipPath"
+rmdir /S /Q "$extractDir" 2>> "%LOG%"
+del /F /Q "$zipPath" 2>> "%LOG%"
+echo Cleanup done>> "%LOG%"
 (goto) 2>nul & del "%~f0"
+exit /b 0
+
+:fail
+echo FAIL — not restarting app. See log.>> "%LOG%"
+echo.>> "%LOG%"
+echo If Access Denied: add folder to Defender exclusions:>> "%LOG%"
+echo   $exeDir>> "%LOG%"
+echo   $tempDir.path>> "%LOG%"
+rem Оставляем zip и extract для разбора; bat не удаляем сразу, чтобы лог жил.
+exit /b 1
 ''';
 
     await File(scriptPath).writeAsString(script);
@@ -485,6 +604,8 @@ del "$zipPath"
       mode: ProcessStartMode.detached,
       runInShell: true,
     );
+    // Даём bat-у мгновение стартовать до того, как процесс исчезнет из tasklist.
+    await Future<void>.delayed(const Duration(milliseconds: 300));
     exit(0);
   }
 
