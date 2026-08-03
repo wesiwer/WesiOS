@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/security/secret_vault.dart';
 import '../../core/services/firebase_rest_service.dart';
+import '../../core/services/secrets_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_wordmark.dart';
@@ -62,27 +63,25 @@ class _KeysScreenState extends State<KeysScreen> {
       _error = null;
     });
     final admin = await FirebaseRestService.isAdmin();
-    final doc = admin
-        ? await FirebaseRestService.getDocument('secrets/default')
-        : null;
+    // Ключи тянет SecretsService — он же делает это сам при запуске и при
+    // входе. Здесь просто просим обновить, чтобы экран показывал свежее.
+    await SecretsService.sync();
+    final doc = SecretsService.all;
     if (!mounted) return;
     setState(() {
       _isAdmin = admin;
-      _remote = doc ?? const {};
+      _remote = doc;
       _loading = false;
       if (!admin) {
+        // Не «нет доступа»: читать рабочий набор может любой вошедший — на
+        // том и построено автоподключение. Закрыто именно ИЗМЕНЕНИЕ.
         _error = _ru
-            ? 'У этой учётной записи нет доступа к ключам.'
-            : 'This account has no access to the keys.';
+            ? 'Менять ключи может только владелец. Приложение пользуется ими '
+                'само — вводить ничего не нужно.'
+            : 'Only the owner can change the keys. The app uses them '
+                'automatically — nothing to enter.';
       }
     });
-    // Локальная копия нужна, чтобы ключи работали без сети. Пишется только
-    // если хранилище открыто — иначе шифровать нечем.
-    if (admin && doc != null && SecretVault.unlocked.value) {
-      for (final e in doc.entries) {
-        await SecretVault.write(e.key, e.value);
-      }
-    }
   }
 
   @override
