@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import '../../../core/services/recurrence.dart';
 import '../../tasks/models/task_model.dart';
 import '../../treasury/models/transaction_model.dart';
@@ -14,11 +15,15 @@ class Alert {
   /// Куда вести по нажатию. null — уведомление некуда открывать.
   final String? route;
 
-  const Alert({
+  /// Прочитано ли уведомление.
+  bool read;
+
+  Alert({
     required this.level,
     required this.title,
     required this.detail,
     this.route,
+    this.read = false,
   });
 }
 
@@ -183,6 +188,47 @@ class AlertService {
         return byLevel != 0 ? byLevel : a.key.compareTo(b.key);
       });
     return indexed.map((e) => e.value).toList();
+  }
+
+  // ── Отслеживание прочитанных уведомлений ──
+
+  static final _readIds = <String>{};
+  static final unreadCount = ValueNotifier<int>(0);
+
+  /// Уникальный ID уведомления (хеш от содержимого).
+  static String _id(Alert a) => '${a.level.name}|${a.title}|${a.detail}';
+
+  /// Пометить все текущие уведомления как прочитанные.
+  static void markAllRead(List<Alert> alerts) {
+    for (final a in alerts) {
+      a.read = true;
+      _readIds.add(_id(a));
+    }
+    _updateUnread(alerts);
+  }
+
+  /// Пометить одно уведомление как прочитанное.
+  static void markRead(Alert alert) {
+    alert.read = true;
+    _readIds.add(_id(alert));
+  }
+
+  /// Обновить счётчик непрочитанных.
+  static void _updateUnread(List<Alert> alerts) {
+    final count = alerts.where((a) => !a.read).length;
+    if (unreadCount.value != count) {
+      unreadCount.value = count;
+    }
+  }
+
+  /// Синхронизировать read-флаги с уже прочитанными ID.
+  static void syncReadFlags(List<Alert> alerts) {
+    for (final a in alerts) {
+      if (_readIds.contains(_id(a))) {
+        a.read = true;
+      }
+    }
+    _updateUnread(alerts);
   }
 
 }
