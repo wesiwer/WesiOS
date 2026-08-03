@@ -81,6 +81,15 @@ class ArticleModel {
     this.isFolder = false,
   });
 
+  /// Отличает «параметр не передали» от «передали null».
+  ///
+  /// Для parentId это принципиально: null — осмысленное значение, «лежит в
+  /// корне». С обычным `parentId ?? this.parentId` статью можно было
+  /// положить в папку, но нельзя вынуть обратно: выбор «в корень» давал
+  /// null, а copyWith молча возвращал прежнего родителя. Со стороны это и
+  /// выглядело как «дерево не работает».
+  static const Object _unset = Object();
+
   ArticleModel copyWith({
     String? title,
     String? body,
@@ -88,7 +97,7 @@ class ArticleModel {
     List<String>? tags,
     DateTime? updatedAt,
     bool? pinned,
-    String? parentId,
+    Object? parentId = _unset,
     bool? isFolder,
   }) =>
       ArticleModel(
@@ -101,7 +110,9 @@ class ArticleModel {
         updatedAt: updatedAt ?? this.updatedAt,
         builtIn: builtIn,
         pinned: pinned ?? this.pinned,
-        parentId: parentId ?? this.parentId,
+        parentId: identical(parentId, _unset)
+            ? this.parentId
+            : parentId as String?,
         isFolder: isFolder ?? this.isFolder,
       );
 

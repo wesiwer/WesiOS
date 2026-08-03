@@ -332,8 +332,15 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   }
 
   /// Рекурсивный тайл дерева: папка → expand/collapse → дочерние.
+  ///
+  /// Глубина ограничена: петля в данных (A внутри B, B внутри A) раскрывала
+  /// бы вложенность бесконечно и роняла бы экран переполнением стека.
+  /// Ограничение стоит здесь, а не только в проверке при выборе родителя,
+  /// потому что петлю на диске мог оставить прежний билд.
+  static const int _maxTreeDepth = 12;
+
   Widget _treeTile(ArticleModel a, {required int level}) {
-    final hasChildren = KnowledgeService.hasChildren(a.id);
+    if (level > _maxTreeDepth) return const SizedBox.shrink();
     final isExpanded = _expanded.contains(a.id);
     final children = isExpanded ? KnowledgeService.getChildren(a.id) : <ArticleModel>[];
 

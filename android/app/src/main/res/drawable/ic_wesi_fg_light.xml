@@ -6,9 +6,16 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+    <!-- Безопасная зона adaptive icon — центральные 66dp из 108 (21..87).
+         Раньше группа стояла как translate(18,22) без масштаба, и рисунок
+         занимал 16.8..91.2 по X и 10.0..85.1 по Y: оранжевый хвост и левый
+         край W выходили за маску на любом круглом лаунчере.
+         scale=0.86 + translate(23,32) укладывают всё в 22.0..86.0 / 21.7..86.3. -->
     <group
-        android:translateX="18"
-        android:translateY="22">
+        android:scaleX="0.86"
+        android:scaleY="0.86"
+        android:translateX="23"
+        android:translateY="32">
         <path
             android:pathData="M4.3,14.4 L20.2,57.6 L36,31.7 L51.8,57.6"
             android:strokeWidth="11"

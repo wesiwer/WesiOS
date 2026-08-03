@@ -253,7 +253,14 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
 
   Future<void> _selectParent() async {
     final all = await KnowledgeService.getAll();
-    final folders = all.where((a) => a.isFolder && a.id != widget.initial?.id).toList();
+    // Исключаем не только саму статью, но и ВСЕХ её потомков: иначе папку
+    // можно положить внутрь папки, которая лежит в ней же. Такая петля
+    // раньше вешала обход дерева (хлебные крошки крутились бесконечно).
+    final forbidden = widget.initial == null
+        ? const <String>{}
+        : KnowledgeService.subtreeIds(widget.initial!.id);
+    final folders =
+        all.where((a) => a.isFolder && !forbidden.contains(a.id)).toList();
     if (folders.isEmpty) {
       _showError(_ru ? 'Нет папок. Создайте папку сначала.' : 'No folders. Create a folder first.');
       return;

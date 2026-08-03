@@ -46,7 +46,7 @@ void main() {
       // Скрипт пишет сюда…
       final written = tempFile(errorFileName);
       // …а приложение читает так (checkPendingError).
-      final read = '$temp$sep$errorFileName';
+      const read = '$temp$sep$errorFileName';
       expect(written, read,
           reason: 'если пути разойдутся, неудача обновления станет невидимой');
     });

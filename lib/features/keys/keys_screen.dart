@@ -311,6 +311,54 @@ class _KeysScreenState extends State<KeysScreen> {
             style: TextStyle(
                 fontSize: 12, height: 1.4, color: AppTheme.textMuted),
           ),
+          // Пока учётной записи не существует, вход отвечает «неверная почта
+          // или пароль» — и это читается как «вход сломан». Показываем прямо
+          // здесь, что и где нужно один раз завести.
+          if (configured && !signedIn) ...[
+            SizedBox(height: 10),
+            Container(
+              padding: EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: AppTheme.surfaceLight.withOpacity(0.5),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: AppTheme.glassBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _ru ? 'Если войти не удаётся' : 'If sign-in fails',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textSecondary),
+                  ),
+                  SizedBox(height: 6),
+                  Text(
+                    _ru
+                        ? 'Скорее всего, учётной записи ещё нет. Один раз:\n'
+                            '1. console.firebase.google.com → проект '
+                            '${FirebaseProject.projectId}\n'
+                            '2. Authentication → Sign-in method → включить '
+                            'Email/Password\n'
+                            '3. Authentication → Users → Add user: почта и пароль\n'
+                            '4. Войти здесь этой парой, скопировать UID снизу\n'
+                            '5. Firestore → создать документ admins/<UID>'
+                        : 'Most likely the account does not exist yet. Once:\n'
+                            '1. console.firebase.google.com → project '
+                            '${FirebaseProject.projectId}\n'
+                            '2. Authentication → Sign-in method → enable '
+                            'Email/Password\n'
+                            '3. Authentication → Users → Add user\n'
+                            '4. Sign in here, copy the UID shown below\n'
+                            '5. Firestore → create document admins/<UID>',
+                    style: TextStyle(
+                        fontSize: 11, height: 1.5, color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (signedIn) ...[
             SizedBox(height: 8),
             SelectableText(
