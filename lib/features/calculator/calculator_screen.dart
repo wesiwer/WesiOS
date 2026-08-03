@@ -793,7 +793,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
       children: [
         _row(['C', 'DEL', '(', ')', '⌫']),
         const SizedBox(height: 8),
-        _row(['7', '8', '9', '/'], accentOps: true),
+        _row(['7', '8', '9', '÷'], accentOps: true),
         const SizedBox(height: 8),
         _row(['4', '5', '6', '*'], accentOps: true),
         const SizedBox(height: 8),
