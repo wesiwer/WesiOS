@@ -307,7 +307,7 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
   }
 
   bool _isValidInput(String value) {
-    const valid = '0123456789.+-*/()^%,';
+    const valid = '0123456789.+-*/÷×−()^%,';
     return valid.contains(value);
   }
 
@@ -479,9 +479,8 @@ class _CalculatorScreenState extends State<CalculatorScreen> {
             const SizedBox.expand(),
             Positioned(
               left: _offset.dx.clamp(0.0, double.infinity),
-              right: -_offset.dx.clamp(double.negativeInfinity, 0.0),
-              bottom: 24 + _offset.dy,
-              child: Center(child: bar),
+              top: _offset.dy.clamp(0.0, double.infinity),
+              child: bar,
             ),
           ],
         ),
