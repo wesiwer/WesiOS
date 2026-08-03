@@ -53,6 +53,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
   bool _saving = false;
   bool _emojiVisible = false;
   bool _specialCharsVisible = false;
+  bool _insertDrawerOpen = false;
   String _specialCharCategoryId = 'punct';
   bool get _ru => WesiLocale.isRussian;
 
@@ -584,27 +585,36 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     );
   }
 
-  Widget _tool(IconData icon, String tooltip, VoidCallback onTap) {
+  /// Кнопка с подписью под иконкой
+  Widget _toolLabeled(IconData icon, String label, VoidCallback onTap) {
     return Tooltip(
-      message: tooltip,
+      message: label,
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(6),
           onTap: onTap,
-          child: Container(padding: const EdgeInsets.all(8), child: Icon(icon, size: 18, color: AppTheme.textSecondary)),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 18, color: AppTheme.textSecondary),
+                const SizedBox(height: 2),
+                Text(label, style: TextStyle(fontSize: 8, color: AppTheme.textMuted, height: 1)),
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 
   Widget _divider() {
-    return Container(height: 20, width: 1, margin: const EdgeInsets.symmetric(horizontal: 6), color: AppTheme.glassBorder);
+    return Container(height: 28, width: 1, margin: const EdgeInsets.symmetric(horizontal: 4), color: AppTheme.glassBorder);
   }
 
   /// Выдвижная панель вставки медиа / таблиц / графиков
-  bool _insertDrawerOpen = false;
-
   Widget _insertDrawer() {
     return AnimatedContainer(
       duration: const Duration(milliseconds: 220),
@@ -612,19 +622,19 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          _tool(Icons.add_box, _ru ? 'Вставить' : 'Insert', () {
+          _toolLabeled(Icons.add_box, _ru ? 'Вставить' : 'Insert', () {
             setState(() => _insertDrawerOpen = !_insertDrawerOpen);
           }),
           if (_insertDrawerOpen) ...[
-            const SizedBox(width: 4),
-            _tool(Icons.image, _ru ? 'Фото URL' : 'Photo URL', _insertImageFromUrl),
-            _tool(Icons.perm_media, _ru ? 'Фото с устройства' : 'Photo from device', _pickImageFromDevice),
-            _tool(Icons.video_library, _ru ? 'Видео URL' : 'Video URL', _insertVideoFromUrl),
-            _tool(Icons.video_file, _ru ? 'Видео с устройства' : 'Video from device', _pickVideoFromDevice),
-            _tool(Icons.audiotrack, _ru ? 'Аудио URL' : 'Audio URL', _insertAudioFromUrl),
-            _tool(Icons.library_music, _ru ? 'Аудио с устройства' : 'Audio from device', _pickAudioFromDevice),
-            _tool(Icons.insert_chart, _ru ? 'График' : 'Chart', _insertChart),
-            _tool(Icons.table_chart, _ru ? 'Таблица' : 'Table', _insertTable),
+            const SizedBox(width: 2),
+            _toolLabeled(Icons.image, _ru ? 'Фото URL' : 'Photo URL', _insertImageFromUrl),
+            _toolLabeled(Icons.perm_media, _ru ? 'Фото устр.' : 'Photo dev.', _pickImageFromDevice),
+            _toolLabeled(Icons.video_library, _ru ? 'Видео URL' : 'Video URL', _insertVideoFromUrl),
+            _toolLabeled(Icons.video_file, _ru ? 'Видео устр.' : 'Video dev.', _pickVideoFromDevice),
+            _toolLabeled(Icons.audiotrack, _ru ? 'Аудио URL' : 'Audio URL', _insertAudioFromUrl),
+            _toolLabeled(Icons.library_music, _ru ? 'Аудио устр.' : 'Audio dev.', _pickAudioFromDevice),
+            _toolLabeled(Icons.insert_chart, _ru ? 'График' : 'Chart', _insertChart),
+            _toolLabeled(Icons.table_chart, _ru ? 'Таблица' : 'Table', _insertTable),
           ],
         ],
       ),
