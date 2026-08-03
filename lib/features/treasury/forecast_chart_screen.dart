@@ -6,9 +6,11 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/widgets/currency_picker.dart';
 import 'services/treasury_service.dart';
+import 'services/forecast_backtest.dart';
 import 'services/forecast_engine.dart';
 import 'services/multi_engine_forecast.dart';
 import 'models/transaction_model.dart';
+import 'widgets/forecast_insights.dart';
 import 'widgets/what_if_dialog.dart';
 import 'widgets/engine_install_banner.dart';
 import '../../core/widgets/wesi_wordmark.dart';
@@ -24,6 +26,11 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   final TreasuryService _service = TreasuryService();
 
   ForecastResult _forecast = ForecastResult.empty();
+
+  /// Ретро-проверка: что прогноз сказал бы N дней назад и что вышло на самом
+  /// деле. Считается отдельно от основного расчёта — она смотрит в прошлое.
+  BacktestResult _backtest = BacktestResult.empty(DateTime.now(), 30);
+  int _backtestHorizon = 30;
   List<ForecastPoint> _data = [];
   List<TransactionModel> _anomalies = [];
   Map<String, double> _categoryBreakdown = {};
@@ -89,6 +96,23 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   void initState() {
     super.initState();
     _loadData(full: true);
+  }
+
+  Future<void> _setBacktestHorizon(int days) async {
+    setState(() => _backtestHorizon = days);
+    await _recomputeBacktest();
+  }
+
+  Future<void> _recomputeBacktest() async {
+    final txs = await _service.getAllTransactions();
+    final balance = await _service.getCurrentBalance();
+    final result = ForecastBacktest.run(
+      transactions: txs,
+      currentBalance: balance,
+      horizonDays: _backtestHorizon,
+      annualDiscountRate: _discountEnabled ? _annualDiscountRate : 0.0,
+    );
+    if (mounted) setState(() => _backtest = result);
   }
 
   Future<void> _loadData({bool full = false}) async {
@@ -182,6 +206,13 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       _engineCache.remove(ForecastEngineKind.prophet);
       _engineCache.remove(ForecastEngineKind.sarimax);
       _engineCache.remove(ForecastEngineKind.combined);
+    });
+
+    // Ретро-проверка идёт после основного расчёта: она независима и не должна
+    // задерживать появление графика на экране.
+    await _recomputeBacktest();
+    if (!mounted) return;
+    setState(() {
       _unavailableEngines.clear();
     });
 
@@ -360,16 +391,24 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         children: [
           const EngineInstallBanner(),
           if (!_whatIf.isEmpty) _whatIfBanner(),
-          _riskBanner(),
+          // Общие с песочницей блоки — см. widgets/forecast_insights.dart.
+          // Держать по копии на каждом экране значило однажды разойтись в
+          // поведении, что уже и произошло: песочница отстала.
+          ForecastRiskBanner(forecast: _forecast),
           Row(
             children: [
-              Expanded(child: _stats(last, growth)),
+              Expanded(
+                child: ForecastStatsRow(
+                  forecast: _forecast,
+                  growthPercent: growth,
+                ),
+              ),
               const SizedBox(width: 8),
               _currencyBadge(),
             ],
           ),
           const SizedBox(height: 8),
-          _diagnostics(),
+          ForecastDiagnostics(forecast: _forecast),
           const SizedBox(height: 12),
           _engineSelector(),
           const SizedBox(height: 12),
@@ -391,6 +430,11 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             SizedBox(height: 20),
             _comparisonTable(),
           ],
+          const SizedBox(height: 20),
+          ForecastAccuracyCard(
+            result: _backtest,
+            onHorizonChanged: _setBacktestHorizon,
+          ),
           SizedBox(height: 16),
           Text('display_options'.w,
               style: TextStyle(
@@ -469,66 +513,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
-  /// Cash Gap Risk Score: предупреждение, если вероятность ухода баланса
-  /// в минус в какой-то день прогноза превышает 5% симулированных путей.
-  Widget _riskBanner() {
-    final alertDay = _forecast.riskAlertDay;
-    if (alertDay == null) return SizedBox.shrink();
-    final date = DateTime.now().add(Duration(days: alertDay));
-    final dateLabel = '${date.day.toString().padLeft(2, '0')}.'
-        '${date.month.toString().padLeft(2, '0')}.${date.year}';
-    return Container(
-      margin: EdgeInsets.only(bottom: 12),
-      padding: EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: AppTheme.accentRed.withOpacity(0.12),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.accentRed.withOpacity(0.4)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.warning_amber_rounded, color: AppTheme.accentRed),
-          SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('cash_gap_risk'.w,
-                    style: TextStyle(
-                        color: AppTheme.accentRed,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700)),
-                SizedBox(height: 2),
-                Text(
-                  'cash_gap_risk_detail'.w
-                      .replaceAll('{days}', '$alertDay')
-                      .replaceAll('{date}', dateLabel),
-                  style: TextStyle(
-                      color: AppTheme.textSecondary, fontSize: 12),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 
-  /// Прозрачность про то, на чём построен прогноз — сколько истории,
-  /// сколько траекторий симулировано, учтена ли сезонность по дню недели.
-  Widget _diagnostics() {
-    final daysLabel =
-        'based_on_history'.w.replaceAll('{days}', '${_forecast.historyDaysSpan}');
-    final pathsLabel =
-        'monte_carlo_paths'.w.replaceAll('{n}', '${_forecast.simulatedPaths}');
-    final seasonLabel =
-        _forecast.seasonalityApplied ? 'seasonality_on'.w : 'seasonality_off'.w;
-    return Text(
-      '$daysLabel · $pathsLabel · $seasonLabel',
-      style: TextStyle(fontSize: 11, color: AppTheme.textMuted.withOpacity(0.8)),
-    );
-  }
 
   /// Переключатель движков прогноза: Wesi Horizon (родной), Prophet, SARIMAX
   /// — независимые тумблеры, можно включить любое подмножество (в т.ч. ни
@@ -705,94 +690,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
-  Widget _stats(ForecastPoint? last, double growth) {
-    return Row(
-      children: [
-        _stat(
-          'P50',
-          last != null ? CurrencyService.format(last.p50) : '—',
-          AppTheme.accent,
-          Tooltip(
-            message: WesiLocale.isRussian
-                ? 'P50 — медианный сценарий (50% вероятность)'
-                : 'P50 — median scenario (50% probability)',
-            child: Icon(Icons.info_outline,
-                size: 14, color: AppTheme.textMuted),
-          ),
-          growth: growth,
-        ),
-        SizedBox(width: 8),
-        _stat(
-          'P10',
-          last != null ? CurrencyService.format(last.p10) : '—',
-          AppTheme.accentRed,
-          Tooltip(
-            message: WesiLocale.isRussian
-                ? 'P10 — пессимистичный сценарий (10% хуже)'
-                : 'P10 — worst-case (10th percentile)',
-            child: Icon(Icons.info_outline,
-                size: 14, color: AppTheme.textMuted),
-          ),
-        ),
-        SizedBox(width: 8),
-        _stat(
-          'P90',
-          last != null ? CurrencyService.format(last.p90) : '—',
-          AppTheme.accentGreen,
-          Tooltip(
-            message: WesiLocale.isRussian
-                ? 'P90 — оптимистичный сценарий (90% лучше)'
-                : 'P90 — best-case (90th percentile)',
-            child: Icon(Icons.info_outline,
-                size: 14, color: AppTheme.textMuted),
-          ),
-        ),
-      ],
-    );
-  }
 
-  Widget _stat(String label, String value, Color color, Widget tip,
-      {double? growth}) {
-    return Expanded(
-      child: Container(
-        padding: EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: AppTheme.surface.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: color.withOpacity(0.25)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Text(label,
-                    style: TextStyle(
-                        fontSize: 11, color: AppTheme.textMuted)),
-                const SizedBox(width: 4),
-                tip,
-              ],
-            ),
-            SizedBox(height: 4),
-            Text(value,
-                style: TextStyle(
-                    fontSize: 16, fontWeight: FontWeight.w800, color: color)),
-            if (growth != null) ...[
-              SizedBox(height: 2),
-              Text(
-                '${growth >= 0 ? '▲' : '▼'} ${growth.abs().toStringAsFixed(1)}% ${'growth_over_period'.w}',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w600,
-                  color: growth >= 0 ? AppTheme.accentGreen : AppTheme.accentRed,
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
 
   /// «1 год / 2 года / 5 лет» — без склонения подпись выглядит калькой.
   static String _yearsWordRu(int years) {

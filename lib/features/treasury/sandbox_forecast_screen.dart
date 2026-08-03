@@ -7,8 +7,10 @@ import '../../core/widgets/window_controls.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import 'services/sandbox_service.dart';
+import 'services/forecast_backtest.dart';
 import 'services/forecast_engine.dart';
 import 'services/what_if_store.dart';
+import 'widgets/forecast_insights.dart';
 import 'widgets/what_if_dialog.dart';
 
 /// Прогноз внутри песочницы + конструктор собственных сценариев «Что если?».
@@ -51,8 +53,35 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
   double _startBalance = 0;
   bool _loading = true;
 
+  /// Ретро-проверка: что прогноз сказал бы N дней назад и что вышло.
+  BacktestResult _backtest = BacktestResult.empty(DateTime.now(), 30);
+  int _backtestHorizon = 30;
+
   String get _sym => CurrencyService.symbol;
   bool get _ru => WesiLocale.isRussian;
+
+  /// Прирост медианы за горизонт, в процентах от стартового баланса.
+  double? get _growthPercent {
+    if (_baseline.p50.isEmpty || _startBalance.abs() < 0.01) return null;
+    final last = _baseline.p50.last;
+    return (last - _startBalance) / _startBalance.abs() * 100;
+  }
+
+  Future<void> _setBacktestHorizon(int days) async {
+    setState(() => _backtestHorizon = days);
+    await _recomputeBacktest();
+  }
+
+  Future<void> _recomputeBacktest() async {
+    final txs = await _service.getAllTransactions();
+    final balance = await _service.getCurrentBalance();
+    final result = ForecastBacktest.run(
+      transactions: txs,
+      currentBalance: balance,
+      horizonDays: _backtestHorizon,
+    );
+    if (mounted) setState(() => _backtest = result);
+  }
 
   @override
   void initState() {
@@ -80,6 +109,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
       _presets = presets;
       _loading = false;
     });
+    await _recomputeBacktest();
   }
 
   /// Пересчитывает только один сценарий — при включении тумблера гонять весь
@@ -243,9 +273,27 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                         if (_baseline.insufficientData)
                           _emptyState()
                         else ...[
+                          // Те же блоки, что и в основном прогнозе: риск
+                          // разрыва, P10/P50/P90 и на чём построен расчёт.
+                          // Считает-то один и тот же движок — разной была
+                          // только подача, из-за чего песочница выглядела
+                          // беднее без всякой причины.
+                          ForecastRiskBanner(forecast: _baseline),
+                          ForecastStatsRow(
+                            forecast: _baseline,
+                            growthPercent: _growthPercent,
+                          ),
+                          const SizedBox(height: 10),
+                          ForecastDiagnostics(forecast: _baseline),
+                          const SizedBox(height: 18),
                           _chart(),
                           const SizedBox(height: 18),
                           _verdicts(),
+                          const SizedBox(height: 18),
+                          ForecastAccuracyCard(
+                            result: _backtest,
+                            onHorizonChanged: _setBacktestHorizon,
+                          ),
                           const SizedBox(height: 18),
                         ],
                         _presetList(),
