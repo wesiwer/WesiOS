@@ -57,6 +57,67 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
   String _specialCharCategoryId = 'punct';
   bool get _ru => WesiLocale.isRussian;
 
+  /// Снимок статьи на момент открытия — с ним сравниваем при выходе.
+  ///
+  /// Без этого нажатие «назад» молча выбрасывало всё написанное: сохранение
+  /// здесь только по кнопке, а промахнуться по ней легко — она рядом со
+  /// стрелкой возврата.
+  late String _initialTitle;
+  late String _initialTags;
+  late String _initialBody;
+
+  String get _currentBody =>
+      jsonEncode(_controller.document.toDelta().toJson());
+
+  bool get _hasChanges =>
+      _titleCtrl.text != _initialTitle ||
+      _tagsCtrl.text != _initialTags ||
+      _currentBody != _initialBody;
+
+  /// Спрашивает подтверждение, если есть несохранённые правки.
+  /// true — можно уходить.
+  Future<bool> _confirmLeave() async {
+    if (!_hasChanges) return true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          _ru ? 'Выйти без сохранения?' : 'Leave without saving?',
+          style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary),
+        ),
+        content: Text(
+          _ru
+              ? 'Изменения в статье не сохранены. Если выйти сейчас, они '
+                  'пропадут.'
+              : 'The article has unsaved changes. Leaving now discards them.',
+          style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(_ru ? 'Остаться' : 'Stay',
+                style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(_ru ? 'Выйти' : 'Leave',
+                style: TextStyle(color: AppTheme.accentRed)),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  Future<void> _leave() async {
+    if (await _confirmLeave() && mounted) Navigator.pop(context);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -79,6 +140,10 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     } else {
       _controller = QuillController.basic();
     }
+
+    _initialTitle = _titleCtrl.text;
+    _initialTags = _tagsCtrl.text;
+    _initialBody = _currentBody;
   }
 
   @override
@@ -320,7 +385,15 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      // На Android «назад» — системный жест, и без этого он уносил бы
+      // несохранённое мимо всех проверок.
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        if (await _confirmLeave() && mounted) Navigator.pop(context);
+      },
+      child: Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
         child: Column(
@@ -330,7 +403,10 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
               padding: EdgeInsets.fromLTRB(8, kTitleBarInset + 8, 8, 0),
               child: Row(
                 children: [
-                  IconButton(icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary), onPressed: () => Navigator.pop(context)),
+                  IconButton(
+                    icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+                    onPressed: _leave,
+                  ),
                   Expanded(
                     child: Text(
                       widget.initial == null ? (_ru ? 'Новая статья' : 'New article') : (_ru ? 'Редактирование' : 'Edit article'),
@@ -600,6 +676,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
               ),
           ],
         ),
+      ),
       ),
     );
   }
