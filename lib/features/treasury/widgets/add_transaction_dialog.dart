@@ -36,6 +36,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
   late String _category;
   bool _isRecurring = false;
   RecurringPeriod? _recurringPeriod;
+  DateTime _selectedDate = DateTime.now();
 
   /// Категории берутся из [CategoryService] — их можно править прямо
   /// отсюда, а не только менять код.
@@ -54,6 +55,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
       _descCtrl.text = tx.description ?? '';
       _isRecurring = tx.isRecurring;
       _recurringPeriod = tx.recurringPeriod;
+      _selectedDate = tx.date;
       final cat = tx.category;
       _category =
           (cat != null && _categories.contains(cat)) ? cat : _categories.last;
@@ -73,6 +75,44 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
     _amountCtrl.dispose();
     _descCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _selectedDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.dark(
+              primary: AppTheme.accent,
+              onPrimary: Colors.white,
+              surface: AppTheme.surface,
+              onSurface: AppTheme.textPrimary,
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+    if (picked != null) {
+      setState(() => _selectedDate = picked);
+    }
+  }
+
+  String _formatDate(DateTime d) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final picked = DateTime(d.year, d.month, d.day);
+    if (picked == today) {
+      return WesiLocale.isRussian ? 'Сегодня' : 'Today';
+    }
+    final diff = picked.difference(today).inDays;
+    if (diff == 1) return WesiLocale.isRussian ? 'Завтра' : 'Tomorrow';
+    if (diff == -1) return WesiLocale.isRussian ? 'Вчера' : 'Yesterday';
+    return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
   }
 
   @override
