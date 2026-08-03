@@ -52,48 +52,56 @@ class WesiOSApp extends StatelessWidget {
           onGenerateRoute: AppRouter.onGenerateRoute,
           home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
           builder: (context, child) {
-            return AnimatedTheme(
-              data: theme,
+            return TweenAnimationBuilder<AnimatedAppTheme>(
+              tween: Tween<AnimatedAppTheme>(
+                begin: AnimatedAppTheme.lerp(ThemeNotifier.instance.isDark ? 0.0 : 1.0),
+                end: AnimatedAppTheme.lerp(ThemeNotifier.instance.isDark ? 0.0 : 1.0),
+              ),
               duration: const Duration(milliseconds: 600),
               curve: Curves.easeInOutCubic,
-              child: Stack(
-                children: [
-                  if (child != null)
-                    ValueListenableBuilder<bool>(
-                      valueListenable: CurrencyService.privacyMode,
-                      builder: (context, _, __) => ShieldGate(child: child),
-                    ),
-                  Positioned.fill(
-                    child: Overlay(
-                      initialEntries: [
-                        OverlayEntry(
-                          builder: (_) => ValueListenableBuilder<bool>(
-                            valueListenable: CalculatorOverlay.visible,
-                            builder: (context, visible, _) => visible
-                                ? const CalculatorScreen(asOverlay: true)
-                                : const SizedBox.shrink(),
-                          ),
+              builder: (context, animatedTheme, _) {
+                return _AnimatedThemeProvider(
+                  theme: animatedTheme,
+                  child: Stack(
+                    children: [
+                      if (child != null)
+                        ValueListenableBuilder<bool>(
+                          valueListenable: CurrencyService.privacyMode,
+                          builder: (context, _, __) => ShieldGate(child: child),
                         ),
-                        if (isDesktop)
-                          OverlayEntry(
-                              builder: (_) => const EngineDownloadOverlay()),
-                        OverlayEntry(builder: (_) => const ShieldOverlay()),
-                        // Ошибки OTA — поверх всего, кроме title bar.
-                        OverlayEntry(builder: (_) => const UpdateErrorHost()),
-                        if (isDesktop)
-                          OverlayEntry(
-                            builder: (_) => const Positioned(
-                              top: 0,
-                              left: 0,
-                              right: 0,
-                              child: WindowControls(),
+                      Positioned.fill(
+                        child: Overlay(
+                          initialEntries: [
+                            OverlayEntry(
+                              builder: (_) => ValueListenableBuilder<bool>(
+                                valueListenable: CalculatorOverlay.visible,
+                                builder: (context, visible, _) => visible
+                                    ? const CalculatorScreen(asOverlay: true)
+                                    : const SizedBox.shrink(),
+                              ),
                             ),
-                          ),
-                      ],
-                    ),
+                            if (isDesktop)
+                              OverlayEntry(
+                                  builder: (_) => const EngineDownloadOverlay()),
+                            OverlayEntry(builder: (_) => const ShieldOverlay()),
+                            // Ошибки OTA — поверх всего, кроме title bar.
+                            OverlayEntry(builder: (_) => const UpdateErrorHost()),
+                            if (isDesktop)
+                              OverlayEntry(
+                                builder: (_) => const Positioned(
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: WindowControls(),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                );
+              },
             );
           },
         );
