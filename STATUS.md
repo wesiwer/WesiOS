@@ -1,3 +1,16 @@
+## Сессия 14 (fix) — 2026-08-03 20:02 MSK
+
+### ✅ Исправления компиляции
+
+| Файл | Ошибка | Фикс |
+|------|--------|------|
+| `lib/app.dart` | `_AnimatedThemeProvider` private | Убран `show`, класс сделан public |
+| `lib/core/theme/app_theme.dart` | `_AnimatedThemeProvider` private | Переименован в `AnimatedThemeProvider` |
+| `lib/core/widgets/quote_mind_charge.dart` | Цвета без `AppTheme.` | Добавлены префиксы `AppTheme.` |
+| `lib/features/knowledge/screens/article_editor_screen.dart` | `QuillController` не `ValueListenable` | `ValueListenableBuilder` → `ListenableBuilder` |
+
+---
+
 ## Сессия 14 — 2026-08-03 15:52 MSK
 
 ### ✅ Сделано
