@@ -33,9 +33,14 @@
 
 ## Установка
 
+**Пошаговая инструкция с нуля — [INSTALL.md](INSTALL.md).** Там от «зашёл в
+панель хостера» до «синхронизация работает», с расчётом на то, что человек
+видит консоль впервые.
+
+Кратко, если консоль не впервые:
+
 ```bash
-scp server/install-sync.sh root@АДРЕС:/root/
-ssh root@АДРЕС
+curl -fsSL https://raw.githubusercontent.com/wesiwer/WesiOS/main/server/install-sync.sh -o /root/install-sync.sh
 bash /root/install-sync.sh
 ```
 
