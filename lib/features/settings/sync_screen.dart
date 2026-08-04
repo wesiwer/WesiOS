@@ -12,8 +12,8 @@ import '../../core/widgets/window_controls.dart';
 /// Синхронизация с сервером.
 ///
 /// Экран намеренно показывает адрес в том виде, в каком он реально уйдёт в
-/// запрос: человек набирает `185.221.199.19:8090`, а уходит
-/// `http://185.221.199.19:8090`. Молчаливая подстановка схемы — источник
+/// запрос: человек набирает `203.0.113.10:8090`, а уходит
+/// `http://203.0.113.10:8090`. Молчаливая подстановка схемы — источник
 /// «почему не подключается», который невозможно увидеть.
 class SyncScreen extends StatefulWidget {
   const SyncScreen({super.key});
@@ -144,7 +144,7 @@ class _SyncScreenState extends State<SyncScreen> {
                       _field(
                         controller: _url,
                         label: _ru ? 'Адрес сервера' : 'Server address',
-                        hint: '185.221.199.19:8090',
+                        hint: '203.0.113.10:8090',
                         onChanged: (_) => setState(() {}),
                       ),
                       if (address != null && address != _url.text.trim())

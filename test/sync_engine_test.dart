@@ -480,7 +480,7 @@ void main() {
     });
 
     test('автоматический проход не идёт, пока его не включили', () async {
-      await SyncEndpoint.configure(url: '185.221.199.19:8090');
+      await SyncEndpoint.configure(url: '203.0.113.10:8090');
       await SyncEndpoint.setEnabled(false);
       await txBox().put('t1', tx('t1'));
 
@@ -607,9 +607,9 @@ void main() {
 
   group('адрес сервера', () {
     test('голый IP берётся по http — сертификата у него ещё нет', () {
-      expect(SyncEndpoint.normalize('185.221.199.19:8090'),
-          'http://185.221.199.19:8090');
-      expect(SyncEndpoint.normalize('185.221.199.19'), 'http://185.221.199.19');
+      expect(SyncEndpoint.normalize('203.0.113.10:8090'),
+          'http://203.0.113.10:8090');
+      expect(SyncEndpoint.normalize('203.0.113.10'), 'http://203.0.113.10');
     });
 
     test('домен берётся по https — пароли открытым текстом недопустимы', () {
@@ -621,8 +621,8 @@ void main() {
     test('явная схема уважается', () {
       expect(SyncEndpoint.normalize('http://sync.wesios.ru'),
           'http://sync.wesios.ru');
-      expect(SyncEndpoint.normalize('https://185.221.199.19'),
-          'https://185.221.199.19');
+      expect(SyncEndpoint.normalize('https://203.0.113.10'),
+          'https://203.0.113.10');
     });
 
     test('не адрес — это null, а не «как есть»', () {
