@@ -25,6 +25,8 @@ import 'core/services/github_auth_service.dart';
 import 'core/services/github_release_download.dart';
 import 'core/services/secrets_service.dart';
 import 'core/sync/sync_engine.dart';
+import 'features/chats/models/chat_message.dart';
+import 'features/chats/services/message_store.dart';
 import 'features/team/services/team_service.dart';
 
 bool get isDesktop {
@@ -68,10 +70,14 @@ void main() async {
   Hive.registerAdapter(ArticleModelAdapter());
   Hive.registerAdapter(TeamPermissionsAdapter());
   Hive.registerAdapter(EmployeeModelAdapter());
+  Hive.registerAdapter(MessageKindAdapter());
+  Hive.registerAdapter(DeliveryStateAdapter());
+  Hive.registerAdapter(ChatMessageAdapter());
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
   await Hive.openBox<EmployeeModel>(TeamService.boxName);
+  await MessageStore.open();
 
   // Журнал изменений подписывается на боксы до того, как человек что-то
   // поменяет. Подписка, поставленная позже, пропустила бы правки, сделанные
