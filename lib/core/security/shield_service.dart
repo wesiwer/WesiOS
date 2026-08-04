@@ -453,7 +453,9 @@ class ShieldService {
       await box.delete(_hintKey);
     } else {
       await box.put(_hintKey, hint.trim());
-      await _log('password_hint', true, hint == null ? 'removed' : 'set');
+      // В этой ветке hint заведомо не null — проверка выше уже отсеяла null и
+      // пустую строку, и запись «removed» сюда не попадала никогда.
+      await _log('password_hint', true, 'set');
     }
     revision.value++;
   }

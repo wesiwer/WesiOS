@@ -64,8 +64,15 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
+      # `--no-fatal-infos` намеренно. Без него `flutter analyze` возвращает
+      # ненулевой код на подсказках вроде «этот конструктор можно сделать
+      # const» — и проверка падала бы всегда, на любом коммите. Ворота,
+      # которые закрыты постоянно, перестают что-либо значить: их обходят.
+      #
+      # Ошибки и предупреждения при этом остаются смертельными, и репозиторий
+      # сейчас чист по обоим.
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Test
         run: flutter test

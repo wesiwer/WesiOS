@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../team/services/team_service.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
 import 'models/article_model.dart';

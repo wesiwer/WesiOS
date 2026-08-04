@@ -16,8 +16,11 @@ class _ThemeTransitionState extends State<ThemeTransition>
     with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _animation;
-  AppThemeMode? _previousMode;
-  bool _isTransitioning = false;
+
+  // Полей _previousMode и _isTransitioning здесь больше нет: они
+  // присваивались, но никогда не читались — ни в build, ни где-либо ещё.
+  // Состояние, которое никто не спрашивает, — не состояние, а видимость
+  // задуманного перехода.
 
   @override
   void initState() {
@@ -42,22 +45,10 @@ class _ThemeTransitionState extends State<ThemeTransition>
   }
 
   void _onThemeChanged() {
-    if (mounted) {
-      setState(() {
-        _isTransitioning = true;
-        _previousMode = ThemeNotifier.instance.isDark 
-            ? AppThemeMode.light 
-            : AppThemeMode.dark;
-      });
-      _controller.forward(from: 0).then((_) {
-        if (mounted) {
-          setState(() {
-            _isTransitioning = false;
-            _previousMode = null;
-          });
-        }
-      });
-    }
+    if (!mounted) return;
+    // Перерисовать поддерево новыми цветами и проиграть анимацию.
+    setState(() {});
+    _controller.forward(from: 0);
   }
 
   @override
