@@ -1,3 +1,6 @@
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/localization/wesi_locale.dart';
@@ -51,6 +54,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
 
   late TeamPermissions _permissions;
   int _avatarIndex = 0;
+  Uint8List? _photo;
+  bool _photoCleared = false;
   bool _saving = false;
   List<ArticleModel> _articles = const [];
 
@@ -63,6 +68,7 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
     final e = widget.initial;
     _permissions = e?.permissions ?? TeamPermissions.employeeDefault;
     _avatarIndex = e?.avatarIndex ?? 0;
+    _photo = e?.photo;
     if (e != null) {
       _nameCtrl.text = e.fullName;
       _nickCtrl.text = e.nickname;
@@ -127,6 +133,7 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
           notes: _notesCtrl.text,
           permissions: _permissions,
           avatarIndex: _avatarIndex,
+          photo: _photo,
         );
         if (created == null) {
           _error(_ru
@@ -152,6 +159,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
           notes: _notesCtrl.text,
           permissions: _permissions,
           avatarIndex: _avatarIndex,
+          photo: _photo,
+          clearPhoto: _photoCleared && _photo == null,
         );
         await TeamService.save(updated);
         if (mounted) Navigator.pop(context, updated);
@@ -159,6 +168,35 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+
+  /// Выбор снимка.
+  ///
+  /// Ограничение по размеру — не придирка: снимок с телефона весит мегабайты,
+  /// а рисуется кружком в сорок точек. Карточка целиком уезжает на сервер и
+  /// лежит в базе на каждом устройстве; десять сотрудников по три мегабайта
+  /// — это тридцать мегабайт, которые синхронизация будет возить туда-сюда
+  /// ради кружков.
+  Future<void> _pickPhoto() async {
+    final picked = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
+    final bytes = picked?.files.single.bytes;
+    if (bytes == null) return;
+
+    if (bytes.length > TeamService.maxPhotoBytes) {
+      _error(_ru
+          ? 'Снимок больше ${TeamService.maxPhotoBytes ~/ 1024} КБ. '
+              'Обрежьте или уменьшите его.'
+          : 'Image larger than ${TeamService.maxPhotoBytes ~/ 1024} KB.');
+      return;
+    }
+    if (!mounted) return;
+    setState(() {
+      _photo = bytes;
+      _photoCleared = false;
+    });
   }
 
   Future<void> _resetPassword() async {
@@ -570,6 +608,16 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
           onChanged: (v) => setState(
               () => _permissions = _permissions.copyWith(canSeeNotes: v)),
         ),
+        _checkRow(
+          label: _ru ? 'Ставить задачи другим' : 'Assign tasks to others',
+          hint: _ru
+              ? 'Без этого человек заводит задачи только себе. Доступ к доске '
+                  'и право раздавать по ней поручения — разные вещи.'
+              : 'Without this the person can only create tasks for themselves.',
+          value: _permissions.canAssignTasks,
+          onChanged: (v) => setState(
+              () => _permissions = _permissions.copyWith(canAssignTasks: v)),
+        ),
       ],
     );
   }
@@ -624,16 +672,55 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
   Widget _avatarRow() {
     return Row(
       children: [
-        WesiAvatar(size: 52, index: _avatarIndex),
+        WesiAvatar(size: 52, index: _avatarIndex, photo: _photo),
         const SizedBox(width: 14),
         Expanded(
           child: Wrap(
             spacing: 8,
             runSpacing: 8,
             children: [
+              GestureDetector(
+                onTap: _pickPhoto,
+                child: Container(
+                  width: 30,
+                  height: 30,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: AppTheme.surface,
+                    border: Border.all(color: AppTheme.accent, width: 1.4),
+                  ),
+                  child: Icon(Icons.add_a_photo_outlined,
+                      size: 14, color: AppTheme.accent),
+                ),
+              ),
+              if (_photo != null)
+                GestureDetector(
+                  onTap: () => setState(() {
+                    _photo = null;
+                    _photoCleared = true;
+                  }),
+                  child: Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: AppTheme.surface,
+                      border:
+                          Border.all(color: AppTheme.accentRed, width: 1.4),
+                    ),
+                    child: Icon(Icons.delete_outline,
+                        size: 14, color: AppTheme.accentRed),
+                  ),
+                ),
               for (var i = 0; i < WesiAvatar.avatarPresets.length; i++)
                 GestureDetector(
-                  onTap: () => setState(() => _avatarIndex = i),
+                  onTap: () => setState(() {
+                    _avatarIndex = i;
+                    // Пресет отменяет снимок: иначе человек выбирает
+                    // градиент, ничего не меняется, и это выглядит поломкой.
+                    _photo = null;
+                    _photoCleared = true;
+                  }),
                   child: Container(
                     width: 30,
                     height: 30,

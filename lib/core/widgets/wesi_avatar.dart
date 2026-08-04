@@ -22,12 +22,21 @@ class WesiAvatar extends StatelessWidget {
   /// тому, кого рисуем.
   final int? index;
 
+  /// Снимок конкретного человека — из его карточки в составе.
+  ///
+  /// Отдельно от картинки владельца устройства: та лежит в настройках и
+  /// принадлежит тому, кто за приложением, а эта едет вместе с карточкой на
+  /// другие устройства. Без неё «аватарки видны другим» означало бы
+  /// одинаковые кружки у всех коллег.
+  final Uint8List? photo;
+
   const WesiAvatar({
     super.key,
     this.size = 36,
     this.showBorder = true,
     this.onTap,
     this.index,
+    this.photo,
   });
 
   static const _box = 'wesios_settings';
@@ -92,8 +101,10 @@ class WesiAvatar extends StatelessWidget {
           ),
         ];
 
-        // Для чужой аватарки своя картинка не годится.
-        final custom = index == null ? customBytes : null;
+        // Порядок: снимок этого человека → своя картинка (только когда
+        // рисуем себя) → пресет. Для чужой аватарки картинка владельца
+        // устройства не годится.
+        final custom = photo ?? (index == null ? customBytes : null);
         final Widget avatar;
 
         if (custom != null) {

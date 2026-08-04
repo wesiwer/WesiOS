@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/task_model.dart';
+import 'task_assignment.dart';
 
 /// Хранилище задач.
 ///
@@ -36,9 +37,21 @@ class TaskService {
     return all.where((t) => t.status == status).toList();
   }
 
+  /// Сохраняет задачу, приводя исполнителя к тому, что разрешено.
+  ///
+  /// Проверка права стоит здесь, а не только в диалоге: диалог убирает
+  /// список с экрана, но задача с чужим исполнителем может приехать другим
+  /// путём — из синхронизации или из экрана, про который забыли. Право,
+  /// которое соблюдает только интерфейс, — это не право, а оформление.
   Future<void> save(TaskModel task) async {
     final box = await _tasksBox;
-    await box.put(task.id, task);
+    final allowed = TaskAssignment.coerce(task.assignee);
+    await box.put(
+      task.id,
+      allowed == task.assignee
+          ? task
+          : task.copyWith(assignee: allowed, clearAssignee: allowed == null),
+    );
     revision.value++;
   }
 

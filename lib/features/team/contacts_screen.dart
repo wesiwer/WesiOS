@@ -228,7 +228,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  WesiAvatar(size: 42, index: e.avatarIndex),
+                  WesiAvatar(size: 42, index: e.avatarIndex, photo: e.photo),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(

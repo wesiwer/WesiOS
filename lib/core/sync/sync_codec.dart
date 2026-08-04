@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:hive/hive.dart';
 
 import '../../features/knowledge/models/article_model.dart';
@@ -124,6 +127,16 @@ String? _strOrNull(Object? raw) => raw is String ? raw : null;
 
 List<String> _strings(Object? raw) =>
     raw is List ? [for (final e in raw) '$e'] : const [];
+
+/// Снимок из base64. Испорченная строка — не повод ронять разбор всей
+/// карточки: человек важнее его фотографии.
+Uint8List? _decodePhoto(String raw) {
+  try {
+    return base64Decode(raw);
+  } catch (_) {
+    return null;
+  }
+}
 
 // ---------------------------------------------------------------- коллекции
 
@@ -359,6 +372,10 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
         'createdAt': value.createdAt.toIso8601String(),
         'isOwner': value.isOwner,
         'demoStats': value.demoStats,
+        // Снимок — в base64: JSON не умеет байты, а без снимка «аватарки
+        // видны другим» перестаёт работать ровно там, где и должно —
+        // на втором устройстве.
+        'photo': value.photo == null ? null : base64Encode(value.photo!),
       };
 
   @override
@@ -389,6 +406,9 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
       avatarIndex: _int(fields['avatarIndex']),
       createdAt: createdAt,
       isOwner: fields['isOwner'] == true,
+      photo: fields['photo'] is String
+          ? _decodePhoto(fields['photo'] as String)
+          : null,
       demoStats: stats is Map
           ? {
               for (final e in stats.entries)

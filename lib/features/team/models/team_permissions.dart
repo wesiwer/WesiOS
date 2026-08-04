@@ -49,6 +49,26 @@ class TeamPermissions {
   @HiveField(5)
   final bool canSeeNotes;
 
+  /// Может ставить задачи другим людям, а не только себе.
+  ///
+  /// Отдельно от доступа к модулю задач: видеть доску и раздавать по ней
+  /// поручения — разные вещи. Исполнителю нужно первое, руководителю группы
+  /// — оба.
+  ///
+  /// **Почему хранится как `bool?`, а наружу отдаётся `bool`.** Поле
+  /// добавлено позже остальных, и в уже записанных на диск карточках его
+  /// просто нет. Hive отдаёт за него null, а сгенерированный адаптер пишет
+  /// `fields[6] as bool` — на непустом наборе сотрудников это падение при
+  /// загрузке, то есть исчезнувшие контакты после обновления.
+  ///
+  /// Тот же приём, что с [moduleList] и [modules]: неудобство прячется в
+  /// одном месте, а не расползается по коду. Править сгенерированный файл
+  /// руками нельзя — следующий запуск генератора вернёт мину обратно.
+  @HiveField(6)
+  final bool? canAssignTasksRaw;
+
+  bool get canAssignTasks => canAssignTasksRaw ?? false;
+
   const TeamPermissions({
     this.moduleList = const [],
     this.knowledgeIdList = const [],
@@ -56,6 +76,7 @@ class TeamPermissions {
     this.canManageTeam = false,
     this.canSeeOthersStats = false,
     this.canSeeNotes = false,
+    this.canAssignTasksRaw,
   });
 
   Set<String> get modules => moduleList.toSet();
@@ -76,6 +97,7 @@ class TeamPermissions {
         canManageTeam: true,
         canSeeOthersStats: true,
         canSeeNotes: true,
+        canAssignTasksRaw: true,
       );
 
   bool allows(String module) {
@@ -94,6 +116,7 @@ class TeamPermissions {
     bool? canManageTeam,
     bool? canSeeOthersStats,
     bool? canSeeNotes,
+    bool? canAssignTasks,
   }) =>
       TeamPermissions(
         moduleList: (modules ?? this.modules).toList()..sort(),
@@ -102,6 +125,7 @@ class TeamPermissions {
         canManageTeam: canManageTeam ?? this.canManageTeam,
         canSeeOthersStats: canSeeOthersStats ?? this.canSeeOthersStats,
         canSeeNotes: canSeeNotes ?? this.canSeeNotes,
+        canAssignTasksRaw: canAssignTasks ?? this.canAssignTasks,
       );
 
   TeamPermissions withModule(String module, bool on) {
@@ -131,6 +155,7 @@ class TeamPermissions {
         'canManageTeam': canManageTeam,
         'canSeeOthersStats': canSeeOthersStats,
         'canSeeNotes': canSeeNotes,
+        'canAssignTasks': canAssignTasks,
       };
 
   static TeamPermissions fromJson(Map<String, dynamic> json) =>
@@ -143,6 +168,7 @@ class TeamPermissions {
         canManageTeam: json['canManageTeam'] == true,
         canSeeOthersStats: json['canSeeOthersStats'] == true,
         canSeeNotes: json['canSeeNotes'] == true,
+        canAssignTasksRaw: json['canAssignTasks'] == true,
       );
 }
 

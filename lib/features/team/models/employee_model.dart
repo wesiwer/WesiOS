@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:hive/hive.dart';
 
 import 'team_permissions.dart';
@@ -74,6 +76,18 @@ class EmployeeModel {
   @HiveField(15)
   final Map<String, double> demoStats;
 
+  /// Фотография человека. null — показывается пресет по [avatarIndex].
+  ///
+  /// Хранится байтами прямо в карточке, а не файлом рядом: карточка уезжает
+  /// на сервер целиком, и снимок должен ехать вместе с ней. Иначе на втором
+  /// устройстве у всех коллег окажутся безликие кружки, и «аватарки видны
+  /// другим» останется словами.
+  ///
+  /// Размер ограничивает [TeamService.maxPhotoBytes]: снимок с телефона
+  /// весит мегабайты, а в списке он рисуется кружком в сорок точек.
+  @HiveField(16)
+  final Uint8List? photo;
+
   const EmployeeModel({
     required this.id,
     required this.login,
@@ -91,6 +105,7 @@ class EmployeeModel {
     required this.createdAt,
     this.isOwner = false,
     this.demoStats = const {},
+    this.photo,
   });
 
   /// Как показывать человека в списке.
@@ -120,6 +135,8 @@ class EmployeeModel {
     String? passwordSalt,
     int? avatarIndex,
     Map<String, double>? demoStats,
+    Uint8List? photo,
+    bool clearPhoto = false,
   }) =>
       EmployeeModel(
         id: id,
@@ -138,6 +155,9 @@ class EmployeeModel {
         createdAt: createdAt,
         isOwner: isOwner,
         demoStats: demoStats ?? this.demoStats,
+        // Отдельный флаг вместо «передали null — сотри»: без него снимок
+        // нельзя убрать, только заменить.
+        photo: clearPhoto ? null : (photo ?? this.photo),
       );
 
   /// Для будущей отправки на сервер.

@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import '../../core/widgets/module_header.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/wesi_avatar.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/window_controls.dart';
 import 'models/task_model.dart';
+import 'services/task_assignment.dart';
 import 'services/task_service.dart';
 import 'task_labels.dart';
 import 'widgets/task_editor_dialog.dart';
@@ -59,7 +61,10 @@ class _TasksScreenState extends State<TasksScreen> {
         final q = _search.toLowerCase();
         final inTitle = t.title.toLowerCase().contains(q);
         final inDesc = (t.description ?? '').toLowerCase().contains(q);
-        final inAssignee = (t.assignee ?? '').toLowerCase().contains(q);
+        // По имени, а не по содержимому поля: там теперь идентификатор
+        // человека, и искать «Иван» по строке «1785…» невозможно.
+        final inAssignee =
+            TaskAssignment.displayName(t.assignee).toLowerCase().contains(q);
         if (!inTitle && !inDesc && !inAssignee) return false;
       }
       return true;
@@ -487,14 +492,24 @@ class _TasksScreenState extends State<TasksScreen> {
                         ),
                       ],
                     ),
-                  if (task.assignee != null && task.assignee!.isNotEmpty)
+                  if (TaskAssignment.displayName(task.assignee).isNotEmpty)
                     Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.person_outline,
-                            size: 11, color: AppTheme.textMuted),
-                        const SizedBox(width: 4),
-                        Text(task.assignee!,
+                        if (TaskAssignment.personOf(task.assignee)
+                            case final person?) ...[
+                          WesiAvatar(
+                              size: 13,
+                              index: person.avatarIndex,
+                              photo: person.photo,
+                              showBorder: false),
+                          const SizedBox(width: 4),
+                        ] else ...[
+                          Icon(Icons.person_outline,
+                              size: 11, color: AppTheme.textMuted),
+                          const SizedBox(width: 4),
+                        ],
+                        Text(TaskAssignment.displayName(task.assignee),
                             style: TextStyle(
                                 fontSize: 10, color: AppTheme.textMuted)),
                       ],

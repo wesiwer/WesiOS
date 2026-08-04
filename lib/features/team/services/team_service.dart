@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
@@ -34,6 +35,13 @@ class TeamService {
   TeamService._();
 
   static const String boxName = 'wesios_team';
+
+  /// Предел размера снимка в карточке.
+  ///
+  /// Карточка целиком уезжает на сервер и лежит на каждом устройстве. Сто
+  /// килобайт с запасом хватает кружку в сорок точек даже на экране с
+  /// тройной плотностью; мегабайты возились бы синхронизацией впустую.
+  static const int maxPhotoBytes = 100 * 1024;
   static const String _settingsBox = 'wesios_settings';
   static const String _currentKey = 'team_current_employee';
 
@@ -172,6 +180,7 @@ class TeamService {
     String notes = '',
     TeamPermissions permissions = TeamPermissions.employeeDefault,
     int avatarIndex = 0,
+    Uint8List? photo,
     String? login,
     String? password,
     Random? random,
@@ -202,6 +211,7 @@ class TeamService {
       passwordHash: ShieldService.derive(pass, salt, _iterations),
       passwordSalt: salt,
       avatarIndex: avatarIndex,
+      photo: photo,
       createdAt: DateTime.now(),
       demoStats: withDemoStats ? generateDemoStats(random: random) : const {},
     );

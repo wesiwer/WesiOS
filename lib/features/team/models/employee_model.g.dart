@@ -33,13 +33,14 @@ class EmployeeModelAdapter extends TypeAdapter<EmployeeModel> {
       createdAt: fields[13] as DateTime,
       isOwner: fields[14] as bool,
       demoStats: (fields[15] as Map).cast<String, double>(),
+      photo: fields[16] as Uint8List?,
     );
   }
 
   @override
   void write(BinaryWriter writer, EmployeeModel obj) {
     writer
-      ..writeByte(16)
+      ..writeByte(17)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -71,7 +72,9 @@ class EmployeeModelAdapter extends TypeAdapter<EmployeeModel> {
       ..writeByte(14)
       ..write(obj.isOwner)
       ..writeByte(15)
-      ..write(obj.demoStats);
+      ..write(obj.demoStats)
+      ..writeByte(16)
+      ..write(obj.photo);
   }
 
   @override

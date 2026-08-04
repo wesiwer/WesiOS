@@ -149,7 +149,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
           children: [
             Row(
               children: [
-                WesiAvatar(size: 36, index: e.avatarIndex),
+                WesiAvatar(size: 36, index: e.avatarIndex, photo: e.photo),
                 const SizedBox(width: 11),
                 Expanded(
                   child: Column(

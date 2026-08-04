@@ -23,13 +23,14 @@ class TeamPermissionsAdapter extends TypeAdapter<TeamPermissions> {
       canManageTeam: fields[3] as bool,
       canSeeOthersStats: fields[4] as bool,
       canSeeNotes: fields[5] as bool,
+      canAssignTasksRaw: fields[6] as bool?,
     );
   }
 
   @override
   void write(BinaryWriter writer, TeamPermissions obj) {
     writer
-      ..writeByte(6)
+      ..writeByte(7)
       ..writeByte(0)
       ..write(obj.moduleList)
       ..writeByte(1)
@@ -41,7 +42,9 @@ class TeamPermissionsAdapter extends TypeAdapter<TeamPermissions> {
       ..writeByte(4)
       ..write(obj.canSeeOthersStats)
       ..writeByte(5)
-      ..write(obj.canSeeNotes);
+      ..write(obj.canSeeNotes)
+      ..writeByte(6)
+      ..write(obj.canAssignTasksRaw);
   }
 
   @override

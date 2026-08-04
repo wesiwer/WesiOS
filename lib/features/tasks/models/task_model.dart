@@ -126,6 +126,9 @@ class TaskModel {
     DateTime? dueDate,
     bool clearDueDate = false,
     String? assignee,
+    // По образцу clearDueDate: без явного флага исполнителя можно только
+    // заменить, но не снять — `assignee ?? this.assignee` вернёт прежнего.
+    bool clearAssignee = false,
     List<SubTask>? subtasks,
     List<String>? tags,
     int? order,
@@ -138,7 +141,7 @@ class TaskModel {
       priority: priority ?? this.priority,
       createdAt: createdAt,
       dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
-      assignee: assignee ?? this.assignee,
+      assignee: clearAssignee ? null : (assignee ?? this.assignee),
       subtasks: subtasks ?? this.subtasks,
       tags: tags ?? this.tags,
       order: order ?? this.order,

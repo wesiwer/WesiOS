@@ -192,7 +192,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                             ),
                             child: Row(
                               children: [
-                                WesiAvatar(size: 38, index: e.avatarIndex),
+                                WesiAvatar(size: 38, index: e.avatarIndex, photo: e.photo),
                                 const SizedBox(width: 12),
                                 Expanded(
                                   child: Column(

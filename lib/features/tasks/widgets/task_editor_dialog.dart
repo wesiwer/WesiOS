@@ -4,7 +4,9 @@ import '../../../core/localization/wesi_locale.dart';
 import '../../../core/widgets/hover_button.dart';
 import '../../../core/widgets/window_controls.dart';
 import '../models/task_model.dart';
+import '../services/task_assignment.dart';
 import '../task_labels.dart';
+import 'assignee_field.dart';
 
 /// Создание и редактирование задачи: название, описание, приоритет, срок,
 /// исполнитель, чек-лист.
@@ -37,7 +39,7 @@ class TaskEditorDialog extends StatefulWidget {
 class _TaskEditorDialogState extends State<TaskEditorDialog> {
   final _titleCtrl = TextEditingController();
   final _descCtrl = TextEditingController();
-  final _assigneeCtrl = TextEditingController();
+  String? _assignee;
   final _subtaskCtrl = TextEditingController();
 
   late TaskStatus _status;
@@ -56,7 +58,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
     if (t != null) {
       _titleCtrl.text = t.title;
       _descCtrl.text = t.description ?? '';
-      _assigneeCtrl.text = t.assignee ?? '';
+      _assignee = t.assignee;
     }
   }
 
@@ -64,7 +66,6 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
   void dispose() {
     _titleCtrl.dispose();
     _descCtrl.dispose();
-    _assigneeCtrl.dispose();
     _subtaskCtrl.dispose();
     super.dispose();
   }
@@ -116,9 +117,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
             priority: _priority,
             createdAt: DateTime.now(),
             dueDate: _dueDate,
-            assignee: _assigneeCtrl.text.trim().isEmpty
-                ? null
-                : _assigneeCtrl.text.trim(),
+            assignee: TaskAssignment.coerce(_assignee),
             subtasks: _subtasks,
           )
         : base.copyWith(
@@ -128,7 +127,8 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
             priority: _priority,
             dueDate: _dueDate,
             clearDueDate: _dueDate == null,
-            assignee: _assigneeCtrl.text.trim(),
+            assignee: TaskAssignment.coerce(_assignee),
+            clearAssignee: TaskAssignment.coerce(_assignee) == null,
             subtasks: _subtasks,
           );
     Navigator.pop(context, task);
@@ -290,11 +290,9 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   ),
                   SizedBox(width: 12),
                   Expanded(
-                    child: TextField(
-                      controller: _assigneeCtrl,
-                      style: TextStyle(color: AppTheme.textPrimary),
-                      decoration: InputDecoration(
-                          labelText: ru ? 'Исполнитель' : 'Assignee'),
+                    child: AssigneeField(
+                      value: _assignee,
+                      onChanged: (v) => setState(() => _assignee = v),
                     ),
                   ),
                 ],
