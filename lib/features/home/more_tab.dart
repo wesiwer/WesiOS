@@ -169,6 +169,16 @@ class MoreTab extends StatelessWidget {
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
+            route: '/sysadmin',
+            module: TeamModules.sysadmin,
+            icon: Icons.dns_outlined,
+            title: ru ? 'Системный администратор' : 'System administrator',
+            subtitle: ru
+                ? 'Серверы, домены, сайт: отклик, сертификаты, нагрузка'
+                : 'Servers, domains, site: latency, certificates, load',
+            stage: ModuleStage.ready,
+          ),
+          _ModuleItem(
             route: '/keys',
             module: TeamModules.keys,
             icon: Icons.vpn_key_outlined,

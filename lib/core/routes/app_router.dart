@@ -22,6 +22,7 @@ import '../../features/audio/audio_vault_screen.dart';
 import '../../features/crm/crm_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/founder/founder_story_screen.dart';
+import '../../features/sysadmin/sysadmin_screen.dart';
 import '../../features/team/contacts_screen.dart';
 import '../../features/chats/chats_screen.dart';
 
@@ -60,6 +61,8 @@ class AppRouter {
         return _slideUpRoute(ShieldScreen());
       case '/keys':
         return _slideUpRoute(KeysScreen());
+      case '/sysadmin':
+        return _slideUpRoute(const SysadminScreen());
       case '/settings':
         return _slideUpRoute(SettingsScreen());
       case '/profile':

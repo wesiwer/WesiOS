@@ -165,6 +165,7 @@ class TeamModules {
   static const String ai = 'ai';
   static const String audio = 'audio';
   static const String roadmap = 'roadmap';
+  static const String sysadmin = 'sysadmin';
 
   /// Всё, что можно открыть или закрыть.
   static const List<String> all = [
@@ -183,6 +184,7 @@ class TeamModules {
     ai,
     audio,
     roadmap,
+    sysadmin,
   ];
 
   /// Открыто всегда и никем не отключается.
@@ -198,7 +200,7 @@ class TeamModules {
     'Финансы': [treasury, forecast, sandbox, analytics],
     'Работа': [tasks, calendar, roadmap, crm],
     'Знания и общение': [knowledge, contacts, chats],
-    'Система': [shield, keys],
+    'Система': [shield, keys, sysadmin],
     'Прочее': [ai, audio],
   };
 
@@ -218,6 +220,7 @@ class TeamModules {
         ai => 'Wesi AI',
         audio => 'Audio Vault',
         roadmap => 'Roadmap',
+        sysadmin => 'Системный администратор',
         _ => module,
       };
 
@@ -237,6 +240,7 @@ class TeamModules {
         ai => 'Wesi AI',
         audio => 'Audio Vault',
         roadmap => 'Roadmap',
+        sysadmin => 'System administrator',
         _ => module,
       };
 
@@ -257,6 +261,7 @@ class TeamModules {
         ai => 'Ассистент по своим данным',
         audio => 'Биты, демо, лицензии',
         roadmap => 'Проекты во времени',
+        sysadmin => 'Состояние серверов, доменов и сайта',
         _ => '',
       };
 }
