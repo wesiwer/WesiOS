@@ -13,6 +13,7 @@ import '../../core/widgets/window_controls.dart';
 import '../../widgets/glass_card.dart';
 import '../../core/sync/sync_endpoint.dart';
 import '../../core/sync/sync_engine.dart';
+import '../chats/services/topic_privacy.dart';
 import 'sync_screen.dart';
 import 'widgets/forecast_engines_section.dart';
 import 'widgets/github_auth_section.dart';
@@ -138,6 +139,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     onChanged: CurrencyService.setPrivacyMode,
                   ),
                 ),
+              ),
+              // Куда уходит переписка ради разбиения на темы. Решение
+              // владельца, и оно должно приниматься здесь, глазами, а не
+              // подразумеваться кодом.
+              ValueListenableBuilder<int>(
+                valueListenable: TopicPrivacy.revision,
+                builder: (context, _, __) => _topicPrivacyTile(ru),
               ),
               const SizedBox(height: 24),
               _section(WesiLocale.isRussian ? 'Обновление' : 'Updates'),
@@ -266,6 +274,74 @@ class _SettingsScreenState extends State<SettingsScreen> {
     String two(int v) => v.toString().padLeft(2, '0');
     final when = '${two(l.day)}.${two(l.month)} ${two(l.hour)}:${two(l.minute)}';
     return ru ? 'Последний обмен: $when' : 'Last exchange: $when';
+  }
+
+  /// Выбор режима разметки тем.
+  ///
+  /// Три пункта, а не переключатель «вкл/выкл»: средний вариант — своя
+  /// модель на своём сервере — и есть тот, который обычно нужен, а из
+  /// двоичного переключателя он выпадает.
+  Widget _topicPrivacyTile(bool ru) {
+    final mode = TopicPrivacy.mode;
+    return ListTile(
+      leading: Icon(Icons.workspaces_outline, color: AppTheme.accent),
+      title: Text(
+        ru ? 'Разбиение чатов на темы' : 'Chat topic detection',
+        style: TextStyle(color: AppTheme.textPrimary),
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const SizedBox(height: 4),
+          Text(
+            TopicPrivacy.hintRu(mode),
+            style: TextStyle(
+                fontSize: 12, height: 1.35, color: AppTheme.textMuted),
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final m in TopicPrivacyMode.values)
+                GestureDetector(
+                  onTap: () async {
+                    await TopicPrivacy.setMode(m);
+                    if (mounted) setState(() {});
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 11, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: m == mode
+                          ? AppTheme.accent.withOpacity(0.16)
+                          : AppTheme.surface.withOpacity(0.5),
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(
+                        color: m == mode
+                            ? AppTheme.accent.withOpacity(0.55)
+                            : AppTheme.glassBorder,
+                      ),
+                    ),
+                    child: Text(
+                      TopicPrivacy.labelRu(m),
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight:
+                            m == mode ? FontWeight.w700 : FontWeight.w400,
+                        color: m == mode
+                            ? AppTheme.accent
+                            : AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 6),
+        ],
+      ),
+    );
   }
 
   Widget _section(String title) {

@@ -7,6 +7,7 @@ import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
 import '../team/services/team_service.dart';
 import 'models/chat_policy.dart';
+import 'services/topic_privacy.dart';
 
 /// Чаты — заготовка.
 ///
@@ -129,7 +130,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        ChatEnvelopePolicy.describe(_kind!, russian: _ru),
+                        TopicPrivacy.describe(_kind!, russian: _ru),
                         style: TextStyle(
                             fontSize: 11, color: AppTheme.textMuted),
                       ),

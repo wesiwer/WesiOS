@@ -3,6 +3,7 @@ import 'dart:math';
 import '../models/chat_policy.dart';
 import 'topic_chunker.dart';
 import 'topic_judge.dart';
+import 'topic_privacy.dart';
 
 /// Итог разбора после участия судьи.
 class RefinedTopics {
@@ -31,9 +32,9 @@ class RefinedTopics {
 /// Поэтому модель видит только спорные окна и готовые куски, и её работа —
 /// решить и назвать, а не искать.
 ///
-/// **Чего не бывает.** Личная переписка наружу не уходит ни при каких
-/// настройках — см. [TopicPrivacy]. Там остаётся местная разметка, и это
-/// прямое следствие договорённости о шифровании, а не недоделка.
+/// **Граница задаётся настройкой** ([TopicPrivacy]), а не зашита в код.
+/// Режим «только на устройстве» полностью отключает обращения к модели —
+/// разметка тогда работает хуже, но переписка не покидает телефон.
 class TopicRefiner {
   /// Сколько сообщений показывать модели с каждой стороны границы.
   ///
@@ -53,10 +54,14 @@ class TopicRefiner {
     required ChatKind kind,
     required TopicJudge judge,
     ChunkPlan? plan,
+    /// Адрес модели — нужен, чтобы отличить свой сервер от чужого.
+    String? modelUrl,
   }) async {
     final base = plan ?? TopicChunker.plan(messages);
 
-    final mayAsk = TopicPrivacy.mayLeaveDevice(kind) && judge.available;
+    final mayAsk =
+        TopicPrivacy.mayLeaveDevice(kind, baseUrl: modelUrl) &&
+            judge.available;
     if (!mayAsk) {
       return RefinedTopics(
         chunks: base.chunks,

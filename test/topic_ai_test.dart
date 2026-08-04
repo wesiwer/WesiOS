@@ -1,15 +1,36 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:wesios/features/chats/models/chat_policy.dart';
 import 'package:wesios/features/chats/services/ai_topic_judge.dart';
 import 'package:wesios/features/chats/services/topic_chunker.dart';
 import 'package:wesios/features/chats/services/topic_judge.dart';
+import 'package:wesios/features/chats/services/topic_privacy.dart';
 import 'package:wesios/features/chats/services/topic_refiner.dart';
 
 /// Разметку тем моделью нельзя проверить живой моделью — она отвечает
 /// по-разному на один и тот же вход. Поэтому проверяется всё, что вокруг:
-/// разбор ответа, поведение при мусоре и молчании, и главное — что личная
-/// переписка наружу не уходит ни при каких настройках.
+/// разбор ответа, поведение при мусоре и молчании, и главное — что подпись
+/// под чатом всегда соответствует настройке приватности. Обещание «видят
+/// только собеседники», оставленное при включённой модели, — это не
+/// приватность, а ложь о ней.
 void main() {
+  late Directory dir;
+
+  setUpAll(() async {
+    dir = Directory.systemTemp.createTempSync('wesios_topic');
+    Hive.init(dir.path);
+    await Hive.openBox('wesios_settings');
+  });
+
+  tearDownAll(() async {
+    await Hive.close();
+    dir.deleteSync(recursive: true);
+  });
+
+  setUp(() => TopicPrivacy.setMode(TopicPrivacy.defaultMode));
+
   final day = DateTime.utc(2026, 8, 4, 10);
 
   List<ChunkInput> dialog(List<String> lines) {
@@ -86,38 +107,77 @@ void main() {
     });
   });
 
-  group('личная переписка', () {
-    test('наружу не уходит никогда', () {
+  group('граница приватности', () {
+    test('по умолчанию — свой сервер, не «любая модель»', () {
+      // Включать отправку переписки третьей стороне молча, по умолчанию,
+      // нельзя: такое решение человек принимает сам.
+      expect(TopicPrivacy.defaultMode, TopicPrivacyMode.ownServer);
+    });
+
+    test('режим «только на устройстве» не пускает наружу ничего', () async {
+      await TopicPrivacy.setMode(TopicPrivacyMode.device);
+      expect(TopicPrivacy.mayLeaveDevice(ChatKind.work), isFalse);
       expect(TopicPrivacy.mayLeaveDevice(ChatKind.personal), isFalse);
-      expect(TopicPrivacy.mayLeaveDevice(ChatKind.work), isTrue);
-    });
 
-    test('судья к личному чату не вызывается вовсе', () async {
-      final spy = _SpyJudge();
-      final result = await TopicRefiner.refine(
-        messages: conversation,
-        kind: ChatKind.personal,
-        judge: spy,
-      );
-      expect(spy.calls, 0,
-          reason: 'сквозное шифрование не отменяется ради заголовков');
-      expect(result.judgedBy, 'на устройстве');
-    });
-
-    test('в рабочем чате судья работает', () async {
       final spy = _SpyJudge();
       await TopicRefiner.refine(
-        messages: conversation,
-        kind: ChatKind.work,
-        judge: spy,
-      );
+          messages: conversation, kind: ChatKind.work, judge: spy);
+      expect(spy.calls, 0);
+    });
+
+    test('«моя модель»: личный чат к внешнему поставщику не уходит', () async {
+      await TopicPrivacy.setMode(TopicPrivacyMode.ownServer);
+      expect(
+          TopicPrivacy.mayLeaveDevice(ChatKind.personal,
+              baseUrl: 'https://api.openai.com/v1'),
+          isFalse,
+          reason: 'выбран свой сервер, а адрес чужой');
+      expect(
+          TopicPrivacy.mayLeaveDevice(ChatKind.personal,
+              baseUrl: 'https://ai.мойдомен.ru/v1'),
+          isTrue);
+    });
+
+    test('«любая модель» пускает и личные чаты', () async {
+      await TopicPrivacy.setMode(TopicPrivacyMode.anyModel);
+      expect(
+          TopicPrivacy.mayLeaveDevice(ChatKind.personal,
+              baseUrl: 'https://api.openai.com/v1'),
+          isTrue,
+          reason: 'владелец выбрал качество разметки — это его решение');
+
+      final spy = _SpyJudge();
+      await TopicRefiner.refine(
+          messages: conversation, kind: ChatKind.personal, judge: spy);
       expect(spy.calls, greaterThan(0));
     });
 
-    test('отказ объясняется человеку, а не молчит', () {
-      final text = TopicPrivacy.explain(ChatKind.personal);
-      expect(text, contains('на устройстве'));
-      expect(text, isNot(TopicPrivacy.explain(ChatKind.work)));
+    test('известные внешние поставщики распознаются', () {
+      expect(TopicPrivacy.looksExternal('https://api.openai.com/v1'), isTrue);
+      expect(TopicPrivacy.looksExternal('https://openrouter.ai/api/v1'), isTrue);
+      expect(TopicPrivacy.looksExternal('http://185.221.199.19:8080/v1'), isFalse);
+      expect(TopicPrivacy.looksExternal('https://ai.wesi.ru/v1'), isFalse);
+    });
+
+    test('подпись под чатом всегда соответствует настройке', () async {
+      // Это главное правило: обещание «видят только собеседники»,
+      // оставленное при включённой модели, — не приватность, а ложь о ней.
+      await TopicPrivacy.setMode(TopicPrivacyMode.device);
+      final quiet = TopicPrivacy.describe(ChatKind.personal);
+      expect(quiet, contains('собеседники'));
+      expect(quiet, isNot(contains('модель')));
+
+      await TopicPrivacy.setMode(TopicPrivacyMode.anyModel);
+      final loud = TopicPrivacy.describe(ChatKind.personal);
+      expect(loud, contains('модель'));
+      expect(loud, isNot(quiet));
+    });
+
+    test('в рабочем чате владелец назван всегда', () async {
+      await TopicPrivacy.setMode(TopicPrivacyMode.device);
+      expect(TopicPrivacy.describe(ChatKind.work), contains('владелец'));
+      expect(TopicPrivacy.describe(ChatKind.personal),
+          isNot(contains('владелец')));
     });
   });
 
