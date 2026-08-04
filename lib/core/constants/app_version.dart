@@ -11,7 +11,7 @@ class AppVersion {
   ///
   /// Нужен автообновлению: когда версия не менялась, а сборка пересобрана,
   /// сравнивать по одному лишь `number` нечем. Обязан совпадать с pubspec.
-  static const int build = 29;
+  static const int build = 30;
 
   static const String stage = 'α';
   static const String display = 'v$number $stage';

@@ -11,6 +11,7 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/module_header.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../widgets/glass_card.dart';
+import 'sync_screen.dart';
 import 'widgets/forecast_engines_section.dart';
 import 'widgets/github_auth_section.dart';
 import '../../core/widgets/app_update_card.dart';
@@ -201,6 +202,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 24),
               _section(WesiLocale.get('data')),
+              _tile(
+                icon: Icons.sync,
+                title: ru ? 'Синхронизация' : 'Sync',
+                subtitle: ru
+                    ? 'Свой сервер: данные на всех устройствах'
+                    : 'Your own server: data on every device',
+                onTap: () => SyncScreen.open(context),
+              ),
               _tile(
                 icon: Icons.key,
                 title: WesiLocale.get('firebase_config'),

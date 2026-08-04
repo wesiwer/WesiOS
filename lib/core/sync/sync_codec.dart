@@ -1,0 +1,425 @@
+import 'package:hive/hive.dart';
+
+import '../../features/knowledge/models/article_model.dart';
+import '../../features/tasks/models/task_model.dart';
+import '../../features/team/models/employee_model.dart';
+import '../../features/team/models/team_permissions.dart';
+import '../../features/treasury/models/account_model.dart';
+import '../../features/treasury/models/transaction_model.dart';
+
+/// Описание одной синхронизируемой коллекции.
+///
+/// Перевод модели в поля и обратно вынесен из движка намеренно: движок не
+/// должен ничего знать про транзакции и задачи, а модели — про синхронизацию.
+/// Добавить шестую коллекцию — значит дописать сюда один класс и одну строку
+/// в [SyncCodec.collections], больше нигде.
+abstract class SyncCollection<T> {
+  /// Имя на сервере. Меняться не должно: по нему лежат уже загруженные
+  /// записи.
+  String get name;
+
+  /// Имя бокса Hive.
+  String get boxName;
+
+  String idOf(T value);
+
+  Map<String, dynamic> encode(T value);
+
+  /// null — запись не разобралась. Такую пропускаем, а не подставляем
+  /// значения по умолчанию: наполовину разобранная операция с нулевой суммой
+  /// хуже, чем её отсутствие.
+  T? decode(Map<String, dynamic> fields);
+
+  /// Участвует ли запись в обмене вообще.
+  ///
+  /// По умолчанию — да. Исключение одно, и оно объяснено в [ArticlesSync].
+  bool shouldSync(T value) => true;
+
+  /// Бокс со своим настоящим типом значений.
+  ///
+  /// `Hive.box<dynamic>` здесь не работает: Hive сверяет тип и на боксе,
+  /// открытом как `Box<TransactionModel>`, бросает «already open and of
+  /// type». В коде, обёрнутом в `try`, это выглядит как «синхронизация
+  /// прошла, но ничего не нашла» — то есть как молчаливая пустота.
+  Box<T>? box() {
+    if (!Hive.isBoxOpen(boxName)) return null;
+    try {
+      return Hive.box<T>(boxName);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Открывает бокс, если он ещё не открыт.
+  ///
+  /// Сервисы открывают свои боксы лениво — при первом обращении к модулю.
+  /// Журналу это не подходит: подписка, поставленная после первой правки,
+  /// эту правку уже не увидит, и запись выглядела бы как «не менялась
+  /// никогда».
+  Future<Box<T>> ensureBox() async => Hive.isBoxOpen(boxName)
+      ? Hive.box<T>(boxName)
+      : await Hive.openBox<T>(boxName);
+
+  /// Все записи бокса, кроме исключённых [shouldSync]. Ключ — наш
+  /// идентификатор.
+  Map<String, T> local() {
+    final b = box();
+    if (b == null) return const {};
+    final out = <String, T>{};
+    for (final v in b.values) {
+      if (!shouldSync(v)) continue;
+      out[idOf(v)] = v;
+    }
+    return out;
+  }
+
+  /// Кладёт запись, разобранную из полей. false — не разобралась.
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    if (b == null) return false;
+    final value = decode(fields);
+    if (value == null) return false;
+    await b.put(idOf(value), value);
+    return true;
+  }
+
+  Future<void> removeById(String id) async => box()?.delete(id);
+}
+
+// ------------------------------------------------------------------ помощники
+
+/// Разбор значения перечисления по имени.
+///
+/// Неизвестное имя — это запись от более новой версии приложения. Возвращаем
+/// [fallback], а не бросаем: одно незнакомое значение не должно ронять весь
+/// проход синхронизации.
+T _enumByName<T extends Enum>(List<T> values, Object? raw, T fallback) {
+  final name = raw is String ? raw : null;
+  if (name == null) return fallback;
+  for (final v in values) {
+    if (v.name == name) return v;
+  }
+  return fallback;
+}
+
+DateTime? _date(Object? raw) =>
+    raw is String ? DateTime.tryParse(raw) : null;
+
+double? _double(Object? raw) {
+  if (raw is num) return raw.toDouble();
+  if (raw is String) return double.tryParse(raw);
+  return null;
+}
+
+int _int(Object? raw, [int fallback = 0]) {
+  if (raw is num) return raw.toInt();
+  if (raw is String) return int.tryParse(raw) ?? fallback;
+  return fallback;
+}
+
+String _str(Object? raw, [String fallback = '']) =>
+    raw is String ? raw : fallback;
+
+String? _strOrNull(Object? raw) => raw is String ? raw : null;
+
+List<String> _strings(Object? raw) =>
+    raw is List ? [for (final e in raw) '$e'] : const [];
+
+// ---------------------------------------------------------------- коллекции
+
+class TransactionsSync extends SyncCollection<TransactionModel> {
+  @override
+  String get name => 'transactions';
+
+  @override
+  String get boxName => 'wesios_treasury';
+
+  @override
+  String idOf(TransactionModel value) => value.id;
+
+  @override
+  Map<String, dynamic> encode(TransactionModel value) => value.toJson()
+    ..['isAnomaly'] = value.isAnomaly
+    ..['zScore'] = value.zScore;
+
+  @override
+  TransactionModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final amount = _double(fields['amount']);
+    final date = _date(fields['date']);
+    if (id == null || amount == null || date == null) return null;
+    return TransactionModel(
+      id: id,
+      title: _str(fields['title']),
+      amount: amount,
+      type: _enumByName(
+          TransactionType.values, fields['type'], TransactionType.expense),
+      date: date,
+      category: _strOrNull(fields['category']),
+      description: _strOrNull(fields['description']),
+      isRecurring: fields['isRecurring'] == true,
+      recurringPeriod: fields['recurringPeriod'] == null
+          ? null
+          : _enumByName(RecurringPeriod.values, fields['recurringPeriod'],
+              RecurringPeriod.monthly),
+      isAnomaly: fields['isAnomaly'] == true,
+      zScore: _double(fields['zScore']),
+      accountId: _strOrNull(fields['accountId']),
+    );
+  }
+}
+
+class AccountsSync extends SyncCollection<AccountModel> {
+  @override
+  String get name => 'accounts';
+
+  @override
+  String get boxName => 'wesios_accounts';
+
+  @override
+  String idOf(AccountModel value) => value.id;
+
+  @override
+  Map<String, dynamic> encode(AccountModel value) => {
+        'id': value.id,
+        'name': value.name,
+        'kind': value.kind.name,
+        'openingBalance': value.openingBalance,
+        'colorValue': value.colorValue,
+        'createdAt': value.createdAt.toIso8601String(),
+        'archived': value.archived,
+        'note': value.note,
+      };
+
+  @override
+  AccountModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final createdAt = _date(fields['createdAt']);
+    if (id == null || createdAt == null) return null;
+    return AccountModel(
+      id: id,
+      name: _str(fields['name']),
+      kind: _enumByName(AccountKind.values, fields['kind'], AccountKind.cash),
+      openingBalance: _double(fields['openingBalance']) ?? 0,
+      colorValue: _int(fields['colorValue']),
+      createdAt: createdAt,
+      archived: fields['archived'] == true,
+      note: _strOrNull(fields['note']),
+    );
+  }
+}
+
+class TasksSync extends SyncCollection<TaskModel> {
+  @override
+  String get name => 'tasks';
+
+  @override
+  String get boxName => 'wesios_tasks';
+
+  @override
+  String idOf(TaskModel value) => value.id;
+
+  @override
+  Map<String, dynamic> encode(TaskModel value) => {
+        'id': value.id,
+        'title': value.title,
+        'description': value.description,
+        'status': value.status.name,
+        'priority': value.priority.name,
+        'createdAt': value.createdAt.toIso8601String(),
+        'dueDate': value.dueDate?.toIso8601String(),
+        'assignee': value.assignee,
+        'tags': value.tags,
+        'order': value.order,
+        'subtasks': [
+          for (final s in value.subtasks) {'title': s.title, 'done': s.done},
+        ],
+      };
+
+  @override
+  TaskModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final createdAt = _date(fields['createdAt']);
+    if (id == null || createdAt == null) return null;
+    final raw = fields['subtasks'];
+    return TaskModel(
+      id: id,
+      title: _str(fields['title']),
+      description: _strOrNull(fields['description']),
+      status: _enumByName(TaskStatus.values, fields['status'], TaskStatus.backlog),
+      priority:
+          _enumByName(TaskPriority.values, fields['priority'], TaskPriority.normal),
+      createdAt: createdAt,
+      dueDate: _date(fields['dueDate']),
+      assignee: _strOrNull(fields['assignee']),
+      subtasks: raw is! List
+          ? const []
+          : [
+              for (final s in raw)
+                if (s is Map)
+                  SubTask(title: _str(s['title']), done: s['done'] == true),
+            ],
+      tags: _strings(fields['tags']),
+      order: _int(fields['order']),
+    );
+  }
+}
+
+class ArticlesSync extends SyncCollection<ArticleModel> {
+  @override
+  String get name => 'articles';
+
+  @override
+  String get boxName => 'wesios_knowledge';
+
+  @override
+  String idOf(ArticleModel value) => value.id;
+
+  /// Встроенные статьи не синхронизируются.
+  ///
+  /// Они живут в коде и заново раскладываются при каждом запуске, поэтому на
+  /// сервере оказались бы просто копией того, что и так приезжает с
+  /// обновлением. Хуже того: устройство со старой сборкой отправляло бы
+  /// туда старый текст, а новое — новый, и справка начала бы спорить сама с
+  /// собой. Редактировать и удалять их и так нельзя.
+  @override
+  bool shouldSync(ArticleModel value) => !value.builtIn;
+
+  @override
+  Map<String, dynamic> encode(ArticleModel value) => {
+        'id': value.id,
+        'title': value.title,
+        'body': value.body,
+        'section': value.section.name,
+        'tags': value.tags,
+        'createdAt': value.createdAt.toIso8601String(),
+        'updatedAt': value.updatedAt.toIso8601String(),
+        'builtIn': value.builtIn,
+        'pinned': value.pinned,
+        'parentId': value.parentId,
+        'isFolder': value.isFolder,
+      };
+
+  @override
+  ArticleModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final createdAt = _date(fields['createdAt']);
+    if (id == null || createdAt == null) return null;
+    return ArticleModel(
+      id: id,
+      title: _str(fields['title']),
+      body: _str(fields['body']),
+      section: _enumByName(
+          ArticleSection.values, fields['section'], ArticleSection.guide),
+      tags: _strings(fields['tags']),
+      createdAt: createdAt,
+      updatedAt: _date(fields['updatedAt']) ?? createdAt,
+      builtIn: fields['builtIn'] == true,
+      pinned: fields['pinned'] == true,
+      parentId: _strOrNull(fields['parentId']),
+      isFolder: fields['isFolder'] == true,
+    );
+  }
+}
+
+/// Состав.
+///
+/// Хеш и соль пароля **уезжают вместе с человеком**. Это не оплошность:
+/// сотрудник, заведённый на компьютере, должен войти с телефона, а проверять
+/// пароль без хеша нечем. Хеш для того и нужен — по нему пароль не
+/// восстанавливается, а PBKDF2 со 60 000 итераций делает перебор дорогим.
+///
+/// [EmployeeModel.toPublicJson] здесь не годится по той же причине: он
+/// сделан для показа карточки, а не для переноса учётной записи.
+class EmployeesSync extends SyncCollection<EmployeeModel> {
+  @override
+  String get name => 'employees';
+
+  @override
+  String get boxName => 'wesios_team';
+
+  @override
+  String idOf(EmployeeModel value) => value.id;
+
+  @override
+  Map<String, dynamic> encode(EmployeeModel value) => {
+        'id': value.id,
+        'login': value.login,
+        'fullName': value.fullName,
+        'nickname': value.nickname,
+        'position': value.position,
+        'phone': value.phone,
+        'email': value.email,
+        'socials': value.socials,
+        'notes': value.notes,
+        'permissions': value.permissions.toJson(),
+        'passwordHash': value.passwordHash,
+        'passwordSalt': value.passwordSalt,
+        'avatarIndex': value.avatarIndex,
+        'createdAt': value.createdAt.toIso8601String(),
+        'isOwner': value.isOwner,
+        'demoStats': value.demoStats,
+      };
+
+  @override
+  EmployeeModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final createdAt = _date(fields['createdAt']);
+    if (id == null || createdAt == null) return null;
+    final socials = fields['socials'];
+    final stats = fields['demoStats'];
+    final perms = fields['permissions'];
+    return EmployeeModel(
+      id: id,
+      login: _str(fields['login']),
+      fullName: _str(fields['fullName']),
+      nickname: _str(fields['nickname']),
+      position: _str(fields['position']),
+      phone: _str(fields['phone']),
+      email: _str(fields['email']),
+      socials: socials is Map
+          ? {for (final e in socials.entries) '${e.key}': '${e.value}'}
+          : const {},
+      notes: _str(fields['notes']),
+      permissions: perms is Map
+          ? TeamPermissions.fromJson(Map<String, dynamic>.from(perms))
+          : const TeamPermissions(),
+      passwordHash: _str(fields['passwordHash']),
+      passwordSalt: _str(fields['passwordSalt']),
+      avatarIndex: _int(fields['avatarIndex']),
+      createdAt: createdAt,
+      isOwner: fields['isOwner'] == true,
+      demoStats: stats is Map
+          ? {
+              for (final e in stats.entries)
+                if (_double(e.value) != null) '${e.key}': _double(e.value)!,
+            }
+          : const {},
+    );
+  }
+}
+
+/// Что синхронизируется.
+class SyncCodec {
+  /// Порядок важен: счета приезжают раньше операций, чтобы операция не
+  /// провела в интерфейсе ни одного кадра, ссылаясь на ещё не приехавший
+  /// счёт.
+  static final List<SyncCollection<dynamic>> collections = [
+    AccountsSync(),
+    TransactionsSync(),
+    TasksSync(),
+    ArticlesSync(),
+    EmployeesSync(),
+  ];
+
+  static SyncCollection<dynamic>? byName(String name) {
+    for (final c in collections) {
+      if (c.name == name) return c;
+    }
+    return null;
+  }
+
+  /// Боксы, за которыми должен следить журнал.
+  static List<String> get boxNames =>
+      [for (final c in collections) c.boxName];
+}

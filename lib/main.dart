@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -21,6 +22,7 @@ import 'app.dart';
 import 'core/services/currency_service.dart';
 import 'core/services/firebase_rest_service.dart';
 import 'core/services/secrets_service.dart';
+import 'core/sync/sync_engine.dart';
 import 'features/team/services/team_service.dart';
 
 bool get isDesktop {
@@ -68,6 +70,12 @@ void main() async {
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
   await Hive.openBox<EmployeeModel>(TeamService.boxName);
+
+  // Журнал изменений подписывается на боксы до того, как человек что-то
+  // поменяет. Подписка, поставленная позже, пропустила бы правки, сделанные
+  // до неё, и они выглядели бы как «не менялось никогда» — то есть проиграли
+  // бы любому спору с сервером и тихо стёрлись бы чужой копией.
+  unawaited(SyncEngine.prepare());
 
   CurrencyService.loadPrivacyMode();
   ThemeNotifier.load();

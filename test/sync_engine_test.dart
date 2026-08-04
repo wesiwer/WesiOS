@@ -1,0 +1,539 @@
+import 'dart:io';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
+import 'package:wesios/core/sync/sync_codec.dart';
+import 'package:wesios/core/sync/sync_endpoint.dart';
+import 'package:wesios/core/sync/sync_merge.dart';
+import 'package:wesios/core/sync/sync_engine.dart';
+import 'package:wesios/core/sync/sync_journal.dart';
+import 'package:wesios/core/sync/sync_transport.dart';
+import 'package:wesios/features/knowledge/models/article_model.dart';
+import 'package:wesios/features/tasks/models/task_model.dart';
+import 'package:wesios/features/team/models/employee_model.dart';
+import 'package:wesios/features/team/models/team_permissions.dart';
+import 'package:wesios/features/treasury/models/account_model.dart';
+import 'package:wesios/features/treasury/models/transaction_model.dart';
+
+import 'fake_sync_transport.dart';
+
+/// Синхронизация — единственное место, где ошибка стоит не «неудобно», а
+/// «данные пропали». Поэтому проверяется весь путь целиком: правка в боксе →
+/// отметка в журнале → слияние → отправка, и обратно.
+void main() {
+  late Directory dir;
+
+  final base = DateTime.utc(2026, 8, 4, 12);
+
+  Box<TransactionModel> txBox() =>
+      Hive.box<TransactionModel>('wesios_treasury');
+  Box<TaskModel> taskBox() => Hive.box<TaskModel>('wesios_tasks');
+
+  TransactionModel tx(String id, {double amount = 100, String title = 'Хлеб'}) =>
+      TransactionModel(
+        id: id,
+        title: title,
+        amount: amount,
+        type: TransactionType.expense,
+        date: base,
+      );
+
+  setUpAll(() async {
+    dir = Directory.systemTemp.createTempSync('wesios_sync_test');
+    Hive.init(dir.path);
+    Hive.registerAdapter(TransactionModelAdapter());
+    Hive.registerAdapter(TransactionTypeAdapter());
+    Hive.registerAdapter(RecurringPeriodAdapter());
+    Hive.registerAdapter(TaskStatusAdapter());
+    Hive.registerAdapter(TaskPriorityAdapter());
+    Hive.registerAdapter(SubTaskAdapter());
+    Hive.registerAdapter(TaskModelAdapter());
+    Hive.registerAdapter(AccountKindAdapter());
+    Hive.registerAdapter(AccountModelAdapter());
+    Hive.registerAdapter(ArticleSectionAdapter());
+    Hive.registerAdapter(ArticleModelAdapter());
+    Hive.registerAdapter(TeamPermissionsAdapter());
+    Hive.registerAdapter(EmployeeModelAdapter());
+
+    await Hive.openBox('wesios_settings');
+    await Hive.openBox(SyncJournal.boxName);
+    await Hive.openBox<TransactionModel>('wesios_treasury');
+    await Hive.openBox<AccountModel>('wesios_accounts');
+    await Hive.openBox<TaskModel>('wesios_tasks');
+    await Hive.openBox<ArticleModel>('wesios_knowledge');
+    await Hive.openBox<EmployeeModel>('wesios_team');
+  });
+
+  tearDownAll(() async {
+    await SyncEngine.reset();
+    dir.deleteSync(recursive: true);
+  });
+
+  setUp(() async {
+    await SyncEngine.reset();
+    await Hive.box('wesios_settings').clear();
+    await Hive.box(SyncJournal.boxName).clear();
+    for (final c in SyncCodec.collections) {
+      await c.box()?.clear();
+    }
+    await SyncEngine.prepare(now: base);
+  });
+
+  // ------------------------------------------------------------------ журнал
+
+  group('журнал', () {
+    test('отметка кодируется и читается обратно без потерь', () {
+      final s = SyncStamp(DateTime.utc(2026, 8, 4, 12, 30, 15, 250));
+      final back = SyncStamp.decode(s.encode())!;
+      expect(back.updatedAt, s.updatedAt);
+      expect(back.deleted, isFalse);
+
+      final dead = SyncStamp(s.updatedAt, deleted: true);
+      expect(SyncStamp.decode(dead.encode())!.deleted, isTrue);
+    });
+
+    test('мусор вместо отметки не разбирается, а не притворяется нулём', () {
+      expect(SyncStamp.decode('вообще не отметка'), isNull);
+      expect(SyncStamp.decode(null), isNull);
+      expect(SyncStamp.decode(42), isNull);
+    });
+
+    test('правка в боксе сама попадает в журнал', () async {
+      await txBox().put('t1', tx('t1'));
+      await Future<void>.delayed(Duration.zero);
+
+      final stamp = SyncJournal.stampOf('transactions', 't1');
+      expect(stamp, isNotNull,
+          reason: 'подписка на бокс не сработала — записи не отметились');
+      expect(stamp!.deleted, isFalse);
+    });
+
+    test('удаление оставляет надгробие, а не пустоту', () async {
+      await txBox().put('t1', tx('t1'));
+      await Future<void>.delayed(Duration.zero);
+      await txBox().delete('t1');
+      await Future<void>.delayed(Duration.zero);
+
+      final stamp = SyncJournal.stampOf('transactions', 't1');
+      expect(stamp?.deleted, isTrue,
+          reason: 'без надгробия удаление воскреснет с другого устройства');
+    });
+
+    test('старые надгробия выбрасываются, живые отметки — нет', () async {
+      await SyncJournal.record(
+          'transactions', 'old', SyncStamp(base, deleted: true));
+      await SyncJournal.record(
+          'transactions', 'fresh', SyncStamp(base, deleted: true));
+      await SyncJournal.record('transactions', 'alive', SyncStamp(base));
+
+      await SyncJournal.pruneTombstones(base.add(const Duration(days: 200)),
+          keepFor: const Duration(days: 180));
+      expect(SyncJournal.stampOf('transactions', 'old'), isNull);
+      expect(SyncJournal.stampOf('transactions', 'alive'), isNotNull,
+          reason: 'живая отметка без времени = «не менялось никогда»');
+
+      await SyncJournal.record(
+          'transactions', 'fresh', SyncStamp(base, deleted: true));
+      await SyncJournal.pruneTombstones(base.add(const Duration(days: 10)));
+      expect(SyncJournal.stampOf('transactions', 'fresh'), isNotNull);
+    });
+
+    test('засев отмечает только записи без отметки', () async {
+      await SyncJournal.record('transactions', 'known', SyncStamp(base));
+      await SyncJournal.seed('transactions', ['known', 'unknown'],
+          base.add(const Duration(days: 1)));
+
+      expect(SyncJournal.stampOf('transactions', 'known')!.updatedAt, base);
+      expect(SyncJournal.stampOf('transactions', 'unknown')!.updatedAt,
+          base.add(const Duration(days: 1)));
+    });
+  });
+
+  // -------------------------------------------------------------------- кодек
+
+  group('кодек', () {
+    test('операция переживает круг через поля', () {
+      final c = TransactionsSync();
+      final original = TransactionModel(
+        id: 't9',
+        title: 'Аренда',
+        amount: 45000.5,
+        type: TransactionType.expense,
+        date: DateTime.utc(2026, 7, 1, 9, 30),
+        category: 'Офис',
+        description: 'за июль',
+        isRecurring: true,
+        recurringPeriod: RecurringPeriod.monthly,
+        isAnomaly: true,
+        zScore: 2.75,
+        accountId: 'acc1',
+      );
+      final back = c.decode(c.encode(original))!;
+
+      expect(back.id, original.id);
+      expect(back.title, original.title);
+      expect(back.amount, original.amount);
+      expect(back.type, original.type);
+      expect(back.date, original.date);
+      expect(back.category, original.category);
+      expect(back.description, original.description);
+      expect(back.isRecurring, isTrue);
+      expect(back.recurringPeriod, RecurringPeriod.monthly);
+      expect(back.isAnomaly, isTrue);
+      expect(back.zScore, 2.75);
+      expect(back.accountId, 'acc1');
+    });
+
+    test('задача переживает круг вместе с чек-листом', () {
+      final c = TasksSync();
+      final original = TaskModel(
+        id: 'k1',
+        title: 'Сдать отчёт',
+        description: 'до пятницы',
+        status: TaskStatus.review,
+        priority: TaskPriority.urgent,
+        createdAt: base,
+        dueDate: base.add(const Duration(days: 3)),
+        assignee: 'amber',
+        subtasks: const [
+          SubTask(title: 'собрать цифры', done: true),
+          SubTask(title: 'проверить'),
+        ],
+        tags: const ['работа', 'срочно'],
+        order: 7,
+      );
+      final back = c.decode(c.encode(original))!;
+
+      expect(back.status, TaskStatus.review);
+      expect(back.priority, TaskPriority.urgent);
+      expect(back.dueDate, original.dueDate);
+      expect(back.subtasks.length, 2);
+      expect(back.subtasks.first.done, isTrue);
+      expect(back.subtasks.last.done, isFalse);
+      expect(back.tags, ['работа', 'срочно']);
+      expect(back.order, 7);
+    });
+
+    test('человек переживает круг вместе с правами и хешем пароля', () {
+      final c = EmployeesSync();
+      final original = EmployeeModel(
+        id: 'e1',
+        login: 'amber',
+        fullName: 'Иван Петров',
+        position: 'Логист',
+        phone: '+79990000000',
+        socials: const {'Telegram': '@amber'},
+        notes: 'ставка обсуждается',
+        permissions: const TeamPermissions(
+          moduleList: ['tasks', 'treasury'],
+          knowledgeIdList: ['a1'],
+          canSeeNotes: true,
+        ),
+        passwordHash: 'hash',
+        passwordSalt: 'salt',
+        avatarIndex: 3,
+        createdAt: base,
+        demoStats: const {'balance': 1000.0},
+      );
+      final back = c.decode(c.encode(original))!;
+
+      expect(back.login, 'amber');
+      expect(back.socials['Telegram'], '@amber');
+      expect(back.notes, 'ставка обсуждается');
+      expect(back.permissions.modules, {'tasks', 'treasury'});
+      expect(back.permissions.knowledgeIds, {'a1'});
+      expect(back.permissions.canSeeNotes, isTrue);
+      // Хеш обязан уехать: без него человек не войдёт со второго устройства.
+      expect(back.passwordHash, 'hash');
+      expect(back.passwordSalt, 'salt');
+      expect(back.demoStats['balance'], 1000.0);
+    });
+
+    test('запись без обязательных полей не разбирается', () {
+      final c = TransactionsSync();
+      expect(c.decode({'title': 'без id'}), isNull);
+      expect(c.decode({'id': 't1', 'date': base.toIso8601String()}), isNull,
+          reason: 'операция без суммы — это не операция');
+      expect(c.decode({'id': 't1', 'amount': 10}), isNull,
+          reason: 'операция без даты не встанет ни в один отчёт');
+    });
+
+    test('незнакомое значение перечисления не роняет разбор', () {
+      final c = TasksSync();
+      final back = c.decode({
+        'id': 'k1',
+        'title': 'из будущей версии',
+        'createdAt': base.toIso8601String(),
+        'status': 'quantum',
+      });
+      expect(back, isNotNull);
+      expect(back!.status, TaskStatus.backlog);
+    });
+
+    test('встроенные статьи в обмен не идут', () {
+      final c = ArticlesSync();
+      final builtin = ArticleModel(
+        id: 'wesios_about',
+        title: 'О программе',
+        body: '[]',
+        section: ArticleSection.about,
+        createdAt: base,
+        updatedAt: base,
+        builtIn: true,
+      );
+      final mine = ArticleModel(
+        id: 'mine',
+        title: 'Моя',
+        body: '[]',
+        section: ArticleSection.guide,
+        createdAt: base,
+        updatedAt: base,
+      );
+      expect(c.shouldSync(builtin), isFalse);
+      expect(c.shouldSync(mine), isTrue);
+    });
+
+    test('имена коллекций уникальны и счета идут раньше операций', () {
+      final names = [for (final c in SyncCodec.collections) c.name];
+      expect(names.toSet().length, names.length);
+      expect(names.indexOf('accounts'), lessThan(names.indexOf('transactions')),
+          reason: 'операция не должна ни кадра ссылаться на несуществующий счёт');
+    });
+  });
+
+  // ------------------------------------------------------------------ движок
+
+  group('движок', () {
+    test('без настроенного сервера честно говорит об этом', () async {
+      final report = await SyncEngine.run(now: base);
+      expect(report.ok, isFalse);
+      expect(report.firstFailure?.code, 'NOT_CONFIGURED');
+    });
+
+    test('без входа не пытается ничего отправить', () async {
+      final t = FakeSyncTransport(signedIn: false);
+      final report = await SyncEngine.run(transport: t, now: base);
+      expect(report.firstFailure?.code, 'NOT_SIGNED_IN');
+      expect(t.calls, isEmpty, reason: 'ходить на сервер без входа незачем');
+    });
+
+    test('местная запись уезжает на сервер', () async {
+      await txBox().put('t1', tx('t1'));
+      await Future<void>.delayed(Duration.zero);
+
+      final t = FakeSyncTransport();
+      final report = await SyncEngine.run(transport: t, now: base);
+
+      expect(report.ok, isTrue, reason: report.describe());
+      expect(t.store['transactions']!.containsKey('t1'), isTrue);
+      expect(t.store['transactions']!['t1']!.fields['title'], 'Хлеб');
+      expect(report.uploaded, 1);
+    });
+
+    test('чужая запись приезжает и попадает в бокс', () async {
+      final t = FakeSyncTransport();
+      t.seed(
+        'transactions',
+        'remote1',
+        TransactionsSync().encode(tx('remote1', title: 'Молоко')),
+        base,
+      );
+
+      final report = await SyncEngine.run(transport: t, now: base);
+      expect(report.ok, isTrue, reason: report.describe());
+      expect(txBox().get('remote1')?.title, 'Молоко');
+      expect(report.applied, 1);
+    });
+
+    test('применённая чужая запись не уезжает обратно на следующем проходе',
+        () async {
+      // Ровно та качель, ради которой в журнале есть «ожидания»: без них
+      // приезд чужой правки отмечается как своя, и она бесконечно ходит
+      // между устройствами.
+      final t = FakeSyncTransport();
+      t.seed('transactions', 'remote1',
+          TransactionsSync().encode(tx('remote1')), base);
+
+      await SyncEngine.run(transport: t, now: base);
+      await Future<void>.delayed(Duration.zero);
+
+      t.calls.clear();
+      final second =
+          await SyncEngine.run(transport: t, now: base.add(const Duration(minutes: 1)));
+
+      expect(second.uploaded, 0,
+          reason: 'чужую правку отправили обратно — она будет ходить по кругу');
+      expect(second.applied, 0);
+      expect(t.calls.where((c) => c.startsWith('push:transactions')), isEmpty);
+    });
+
+    test('более свежая местная правка побеждает серверную', () async {
+      final t = FakeSyncTransport();
+      t.seed('transactions', 't1',
+          TransactionsSync().encode(tx('t1', title: 'Старое')), base);
+
+      await txBox().put('t1', tx('t1', title: 'Новое'));
+      await SyncJournal.record(
+          'transactions', 't1', SyncStamp(base.add(const Duration(hours: 1))));
+
+      await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 2)));
+
+      expect(txBox().get('t1')!.title, 'Новое');
+      expect(t.store['transactions']!['t1']!.fields['title'], 'Новое');
+    });
+
+    test('более свежая серверная правка побеждает местную', () async {
+      await txBox().put('t1', tx('t1', title: 'Местное'));
+      await Future<void>.delayed(Duration.zero);
+      await SyncJournal.record('transactions', 't1', SyncStamp(base));
+
+      final t = FakeSyncTransport();
+      t.seed('transactions', 't1',
+          TransactionsSync().encode(tx('t1', title: 'Серверное')),
+          base.add(const Duration(hours: 1)));
+
+      await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 2)));
+      expect(txBox().get('t1')!.title, 'Серверное');
+    });
+
+    test('удаление на другом устройстве стирает запись здесь', () async {
+      await txBox().put('t1', tx('t1'));
+      await Future<void>.delayed(Duration.zero);
+      await SyncJournal.record('transactions', 't1', SyncStamp(base));
+
+      final t = FakeSyncTransport();
+      t.seed('transactions', 't1', const {},
+          base.add(const Duration(hours: 1)), deleted: true);
+
+      await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 2)));
+
+      expect(txBox().get('t1'), isNull,
+          reason: 'удаление не доехало — запись живёт на одном устройстве');
+      expect(SyncJournal.stampOf('transactions', 't1')?.deleted, isTrue);
+    });
+
+    test('удаление здесь уезжает надгробием, а не исчезновением', () async {
+      final t = FakeSyncTransport();
+      await txBox().put('t1', tx('t1'));
+      await Future<void>.delayed(Duration.zero);
+      await SyncEngine.run(transport: t, now: base);
+
+      await txBox().delete('t1');
+      await Future<void>.delayed(Duration.zero);
+      await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 1)));
+
+      final onServer = t.store['transactions']!['t1']!;
+      expect(onServer.deleted, isTrue,
+          reason: 'без надгробия второе устройство выгрузит запись обратно');
+    });
+
+    test('обрыв связи не портит местные данные', () async {
+      await txBox().put('t1', tx('t1', title: 'Целое'));
+      await Future<void>.delayed(Duration.zero);
+
+      final t = FakeSyncTransport()..failWith = SyncFailure.offline;
+      final report = await SyncEngine.run(transport: t, now: base);
+
+      expect(report.ok, isFalse);
+      expect(report.firstFailure?.code, 'NETWORK');
+      expect(txBox().get('t1')?.title, 'Целое');
+      expect(SyncEndpoint.lastRun, isNull,
+          reason: 'неудачный проход не должен отмечаться как удачный');
+    });
+
+    test('отказ одной коллекции не выдаётся за общий успех', () async {
+      final t = _FailingOnceTransport('tasks');
+      await txBox().put('t1', tx('t1'));
+      await taskBox().put(
+          'k1', TaskModel(id: 'k1', title: 'Задача', createdAt: base));
+      await Future<void>.delayed(Duration.zero);
+
+      final report = await SyncEngine.run(transport: t, now: base);
+      expect(report.ok, isFalse);
+      expect(report.uploaded, greaterThan(0),
+          reason: 'остальные коллекции всё-таки прошли');
+      expect(SyncEndpoint.lastRun, isNull);
+    });
+
+    test('удачный проход отмечается временем', () async {
+      final t = FakeSyncTransport();
+      await SyncEngine.run(transport: t, now: base);
+      expect(SyncEndpoint.lastRun, base);
+    });
+
+    test('два устройства сходятся к одному состоянию', () async {
+      // Сервер общий, боксы — «второе устройство» изображается прямой
+      // подстановкой в store.
+      final t = FakeSyncTransport();
+      t.seed('transactions', 'other',
+          TransactionsSync().encode(tx('other', title: 'С телефона')), base);
+
+      await txBox().put('mine', tx('mine', title: 'С компьютера'));
+      await Future<void>.delayed(Duration.zero);
+
+      await SyncEngine.run(transport: t, now: base.add(const Duration(minutes: 5)));
+
+      expect(txBox().keys.toSet(), {'mine', 'other'});
+      expect(t.store['transactions']!.keys.toSet(), {'mine', 'other'});
+    });
+
+    test('запись из будущей версии не помечается как усвоенная', () async {
+      final t = FakeSyncTransport();
+      // Нет суммы и даты — разобрать нечем.
+      t.seed('transactions', 'future', const {'id': 'future'}, base);
+
+      final report = await SyncEngine.run(transport: t, now: base);
+      expect(report.ok, isTrue);
+      expect(txBox().get('future'), isNull);
+
+      final stamp = SyncJournal.stampOf('transactions', 'future');
+      expect(stamp!.updatedAt.millisecondsSinceEpoch, 0,
+          reason: 'иначе следующий проход решит, что запись уже усвоена');
+    });
+  });
+
+  // ------------------------------------------------------------------ адрес
+
+  group('адрес сервера', () {
+    test('голый IP берётся по http — сертификата у него ещё нет', () {
+      expect(SyncEndpoint.normalize('185.221.199.19:8090'),
+          'http://185.221.199.19:8090');
+      expect(SyncEndpoint.normalize('185.221.199.19'), 'http://185.221.199.19');
+    });
+
+    test('домен берётся по https — пароли открытым текстом недопустимы', () {
+      expect(SyncEndpoint.normalize('sync.wesios.ru'), 'https://sync.wesios.ru');
+      expect(SyncEndpoint.normalize('  sync.wesios.ru/  '),
+          'https://sync.wesios.ru');
+    });
+
+    test('явная схема уважается', () {
+      expect(SyncEndpoint.normalize('http://sync.wesios.ru'),
+          'http://sync.wesios.ru');
+      expect(SyncEndpoint.normalize('https://185.221.199.19'),
+          'https://185.221.199.19');
+    });
+
+    test('не адрес — это null, а не «как есть»', () {
+      expect(SyncEndpoint.normalize(''), isNull);
+      expect(SyncEndpoint.normalize('   '), isNull);
+      expect(SyncEndpoint.normalize('///'), isNull);
+      expect(SyncEndpoint.normalize('ftp://sync.wesios.ru'), isNull);
+    });
+  });
+}
+
+/// Транспорт, который отказывает на одной коллекции и работает на остальных.
+class _FailingOnceTransport extends FakeSyncTransport {
+  final String broken;
+
+  _FailingOnceTransport(this.broken);
+
+  @override
+  Future<SyncResult<int>> push(String collection, List<SyncRecord> records) {
+    if (collection == broken) {
+      return Future.value(const SyncResult.fail(SyncFailure.offline));
+    }
+    return super.push(collection, records);
+  }
+}
