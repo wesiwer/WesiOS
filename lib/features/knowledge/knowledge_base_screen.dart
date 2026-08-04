@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/localization/wesi_locale.dart';
+import '../team/services/team_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_wordmark.dart';
@@ -73,19 +74,36 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
         ArticleSection.personal => Icons.person_outline,
       };
 
+  /// Открыта ли статья тому, кто сейчас в приложении.
+  ///
+  /// Права на базу знаний настраиваются вплоть до отдельной статьи, и
+  /// применять их надо ЗДЕСЬ, а не только в редакторе прав. Настройка,
+  /// которая ни на что не влияет, хуже её отсутствия: владелец считает, что
+  /// закрыл раздел, а тот открыт.
+  ///
+  /// Папка видна, если открыта она сама или хоть что-то внутри неё: иначе
+  /// разрешённая статья оказалась бы недостижимой, потому что путь к ней
+  /// закрыт.
+  bool _isAllowed(ArticleModel a) {
+    final p = TeamService.currentPermissions;
+    if (p.knowledgeAll) return true;
+    if (p.allowsArticle(a.id)) return true;
+    if (!a.isFolder) return false;
+    return KnowledgeService.getSubtree(a.id).any((c) => p.allowsArticle(c.id));
+  }
+
   /// Статьи для текущего вида (поиск, папка, или корень).
   List<ArticleModel> _visibleArticles() {
+    final Iterable<ArticleModel> source;
     if (_query.isNotEmpty) {
-      return _articles.where((a) => a.matches(_query)).toList();
+      source = _articles.where((a) => a.matches(_query));
+    } else if (_currentFolderId != null) {
+      source = KnowledgeService.getChildren(_currentFolderId!)
+          .where((a) => _section == null || a.section == _section);
+    } else {
+      source = _roots.where((a) => _section == null || a.section == _section);
     }
-    if (_currentFolderId != null) {
-      return KnowledgeService.getChildren(_currentFolderId!)
-          .where((a) => _section == null || a.section == _section)
-          .toList();
-    }
-    return _roots
-        .where((a) => _section == null || a.section == _section)
-        .toList();
+    return source.where(_isAllowed).toList();
   }
 
   /// Хлебные крошки: путь от корня до текущей папки.

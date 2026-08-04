@@ -10,6 +10,7 @@ import 'employee_editor_screen.dart';
 import 'models/employee_model.dart';
 import 'services/contact_actions.dart';
 import 'services/team_service.dart';
+import 'team_stats_screen.dart';
 import 'widgets/employee_notes_sheet.dart';
 
 /// Контакты — список сотрудников и партнёров.
@@ -124,6 +125,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
                         ),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    tooltip: _ru ? 'Показатели' : 'Performance',
+                    icon: Icon(Icons.insights_outlined,
+                        color: AppTheme.textPrimary),
+                    onPressed: () => TeamStatsScreen.open(context),
                   ),
                 ],
               ),
