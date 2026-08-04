@@ -368,6 +368,10 @@ void main() {
     });
 
     test('более свежая местная правка побеждает серверную', () async {
+      // Устройство уже обменивалось: правило первого обмена («по спорным
+      // записям принимаем сервер») здесь не действует.
+      await SyncEndpoint.markRun(base.subtract(const Duration(days: 1)));
+
       final t = FakeSyncTransport();
       t.seed('transactions', 't1',
           TransactionsSync().encode(tx('t1', title: 'Старое')), base);
@@ -413,6 +417,7 @@ void main() {
     });
 
     test('удаление здесь уезжает надгробием, а не исчезновением', () async {
+      await SyncEndpoint.markRun(base.subtract(const Duration(days: 1)));
       final t = FakeSyncTransport();
       await txBox().put('t1', tx('t1'));
       await Future<void>.delayed(Duration.zero);
@@ -482,6 +487,83 @@ void main() {
       await SyncEngine.runOnLaunch();
       expect(SyncEngine.lastReport.value, isNull,
           reason: 'выключенный обмен всё равно состоялся');
+    });
+
+    test('свежая установка не затирает сервер своими заготовками', () async {
+      // Приложение само создаёт при первом запуске счёт с постоянным
+      // идентификатором `main` и владельца с идентификатором `owner`. На
+      // новом устройстве это пустые заготовки, и они СВЕЖЕЕ настоящих —
+      // созданы только что. Без правила первого обмена они уехали бы наверх
+      // поверх настоящих данных.
+      final t = FakeSyncTransport();
+      t.seed(
+        'accounts',
+        'main',
+        AccountsSync().encode(AccountModel(
+          id: 'main',
+          name: 'Настоящий счёт',
+          kind: AccountKind.main,
+          openingBalance: 250000,
+          createdAt: base.subtract(const Duration(days: 90)),
+        )),
+        base.subtract(const Duration(days: 90)),
+      );
+
+      await Hive.box<AccountModel>('wesios_accounts').put(
+        'main',
+        AccountModel(
+          id: 'main',
+          name: 'Основной счёт',
+          kind: AccountKind.main,
+          createdAt: base,
+        ),
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      expect(SyncEndpoint.lastRun, isNull, reason: 'обменов ещё не было');
+      final report = await SyncEngine.run(transport: t, now: base);
+      expect(report.ok, isTrue, reason: report.describe());
+
+      expect(t.store['accounts']!['main']!.fields['name'], 'Настоящий счёт',
+          reason: 'свежая установка затёрла настоящий счёт заготовкой');
+      expect(Hive.box<AccountModel>('wesios_accounts').get('main')!.name,
+          'Настоящий счёт');
+      expect(
+          Hive.box<AccountModel>('wesios_accounts').get('main')!.openingBalance,
+          250000);
+    });
+
+    test('в первый обмен уезжает то, чего на сервере нет', () async {
+      // Обратная сторона правила: устройство, где человек уже работал, при
+      // первом обмене ничего не теряет.
+      final t = FakeSyncTransport();
+      t.seed('transactions', 'their',
+          TransactionsSync().encode(tx('their', title: 'Чужая')), base);
+
+      await txBox().put('mine', tx('mine', title: 'Моя'));
+      await Future<void>.delayed(Duration.zero);
+
+      await SyncEngine.run(transport: t, now: base);
+      expect(t.store['transactions']!.keys.toSet(), {'mine', 'their'});
+      expect(txBox().keys.toSet(), {'mine', 'their'});
+    });
+
+    test('правило первого обмена действует ровно один раз', () async {
+      final t = FakeSyncTransport();
+      await SyncEngine.run(transport: t, now: base);
+      expect(SyncEndpoint.lastRun, isNotNull);
+
+      // Теперь местная правка обязана победить более старую серверную.
+      t.seed('transactions', 't1',
+          TransactionsSync().encode(tx('t1', title: 'Серверное')), base);
+      await txBox().put('t1', tx('t1', title: 'Местное'));
+      await SyncJournal.record(
+          'transactions', 't1', SyncStamp(base.add(const Duration(hours: 1))));
+
+      await SyncEngine.run(
+          transport: t, now: base.add(const Duration(hours: 2)));
+      expect(t.store['transactions']!['t1']!.fields['title'], 'Местное',
+          reason: 'правило первого обмена осталось включённым навсегда');
     });
 
     test('удачный проход отмечается временем', () async {
