@@ -5,6 +5,8 @@ import 'package:archive/archive_io.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
+
+import '../../../core/services/github_release_download.dart';
 import 'forecast_engine_kind.dart';
 
 /// Стадия установки движка — используется и баннером на экране прогноза,
@@ -107,12 +109,6 @@ class EngineInstallService {
     ForecastEngineKind.prophet: 1700 * 1024 * 1024,
   };
 
-  static String _releaseFileUrl(String asset) =>
-      'https://github.com/wesiwer/WesiOS/releases/download/$_releaseTag/$asset';
-
-  static String _downloadUrl(ForecastEngineKind kind) =>
-      _releaseFileUrl(_assetName[kind]!);
-
   /// Общее наблюдаемое состояние — один и тот же экземпляр для баннера,
   /// плавающего оверлея и экрана настроек, чтобы разные виджеты не
   /// запускали параллельные закачки одного и того же движка.
@@ -170,12 +166,14 @@ class EngineInstallService {
 
     final client = HttpClient();
     try {
-      final request =
-          await client.getUrl(Uri.parse(_releaseFileUrl(_manifestAsset)));
-      final response = await request.close().timeout(
-            const Duration(seconds: 15),
-          );
-      if (response.statusCode != 200) return _manifest;
+      final asset = await GitHubReleaseDownload.open(
+        client,
+        tag: _releaseTag,
+        asset: _manifestAsset,
+        timeout: const Duration(seconds: 15),
+      );
+      if (!asset.ok) return _manifest;
+      final response = asset.response!;
 
       final body = await response.transform(utf8.decoder).join();
       final decoded = jsonDecode(body) as Map<String, dynamic>;
@@ -252,23 +250,37 @@ class EngineInstallService {
     // текущую сборку всё равно можно, просто без записи версии.
     final manifest = await fetchManifest();
     final release = manifest?[kind];
-    final url = release != null
-        ? _releaseFileUrl(release.assetName)
-        : _downloadUrl(kind);
+    final assetName = release?.assetName ?? _assetName[kind]!;
 
     final client = HttpClient();
     File? tempZip;
     try {
-      final request = await client.getUrl(Uri.parse(url));
-      final response = await request.close();
-      if (response.statusCode != 200) {
+      final asset = await GitHubReleaseDownload.open(
+        client,
+        tag: _releaseTag,
+        asset: assetName,
+        // Движок весит от 350 МБ до 1,7 ГБ: тридцати секунд по умолчанию
+        // хватает только на установление связи, не на саму загрузку.
+        timeout: const Duration(minutes: 5),
+      );
+      if (!asset.ok) {
         _update(
           kind,
           EngineInstallProgress(
-              stage: InstallStage.failed, error: 'HTTP ${response.statusCode}'),
+            stage: InstallStage.failed,
+            // Отдельный код, а не «HTTP 404»: закрытый репозиторий без входа
+            // в GitHub — единственная причина отказа, которую человек может
+            // устранить сам, и она не должна выглядеть как поломка сервера.
+            error: switch (asset.status) {
+              ReleaseFetch.needsSignIn => 'github_sign_in',
+              ReleaseFetch.notFound => 'not_published',
+              _ => 'network',
+            },
+          ),
         );
         return;
       }
+      final response = asset.response!;
 
       final total = response.contentLength > 0 ? response.contentLength : null;
       final tempDir = await getTemporaryDirectory();

@@ -1,5 +1,21 @@
 name: Build WesiOS
 
+# ГДЕ СОБИРАЕТСЯ
+#
+# По умолчанию — на машинах GitHub. Пока репозиторий открыт, они бесплатны и
+# безлимитны. У закрытого репозитория счётчик включается, и Windows считается
+# по двойному тарифу: сборка Windows идёт 6 минут, а списывается 12.
+#
+# Чтобы перенести сборку на свой компьютер, достаточно завести переменную
+# репозитория (Settings → Secrets and variables → Actions → Variables):
+#
+#   RUNNER_WINDOWS = wesios-laptop
+#   RUNNER_LINUX   = wesios-laptop   (необязательно, см. tools/RUNNER.md)
+#
+# Переменная не задана — работает как раньше. Ноутбук выключен — достаточно
+# стереть переменную, и сборка снова уйдёт на GitHub. Настройка целиком в
+# tools/RUNNER.md, скрипт установки — tools/setup-runner.ps1.
+
 on:
   push:
     branches: [ main, master ]
@@ -9,7 +25,7 @@ on:
 
 jobs:
   build-windows:
-    runs-on: windows-2022
+    runs-on: ${{ vars.RUNNER_WINDOWS || 'windows-2022' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -50,9 +66,19 @@ jobs:
         with:
           name: WesiOS-Windows
           path: build/windows/x64/runner/Release/
+          # Срок хранения указан явно, а не оставлен по умолчанию (90 дней).
+          # У закрытого репозитория хранилище Actions — 500 МБ, а один прогон
+          # кладёт туда около 39 МБ. За девяносто дней это переполнилось бы
+          # после дюжины сборок, и следующая упала бы уже на выгрузке — то
+          # есть после того, как всё собралось.
+          #
+          # Три дня хватает, чтобы забрать сборку руками. Настоящий канал
+          # раздачи — GitHub Release (release-app.yml), его ассеты в этот
+          # лимит не входят.
+          retention-days: 1
 
   build-android:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -75,7 +101,12 @@ jobs:
       # затирал его через `>`, и в каждом APK оказывался проект wesios-dummy:
       # Firebase не работал ни в одной выпущенной сборке. Заглушка нужна
       # только там, где файла нет вовсе, иначе Gradle не соберёт проект.
+      #
+      # `shell: bash` указан явно: без него на Windows-раннере шаг ушёл бы в
+      # PowerShell, где `[ -f ... ]` — не условие, а ошибка. Этот job должен
+      # уметь работать и на ноутбуке.
       - name: Ensure google-services.json exists
+        shell: bash
         run: |
           if [ -f android/app/google-services.json ]; then
             echo "Использую настоящий google-services.json из репозитория"
@@ -118,3 +149,4 @@ jobs:
         with:
           name: WesiOS-Android
           path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 1

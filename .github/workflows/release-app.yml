@@ -38,7 +38,7 @@ env:
 
 jobs:
   version:
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     outputs:
       version: ${{ steps.v.outputs.version }}
       build: ${{ steps.v.outputs.build }}
@@ -58,7 +58,7 @@ jobs:
 
   build-windows:
     needs: version
-    runs-on: windows-2022
+    runs-on: ${{ vars.RUNNER_WINDOWS || 'windows-2022' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -102,7 +102,7 @@ jobs:
         with:
           name: WesiOS-Windows
           path: wesios-windows-x64.zip
-          retention-days: 30
+          retention-days: 7
 
       - name: Publish to GitHub Release
         shell: pwsh
@@ -129,7 +129,7 @@ jobs:
 
   build-android:
     needs: version
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -267,7 +267,7 @@ jobs:
         with:
           name: WesiOS-Android
           path: wesios-android.apk
-          retention-days: 30
+          retention-days: 7
 
       - name: Publish to GitHub Release
         env:
@@ -289,7 +289,7 @@ jobs:
 
   publish-manifest:
     needs: [version, build-windows, build-android]
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     # Манифест публикуется ПОСЛЕДНИМ и только если обе сборки прошли: иначе
     # приложение предложило бы обновиться на версию, ассета которой нет.
     steps:

@@ -103,9 +103,16 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
           ? '${'engine_update_available'.w}: ${release!.version}$versionPart'
           : '${'engine_installed'.w}$versionPart · ~$sizeMb $unit';
     } else if (failed) {
-      subtitle = p?.error == 'windows_only'
-          ? 'engine_windows_only'.w
-          : 'engine_not_installed'.w;
+      // Раньше любая неудача, кроме «не Windows», превращалась в «не
+      // установлен» — то есть человек нажимал «Скачать», ничего не
+      // происходило, и надпись возвращалась к прежней. Причина обязана быть
+      // видна: половина причин устраняется в одно действие.
+      subtitle = switch (p?.error) {
+        'windows_only' => 'engine_windows_only'.w,
+        'github_sign_in' => 'engine_needs_github'.w,
+        'not_published' => 'engine_not_published'.w,
+        _ => 'engine_download_failed'.w,
+      };
     } else {
       subtitle = '${'engine_not_installed'.w} · ~$sizeMb $unit';
     }

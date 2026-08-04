@@ -21,6 +21,8 @@ import 'core/theme/app_theme.dart';
 import 'app.dart';
 import 'core/services/currency_service.dart';
 import 'core/services/firebase_rest_service.dart';
+import 'core/services/github_auth_service.dart';
+import 'core/services/github_release_download.dart';
 import 'core/services/secrets_service.dart';
 import 'core/sync/sync_engine.dart';
 import 'features/team/services/team_service.dart';
@@ -86,6 +88,12 @@ void main() async {
   // вводит ничего — в том и смысл.
   SecretsService.loadCached();
   SecretsService.sync();
+  // Вход в GitHub меняет то, что вообще доступно скачать: до входа закрытый
+  // репозиторий отвечает 404 и приложение это запоминает, чтобы не долбиться
+  // впустую. После входа накопленное надо забыть — иначе оно продолжит
+  // считать, что скачать нечего.
+  GitHubAuthService.revision.addListener(GitHubReleaseDownload.forget);
+
   // При входе и выходе набор ключей меняется вместе с аккаунтом.
   FirebaseRestService.revision.addListener(() {
     if (FirebaseRestService.isSignedIn) {

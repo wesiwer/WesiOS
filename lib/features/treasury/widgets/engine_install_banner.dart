@@ -183,7 +183,7 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
       );
     }
 
-    return GestureDetector(
+    final button = GestureDetector(
       onTap: () => EngineInstallService.install(kind),
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -217,6 +217,31 @@ class _EngineInstallBannerState extends State<EngineInstallBanner> {
           ],
         ),
       ),
+    );
+
+    if (!failed) return button;
+
+    // Одна кнопка «Повторить» — плохой ответ на неудачу: если дело во входе
+    // в GitHub, повтор будет отказывать ровно так же и сколько угодно раз.
+    // Причина должна быть написана рядом.
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        button,
+        Padding(
+          padding: const EdgeInsets.only(top: 5, left: 2),
+          child: Text(
+            switch (p?.error) {
+              'windows_only' => 'engine_windows_only'.w,
+              'github_sign_in' => 'engine_needs_github'.w,
+              'not_published' => 'engine_not_published'.w,
+              _ => 'engine_download_failed'.w,
+            },
+            style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+          ),
+        ),
+      ],
     );
   }
 }

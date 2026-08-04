@@ -38,7 +38,7 @@ env:
 
 jobs:
   build-sarimax:
-    runs-on: windows-2022
+    runs-on: ${{ vars.RUNNER_WINDOWS || 'windows-2022' }}
     outputs:
       version: ${{ steps.meta.outputs.version }}
       size: ${{ steps.meta.outputs.size }}
@@ -125,7 +125,7 @@ jobs:
           gh release upload "$RELEASE_TAG" wesios-engine-sarimax-win64.zip --repo "$GITHUB_REPOSITORY" --clobber
 
   build-prophet:
-    runs-on: windows-2022
+    runs-on: ${{ vars.RUNNER_WINDOWS || 'windows-2022' }}
     outputs:
       version: ${{ steps.meta.outputs.version }}
       size: ${{ steps.meta.outputs.size }}
@@ -226,7 +226,7 @@ jobs:
     # исполнитель и только после того, как ОБА бандла успешно собрались и
     # прошли smoke-тест, иначе манифест пообещает версию, которой нет.
     needs: [build-sarimax, build-prophet]
-    runs-on: ubuntu-latest
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     steps:
       - name: Build manifest.json
         shell: bash
