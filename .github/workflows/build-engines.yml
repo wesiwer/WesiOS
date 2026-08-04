@@ -16,12 +16,20 @@ name: Build Forecast Engine Bundles
 # сломанного апстрима — smoke-тест ниже: если свежесобранный движок не
 # выдаёт корректный прогноз, публикация не происходит, и у пользователей
 # остаётся предыдущая рабочая сборка.
+# Ежемесячное расписание ВЫКЛЮЧЕНО.
+#
+# Prophet компилирует CmdStan больше десяти минут, и обе задачи идут на
+# Windows по двойному тарифу — около 80 минут квоты за раз, без чьей-либо
+# просьбы. Пока месячная квота на счету, платить ей за пересборку движков,
+# которую никто не ждал, нельзя.
+#
+# Вернуть — раскомментировать расписание ниже. Смысл ежемесячной пересборки
+# (подтягивать свежие statsmodels/prophet) при этом никуда не делся, просто
+# теперь это решение принимается вручную.
 on:
   workflow_dispatch:
-  schedule:
-    # 4-е число каждого месяца, 03:00 UTC — не 1-е число и не полночь,
-    # когда GitHub Actions перегружен задачами по расписанию.
-    - cron: '0 3 4 * *'
+  # schedule:
+  #   - cron: '0 3 4 * *'
 
 # Бандлы публикуются как ассеты GitHub Release, а GITHUB_TOKEN по умолчанию
 # в этом репозитории только на чтение — без явного contents: write шаг
@@ -39,6 +47,7 @@ env:
 jobs:
   build-sarimax:
     runs-on: ${{ vars.RUNNER_WINDOWS || 'windows-2022' }}
+    timeout-minutes: 60
     outputs:
       version: ${{ steps.meta.outputs.version }}
       size: ${{ steps.meta.outputs.size }}
@@ -126,6 +135,7 @@ jobs:
 
   build-prophet:
     runs-on: ${{ vars.RUNNER_WINDOWS || 'windows-2022' }}
+    timeout-minutes: 60
     outputs:
       version: ${{ steps.meta.outputs.version }}
       size: ${{ steps.meta.outputs.size }}
@@ -227,6 +237,7 @@ jobs:
     # прошли smoke-тест, иначе манифест пообещает версию, которой нет.
     needs: [build-sarimax, build-prophet]
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 20
     steps:
       - name: Build manifest.json
         shell: bash

@@ -9,6 +9,7 @@ permissions:
 jobs:
   fix:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
 

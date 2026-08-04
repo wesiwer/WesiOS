@@ -16,16 +16,67 @@ name: Build WesiOS
 # стереть переменную, и сборка снова уйдёт на GitHub. Настройка целиком в
 # tools/RUNNER.md, скрипт установки — tools/setup-runner.ps1.
 
+# СБОРКА ТОЛЬКО ПО КОМАНДЕ
+#
+# Здесь был `push` — и каждая отправка в main запускала полную сборку на 20
+# минут квоты. За время работы репозиторий набрал 624 прогона; на закрытом
+# репозитории это одиннадцать тысяч минут при лимите 2000 в месяц.
+#
+# Договорённость «собираем только с разрешения» существовала и раньше, но
+# держалась на том, что о ней помнят. Правило, которое надо помнить, — не
+# правило. Теперь сборку нельзя запустить иначе как руками:
+# Actions → Build WesiOS → Run workflow.
+#
+# Вернуть автоматическую сборку — дописать сюда `push:`. Одна строка, но
+# перед этим стоит посмотреть на счётчик минут.
 on:
-  push:
-    branches: [ main, master ]
-  pull_request:
-    branches: [ main, master ]
   workflow_dispatch:
 
+# Новый запуск отменяет предыдущий на той же ветке.
+#
+# Без этого три отправки подряд дают три полные сборки, из которых нужна
+# последняя: две первые досчитываются до конца и списывают по 20 минут за
+# результат, который никто не увидит.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
+  # Быстрая проверка перед дорогими сборками.
+  #
+  # Идёт на Linux (одинарный тариф) три минуты. Если код не компилируется или
+  # падают тесты, Windows и Android даже не начнутся — сломанный коммит
+  # обойдётся в 3 минуты вместо 20. В этом репозитории CI однажды был красным
+  # тридцать прогонов подряд; тридцать раз по семнадцать сэкономленных минут
+  # — это пятьсот минут, четверть месячной квоты.
+  check:
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
   build-windows:
+    needs: check
     runs-on: ${{ vars.RUNNER_WINDOWS || 'windows-2022' }}
+    # Предел по умолчанию — 360 минут. Зависшая задача на Windows съела бы
+    # 720 минут квоты (двойной тариф) — треть месяца за один раз. Сборка
+    # идёт шесть минут, получаса хватает с четырёхкратным запасом.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
 
@@ -78,7 +129,9 @@ jobs:
           retention-days: 1
 
   build-android:
+    needs: check
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
