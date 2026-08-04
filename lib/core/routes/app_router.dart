@@ -22,6 +22,8 @@ import '../../features/audio/audio_vault_screen.dart';
 import '../../features/crm/crm_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/founder/founder_story_screen.dart';
+import '../../features/team/contacts_screen.dart';
+import '../../features/chats/chats_screen.dart';
 
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
@@ -82,6 +84,10 @@ class AppRouter {
         return _slideUpRoute(CrmScreen());
       case '/calendar':
         return _slideUpRoute(CalendarScreen());
+      case '/contacts':
+        return _slideUpRoute(const ContactsScreen());
+      case '/chats':
+        return _slideUpRoute(const ChatsScreen());
       case '/founder':
         return _fadeRoute(FounderStoryScreen());
       default:

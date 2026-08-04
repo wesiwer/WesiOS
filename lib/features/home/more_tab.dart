@@ -4,6 +4,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../core/widgets/module_scaffold.dart';
+import '../team/models/team_permissions.dart';
+import '../team/services/team_service.dart';
 
 /// Вкладка «Ещё» — витрина всех модулей WesiOS.
 ///
@@ -24,6 +26,7 @@ class MoreTab extends StatelessWidget {
         items: [
           _ModuleItem(
             route: '/tasks',
+            module: TeamModules.tasks,
             icon: Icons.task_alt,
             title: ru ? 'Задачи' : 'Tasks',
             subtitle: ru ? 'Канбан, сроки, исполнители' : 'Kanban, deadlines, assignees',
@@ -31,6 +34,7 @@ class MoreTab extends StatelessWidget {
           ),
           _ModuleItem(
             route: '/roadmap',
+            module: TeamModules.roadmap,
             icon: Icons.timeline,
             title: 'Roadmap',
             subtitle: ru ? 'Проекты во времени, диаграмма Ганта' : 'Projects over time, Gantt chart',
@@ -38,6 +42,7 @@ class MoreTab extends StatelessWidget {
           ),
           _ModuleItem(
             route: '/calendar',
+            module: TeamModules.calendar,
             icon: Icons.calendar_month,
             title: ru ? 'Календарь' : 'Calendar',
             subtitle: ru ? 'Сетка месяца работает, события — впереди' : 'Month grid works, events are next',
@@ -50,6 +55,7 @@ class MoreTab extends StatelessWidget {
         items: [
           _ModuleItem(
             route: '/knowledge',
+            module: TeamModules.knowledge,
             icon: Icons.menu_book,
             title: ru ? 'База знаний' : 'Knowledge Base',
             subtitle: ru
@@ -58,7 +64,28 @@ class MoreTab extends StatelessWidget {
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
+            route: '/contacts',
+            module: TeamModules.contacts,
+            icon: Icons.contacts,
+            title: ru ? 'Контакты' : 'Contacts',
+            subtitle: ru
+                ? 'Сотрудники, связь, доступы'
+                : 'Employees, contacts, access',
+            stage: ModuleStage.ready,
+          ),
+          _ModuleItem(
+            route: '/chats',
+            module: TeamModules.chats,
+            icon: Icons.forum_outlined,
+            title: ru ? 'Чаты' : 'Chats',
+            subtitle: ru
+                ? 'Личные и групповые — каркас, появятся с сервером'
+                : 'Direct and group — frame, arriving with the server',
+            stage: ModuleStage.planned,
+          ),
+          _ModuleItem(
             route: '/crm',
+            module: TeamModules.crm,
             icon: Icons.people_alt,
             title: 'CRM',
             subtitle: ru ? 'Клиенты, сделки, история' : 'Clients, deals, history',
@@ -66,6 +93,7 @@ class MoreTab extends StatelessWidget {
           ),
           _ModuleItem(
             route: '/ai',
+            module: TeamModules.ai,
             icon: Icons.auto_awesome,
             title: 'Wesi AI',
             subtitle: ru ? 'Ассистент по вашим данным' : 'Assistant over your own data',
@@ -78,6 +106,7 @@ class MoreTab extends StatelessWidget {
         items: [
           _ModuleItem(
             route: '/treasury',
+            module: TeamModules.treasury,
             icon: Icons.account_balance_wallet,
             title: 'Wesi Treasury',
             subtitle: ru ? 'Доходы, траты, операции' : 'Income, expenses, operations',
@@ -85,6 +114,7 @@ class MoreTab extends StatelessWidget {
           ),
           _ModuleItem(
             route: '/treasury/forecast',
+            module: TeamModules.forecast,
             icon: Icons.query_stats,
             title: ru ? 'Прогноз' : 'Forecast',
             subtitle: ru
@@ -94,6 +124,7 @@ class MoreTab extends StatelessWidget {
           ),
           _ModuleItem(
             route: '/treasury/sandbox',
+            module: TeamModules.sandbox,
             icon: Icons.science,
             title: ru ? 'Песочница' : 'Sandbox',
             subtitle: ru ? 'Изолированные сценарии' : 'Isolated scenarios',
@@ -101,6 +132,7 @@ class MoreTab extends StatelessWidget {
           ),
           _ModuleItem(
             route: '/analytics',
+            module: TeamModules.analytics,
             icon: Icons.analytics,
             title: ru ? 'Аналитика' : 'Analytics',
             subtitle: ru
@@ -115,6 +147,7 @@ class MoreTab extends StatelessWidget {
         items: [
           _ModuleItem(
             route: '/audio',
+            module: TeamModules.audio,
             icon: Icons.graphic_eq,
             title: 'Audio Vault',
             subtitle: ru ? 'Биты, демо, лицензии' : 'Beats, demos, licences',
@@ -127,6 +160,7 @@ class MoreTab extends StatelessWidget {
         items: [
           _ModuleItem(
             route: '/shield',
+            module: TeamModules.shield,
             icon: Icons.shield_outlined,
             title: 'Wesi Shield',
             subtitle: ru
@@ -136,6 +170,7 @@ class MoreTab extends StatelessWidget {
           ),
           _ModuleItem(
             route: '/keys',
+            module: TeamModules.keys,
             icon: Icons.vpn_key_outlined,
             title: ru ? 'Ключи' : 'Keys',
             subtitle: ru
@@ -182,7 +217,14 @@ class MoreTab extends StatelessWidget {
             style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
           ),
           SizedBox(height: 24),
-          for (final section in sections) ...[
+          for (final section in sections.map((s) => _Section(
+                title: s.title,
+                items: s.items
+                    .where((i) =>
+                        i.module == null ||
+                        TeamService.currentPermissions.allows(i.module!))
+                    .toList(),
+              )).where((s) => s.items.isNotEmpty)) ...[
             Padding(
               padding: EdgeInsets.only(left: 4, bottom: 10),
               child: Text(
@@ -299,11 +341,15 @@ class _ModuleItem {
   final String subtitle;
   final ModuleStage stage;
 
+  /// Ключ права из [TeamModules]. null — раздел открыт всегда.
+  final String? module;
+
   const _ModuleItem({
     required this.route,
     required this.icon,
     required this.title,
     required this.subtitle,
     required this.stage,
+    this.module,
   });
 }

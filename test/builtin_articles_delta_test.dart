@@ -111,5 +111,5 @@ void main() {
 
 /// Отдельно, чтобы тест не зависел от пути импорта констант приложения.
 class AppVersionProbe {
-  static const String display = 'v0.12.0 α';
+  static const String display = 'v0.13.0 α';
 }

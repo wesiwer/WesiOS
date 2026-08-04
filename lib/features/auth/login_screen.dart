@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/firebase_rest_service.dart';
+import '../team/services/team_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_wordmark.dart';
@@ -60,11 +61,12 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _signIn() async {
-    final email = _email.text.trim();
+    final entered = _email.text.trim();
     final password = _password.text;
-    if (email.isEmpty || password.isEmpty) {
-      setState(() => _error =
-          _ru ? 'Введите почту и пароль' : 'Enter email and password');
+    if (entered.isEmpty || password.isEmpty) {
+      setState(() => _error = _ru
+          ? 'Введите логин или почту и пароль'
+          : 'Enter login or email and password');
       return;
     }
 
@@ -72,7 +74,27 @@ class _LoginScreenState extends State<LoginScreen> {
       _busy = true;
       _error = null;
     });
-    final failure = await FirebaseRestService.signIn(email, password);
+
+    // Сперва — сотрудник, заведённый владельцем. Его логин короткий и почты
+    // может не иметь вовсе, поэтому проверять его через Firebase бессмысленно.
+    final employee = TeamService.verify(entered, password);
+    if (employee != null) {
+      await TeamService.signIn(employee);
+      if (!mounted) return;
+      _goHome();
+      return;
+    }
+
+    // Не сотрудник — значит вход владельца по почте в Firebase.
+    if (!entered.contains('@')) {
+      setState(() {
+        _busy = false;
+        _error = _ru ? 'Неверный логин или пароль' : 'Wrong login or password';
+      });
+      return;
+    }
+
+    final failure = await FirebaseRestService.signIn(entered, password);
     if (!mounted) return;
 
     if (failure != null) {
@@ -122,7 +144,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     onSubmitted: (_) => _passwordFocus.requestFocus(),
                     style: TextStyle(color: AppTheme.textPrimary),
                     decoration: InputDecoration(
-                      labelText: _ru ? 'Почта' : 'Email',
+                      labelText: _ru ? 'Логин или почта' : 'Login or email',
                       prefixIcon: Icon(Icons.alternate_email,
                           size: 18, color: AppTheme.textMuted),
                     ),

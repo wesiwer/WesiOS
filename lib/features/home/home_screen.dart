@@ -19,6 +19,8 @@ import 'widgets/home_pulse.dart';
 import '../../core/widgets/app_update_card.dart';
 import '../analytics/analytics_screen.dart';
 import 'more_tab.dart';
+import '../team/models/team_permissions.dart';
+import '../team/services/team_service.dart';
 import '../../core/widgets/wesi_clock.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/wesi_quote_card.dart';
@@ -70,17 +72,45 @@ class _HomeScreenState extends State<HomeScreen>
     _fadeCtrl.forward(from: 0);
   }
 
+  /// Вкладки, доступные тому, кто сейчас в приложении.
+  ///
+  /// Закрытая вкладка не показывается серой и не спрашивает пароль — её нет
+  /// вовсе. Человек не должен догадываться о существовании разделов, куда
+  /// его не пускали: замок на видном месте это приглашение постучаться.
+  ///
+  /// «Главная» и «Ещё» есть всегда: без первой некуда попасть после входа,
+  /// без второй не добраться до настроек и профиля.
+  List<_TabSpec> get _tabs {
+    final p = TeamService.currentPermissions;
+    return [
+      const _TabSpec(id: 'home', icon: Icons.dashboard_outlined, labelKey: 'dashboard'),
+      if (p.allows(TeamModules.tasks))
+        const _TabSpec(id: 'tasks', icon: Icons.task_alt, labelKey: 'tasks'),
+      if (p.allows(TeamModules.treasury))
+        const _TabSpec(
+            id: 'treasury',
+            icon: Icons.account_balance_wallet,
+            labelKey: 'finances'),
+      if (p.allows(TeamModules.analytics))
+        const _TabSpec(
+            id: 'analytics', icon: Icons.analytics, labelKey: 'analytics'),
+      const _TabSpec(id: 'more', icon: Icons.more_horiz, labelKey: 'more'),
+    ];
+  }
+
   Widget _tab(int i, String lang) {
     if (!_built.contains(i)) return const SizedBox.shrink();
-    final key = ValueKey('tab_${i}_$lang');
-    switch (i) {
-      case 0:
+    final tabs = _tabs;
+    if (i >= tabs.length) return const SizedBox.shrink();
+    final key = ValueKey('tab_${tabs[i].id}_$lang');
+    switch (tabs[i].id) {
+      case 'home':
         return _DashboardTab(key: key);
-      case 1:
+      case 'tasks':
         return TasksScreen(key: key);
-      case 2:
+      case 'treasury':
         return TreasuryScreen(key: key);
-      case 3:
+      case 'analytics':
         return AnalyticsScreen(key: key);
       default:
         return MoreTab(key: key);
@@ -110,8 +140,8 @@ class _HomeScreenState extends State<HomeScreen>
       body: FadeTransition(
         opacity: _fade,
         child: IndexedStack(
-          index: _selectedIndex,
-          children: List.generate(5, (i) => _tab(i, lang)),
+          index: _selectedIndex.clamp(0, _tabs.length - 1),
+          children: List.generate(_tabs.length, (i) => _tab(i, lang)),
         ),
       ),
       bottomNavigationBar: AnimatedContainer(
@@ -124,7 +154,7 @@ class _HomeScreenState extends State<HomeScreen>
           ),
         ),
         child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
+          currentIndex: _selectedIndex.clamp(0, _tabs.length - 1),
           onTap: _onTabTap,
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -135,26 +165,11 @@ class _HomeScreenState extends State<HomeScreen>
           unselectedFontSize: 11,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
           items: [
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.dashboard_outlined),
-              label: WesiLocale.get('dashboard'),
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.task_alt),
-              label: WesiLocale.get('tasks'),
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.account_balance_wallet),
-              label: WesiLocale.get('finances'),
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.analytics),
-              label: WesiLocale.get('analytics'),
-            ),
-            BottomNavigationBarItem(
-              icon: const Icon(Icons.more_horiz),
-              label: WesiLocale.get('more'),
-            ),
+            for (final tab in _tabs)
+              BottomNavigationBarItem(
+                icon: Icon(tab.icon),
+                label: WesiLocale.get(tab.labelKey),
+              ),
           ],
         ),
       ),
@@ -678,4 +693,18 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
       ),
     );
   }
+}
+
+
+/// Одна вкладка нижней панели.
+class _TabSpec {
+  final String id;
+  final IconData icon;
+  final String labelKey;
+
+  const _TabSpec({
+    required this.id,
+    required this.icon,
+    required this.labelKey,
+  });
 }

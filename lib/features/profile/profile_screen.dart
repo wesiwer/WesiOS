@@ -12,6 +12,7 @@ import '../../core/widgets/window_controls.dart';
 import '../../core/security/shield_service.dart';
 import '../../core/widgets/vault_unlock_dialog.dart';
 import '../../core/widgets/wesi_wordmark.dart';
+import '../team/services/team_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -229,6 +230,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 12),
           _avatarActions(),
           const SizedBox(height: 28),
+          _accountSection(),
           _section('Личная информация'),
           _field(_nameCtrl, 'Имя', 'Ваше имя'),
           _field(_emailCtrl, 'Email', 'email@example.com'),
@@ -435,6 +437,154 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _bioAvailable = bio;
       });
     }
+  }
+
+  /// Кто вошёл, смена пароля и выход.
+  ///
+  /// Показывается только когда в приложении сотрудник: у владельца на своём
+  /// устройстве выходить не из чего, и пункт «Выйти» без входа сбивал бы с
+  /// толку.
+  Widget _accountSection() {
+    final me = TeamService.current;
+    if (me == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _section('Учётная запись'),
+        Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: AppTheme.surface.withOpacity(0.4),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: AppTheme.glassBorder),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.badge_outlined, size: 17, color: AppTheme.accent),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      me.displayName,
+                      style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.textPrimary),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text('Логин: ${me.login}',
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              if (me.position.isNotEmpty)
+                Text(me.position,
+                    style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: HoverButton(
+                      onTap: _changeOwnPassword,
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      backgroundColor: AppTheme.surfaceLight,
+                      child: Center(
+                        child: Text('Сменить пароль',
+                            style: TextStyle(
+                                fontSize: 12.5, color: AppTheme.textPrimary)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: HoverButton(
+                      onTap: _signOut,
+                      padding: const EdgeInsets.symmetric(vertical: 11),
+                      backgroundColor: AppTheme.surfaceLight,
+                      child: Center(
+                        child: Text('Выйти',
+                            style: TextStyle(
+                                fontSize: 12.5, color: AppTheme.accentRed)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+      ],
+    );
+  }
+
+  Future<void> _changeOwnPassword() async {
+    final me = TeamService.current;
+    if (me == null) return;
+    final ctrl = TextEditingController();
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text('Новый пароль',
+            style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textPrimary)),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          obscureText: true,
+          style: TextStyle(color: AppTheme.textPrimary),
+          decoration: InputDecoration(
+            hintText: 'Не короче 8 знаков',
+            hintStyle: TextStyle(color: AppTheme.textMuted),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text('Отмена', style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('Сменить', style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final value = ctrl.text;
+    if (value.length < 8) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Пароль слишком короткий'),
+            backgroundColor: AppTheme.accentRed,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      return;
+    }
+    await TeamService.setPassword(me.id, value);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Пароль обновлён'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _signOut() async {
+    await TeamService.signOut();
+    if (mounted) Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
   }
 
   Widget _section(String t) => Padding(

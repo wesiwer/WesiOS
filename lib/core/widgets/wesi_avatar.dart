@@ -13,11 +13,21 @@ class WesiAvatar extends StatelessWidget {
   final bool showBorder;
   final VoidCallback? onTap;
 
+  /// Чей аватар показывать.
+  ///
+  /// null — того, кто сидит за приложением: так виджет и работал всегда.
+  /// Число — конкретного человека, например в списке контактов, где своя
+  /// аватарка на каждой строке была бы бессмыслицей. Загруженная картинка
+  /// при этом не подставляется: она принадлежит владельцу устройства, а не
+  /// тому, кого рисуем.
+  final int? index;
+
   const WesiAvatar({
     super.key,
     this.size = 36,
     this.showBorder = true,
     this.onTap,
+    this.index,
   });
 
   static const _box = 'wesios_settings';
@@ -82,7 +92,8 @@ class WesiAvatar extends StatelessWidget {
           ),
         ];
 
-        final custom = customBytes;
+        // Для чужой аватарки своя картинка не годится.
+        final custom = index == null ? customBytes : null;
         final Widget avatar;
 
         if (custom != null) {
@@ -100,9 +111,9 @@ class WesiAvatar extends StatelessWidget {
             ),
           );
         } else {
-          final index = (box.get(_key, defaultValue: 0) as int)
+          final resolved = (index ?? (box.get(_key, defaultValue: 0) as int))
               .clamp(0, avatarPresets.length - 1);
-          final preset = avatarPresets[index];
+          final preset = avatarPresets[resolved];
 
           avatar = Container(
             width: size,
