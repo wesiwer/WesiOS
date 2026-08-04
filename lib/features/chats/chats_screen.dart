@@ -6,6 +6,7 @@ import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
 import '../team/services/team_service.dart';
+import 'models/chat_policy.dart';
 
 /// Чаты — заготовка.
 ///
@@ -30,8 +31,18 @@ class _ChatsScreenState extends State<ChatsScreen> {
   bool get _ru => WesiLocale.isRussian;
 
   List<String> get _folders => _ru
-      ? const ['Все', 'Личные', 'Группы']
-      : const ['All', 'Direct', 'Groups'];
+      ? const ['Все', 'Рабочие', 'Личные', 'Группы']
+      : const ['All', 'Work', 'Personal', 'Groups'];
+
+  /// Какому типу переписки соответствует выбранная папка.
+  ///
+  /// null — папка сборная, одного правила для неё нет, и врать про него
+  /// хуже, чем промолчать.
+  ChatKind? get _kind => switch (_folder) {
+        1 => ChatKind.work,
+        2 => ChatKind.personal,
+        _ => null,
+      };
 
   @override
   Widget build(BuildContext context) {
@@ -60,7 +71,10 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 ],
               ),
             ),
-            Padding(
+            // Полоса папок прокручивается: на узком телефоне четыре ярлыка в
+            // Row вылезают за край, и последний становится недоступен.
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.fromLTRB(16, 10, 16, 6),
               child: Row(
                 children: [
@@ -100,6 +114,29 @@ class _ChatsScreenState extends State<ChatsScreen> {
                 ],
               ),
             ),
+            if (_kind != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 2),
+                child: Row(
+                  children: [
+                    Icon(
+                      _kind == ChatKind.work
+                          ? Icons.badge_outlined
+                          : Icons.lock_outline,
+                      size: 14,
+                      color: AppTheme.textMuted,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        ChatEnvelopePolicy.describe(_kind!, russian: _ru),
+                        style: TextStyle(
+                            fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
               child: Container(
@@ -136,7 +173,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
               ),
             ),
             Expanded(
-              child: _folder == 2
+              child: _folder == 3
                   ? _groupsPlaceholder()
                   : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
