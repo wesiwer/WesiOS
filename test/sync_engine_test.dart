@@ -455,6 +455,35 @@ void main() {
       expect(SyncEndpoint.lastRun, isNull);
     });
 
+    test('протухший пропуск выбрасывается, а не остаётся выглядеть рабочим',
+        () async {
+      await SyncEndpoint.saveSession(
+        token: 'старый',
+        userId: 'u1',
+        expiresAt: base.add(const Duration(days: 13)),
+      );
+      expect(SyncEndpoint.session, isNotNull);
+
+      final t = FakeSyncTransport()..failWith = SyncFailure.notSignedIn;
+      final report = await SyncEngine.run(transport: t, now: base);
+
+      expect(report.ok, isFalse);
+      expect(SyncEndpoint.session, isNull,
+          reason: 'мёртвый пропуск остался — экран будет врать «подключено», '
+              'а каждый проход молча отказывать');
+      expect(t.isSignedIn, isFalse);
+    });
+
+    test('автоматический проход не идёт, пока его не включили', () async {
+      await SyncEndpoint.configure(url: '185.221.199.19:8090');
+      await SyncEndpoint.setEnabled(false);
+      await txBox().put('t1', tx('t1'));
+
+      await SyncEngine.runOnLaunch();
+      expect(SyncEngine.lastReport.value, isNull,
+          reason: 'выключенный обмен всё равно состоялся');
+    });
+
     test('удачный проход отмечается временем', () async {
       final t = FakeSyncTransport();
       await SyncEngine.run(transport: t, now: base);

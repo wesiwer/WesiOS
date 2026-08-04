@@ -11,6 +11,8 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/widgets/module_header.dart';
 import '../../core/widgets/window_controls.dart';
 import '../../widgets/glass_card.dart';
+import '../../core/sync/sync_endpoint.dart';
+import '../../core/sync/sync_engine.dart';
 import 'sync_screen.dart';
 import 'widgets/forecast_engines_section.dart';
 import 'widgets/github_auth_section.dart';
@@ -202,13 +204,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 24),
               _section(WesiLocale.get('data')),
-              _tile(
-                icon: Icons.sync,
-                title: ru ? 'Синхронизация' : 'Sync',
-                subtitle: ru
-                    ? 'Свой сервер: данные на всех устройствах'
-                    : 'Your own server: data on every device',
-                onTap: () => SyncScreen.open(context),
+              // Подпись живая: если пропуск протух или последний обмен
+              // сорвался, это должно быть видно из настроек, а не только
+              // после захода на экран синхронизации.
+              ValueListenableBuilder<SyncReport?>(
+                valueListenable: SyncEngine.lastReport,
+                builder: (context, report, _) => ValueListenableBuilder<int>(
+                  valueListenable: SyncEndpoint.revision,
+                  builder: (context, _, __) => _tile(
+                    icon: Icons.sync,
+                    title: ru ? 'Синхронизация' : 'Sync',
+                    subtitle: _syncSubtitle(report, ru),
+                    onTap: () => SyncScreen.open(context),
+                    textColor: report != null && !report.ok
+                        ? AppTheme.accentRed
+                        : null,
+                  ),
+                ),
               ),
               _tile(
                 icon: Icons.key,
@@ -237,6 +249,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       },
     );
+  }
+
+  String _syncSubtitle(SyncReport? report, bool ru) {
+    if (SyncEndpoint.session == null) {
+      return ru
+          ? 'Свой сервер: данные на всех устройствах'
+          : 'Your own server: data on every device';
+    }
+    if (report != null && !report.ok) {
+      return report.describe(russian: ru);
+    }
+    final last = SyncEndpoint.lastRun;
+    if (last == null) return ru ? 'Обмена ещё не было' : 'No exchange yet';
+    final l = last.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final when = '${two(l.day)}.${two(l.month)} ${two(l.hour)}:${two(l.minute)}';
+    return ru ? 'Последний обмен: $when' : 'Last exchange: $when';
   }
 
   Widget _section(String title) {

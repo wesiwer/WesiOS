@@ -190,11 +190,4 @@ class SyncJournal {
     }
     if (dead.isNotEmpty) await box.deleteAll(dead);
   }
-
-  /// Стереть журнал целиком. Нужно при выходе из учётной записи: чужие
-  /// надгробия не должны пережить смену владельца устройства.
-  static Future<void> wipe() async {
-    await _opened?.clear();
-    _expected.clear();
-  }
 }

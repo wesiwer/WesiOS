@@ -124,10 +124,22 @@ class SyncEngine {
     _journalReady = true;
   }
 
-  /// Сбросить подписки. Нужно тестам и выходу из учётной записи.
+  /// Сбросить подписки и результат последнего прохода.
   static Future<void> reset() async {
     await SyncJournal.detach();
+    lastReport.value = null;
     _journalReady = false;
+  }
+
+  /// Проход при запуске программы, если человек включил «автоматически».
+  ///
+  /// Молча: неудача при старте не должна встречать человека сообщением об
+  /// ошибке — он ещё ничего не сделал. Результат виден на экране
+  /// синхронизации и в подписи к пункту настроек.
+  static Future<void> runOnLaunch() async {
+    await prepare();
+    if (!SyncEndpoint.enabled) return;
+    await run();
   }
 
   /// Местное состояние коллекции в виде, понятном слиянию.
@@ -204,6 +216,14 @@ class SyncEngine {
 
       final report = SyncReport(at: at, collections: reports);
       if (report.ok) await SyncEndpoint.markRun(at);
+
+      // Пропуск протух — выбрасываем его. Иначе экран продолжал бы
+      // показывать «сервер подключён», а каждый следующий проход молча
+      // отказывал бы: худший вид поломки — тот, который выглядит рабочим.
+      if (report.firstFailure?.code == 'NOT_SIGNED_IN') {
+        t.signOut();
+        await SyncEndpoint.clearSession();
+      }
       return _finish(report);
     } finally {
       busy.value = false;

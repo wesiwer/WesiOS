@@ -75,7 +75,7 @@ void main() async {
   // поменяет. Подписка, поставленная позже, пропустила бы правки, сделанные
   // до неё, и они выглядели бы как «не менялось никогда» — то есть проиграли
   // бы любому спору с сервером и тихо стёрлись бы чужой копией.
-  unawaited(SyncEngine.prepare());
+  unawaited(SyncEngine.runOnLaunch());
 
   CurrencyService.loadPrivacyMode();
   ThemeNotifier.load();

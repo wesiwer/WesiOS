@@ -213,7 +213,9 @@ class _SyncScreenState extends State<SyncScreen> {
                           ),
                         ),
                       ],
-                      const SizedBox(height: 22),
+                      const SizedBox(height: 18),
+                      _autoToggle(signedIn),
+                      const SizedBox(height: 18),
                       _whatSyncs(),
                       const SizedBox(height: 14),
                       _honestNote(),
@@ -285,6 +287,61 @@ class _SyncScreenState extends State<SyncScreen> {
               child: CircularProgressIndicator(
                   strokeWidth: 2, color: AppTheme.accent),
             ),
+        ],
+      ),
+    );
+  }
+
+  Widget _autoToggle(bool signedIn) {
+    final on = SyncEndpoint.enabled;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 6, 8, 6),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(0.3),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _ru ? 'Автоматически при запуске' : 'Automatically on launch',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                    color: signedIn
+                        ? AppTheme.textPrimary
+                        : AppTheme.textMuted,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  signedIn
+                      ? (_ru
+                          ? 'Обмен раз при открытии программы, молча'
+                          : 'One exchange when the app opens, silently')
+                      : (_ru
+                          ? 'Сначала войдите на сервер'
+                          : 'Sign in to the server first'),
+                  style:
+                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: on && signedIn,
+            activeColor: AppTheme.accent,
+            onChanged: signedIn
+                ? (v) async {
+                    await SyncEndpoint.setEnabled(v);
+                    if (mounted) setState(() {});
+                  }
+                : null,
+          ),
         ],
       ),
     );
