@@ -26,6 +26,8 @@ import 'core/services/github_release_download.dart';
 import 'core/services/secrets_service.dart';
 import 'core/sync/sync_engine.dart';
 import 'features/chats/models/chat_message.dart';
+import 'features/chats/models/chat_thread.dart';
+import 'features/chats/services/chat_service.dart';
 import 'features/chats/services/message_store.dart';
 import 'features/team/services/team_service.dart';
 
@@ -73,11 +75,13 @@ void main() async {
   Hive.registerAdapter(MessageKindAdapter());
   Hive.registerAdapter(DeliveryStateAdapter());
   Hive.registerAdapter(ChatMessageAdapter());
+  Hive.registerAdapter(ChatThreadAdapter());
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
   await Hive.openBox<EmployeeModel>(TeamService.boxName);
   await MessageStore.open();
+  await ChatService.open();
 
   // Журнал изменений подписывается на боксы до того, как человек что-то
   // поменяет. Подписка, поставленная позже, пропустила бы правки, сделанные
