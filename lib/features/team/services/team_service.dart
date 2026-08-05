@@ -9,6 +9,7 @@ import '../../../core/security/shield_service.dart';
 import '../models/employee_model.dart';
 import '../models/team_permissions.dart';
 import 'credentials_generator.dart';
+import 'employee_admin_service.dart';
 import 'login_pool_service.dart';
 import 'portal_account_service.dart';
 
@@ -23,10 +24,6 @@ class CreatedEmployee {
   final String password;
 
   /// Создалась ли одновременно учётная запись на серверном портале.
-  ///
-  /// false не отменяет локальную карточку: владелец может работать офлайн,
-  /// а доступ к порталу повторно создастся при сбросе пароля после входа в
-  /// синхронизацию.
   final bool portalProvisioned;
 
   const CreatedEmployee(
@@ -38,34 +35,15 @@ class CreatedEmployee {
 
 /// Сотрудники: кто есть, кто чем может пользоваться, кто под каким логином
 /// входит.
-///
-/// Пока основная карточка лежит на устройстве. Для первого входа сотрудника
-/// на сайт дополнительно создаётся auth-запись PocketBase с тем же логином и
-/// паролем. Внешний пароль нигде не сохраняется: сервер сразу превращает его
-/// в хеш.
 class TeamService {
   TeamService._();
 
   static const String boxName = 'wesios_team';
-
-  /// Предел размера снимка в карточке.
-  ///
-  /// Карточка целиком уезжает на сервер и лежит на каждом устройстве. Сто
-  /// килобайт с запасом хватает кружку в сорок точек даже на экране с
-  /// тройной плотностью; мегабайты возились бы синхронизацией впустую.
   static const int maxPhotoBytes = 100 * 1024;
   static const String _settingsBox = 'wesios_settings';
   static const String _currentKey = 'team_current_employee';
-
-  /// Итераций для хеша пароля сотрудника.
-  ///
-  /// Меньше, чем у пароля Wesi Shield (120 000): тот защищает ключ
-  /// шифрования на устройстве и подбирается офлайн, а этот скоро переедет на
-  /// сервер, где перебор ограничен ещё и сетью. 60 000 держат вход быстрым
-  /// на телефоне и остаются дорогими для перебора.
   static const int _iterations = 60000;
 
-  /// Меняется при любой правке состава — экраны перечитывают список.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static Box<EmployeeModel>? _open() {
@@ -84,13 +62,10 @@ class TeamService {
     }
   }
 
-  // ------------------------------------------------------------------ состав
-
   static List<EmployeeModel> get all {
     final box = _open();
     if (box == null) return const [];
     final list = box.values.toList();
-    // Владелец первым, дальше по имени — список читают глазами.
     list.sort((a, b) {
       if (a.isOwner != b.isOwner) return a.isOwner ? -1 : 1;
       return a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
@@ -115,42 +90,21 @@ class TeamService {
     return null;
   }
 
-  // ------------------------------------------------------------ кто вошёл
-
-  /// Кто сейчас в приложении. null — никто не входил (режим владельца).
   static EmployeeModel? get current {
     final id = _settings()?.get(_currentKey);
     if (id is! String || id.isEmpty) return null;
     return byId(id);
   }
 
-  /// Права того, кто сейчас в приложении.
-  ///
-  /// Никто не вошёл — значит это владелец на своём устройстве: приложение
-  /// работает локально и до появления сотрудников вообще не знает о правах.
-  /// Отдавать в этом случае пустой набор значило бы запереть человека в
-  /// пустом приложении сразу после установки.
   static TeamPermissions get currentPermissions =>
       current?.permissions ?? TeamPermissions.owner;
 
   static bool get isOwnerSession => current == null || current!.isOwner;
 
-  /// Ключ «сессию запомнили». Отдельно от самой сессии: сессия говорит,
-  /// **кто** вошёл, а это — переживёт ли вход перезапуск.
   static const String _rememberKey = 'team_remember_session';
 
-  /// Просили ли запомнить вход.
   static bool get remembered => _settings()?.get(_rememberKey) != false;
 
-  /// Войти.
-  ///
-  /// [remember] — переживёт ли вход перезапуск программы.
-  ///
-  /// Раньше галочка «Запомнить меня» на экране входа управляла только
-  /// Firebase, а сотрудник запоминался всегда. То есть для тех, кто входит
-  /// логином, галочка не значила ничего: снятая, она всё равно оставляла
-  /// сессию до следующего выхода. Управление, которое ничем не управляет,
-  /// хуже отсутствующего — на него рассчитывают.
   static Future<void> signIn(EmployeeModel employee,
       {bool remember = true}) async {
     final box = _settings();
@@ -160,10 +114,6 @@ class TeamService {
     revision.value++;
   }
 
-  /// Убрать сессию, которую не просили запоминать.
-  ///
-  /// Вызывается на старте программы. Сам вход при этом работал всю прошлую
-  /// сессию — «не запоминать» означает «до закрытия», а не «на один экран».
   static Future<void> forgetUnrememberedSession() async {
     final box = _settings();
     if (box == null) return;
@@ -179,10 +129,6 @@ class TeamService {
     revision.value++;
   }
 
-  /// Проверяет логин и пароль. null — не совпало.
-  ///
-  /// Одинаковый ответ на «нет такого логина» и «пароль не тот» — намеренно:
-  /// разный позволял бы перебором выяснить, кто вообще есть в компании.
   static EmployeeModel? verify(String login, String password) {
     final employee = byLogin(login);
     if (employee == null) return null;
@@ -206,19 +152,11 @@ class TeamService {
     return diff == 0;
   }
 
-  // ------------------------------------------------------------- изменения
-
   static String _newSalt([Random? random]) {
     final rng = random ?? Random.secure();
     return base64.encode(List<int>.generate(16, (_) => rng.nextInt(256)));
   }
 
-  /// Заводит сотрудника: занимает свободный логин, генерирует пароль.
-  ///
-  /// После локального сохранения тем же логином и паролем создаётся доступ к
-  /// порталу сотрудников. Сетевая неудача не уничтожает карточку: человек
-  /// может быть заведен офлайн, а при последующем сбросе пароля серверная
-  /// учётная запись создастся или обновится повторно.
   static Future<CreatedEmployee?> create({
     required String fullName,
     String nickname = '',
@@ -272,6 +210,9 @@ class TeamService {
       employee: employee,
       password: pass,
     );
+    await EmployeeAdminService.setActivated(employee.id, portalProvisioned);
+    revision.value++;
+
     return CreatedEmployee(
       employee,
       pass,
@@ -279,7 +220,6 @@ class TeamService {
     );
   }
 
-  /// Заводит карточку владельца — один раз, при первом открытии контактов.
   static Future<EmployeeModel?> ensureOwner({String name = 'Владелец'}) async {
     final box = _open();
     if (box == null) return null;
@@ -297,6 +237,7 @@ class TeamService {
     );
     await LoginPoolService.reserve('owner');
     await box.put(employee.id, employee);
+    await EmployeeAdminService.setActivated(employee.id, true);
     revision.value++;
     return employee;
   }
@@ -306,18 +247,15 @@ class TeamService {
     revision.value++;
   }
 
-  /// Убирает сотрудника. Логин возвращается в свободные, пароль исчезает
-  /// вместе с записью.
-  ///
-  /// Серверная деактивация будет отдельным endpoint: локальное удаление не
-  /// должно притворяться, что доступ на сервере отозван, если сети нет.
-  static Future<bool> remove(String id) async {
+  /// Убирает сотрудника из рабочего состава, но сохраняет закрытый архивный
+  /// снимок с датой и причиной. Владелец может просматривать его отдельно.
+  static Future<bool> remove(String id, {String reason = ''}) async {
     final box = _open();
     final employee = box?.get(id);
     if (box == null || employee == null) return false;
-    // Владельца удалить нельзя: без него некому заводить остальных.
     if (employee.isOwner) return false;
 
+    await EmployeeAdminService.archive(employee, reason: reason);
     await box.delete(id);
     await LoginPoolService.release(employee.login);
     if (current?.id == id) await signOut();
@@ -325,27 +263,16 @@ class TeamService {
     return true;
   }
 
-  /// Чем закончилась смена логина.
-  ///
-  /// Перечисление, а не `bool`: причин отказа три, и человеку надо сказать,
-  /// какая именно. «Не получилось» без объяснения заставляет гадать.
   static const String loginOk = 'ok';
   static const String loginTaken = 'taken';
   static const String loginBad = 'bad';
   static const String loginNoSuchPerson = 'gone';
 
-  /// Сменить логин.
-  ///
-  /// Старый логин **освобождается** и возвращается в пул. Без этого он
-  /// оставался бы занятым навсегда: список занятых ведётся отдельно от
-  /// списка людей ровно затем, чтобы освобождение было отдельным видимым
-  /// событием, — и пропустить его здесь значило бы медленно вычерпать пул.
   static Future<String> setLogin(String id, String login) async {
     final employee = byId(id);
     if (employee == null) return loginNoSuchPerson;
 
     final normalized = CredentialsGenerator.normalize(login);
-    // Слишком короткий логин подбирается перебором за минуты.
     if (normalized.length < 3) return loginBad;
     if (normalized == employee.login) return loginOk;
 
@@ -360,7 +287,6 @@ class TeamService {
     return loginOk;
   }
 
-  /// Смена пароля — сотрудником себе или владельцем сотруднику.
   static Future<bool> setPassword(String id, String password) async {
     final employee = byId(id);
     if (employee == null) return false;
@@ -371,15 +297,15 @@ class TeamService {
     );
     await save(updated);
 
-    // Тот же пароль сразу становится действующим на портале. false означает,
-    // что локально пароль сменился, а сервер был недоступен.
-    return PortalAccountService.provision(
+    final provisioned = await PortalAccountService.provision(
       employee: updated,
       password: password,
     );
+    await EmployeeAdminService.setActivated(id, provisioned);
+    revision.value++;
+    return provisioned;
   }
 
-  /// Выдаёт сотруднику новый пароль и возвращает его — показать один раз.
   static Future<String?> resetPassword(String id) async {
     if (byId(id) == null) return null;
     final pass = CredentialsGenerator.password();
@@ -387,14 +313,6 @@ class TeamService {
     return pass;
   }
 
-  // ------------------------------------------------------ проверочные данные
-
-  /// Случайные показатели, пока настоящих нет.
-  ///
-  /// Нужны ровно затем, чтобы можно было пройти путь целиком — завести
-  /// человека, войти под ним, посмотреть его аналитику — до того, как
-  /// появится сервер с реальными цифрами. Значения помечены как демо и
-  /// уходят при первой настоящей синхронизации.
   static Map<String, double> generateDemoStats({Random? random}) {
     final rng = random ?? Random();
     double between(double a, double b) => a + rng.nextDouble() * (b - a);
@@ -408,7 +326,6 @@ class TeamService {
     };
   }
 
-  /// Приводит список занятых логинов в соответствие с составом.
   static Future<void> reconcileLogins() =>
       LoginPoolService.reconcile(all.map((e) => e.login));
 }
