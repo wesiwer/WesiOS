@@ -89,14 +89,27 @@ jobs:
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
           REMOTE="/tmp/wesi-portal-$GITHUB_RUN_ID"
 
+          detect_artifacts_dir() {
+            $SSH "$USER@$HOST" 'for d in /opt/pocketbase/pb_public/artifacts /srv/wesi-artifacts; do if [ -d "$d" ] && [ -w "$d" ]; then printf "%s" "$d"; exit 0; fi; done; exit 1'
+          }
+
           if [ -n "${CONFIGURED_ARTIFACTS_DIR:-}" ]; then
             ARTIFACTS_DIR="$CONFIGURED_ARTIFACTS_DIR"
           else
-            ARTIFACTS_DIR=$($SSH "$USER@$HOST" 'for d in /opt/pocketbase/pb_public/artifacts /srv/wesi-artifacts; do if [ -d "$d" ] && [ -w "$d" ]; then printf "%s" "$d"; exit 0; fi; done; exit 1') || {
+            ARTIFACTS_DIR="$(detect_artifacts_dir || true)"
+            if [ -z "$ARTIFACTS_DIR" ]; then
+              echo 'У пользователя деплоя пока нет прав. Проверяю беспарольный sudo для одноразовой настройки.'
+              if $SSH "$USER@$HOST" 'sudo -n true' >/dev/null 2>&1; then
+                $SSH "$USER@$HOST" \
+                  "curl -fsSL https://raw.githubusercontent.com/wesiwer/WesiOS/main/server/bootstrap-employee-portal.sh -o /tmp/bootstrap-employee-portal.sh && sudo -n bash /tmp/bootstrap-employee-portal.sh && rm -f /tmp/bootstrap-employee-portal.sh"
+                ARTIFACTS_DIR="$(detect_artifacts_dir || true)"
+              fi
+            fi
+            if [ -z "$ARTIFACTS_DIR" ]; then
               echo '::error::Пользователь деплоя не может писать ни в /opt/pocketbase/pb_public/artifacts, ни в /srv/wesi-artifacts.'
-              echo 'Нужно один раз выдать права каталогу; скрипт не будет делать вид, что сайт опубликован.'
+              echo 'Беспарольного sudo тоже нет. Нужен один одноразовый запуск bootstrap-employee-portal.sh от root.'
               exit 1
-            }
+            fi
           fi
           echo "Каталог публикации: $ARTIFACTS_DIR"
 
