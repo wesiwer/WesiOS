@@ -1,30 +1,32 @@
 import 'package:flutter/material.dart';
-import '../../core/theme/app_theme.dart';
-import '../../widgets/glass_card.dart';
-import '../../core/widgets/window_controls.dart';
-import '../../core/widgets/wesi_context_menu.dart';
-import '../../core/widgets/wesi_avatar.dart';
+
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
-import '../calculator/calculator_screen.dart';
-import '../treasury/treasury_screen.dart';
-import '../treasury/widgets/add_transaction_dialog.dart';
-import '../treasury/models/transaction_model.dart';
-import '../treasury/services/treasury_service.dart';
-import '../tasks/tasks_screen.dart';
-import 'widgets/home_agenda.dart';
-import 'widgets/alerts_sheet.dart';
-import 'widgets/global_search_sheet.dart';
-import 'widgets/home_pulse.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/app_update_card.dart';
+import '../../core/widgets/quote_mind_charge.dart';
+import '../../core/widgets/wesi_avatar.dart';
+import '../../core/widgets/wesi_clock.dart';
+import '../../core/widgets/wesi_context_menu.dart';
+import '../../core/widgets/wesi_quote_card.dart';
+import '../../core/widgets/wesi_wordmark.dart';
+import '../../core/widgets/window_controls.dart';
+import '../../widgets/glass_card.dart';
 import '../analytics/analytics_screen.dart';
-import 'more_tab.dart';
+import '../calculator/calculator_screen.dart';
+import '../tasks/tasks_screen.dart';
 import '../team/models/team_permissions.dart';
 import '../team/services/team_service.dart';
-import '../../core/widgets/wesi_clock.dart';
-import '../../core/widgets/wesi_wordmark.dart';
-import '../../core/widgets/wesi_quote_card.dart';
-import '../../core/widgets/quote_mind_charge.dart';
+import '../treasury/models/transaction_model.dart';
+import '../treasury/services/treasury_service.dart';
+import '../treasury/treasury_screen.dart';
+import '../treasury/widgets/add_transaction_dialog.dart';
+import 'more_tab.dart';
+import 'widgets/alerts_sheet.dart';
+import 'widgets/global_search_sheet.dart';
+import 'widgets/home_agenda.dart';
+import 'widgets/home_month_calendar.dart';
+import 'widgets/home_pulse.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -36,9 +38,6 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   int _selectedIndex = 0;
-
-  /// Ленивая инициализация вкладок: тяжёлые экраны (Treasury) строятся
-  /// только после первого открытия, иначе первый кадр Home лагает.
   final Set<int> _built = {0};
 
   late final AnimationController _fadeCtrl;
@@ -63,47 +62,55 @@ class _HomeScreenState extends State<HomeScreen>
     super.dispose();
   }
 
-  void _onTabTap(int i) {
-    if (i == _selectedIndex) return;
+  void _onTabTap(int index) {
+    if (index == _selectedIndex) return;
     setState(() {
-      _selectedIndex = i;
-      _built.add(i);
+      _selectedIndex = index;
+      _built.add(index);
     });
     _fadeCtrl.forward(from: 0);
   }
 
-  /// Вкладки, доступные тому, кто сейчас в приложении.
-  ///
-  /// Закрытая вкладка не показывается серой и не спрашивает пароль — её нет
-  /// вовсе. Человек не должен догадываться о существовании разделов, куда
-  /// его не пускали: замок на видном месте это приглашение постучаться.
-  ///
-  /// «Главная» и «Ещё» есть всегда: без первой некуда попасть после входа,
-  /// без второй не добраться до настроек и профиля.
   List<_TabSpec> get _tabs {
-    final p = TeamService.currentPermissions;
+    final permissions = TeamService.currentPermissions;
     return [
-      const _TabSpec(id: 'home', icon: Icons.dashboard_outlined, labelKey: 'dashboard'),
-      if (p.allows(TeamModules.tasks))
-        const _TabSpec(id: 'tasks', icon: Icons.task_alt, labelKey: 'tasks'),
-      if (p.allows(TeamModules.treasury))
+      const _TabSpec(
+        id: 'home',
+        icon: Icons.dashboard_outlined,
+        labelKey: 'dashboard',
+      ),
+      if (permissions.allows(TeamModules.tasks))
         const _TabSpec(
-            id: 'treasury',
-            icon: Icons.account_balance_wallet,
-            labelKey: 'finances'),
-      if (p.allows(TeamModules.analytics))
+          id: 'tasks',
+          icon: Icons.task_alt,
+          labelKey: 'tasks',
+        ),
+      if (permissions.allows(TeamModules.treasury))
         const _TabSpec(
-            id: 'analytics', icon: Icons.analytics, labelKey: 'analytics'),
-      const _TabSpec(id: 'more', icon: Icons.more_horiz, labelKey: 'more'),
+          id: 'treasury',
+          icon: Icons.account_balance_wallet,
+          labelKey: 'finances',
+        ),
+      if (permissions.allows(TeamModules.analytics))
+        const _TabSpec(
+          id: 'analytics',
+          icon: Icons.analytics,
+          labelKey: 'analytics',
+        ),
+      const _TabSpec(
+        id: 'more',
+        icon: Icons.more_horiz,
+        labelKey: 'more',
+      ),
     ];
   }
 
-  Widget _tab(int i, String lang) {
-    if (!_built.contains(i)) return const SizedBox.shrink();
+  Widget _tab(int index, String language) {
+    if (!_built.contains(index)) return const SizedBox.shrink();
     final tabs = _tabs;
-    if (i >= tabs.length) return const SizedBox.shrink();
-    final key = ValueKey('tab_${tabs[i].id}_$lang');
-    switch (tabs[i].id) {
+    if (index >= tabs.length) return const SizedBox.shrink();
+    final key = ValueKey('tab_${tabs[index].id}_$language');
+    switch (tabs[index].id) {
       case 'home':
         return _DashboardTab(key: key);
       case 'tasks':
@@ -119,29 +126,30 @@ class _HomeScreenState extends State<HomeScreen>
 
   @override
   Widget build(BuildContext context) {
-    // Слушаем и локаль, и тему: иначе при смене темы Scaffold/вкладки
-    // остаются со старыми AppTheme.* цветами до setState (смена вкладки).
     return ValueListenableBuilder<AppThemeMode>(
       valueListenable: ThemeNotifier.instance,
       builder: (context, _, __) {
         return ValueListenableBuilder<String>(
           valueListenable: WesiLocale.localeNotifier,
-          builder: (context, lang, _) => _buildScaffold(context, lang),
+          builder: (context, language, _) =>
+              _buildScaffold(context, language),
         );
       },
     );
   }
 
-  Widget _buildScaffold(BuildContext context, String lang) {
-    // scaffoldBackgroundColor из Theme — AnimatedTheme плавно интерполирует.
-    final bg = Theme.of(context).scaffoldBackgroundColor;
+  Widget _buildScaffold(BuildContext context, String language) {
+    final background = Theme.of(context).scaffoldBackgroundColor;
     return Scaffold(
-      backgroundColor: bg,
+      backgroundColor: background,
       body: FadeTransition(
         opacity: _fade,
         child: IndexedStack(
           index: _selectedIndex.clamp(0, _tabs.length - 1),
-          children: List.generate(_tabs.length, (i) => _tab(i, lang)),
+          children: List.generate(
+            _tabs.length,
+            (index) => _tab(index, language),
+          ),
         ),
       ),
       bottomNavigationBar: AnimatedContainer(
@@ -205,41 +213,27 @@ class _DashboardTabState extends State<_DashboardTab> {
   Future<void> _loadBalance() async {
     final balance = await _service.getCurrentBalance();
     final breakdown = await _service.getBalanceBreakdown();
-    if (mounted) {
-      setState(() {
-        _balance = balance;
-        _breakdown = breakdown;
-      });
-    }
+    if (!mounted) return;
+    setState(() {
+      _balance = balance;
+      _breakdown = breakdown;
+    });
   }
-
-  /// Помещается ли заряд мыслей в шапку рядом с часами.
-  ///
-  /// Блок не уже 170 px, иконки справа занимают ~120 px, лого и часам нужно
-  /// хотя бы 130 px. Ниже этой суммы он в строку не влезает и уезжает под
-  /// шапку отдельной строкой — иначе он давит на часы и на иконки.
-  static bool _chargeBelowHeader(BuildContext context) =>
-      MediaQuery.sizeOf(context).width < 460;
 
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          // Header: logo+clock | icons над зарядом мыслей
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 10, 12, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Column(
                 children: [
-                  // Левая колонка: лого сверху, часы под ним
-                  Expanded(
-                    flex: 5,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        WesiContextMenu(
+                  Row(
+                    children: [
+                      Expanded(
+                        child: WesiContextMenu(
                           title: 'WesiOS',
                           description: WesiLocale.isRussian
                               ? 'WesiOS — Business Operating System. Управляйте бизнесом по-новому.'
@@ -247,83 +241,66 @@ class _DashboardTabState extends State<_DashboardTab> {
                           purpose: WesiLocale.isRussian
                               ? 'Центральная панель управления всеми системами Wesi'
                               : 'Central dashboard for all Wesi systems',
-                          children: [
-                            WesiWordmark(size: 26),
-                          ],
+                          children: const [WesiWordmark(size: 26)],
                         ),
-                        const SizedBox(height: 10),
-                        // Часы — вход в календарь; долгий тап переключает стиль
-                        Tooltip(
-                          message: WesiLocale.isRussian
-                              ? 'Открыть календарь · долгий тап — стиль часов'
-                              : 'Open calendar · long-press for clock style',
-                          child: GestureDetector(
-                            onTap: () =>
-                                Navigator.pushNamed(context, '/calendar'),
-                            onLongPress: () {
-                              final next =
-                                  WesiClock.savedStyle == ClockStyle.digital
+                      ),
+                      _HoverIconButton(
+                        icon: Icons.search,
+                        onTap: () => GlobalSearchSheet.show(context),
+                      ),
+                      const SizedBox(width: 6),
+                      const AlertsBell(size: 28),
+                      const SizedBox(width: 6),
+                      const _ProfileDropdown(),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  LayoutBuilder(
+                    builder: (context, constraints) {
+                      return Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Tooltip(
+                              message: WesiLocale.isRussian
+                                  ? 'Открыть календарь · долгий тап — стиль часов'
+                                  : 'Open calendar · long-press for clock style',
+                              child: GestureDetector(
+                                onTap: () => Navigator.pushNamed(
+                                  context,
+                                  '/calendar',
+                                ),
+                                onLongPress: () {
+                                  final next = WesiClock.savedStyle ==
+                                          ClockStyle.digital
                                       ? ClockStyle.analog
                                       : ClockStyle.digital;
-                              WesiClock.setStyle(next);
-                              setState(() {});
-                            },
-                            child: const WesiClock(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Правая колонка: иконки сверху, заряд мыслей под ними.
-                  //
-                  // Раньше заряд стоял отдельным Flexible В ОДНОМ РЯДУ с
-                  // иконками и прижимался к верху — то есть оказывался на
-                  // одной линии с поиском, колокольчиком и профилем и налезал
-                  // на них. Теперь он там, где ему и место: под иконками,
-                  // правее часов и над самой цитатой.
-                  Flexible(
-                    flex: 4,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _HoverIconButton(
-                              icon: Icons.search,
-                              onTap: () => GlobalSearchSheet.show(context),
+                                  WesiClock.setStyle(next);
+                                  setState(() {});
+                                },
+                                child: const Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: WesiClock(),
+                                ),
+                              ),
                             ),
-                            const SizedBox(width: 6),
-                            const AlertsBell(size: 28),
-                            const SizedBox(width: 6),
-                            const _ProfileDropdown(),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        // На узком экране блоку в 170 px рядом с часами уже
-                        // не хватает места — там он уезжает отдельной
-                        // строкой ниже (см. sliver под шапкой).
-                        if (!_chargeBelowHeader(context))
-                          const QuoteMindCharge(),
-                      ],
-                    ),
+                          ),
+                          const SizedBox(width: 10),
+                          const HomeMonthCalendar(),
+                        ],
+                      );
+                    },
                   ),
                 ],
               ),
             ),
           ),
-          if (_chargeBelowHeader(context))
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 12, 12),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: QuoteMindCharge(),
-                ),
-              ),
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: QuoteMindCharge(expanded: true),
             ),
+          ),
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
@@ -338,7 +315,7 @@ class _DashboardTabState extends State<_DashboardTab> {
           ),
           SliverToBoxAdapter(
             child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: GlassCard(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -350,7 +327,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                         color: AppTheme.textSecondary,
                       ),
                     ),
-                    SizedBox(height: 8),
+                    const SizedBox(height: 8),
                     Text(
                       CurrencyService.format(_balance),
                       style: TextStyle(
@@ -359,7 +336,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                         color: AppTheme.primary,
                       ),
                     ),
-                    SizedBox(height: 16),
+                    const SizedBox(height: 16),
                     Row(
                       children: [
                         _chip(
@@ -367,13 +344,13 @@ class _DashboardTabState extends State<_DashboardTab> {
                           CurrencyService.format(_breakdown['income'] ?? 0),
                           AppTheme.accentGreen,
                         ),
-                        SizedBox(width: 12),
+                        const SizedBox(width: 12),
                         _chip(
                           WesiLocale.get('total_expenses'),
                           CurrencyService.format(_breakdown['expense'] ?? 0),
                           AppTheme.accentRed,
                         ),
-                        SizedBox(width: 12),
+                        const SizedBox(width: 12),
                         _chip(
                           WesiLocale.get('net'),
                           CurrencyService.format(_breakdown['net'] ?? 0),
@@ -391,23 +368,27 @@ class _DashboardTabState extends State<_DashboardTab> {
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: LayoutBuilder(
-                builder: (context, c) {
-                  final columns = c.maxWidth >= 560 ? 4 : 2;
+                builder: (context, constraints) {
+                  final columns = constraints.maxWidth >= 560 ? 4 : 2;
                   const gap = 12.0;
                   final width =
-                      (c.maxWidth - gap * (columns - 1)) / columns;
+                      (constraints.maxWidth - gap * (columns - 1)) / columns;
                   final actions = <Widget>[
                     _Quick(
                       icon: Icons.add_circle,
                       label: WesiLocale.isRussian ? 'Доход' : 'Income',
-                      onTap: () =>
-                          _showAddTransaction(context, TransactionType.income),
+                      onTap: () => _showAddTransaction(
+                        context,
+                        TransactionType.income,
+                      ),
                     ),
                     _Quick(
                       icon: Icons.remove_circle,
                       label: WesiLocale.isRussian ? 'Траты' : 'Expense',
-                      onTap: () =>
-                          _showAddTransaction(context, TransactionType.expense),
+                      onTap: () => _showAddTransaction(
+                        context,
+                        TransactionType.expense,
+                      ),
                     ),
                     _Quick(
                       icon: Icons.playlist_add_check,
@@ -424,7 +405,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                     spacing: gap,
                     runSpacing: gap,
                     children: actions
-                        .map((a) => SizedBox(width: width, child: a))
+                        .map((action) => SizedBox(width: width, child: action))
                         .toList(),
                   );
                 },
@@ -452,7 +433,9 @@ class _DashboardTabState extends State<_DashboardTab> {
   }
 
   Future<void> _showAddTransaction(
-      BuildContext context, TransactionType type) async {
+    BuildContext context,
+    TransactionType type,
+  ) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => AddTransactionDialog(
@@ -460,24 +443,20 @@ class _DashboardTabState extends State<_DashboardTab> {
         symbol: CurrencyService.symbol,
       ),
     );
-    if (result != null) {
-      final tx = TransactionModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: result['title'],
-        amount: result['amount'],
-        type: type,
-        // Дата из диалога, а не «сейчас»: в диалоге есть календарь, и раньше
-        // выбранное в нём молча выбрасывалось — операция всегда получалась
-        // сегодняшней и вставала в начало истории вместо своего места.
-        date: result['date'] as DateTime? ?? DateTime.now(),
-        category: result['category'],
-        description: result['description'],
-        isRecurring: result['isRecurring'] ?? false,
-        recurringPeriod: result['recurringPeriod'],
-      );
-      await _service.addTransaction(tx);
-      await _loadBalance();
-    }
+    if (result == null) return;
+    final transaction = TransactionModel(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      title: result['title'],
+      amount: result['amount'],
+      type: type,
+      date: result['date'] as DateTime? ?? DateTime.now(),
+      category: result['category'],
+      description: result['description'],
+      isRecurring: result['isRecurring'] ?? false,
+      recurringPeriod: result['recurringPeriod'],
+    );
+    await _service.addTransaction(transaction);
+    await _loadBalance();
   }
 
   Widget _chip(String label, String amount, Color color) {
@@ -492,12 +471,15 @@ class _DashboardTabState extends State<_DashboardTab> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(label, style: TextStyle(fontSize: 11, color: color)),
-            SizedBox(height: 4),
-            Text(amount,
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary)),
+            const SizedBox(height: 4),
+            Text(
+              amount,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textPrimary,
+              ),
+            ),
           ],
         ),
       ),
@@ -509,25 +491,29 @@ class _Quick extends StatefulWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _Quick(
-      {required this.icon, required this.label, required this.onTap});
+
+  const _Quick({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
 
   @override
   State<_Quick> createState() => _QuickState();
 }
 
 class _QuickState extends State<_Quick> {
-  bool _h = false;
-  bool _f = false;
+  bool _hovered = false;
+  bool _focused = false;
 
-  bool get _active => _h || _f;
+  bool get _active => _hovered || _focused;
 
   @override
   Widget build(BuildContext context) {
     return FocusableActionDetector(
       mouseCursor: SystemMouseCursors.click,
-      onShowHoverHighlight: (v) => setState(() => _h = v),
-      onShowFocusHighlight: (v) => setState(() => _f = v),
+      onShowHoverHighlight: (value) => setState(() => _hovered = value),
+      onShowFocusHighlight: (value) => setState(() => _focused = value),
       actions: <Type, Action<Intent>>{
         ActivateIntent: CallbackAction<ActivateIntent>(
           onInvoke: (_) {
@@ -539,29 +525,31 @@ class _QuickState extends State<_Quick> {
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 180),
-          padding: EdgeInsets.symmetric(vertical: 16),
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           decoration: BoxDecoration(
             color: _active ? AppTheme.surfaceLight : AppTheme.surface,
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: _f
+              color: _focused
                   ? AppTheme.accent
-                  : _h
+                  : _hovered
                       ? AppTheme.accent.withOpacity(0.5)
                       : AppTheme.glassBorder,
-              width: _f ? 2 : 1,
+              width: _focused ? 2 : 1,
             ),
           ),
           child: Column(
             children: [
               Icon(widget.icon, color: AppTheme.accent, size: 28),
-              SizedBox(height: 8),
+              const SizedBox(height: 8),
               Text(
                 widget.label,
                 style: TextStyle(
                   fontSize: 12,
-                  color: _active ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  color: _active
+                      ? AppTheme.textPrimary
+                      : AppTheme.textSecondary,
                 ),
               ),
             ],
@@ -575,6 +563,7 @@ class _QuickState extends State<_Quick> {
 class _HoverIconButton extends StatefulWidget {
   final IconData icon;
   final VoidCallback onTap;
+
   const _HoverIconButton({required this.icon, required this.onTap});
 
   @override
@@ -582,26 +571,26 @@ class _HoverIconButton extends StatefulWidget {
 }
 
 class _HoverIconButtonState extends State<_HoverIconButton> {
-  bool _h = false;
+  bool _hovered = false;
 
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      onEnter: (_) => setState(() => _h = true),
-      onExit: (_) => setState(() => _h = false),
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: widget.onTap,
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 150),
-          padding: EdgeInsets.all(10),
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(10),
           decoration: BoxDecoration(
-            color: _h ? AppTheme.surfaceLight : Colors.transparent,
+            color: _hovered ? AppTheme.surfaceLight : Colors.transparent,
             borderRadius: BorderRadius.circular(12),
           ),
           child: Icon(
             widget.icon,
-            color: _h ? AppTheme.accent : AppTheme.textPrimary,
+            color: _hovered ? AppTheme.accent : AppTheme.textPrimary,
             size: 28,
           ),
         ),
@@ -618,13 +607,13 @@ class _ProfileDropdown extends StatefulWidget {
 }
 
 class _ProfileDropdownState extends State<_ProfileDropdown> {
-  bool _h = false;
+  bool _hovered = false;
 
   void _menu(BuildContext context) {
     final box = context.findRenderObject() as RenderBox;
     final navigator = Navigator.of(context);
     final overlay = navigator.overlay!.context.findRenderObject() as RenderBox;
-    final pos = RelativeRect.fromRect(
+    final position = RelativeRect.fromRect(
       Rect.fromPoints(
         box.localToGlobal(Offset.zero, ancestor: overlay),
         box.localToGlobal(box.size.bottomRight(Offset.zero), ancestor: overlay),
@@ -633,7 +622,7 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
     );
     showMenu<String>(
       context: context,
-      position: pos,
+      position: position,
       color: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       items: [
@@ -642,23 +631,27 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
         _item(
           WesiLocale.get('keys_and_tokens'),
           Icons.vpn_key_outlined,
-          '/profile',
+          '/keys',
         ),
         const PopupMenuDivider(),
         _item(WesiLocale.get('about_wesios'), Icons.info_outline, '/founder'),
       ],
-    ).then((r) {
-      if (r != null) navigator.pushNamed(r);
+    ).then((route) {
+      if (route != null) navigator.pushNamed(route);
     });
   }
 
-  PopupMenuItem<String> _item(String label, IconData icon, String route) {
+  PopupMenuItem<String> _item(
+    String label,
+    IconData icon,
+    String route,
+  ) {
     return PopupMenuItem(
       value: route,
       child: Row(
         children: [
           Icon(icon, size: 18, color: AppTheme.textSecondary),
-          SizedBox(width: 12),
+          const SizedBox(width: 12),
           Text(
             label,
             style: TextStyle(color: AppTheme.textPrimary, fontSize: 14),
@@ -671,19 +664,19 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
   @override
   Widget build(BuildContext context) {
     return MouseRegion(
-      onEnter: (_) => setState(() => _h = true),
-      onExit: (_) => setState(() => _h = false),
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: () => _menu(context),
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 150),
-          padding: EdgeInsets.all(4),
+          duration: const Duration(milliseconds: 150),
+          padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: _h ? AppTheme.surfaceLight : Colors.transparent,
+            color: _hovered ? AppTheme.surfaceLight : Colors.transparent,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: _h
+              color: _hovered
                   ? AppTheme.accent.withOpacity(0.4)
                   : Colors.transparent,
             ),
@@ -695,8 +688,6 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
   }
 }
 
-
-/// Одна вкладка нижней панели.
 class _TabSpec {
   final String id;
   final IconData icon;
