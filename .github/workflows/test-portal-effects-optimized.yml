@@ -56,7 +56,7 @@ jobs:
           page.on('requestfailed',r=>errors.push(`request:${r.url()}:${r.failure()?.errorText}`));
           for(let attempt=1;attempt<=5;attempt++){
             await page.goto(`http://127.0.0.1:4173/?attempt=${attempt}`,{waitUntil:'domcontentloaded',timeout:20000});
-            await page.waitForTimeout(650);
+            await page.waitForTimeout(700);
             const initial=await page.evaluate(()=>({
               background:getComputedStyle(document.body).backgroundColor,
               login:getComputedStyle(document.getElementById('loginView')).display,
@@ -71,15 +71,28 @@ jobs:
             if(initial.login==='none'||initial.text<1200)throw new Error(`attempt ${attempt}: missing content`);
             if(initial.width>initial.viewport+2)throw new Error(`attempt ${attempt}: horizontal overflow`);
             if(initial.height<4000||!initial.runner||initial.boot)throw new Error(`attempt ${attempt}: incomplete animated layout`);
-            await page.evaluate(()=>scrollTo({top:document.documentElement.scrollHeight*.48,behavior:'instant'}));
-            await page.waitForTimeout(500);
-            const middle=await page.evaluate(()=>({
+
+            const route=await page.evaluate(()=>{
+              const origin=document.getElementById('runnerOrigin').getBoundingClientRect();
+              const rail=document.querySelector('#motionRail .rail-line').getBoundingClientRect();
+              const start=origin.top+scrollY-innerHeight*.7;
+              const end=rail.top+scrollY-innerHeight*.36;
+              return {mid:(start+end)/2,stage:document.getElementById('moduleStage').getBoundingClientRect().top+scrollY-innerHeight*.45};
+            });
+            await page.evaluate(y=>scrollTo({top:y,behavior:'instant'}),route.mid);
+            await page.waitForTimeout(520);
+            const line=await page.evaluate(()=>({
               svgActive:document.getElementById('runnerSvg')?.classList.contains('active'),
               pathLength:document.getElementById('runnerHead')?.getTotalLength?.()||0,
-              cards:[...document.querySelectorAll('[data-float]')].map(n=>getComputedStyle(n).transform),
+              opacity:Number(getComputedStyle(document.getElementById('runnerHead')).opacity),
             }));
-            if(!middle.svgActive||middle.pathLength<500)throw new Error(`attempt ${attempt}: svg runner inactive`);
-            if(middle.cards.every(v=>v==='none'))throw new Error(`attempt ${attempt}: cards not animated`);
+            if(!line.svgActive||line.pathLength<500||line.opacity<.15)throw new Error(`attempt ${attempt}: svg runner inactive ${JSON.stringify(line)}`);
+
+            await page.evaluate(y=>scrollTo({top:y,behavior:'instant'}),route.stage);
+            await page.waitForTimeout(420);
+            const cards=await page.evaluate(()=>[...document.querySelectorAll('[data-float]')].map(n=>getComputedStyle(n).transform));
+            if(cards.every(v=>v==='none'||v==='matrix(1, 0, 0, 1, 0, 0)'))throw new Error(`attempt ${attempt}: cards not animated`);
+
             await page.evaluate(()=>scrollTo({top:document.documentElement.scrollHeight,behavior:'instant'}));
             await page.waitForTimeout(350);
             const formVisible=await page.locator('#loginForm').isVisible();
