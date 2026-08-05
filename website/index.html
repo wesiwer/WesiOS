@@ -3,110 +3,105 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#090b10">
-  <meta name="description" content="Официальная страница загрузки WesiOS для Windows и Android.">
-  <title>WesiOS — скачать приложение</title>
+  <meta name="theme-color" content="#07090d">
+  <meta name="description" content="Закрытый портал сотрудников Wesi Inc.">
+  <title>WesiOS · Employee Portal</title>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body>
+  <canvas id="ambient" aria-hidden="true"></canvas>
   <div class="noise" aria-hidden="true"></div>
-  <header class="nav">
+  <div class="cursor-glow" id="cursor-glow" aria-hidden="true"></div>
+
+  <header class="topbar">
     <a class="brand" href="/" aria-label="WesiOS">
-      <span class="brand-mark">W</span>
-      <span>WesiOS</span>
+      <span class="brand-orbit"><span>W</span></span>
+      <span class="brand-copy"><b>WesiOS</b><small>EMPLOYEE CLOUD</small></span>
     </a>
-    <a class="status" href="https://api.wesi-inc.ru/api/health" target="_blank" rel="noreferrer">
-      <span class="status-dot"></span> Сервер работает
-    </a>
+    <div class="top-actions">
+      <span class="server-state" id="server-state"><i></i><span>Проверка системы</span></span>
+      <button class="ghost-button hidden" id="logout-button" type="button">Выйти</button>
+    </div>
   </header>
 
   <main>
-    <section class="hero">
-      <div class="eyebrow">WESI INC · PRIVATE WORKSPACE</div>
-      <h1>Работа компании<br><span>в одной системе.</span></h1>
-      <p class="lead">Задачи, финансы, документы, команда, аналитика и защищённая синхронизация между устройствами.</p>
-
-      <div class="actions">
-        <a class="button primary" id="download-primary" href="#downloads">Скачать WesiOS</a>
-        <a class="button secondary" href="#install">Как установить</a>
-      </div>
-
-      <div class="meta">
-        <span id="release-version">Версия загружается…</span>
-        <span>HTTPS-синхронизация</span>
-        <span>Windows · Android</span>
-      </div>
-    </section>
-
-    <section class="panel" id="downloads">
-      <div class="section-head">
-        <div>
-          <div class="eyebrow">ЗАГРУЗКИ</div>
-          <h2>Выберите устройство</h2>
+    <section class="auth-scene" id="auth-scene">
+      <div class="auth-copy reveal">
+        <div class="eyebrow"><span></span> WESI INC · INTERNAL ACCESS</div>
+        <h1>Рабочая система,<br><em>доступная своим.</em></h1>
+        <p>Единое пространство команды: задачи, документы, чаты, финансы, аналитика и защищённая синхронизация.</p>
+        <div class="trust-row">
+          <div><b>01</b><span>Закрытый контур</span></div>
+          <div><b>02</b><span>Персональные роли</span></div>
+          <div><b>03</b><span>Защищённые сборки</span></div>
         </div>
-        <div class="release-note" id="release-note">Актуальная стабильная сборка</div>
       </div>
 
-      <div class="download-grid">
-        <article class="download-card" data-platform="windows">
-          <div class="platform-icon">⊞</div>
-          <div class="platform-copy">
-            <h3>Windows</h3>
-            <p>Windows 10/11, 64-bit. Портативная сборка в ZIP-архиве.</p>
-            <div class="file-meta" id="windows-meta">Подготовка ссылки…</div>
-          </div>
-          <a class="download-link" id="windows-download" href="https://github.com/wesiwer/WesiOS/releases/download/app-latest/wesios-windows-x64.zip">Скачать ZIP <span>↓</span></a>
-        </article>
-
-        <article class="download-card" data-platform="android">
-          <div class="platform-icon">A</div>
-          <div class="platform-copy">
-            <h3>Android</h3>
-            <p>Установочный APK. При первом запуске Android попросит разрешить установку.</p>
-            <div class="file-meta" id="android-meta">Подготовка ссылки…</div>
-          </div>
-          <a class="download-link" id="android-download" href="https://github.com/wesiwer/WesiOS/releases/download/app-latest/wesios-android.apk">Скачать APK <span>↓</span></a>
-        </article>
-
-        <article class="download-card disabled" data-platform="ios">
-          <div class="platform-icon">●</div>
-          <div class="platform-copy">
-            <h3>iPhone / iPad</h3>
-            <p>Для iOS потребуется отдельная подписанная сборка через TestFlight.</p>
-            <div class="file-meta">Готовится</div>
-          </div>
-          <span class="download-link muted">Пока недоступно</span>
-        </article>
-      </div>
+      <form class="login-card reveal" id="login-form" autocomplete="on">
+        <div class="login-sheen"></div>
+        <div class="card-kicker">EMPLOYEE IDENTITY</div>
+        <h2>Вход в WesiOS</h2>
+        <p>Используйте учётную запись, созданную администратором компании.</p>
+        <label><span>Рабочая почта</span><input id="email" type="email" autocomplete="username" required placeholder="name@company.ru"></label>
+        <label><span>Пароль</span><div class="password-wrap"><input id="password" type="password" autocomplete="current-password" required placeholder="••••••••••"><button id="password-toggle" type="button" aria-label="Показать пароль">◉</button></div></label>
+        <button class="primary-button" id="login-button" type="submit"><span>Войти в систему</span><i>↗</i></button>
+        <div class="form-error" id="form-error" role="alert"></div>
+        <div class="login-foot"><span>Нет доступа?</span> Обратитесь к администратору WesiOS.</div>
+      </form>
     </section>
 
-    <section class="install" id="install">
-      <div>
-        <div class="eyebrow">УСТАНОВКА</div>
-        <h2>Запуск за несколько минут</h2>
+    <section class="portal hidden" id="portal">
+      <div class="portal-hero reveal">
+        <div>
+          <div class="eyebrow"><span></span> ДОСТУП ПОДТВЕРЖДЁН</div>
+          <h1>Добро пожаловать,<br><em id="profile-name">сотрудник</em>.</h1>
+          <p id="profile-subtitle">Ваше рабочее пространство готово.</p>
+        </div>
+        <div class="identity-card">
+          <div class="avatar" id="profile-avatar">W</div>
+          <div><small>АКТИВНЫЙ ПРОФИЛЬ</small><b id="profile-card-name">Сотрудник</b><span id="profile-role">Employee</span></div>
+          <i class="verified">✓</i>
+        </div>
       </div>
-      <div class="steps">
-        <div class="step"><span>01</span><div><h3>Скачайте</h3><p>Выберите Windows ZIP или Android APK.</p></div></div>
-        <div class="step"><span>02</span><div><h3>Установите</h3><p>Windows: распакуйте архив и запустите WesiOS. Android: откройте APK.</p></div></div>
-        <div class="step"><span>03</span><div><h3>Войдите</h3><p>Используйте рабочую почту и пароль, созданные администратором WesiOS.</p></div></div>
-      </div>
-    </section>
 
-    <section class="security">
-      <div class="security-copy">
-        <div class="eyebrow">ИНФРАСТРУКТУРА</div>
-        <h2>Данные синхронизируются через защищённый сервер.</h2>
-        <p>Соединение с <strong>api.wesi-inc.ru</strong> работает по HTTPS. Доступ к данным ограничивается учётной записью пользователя и правилами PocketBase.</p>
+      <div class="portal-grid">
+        <section class="release-panel reveal">
+          <div class="panel-head"><div><div class="eyebrow">CURRENT RELEASE</div><h2>WesiOS <span id="release-version">—</span></h2></div><div class="build-pill" id="build-pill">SECURE BUILD</div></div>
+          <p class="release-text" id="release-note">Загрузка информации об актуальной версии…</p>
+          <div class="platforms">
+            <article class="platform-card" data-platform="windows">
+              <div class="platform-top"><span class="platform-icon windows">⊞</span><span class="platform-status">READY</span></div>
+              <h3>Windows</h3><p>Windows 10/11 · x64 · ZIP</p><small id="windows-meta">Проверка сборки…</small>
+              <button class="download-button" data-download="windows" type="button"><span>Скачать для Windows</span><i>↓</i></button>
+            </article>
+            <article class="platform-card" data-platform="android">
+              <div class="platform-top"><span class="platform-icon android">A</span><span class="platform-status">READY</span></div>
+              <h3>Android</h3><p>Подписанный установочный APK</p><small id="android-meta">Проверка сборки…</small>
+              <button class="download-button" data-download="android" type="button"><span>Скачать для Android</span><i>↓</i></button>
+            </article>
+            <article class="platform-card disabled">
+              <div class="platform-top"><span class="platform-icon ios">●</span><span class="platform-status muted">PLANNED</span></div>
+              <h3>iPhone</h3><p>Распространение через TestFlight</p><small>Сборка готовится</small>
+              <button class="download-button" disabled type="button"><span>Пока недоступно</span><i>–</i></button>
+            </article>
+          </div>
+        </section>
+
+        <aside class="side-stack">
+          <section class="system-card reveal"><div class="radar"><span></span><i></i></div><div><small>SYNC NODE</small><b>api.wesi-inc.ru</b><span id="api-detail">Проверка соединения…</span></div></section>
+          <section class="access-card reveal"><small>ВАШ ДОСТУП</small><div class="access-row"><span>Скачивание сборок</span><b id="download-access">Разрешено</b></div><div class="access-row"><span>Синхронизация</span><b>Активна</b></div><div class="access-row"><span>Рабочий профиль</span><b>Подтверждён</b></div></section>
+        </aside>
       </div>
-      <div class="security-badge"><span>✓</span><strong>TLS</strong><small>Защищённое соединение</small></div>
+
+      <section class="onboarding reveal">
+        <div><div class="eyebrow">FIRST LAUNCH</div><h2>Три шага до работы</h2></div>
+        <div class="steps"><article><b>01</b><h3>Скачайте</h3><p>Выберите сборку под своё устройство.</p></article><article><b>02</b><h3>Установите</h3><p>Распакуйте ZIP или откройте APK.</p></article><article><b>03</b><h3>Авторизуйтесь</h3><p>Используйте эту же рабочую почту и пароль.</p></article></div>
+      </section>
     </section>
   </main>
 
-  <footer>
-    <span>© 2026 Wesi Inc.</span>
-    <span>WesiOS internal preview</span>
-  </footer>
-
+  <footer><span>© 2026 Wesi Inc.</span><span>Private employee infrastructure</span><span>Session protected by WesiOS Identity</span></footer>
+  <div class="toast" id="toast" role="status"></div>
   <script src="/app.js" defer></script>
 </body>
 </html>
