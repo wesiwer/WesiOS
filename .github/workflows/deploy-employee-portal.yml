@@ -36,9 +36,13 @@ jobs:
           set -euo pipefail
           test -s server/employee-portal/index.html
           test -s server/employee-portal/styles.css
+          test -s server/employee-portal/portal-v6.css
           test -s server/employee-portal/app.js
+          test -s server/employee-portal/motion-v6.js
           test -s assets/images/app_icon.png
           grep -q './app_icon.png' server/employee-portal/index.html
+          grep -q 'portal-v6.css' server/employee-portal/index.html
+          grep -q 'motion-v6.js' server/employee-portal/index.html
           grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
 
       - name: Check server secrets
@@ -90,7 +94,9 @@ jobs:
           scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
             server/employee-portal/index.html \
             server/employee-portal/styles.css \
+            server/employee-portal/portal-v6.css \
             server/employee-portal/app.js \
+            server/employee-portal/motion-v6.js \
             server/employee-portal/app_icon.png \
             server/pb_hooks/employee_portal.pb.js \
             server/pb_hooks/employee_portal_static.pb.js \
@@ -106,7 +112,10 @@ jobs:
           BASE='https://api.wesi-inc.ru/portal/'
           curl -fsS --max-time 30 "${BASE}?v=${GITHUB_SHA}" -o portal.html
           grep -q 'WesiOS' portal.html
-          grep -q './app_icon.png' portal.html
+          grep -q 'portal-v6.css' portal.html
+          grep -q 'motion-v6.js' portal.html
+          curl -fsS --max-time 30 "${BASE}motion-v6.js?v=${GITHUB_SHA}" -o motion-v6.js
+          test "$(wc -c < motion-v6.js)" -gt 1000
           curl -fsS --max-time 30 "${BASE}app_icon.png?v=${GITHUB_SHA}" -o app_icon.png
           test "$(wc -c < app_icon.png)" -gt 1000
           CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 'https://api.wesi-inc.ru/api/wesi/portal/manifest' || true)
