@@ -16,7 +16,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$FROM" ]] || { echo "Нужен --from" >&2; exit 2; }
-for file in index.html styles.css app.js app_icon.png; do
+for file in index.html styles.css portal-v6.css app.js motion-v6.js app_icon.png; do
   [[ -s "$FROM/$file" ]] || { echo "Нет файла $FROM/$file" >&2; exit 2; }
 done
 
@@ -27,10 +27,9 @@ BACKUP="$PARENT/.${NAME}.previous"
 mkdir -p "$PARENT"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
-install -m 0644 "$FROM/index.html" "$STAGE/index.html"
-install -m 0644 "$FROM/styles.css" "$STAGE/styles.css"
-install -m 0644 "$FROM/app.js" "$STAGE/app.js"
-install -m 0644 "$FROM/app_icon.png" "$STAGE/app_icon.png"
+for file in index.html styles.css portal-v6.css app.js motion-v6.js app_icon.png; do
+  install -m 0644 "$FROM/$file" "$STAGE/$file"
+done
 rm -rf "$BACKUP"
 if [[ -d "$PORTAL_DIR" ]]; then mv "$PORTAL_DIR" "$BACKUP"; fi
 mv "$STAGE" "$PORTAL_DIR"
@@ -56,6 +55,7 @@ else
 fi
 
 test -s "$PORTAL_DIR/index.html"
+test -s "$PORTAL_DIR/motion-v6.js"
 test -s "$PORTAL_DIR/app_icon.png"
 printf 'Портал опубликован: %s\n' "$PORTAL_DIR"
 printf 'Основной URL: https://api.wesi-inc.ru/portal/\n'
