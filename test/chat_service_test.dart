@@ -588,14 +588,13 @@ void main() {
   group('состояние доставки', () {
     tearDown(() async => SyncEndpoint.configure(url: ''));
 
-    test('без сервера сообщение никуда не собирается', () async {
-      // Вечные «часики» означали бы «отправляется» — и висели бы всегда,
-      // выглядя как поломка.
-      final chat = await ChatService.direct('e2', now: base);
+    test('рабочее сообщение сразу ждёт отправки на корпоративный сервер', () async {
+      final chat = await ChatService.direct(
+          'e2', kind: ChatKind.work, now: base);
       final m = (await ChatService.send(
           chatId: chat.id, body: 'Привет', now: base))!;
-      expect(m.state, DeliveryState.local);
-      expect(ChatDelivery.whyLocal(chat), isNotNull);
+      expect(m.state, DeliveryState.pending);
+      expect(ChatDelivery.whyLocal(chat), isNull);
     });
 
     test('с сервером рабочее сообщение ждёт отправки', () async {
