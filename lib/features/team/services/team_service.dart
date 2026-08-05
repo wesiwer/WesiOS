@@ -135,9 +135,43 @@ class TeamService {
 
   static bool get isOwnerSession => current == null || current!.isOwner;
 
-  static Future<void> signIn(EmployeeModel employee) async {
-    await _settings()?.put(_currentKey, employee.id);
+  /// Ключ «сессию запомнили». Отдельно от самой сессии: сессия говорит,
+  /// **кто** вошёл, а это — переживёт ли вход перезапуск.
+  static const String _rememberKey = 'team_remember_session';
+
+  /// Просили ли запомнить вход.
+  static bool get remembered => _settings()?.get(_rememberKey) != false;
+
+  /// Войти.
+  ///
+  /// [remember] — переживёт ли вход перезапуск программы.
+  ///
+  /// Раньше галочка «Запомнить меня» на экране входа управляла только
+  /// Firebase, а сотрудник запоминался всегда. То есть для тех, кто входит
+  /// логином, галочка не значила ничего: снятая, она всё равно оставляла
+  /// сессию до следующего выхода. Управление, которое ничем не управляет,
+  /// хуже отсутствующего — на него рассчитывают.
+  static Future<void> signIn(EmployeeModel employee,
+      {bool remember = true}) async {
+    final box = _settings();
+    if (box == null) return;
+    await box.put(_currentKey, employee.id);
+    await box.put(_rememberKey, remember);
     revision.value++;
+  }
+
+  /// Убрать сессию, которую не просили запоминать.
+  ///
+  /// Вызывается на старте программы. Сам вход при этом работал всю прошлую
+  /// сессию — «не запоминать» означает «до закрытия», а не «на один экран».
+  static Future<void> forgetUnrememberedSession() async {
+    final box = _settings();
+    if (box == null) return;
+    if (box.get(_rememberKey) == false) {
+      await box.delete(_currentKey);
+      await box.delete(_rememberKey);
+      revision.value++;
+    }
   }
 
   static Future<void> signOut() async {
@@ -289,6 +323,41 @@ class TeamService {
     if (current?.id == id) await signOut();
     revision.value++;
     return true;
+  }
+
+  /// Чем закончилась смена логина.
+  ///
+  /// Перечисление, а не `bool`: причин отказа три, и человеку надо сказать,
+  /// какая именно. «Не получилось» без объяснения заставляет гадать.
+  static const String loginOk = 'ok';
+  static const String loginTaken = 'taken';
+  static const String loginBad = 'bad';
+  static const String loginNoSuchPerson = 'gone';
+
+  /// Сменить логин.
+  ///
+  /// Старый логин **освобождается** и возвращается в пул. Без этого он
+  /// оставался бы занятым навсегда: список занятых ведётся отдельно от
+  /// списка людей ровно затем, чтобы освобождение было отдельным видимым
+  /// событием, — и пропустить его здесь значило бы медленно вычерпать пул.
+  static Future<String> setLogin(String id, String login) async {
+    final employee = byId(id);
+    if (employee == null) return loginNoSuchPerson;
+
+    final normalized = CredentialsGenerator.normalize(login);
+    // Слишком короткий логин подбирается перебором за минуты.
+    if (normalized.length < 3) return loginBad;
+    if (normalized == employee.login) return loginOk;
+
+    final other = byLogin(normalized);
+    if (other != null && other.id != id) return loginTaken;
+    if (LoginPoolService.isTaken(normalized)) return loginTaken;
+
+    final old = employee.login;
+    if (!await LoginPoolService.reserve(normalized)) return loginTaken;
+    await save(employee.copyWith(login: normalized));
+    await LoginPoolService.release(old);
+    return loginOk;
   }
 
   /// Смена пароля — сотрудником себе или владельцем сотруднику.

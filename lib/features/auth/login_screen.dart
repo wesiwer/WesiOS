@@ -43,7 +43,13 @@ class _LoginScreenState extends State<LoginScreen> {
   void initState() {
     super.initState();
     // Уже вошли и просили запомнить — спрашивать заново незачем.
-    if (FirebaseRestService.isSignedIn) {
+    //
+    // Сотрудник проверяется тоже, а не только Firebase. Раньше здесь стояло
+    // одно условие про Firebase, и человек, входящий логином, видел экран
+    // входа при каждом запуске — при том, что его сессия сохранялась и
+    // работала. Спрашивать пароль у того, кто уже вошёл, — это не
+    // безопасность, а забывчивость.
+    if (FirebaseRestService.isSignedIn || TeamService.current != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _goHome());
     }
   }
@@ -79,7 +85,9 @@ class _LoginScreenState extends State<LoginScreen> {
     // может не иметь вовсе, поэтому проверять его через Firebase бессмысленно.
     final employee = TeamService.verify(entered, password);
     if (employee != null) {
-      await TeamService.signIn(employee);
+      // Галочка теперь распространяется и на сотрудника: снятая — сессия
+      // живёт до закрытия программы и не переживает перезапуск.
+      await TeamService.signIn(employee, remember: _remember);
       if (!mounted) return;
       _goHome();
       return;

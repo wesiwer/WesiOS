@@ -13,6 +13,7 @@ import '../../core/security/shield_service.dart';
 import '../../core/widgets/vault_unlock_dialog.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../team/services/team_service.dart';
+import 'widgets/credentials_card.dart';
 import 'widgets/sync_card.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -235,6 +236,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           // Синхронизация — это ответ на вопрос «мои данные точно не
           // пропадут». Его задают, глядя на свой профиль, а не листая
           // настройки, поэтому состояние видно сразу и без нажатий.
+          _section('Вход'),
+          const ProfileCredentialsCard(),
           _section('Синхронизация'),
           const ProfileSyncCard(),
           _section('Личная информация'),
