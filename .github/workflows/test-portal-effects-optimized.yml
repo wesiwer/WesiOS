@@ -72,14 +72,7 @@ jobs:
             if(initial.width>initial.viewport+2)throw new Error(`attempt ${attempt}: horizontal overflow`);
             if(initial.height<4000||!initial.runner||initial.boot)throw new Error(`attempt ${attempt}: incomplete animated layout`);
 
-            const route=await page.evaluate(()=>{
-              const origin=document.getElementById('runnerOrigin').getBoundingClientRect();
-              const rail=document.querySelector('#motionRail .rail-line').getBoundingClientRect();
-              const start=origin.top+scrollY-innerHeight*.7;
-              const end=rail.top+scrollY-innerHeight*.36;
-              return {mid:(start+end)/2,stage:document.getElementById('moduleStage').getBoundingClientRect().top+scrollY-innerHeight*.45};
-            });
-            await page.evaluate(y=>scrollTo(0,y),route.mid);
+            await page.locator('#flowSection').scrollIntoViewIfNeeded();
             await page.waitForTimeout(520);
             const line=await page.evaluate(()=>({
               svgActive:document.getElementById('runnerSvg')?.classList.contains('active'),
@@ -89,7 +82,7 @@ jobs:
             }));
             if(line.scrollY<100||!line.svgActive||line.pathLength<500||line.opacity<.15)throw new Error(`attempt ${attempt}: svg runner inactive ${JSON.stringify(line)}`);
 
-            await page.evaluate(y=>scrollTo(0,y),route.stage);
+            await page.locator('#moduleStage').scrollIntoViewIfNeeded();
             await page.waitForTimeout(420);
             const cardState=await page.evaluate(()=>({
               scrollY,
@@ -97,7 +90,7 @@ jobs:
             }));
             if(cardState.scrollY<100||cardState.cards.every(v=>v==='none'||v==='matrix(1, 0, 0, 1, 0, 0)'))throw new Error(`attempt ${attempt}: cards not animated ${JSON.stringify(cardState)}`);
 
-            await page.evaluate(()=>scrollTo(0,document.documentElement.scrollHeight));
+            await page.locator('#loginForm').scrollIntoViewIfNeeded();
             await page.waitForTimeout(350);
             const formVisible=await page.locator('#loginForm').isVisible();
             if(!formVisible)throw new Error(`attempt ${attempt}: form missing at bottom`);
