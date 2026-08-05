@@ -1,0 +1,13 @@
+name: Diagnose portal GET open PR
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-portal-get-open-pr.yml'
+permissions:
+  contents: read
+jobs:
+  open:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo open
