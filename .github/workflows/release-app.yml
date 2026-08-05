@@ -445,6 +445,59 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
+      # Куда класть — проверяем ДО того, как гнать 50 МБ по сети.
+      #
+      # Без этой проверки отказ выглядит как `mkdir: cannot create directory
+      # '/srv/wesi-artifacts/app': Permission denied` в середине лога — и по
+      # нему не видно ни того, что каталог выбран по умолчанию, ни того, что
+      # чинится это одной строкой. Прогон краснеет каждый релиз, причина
+      # одна и та же, а разбирать её приходится заново.
+      - name: Check the target directory is writable
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          ARTIFACTS_DIR: ${{ vars.WESI_ARTIFACTS_DIR }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          DIR="${ARTIFACTS_DIR:-/srv/wesi-artifacts}"
+
+          if $SSH "$USER@$HOST" "mkdir -p '$DIR/app' 2>/dev/null && test -w '$DIR/app'"; then
+            echo "Каталог $DIR/app доступен на запись"
+            exit 0
+          fi
+
+          {
+            echo "### Выкладка на свой сервер не прошла"
+            echo
+            echo "Каталог \`$DIR\` недоступен пользователю \`$USER\` на запись."
+            if [ -z "${ARTIFACTS_DIR:-}" ]; then
+              echo "Переменная репозитория \`WESI_ARTIFACTS_DIR\` не задана, "
+              echo "поэтому взят каталог по умолчанию."
+              echo
+              echo "**Проще всего** — раздавать файлы самим PocketBase:"
+              echo '```'
+              echo "Settings → Secrets and variables → Actions → Variables"
+              echo "WESI_ARTIFACTS_DIR = /opt/pocketbase/pb_public/artifacts"
+              echo '```'
+              echo "и один раз на сервере:"
+            else
+              echo
+              echo "На сервере:"
+            fi
+            echo '```bash'
+            echo "sudo mkdir -p $DIR"
+            echo "sudo chown -R $USER: $DIR"
+            echo '```'
+            echo
+            echo "Сборки при этом уже опубликованы в GitHub Releases, и"
+            echo "приложение возьмёт обновление оттуда — своя раздача это"
+            echo "запасной путь, а не единственный."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "::error::Каталог $DIR недоступен на запись пользователю $USER — см. итог прогона"
+          exit 1
+
       - name: Upload build to server
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
