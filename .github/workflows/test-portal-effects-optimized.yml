@@ -1,0 +1,99 @@
+name: Test optimized animated portal
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  webkit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build production bundle
+        run: |
+          set -euo pipefail
+          mkdir -p build-src
+          cp server/employee-portal/index.html server/employee-portal/styles.css server/employee-portal/portal-v6.css server/employee-portal/app.js server/employee-portal/motion-v6.js build-src/
+          cp assets/images/app_icon.png build-src/app_icon.png
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          root=Path('build-src')
+          html=(root/'index.html').read_text(encoding='utf-8')
+          replacements=[
+            (r'<link\s+rel="stylesheet"\s+href="\./styles\.css[^"]*"\s*/?>','<style>'+ (root/'styles.css').read_text(encoding='utf-8') +'</style>'),
+            (r'<link\s+rel="stylesheet"\s+href="\./portal-v6\.css[^"]*"\s*/?>','<style>'+ (root/'portal-v6.css').read_text(encoding='utf-8') +'</style>'),
+            (r'<script\s+src="\./app\.js[^"]*"\s+defer></script>','<script>'+ (root/'app.js').read_text(encoding='utf-8').replace('</script','<\\/script') +'</script>'),
+            (r'<script\s+src="\./motion-v6\.js[^"]*"\s+defer></script>','<script>'+ (root/'motion-v6.js').read_text(encoding='utf-8').replace('</script','<\\/script') +'</script>'),
+          ]
+          for pattern,value in replacements:
+            html,count=re.subn(pattern,value,html,count=1)
+            if count != 1: raise SystemExit(f'missing replacement: {pattern}')
+          (root/'index.html').write_text(html,encoding='utf-8')
+          PY
+          node --check server/employee-portal/app.js
+          node --check server/employee-portal/motion-v6.js
+          test "$(wc -c < build-src/index.html)" -gt 30000
+      - name: Install WebKit
+        run: |
+          npm init -y >/dev/null
+          npm install --silent playwright@1.54.2
+          npx playwright install --with-deps webkit >/dev/null
+      - name: Stress mobile rendering and animations
+        run: |
+          python3 -m http.server 4173 --directory build-src >/tmp/portal-http.log 2>&1 &
+          cat > render.mjs <<'JS'
+          import { webkit, devices } from 'playwright';
+          const browser=await webkit.launch({headless:true});
+          const context=await browser.newContext({...devices['iPhone 15 Pro']});
+          const page=await context.newPage();
+          const errors=[];
+          page.on('pageerror',e=>errors.push(`page:${e.message}`));
+          page.on('requestfailed',r=>errors.push(`request:${r.url()}:${r.failure()?.errorText}`));
+          for(let attempt=1;attempt<=5;attempt++){
+            await page.goto(`http://127.0.0.1:4173/?attempt=${attempt}`,{waitUntil:'domcontentloaded',timeout:20000});
+            await page.waitForTimeout(650);
+            const initial=await page.evaluate(()=>({
+              background:getComputedStyle(document.body).backgroundColor,
+              login:getComputedStyle(document.getElementById('loginView')).display,
+              text:document.body.innerText.length,
+              width:document.documentElement.scrollWidth,
+              viewport:innerWidth,
+              height:document.documentElement.scrollHeight,
+              runner:!!document.getElementById('runnerSvg'),
+              boot:!!document.getElementById('boot'),
+            }));
+            if(initial.background==='rgb(255, 255, 255)')throw new Error(`attempt ${attempt}: white page`);
+            if(initial.login==='none'||initial.text<1200)throw new Error(`attempt ${attempt}: missing content`);
+            if(initial.width>initial.viewport+2)throw new Error(`attempt ${attempt}: horizontal overflow`);
+            if(initial.height<4000||!initial.runner||initial.boot)throw new Error(`attempt ${attempt}: incomplete animated layout`);
+            await page.evaluate(()=>scrollTo({top:document.documentElement.scrollHeight*.48,behavior:'instant'}));
+            await page.waitForTimeout(500);
+            const middle=await page.evaluate(()=>({
+              svgActive:document.getElementById('runnerSvg')?.classList.contains('active'),
+              pathLength:document.getElementById('runnerHead')?.getTotalLength?.()||0,
+              cards:[...document.querySelectorAll('[data-float]')].map(n=>getComputedStyle(n).transform),
+            }));
+            if(!middle.svgActive||middle.pathLength<500)throw new Error(`attempt ${attempt}: svg runner inactive`);
+            if(middle.cards.every(v=>v==='none'))throw new Error(`attempt ${attempt}: cards not animated`);
+            await page.evaluate(()=>scrollTo({top:document.documentElement.scrollHeight,behavior:'instant'}));
+            await page.waitForTimeout(350);
+            const formVisible=await page.locator('#loginForm').isVisible();
+            if(!formVisible)throw new Error(`attempt ${attempt}: form missing at bottom`);
+          }
+          console.log(JSON.stringify({errors},null,2));
+          await page.screenshot({path:'optimized-portal.png',fullPage:true});
+          if(errors.length)throw new Error(errors.join('\n'));
+          await browser.close();
+          JS
+          node render.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: optimized-animated-portal
+          path: optimized-portal.png
+          retention-days: 1
