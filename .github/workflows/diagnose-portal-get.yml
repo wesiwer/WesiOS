@@ -1,0 +1,37 @@
+name: Diagnose portal GET delivery
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-portal-get.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Download full portal resources
+        run: |
+          set +e
+          mkdir -p out
+          BASE='https://api.wesi-inc.ru/portal'
+          for resource in '/' '/styles.css?v=6' '/portal-v6.css?v=1' '/app.js?v=6' '/motion-v6.js?v=1' '/app_icon.png'; do
+            safe=$(printf '%s' "$resource" | tr '/?=&' '____')
+            echo "=== GET $resource ==="
+            curl -v --compressed --connect-timeout 10 --max-time 30 \
+              -A 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 Version/26.0 Mobile/15E148 Safari/604.1' \
+              -w '\nRESULT http=%{http_code} size=%{size_download} start=%{time_starttransfer} total=%{time_total} speed=%{speed_download}\n' \
+              "$BASE$resource" -o "out/$safe" 2>&1 | tail -60
+            ls -l "out/$safe" 2>/dev/null || true
+            file "out/$safe" 2>/dev/null || true
+            echo
+          done
+          echo '=== HTML prefix ==='
+          sed -n '1,25p' out/__ 2>/dev/null || true
+          echo '=== JS syntax ==='
+          node --check out/_app.js_v_6 2>&1 || true
+          node --check out/_motion-v6.js_v_1 2>&1 || true
