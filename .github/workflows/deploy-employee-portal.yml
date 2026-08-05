@@ -9,6 +9,7 @@ on:
       - 'server/pb_hooks/employee_portal.pb.js'
       - 'server/pb_hooks/employee_portal_static.pb.js'
       - 'server/deploy-employee-portal.sh'
+      - 'lib/features/team/services/portal_account_service.dart'
       - '.github/workflows/deploy-employee-portal.yml'
 
 permissions:
@@ -22,6 +23,9 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 12
+    environment:
+      name: employee-portal
+      url: https://api.wesi-inc.ru/portal/
     steps:
       - uses: actions/checkout@v4
         with:
@@ -74,12 +78,27 @@ jobs:
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
-          ARTIFACTS_DIR: ${{ vars.WESI_ARTIFACTS_DIR }}
+          CONFIGURED_ARTIFACTS_DIR: ${{ vars.WESI_ARTIFACTS_DIR }}
           PORTAL_DIR: ${{ vars.WESI_PORTAL_DIR }}
         run: |
           set -euo pipefail
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
           REMOTE="/tmp/wesi-portal-$GITHUB_RUN_ID"
+
+          # Репозиторий пережил две схемы хранения. Не угадываем: сначала
+          # используем явную переменную, затем выбираем реально доступный для
+          # записи каталог на сервере.
+          if [ -n "${CONFIGURED_ARTIFACTS_DIR:-}" ]; then
+            ARTIFACTS_DIR="$CONFIGURED_ARTIFACTS_DIR"
+          else
+            ARTIFACTS_DIR=$($SSH "$USER@$HOST" 'for d in /opt/pocketbase/pb_public/artifacts /srv/wesi-artifacts; do if [ -d "$d" ] && [ -w "$d" ]; then printf "%s" "$d"; exit 0; fi; done; exit 1') || {
+              echo '::error::Пользователь деплоя не может писать ни в /opt/pocketbase/pb_public/artifacts, ни в /srv/wesi-artifacts.'
+              echo 'Нужно один раз выдать права каталогу; скрипт не будет делать вид, что сайт опубликован.'
+              exit 1
+            }
+          fi
+          echo "Каталог публикации: $ARTIFACTS_DIR"
+
           $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
           scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
             server/employee-portal/index.html \
@@ -91,7 +110,7 @@ jobs:
             "$USER@$HOST:$REMOTE/"
 
           $SSH "$USER@$HOST" \
-            "WESI_ARTIFACTS_DIR='${ARTIFACTS_DIR:-/opt/pocketbase/pb_public/artifacts}' \
+            "WESI_ARTIFACTS_DIR='$ARTIFACTS_DIR' \
              WESI_PORTAL_DIR='${PORTAL_DIR:-}' \
              bash '$REMOTE/deploy-employee-portal.sh' --from '$REMOTE'"
           $SSH "$USER@$HOST" "rm -rf '$REMOTE'"
