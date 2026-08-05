@@ -80,7 +80,6 @@ class PortalAccountService {
         );
       }
 
-      // Контрольный вход тем же путём, которым пользуется сайт.
       final auth = await client.postUrl(
         Uri.parse('$_base/api/collections/users/auth-with-password'),
       );
@@ -139,11 +138,21 @@ class PortalAccountService {
   }
 
   /// Создать или обновить серверный аккаунт сотрудника одновременно с его
-  /// локальной карточкой.
+  /// локальной карточкой. Для владельца это обновление его текущей auth-
+  /// записи, а не создание второго «сотрудника» с тем же логином.
   static Future<bool> provision({
     required EmployeeModel employee,
     required String password,
   }) async {
+    if (employee.isOwner) {
+      final result = await configureCurrentProfile(
+        employee: employee,
+        login: employee.login,
+        password: password,
+      );
+      return result.ok;
+    }
+
     final session = SyncEndpoint.session;
     final ownerToken = session?['token'];
     if (ownerToken is! String || ownerToken.isEmpty) return false;
