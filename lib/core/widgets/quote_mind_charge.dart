@@ -1,16 +1,20 @@
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+
 import '../localization/wesi_locale.dart';
 import '../services/quote_mind_charge_service.dart';
 import '../theme/app_theme.dart';
 
-/// Компактный блок «заряд умных мыслей» — справа от часов на Home.
+/// Блок «заряд умных мыслей».
 ///
-/// Текст-призыв + прогресс-бар (0…10 цитат). При достижении 10 —
-/// короткий салют (цвет = AppTheme.accent) и поздравление.
-/// При 40 — секретная надпись.
+/// [expanded] делает его той же ширины, что и карточка цитаты. На главной это
+/// основной вариант: два связанных блока должны выглядеть одной системой, а
+/// не маленьким индикатором, случайно прижатым к иконкам профиля.
 class QuoteMindCharge extends StatefulWidget {
-  const QuoteMindCharge({super.key});
+  final bool expanded;
+
+  const QuoteMindCharge({super.key, this.expanded = false});
 
   @override
   State<QuoteMindCharge> createState() => _QuoteMindChargeState();
@@ -20,7 +24,7 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
     with TickerProviderStateMixin {
   late final AnimationController _burstCtrl;
   late final AnimationController _msgCtrl;
-  String? _message;
+  bool _showMessage = false;
   bool _secret = false;
 
   @override
@@ -38,14 +42,12 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
     QuoteMindChargeService.celebratePrimary.addListener(_onPrimary);
     QuoteMindChargeService.celebrateSecret.addListener(_onSecret);
 
-    // Если уже достигли порогов раньше — сразу показываем состояние
-    // (без повторного салюта).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (QuoteMindChargeService.reachedSecret) {
-        _showMessage(secret: true, animate: false);
+        _show(secret: true, animate: false);
       } else if (QuoteMindChargeService.reachedPrimary) {
-        _showMessage(secret: false, animate: false);
+        _show(secret: false, animate: false);
       }
     });
   }
@@ -62,25 +64,19 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
   void _onPrimary() {
     if (!mounted) return;
     _burstCtrl.forward(from: 0);
-    _showMessage(secret: false, animate: true);
+    _show(secret: false, animate: true);
   }
 
   void _onSecret() {
     if (!mounted) return;
     _burstCtrl.forward(from: 0);
-    _showMessage(secret: true, animate: true);
+    _show(secret: true, animate: true);
   }
 
-  void _showMessage({required bool secret, required bool animate}) {
+  void _show({required bool secret, required bool animate}) {
     setState(() {
       _secret = secret;
-      _message = secret
-          ? (WesiLocale.isRussian
-              ? 'Тебя не остановить, заряд умных мыслей уже запасён на неделю вперед, пхех!'
-              : 'Unstoppable — smart-thought charge stocked for a week ahead, heh!')
-          : (WesiLocale.isRussian
-              ? 'Молодец, заряд умных мыслей получен!'
-              : 'Nice! Smart-thought charge unlocked!');
+      _showMessage = true;
     });
     if (animate) {
       _msgCtrl.forward(from: 0);
@@ -94,102 +90,142 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
     return ValueListenableBuilder<AppThemeMode>(
       valueListenable: ThemeNotifier.instance,
       builder: (context, _, __) {
-        return ValueListenableBuilder<int>(
-          valueListenable: QuoteMindChargeService.count,
-          builder: (context, count, __) {
-            final progress = QuoteMindChargeService.progress01;
-            final accent = AppTheme.accent;
-            final isRu = WesiLocale.isRussian;
+        return ValueListenableBuilder<String>(
+          valueListenable: WesiLocale.localeNotifier,
+          builder: (context, _, __) {
+            return ValueListenableBuilder<int>(
+              valueListenable: QuoteMindChargeService.count,
+              builder: (context, count, __) {
+                final progress = QuoteMindChargeService.progress01;
+                final accent = AppTheme.accent;
+                final isRu = WesiLocale.isRussian;
+                final message = _secret
+                    ? (isRu
+                        ? 'Тебя не остановить — запас умных мыслей уже на неделю вперёд.'
+                        : 'Unstoppable — smart thoughts are stocked for a week.')
+                    : (isRu
+                        ? 'Молодец, заряд умных мыслей получен!'
+                        : 'Nice! Smart-thought charge unlocked!');
 
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Container(
-                  constraints: const BoxConstraints(minWidth: 170, maxWidth: 230),
-                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.glassBorder),
-                    color: AppTheme.surface.withOpacity(0.55),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        isRu
-                            ? 'Зарядись умными мыслями'
-                            : 'Charge up with smart thoughts',
-                        style: TextStyle(
-                          fontSize: 10,
-                          height: 1.25,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.textSecondary,
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    Container(
+                      width: widget.expanded ? double.infinity : null,
+                      constraints: widget.expanded
+                          ? const BoxConstraints(minHeight: 86)
+                          : const BoxConstraints(
+                              minWidth: 170,
+                              maxWidth: 230,
+                            ),
+                      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: AppTheme.glassBorder),
+                        gradient: LinearGradient(
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [
+                            AppTheme.accent.withOpacity(0.08),
+                            AppTheme.surface.withOpacity(0.46),
+                          ],
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
                       ),
-                      const SizedBox(height: 8),
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(4),
-                        child: SizedBox(
-                          height: 5,
-                          child: LinearProgressIndicator(
-                            value: progress,
-                            backgroundColor: AppTheme.surfaceLight,
-                            valueColor: AlwaysStoppedAnimation(accent),
-                            minHeight: 5,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.bolt_rounded,
+                                size: 17,
+                                color: accent,
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  isRu
+                                      ? 'Зарядись умными мыслями'
+                                      : 'Charge up with smart thoughts',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    height: 1.25,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.textSecondary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Text(
+                                '${count.clamp(0, QuoteMindChargeService.goalPrimary)}'
+                                '/${QuoteMindChargeService.goalPrimary}',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: AppTheme.textMuted,
+                                  fontFeatures: const [
+                                    FontFeature.tabularFigures(),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        '${count.clamp(0, QuoteMindChargeService.goalPrimary)}'
-                        '/${QuoteMindChargeService.goalPrimary}',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: AppTheme.textMuted,
-                          fontFeatures: const [FontFeature.tabularFigures()],
-                        ),
-                      ),
-                      if (_message != null) ...[
-                        const SizedBox(height: 6),
-                        FadeTransition(
-                          opacity: _msgCtrl,
-                          child: Text(
-                            _message!,
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              height: 1.3,
-                              fontWeight: FontWeight.w600,
-                              color: _secret ? accent : AppTheme.textPrimary,
+                          const SizedBox(height: 10),
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(5),
+                            child: SizedBox(
+                              height: 6,
+                              child: LinearProgressIndicator(
+                                value: progress,
+                                backgroundColor: AppTheme.surfaceLight,
+                                valueColor: AlwaysStoppedAnimation(accent),
+                                minHeight: 6,
+                              ),
                             ),
                           ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                // Салют поверх — лёгкие «искры» из центра блока
-                Positioned.fill(
-                  child: IgnorePointer(
-                    child: AnimatedBuilder(
-                      animation: _burstCtrl,
-                      builder: (context, _) {
-                        if (_burstCtrl.value == 0 || _burstCtrl.value == 1) {
-                          return const SizedBox.shrink();
-                        }
-                        return CustomPaint(
-                          painter: _SparksPainter(
-                            progress: _burstCtrl.value,
-                            color: accent,
-                          ),
-                        );
-                      },
+                          if (_showMessage) ...[
+                            const SizedBox(height: 8),
+                            FadeTransition(
+                              opacity: _msgCtrl,
+                              child: Text(
+                                message,
+                                style: TextStyle(
+                                  fontSize: 11.5,
+                                  height: 1.35,
+                                  fontWeight: FontWeight.w600,
+                                  color: _secret
+                                      ? accent
+                                      : AppTheme.textPrimary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
                     ),
-                  ),
-                ),
-              ],
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: AnimatedBuilder(
+                          animation: _burstCtrl,
+                          builder: (context, _) {
+                            if (_burstCtrl.value == 0 ||
+                                _burstCtrl.value == 1) {
+                              return const SizedBox.shrink();
+                            }
+                            return CustomPaint(
+                              painter: _SparksPainter(
+                                progress: _burstCtrl.value,
+                                color: accent,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );
@@ -198,37 +234,35 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
   }
 }
 
-/// Простой радиальный «салют» из точек — без внешних пакетов.
 class _SparksPainter extends CustomPainter {
   _SparksPainter({required this.progress, required this.color});
 
   final double progress;
   final Color color;
 
-  static const int _n = 14;
+  static const int _count = 14;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final cx = size.width / 2;
-    final cy = size.height / 2;
-    final maxR = math.max(size.width, size.height) * 0.85;
+    final center = Offset(size.width / 2, size.height / 2);
+    final maxRadius = math.max(size.width, size.height) * 0.85;
     final t = Curves.easeOut.transform(progress);
     final fade = (1.0 - progress).clamp(0.0, 1.0);
-
     final paint = Paint()..style = PaintingStyle.fill;
 
-    for (var i = 0; i < _n; i++) {
-      final angle = (i / _n) * math.pi * 2 + progress * 1.2;
-      final r = maxR * t * (0.55 + 0.45 * ((i % 3) / 2));
-      final x = cx + math.cos(angle) * r;
-      final y = cy + math.sin(angle) * r;
-      final radius = 2.2 * (1.0 - t * 0.4);
+    for (var i = 0; i < _count; i++) {
+      final angle = (i / _count) * math.pi * 2 + progress * 1.2;
+      final radius = maxRadius * t * (0.55 + 0.45 * ((i % 3) / 2));
+      final point = Offset(
+        center.dx + math.cos(angle) * radius,
+        center.dy + math.sin(angle) * radius,
+      );
       paint.color = color.withOpacity(0.85 * fade);
-      canvas.drawCircle(Offset(x, y), radius, paint);
+      canvas.drawCircle(point, 2.2 * (1.0 - t * 0.4), paint);
     }
   }
 
   @override
-  bool shouldRepaint(covariant _SparksPainter old) =>
-      old.progress != progress || old.color != color;
+  bool shouldRepaint(covariant _SparksPainter oldDelegate) =>
+      oldDelegate.progress != progress || oldDelegate.color != color;
 }
