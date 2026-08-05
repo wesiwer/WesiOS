@@ -1,19 +1,16 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/localization/wesi_locale.dart';
+import '../../../core/sync/sync_endpoint.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../team/services/portal_account_service.dart';
 import '../../team/services/team_service.dart';
 
-/// Логин и пароль для входа в приложение.
+/// Единые данные входа владельца.
 ///
-/// **Почему это здесь, а не зашито в сборку.** Логин и пароль конкретного
-/// человека — его и только его. Репозиторий открыт: пароль, вписанный в
-/// код «чтобы работало сразу», немедленно становится известен всем, кто
-/// откроет исходники. Поэтому задаёт их человек, у себя, в два нажатия.
-///
-/// Пароль здесь не показывается никогда — ни свой, ни чужой. В хранилище
-/// его и нет: лежит PBKDF2-хеш с солью, из которого пароль не достать.
-/// Забыли — не «посмотреть», а задать новый.
+/// Эти же логин и пароль после успешной отправки принимает портал, а после
+/// отдельного подтверждения владельца их будет проверять стартовый экран
+/// WesiOS. Пароль хранится только как хеш PocketBase и локальный PBKDF2-хеш.
 class ProfileCredentialsCard extends StatefulWidget {
   const ProfileCredentialsCard({super.key});
 
@@ -23,219 +20,408 @@ class ProfileCredentialsCard extends StatefulWidget {
 }
 
 class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
+  bool _sending = false;
+  String? _status;
+  bool _statusError = false;
+
   bool get _ru => WesiLocale.isRussian;
 
-  void _say(String text) {
+  void _say(String text, {bool error = false}) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(text), backgroundColor: AppTheme.surface),
-    );
-  }
-
-  Future<void> _changeLogin() async {
-    final me = TeamService.current ?? TeamService.owner;
-    if (me == null) return;
-
-    final controller = TextEditingController(text: me.login);
-    final entered = await _ask(
-      title: _ru ? 'Логин для входа' : 'Login',
-      hint: _ru ? 'Например: WesiOff' : 'For example: WesiOff',
-      controller: controller,
-      obscure: false,
-    );
-    controller.dispose();
-    if (entered == null) return;
-
-    final result = await TeamService.setLogin(me.id, entered);
-    if (!mounted) return;
-    setState(() {});
-
-    _say(switch (result) {
-      TeamService.loginOk => _ru ? 'Логин изменён' : 'Login changed',
-      TeamService.loginTaken =>
-        _ru ? 'Такой логин уже занят' : 'That login is taken',
-      TeamService.loginBad => _ru
-          ? 'Слишком короткий логин — от трёх знаков'
-          : 'Too short — three characters minimum',
-      _ => _ru ? 'Не получилось' : 'Failed',
+    setState(() {
+      _status = text;
+      _statusError = error;
     });
   }
 
-  Future<void> _changePassword() async {
+  Future<void> _configure() async {
     final me = TeamService.current ?? TeamService.owner;
-    if (me == null) return;
+    if (me == null || _sending) return;
 
-    final controller = TextEditingController();
-    final entered = await _ask(
-      title: _ru ? 'Новый пароль' : 'New password',
-      hint: _ru ? 'Не короче шести знаков' : 'At least six characters',
-      controller: controller,
-      obscure: true,
-    );
-    final password = entered?.trim() ?? '';
-    controller.dispose();
-    if (entered == null) return;
+    final draft = await _askCredentials(initialLogin: me.login);
+    if (draft == null) return;
 
-    // Шесть знаков — не «безопасно», а нижняя граница, ниже которой пароль
-    // подбирается за минуты. Настаивать на большем в приложении, которое
-    // держат в кармане, бессмысленно: люди начнут писать его на бумажке.
-    if (password.length < 6) {
-      _say(_ru ? 'Слишком короткий пароль' : 'Password is too short');
+    final login = draft.login.trim().toLowerCase();
+    if (!RegExp(r'^[a-z0-9][a-z0-9._-]{2,31}$').hasMatch(login)) {
+      _say(
+        _ru
+            ? 'Логин: 3–32 латинских символа, цифры, точка, дефис или подчёркивание.'
+            : 'Use 3–32 Latin characters, digits, dot, dash or underscore.',
+        error: true,
+      );
+      return;
+    }
+    if (draft.password.length < 8) {
+      _say(_ru ? 'Пароль должен быть не короче 8 символов.' : 'Use at least 8 characters.',
+          error: true);
+      return;
+    }
+    if (draft.password != draft.confirmation) {
+      _say(_ru ? 'Пароли не совпадают.' : 'Passwords do not match.', error: true);
       return;
     }
 
-    final ok = await TeamService.setPassword(me.id, password);
+    final other = TeamService.byLogin(login);
+    if (other != null && other.id != me.id) {
+      _say(_ru ? 'Такой логин уже занят локальным профилем.' : 'That login is already used.',
+          error: true);
+      return;
+    }
+
+    setState(() {
+      _sending = true;
+      _status = _ru ? 'Отправляю и проверяю вход…' : 'Publishing and verifying…';
+      _statusError = false;
+    });
+
+    final server = await PortalAccountService.configureCurrentProfile(
+      employee: me,
+      login: login,
+      password: draft.password,
+    );
+    if (!server.ok) {
+      if (mounted) {
+        setState(() => _sending = false);
+        _say(server.message, error: true);
+      }
+      return;
+    }
+
+    final loginResult = await TeamService.setLogin(me.id, login);
+    if (loginResult != TeamService.loginOk) {
+      if (mounted) {
+        setState(() => _sending = false);
+        _say(
+          _ru
+              ? 'Сервер принял данные, но локальный логин не обновился. Повторите сохранение.'
+              : 'Server updated, but the local login did not.',
+          error: true,
+        );
+      }
+      return;
+    }
+
+    // setPassword сохраняет только локальный хеш и повторно подтверждает
+    // серверную запись. Открытый пароль после выхода из метода исчезает.
+    final passwordOk = await TeamService.setPassword(me.id, draft.password);
     if (!mounted) return;
-    _say(ok
-        ? (_ru ? 'Пароль изменён' : 'Password changed')
-        : (_ru
-            ? 'Пароль изменён здесь, но сервер недоступен — на портал он '
-                'приедет при следующем обмене'
-            : 'Changed locally; the server was unreachable'));
+    setState(() => _sending = false);
+    _say(
+      passwordOk
+          ? (_ru
+              ? 'Готово: профиль отправлен на сервер, логин и пароль проверены.'
+              : 'Done: the profile was published and verified.')
+          : (_ru
+              ? 'Серверный вход проверен, но повторная локальная проверка не завершилась.'
+              : 'Server sign-in worked, but the local confirmation failed.'),
+      error: !passwordOk,
+    );
   }
 
-  Future<String?> _ask({
-    required String title,
-    required String hint,
-    required TextEditingController controller,
-    required bool obscure,
-  }) =>
-      showDialog<String>(
-        context: context,
-        builder: (context) => AlertDialog(
+  Future<_CredentialDraft?> _askCredentials({required String initialLogin}) {
+    final login = TextEditingController(
+      text: initialLogin == 'owner' ? '' : initialLogin,
+    );
+    final password = TextEditingController();
+    final confirmation = TextEditingController();
+    var visible = false;
+
+    return showDialog<_CredentialDraft>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
           backgroundColor: AppTheme.surface,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(18),
             side: BorderSide(color: AppTheme.glassBorder),
           ),
-          title: Text(title,
-              style: TextStyle(fontSize: 15, color: AppTheme.textPrimary)),
-          content: TextField(
-            controller: controller,
-            autofocus: true,
-            obscureText: obscure,
-            style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
-            decoration: InputDecoration(
-              hintText: hint,
-              hintStyle:
-                  TextStyle(fontSize: 13, color: AppTheme.textMuted),
-              isDense: true,
-              enabledBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: AppTheme.glassBorder)),
-              focusedBorder: OutlineInputBorder(
-                  borderSide: BorderSide(color: AppTheme.accent)),
+          title: Text(
+            _ru ? 'Мой вход WesiOS' : 'My WesiOS sign-in',
+            style: TextStyle(
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textPrimary,
             ),
-            onSubmitted: (v) => Navigator.pop(context, v),
+          ),
+          content: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 420),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _ru
+                        ? 'Эти данные будут отправлены на api.wesi-inc.ru и станут едиными для сайта и приложения.'
+                        : 'These credentials will be used by the site and the app.',
+                    style: TextStyle(
+                        fontSize: 12, height: 1.45, color: AppTheme.textMuted),
+                  ),
+                  const SizedBox(height: 16),
+                  _dialogField(
+                    controller: login,
+                    label: _ru ? 'Логин' : 'Login',
+                    hint: 'WesiOff',
+                  ),
+                  const SizedBox(height: 12),
+                  _dialogField(
+                    controller: password,
+                    label: _ru ? 'Пароль' : 'Password',
+                    hint: _ru ? 'Минимум 8 символов' : 'At least 8 characters',
+                    obscure: !visible,
+                    suffix: IconButton(
+                      onPressed: () => setDialogState(() => visible = !visible),
+                      icon: Icon(
+                        visible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        size: 19,
+                        color: AppTheme.textMuted,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _dialogField(
+                    controller: confirmation,
+                    label: _ru ? 'Повторите пароль' : 'Repeat password',
+                    hint: '••••••••',
+                    obscure: !visible,
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.lock_outline,
+                          size: 16, color: AppTheme.accentGreen),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _ru
+                              ? 'Открытый пароль не записывается ни в Hive, ни в логи.'
+                              : 'The plain password is never stored or logged.',
+                          style: TextStyle(
+                              fontSize: 10.5,
+                              height: 1.4,
+                              color: AppTheme.textMuted),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () => Navigator.pop(dialogContext),
               child: Text(_ru ? 'Отмена' : 'Cancel',
                   style: TextStyle(color: AppTheme.textMuted)),
             ),
             TextButton(
-              onPressed: () => Navigator.pop(context, controller.text),
-              child: Text(_ru ? 'Сохранить' : 'Save',
-                  style: TextStyle(color: AppTheme.accent)),
+              onPressed: () => Navigator.pop(
+                dialogContext,
+                _CredentialDraft(
+                  login: login.text,
+                  password: password.text,
+                  confirmation: confirmation.text,
+                ),
+              ),
+              child: Text(
+                _ru ? 'Отправить на сервер' : 'Publish to server',
+                style: TextStyle(
+                    color: AppTheme.accent, fontWeight: FontWeight.w700),
+              ),
             ),
           ],
         ),
+      ),
+    ).whenComplete(() {
+      login.dispose();
+      password.dispose();
+      confirmation.dispose();
+    });
+  }
+
+  Widget _dialogField({
+    required TextEditingController controller,
+    required String label,
+    required String hint,
+    bool obscure = false,
+    Widget? suffix,
+  }) => Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+          const SizedBox(height: 5),
+          TextField(
+            controller: controller,
+            obscureText: obscure,
+            autocorrect: false,
+            enableSuggestions: !obscure,
+            style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+            decoration: InputDecoration(
+              hintText: hint,
+              suffixIcon: suffix,
+              hintStyle: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+              filled: true,
+              fillColor: AppTheme.background.withOpacity(0.45),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(11),
+                borderSide: BorderSide(color: AppTheme.glassBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(11),
+                borderSide: BorderSide(color: AppTheme.accent),
+              ),
+            ),
+          ),
+        ],
       );
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: TeamService.revision,
-      builder: (context, _, __) {
-        final me = TeamService.current ?? TeamService.owner;
-        return Container(
-          margin: const EdgeInsets.only(bottom: 20),
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            color: AppTheme.surface.withOpacity(0.35),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: AppTheme.glassBorder),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.badge_outlined,
-                      size: 19, color: AppTheme.accent),
-                  const SizedBox(width: 11),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          _ru ? 'Вход в приложение' : 'App sign-in',
-                          style: TextStyle(
+      builder: (context, _, __) => ValueListenableBuilder<int>(
+        valueListenable: SyncEndpoint.revision,
+        builder: (context, __, ___) {
+          final me = TeamService.current ?? TeamService.owner;
+          final serverSession = SyncEndpoint.session != null;
+          return Container(
+            margin: const EdgeInsets.only(bottom: 20),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: AppTheme.surface.withOpacity(0.35),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppTheme.glassBorder),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Icon(Icons.badge_outlined,
+                        size: 20, color: AppTheme.accent),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            _ru ? 'Единый вход WesiOS' : 'Unified WesiOS sign-in',
+                            style: TextStyle(
                               fontSize: 13.5,
-                              fontWeight: FontWeight.w600,
-                              color: AppTheme.textPrimary),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          me == null
-                              ? (_ru ? 'Профиль не заведён' : 'No profile yet')
-                              : (_ru
-                                  ? 'Логин: ${me.login}'
-                                  : 'Login: ${me.login}'),
-                          style: TextStyle(
-                              fontSize: 11.5, color: AppTheme.textMuted),
-                        ),
-                      ],
+                              fontWeight: FontWeight.w700,
+                              color: AppTheme.textPrimary,
+                            ),
+                          ),
+                          const SizedBox(height: 3),
+                          Text(
+                            me == null
+                                ? (_ru ? 'Профиль не заведён' : 'No profile')
+                                : '${_ru ? 'Логин' : 'Login'}: ${me.login}',
+                            style: TextStyle(
+                                fontSize: 11.5, color: AppTheme.textMuted),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 9,
+                      height: 9,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: serverSession
+                            ? AppTheme.accentGreen
+                            : AppTheme.textMuted,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 11),
+                Text(
+                  _ru
+                      ? 'Задайте собственный логин и пароль. Приложение отправит их на сервер и сразу проверит вход тем же способом, что использует сайт.'
+                      : 'Set your login and password. The app publishes and verifies them using the same server as the site.',
+                  style: TextStyle(
+                      fontSize: 10.8, height: 1.45, color: AppTheme.textMuted),
+                ),
+                if (_status != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _status!,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      height: 1.4,
+                      color: _statusError
+                          ? AppTheme.accentRed
+                          : AppTheme.accentGreen,
                     ),
                   ),
                 ],
-              ),
-              const SizedBox(height: 10),
-              Text(
-                _ru
-                    ? 'Пароль нигде не показывается — в хранилище его нет, '
-                        'лежит только отпечаток, из которого пароль не '
-                        'восстановить. Забыли — задайте новый.'
-                    : 'The password is never shown: only a hash is stored. '
-                        'If you forget it, set a new one.',
-                style: TextStyle(
-                    fontSize: 10.5, height: 1.45, color: AppTheme.textMuted),
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  _button(_ru ? 'Сменить логин' : 'Change login',
-                      me == null ? null : _changeLogin),
-                  const SizedBox(width: 8),
-                  _button(_ru ? 'Сменить пароль' : 'Change password',
-                      me == null ? null : _changePassword),
-                ],
-              ),
-            ],
-          ),
-        );
-      },
+                const SizedBox(height: 12),
+                Material(
+                  color: _sending
+                      ? AppTheme.surfaceLight.withOpacity(0.3)
+                      : AppTheme.accent,
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(10),
+                    onTap: me == null || _sending ? null : _configure,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          if (_sending) ...[
+                            const SizedBox(
+                              width: 15,
+                              height: 15,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            ),
+                            const SizedBox(width: 9),
+                          ] else ...[
+                            const Icon(Icons.cloud_upload_outlined,
+                                size: 18, color: Colors.white),
+                            const SizedBox(width: 9),
+                          ],
+                          Text(
+                            _sending
+                                ? (_ru ? 'Проверяю…' : 'Verifying…')
+                                : (_ru
+                                    ? 'Указать логин и пароль'
+                                    : 'Set login and password'),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
+}
 
-  Widget _button(String label, VoidCallback? onTap) => GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceLight.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: AppTheme.glassBorder),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: onTap == null
-                  ? AppTheme.textMuted
-                  : AppTheme.textSecondary,
-            ),
-          ),
-        ),
-      );
+class _CredentialDraft {
+  final String login;
+  final String password;
+  final String confirmation;
+
+  const _CredentialDraft({
+    required this.login,
+    required this.password,
+    required this.confirmation,
+  });
 }
