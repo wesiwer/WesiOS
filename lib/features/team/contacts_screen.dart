@@ -6,19 +6,15 @@ import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
+import 'deleted_employees_screen.dart';
 import 'employee_editor_screen.dart';
 import 'models/employee_model.dart';
 import 'services/contact_actions.dart';
+import 'services/employee_admin_service.dart';
 import 'services/team_service.dart';
 import 'team_stats_screen.dart';
 import 'widgets/employee_notes_sheet.dart';
 
-/// Контакты — список сотрудников и партнёров.
-///
-/// Открытая часть карточки (имя, должность, телефон, почта, соцсети) видна
-/// всем: список затем и нужен, чтобы люди могли друг с другом связаться.
-/// Скрытая часть — заметки — открывается долгим нажатием или правым кликом и
-/// только тем, кому владелец это разрешил.
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
 
@@ -32,13 +28,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
   bool get _ru => WesiLocale.isRussian;
   bool get _canManage => TeamService.currentPermissions.canManageTeam;
   bool get _canSeeNotes => TeamService.currentPermissions.canSeeNotes;
+  bool get _ownerOnly => TeamService.isOwnerSession;
 
   @override
   void initState() {
     super.initState();
     TeamService.revision.addListener(_refresh);
-    // Карточка владельца заводится сама: без неё список пуст даже там, где
-    // человек точно есть — он сам.
     TeamService.ensureOwner();
   }
 
@@ -78,6 +73,73 @@ class _ContactsScreenState extends State<ContactsScreen> {
   void _showNotes(EmployeeModel employee) {
     if (!_canSeeNotes) return;
     EmployeeNotesSheet.show(context, employee);
+  }
+
+  Future<void> _removeWithReason(EmployeeModel employee) async {
+    if (!_ownerOnly || employee.isOwner) return;
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+        title: Text(
+          _ru ? 'Удалить сотрудника?' : 'Delete employee?',
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w700,
+            color: AppTheme.textPrimary,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _ru
+                  ? '${employee.displayName} исчезнет из рабочего списка. '
+                      'Дата и причина останутся в закрытом архиве.'
+                  : '${employee.displayName} will be removed from the active '
+                      'list. The date and reason remain in the private archive.',
+              style: TextStyle(
+                  fontSize: 13, height: 1.4, color: AppTheme.textSecondary),
+            ),
+            const SizedBox(height: 14),
+            TextField(
+              controller: controller,
+              maxLines: 3,
+              style: TextStyle(color: AppTheme.textPrimary),
+              decoration: InputDecoration(
+                labelText: _ru ? 'Причина удаления' : 'Deletion reason',
+                hintText: _ru ? 'Можно оставить пустым' : 'Optional',
+                filled: true,
+                fillColor: AppTheme.background.withOpacity(0.5),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(WesiLocale.get('cancel'),
+                style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(_ru ? 'Удалить' : 'Delete',
+                style: TextStyle(color: AppTheme.accentRed)),
+          ),
+        ],
+      ),
+    );
+    final reason = controller.text;
+    controller.dispose();
+    if (confirmed != true) return;
+    await TeamService.remove(employee.id, reason: reason);
+    if (mounted) setState(() {});
   }
 
   @override
@@ -126,6 +188,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
                       ],
                     ),
                   ),
+                  if (_ownerOnly)
+                    IconButton(
+                      tooltip: _ru
+                          ? 'Удалённые сотрудники'
+                          : 'Deleted employees',
+                      icon: Icon(Icons.inventory_2_outlined,
+                          color: AppTheme.textPrimary),
+                      onPressed: () => DeletedEmployeesScreen.open(context),
+                    ),
                   IconButton(
                     tooltip: _ru ? 'Показатели' : 'Performance',
                     icon: Icon(Icons.insights_outlined,
@@ -204,8 +275,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Widget _card(EmployeeModel e) {
-    // Долгое нажатие — для телефона, правый клик — для компьютера. Оба ведут
-    // в одно и то же место: скрытые заметки.
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: GestureDetector(
@@ -265,6 +334,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                               style: TextStyle(
                                   fontSize: 11, color: AppTheme.textMuted)),
                         ],
+                        if (_ownerOnly && !e.isOwner) ...[
+                          const SizedBox(height: 7),
+                          _activationTag(e),
+                        ],
                       ],
                     ),
                   ),
@@ -275,14 +348,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
                           size: 18, color: AppTheme.textMuted),
                       onPressed: () => _edit(e),
                     ),
+                  if (_ownerOnly && !e.isOwner)
+                    IconButton(
+                      tooltip: _ru ? 'Удалить' : 'Delete',
+                      icon: Icon(Icons.person_remove_outlined,
+                          size: 18, color: AppTheme.accentRed),
+                      onPressed: () => _removeWithReason(e),
+                    ),
                 ],
               ),
               if (e.hasContacts) ...[
                 const SizedBox(height: 10),
-                // Ширина берётся у раскладки, а не задаётся числом: почта
-                // вроде `имя.фамилия@очень-длинный-домен.example.com` шире
-                // любого узкого экрана, и без предела ячейка вылезала за
-                // карточку жёлто-чёрной полосой. Поймано тестом раскладки.
                 LayoutBuilder(
                   builder: (context, box) => Wrap(
                     spacing: 8,
@@ -321,10 +397,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     Icon(Icons.sticky_note_2_outlined,
                         size: 13, color: AppTheme.textMuted),
                     const SizedBox(width: 6),
-                    // Expanded, а не голый Text: строка длиннее в английском,
-                    // а при увеличенном системном шрифте — длиннее в обоих.
-                    // Текст, которому не задали предела, рано или поздно за
-                    // него выходит.
                     Expanded(
                       child: Text(
                         _ru
@@ -346,6 +418,32 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
+  Widget _activationTag(EmployeeModel employee) {
+    final active = EmployeeAdminService.isActivated(employee.id);
+    final color = active ? AppTheme.accentGreen : AppTheme.accent;
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.12),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.35)),
+        ),
+        child: Text(
+          active
+              ? (_ru ? 'Активирован' : 'Activated')
+              : (_ru ? 'В процессе активации' : 'Activation pending'),
+          style: TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: color,
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _tag(String text) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
         decoration: BoxDecoration(
@@ -360,13 +458,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 color: AppTheme.accent)),
       );
 
-  /// Ячейка контакта: значок и текст, по нажатию — позвонить, написать,
-  /// открыть ссылку.
-  ///
-  /// [maxWidth] — сколько места есть на самом деле. `Wrap` даёт детям
-  /// неограниченную ширину, поэтому одним `Flexible` внутри не обойтись:
-  /// без внешнего предела ему нечего делить, и длинный адрес просто вылезает
-  /// за край карточки.
   Widget _chip({
     required IconData icon,
     required String label,
@@ -388,9 +479,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
               child: Text(
                 label,
                 maxLines: 1,
-                // Обрезаем многоточием, а не переносим: ячейка в одну
-                // строку — это про «нажать и позвонить», а не про чтение
-                // адреса целиком. Полный адрес открывается по нажатию.
                 overflow: TextOverflow.ellipsis,
                 style:
                     TextStyle(fontSize: 12, color: AppTheme.textSecondary),
