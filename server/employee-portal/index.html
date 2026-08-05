@@ -5,48 +5,50 @@
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
   <meta name="theme-color" content="#08080b">
   <meta name="robots" content="noindex,nofollow,noarchive">
-  <meta name="description" content="Закрытый портал сотрудников Wesi Inc для загрузки WesiOS.">
-  <title>WesiOS · Портал сотрудников</title>
+  <meta name="description" content="Закрытая платформа Wesi Inc и загрузка WesiOS.">
+  <title>WesiOS · Wesi Inc</title>
   <link rel="icon" href="./app_icon.png">
   <link rel="apple-touch-icon" href="./app_icon.png">
-  <link rel="stylesheet" href="./styles.css?v=5">
+  <link rel="stylesheet" href="./styles.css?v=6">
+  <link rel="stylesheet" href="./portal-v6.css?v=1">
   <script>setTimeout(()=>{document.getElementById('boot')?.classList.add('done');document.getElementById('app')?.classList.add('ready')},850)</script>
 </head>
 <body>
   <div class="grid-bg" aria-hidden="true"></div>
   <div class="orange-glow glow-a" data-parallax=".055" aria-hidden="true"></div>
   <div class="orange-glow glow-b" data-parallax="-.035" aria-hidden="true"></div>
-  <div class="runner-layer" aria-hidden="true"><i id="runnerSegment"></i><span id="runnerTail"></span></div>
+  <svg class="runner-svg" id="runnerSvg" aria-hidden="true">
+    <defs>
+      <linearGradient id="runnerGradient" x1="0" x2="1">
+        <stop offset="0" stop-color="#ff6517" stop-opacity="0"/>
+        <stop offset=".45" stop-color="#ff6517"/>
+        <stop offset="1" stop-color="#ffb15c"/>
+      </linearGradient>
+      <filter id="runnerGlow"><feGaussianBlur stdDeviation="3.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <path id="runnerTrail" class="runner-trail"/>
+    <path id="runnerHead" class="runner-head"/>
+  </svg>
 
   <div class="boot" id="boot"><img class="boot-logo" src="./app_icon.png" alt=""><div class="boot-line"><i></i></div><p>WesiOS</p></div>
 
   <main class="app-shell" id="app">
     <header class="topbar reveal">
-      <a class="brand" href="#top"><img class="brand-logo" src="./app_icon.png" alt="WesiOS"><span class="brand-copy"><strong>WesiOS</strong><small>EMPLOYEE ACCESS</small></span></a>
+      <a class="brand" href="#top"><img class="brand-logo" src="./app_icon.png" alt="WesiOS"><span class="brand-copy"><strong><span>Wesi</span><em>OS</em></strong></span></a>
       <div class="secure-label"><span></span>Закрытый контур</div>
       <button class="icon-button hidden" id="logoutButton" type="button" aria-label="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M8 12h10"/></svg></button>
     </header>
 
     <section class="view login-view active" id="loginView">
-      <div class="login-stage" id="top">
+      <div class="login-stage intro-stage" id="top">
         <div class="hero-copy reveal delay-1">
           <span class="section-label">WESI INC · ЗАКРЫТЫЙ КОНТУР</span>
-          <h1>WesiOS<br><em>для сотрудников</em></h1>
+          <h1><span>Wesi</span><em>OS</em></h1>
           <p>Единая рабочая среда для общения, задач, финансов, аналитики, знаний и Wesi AI.</p>
           <div class="hero-points"><span><b>01</b> Единая учётная запись</span><span><b>02</b> Защищённые сборки</span><span><b>03</b> Windows и Android</span></div>
         </div>
-
-        <div class="login-panel surface reveal delay-2" data-tilt-card>
-          <div class="panel-accent"></div>
-          <div class="panel-head"><img src="./app_icon.png" alt=""><div><small>WESIOS ACCESS</small><h2>Авторизация</h2></div></div>
-          <p class="panel-note">Введите логин и пароль, которые WesiOS выдал при создании сотрудника.</p>
-          <form id="loginForm" novalidate>
-            <label class="field"><span>Логин или почта</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M4 20a8 8 0 0 1 16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg><input id="identity" autocomplete="username" placeholder="employee" required></span></label>
-            <label class="field"><span>Пароль</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12a2 2 0 0 1 2 2v7H4v-7a2 2 0 0 1 2-2Z"/></svg><input id="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required><button class="password-toggle" id="passwordToggle" type="button" aria-label="Показать пароль"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span></label>
-            <div class="form-message" id="loginMessage" role="alert"></div>
-            <button class="primary-button" id="loginButton" type="submit"><span>Войти</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-          </form>
-          <div class="security-note"><span></span>Сайт проверяет учётную запись непосредственно на сервере WesiOS.</div>
+        <div class="intro-visual reveal delay-2" aria-hidden="true">
+          <div class="intro-orbit"><i></i><i></i><img src="./app_icon.png" alt=""></div>
         </div>
       </div>
 
@@ -80,6 +82,26 @@
         <article class="motion-step" data-scroll-reveal><b>02</b><div><h3>Передайте данные</h3><p>Сотрудник использует ровно тот логин и пароль, которые показало приложение.</p></div></article>
         <article class="motion-step" data-scroll-reveal><b>03</b><div><h3>Скачайте сборку</h3><p>После успешной проверки сервер открывает последние версии Windows и Android.</p></div></article>
       </section>
+
+      <section class="auth-bottom" id="authorization">
+        <div class="auth-copy" data-scroll-reveal>
+          <span class="section-label">ЗАЩИЩЁННЫЙ ВХОД</span>
+          <h2>Всё готово.<br>Осталось войти.</h2>
+          <p>Авторизация проверяется непосредственно на сервере WesiOS. Доступ получают только действующие учётные записи.</p>
+        </div>
+        <div class="login-panel surface" data-scroll-reveal data-tilt-card>
+          <div class="panel-accent"></div>
+          <div class="panel-head"><img src="./app_icon.png" alt=""><div><small>WESIOS ACCESS</small><h2>Авторизация</h2></div></div>
+          <p class="panel-note">Введите логин и пароль, которые WesiOS выдал при создании сотрудника.</p>
+          <form id="loginForm" novalidate>
+            <label class="field"><span>Логин или почта</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M4 20a8 8 0 0 1 16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg><input id="identity" autocomplete="username" placeholder="employee" required></span></label>
+            <label class="field"><span>Пароль</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12a2 2 0 0 1 2 2v7H4v-7a2 2 0 0 1 2-2Z"/></svg><input id="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required><button class="password-toggle" id="passwordToggle" type="button" aria-label="Показать пароль"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span></label>
+            <div class="form-message" id="loginMessage" role="alert"></div>
+            <button class="primary-button" id="loginButton" type="submit"><span>Войти</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+          </form>
+          <div class="security-note"><span></span>Сайт проверяет учётную запись непосредственно на сервере WesiOS.</div>
+        </div>
+      </section>
       <footer class="public-footer"><span>WESI INC · PRIVATE INFRASTRUCTURE</span><span>api.wesi-inc.ru</span></footer>
     </section>
 
@@ -94,6 +116,7 @@
     </section>
   </main>
   <div class="toast-stack" id="toastStack"></div>
-  <script src="./app.js?v=5" defer></script>
+  <script src="./app.js?v=6" defer></script>
+  <script src="./motion-v6.js?v=1" defer></script>
 </body>
 </html>
