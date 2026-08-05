@@ -6,12 +6,12 @@
 #   WESI_ARTIFACTS_DIR=/opt/pocketbase/pb_public/artifacts \
 #   bash deploy-employee-portal.sh --from /tmp/wesi-portal
 #
-# Статика кладётся внутрь каталога артефактов, поэтому для первого запуска не
-# нужна отдельная правка nginx. При стандартной конфигурации адрес:
-#   https://api.wesi-inc.ru/artifacts/portal/
+# Статика кладётся внутрь каталога артефактов, куда deploy-пользователь уже
+# умеет писать. PocketBase hook публикует этот каталог по красивому адресу:
+#   https://api.wesi-inc.ru/portal/
 #
-# Если WESI_PORTAL_DIR указывает на /opt/pocketbase/pb_public/portal, адрес
-# будет короче: https://api.wesi-inc.ru/portal/
+# Пока hook ещё не установлен, остаётся технический запасной адрес:
+#   https://api.wesi-inc.ru/artifacts/portal/
 
 set -euo pipefail
 
@@ -72,32 +72,47 @@ if [[ -d "$PORTAL_DIR" ]]; then mv "$PORTAL_DIR" "$BACKUP"; fi
 mv "$STAGE" "$PORTAL_DIR"
 rm -rf "$BACKUP"
 
-say "Устанавливаю защищённые маршруты PocketBase"
-HOOK_SOURCE="$FROM/employee_portal.pb.js"
+say "Устанавливаю маршруты PocketBase"
 HOOK_INSTALLED=no
+HOOK_SOURCES=(
+  "$FROM/employee_portal.pb.js"
+  "$FROM/employee_portal_static.pb.js"
+)
 
-install_hook() {
+install_hooks() {
   local prefix=("$@")
   "${prefix[@]}" mkdir -p "$HOOK_DIR"
-  "${prefix[@]}" install -m 0644 "$HOOK_SOURCE" "$HOOK_DIR/employee_portal.pb.js"
+  local source
+  for source in "${HOOK_SOURCES[@]}"; do
+    [[ -f "$source" ]] || continue
+    "${prefix[@]}" install -m 0644 "$source" "$HOOK_DIR/$(basename "$source")"
+  done
 }
 
-if [[ -f "$HOOK_SOURCE" ]]; then
+FOUND_HOOK=no
+for source in "${HOOK_SOURCES[@]}"; do
+  [[ -f "$source" ]] && FOUND_HOOK=yes
+done
+
+if [[ "$FOUND_HOOK" == yes ]]; then
   if [[ -w "$HOOK_DIR" ]] || { [[ ! -e "$HOOK_DIR" ]] && [[ -w "$(dirname "$HOOK_DIR")" ]]; }; then
-    install_hook
+    install_hooks
     HOOK_INSTALLED=yes
   elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-    install_hook sudo
+    install_hooks sudo
     HOOK_INSTALLED=yes
   else
     echo "ПРЕДУПРЕЖДЕНИЕ: нет прав записи в $HOOK_DIR."
-    echo "Портал работает, но до установки hook загрузка использует старый публичный путь."
-    echo "Один раз от root:"
+    echo "Статика опубликована, но защищённые загрузки и адрес /portal/ не включены."
+    echo "Один раз от root выполните:"
     echo "  install -d -o $(id -un) -g pocketbase '$HOOK_DIR'"
-    echo "  install -m 0644 '$HOOK_SOURCE' '$HOOK_DIR/employee_portal.pb.js'"
+    for source in "${HOOK_SOURCES[@]}"; do
+      [[ -f "$source" ]] || continue
+      echo "  install -m 0644 '$source' '$HOOK_DIR/$(basename "$source")'"
+    done
   fi
 else
-  echo "ПРЕДУПРЕЖДЕНИЕ: employee_portal.pb.js не передан."
+  echo "ПРЕДУПРЕЖДЕНИЕ: PocketBase hooks не переданы."
 fi
 
 say "Проверяю опубликованное"
@@ -106,14 +121,9 @@ test -s "$PORTAL_DIR/styles.css"
 test -s "$PORTAL_DIR/app.js"
 
 printf 'Портал: %s\n' "$PORTAL_DIR"
-printf 'PocketBase hook: %s\n' "$HOOK_INSTALLED"
+printf 'PocketBase hooks: %s\n' "$HOOK_INSTALLED"
 printf 'Размеры:\n'
 wc -c "$PORTAL_DIR"/*
 
-if [[ "$PORTAL_DIR" == */pb_public/portal ]]; then
-  echo "Ожидаемый URL: https://api.wesi-inc.ru/portal/"
-elif [[ "$PORTAL_DIR" == */artifacts/portal ]]; then
-  echo "Ожидаемый URL: https://api.wesi-inc.ru/artifacts/portal/"
-else
-  echo "URL зависит от конфигурации раздачи каталога: $PORTAL_DIR"
-fi
+echo "Основной URL после установки hooks: https://api.wesi-inc.ru/portal/"
+echo "Запасной URL: https://api.wesi-inc.ru/artifacts/portal/"
