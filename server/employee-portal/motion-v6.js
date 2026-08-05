@@ -1,173 +1,20 @@
 (() => {
   'use strict';
-
-  const svg = document.getElementById('runnerSvg');
-  const trail = document.getElementById('runnerTrail');
-  const head = document.getElementById('runnerHead');
-  const origin = document.getElementById('runnerOrigin');
-  const rail = document.getElementById('motionRail');
-  const railLine = rail?.querySelector('.rail-line');
-  const stage = document.getElementById('moduleStage');
-  const core = document.getElementById('orbitCore');
-  const flow = document.getElementById('flowSection');
-  const board = document.querySelector('.flow-board');
-
-  if (!svg || !trail || !head || !origin || !rail || !railLine || !stage || !core || !flow || !board) return;
-  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
-  let target = 0;
-  let smooth = 0;
-  let pathLength = 0;
-  let startY = 0;
-  let endY = 1;
-  let frame = 0;
-  let rebuildFrame = 0;
-  let lastWidth = 0;
-  let lastHeight = 0;
-
-  const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
-
-  function documentPoint(node, x = .5, y = .5) {
-    const rect = node.getBoundingClientRect();
-    return {
-      x: rect.left + scrollX + rect.width * x,
-      y: rect.top + scrollY + rect.height * y,
-    };
-  }
-
-  function catmullRom(points) {
-    if (points.length < 2) return '';
-    let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
-    for (let i = 0; i < points.length - 1; i += 1) {
-      const p0 = points[Math.max(0, i - 1)];
-      const p1 = points[i];
-      const p2 = points[i + 1];
-      const p3 = points[Math.min(points.length - 1, i + 2)];
-      const c1x = p1.x + (p2.x - p0.x) / 6;
-      const c1y = p1.y + (p2.y - p0.y) / 6;
-      const c2x = p2.x - (p3.x - p1.x) / 6;
-      const c2y = p2.y - (p3.y - p1.y) / 6;
-      d += ` C ${c1x.toFixed(1)} ${c1y.toFixed(1)}, ${c2x.toFixed(1)} ${c2y.toFixed(1)}, ${p2.x.toFixed(1)} ${p2.y.toFixed(1)}`;
-    }
-    return d;
-  }
-
-  function buildPath() {
-    rebuildFrame = 0;
-    const pageHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, innerHeight);
-    const pageWidth = Math.max(document.documentElement.clientWidth, innerWidth);
-
-    if (pageWidth !== lastWidth || pageHeight !== lastHeight) {
-      lastWidth = pageWidth;
-      lastHeight = pageHeight;
-      svg.setAttribute('viewBox', `0 0 ${pageWidth} ${pageHeight}`);
-      svg.setAttribute('width', `${pageWidth}`);
-      svg.setAttribute('height', `${pageHeight}`);
-      svg.style.height = `${pageHeight}px`;
-    }
-
-    const o = documentPoint(origin, .02, .5);
-    const merge = documentPoint(railLine, .5, .015);
-    const points = [
-      o,
-      { x: o.x + 70, y: o.y + 4 },
-      documentPoint(stage, .17, .24),
-      documentPoint(core, .48, .18),
-      documentPoint(stage, .83, .34),
-      documentPoint(stage, .73, .76),
-      documentPoint(flow, .77, .24),
-      documentPoint(board, .55, .48),
-      documentPoint(flow, .22, .76),
-      { x: merge.x + Math.min(118, pageWidth * .18), y: merge.y - 210 },
-      { x: merge.x + Math.min(42, pageWidth * .08), y: merge.y - 94 },
-      { x: merge.x, y: merge.y - 34 },
-      merge,
-    ];
-
-    const d = catmullRom(points);
-    trail.setAttribute('d', d);
-    head.setAttribute('d', d);
-    pathLength = trail.getTotalLength();
-    startY = o.y - innerHeight * .7;
-    endY = merge.y - innerHeight * .36;
-    updateTarget();
-    draw(true);
-  }
-
-  function requestBuild() {
-    if (rebuildFrame) cancelAnimationFrame(rebuildFrame);
-    rebuildFrame = requestAnimationFrame(buildPath);
-  }
-
-  function updateTarget() {
-    target = clamp((scrollY - startY) / Math.max(1, endY - startY));
-    schedule();
-  }
-
-  function applyLine(progress) {
-    if (!pathLength) return;
-    const visible = pathLength * progress;
-    const merge = clamp((progress - .82) / .18);
-    const mergeEase = merge * merge * (3 - 2 * merge);
-    const baseTrailLength = Math.min(150, 72 + innerWidth * .055);
-    const baseHeadLength = Math.min(44, 28 + innerWidth * .018);
-    const trailLength = Math.max(34, baseTrailLength * (1 - mergeEase * .62));
-    const headLength = Math.max(9, baseHeadLength * (1 - mergeEase * .74));
-    const trailStart = Math.max(0, visible - trailLength);
-    const headStart = Math.max(0, visible - headLength);
-
-    trail.style.strokeDasharray = `${trailLength} ${pathLength + trailLength}`;
-    trail.style.strokeDashoffset = `${-trailStart}`;
-    head.style.strokeDasharray = `${headLength} ${pathLength + headLength}`;
-    head.style.strokeDashoffset = `${-headStart}`;
-    trail.style.opacity = `${.34 * (1 - mergeEase)}`;
-    head.style.opacity = `${1 - mergeEase}`;
-    svg.classList.toggle('active', progress > .002 && progress < .9995);
-    svg.style.zIndex = progress > .13 && progress < .48 ? '3' : '8';
-
-    const pulse = Math.sin(mergeEase * Math.PI);
-    railLine.style.setProperty('--runner-merge', pulse.toFixed(3));
-    railLine.classList.toggle('runner-merge-active', merge > .01 && merge < .995);
-  }
-
-  function draw(force = false) {
-    if (!force) smooth += (target - smooth) * .14;
-    if (Math.abs(target - smooth) < .0007) smooth = target;
-    applyLine(smooth);
-  }
-
-  function render() {
-    frame = 0;
-    draw();
-    if (Math.abs(target - smooth) > .0007 && !document.hidden) schedule();
-  }
-
-  function schedule() {
-    if (!frame && !document.hidden) frame = requestAnimationFrame(render);
-  }
-
-  addEventListener('scroll', updateTarget, { passive: true });
-  addEventListener('resize', requestBuild, { passive: true });
-  addEventListener('orientationchange', requestBuild, { passive: true });
-  addEventListener('load', requestBuild, { once: true });
-  document.addEventListener('visibilitychange', () => {
-    if (document.hidden && frame) {
-      cancelAnimationFrame(frame);
-      frame = 0;
-    } else {
-      requestBuild();
-    }
-  });
-
-  if (document.fonts?.ready) document.fonts.ready.then(requestBuild).catch(() => {});
-  if ('ResizeObserver' in window) {
-    let resizeTimer = 0;
-    const observer = new ResizeObserver(() => {
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(requestBuild, 120);
-    });
-    observer.observe(document.getElementById('app') || document.body);
-  }
-
-  requestBuild();
+  document.querySelectorAll('[data-float]').forEach((node,index)=>{node.removeAttribute('data-float');node.classList.add('baked-float',`baked-float-${index+1}`)});
+  const svg=document.getElementById('runnerSvg'),trail=document.getElementById('runnerTrail'),head=document.getElementById('runnerHead'),origin=document.getElementById('runnerOrigin'),railLine=document.querySelector('#motionRail .rail-line');
+  if(!svg||!trail||!head||!origin||!railLine||matchMedia('(prefers-reduced-motion: reduce)').matches)return;
+  let target=0,smooth=0,startY=0,endY=1,frame=0,layoutTimer=0,routeKey='';
+  const clamp=(v,min=0,max=1)=>Math.max(min,Math.min(max,v)),n=v=>Math.round(v*10)/10;
+  const routes={
+    mobile:(sx,ex)=>`M ${n(sx)} 0 C ${n(sx+86)} 18,224 72,214 142 C 202 236,872 178,836 310 C 803 431,128 382,169 512 C 209 641,854 586,758 725 C 660 865,${n(ex+174)} 846,${n(ex+72)} 940 C ${n(ex+27)} 980,${n(ex+8)} 993,${n(ex)} 1000`,
+    tablet:(sx,ex)=>`M ${n(sx)} 0 C ${n(sx+110)} 20,296 76,284 150 C 270 245,826 193,812 314 C 797 438,206 404,234 520 C 264 646,808 598,738 726 C 665 861,${n(ex+196)} 850,${n(ex+82)} 943 C ${n(ex+31)} 983,${n(ex+9)} 994,${n(ex)} 1000`,
+    desktop:(sx,ex)=>`M ${n(sx)} 0 C ${n(sx+135)} 22,356 64,350 148 C 344 243,790 205,804 316 C 820 440,236 408,267 525 C 302 657,778 606,718 731 C 654 865,${n(ex+215)} 856,${n(ex+91)} 945 C ${n(ex+34)} 984,${n(ex+10)} 995,${n(ex)} 1000`};
+  function bakeRoute(){const width=Math.max(document.documentElement.clientWidth,innerWidth,1),o=origin.getBoundingClientRect(),r=railLine.getBoundingClientRect(),top=o.top+scrollY+o.height*.5,bottom=r.top+scrollY+Math.min(3,r.height*.02),height=Math.max(720,bottom-top),sx=((o.left+o.width*.02)/width)*1000,ex=((r.left+r.width*.5)/width)*1000,mode=width<=650?'mobile':width<=1000?'tablet':'desktop',key=`${mode}:${Math.round(width)}:${Math.round(top)}:${Math.round(height)}:${Math.round(sx)}:${Math.round(ex)}`;if(key===routeKey)return;routeKey=key;const d=routes[mode](sx,ex);trail.setAttribute('d',d);head.setAttribute('d',d);trail.setAttribute('pathLength','1');head.setAttribute('pathLength','1');svg.setAttribute('viewBox','0 0 1000 1000');svg.setAttribute('preserveAspectRatio','none');svg.style.top=`${n(top)}px`;svg.style.height=`${n(height)}px`;startY=top-innerHeight*.7;endY=bottom-innerHeight*.36;updateTarget();draw(true)}
+  function requestBake(){clearTimeout(layoutTimer);layoutTimer=setTimeout(()=>requestAnimationFrame(bakeRoute),90)}
+  function updateTarget(){target=clamp((scrollY-startY)/Math.max(1,endY-startY));schedule()}
+  function applyLine(progress){const merge=clamp((progress-.82)/.18),ease=merge*merge*(3-2*merge),tl=Math.max(.028,.085*(1-ease*.67)),hl=Math.max(.009,.027*(1-ease*.72));trail.style.strokeDasharray=`${tl} ${1+tl}`;trail.style.strokeDashoffset=`${-Math.max(0,progress-tl)}`;head.style.strokeDasharray=`${hl} ${1+hl}`;head.style.strokeDashoffset=`${-Math.max(0,progress-hl)}`;trail.style.opacity=`${.34*(1-ease)}`;head.style.opacity=`${1-ease}`;svg.classList.toggle('active',progress>.002&&progress<.9995);svg.style.zIndex=progress>.13&&progress<.48?'3':'8';const pulse=Math.sin(ease*Math.PI);railLine.style.setProperty('--runner-merge',pulse.toFixed(3));railLine.classList.toggle('runner-merge-active',merge>.01&&merge<.995)}
+  function draw(force=false){if(!force)smooth+=(target-smooth)*.16;if(Math.abs(target-smooth)<.0007)smooth=target;applyLine(smooth)}
+  function render(){frame=0;draw();if(Math.abs(target-smooth)>.0007&&!document.hidden)schedule()}
+  function schedule(){if(!frame&&!document.hidden)frame=requestAnimationFrame(render)}
+  addEventListener('scroll',updateTarget,{passive:true});addEventListener('resize',requestBake,{passive:true});addEventListener('orientationchange',requestBake,{passive:true});addEventListener('load',requestBake,{once:true});document.addEventListener('visibilitychange',()=>{if(document.hidden&&frame){cancelAnimationFrame(frame);frame=0}else requestBake()});if(document.fonts?.ready)document.fonts.ready.then(requestBake).catch(()=>{});requestBake();
 })();
