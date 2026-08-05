@@ -19,6 +19,11 @@ class SyncEndpoint {
 
   static const String defaultUrl = 'https://api.wesi-inc.ru';
 
+  /// Нужен только старым мастерам и тестам, которые явно подставляют URL.
+  /// Пользовательский интерфейс этот флаг не включает: production считается
+  /// готовым к обмену только после появления серверной сессии.
+  static bool _legacyConfigured = false;
+
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static Box<dynamic>? _open() {
@@ -32,7 +37,7 @@ class SyncEndpoint {
   static String get rawUrl => defaultUrl;
   static String get login => '${_open()?.get(_loginKey) ?? ''}';
   static bool get enabled => _open()?.get(_enabledKey) != false;
-  static bool get isConfigured => true;
+  static bool get isConfigured => session != null || _legacyConfigured;
 
   static String? normalize(String input) {
     var value = input.trim();
@@ -56,10 +61,15 @@ class SyncEndpoint {
 
   static String get url => defaultUrl;
 
-  /// [url] сохранён только для обратной совместимости и игнорируется.
+  /// [url] не меняет production endpoint. Непустое значение лишь сохраняет
+  /// обратную совместимость со старыми служебными сценариями.
   static Future<void> configure({String? url, String? login}) async {
     final box = _open();
-    if (box == null) return;
+    if (url != null) _legacyConfigured = url.trim().isNotEmpty;
+    if (box == null) {
+      revision.value++;
+      return;
+    }
     await box.put(_urlKey, defaultUrl);
     if (login != null) await box.put(_loginKey, login.trim());
     revision.value++;
