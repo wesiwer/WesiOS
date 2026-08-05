@@ -1,0 +1,20 @@
+name: Dispatch owner-login build once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dispatch-owner-login-build-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start current WesiOS build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yml --repo "${{ github.repository }}" --ref main
