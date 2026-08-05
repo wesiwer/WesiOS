@@ -78,10 +78,20 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.chats,
             icon: Icons.forum_outlined,
             title: ru ? 'Чаты' : 'Chats',
+            // Подпись обязана описывать то, что есть сейчас.
+            //
+            // Здесь стояло «каркас, появятся с сервером» и метка
+            // «планируется» — при том, что переписка, группы, поиск, архив
+            // и блоки тем работают на устройстве целиком. Такая подпись
+            // отговаривает открывать готовый модуль, а это худший вид
+            // ошибки в интерфейсе: работа сделана и спрятана.
+            //
+            // Сервера ждёт ровно одно — доставка сообщений другому человеку.
+            // Так и написано.
             subtitle: ru
-                ? 'Личные и групповые — каркас, появятся с сервером'
-                : 'Direct and group — frame, arriving with the server',
-            stage: ModuleStage.planned,
+                ? 'Группы, темы, архив. Доставка другим — с сервером'
+                : 'Groups, topics, archive. Delivery awaits the server',
+            stage: ModuleStage.partial,
           ),
           _ModuleItem(
             route: '/crm',
