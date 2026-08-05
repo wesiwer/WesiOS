@@ -18,6 +18,52 @@ class MonitorService {
   static const String _box = 'wesios_settings';
   static const String _key = 'sysadmin_targets';
 
+  /// Инфраструктура владельца, которая появляется при первом открытии
+  /// модуля. Пароли и SSH-ключи здесь принципиально отсутствуют: мониторинг
+  /// использует только публичные адреса и защищённые HTTP-проверки.
+  ///
+  /// Пользовательские правки сохраняются поверх этого списка. Если человек
+  /// осознанно удалил все узлы, сохранится JSON `[]`, и значения по умолчанию
+  /// не воскреснут после перезапуска.
+  static const List<MonitorTarget> defaultTargets = [
+    MonitorTarget(
+      id: 'wesi-russia-server',
+      name: 'WesiOS · сервер Санкт-Петербург',
+      host: 'api.wesi-inc.ru',
+      port: 443,
+      loadUrl: 'https://api.wesi-inc.ru/wesios-status.json',
+      kind: TargetKind.server,
+      checkTls: true,
+    ),
+    MonitorTarget(
+      id: 'wesi-pocketbase-api',
+      name: 'WesiOS · PocketBase API',
+      host: 'api.wesi-inc.ru',
+      port: 443,
+      url: 'https://api.wesi-inc.ru/api/health',
+      kind: TargetKind.site,
+      checkTls: true,
+    ),
+    MonitorTarget(
+      id: 'wesi-employee-portal',
+      name: 'WesiOS · портал сотрудников',
+      host: 'api.wesi-inc.ru',
+      port: 443,
+      url: 'https://api.wesi-inc.ru/portal/',
+      kind: TargetKind.site,
+      checkTls: true,
+    ),
+    MonitorTarget(
+      id: 'wesi-ai-gateway',
+      name: 'Wesi AI · зарубежный шлюз',
+      host: 'ai.wesi-inc.ru',
+      port: 443,
+      url: 'https://ai.wesi-inc.ru/v1/health',
+      kind: TargetKind.site,
+      checkTls: true,
+    ),
+  ];
+
   /// Сколько замеров держим на узел. Шестьдесят при опросе раз в секунду —
   /// это минута живой картины, ровно столько, сколько человек смотрит на
   /// экран, прежде чем решить, что всё в порядке.
@@ -45,7 +91,13 @@ class MonitorService {
 
   static List<MonitorTarget> get targets {
     final raw = _open()?.get(_key);
+
+    // Ключ отсутствует только у новой установки или у версии приложения,
+    // которая ещё не открывала этот модуль. В этом случае сразу показываем
+    // настоящую инфраструктуру WesiOS, а не пустой экран с ручным вводом.
+    if (raw == null) return List<MonitorTarget>.unmodifiable(defaultTargets);
     if (raw is! String || raw.isEmpty) return const [];
+
     try {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return const [];
