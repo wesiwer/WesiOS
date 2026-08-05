@@ -50,7 +50,7 @@
 
   function setBoot(percent, status) {
     const safe = clamp(Math.round(percent), 0, 100);
-    if (bootProgress) bootProgress.style.width = `${safe}%`;
+    if (bootProgress) bootProgress.style.transform = `scaleX(${safe / 100})`;
     if (bootPercent) bootPercent.textContent = `${safe}%`;
     if (bootStatus && status) bootStatus.textContent = status;
   }
@@ -246,7 +246,7 @@
     addEventListener('scroll', updateTarget, { passive: true });
     addEventListener('resize', requestBake, { passive: true });
     addEventListener('orientationchange', requestBake, { passive: true });
-    visualViewport?.addEventListener('resize', requestBake, { passive: true });
+    window.visualViewport?.addEventListener('resize', requestBake, { passive: true });
     addEventListener('load', requestBake, { once: true });
 
     document.addEventListener('visibilitychange', () => {
