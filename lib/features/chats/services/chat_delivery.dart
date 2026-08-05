@@ -5,12 +5,8 @@ import '../models/chat_thread.dart';
 
 /// Уедет ли написанное куда-нибудь вообще — и что честно показать человеку.
 class ChatDelivery {
-  /// Фиксированный адрес уже известен приложению, но до успешного входа
-  /// отправлять нечем: нет серверного токена и владельца записи.
-  static bool get signedIn => SyncEndpoint.session != null;
-
   static bool willTravel(ChatThread chat) =>
-      ChatEnvelopePolicy.travels(chat.kind) && signedIn;
+      ChatEnvelopePolicy.travels(chat.kind) && SyncEndpoint.isConfigured;
 
   static DeliveryState initialFor(ChatThread chat) =>
       willTravel(chat) ? DeliveryState.pending : DeliveryState.local;
@@ -21,7 +17,7 @@ class ChatDelivery {
           ? 'Личная переписка не уходит с устройства'
           : 'Personal chats stay on this device';
     }
-    if (!signedIn) {
+    if (!SyncEndpoint.isConfigured) {
       return russian
           ? 'Войдите в WesiOS — до этого переписка остаётся на устройстве'
           : 'Sign in to WesiOS — until then this chat stays on this device';
