@@ -71,7 +71,9 @@ class _SyncScreenState extends State<SyncScreen> {
     setState(() => _busy = true);
     await SyncEndpoint.configure(login: login);
 
-    final transport = PocketBaseTransport(SyncEndpoint.url);
+    final transport = PocketBaseTransport(
+      SyncEndpoint.url ?? SyncEndpoint.defaultUrl,
+    );
     final res = await transport.signIn(login, password);
     if (!mounted) return;
     setState(() => _busy = false);
