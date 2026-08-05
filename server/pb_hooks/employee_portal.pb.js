@@ -1,21 +1,16 @@
 /// Защищённые маршруты портала сотрудников WesiOS.
 ///
-/// Файл устанавливается в /opt/pocketbase/pb_hooks. Статическая страница
-/// входа открыта всем, но manifest и установочные файлы эти маршруты отдают
-/// только после действующей авторизации в коллекции users.
+/// Портал только проверяет серверные auth-записи коллекции users. Создание
+/// такой записи выполняет WesiOS в момент создания сотрудника через
+/// /api/wesi/portal/employees/provision.
 
 const PORTAL_ARTIFACTS_ROOT = $os.getenv("WESI_ARTIFACTS_DIR") ||
   "/opt/pocketbase/pb_public/artifacts";
-const PORTAL_OWNER_EMAIL = ($os.getenv("WESI_OWNER_EMAIL") ||
-  "wesi@wesios.local").toLowerCase();
+const PORTAL_OWNER_EMAIL = ($os.getenv("WESI_OWNER_EMAIL") || "").trim().toLowerCase();
 
 function portalReadText(fs, name) {
   const raw = fs.readFile(name);
-  if (typeof raw === "string") {
-    return raw;
-  }
-  // readFile может вернуть массив байтов. Manifest маленький, поэтому
-  // преобразование целиком безопасно и проще потокового чтения.
+  if (typeof raw === "string") return raw;
   return String.fromCharCode.apply(null, raw);
 }
 
@@ -45,10 +40,22 @@ function portalFileName(value, fallback) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
+/// Разрешает создание сотрудников только доверенной основной учётной записи.
+/// Серверные аккаунты сотрудников всегда имеют домен @wesi.local, поэтому
+/// они не могут создавать другие аккаунты. Владелец входит в WesiOS своей
+/// обычной подтверждённой почтой. При необходимости её можно дополнительно
+/// зафиксировать переменной WESI_OWNER_EMAIL.
 function portalOwnerOnly(e) {
   if (e.hasSuperuserAuth()) return;
-  if (!e.auth || e.auth.getString("email").toLowerCase() !== PORTAL_OWNER_EMAIL) {
-    throw new ForbiddenError("Только владелец может создавать учётные записи сотрудников");
+  if (!e.auth) {
+    throw new UnauthorizedError("Требуется вход владельца WesiOS");
+  }
+  const email = e.auth.getString("email").trim().toLowerCase();
+  const isEmployeeAccount = email.endsWith("@wesi.local");
+  const matchesConfiguredOwner = PORTAL_OWNER_EMAIL !== "" && email === PORTAL_OWNER_EMAIL;
+  const isPrimaryVerifiedAccount = !isEmployeeAccount && e.auth.getBool("verified");
+  if (!matchesConfiguredOwner && !isPrimaryVerifiedAccount) {
+    throw new ForbiddenError("Создавать учётные записи сотрудников может только владелец");
   }
 }
 
@@ -73,10 +80,9 @@ routerAdd("GET", "/api/wesi/portal/session", (e) => {
   });
 }, $apis.requireAuth("users"));
 
-/// Создание/обновление учётной записи портала из модуля сотрудников WesiOS.
-///
-/// Пароль приходит только в момент создания/сброса, по HTTPS, и сразу
-/// превращается PocketBase в хеш. В логах и ответе пароль не возвращается.
+/// Атомарно создаёт или обновляет серверную учётную запись сотрудника.
+/// Пароль передаётся WesiOS по HTTPS только в момент создания/сброса и сразу
+/// хешируется PocketBase. В ответе и логах пароль отсутствует.
 routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
   portalOwnerOnly(e);
   const body = e.requestInfo().body || {};
@@ -104,21 +110,20 @@ routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
   record.setVerified(true);
   record.setIfFieldExists("name", name || login);
   record.setIfFieldExists("username", login);
+  record.setIfFieldExists("employeeLogin", login);
   e.app.save(record);
 
   return e.json(created ? 201 : 200, {
     "id": record.id,
     "email": record.getString("email"),
     "name": record.getString("name"),
+    "login": login,
     "created": created,
   });
-}, $apis.requireAuth());
+}, $apis.requireAuth("users"));
 
 routerAdd("GET", "/api/wesi/portal/manifest", (e) => {
   const manifest = portalManifest();
-
-  // Путь на диске нужен только серверу. Клиент получает стабильные
-  // защищённые endpoints и метаданные релиза.
   const result = {
     "version": manifest.version,
     "build": manifest.build,
@@ -157,15 +162,12 @@ routerAdd("GET", "/api/wesi/portal/download/{platform}", (e) => {
   }
 
   const path = portalSafePath(entry.path);
-  const fallback = platform === "windows"
-    ? "wesios-windows-x64.zip"
-    : "wesios-android.apk";
+  const fallback = platform === "windows" ? "wesios-windows-x64.zip" : "wesios-android.apk";
   const name = portalFileName(entry.asset, fallback);
 
   e.response.header().set("Cache-Control", "private, no-store");
   e.response.header().set("Content-Disposition", `attachment; filename="${name}"`);
   e.response.header().set("X-WesiOS-Version", String(entry.version || manifest.version || ""));
   e.response.header().set("X-WesiOS-Build", String(entry.build || manifest.build || ""));
-
   return e.fileFS($os.dirFS(PORTAL_ARTIFACTS_ROOT), path);
 }, $apis.requireAuth("users"));
