@@ -1,64 +1,355 @@
 (() => {
   'use strict';
-  const API=location.origin,TOKEN_KEY='wesi_portal_token',USER_KEY='wesi_portal_user',TIMEOUT=8000;
-  const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
-  const state={token:sessionStorage.getItem(TOKEN_KEY)||'',user:json(sessionStorage.getItem(USER_KEY)),manifest:null};
-  const els={boot:$('#boot'),app:$('#app'),loginView:$('#loginView'),dashboardView:$('#dashboardView'),loginForm:$('#loginForm'),identity:$('#identity'),password:$('#password'),passwordToggle:$('#passwordToggle'),loginButton:$('#loginButton'),loginMessage:$('#loginMessage'),logoutButton:$('#logoutButton'),employeeName:$('#employeeName'),heroVersion:$('#heroVersion'),heroBuild:$('#heroBuild'),releaseVersion:$('#releaseVersion'),releaseBuild:$('#releaseBuild'),publishedAt:$('#publishedAt'),changelog:$('#changelog p'),windowsSize:$('#windowsSize'),androidSize:$('#androidSize'),footerStatus:$('#footerStatus'),toastStack:$('#toastStack'),runner:$('#runnerSegment'),runnerTail:$('#runnerTail')};
 
-  function json(v){try{return v?JSON.parse(v):null}catch(_){return null}}
-  function clearSession(){state.token='';state.user=null;state.manifest=null;sessionStorage.removeItem(TOKEN_KEY);sessionStorage.removeItem(USER_KEY)}
-  function headers(extra={}){return state.token?{...extra,Authorization:state.token}:extra}
-  async function fetchTimeout(url,options={},timeout=TIMEOUT){const c=new AbortController(),t=setTimeout(()=>c.abort(),timeout);try{return await fetch(url,{...options,signal:c.signal})}finally{clearTimeout(t)}}
-  async function request(path,options={},timeout=TIMEOUT){const r=await fetchTimeout(`${API}${path}`,{cache:'no-store',...options,headers:headers(options.headers||{})},timeout);let body=null;try{body=await r.json()}catch(_){}if(!r.ok){const e=new Error(body?.message||`HTTP ${r.status}`);e.status=r.status;throw e}return body}
-  function showView(next){$('.view.active')?.classList.remove('active');next?.classList.add('active');scrollTo(0,0)}
-  function showLogin(){els.logoutButton?.classList.add('hidden');showView(els.loginView)}
-  function setLoading(btn,on,text=''){if(!btn)return;btn.dataset.label||=$('span',btn)?.textContent||'';btn.disabled=on;const s=$('span',btn);if(s)s.textContent=on?text:btn.dataset.label}
-  function nameOf(r){return(r?.name||r?.username||r?.email||'сотрудник').replace(/@wesi\.local$/i,'')}
+  const API = location.origin;
+  const TOKEN_KEY = 'wesi_portal_token';
+  const USER_KEY = 'wesi_portal_user';
+  const TIMEOUT = 8000;
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+  const state = {
+    token: sessionStorage.getItem(TOKEN_KEY) || '',
+    user: json(sessionStorage.getItem(USER_KEY)),
+    manifest: null,
+  };
+  const els = {
+    app: $('#app'),
+    loginView: $('#loginView'),
+    dashboardView: $('#dashboardView'),
+    loginForm: $('#loginForm'),
+    identity: $('#identity'),
+    password: $('#password'),
+    passwordToggle: $('#passwordToggle'),
+    loginButton: $('#loginButton'),
+    loginMessage: $('#loginMessage'),
+    logoutButton: $('#logoutButton'),
+    employeeName: $('#employeeName'),
+    heroVersion: $('#heroVersion'),
+    heroBuild: $('#heroBuild'),
+    releaseVersion: $('#releaseVersion'),
+    releaseBuild: $('#releaseBuild'),
+    publishedAt: $('#publishedAt'),
+    changelog: $('#changelog p'),
+    windowsSize: $('#windowsSize'),
+    androidSize: $('#androidSize'),
+    footerStatus: $('#footerStatus'),
+    toastStack: $('#toastStack'),
+  };
 
-  async function authCandidate(identity,password){const r=await fetchTimeout(`${API}/api/collections/users/auth-with-password`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({identity,password}),cache:'no-store'});const body=await r.json().catch(()=>null);return{r,body}}
-  async function signIn(identity,password){
-    const raw=identity.trim(),candidates=[raw];if(raw&&!raw.includes('@'))candidates.push(`${raw.toLowerCase()}@wesi.local`);
-    for(const candidate of [...new Set(candidates)]){const {r,body}=await authCandidate(candidate,password);if(r.ok&&body?.token){state.token=body.token;state.user=body.record||{};sessionStorage.setItem(TOKEN_KEY,state.token);sessionStorage.setItem(USER_KEY,JSON.stringify(state.user));return}}
-    const e=new Error('Неверный логин или пароль');e.status=401;throw e;
+  function json(value) {
+    try { return value ? JSON.parse(value) : null; } catch (_) { return null; }
   }
-  async function verifySession(){if(!state.token)return false;try{const body=await request('/api/collections/users/auth-refresh',{method:'POST'},2400);state.token=body.token||state.token;state.user=body.record||state.user;sessionStorage.setItem(TOKEN_KEY,state.token);sessionStorage.setItem(USER_KEY,JSON.stringify(state.user));return true}catch(_){clearSession();return false}}
 
-  function platform(m,p){return m?.[p]&&typeof m[p]==='object'?m[p]:null}
-  function size(v){const n=Number(v);if(!n)return'—';const m=n/1048576;return m>=1024?`${(m/1024).toFixed(1)} ГБ`:`${m.toFixed(m>=10?0:1)} МБ`}
-  function date(v){const d=new Date(v);return Number.isNaN(d.getTime())?'Дата не указана':new Intl.DateTimeFormat('ru-RU',{day:'2-digit',month:'long',year:'numeric',hour:'2-digit',minute:'2-digit'}).format(d)}
-  function renderManifest(m){const v=m.version||m.windows?.version||m.android?.version||'—',b=m.build??m.windows?.build??m.android?.build??'—',w=platform(m,'windows'),a=platform(m,'android');els.heroVersion.textContent=`v${v}`;els.heroBuild.textContent=`build ${b}`;els.releaseVersion.textContent=`v${v}`;els.releaseBuild.textContent=b;els.publishedAt.textContent=date(m.publishedAt);els.changelog.textContent=w?.notes||a?.notes||m.notes||'Актуальная корпоративная сборка WesiOS.';els.windowsSize.textContent=size(w?.sizeBytes);els.androidSize.textContent=size(a?.sizeBytes);$$('[data-download]').forEach(x=>x.disabled=!platform(m,x.dataset.download));els.footerStatus.textContent=`Релиз v${v} доступен`}
-  async function enterDashboard(){els.employeeName.textContent=nameOf(state.user);els.logoutButton?.classList.remove('hidden');showView(els.dashboardView);try{state.manifest=await request('/api/wesi/portal/manifest');renderManifest(state.manifest)}catch(e){els.footerStatus.textContent=e.message;toast('Список сборок пока недоступен','error')}}
-  async function download(p,btn){const item=platform(state.manifest,p);if(!item)return;setLoading(btn,true,'Подготавливаем…');try{const r=await fetchTimeout(`${API}/api/wesi/portal/download/${p}`,{headers:headers()},30000);if(!r.ok)throw new Error();const blob=await r.blob(),u=URL.createObjectURL(blob),a=document.createElement('a');a.href=u;a.download=item.asset||(p==='windows'?'wesios-windows.zip':'wesios.apk');a.click();setTimeout(()=>URL.revokeObjectURL(u),30000)}catch(_){toast('Не удалось скачать сборку','error')}finally{setLoading(btn,false)}}
-  function toast(text,type=''){const n=document.createElement('div');n.className=`toast ${type}`;n.textContent=text;els.toastStack?.appendChild(n);setTimeout(()=>n.remove(),4400)}
+  function clearSession() {
+    state.token = '';
+    state.user = null;
+    state.manifest = null;
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(USER_KEY);
+  }
 
-  function pointOf(node,rx=.5,ry=.5){const r=node.getBoundingClientRect();return{x:r.left+r.width*rx,y:r.top+r.height*ry}}
-  function initMotion(){
-    if(matchMedia('(prefers-reduced-motion: reduce)').matches)return;
-    const observer=new IntersectionObserver(entries=>entries.forEach(e=>e.isIntersecting&&e.target.classList.add('visible')),{threshold:.14});$$('[data-scroll-reveal]').forEach(n=>observer.observe(n));
-    let ticking=false,last={x:0,y:0};
-    const render=()=>{
-      const sy=scrollY;
-      $$('[data-parallax]').forEach(n=>n.style.transform=`translate3d(0,${sy*Number(n.dataset.parallax||0)}px,0)`);
+  function headers(extra = {}) {
+    return state.token ? { ...extra, Authorization: state.token } : extra;
+  }
 
-      const stage=$('#moduleStage');
-      if(stage){const r=stage.getBoundingClientRect(),progress=Math.max(0,Math.min(1,(innerHeight-r.top)/(innerHeight+r.height)));$$('[data-float]').forEach((n,i)=>{const phase=progress*7+i*1.35;const dx=Math.sin(phase*.9)*(8+i*2.2);const dy=Math.cos(phase)*(12+i*2.8);const rot=Math.sin(phase*.55)*(2.2+i*.35);n.style.transform=`translate3d(${dx}px,${dy}px,0) rotate(${rot}deg)`;n.style.opacity=`${.78+Math.sin(phase*.7)*.12}`})}
+  async function fetchTimeout(url, options = {}, timeout = TIMEOUT) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      return await fetch(url, { ...options, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
-      const origin=$('#runnerOrigin'),core=$('#orbitCore'),flow=$('#flowSection'),rail=$('#motionRail');
-      if(origin&&core&&flow&&rail&&els.runner){
-        const anchors=[pointOf(origin,.02,.5),pointOf(core,.5,.18),pointOf(stage,.82,.22),pointOf(stage,.18,.78),pointOf(flow,.78,.34),pointOf(flow,.24,.72),pointOf(rail,.08,.2),pointOf(rail,.12,.86)];
-        const start=origin.getBoundingClientRect().top+scrollY-innerHeight*.7,end=rail.getBoundingClientRect().bottom+scrollY-innerHeight*.35,p=Math.max(0,Math.min(1,(sy-start)/Math.max(1,end-start)));const seg=1/(anchors.length-1),idx=Math.min(anchors.length-2,Math.floor(p/seg)),local=(p-idx*seg)/seg,ease=local*local*(3-2*local),a=anchors[idx],b=anchors[idx+1],x=a.x+(b.x-a.x)*ease,y=a.y+(b.y-a.y)*ease,dx=x-last.x,dy=y-last.y,angle=Math.atan2(dy,dx)*180/Math.PI;last={x,y};
-        els.runner.style.transform=`translate3d(${x}px,${y}px,0) translate(-10%,-50%) rotate(${angle}deg)`;
-        els.runnerTail.style.transform=`translate3d(${x-44}px,${y}px,0) translateY(-50%) rotate(${angle}deg)`;
-        const behind=idx===1||idx===2||idx===4;$('.runner-layer').style.zIndex=behind?'2':'9';els.runner.style.opacity=p<=0||p>=1?'0':'1';els.runnerTail.style.opacity=p<=0||p>=1?'0':'.78';
+  async function request(path, options = {}, timeout = TIMEOUT) {
+    const response = await fetchTimeout(`${API}${path}`, {
+      cache: 'no-store',
+      ...options,
+      headers: headers(options.headers || {}),
+    }, timeout);
+    let body = null;
+    try { body = await response.json(); } catch (_) {}
+    if (!response.ok) {
+      const error = new Error(body?.message || `HTTP ${response.status}`);
+      error.status = response.status;
+      throw error;
+    }
+    return body;
+  }
+
+  function showView(next, resetScroll = true) {
+    $('.view.active')?.classList.remove('active');
+    next?.classList.add('active');
+    if (resetScroll) scrollTo(0, 0);
+  }
+
+  function showLogin(resetScroll = false) {
+    els.logoutButton?.classList.add('hidden');
+    showView(els.loginView, resetScroll);
+  }
+
+  function setLoading(button, on, text = '') {
+    if (!button) return;
+    button.dataset.label ||= $('span', button)?.textContent || '';
+    button.disabled = on;
+    const label = $('span', button);
+    if (label) label.textContent = on ? text : button.dataset.label;
+  }
+
+  function nameOf(record) {
+    return (record?.name || record?.username || record?.email || 'сотрудник').replace(/@wesi\.local$/i, '');
+  }
+
+  async function authCandidate(identity, password) {
+    const response = await fetchTimeout(`${API}/api/collections/users/auth-with-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity, password }),
+      cache: 'no-store',
+    });
+    const body = await response.json().catch(() => null);
+    return { response, body };
+  }
+
+  async function signIn(identity, password) {
+    const raw = identity.trim();
+    const candidates = [raw];
+    if (raw && !raw.includes('@')) candidates.push(`${raw.toLowerCase()}@wesi.local`);
+    for (const candidate of [...new Set(candidates)]) {
+      const { response, body } = await authCandidate(candidate, password);
+      if (response.ok && body?.token) {
+        state.token = body.token;
+        state.user = body.record || {};
+        sessionStorage.setItem(TOKEN_KEY, state.token);
+        sessionStorage.setItem(USER_KEY, JSON.stringify(state.user));
+        return;
       }
-      document.documentElement.style.setProperty('--scroll',Math.min(1,sy/Math.max(1,document.documentElement.scrollHeight-innerHeight)).toFixed(4));ticking=false;
-    };
-    addEventListener('scroll',()=>{if(!ticking){requestAnimationFrame(render);ticking=true}},{passive:true});addEventListener('resize',render,{passive:true});render();
-    $$('[data-tilt-card]').forEach(card=>{card.addEventListener('pointermove',e=>{if(innerWidth<900)return;const r=card.getBoundingClientRect(),x=(e.clientX-r.left)/r.width-.5,y=(e.clientY-r.top)/r.height-.5;card.style.transform=`perspective(900px) rotateX(${-y*3}deg) rotateY(${x*4}deg) translateY(-2px)`});card.addEventListener('pointerleave',()=>card.style.transform='')});
+    }
+    const error = new Error('Неверный логин или пароль');
+    error.status = 401;
+    throw error;
   }
 
-  function preventZoom(){document.addEventListener('gesturestart',e=>e.preventDefault(),{passive:false});document.addEventListener('touchstart',e=>{if(e.touches.length>1)e.preventDefault()},{passive:false});let last=0;document.addEventListener('touchend',e=>{const now=Date.now();if(now-last<300)e.preventDefault();last=now},{passive:false})}
-  function bind(){preventZoom();els.passwordToggle?.addEventListener('click',()=>els.password.type=els.password.type==='password'?'text':'password');els.loginForm?.addEventListener('submit',async e=>{e.preventDefault();els.loginMessage.textContent='';if(!els.identity.value.trim()||!els.password.value){els.loginMessage.textContent='Введите логин и пароль';return}setLoading(els.loginButton,true,'Проверяем доступ…');try{await signIn(els.identity.value,els.password.value);els.password.value='';await enterDashboard()}catch(err){els.loginMessage.textContent=err.name==='AbortError'?'Сервер не ответил. Повторите попытку.':'Неверный логин или пароль'}finally{setLoading(els.loginButton,false)}});els.logoutButton?.addEventListener('click',()=>{clearSession();showLogin()});$$('[data-download]').forEach(b=>b.addEventListener('click',()=>download(b.dataset.download,b)))}
-  async function boot(){bind();initMotion();setTimeout(()=>{els.boot?.classList.add('done');els.app?.classList.add('ready')},900);const valid=await verifySession();if(valid)await enterDashboard();else showLogin()}
-  boot().catch(()=>showLogin());
+  async function verifySession() {
+    if (!state.token) return false;
+    try {
+      const body = await request('/api/collections/users/auth-refresh', { method: 'POST' }, 2400);
+      state.token = body.token || state.token;
+      state.user = body.record || state.user;
+      sessionStorage.setItem(TOKEN_KEY, state.token);
+      sessionStorage.setItem(USER_KEY, JSON.stringify(state.user));
+      return true;
+    } catch (_) {
+      clearSession();
+      return false;
+    }
+  }
+
+  function platform(manifest, name) {
+    return manifest?.[name] && typeof manifest[name] === 'object' ? manifest[name] : null;
+  }
+
+  function size(value) {
+    const bytes = Number(value);
+    if (!bytes) return '—';
+    const megabytes = bytes / 1048576;
+    return megabytes >= 1024 ? `${(megabytes / 1024).toFixed(1)} ГБ` : `${megabytes.toFixed(megabytes >= 10 ? 0 : 1)} МБ`;
+  }
+
+  function date(value) {
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return 'Дата не указана';
+    return new Intl.DateTimeFormat('ru-RU', {
+      day: '2-digit', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    }).format(parsed);
+  }
+
+  function renderManifest(manifest) {
+    const version = manifest.version || manifest.windows?.version || manifest.android?.version || '—';
+    const build = manifest.build ?? manifest.windows?.build ?? manifest.android?.build ?? '—';
+    const windows = platform(manifest, 'windows');
+    const android = platform(manifest, 'android');
+    els.heroVersion.textContent = `v${version}`;
+    els.heroBuild.textContent = `build ${build}`;
+    els.releaseVersion.textContent = `v${version}`;
+    els.releaseBuild.textContent = build;
+    els.publishedAt.textContent = date(manifest.publishedAt);
+    els.changelog.textContent = windows?.notes || android?.notes || manifest.notes || 'Актуальная корпоративная сборка WesiOS.';
+    els.windowsSize.textContent = size(windows?.sizeBytes);
+    els.androidSize.textContent = size(android?.sizeBytes);
+    $$('[data-download]').forEach(button => { button.disabled = !platform(manifest, button.dataset.download); });
+    els.footerStatus.textContent = `Релиз v${version} доступен`;
+  }
+
+  async function enterDashboard() {
+    els.employeeName.textContent = nameOf(state.user);
+    els.logoutButton?.classList.remove('hidden');
+    showView(els.dashboardView);
+    try {
+      state.manifest = await request('/api/wesi/portal/manifest');
+      renderManifest(state.manifest);
+    } catch (error) {
+      els.footerStatus.textContent = error.message;
+      toast('Список сборок пока недоступен', 'error');
+    }
+  }
+
+  async function download(platformName, button) {
+    const item = platform(state.manifest, platformName);
+    if (!item) return;
+    setLoading(button, true, 'Подготавливаем…');
+    try {
+      const response = await fetchTimeout(`${API}/api/wesi/portal/download/${platformName}`, { headers: headers() }, 30000);
+      if (!response.ok) throw new Error();
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = item.asset || (platformName === 'windows' ? 'wesios-windows.zip' : 'wesios.apk');
+      anchor.click();
+      setTimeout(() => URL.revokeObjectURL(url), 30000);
+    } catch (_) {
+      toast('Не удалось скачать сборку', 'error');
+    } finally {
+      setLoading(button, false);
+    }
+  }
+
+  function toast(text, type = '') {
+    const node = document.createElement('div');
+    node.className = `toast ${type}`;
+    node.textContent = text;
+    els.toastStack?.appendChild(node);
+    setTimeout(() => node.remove(), 4400);
+  }
+
+  function initMotion() {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
+    const revealNodes = $$('[data-scroll-reveal]');
+    const parallaxNodes = $$('[data-parallax]');
+    const floatCards = $$('[data-float]');
+    const stage = $('#moduleStage');
+    let stageActive = false;
+    let scheduled = false;
+
+    document.documentElement.classList.add('motion-ready');
+
+    if ('IntersectionObserver' in window) {
+      const revealObserver = new IntersectionObserver(entries => {
+        entries.forEach(entry => {
+          if (!entry.isIntersecting) return;
+          entry.target.classList.add('visible');
+          revealObserver.unobserve(entry.target);
+        });
+      }, { threshold: .08, rootMargin: '90px 0px' });
+      revealNodes.forEach(node => revealObserver.observe(node));
+
+      if (stage) {
+        const stageObserver = new IntersectionObserver(entries => {
+          stageActive = entries[0]?.isIntersecting || false;
+          if (stageActive) schedule();
+        }, { rootMargin: '35% 0px' });
+        stageObserver.observe(stage);
+      }
+    } else {
+      revealNodes.forEach(node => node.classList.add('visible'));
+      stageActive = true;
+    }
+
+    function render() {
+      scheduled = false;
+      const y = scrollY;
+      parallaxNodes.forEach(node => {
+        const factor = Number(node.dataset.parallax || 0);
+        node.style.transform = `translate3d(0,${(y * factor).toFixed(1)}px,0)`;
+      });
+
+      if (stage && stageActive) {
+        const rect = stage.getBoundingClientRect();
+        const progress = Math.max(0, Math.min(1, (innerHeight - rect.top) / (innerHeight + rect.height)));
+        floatCards.forEach((node, index) => {
+          const phase = progress * 6.2 + index * 1.4;
+          const dx = Math.sin(phase * .88) * (6 + index * 1.5);
+          const dy = Math.cos(phase) * (9 + index * 1.8);
+          const rotation = Math.sin(phase * .54) * (1.4 + index * .22);
+          node.style.transform = `translate3d(${dx.toFixed(1)}px,${dy.toFixed(1)}px,0) rotate(${rotation.toFixed(2)}deg)`;
+        });
+      }
+      document.documentElement.style.setProperty('--scroll', Math.min(1, y / Math.max(1, document.documentElement.scrollHeight - innerHeight)).toFixed(4));
+    }
+
+    function schedule() {
+      if (!scheduled && !document.hidden) {
+        scheduled = true;
+        requestAnimationFrame(render);
+      }
+    }
+
+    addEventListener('scroll', schedule, { passive: true });
+    addEventListener('resize', schedule, { passive: true });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) schedule(); });
+    schedule();
+
+    $$('[data-tilt-card]').forEach(card => {
+      card.addEventListener('pointermove', event => {
+        if (innerWidth < 900 || event.pointerType === 'touch') return;
+        const rect = card.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width - .5;
+        const y = (event.clientY - rect.top) / rect.height - .5;
+        card.style.transform = `perspective(900px) rotateX(${-y * 3}deg) rotateY(${x * 4}deg) translateY(-2px)`;
+      });
+      card.addEventListener('pointerleave', () => { card.style.transform = ''; });
+    });
+  }
+
+  function preventPinchZoom() {
+    document.addEventListener('gesturestart', event => event.preventDefault(), { passive: false });
+    document.addEventListener('touchmove', event => {
+      if (event.touches.length > 1) event.preventDefault();
+    }, { passive: false });
+  }
+
+  function bind() {
+    preventPinchZoom();
+    els.passwordToggle?.addEventListener('click', () => {
+      els.password.type = els.password.type === 'password' ? 'text' : 'password';
+    });
+    els.loginForm?.addEventListener('submit', async event => {
+      event.preventDefault();
+      els.loginMessage.textContent = '';
+      if (!els.identity.value.trim() || !els.password.value) {
+        els.loginMessage.textContent = 'Введите логин и пароль';
+        return;
+      }
+      setLoading(els.loginButton, true, 'Проверяем доступ…');
+      try {
+        await signIn(els.identity.value, els.password.value);
+        els.password.value = '';
+        await enterDashboard();
+      } catch (error) {
+        els.loginMessage.textContent = error.name === 'AbortError' ? 'Сервер не ответил. Повторите попытку.' : 'Неверный логин или пароль';
+      } finally {
+        setLoading(els.loginButton, false);
+      }
+    });
+    els.logoutButton?.addEventListener('click', () => {
+      clearSession();
+      showLogin(true);
+    });
+    $$('[data-download]').forEach(button => {
+      button.addEventListener('click', () => download(button.dataset.download, button));
+    });
+  }
+
+  async function boot() {
+    bind();
+    showLogin(false);
+    requestAnimationFrame(initMotion);
+    const valid = await verifySession();
+    if (valid) await enterDashboard();
+  }
+
+  boot().catch(() => showLogin(false));
 })();
