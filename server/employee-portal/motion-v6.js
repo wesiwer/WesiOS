@@ -1,6 +1,12 @@
 (() => {
   'use strict';
 
+  /* Карточки получают готовые CSS-траектории до запуска основного motion-кода. */
+  document.querySelectorAll('[data-float]').forEach((node, index) => {
+    node.removeAttribute('data-float');
+    node.classList.add('baked-float', `baked-float-${index + 1}`);
+  });
+
   const svg = document.getElementById('runnerSvg');
   const trail = document.getElementById('runnerTrail');
   const head = document.getElementById('runnerHead');
