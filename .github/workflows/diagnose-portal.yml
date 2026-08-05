@@ -1,0 +1,39 @@
+name: Diagnose employee portal
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-portal.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: DNS diagnostics
+        run: |
+          set +e
+          echo '=== system resolver ==='
+          getent ahostsv4 api.wesi-inc.ru
+          echo '=== Cloudflare resolver ==='
+          dig +time=4 +tries=1 @1.1.1.1 api.wesi-inc.ru A
+          echo '=== Google resolver ==='
+          dig +time=4 +tries=1 @8.8.8.8 api.wesi-inc.ru A
+          echo '=== zone nameservers ==='
+          dig +short NS wesi-inc.ru
+
+      - name: HTTPS diagnostics
+        run: |
+          set +e
+          echo '=== portal through DNS ==='
+          curl -vkIL --connect-timeout 10 --max-time 25 'https://api.wesi-inc.ru/portal/?diagnostic=1'
+          echo '=== health through DNS ==='
+          curl -vk --connect-timeout 10 --max-time 25 'https://api.wesi-inc.ru/api/health'
+          echo '=== portal through known server IP ==='
+          curl -vkIL --resolve api.wesi-inc.ru:443:185.221.199.19 --connect-timeout 10 --max-time 25 'https://api.wesi-inc.ru/portal/?diagnostic=direct'
+          echo '=== TLS certificate through known server IP ==='
+          echo | openssl s_client -connect 185.221.199.19:443 -servername api.wesi-inc.ru 2>&1 | sed -n '1,80p'
