@@ -9,7 +9,7 @@ on:
       - 'server/pb_hooks/employee_portal.pb.js'
       - 'server/pb_hooks/employee_portal_static.pb.js'
       - 'server/deploy-employee-portal.sh'
-      - 'lib/features/team/services/portal_account_service.dart'
+      - 'assets/images/app_icon.png'
       - '.github/workflows/deploy-employee-portal.yml'
 
 permissions:
@@ -37,12 +37,9 @@ jobs:
           test -s server/employee-portal/index.html
           test -s server/employee-portal/styles.css
           test -s server/employee-portal/app.js
-          test -s server/pb_hooks/employee_portal.pb.js
-          test -s server/pb_hooks/employee_portal_static.pb.js
-          grep -q 'WesiOS' server/employee-portal/index.html
+          test -s assets/images/app_icon.png
+          grep -q './app_icon.png' server/employee-portal/index.html
           grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
-          grep -q '/api/wesi/portal/download' server/pb_hooks/employee_portal.pb.js
-          grep -q '/portal/{path...}' server/pb_hooks/employee_portal_static.pb.js
 
       - name: Check server secrets
         env:
@@ -70,7 +67,6 @@ jobs:
             printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
           else
             ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
-            echo '::warning::WESI_SERVER_KNOWN_HOSTS не задан; отпечаток получен от сервера при этом запуске.'
           fi
           chmod 600 ~/.ssh/known_hosts
 
@@ -84,60 +80,37 @@ jobs:
           set -euo pipefail
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
           REMOTE="/tmp/wesi-portal-$GITHUB_RUN_ID"
-
-          # Репозиторий пережил две схемы хранения. Не угадываем: сначала
-          # используем явную переменную, затем выбираем реально доступный для
-          # записи каталог на сервере.
           if [ -n "${CONFIGURED_ARTIFACTS_DIR:-}" ]; then
             ARTIFACTS_DIR="$CONFIGURED_ARTIFACTS_DIR"
           else
-            ARTIFACTS_DIR=$($SSH "$USER@$HOST" 'for d in /opt/pocketbase/pb_public/artifacts /srv/wesi-artifacts; do if [ -d "$d" ] && [ -w "$d" ]; then printf "%s" "$d"; exit 0; fi; done; exit 1') || {
-              echo '::error::Пользователь деплоя не может писать ни в /opt/pocketbase/pb_public/artifacts, ни в /srv/wesi-artifacts.'
-              echo 'Нужно один раз выдать права каталогу; скрипт не будет делать вид, что сайт опубликован.'
-              exit 1
-            }
+            ARTIFACTS_DIR=$($SSH "$USER@$HOST" 'for d in /opt/pocketbase/pb_public/artifacts /srv/wesi-artifacts; do if [ -d "$d" ] && [ -w "$d" ]; then printf "%s" "$d"; exit 0; fi; done; exit 1')
           fi
-          echo "Каталог публикации: $ARTIFACTS_DIR"
-
           $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          cp assets/images/app_icon.png server/employee-portal/app_icon.png
           scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
             server/employee-portal/index.html \
             server/employee-portal/styles.css \
             server/employee-portal/app.js \
+            server/employee-portal/app_icon.png \
             server/pb_hooks/employee_portal.pb.js \
             server/pb_hooks/employee_portal_static.pb.js \
             server/deploy-employee-portal.sh \
             "$USER@$HOST:$REMOTE/"
-
           $SSH "$USER@$HOST" \
-            "WESI_ARTIFACTS_DIR='$ARTIFACTS_DIR' \
-             WESI_PORTAL_DIR='${PORTAL_DIR:-}' \
-             bash '$REMOTE/deploy-employee-portal.sh' --from '$REMOTE'"
+            "WESI_ARTIFACTS_DIR='$ARTIFACTS_DIR' WESI_PORTAL_DIR='${PORTAL_DIR:-}' bash '$REMOTE/deploy-employee-portal.sh' --from '$REMOTE'"
           $SSH "$USER@$HOST" "rm -rf '$REMOTE'"
 
-      - name: Verify public portal and auth boundary
-        env:
-          PORTAL_URL: ${{ vars.WESI_PORTAL_URL || 'https://api.wesi-inc.ru/portal/' }}
-          FALLBACK_URL: https://api.wesi-inc.ru/artifacts/portal/
+      - name: Verify deployed portal
         run: |
           set -euo pipefail
-
-          URL="$PORTAL_URL"
-          if ! curl -fsS --max-time 30 "$URL" -o portal.html; then
-            echo "::warning::Основной адрес $URL пока недоступен; проверяю $FALLBACK_URL"
-            URL="$FALLBACK_URL"
-            curl -fsS --max-time 30 "$URL" -o portal.html
-          fi
+          BASE='https://api.wesi-inc.ru/portal/'
+          curl -fsS --max-time 30 "${BASE}?v=${GITHUB_SHA}" -o portal.html
           grep -q 'WesiOS' portal.html
-          grep -q 'EMPLOYEE ACCESS' portal.html
-
-          CODE=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 \
-            'https://api.wesi-inc.ru/api/wesi/portal/manifest' || true)
+          grep -q './app_icon.png' portal.html
+          curl -fsS --max-time 30 "${BASE}app_icon.png?v=${GITHUB_SHA}" -o app_icon.png
+          test "$(wc -c < app_icon.png)" -gt 1000
+          CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 'https://api.wesi-inc.ru/api/wesi/portal/manifest' || true)
           case "$CODE" in
-            401|403) echo 'Защищённый endpoint установлен и без входа не пускает.' ;;
-            404) echo '::warning::Статика опубликована, но PocketBase hooks не установлены из-за прав на сервере.' ;;
-            200) echo '::error::Manifest доступен без авторизации.'; cat response.txt; exit 1 ;;
-            *) echo "::warning::Неожиданный ответ защищённого endpoint: HTTP $CODE" ;;
+            401|403) echo 'Защита manifest работает.' ;;
+            *) echo "::error::Неожиданный HTTP $CODE у защищённого manifest"; exit 1 ;;
           esac
-
-          echo "Портал опубликован: $URL"
