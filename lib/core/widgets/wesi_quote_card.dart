@@ -32,7 +32,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
       builder: (context, _, __) {
         return ValueListenableBuilder<String>(
           valueListenable: WesiLocale.localeNotifier,
-          builder: (context, _, __) {
+          builder: (context, language, __) {
             final quote = _manual ?? WesiQuotes.current();
             final text = WesiLocale.isRussian ? quote.ru : quote.en;
 
@@ -84,7 +84,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
                           ),
                           child: Text(
                             text,
-                            key: ValueKey('${WesiLocale.current}:$text'),
+                            key: ValueKey('$language:$text'),
                             style: TextStyle(
                               fontSize: 14,
                               height: 1.45,
