@@ -39,18 +39,17 @@ class PocketBaseTransport implements SyncTransport {
 
   PocketBaseTransport(this.baseUrl);
 
-  /// Транспорт из сохранённых настроек, или null — если сервер не настроен.
+  /// Транспорт из сохранённых настроек. Корпоративный сервер теперь всегда
+  /// задан, nullable-тип оставлен только для совместимости старых вызовов.
   static PocketBaseTransport? fromSettings() {
-    final url = SyncEndpoint.url;
-    if (url == null) return null;
-    final t = PocketBaseTransport(url);
+    final transport = PocketBaseTransport(SyncEndpoint.url);
     final session = SyncEndpoint.session;
     final expires = DateTime.tryParse('${session?['expiresAt']}');
     if (session != null && expires != null && expires.isAfter(DateTime.now())) {
-      t._token = '${session['token']}';
-      t._userId = '${session['userId']}';
+      transport._token = '${session['token']}';
+      transport._userId = '${session['userId']}';
     }
-    return t;
+    return transport;
   }
 
   @override
@@ -84,10 +83,6 @@ class PocketBaseTransport implements SyncTransport {
     _token = token;
     _userId = '${record['id']}';
 
-    // PocketBase по умолчанию выдаёт токен на две недели. Точный срок лежит
-    // внутри самого токена (JWT), но разбирать его ради этого не стоит:
-    // просроченный токен всё равно распознаётся по ответу 401, а запас
-    // в сутки избавляет от входа ровно на границе срока.
     await SyncEndpoint.saveSession(
       token: token,
       userId: _userId!,
@@ -110,9 +105,6 @@ class PocketBaseTransport implements SyncTransport {
           'filter': "coll='$collection'",
           'perPage': '$pageSize',
           'page': '$page',
-          // Без сортировки PocketBase отдаёт страницы в порядке создания;
-          // явный порядок делает разбиение на страницы устойчивым, когда
-          // между двумя запросами кто-то дописал запись.
           'sort': 'id',
         },
       );
@@ -159,32 +151,35 @@ class PocketBaseTransport implements SyncTransport {
     if (records.isEmpty) return const SyncResult.ok(0);
 
     var sent = 0;
-    for (final r in records) {
+    for (final record in records) {
       final body = {
         'owner': _userId,
         'coll': collection,
-        'rid': r.id,
-        'payload': r.fields,
-        'stamp': r.updatedAt.toUtc().toIso8601String(),
-        'deleted': r.deleted,
+        'rid': record.id,
+        'payload': record.fields,
+        'stamp': record.updatedAt.toUtc().toIso8601String(),
+        'deleted': record.deleted,
       };
-      final serverId = _serverIds['$collection/${r.id}'];
+      final serverId = _serverIds['$collection/${record.id}'];
       final res = serverId == null
-          ? await _send('POST', '/api/collections/$collectionName/records',
-              body: body)
+          ? await _send(
+              'POST',
+              '/api/collections/$collectionName/records',
+              body: body,
+            )
           : await _send(
-              'PATCH', '/api/collections/$collectionName/records/$serverId',
-              body: body);
+              'PATCH',
+              '/api/collections/$collectionName/records/$serverId',
+              body: body,
+            );
 
       if (res.failure != null) {
-        // Одна отказавшая запись не должна отменять уже отправленные:
-        // они на сервере, и сообщать об этом «ничего не ушло» — врать.
         return sent == 0
             ? SyncResult.fail(res.failure!)
             : SyncResult.ok(sent);
       }
       final id = res.value?['id'];
-      if (id is String) _serverIds['$collection/${r.id}'] = id;
+      if (id is String) _serverIds['$collection/${record.id}'] = id;
       sent++;
     }
     return SyncResult.ok(sent);
@@ -192,8 +187,6 @@ class PocketBaseTransport implements SyncTransport {
 
   static int item2int(Object? raw) =>
       raw is num ? raw.toInt() : int.tryParse('$raw') ?? 1;
-
-  // --------------------------------------------------------------- HTTP
 
   Future<SyncResult<Map<String, dynamic>>> _send(
     String method,
@@ -204,58 +197,76 @@ class PocketBaseTransport implements SyncTransport {
   }) async {
     final base = Uri.tryParse(baseUrl);
     if (base == null || base.host.isEmpty) {
-      return const SyncResult.fail(SyncFailure('BAD_ADDRESS', 'Плохой адрес'));
+      return const SyncResult.fail(
+        SyncFailure('BAD_ADDRESS', 'Плохой адрес'),
+      );
     }
     final uri = base.replace(path: path, queryParameters: query);
 
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 12);
     try {
-      final req = await client.openUrl(method, uri);
+      final request = await client.openUrl(method, uri);
       if (auth && _token != null) {
-        req.headers.set(HttpHeaders.authorizationHeader, _token!);
+        request.headers.set(HttpHeaders.authorizationHeader, _token!);
       }
       if (body != null) {
-        req.headers.contentType = ContentType.json;
-        req.write(jsonEncode(body));
+        request.headers.contentType = ContentType.json;
+        request.write(jsonEncode(body));
       }
-      final res = await req.close().timeout(const Duration(seconds: 25));
-      final text = await res.transform(utf8.decoder).join();
+      final response =
+          await request.close().timeout(const Duration(seconds: 25));
+      final text = await response.transform(utf8.decoder).join();
 
-      if (res.statusCode == 401 || res.statusCode == 403) {
-        // Токен протух или прав нет. Вход по паролю отличается отдельно:
-        // там 400, и путать «пароль не тот» с «пропуск просрочен» нельзя.
-        return SyncResult.fail(auth
-            ? const SyncFailure('NOT_SIGNED_IN', 'Пропуск недействителен')
-            : const SyncFailure('BAD_CREDENTIALS', 'Неверный логин или пароль'));
-      }
-      if (res.statusCode == 400 && !auth) {
-        return const SyncResult.fail(
-            SyncFailure('BAD_CREDENTIALS', 'Неверный логин или пароль'));
-      }
-      if (res.statusCode == 404) {
-        return const SyncResult.fail(SyncFailure(
-            'NOT_WESIOS', 'На сервере нет коллекции $collectionName'));
-      }
-      if (res.statusCode >= 400) {
+      if (response.statusCode == 401 || response.statusCode == 403) {
         return SyncResult.fail(
-            SyncFailure('HTTP_${res.statusCode}', _briefly(text)));
+          auth
+              ? const SyncFailure(
+                  'NOT_SIGNED_IN',
+                  'Пропуск недействителен',
+                )
+              : const SyncFailure(
+                  'BAD_CREDENTIALS',
+                  'Неверный логин или пароль',
+                ),
+        );
+      }
+      if (response.statusCode == 400 && !auth) {
+        return const SyncResult.fail(
+          SyncFailure('BAD_CREDENTIALS', 'Неверный логин или пароль'),
+        );
+      }
+      if (response.statusCode == 404) {
+        return const SyncResult.fail(
+          SyncFailure(
+            'NOT_WESIOS',
+            'На сервере нет коллекции $collectionName',
+          ),
+        );
+      }
+      if (response.statusCode >= 400) {
+        return SyncResult.fail(
+          SyncFailure('HTTP_${response.statusCode}', _briefly(text)),
+        );
       }
 
-      final json = jsonDecode(text);
-      if (json is! Map<String, dynamic>) {
+      final decoded = jsonDecode(text);
+      if (decoded is! Map<String, dynamic>) {
         return const SyncResult.fail(
-            SyncFailure('NOT_WESIOS', 'Ответ сервера не разобрался'));
+          SyncFailure('NOT_WESIOS', 'Ответ сервера не разобрался'),
+        );
       }
-      return SyncResult.ok(json);
+      return SyncResult.ok(decoded);
     } on SocketException {
       return const SyncResult.fail(SyncFailure.offline);
     } on HandshakeException {
-      return const SyncResult.fail(SyncFailure(
-          'NETWORK', 'Сертификат сервера не принят'));
+      return const SyncResult.fail(
+        SyncFailure('NETWORK', 'Сертификат сервера не принят'),
+      );
     } on FormatException {
       return const SyncResult.fail(
-          SyncFailure('NOT_WESIOS', 'Ответ сервера не разобрался'));
+        SyncFailure('NOT_WESIOS', 'Ответ сервера не разобрался'),
+      );
     } catch (_) {
       return const SyncResult.fail(SyncFailure.offline);
     } finally {
@@ -263,8 +274,6 @@ class PocketBaseTransport implements SyncTransport {
     }
   }
 
-  /// Ответ сервера может быть страницей на сотню килобайт. В сообщении об
-  /// ошибке от неё пользы нет, а в журнале она мешает.
   static String _briefly(String text) {
     final one = text.replaceAll(RegExp(r'\s+'), ' ').trim();
     return one.length <= 160 ? one : '${one.substring(0, 157)}…';
