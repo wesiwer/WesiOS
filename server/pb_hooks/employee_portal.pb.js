@@ -6,6 +6,8 @@
 
 const PORTAL_ARTIFACTS_ROOT = $os.getenv("WESI_ARTIFACTS_DIR") ||
   "/opt/pocketbase/pb_public/artifacts";
+const PORTAL_OWNER_EMAIL = ($os.getenv("WESI_OWNER_EMAIL") ||
+  "wesi@wesios.local").toLowerCase();
 
 function portalReadText(fs, name) {
   const raw = fs.readFile(name);
@@ -31,8 +33,8 @@ function portalSafePath(value) {
   if (typeof value !== "string" || value === "") {
     throw new NotFoundError("Файл сборки не указан");
   }
-  const clean = $filepath.clean(value).replaceAll("\\", "/");
-  if (!clean.startsWith("app/") || clean.includes("../") || clean.startsWith("/")) {
+  const clean = $filepath.clean(value).replace(/\\/g, "/");
+  if (!clean.startsWith("app/") || clean.indexOf("../") >= 0 || clean.startsWith("/")) {
     throw new ForbiddenError("Недопустимый путь сборки");
   }
   return clean;
@@ -40,7 +42,25 @@ function portalSafePath(value) {
 
 function portalFileName(value, fallback) {
   if (typeof value !== "string" || value === "") return fallback;
-  return value.replaceAll(/[^a-zA-Z0-9._-]/g, "_");
+  return value.replace(/[^a-zA-Z0-9._-]/g, "_");
+}
+
+function portalOwnerOnly(e) {
+  if (e.hasSuperuserAuth()) return;
+  if (!e.auth || e.auth.getString("email").toLowerCase() !== PORTAL_OWNER_EMAIL) {
+    throw new ForbiddenError("Только владелец может создавать учётные записи сотрудников");
+  }
+}
+
+function portalLoginEmail(login, email) {
+  if (typeof email === "string" && email.trim() !== "") {
+    return email.trim().toLowerCase();
+  }
+  const normalized = String(login || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(normalized)) {
+    throw new BadRequestError("Логин должен содержать 3–32 латинских символа, цифры, точку, дефис или подчёркивание");
+  }
+  return normalized + "@wesi.local";
 }
 
 routerAdd("GET", "/api/wesi/portal/session", (e) => {
@@ -52,6 +72,47 @@ routerAdd("GET", "/api/wesi/portal/session", (e) => {
     "username": auth.getString("username"),
   });
 }, $apis.requireAuth("users"));
+
+/// Создание/обновление учётной записи портала из модуля сотрудников WesiOS.
+///
+/// Пароль приходит только в момент создания/сброса, по HTTPS, и сразу
+/// превращается PocketBase в хеш. В логах и ответе пароль не возвращается.
+routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
+  portalOwnerOnly(e);
+  const body = e.requestInfo().body || {};
+  const login = String(body.login || "").trim().toLowerCase();
+  const password = String(body.password || "");
+  const name = String(body.name || "").trim();
+  const email = portalLoginEmail(login, body.email);
+
+  if (password.length < 8 || password.length > 128) {
+    throw new BadRequestError("Пароль должен содержать от 8 до 128 символов");
+  }
+
+  let record;
+  let created = false;
+  try {
+    record = e.app.findAuthRecordByEmail("users", email);
+  } catch (_) {
+    const collection = e.app.findCollectionByNameOrId("users");
+    record = new Record(collection);
+    record.setEmail(email);
+    created = true;
+  }
+
+  record.setPassword(password);
+  record.setVerified(true);
+  record.setIfFieldExists("name", name || login);
+  record.setIfFieldExists("username", login);
+  e.app.save(record);
+
+  return e.json(created ? 201 : 200, {
+    "id": record.id,
+    "email": record.getString("email"),
+    "name": record.getString("name"),
+    "created": created,
+  });
+}, $apis.requireAuth());
 
 routerAdd("GET", "/api/wesi/portal/manifest", (e) => {
   const manifest = portalManifest();
