@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wesios/core/constants/app_version.dart';
 import 'package:wesios/features/knowledge/data/builtin_articles.dart';
 import 'package:wesios/features/knowledge/models/article_model.dart';
 
@@ -109,7 +110,16 @@ void main() {
   }
 }
 
-/// Отдельно, чтобы тест не зависел от пути импорта констант приложения.
+/// Версия берётся из самого приложения.
+///
+/// Здесь стояла копия строки — «чтобы тест не зависел от пути импорта».
+/// Получилось ровно обратное тому, что тест проверяет: копию надо было
+/// править при каждом поднятии версии, и до тех пор набор падал. Тест с
+/// названием «версия не захардкожена в прошлое» сам держал версию
+/// захардкоженной в прошлом.
+///
+/// Теперь источник один. Если справка начнёт врать о версии — упадёт;
+/// если версию просто подняли — нет.
 class AppVersionProbe {
-  static const String display = 'v0.13.0 α';
+  static const String display = AppVersion.display;
 }
