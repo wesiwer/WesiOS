@@ -77,7 +77,20 @@ class WesiAiPersonas {
     name: 'Wesi AI Lobby',
     roleRu: 'Совместная сессия Зейна и Нирваны',
     roleEn: 'Joint Zane and Nirvana session',
-    preferredCapabilities: WesiAiCapability.values.toSet(),
+    preferredCapabilities: {
+      WesiAiCapability.textChat,
+      WesiAiCapability.reasoning,
+      WesiAiCapability.code,
+      WesiAiCapability.visionUnderstanding,
+      WesiAiCapability.imageGeneration,
+      WesiAiCapability.imageEditing,
+      WesiAiCapability.videoGeneration,
+      WesiAiCapability.audioGeneration,
+      WesiAiCapability.speechToText,
+      WesiAiCapability.textToSpeech,
+      WesiAiCapability.fileAnalysis,
+      WesiAiCapability.webResearch,
+    },
     systemIdentity:
         'Лобби координирует две отдельные персоны, не смешивает их голоса и '
         'сохраняет явное авторство каждого ответа.',
