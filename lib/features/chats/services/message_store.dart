@@ -148,9 +148,25 @@ class MessageStore {
 
   // ------------------------------------------------------------------ запись
 
+  /// Записать сообщение и **сразу** сказать экранам, что оно есть.
+  ///
+  /// Порядок здесь важнее, чем кажется. Раньше стояло `await put(...)`, и
+  /// только потом `revision++`: экран узнавал об изменении не тогда, когда
+  /// оно произошло, а когда Hive дописал его на диск. Внутри Hive значение
+  /// оказывается в памяти сразу, а возвращаемый `Future` — это про диск.
+  ///
+  /// На отправке сообщения разница почти незаметна, а на разметке тем —
+  /// нет: между нажатием «Разделить» и любым откликом экрана проходило
+  /// столько, сколько занимала запись, и кнопка выглядела неработающей.
+  ///
+  /// Если запись на диск не удастся, в памяти изменение всё равно уже
+  /// произошло — уведомить о нём раньше не делает хуже.
   static Future<void> put(ChatMessage message) async {
-    await _opened?.put(message.id, message);
+    final box = _opened;
+    if (box == null) return;
+    final write = box.put(message.id, message);
     revision.value++;
+    await write;
   }
 
   static Future<ChatMessage?> send({
@@ -288,16 +304,33 @@ class MessageStore {
   }
 
   /// Привязать сообщения к блоку темы.
+  ///
+  /// **Одной записью, а не по сообщению за раз.** Здесь стоял цикл с
+  /// `await box.put` внутри: разделение темы в переписке на пятьсот
+  /// сообщений превращалось в пятьсот последовательных обращений к диску, и
+  /// всё это до того, как экран узнает об изменении, — `revision`
+  /// дёргался только в конце. Со стороны человека: нажал «Разделить», и
+  /// секунду ничего не происходит. Кнопка выглядит незалипающей и
+  /// неработающей.
+  ///
+  /// `putAll` пишет пачкой и возвращается сразу.
   static Future<void> assignTopic(
       Iterable<String> ids, String? topicId) async {
     final box = _opened;
     if (box == null) return;
+
+    final batch = <String, ChatMessage>{};
     for (final id in ids) {
       final message = box.get(id);
       if (message == null) continue;
-      await box.put(id, message.copyWith(topicId: topicId));
+      batch[id] = message.copyWith(topicId: topicId);
     }
+    if (batch.isEmpty) return;
+
+    // Сначала говорим экрану, потом ждём диск — см. [put].
+    final write = box.putAll(batch);
     revision.value++;
+    await write;
   }
 
   // ----------------------------------------------------------------- чистка

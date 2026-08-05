@@ -315,14 +315,26 @@ class _ChatScreenState extends State<ChatScreen> {
   ///
   /// Если модель не настроена, [TopicRefiner] сам вернёт местный результат,
   /// и в разметке будет честно написано, чем она сделана.
-  void _refineTopics(ChatThread chat, List<ChatMessage> messages) {
+  void _refineTopics(ChatThread chat) {
     if (_refining) return;
+
+    // Переписку читаем **здесь**, а не берём из кадра, который нас позвал.
+    //
+    // Так и ломалась кнопка «Разделить». Вызов ставится в очередь после
+    // каждой перерисовки, и в очереди оказывается вызов со списком,
+    // прочитанным ДО разделения. Он досчитывал разметку по старому списку —
+    // без ручных границ — и клал её поверх свежей. Заголовок пропадал,
+    // вопрос возвращался, и со стороны это выглядело как «нажал, и ничего».
+    final messages = MessageStore.of(chat.id);
     final prepared = TopicDivider.prepare(messages);
     if (prepared == null) return;
 
-    // Подпись состояния: сколько сообщений и какое последнее. Пересчитываем
-    // только когда переписка действительно изменилась.
-    final signature = '${chat.id}/${messages.length}/${messages.last.id}';
+    // Подпись состояния: сколько сообщений, какое последнее и сколько
+    // размечено руками. Последнее обязательно: от нажатия «Разделить»
+    // количество и последний идентификатор не меняются, и без него
+    // пересчёт считался бы уже сделанным.
+    final signature = '${chat.id}/${messages.length}/${messages.last.id}'
+        '/${_manualMark(messages)}';
     if (_refinedFor == signature) return;
 
     _refining = true;
@@ -607,7 +619,7 @@ class _ChatScreenState extends State<ChatScreen> {
     final blocks = searching ? null : _layoutFor(messages);
     if (!searching) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _refineTopics(chat, messages);
+        if (mounted) _refineTopics(chat);
       });
     }
 
