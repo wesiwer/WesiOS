@@ -1,18 +1,19 @@
 import 'dart:async';
 import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
-import '../theme/app_theme.dart';
+
 import '../localization/wesi_locale.dart';
+import '../theme/app_theme.dart';
 
 /// Стиль часов на главной.
 enum ClockStyle { digital, analog }
 
-/// Живые часы с датой для главного экрана.
+/// Живые часы, дата и компактный календарь текущего месяца.
 ///
-/// Два режима: цифровые и аналоговый циферблат с цифрами.
-/// Переключение — долгий тап (обрабатывает родитель) или кнопка рядом.
-/// Выбор пишется в Hive и переживает рестарт.
+/// Вся область остаётся одной кнопкой: родитель открывает полный календарь,
+/// а долгий тап переключает цифровой/аналоговый стиль.
 class WesiClock extends StatefulWidget {
   final bool showSeconds;
   final ClockStyle? forceStyle;
@@ -28,8 +29,8 @@ class WesiClock extends StatefulWidget {
 
   static ClockStyle get savedStyle {
     try {
-      final v = Hive.box(_box).get(_styleKey) as String?;
-      if (v == 'analog') return ClockStyle.analog;
+      final value = Hive.box(_box).get(_styleKey) as String?;
+      if (value == 'analog') return ClockStyle.analog;
     } catch (_) {}
     return ClockStyle.digital;
   }
@@ -53,20 +54,50 @@ class _WesiClockState extends State<WesiClock> {
   late ClockStyle _style;
 
   static const _monthsRu = [
-    'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
-    'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря',
+    'января',
+    'февраля',
+    'марта',
+    'апреля',
+    'мая',
+    'июня',
+    'июля',
+    'августа',
+    'сентября',
+    'октября',
+    'ноября',
+    'декабря',
   ];
   static const _monthsEn = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December',
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December',
   ];
   static const _weekdaysRu = [
-    'понедельник', 'вторник', 'среда', 'четверг',
-    'пятница', 'суббота', 'воскресенье',
+    'понедельник',
+    'вторник',
+    'среда',
+    'четверг',
+    'пятница',
+    'суббота',
+    'воскресенье',
   ];
   static const _weekdaysEn = [
-    'Monday', 'Tuesday', 'Wednesday', 'Thursday',
-    'Friday', 'Saturday', 'Sunday',
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
   ];
 
   @override
@@ -82,7 +113,6 @@ class _WesiClockState extends State<WesiClock> {
   @override
   void didUpdateWidget(covariant WesiClock oldWidget) {
     super.didUpdateWidget(oldWidget);
-    // Подхватываем смену стиля извне (long-press на родителе).
     final next = widget.forceStyle ?? WesiClock.savedStyle;
     if (next != _style) _style = next;
   }
@@ -93,105 +123,253 @@ class _WesiClockState extends State<WesiClock> {
     super.dispose();
   }
 
-  static String _two(int v) => v.toString().padLeft(2, '0');
-
-  Future<void> _toggleStyle() async {
-    final next = _style == ClockStyle.digital
-        ? ClockStyle.analog
-        : ClockStyle.digital;
-    await WesiClock.setStyle(next);
-    if (mounted) setState(() => _style = next);
-  }
+  static String _two(int value) => value.toString().padLeft(2, '0');
 
   @override
   Widget build(BuildContext context) {
-    final ru = WesiLocale.isRussian;
-    final month = (ru ? _monthsRu : _monthsEn)[_now.month - 1];
-    final weekday = (ru ? _weekdaysRu : _weekdaysEn)[_now.weekday - 1];
-    final date = ru
-        ? '${_now.day} $month ${_now.year}'
-        : '$month ${_now.day}, ${_now.year}';
+    return ValueListenableBuilder<AppThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (context, _, __) => LayoutBuilder(
+        builder: (context, constraints) {
+          final ru = WesiLocale.isRussian;
+          final month = (ru ? _monthsRu : _monthsEn)[_now.month - 1];
+          final weekday =
+              (ru ? _weekdaysRu : _weekdaysEn)[_now.weekday - 1];
+          final date = ru
+              ? '${_now.day} $month ${_now.year}'
+              : '$month ${_now.day}, ${_now.year}';
 
-    final width = MediaQuery.sizeOf(context).width;
-    final digitalSize = width < 380
-        ? 22.0
-        : width < 480
-            ? 26.0
-            : 32.0;
+          final screenWidth = MediaQuery.sizeOf(context).width;
+          final available = constraints.hasBoundedWidth
+              ? constraints.maxWidth
+              : math.min(270.0, screenWidth - 32);
+          final calendarWidth = available < 205 ? 72.0 : 86.0;
+          final gap = available < 205 ? 5.0 : 9.0;
+          final clockWidth = math.max(72.0, available - calendarWidth - gap);
+          final digitalSize = clockWidth < 104
+              ? 20.0
+              : clockWidth < 132
+                  ? 23.0
+                  : 27.0;
+          final analogSize = math.min(72.0, math.max(58.0, clockWidth * .66));
 
-    // Аналоговый циферблат чуть крупнее, чтобы цифры читались
-    final analogSize = width < 400 ? 64.0 : 72.0;
+          final clock = _style == ClockStyle.analog
+              ? _AnalogFace(now: _now, size: analogSize)
+              : Text(
+                  widget.showSeconds
+                      ? '${_two(_now.hour)}:${_two(_now.minute)}:${_two(_now.second)}'
+                      : '${_two(_now.hour)}:${_two(_now.minute)}',
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: digitalSize,
+                    fontWeight: FontWeight.w250,
+                    color: AppTheme.textPrimary,
+                    letterSpacing: .8,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
+                );
 
-    final clock = _style == ClockStyle.analog
-        ? _AnalogFace(now: _now, size: analogSize)
-        : Text(
-            widget.showSeconds
-                ? '${_two(_now.hour)}:${_two(_now.minute)}:${_two(_now.second)}'
-                : '${_two(_now.hour)}:${_two(_now.minute)}',
-            style: TextStyle(
-              fontSize: digitalSize,
-              fontWeight: FontWeight.w200,
-              color: AppTheme.textPrimary,
-              letterSpacing: 1.5,
-              fontFeatures: const [FontFeature.tabularFigures()],
-            ),
+          final info = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              clock,
+              const SizedBox(height: 3),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      date,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 10.5,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _style == ClockStyle.digital
+                        ? Icons.schedule
+                        : Icons.watch_later_outlined,
+                    size: 12,
+                    color: AppTheme.accent,
+                  ),
+                ],
+              ),
+              Text(
+                weekday,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 9.5,
+                  color: AppTheme.textMuted.withOpacity(.82),
+                ),
+              ),
+            ],
           );
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            clock,
-            SizedBox(height: 2),
-            Text(
-              date,
-              style: TextStyle(
-                fontSize: 11,
-                color: AppTheme.textSecondary,
-              ),
+          return SizedBox(
+            width: available,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                SizedBox(
+                  width: clockWidth,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: SizedBox(width: clockWidth, child: info),
+                  ),
+                ),
+                SizedBox(width: gap),
+                _MiniMonthCalendar(now: _now, width: calendarWidth),
+              ],
             ),
-            Text(
-              weekday,
-              style: TextStyle(
-                fontSize: 10,
-                color: AppTheme.textMuted.withOpacity(0.8),
-              ),
-            ),
-          ],
-        ),
-        SizedBox(width: 8),
-        GestureDetector(
-          onTap: _toggleStyle,
-          child: Container(
-            width: 28,
-            height: 28,
-            decoration: BoxDecoration(
-              color: AppTheme.surface.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(
-                color: AppTheme.glassBorder,
-                width: 1,
-              ),
-            ),
-            child: Icon(
-              _style == ClockStyle.digital
-                  ? Icons.access_time
-                  : Icons.timer,
-              size: 16,
-              color: AppTheme.accent,
-            ),
-          ),
-        ),
-      ],
+          );
+        },
+      ),
     );
   }
 }
 
-/// Аналоговый циферблат с цифрами 1–12.
+class _MiniMonthCalendar extends StatelessWidget {
+  final DateTime now;
+  final double width;
+
+  const _MiniMonthCalendar({required this.now, required this.width});
+
+  @override
+  Widget build(BuildContext context) {
+    final ru = WesiLocale.isRussian;
+    final first = DateTime(now.year, now.month, 1);
+    final days = DateTime(now.year, now.month + 1, 0).day;
+    final offset = first.weekday - 1;
+    final title = ru
+        ? '${_monthRu(now.month)} ${now.year}'
+        : '${_monthEn(now.month)} ${now.year}';
+    final weekdays = ru
+        ? const ['П', 'В', 'С', 'Ч', 'П', 'С', 'В']
+        : const ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeInOutCubic,
+      width: width,
+      padding: EdgeInsets.fromLTRB(width < 80 ? 5 : 7, 6, width < 80 ? 5 : 7, 6),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(.56),
+        borderRadius: BorderRadius.circular(11),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.fade,
+            softWrap: false,
+            style: TextStyle(
+              fontSize: width < 80 ? 7.2 : 8.2,
+              fontWeight: FontWeight.w700,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              for (final day in weekdays)
+                Expanded(
+                  child: Text(
+                    day,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: width < 80 ? 5.6 : 6.3,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 2),
+          GridView.builder(
+            padding: EdgeInsets.zero,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              childAspectRatio: 1,
+            ),
+            itemCount: 42,
+            itemBuilder: (context, index) {
+              final day = index - offset + 1;
+              if (day < 1 || day > days) return const SizedBox.shrink();
+              final today = day == now.day;
+              return Container(
+                alignment: Alignment.center,
+                decoration: today
+                    ? BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: AppTheme.accent,
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.accent.withOpacity(.25),
+                            blurRadius: 5,
+                          ),
+                        ],
+                      )
+                    : null,
+                child: Text(
+                  '$day',
+                  style: TextStyle(
+                    fontSize: width < 80 ? 5.6 : 6.4,
+                    height: 1,
+                    fontWeight: today ? FontWeight.w800 : FontWeight.w500,
+                    color: today ? Colors.white : AppTheme.textSecondary,
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _monthRu(int month) => const [
+        'янв',
+        'фев',
+        'мар',
+        'апр',
+        'май',
+        'июн',
+        'июл',
+        'авг',
+        'сен',
+        'окт',
+        'ноя',
+        'дек',
+      ][month - 1];
+
+  static String _monthEn(int month) => const [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ][month - 1];
+}
+
 class _AnalogFace extends StatelessWidget {
   final DateTime now;
   final double size;
@@ -203,9 +381,7 @@ class _AnalogFace extends StatelessWidget {
     return SizedBox(
       width: size,
       height: size,
-      child: CustomPaint(
-        painter: _AnalogPainter(now),
-      ),
+      child: CustomPaint(painter: _AnalogPainter(now)),
     );
   }
 }
@@ -216,109 +392,93 @@ class _AnalogPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final c = Offset(size.width / 2, size.height / 2);
-    final r = size.shortestSide / 2;
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.shortestSide / 2;
 
-    // Фон
-    final bg = Paint()
-      ..color = AppTheme.surface.withOpacity(0.9)
-      ..style = PaintingStyle.fill;
-    canvas.drawCircle(c, r, bg);
+    canvas.drawCircle(
+      center,
+      radius,
+      Paint()
+        ..color = AppTheme.surface.withOpacity(.9)
+        ..style = PaintingStyle.fill,
+    );
+    canvas.drawCircle(
+      center,
+      radius - .75,
+      Paint()
+        ..color = AppTheme.glassBorder
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1.5,
+    );
 
-    // Ободок
-    final border = Paint()
-      ..color = AppTheme.glassBorder
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.5;
-    canvas.drawCircle(c, r - 0.75, border);
-
-    // Минутные деления (тонкие)
-    final minorTick = Paint()
-      ..color = AppTheme.textMuted.withOpacity(0.45)
-      ..strokeWidth = 1.0
+    final tick = Paint()
+      ..color = AppTheme.textMuted.withOpacity(.45)
+      ..strokeWidth = 1
       ..strokeCap = StrokeCap.round;
     for (var i = 0; i < 60; i++) {
-      if (i % 5 == 0) continue; // часовые — цифры
-      final a = (i * 6 - 90) * math.pi / 180;
-      final outer = Offset(
-        c.dx + (r - 2.5) * math.cos(a),
-        c.dy + (r - 2.5) * math.sin(a),
+      if (i % 5 == 0) continue;
+      final angle = (i * 6 - 90) * math.pi / 180;
+      canvas.drawLine(
+        Offset(
+          center.dx + (radius - 5.5) * math.cos(angle),
+          center.dy + (radius - 5.5) * math.sin(angle),
+        ),
+        Offset(
+          center.dx + (radius - 2.5) * math.cos(angle),
+          center.dy + (radius - 2.5) * math.sin(angle),
+        ),
+        tick,
       );
-      final inner = Offset(
-        c.dx + (r - 5.5) * math.cos(a),
-        c.dy + (r - 5.5) * math.sin(a),
-      );
-      canvas.drawLine(inner, outer, minorTick);
     }
 
-    // Цифры 1–12
-    final textStyle = TextStyle(
+    final numberStyle = TextStyle(
       color: AppTheme.textPrimary,
-      fontSize: r * 0.22,
+      fontSize: radius * .22,
       fontWeight: FontWeight.w600,
-      height: 1.0,
+      height: 1,
     );
-    for (var h = 1; h <= 12; h++) {
-      final a = (h * 30 - 90) * math.pi / 180;
-      final label = '$h';
-      final tp = TextPainter(
-        text: TextSpan(text: label, style: textStyle),
+    for (var hour = 1; hour <= 12; hour++) {
+      final angle = (hour * 30 - 90) * math.pi / 180;
+      final painter = TextPainter(
+        text: TextSpan(text: '$hour', style: numberStyle),
         textDirection: TextDirection.ltr,
       )..layout();
-      final pos = Offset(
-        c.dx + (r - r * 0.28) * math.cos(a) - tp.width / 2,
-        c.dy + (r - r * 0.28) * math.sin(a) - tp.height / 2,
+      painter.paint(
+        canvas,
+        Offset(
+          center.dx + (radius - radius * .28) * math.cos(angle) -
+              painter.width / 2,
+          center.dy + (radius - radius * .28) * math.sin(angle) -
+              painter.height / 2,
+        ),
       );
-      tp.paint(canvas, pos);
     }
 
-    // Углы стрелок
-    final sec = now.second + now.millisecond / 1000;
-    final min = now.minute + sec / 60;
-    final hour = (now.hour % 12) + min / 60;
+    final second = now.second + now.millisecond / 1000;
+    final minute = now.minute + second / 60;
+    final hour = (now.hour % 12) + minute / 60;
+    final hourAngle = (hour * 30 - 90) * math.pi / 180;
+    final minuteAngle = (minute * 6 - 90) * math.pi / 180;
+    final secondAngle = (second * 6 - 90) * math.pi / 180;
 
-    final hourA = (hour * 30 - 90) * math.pi / 180;
-    final minA = (min * 6 - 90) * math.pi / 180;
-    final secA = (sec * 6 - 90) * math.pi / 180;
+    void hand(double angle, double length, double stroke, Color color) {
+      canvas.drawLine(
+        center,
+        Offset(
+          center.dx + radius * length * math.cos(angle),
+          center.dy + radius * length * math.sin(angle),
+        ),
+        Paint()
+          ..color = color
+          ..strokeWidth = stroke
+          ..strokeCap = StrokeCap.round,
+      );
+    }
 
-    // Часовая
-    final hourPaint = Paint()
-      ..color = AppTheme.textPrimary
-      ..strokeWidth = 2.8
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      c,
-      Offset(c.dx + r * 0.40 * math.cos(hourA),
-          c.dy + r * 0.40 * math.sin(hourA)),
-      hourPaint,
-    );
-
-    // Минутная
-    final minPaint = Paint()
-      ..color = AppTheme.textPrimary
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      c,
-      Offset(c.dx + r * 0.58 * math.cos(minA),
-          c.dy + r * 0.58 * math.sin(minA)),
-      minPaint,
-    );
-
-    // Секундная
-    final secPaint = Paint()
-      ..color = AppTheme.accent
-      ..strokeWidth = 1.2
-      ..strokeCap = StrokeCap.round;
-    canvas.drawLine(
-      c,
-      Offset(c.dx + r * 0.70 * math.cos(secA),
-          c.dy + r * 0.70 * math.sin(secA)),
-      secPaint,
-    );
-
-    // Центральная точка
-    canvas.drawCircle(c, 2.5, Paint()..color = AppTheme.accent);
+    hand(hourAngle, .40, 2.8, AppTheme.textPrimary);
+    hand(minuteAngle, .58, 2, AppTheme.textPrimary);
+    hand(secondAngle, .70, 1.2, AppTheme.accent);
+    canvas.drawCircle(center, 2.5, Paint()..color = AppTheme.accent);
   }
 
   @override
