@@ -9,21 +9,22 @@
   <title>WesiOS · Портал сотрудников</title>
   <link rel="icon" href="./app_icon.png">
   <link rel="apple-touch-icon" href="./app_icon.png">
-  <link rel="stylesheet" href="./styles.css?v=4">
+  <link rel="stylesheet" href="./styles.css?v=5">
   <script>setTimeout(()=>{document.getElementById('boot')?.classList.add('done');document.getElementById('app')?.classList.add('ready')},850)</script>
 </head>
 <body>
   <div class="grid-bg" aria-hidden="true"></div>
-  <div class="orange-glow glow-a" data-parallax=".06" aria-hidden="true"></div>
-  <div class="orange-glow glow-b" data-parallax="-.04" aria-hidden="true"></div>
-  <div class="ember-layer" aria-hidden="true"><i id="ember"></i><span id="emberTrail"></span></div>
+  <div class="orange-glow glow-a" data-parallax=".055" aria-hidden="true"></div>
+  <div class="orange-glow glow-b" data-parallax="-.035" aria-hidden="true"></div>
+  <div class="runner-layer" aria-hidden="true"><i id="runnerSegment"></i><span id="runnerTail"></span></div>
 
   <div class="boot" id="boot"><img class="boot-logo" src="./app_icon.png" alt=""><div class="boot-line"><i></i></div><p>WesiOS</p></div>
 
   <main class="app-shell" id="app">
     <header class="topbar reveal">
       <a class="brand" href="#top"><img class="brand-logo" src="./app_icon.png" alt="WesiOS"><span class="brand-copy"><strong>WesiOS</strong><small>EMPLOYEE ACCESS</small></span></a>
-      <div class="top-actions"><span class="status-chip"><i></i><span id="systemStatus">Защищённое соединение</span></span><button class="icon-button hidden" id="logoutButton" type="button" aria-label="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M8 12h10"/></svg></button></div>
+      <div class="secure-label"><span></span>Закрытый контур</div>
+      <button class="icon-button hidden" id="logoutButton" type="button" aria-label="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M8 12h10"/></svg></button>
     </header>
 
     <section class="view login-view active" id="loginView">
@@ -38,40 +39,46 @@
         <div class="login-panel surface reveal delay-2" data-tilt-card>
           <div class="panel-accent"></div>
           <div class="panel-head"><img src="./app_icon.png" alt=""><div><small>WESIOS ACCESS</small><h2>Авторизация</h2></div></div>
-          <p class="panel-note">Введите логин и пароль, которые выдал администратор WesiOS.</p>
+          <p class="panel-note">Введите логин и пароль, которые WesiOS выдал при создании сотрудника.</p>
           <form id="loginForm" novalidate>
             <label class="field"><span>Логин или почта</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M4 20a8 8 0 0 1 16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg><input id="identity" autocomplete="username" placeholder="employee" required></span></label>
             <label class="field"><span>Пароль</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12a2 2 0 0 1 2 2v7H4v-7a2 2 0 0 1 2-2Z"/></svg><input id="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required><button class="password-toggle" id="passwordToggle" type="button" aria-label="Показать пароль"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span></label>
             <div class="form-message" id="loginMessage" role="alert"></div>
             <button class="primary-button" id="loginButton" type="submit"><span>Войти</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-            <button class="activation-link hidden" id="activationOpen" type="button">Активировать созданного сотрудника</button>
           </form>
-          <div class="security-note"><span></span>Доступ разрешён только сотрудникам Wesi Inc.</div>
+          <div class="security-note"><span></span>Сайт проверяет учётную запись непосредственно на сервере WesiOS.</div>
         </div>
       </div>
 
       <section class="showcase" id="showcase">
-        <div class="showcase-copy" data-scroll-reveal><span class="section-label ember-origin">ОДНА СИСТЕМА · ВСЯ КОМПАНИЯ</span><h2>Работа не распадается<br>на десятки сервисов.</h2><p>Модули WesiOS связаны между собой и продолжают один рабочий контекст.</p></div>
-        <div class="module-stage">
+        <div class="showcase-copy" data-scroll-reveal>
+          <span class="section-label runner-origin" id="runnerOrigin">ОДНА СИСТЕМА · ВСЯ КОМПАНИЯ</span>
+          <h2>Работа не распадается<br>на десятки сервисов.</h2>
+          <p>Модули WesiOS связаны между собой и продолжают один рабочий контекст.</p>
+        </div>
+        <div class="module-stage" id="moduleStage">
           <div class="orbit-rings" aria-hidden="true"><i></i><i></i><i></i></div>
           <article class="module-card card-finance" data-float="1"><small>ФИНАНСЫ</small><strong>−₽2.1k</strong><span>Баланс Wesi Inc</span></article>
           <article class="module-card card-chat" data-float="2"><small>ЧАТЫ</small><strong>12</strong><span>Новых сообщений</span></article>
           <article class="module-card card-ai" data-float="3"><small>WESI AI</small><strong>Зейн</strong><span>Контекст сохранён</span></article>
           <article class="module-card card-task" data-float="4"><small>ЗАДАЧИ</small><strong>10/10</strong><span>План выполнен</span></article>
-          <div class="orbit-core"><img src="./app_icon.png" alt=""><span>WesiOS</span></div>
+          <div class="orbit-core" id="orbitCore"><img src="./app_icon.png" alt=""><span>WesiOS</span></div>
         </div>
       </section>
 
-      <section class="signal-section" data-scroll-reveal>
-        <div class="signal-copy"><span class="section-label">ЖИВОЙ КОНТУР</span><h2>Данные проходят<br>через всю систему.</h2><p>Оранжевый импульс следует за прокруткой, скрывается за модулями и соединяет интерфейс в одну сцену.</p></div>
-        <div class="signal-board"><i class="signal-line line-a"></i><i class="signal-line line-b"></i><i class="signal-node node-a"></i><i class="signal-node node-b"></i><i class="signal-node node-c"></i><div class="signal-card"><small>СИНХРОНИЗАЦИЯ</small><strong>ONLINE</strong></div></div>
+      <section class="flow-section" id="flowSection">
+        <div class="flow-copy" data-scroll-reveal><span class="section-label">ЕДИНЫЙ ПОТОК</span><h2>События проходят<br>сквозь всю систему.</h2><p>Задача становится сообщением, сообщение — решением, а решение сразу отражается в данных компании.</p></div>
+        <div class="flow-board" data-scroll-reveal>
+          <div class="flow-wire wire-a"></div><div class="flow-wire wire-b"></div><div class="flow-wire wire-c"></div>
+          <article class="flow-node node-one"><b>01</b><span>Чат</span></article><article class="flow-node node-two"><b>02</b><span>Задача</span></article><article class="flow-node node-three"><b>03</b><span>Результат</span></article>
+        </div>
       </section>
 
-      <section class="motion-rail">
+      <section class="motion-rail" id="motionRail">
         <div class="rail-line"></div>
-        <article class="motion-step" data-scroll-reveal><b>01</b><div><h3>Создайте сотрудника</h3><p>Выдайте ему права, логин и пароль прямо в WesiOS.</p></div></article>
-        <article class="motion-step" data-scroll-reveal><b>02</b><div><h3>Активируйте доступ</h3><p>Новые версии делают это автоматически. Старую локальную учётку можно активировать на портале.</p></div></article>
-        <article class="motion-step" data-scroll-reveal><b>03</b><div><h3>Скачайте сборку</h3><p>Сервер показывает последнюю проверенную версию для нужной платформы.</p></div></article>
+        <article class="motion-step" data-scroll-reveal><b>01</b><div><h3>Создайте сотрудника</h3><p>WesiOS одновременно создаёт локальную карточку и серверную учётную запись.</p></div></article>
+        <article class="motion-step" data-scroll-reveal><b>02</b><div><h3>Передайте данные</h3><p>Сотрудник использует ровно тот логин и пароль, которые показало приложение.</p></div></article>
+        <article class="motion-step" data-scroll-reveal><b>03</b><div><h3>Скачайте сборку</h3><p>После успешной проверки сервер открывает последние версии Windows и Android.</p></div></article>
       </section>
       <footer class="public-footer"><span>WESI INC · PRIVATE INFRASTRUCTURE</span><span>api.wesi-inc.ru</span></footer>
     </section>
@@ -86,21 +93,7 @@
       <footer class="footer"><span>WESI INC · PRIVATE INFRASTRUCTURE</span><span id="footerStatus">Связь с сервером установлена</span></footer>
     </section>
   </main>
-
-  <div class="modal-backdrop hidden" id="activationModal">
-    <section class="activation-modal surface" role="dialog" aria-modal="true" aria-labelledby="activationTitle">
-      <button class="modal-close" id="activationClose" type="button">×</button>
-      <span class="section-label">ВОССТАНОВЛЕНИЕ ДОСТУПА</span><h2 id="activationTitle">Активировать сотрудника</h2>
-      <p>Введите данные администратора PocketBase и те же логин/пароль, которые WesiOS выдал сотруднику. Администраторские данные используются только для одного запроса и не сохраняются.</p>
-      <form id="activationForm">
-        <label class="field"><span>Email администратора PocketBase</span><span class="input-wrap"><input id="ownerEmail" type="email" autocomplete="username" required></span></label>
-        <label class="field"><span>Пароль администратора PocketBase</span><span class="input-wrap"><input id="ownerPassword" type="password" autocomplete="current-password" required></span></label>
-        <div class="activation-grid"><label class="field"><span>Логин сотрудника</span><span class="input-wrap"><input id="activateLogin" required></span></label><label class="field"><span>Пароль сотрудника</span><span class="input-wrap"><input id="activatePassword" type="password" required></span></label></div>
-        <div class="form-message" id="activationMessage"></div><button class="primary-button" id="activationButton" type="submit"><span>Активировать</span></button>
-      </form>
-    </section>
-  </div>
   <div class="toast-stack" id="toastStack"></div>
-  <script src="./app.js?v=4" defer></script>
+  <script src="./app.js?v=5" defer></script>
 </body>
 </html>
