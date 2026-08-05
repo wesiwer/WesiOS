@@ -66,7 +66,10 @@ class SyncEndpoint {
     return '${uri.scheme}://${uri.authority}';
   }
 
-  static String get url => normalize(rawUrl) ?? defaultUrl;
+  /// Nullable-тип сохранён для совместимости существующих транспортов, но
+  /// фактически getter всегда возвращает [defaultUrl] или его мигрированную
+  /// копию.
+  static String? get url => normalize(rawUrl) ?? defaultUrl;
 
   static Future<void> configure({String? url, String? login}) async {
     final box = _open();
