@@ -1,0 +1,13 @@
+name: Diagnose portal GET PR marker
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-portal-get-pr-marker.yml'
+permissions:
+  contents: read
+jobs:
+  marker:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo marker
