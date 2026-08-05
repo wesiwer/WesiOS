@@ -20,6 +20,11 @@ jobs:
           ref: main
           fetch-depth: 0
 
+      - name: Configure git
+        run: |
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+
       - name: Start current WesiOS build
         env:
           GH_TOKEN: ${{ github.token }}
@@ -44,15 +49,7 @@ jobs:
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "Build run: $RUN_ID"
 
-      - name: Wait for Windows and Android build
-        id: watch
-        continue-on-error: true
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh run watch "${{ steps.build.outputs.run_id }}" --repo "${{ github.repository }}" --exit-status --interval 15
-
-      - name: Record build status
-        if: always() && steps.build.outputs.run_id != ''
+      - name: Record running build
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -61,8 +58,26 @@ jobs:
             --repo "${{ github.repository }}" \
             --json databaseId,status,conclusion,url,headSha,createdAt,updatedAt \
             > server/build-status/owner-login-build.json
-          git config user.name 'WesiOS CI'
-          git config user.email 'actions@users.noreply.github.com'
+          git add server/build-status/owner-login-build.json
+          git commit -m 'ci: record running owner login build' || true
+          git push origin HEAD:main
+
+      - name: Wait for Windows and Android build
+        id: watch
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh run watch "${{ steps.build.outputs.run_id }}" --repo "${{ github.repository }}" --exit-status --interval 15
+
+      - name: Record final build status
+        if: always() && steps.build.outputs.run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run view "${{ steps.build.outputs.run_id }}" \
+            --repo "${{ github.repository }}" \
+            --json databaseId,status,conclusion,url,headSha,createdAt,updatedAt \
+            > server/build-status/owner-login-build.json
           git add server/build-status/owner-login-build.json
           git commit -m 'ci: record owner login build result' || exit 0
           git push origin HEAD:main
