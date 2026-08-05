@@ -1,0 +1,113 @@
+name: Deploy employee portal
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/employee-portal/**'
+      - 'server/pb_hooks/employee_portal.pb.js'
+      - 'server/deploy-employee-portal.sh'
+      - '.github/workflows/deploy-employee-portal.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: employee-portal-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate portal assets
+        run: |
+          set -euo pipefail
+          test -s server/employee-portal/index.html
+          test -s server/employee-portal/styles.css
+          test -s server/employee-portal/app.js
+          grep -q 'WesiOS' server/employee-portal/index.html
+          grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
+          grep -q '/api/wesi/portal/download' server/pb_hooks/employee_portal.pb.js
+
+      - name: Check server secrets
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${HOST:-}" ] || { echo '::error::Нет WESI_SERVER_HOST'; exit 1; }
+          [ -n "${USER:-}" ] || { echo '::error::Нет WESI_SERVER_USER'; exit 1; }
+          [ -n "${KEY:-}" ] || { echo '::error::Нет WESI_SERVER_SSH_KEY'; exit 1; }
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+            echo '::warning::WESI_SERVER_KNOWN_HOSTS не задан; отпечаток получен от сервера при этом запуске.'
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload and publish portal
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          ARTIFACTS_DIR: ${{ vars.WESI_ARTIFACTS_DIR }}
+          PORTAL_DIR: ${{ vars.WESI_PORTAL_DIR }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          REMOTE="/tmp/wesi-portal-$GITHUB_RUN_ID"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            server/employee-portal/index.html \
+            server/employee-portal/styles.css \
+            server/employee-portal/app.js \
+            server/pb_hooks/employee_portal.pb.js \
+            server/deploy-employee-portal.sh \
+            "$USER@$HOST:$REMOTE/"
+
+          $SSH "$USER@$HOST" \
+            "WESI_ARTIFACTS_DIR='${ARTIFACTS_DIR:-/opt/pocketbase/pb_public/artifacts}' \
+             WESI_PORTAL_DIR='${PORTAL_DIR:-}' \
+             bash '$REMOTE/deploy-employee-portal.sh' --from '$REMOTE'"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE'"
+
+      - name: Verify public portal and auth boundary
+        env:
+          PORTAL_URL: ${{ vars.WESI_PORTAL_URL || 'https://api.wesi-inc.ru/artifacts/portal/' }}
+        run: |
+          set -euo pipefail
+          echo "Проверяю $PORTAL_URL"
+          curl -fsS --max-time 30 "$PORTAL_URL" -o portal.html
+          grep -q 'WesiOS' portal.html
+          grep -q 'EMPLOYEE ACCESS' portal.html
+
+          CODE=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 \
+            'https://api.wesi-inc.ru/api/wesi/portal/manifest' || true)
+          case "$CODE" in
+            401|403) echo 'Защищённый endpoint установлен и без входа не пускает.' ;;
+            404) echo '::warning::Портал опубликован, но PocketBase hook не установлен из-за прав на сервере.' ;;
+            200) echo '::error::Manifest доступен без авторизации.'; cat response.txt; exit 1 ;;
+            *) echo "::warning::Неожиданный ответ защищённого endpoint: HTTP $CODE" ;;
+          esac
+
+          echo "Портал опубликован: $PORTAL_URL"
