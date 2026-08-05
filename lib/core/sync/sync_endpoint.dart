@@ -5,9 +5,9 @@ import 'package:hive/hive.dart';
 
 /// Куда синхронизироваться и кем.
 ///
-/// Производственная сборка WesiOS работает только с корпоративным сервером.
-/// Адрес больше не вводится руками: это устраняет опечатки, небезопасный HTTP
-/// и ситуацию, когда сотрудник случайно подключил приложение не к Wesi Inc.
+/// Рабочая сборка всегда использует корпоративный сервер WesiOS. Метод
+/// [normalize] остаётся совместимым со старыми импортами и тестами, но его
+/// результат больше не выбирает production endpoint.
 class SyncEndpoint {
   static const String _box = 'wesios_settings';
   static const String _urlKey = 'sync_server_url';
@@ -17,10 +17,8 @@ class SyncEndpoint {
   static const String _lastRunKey = 'sync_last_run';
   static const String _seededKey = 'sync_seeded_at';
 
-  /// Единый российский сервер учётных записей и синхронизации WesiOS.
   static const String defaultUrl = 'https://api.wesi-inc.ru';
 
-  /// Меняется при входе, выходе и смене настроек — экраны перечитывают.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static Box<dynamic>? _open() {
@@ -31,33 +29,34 @@ class SyncEndpoint {
     }
   }
 
-  /// Старые установки могли сохранить IP или пустую строку. Для рабочих
-  /// запросов это больше не используется: приложение всегда идёт на домен с
-  /// действующим TLS-сертификатом.
   static String get rawUrl => defaultUrl;
-
   static String get login => '${_open()?.get(_loginKey) ?? ''}';
-
-  /// После успешного входа автоматический обмен включён по умолчанию.
   static bool get enabled => _open()?.get(_enabledKey) != false;
-
   static bool get isConfigured => true;
 
   static String? normalize(String input) {
-    var s = input.trim();
-    if (s.isEmpty) return null;
-    while (s.endsWith('/')) {
-      s = s.substring(0, s.length - 1);
+    var value = input.trim();
+    if (value.isEmpty) return null;
+    while (value.endsWith('/')) {
+      value = value.substring(0, value.length - 1);
     }
-    final uri = Uri.tryParse(s.contains('://') ? s : 'https://$s');
-    if (uri == null || uri.host.isEmpty || uri.scheme != 'https') return null;
+    if (value.isEmpty) return null;
+
+    if (!value.contains('://')) {
+      final host = value.split(':').first;
+      final isBareIp = RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host);
+      value = '${isBareIp ? 'http' : 'https'}://$value';
+    }
+
+    final uri = Uri.tryParse(value);
+    if (uri == null || uri.host.isEmpty) return null;
+    if (uri.scheme != 'http' && uri.scheme != 'https') return null;
     return '${uri.scheme}://${uri.authority}';
   }
 
   static String get url => defaultUrl;
 
-  /// [url] оставлен в сигнатуре для совместимости со старым кодом, но
-  /// намеренно игнорируется. Логин хранится, пароль — никогда.
+  /// [url] сохранён только для обратной совместимости и игнорируется.
   static Future<void> configure({String? url, String? login}) async {
     final box = _open();
     if (box == null) return;
@@ -78,9 +77,6 @@ class SyncEndpoint {
     revision.value++;
   }
 
-  // ------------------------------------------------------------- сессия
-
-  /// Токен и срок его жизни. Пароль после входа нигде не сохраняется.
   static Map<String, dynamic>? get session {
     final raw = _open()?.get(_sessionKey);
     if (raw is! String) return null;
@@ -113,8 +109,6 @@ class SyncEndpoint {
     await _open()?.delete(_sessionKey);
     revision.value++;
   }
-
-  // -------------------------------------------------------------- отметки
 
   static DateTime? get lastRun {
     final raw = _open()?.get(_lastRunKey);
