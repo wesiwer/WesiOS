@@ -1,0 +1,186 @@
+name: Publish owner-login build once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-owner-login-build-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      SOURCE_RUN_ID: '30999300854'
+      RELEASE_VERSION: '0.17.1'
+      RELEASE_BUILD: '37'
+      RELEASE_DIR: '0.17.1+37'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WesiOS-Windows
+          path: dist/windows
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Download Android artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: WesiOS-Android
+          path: dist/android
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+
+      - name: Package release and create manifest
+        run: |
+          set -euo pipefail
+          mkdir -p publish
+          (cd dist/windows && zip -qr ../../publish/wesios-windows-x64.zip .)
+          APK="$(find dist/android -type f -name '*.apk' | head -n 1)"
+          test -n "$APK"
+          cp "$APK" publish/wesios-android.apk
+
+          WIN_SHA="$(sha256sum publish/wesios-windows-x64.zip | awk '{print $1}')"
+          APK_SHA="$(sha256sum publish/wesios-android.apk | awk '{print $1}')"
+          WIN_SIZE="$(stat -c '%s' publish/wesios-windows-x64.zip)"
+          APK_SIZE="$(stat -c '%s' publish/wesios-android.apk)"
+          PUBLISHED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+
+          python3 - <<PY
+          import json
+          manifest = {
+              'version': '${RELEASE_VERSION}',
+              'build': int('${RELEASE_BUILD}'),
+              'publishedAt': '${PUBLISHED_AT}',
+              'windows': {
+                  'version': '${RELEASE_VERSION}',
+                  'build': int('${RELEASE_BUILD}'),
+                  'asset': 'wesios-windows-x64.zip',
+                  'path': 'app/releases/${RELEASE_DIR}/wesios-windows-x64.zip',
+                  'sizeBytes': int('${WIN_SIZE}'),
+                  'sha256': '${WIN_SHA}',
+                  'notes': 'Автоматический сервер WesiOS, данные входа владельца, календарь рядом с часами, исправленные цитаты и уведомления.'
+              },
+              'android': {
+                  'version': '${RELEASE_VERSION}',
+                  'build': int('${RELEASE_BUILD}'),
+                  'asset': 'wesios-android.apk',
+                  'path': 'app/releases/${RELEASE_DIR}/wesios-android.apk',
+                  'sizeBytes': int('${APK_SIZE}'),
+                  'sha256': '${APK_SHA}',
+                  'notes': 'Автоматический сервер WesiOS, данные входа владельца, календарь рядом с часами, исправленные цитаты и уведомления.'
+              }
+          }
+          with open('publish/app-manifest.json', 'w', encoding='utf-8') as file:
+              json.dump(manifest, file, ensure_ascii=False, indent=2)
+          PY
+          cat publish/app-manifest.json
+
+      - name: Check server secrets
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}"
+          test -n "${USER:-}"
+          test -n "${KEY:-}"
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload and atomically publish
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          CONFIGURED_ROOT: ${{ vars.WESI_ARTIFACTS_DIR }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          ROOT="${CONFIGURED_ROOT:-/opt/pocketbase/pb_public/artifacts}"
+          REMOTE="/tmp/wesios-release-$GITHUB_RUN_ID"
+          STAGE="$ROOT/app/.stage-$GITHUB_RUN_ID"
+          TARGET="$ROOT/app/releases/$RELEASE_DIR"
+
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            publish/wesios-windows-x64.zip \
+            publish/wesios-android.apk \
+            publish/app-manifest.json \
+            "$USER@$HOST:$REMOTE/"
+
+          $SSH "$USER@$HOST" "set -euo pipefail
+            mkdir -p '$ROOT/app/releases'
+            rm -rf '$STAGE'
+            mkdir -p '$STAGE'
+            install -m 0664 '$REMOTE/wesios-windows-x64.zip' '$STAGE/wesios-windows-x64.zip'
+            install -m 0664 '$REMOTE/wesios-android.apk' '$STAGE/wesios-android.apk'
+            test -s '$STAGE/wesios-windows-x64.zip'
+            test -s '$STAGE/wesios-android.apk'
+            rm -rf '$TARGET'
+            mv '$STAGE' '$TARGET'
+            install -m 0664 '$REMOTE/app-manifest.json' '$ROOT/app/app-manifest.json.tmp'
+            mv -f '$ROOT/app/app-manifest.json.tmp' '$ROOT/app/app-manifest.json'
+            ln -sfn 'releases/$RELEASE_DIR' '$ROOT/app/latest'
+            rm -rf '$REMOTE'
+            test -s '$ROOT/app/app-manifest.json'
+            test -s '$TARGET/wesios-windows-x64.zip'
+            test -s '$TARGET/wesios-android.apk'
+            echo 'Published to $TARGET'"
+
+      - name: Verify portal and protected manifest boundary
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 30 https://api.wesi-inc.ru/portal/ | grep -q 'WesiOS'
+          CODE="$(curl -sS -o /tmp/manifest-response -w '%{http_code}' --max-time 20 https://api.wesi-inc.ru/api/wesi/portal/manifest || true)"
+          case "$CODE" in
+            401|403) echo 'Protected manifest requires employee login: OK' ;;
+            200) echo 'Manifest unexpectedly public'; exit 1 ;;
+            *) echo "Unexpected protected manifest response: HTTP $CODE"; cat /tmp/manifest-response; exit 1 ;;
+          esac
+
+      - name: Record publication
+        if: success()
+        run: |
+          mkdir -p server/build-status
+          cat > server/build-status/owner-login-publication.json <<JSON
+          {
+            "sourceRunId": ${SOURCE_RUN_ID},
+            "version": "${RELEASE_VERSION}",
+            "build": ${RELEASE_BUILD},
+            "status": "published",
+            "portal": "https://api.wesi-inc.ru/portal/",
+            "publishedAt": "$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+          }
+          JSON
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/build-status/owner-login-publication.json
+          git commit -m 'ci: record owner login publication'
+          git push origin HEAD:main
