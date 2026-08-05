@@ -7,13 +7,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../localization/wesi_locale.dart';
 import '../theme/app_theme.dart';
 
-/// Стиль часов на главной.
 enum ClockStyle { digital, analog }
 
-/// Живые часы, дата и компактный календарь текущего месяца.
-///
-/// Вся область остаётся одной кнопкой: родитель открывает полный календарь,
-/// а долгий тап переключает цифровой/аналоговый стиль.
 class WesiClock extends StatefulWidget {
   final bool showSeconds;
   final ClockStyle? forceStyle;
@@ -162,7 +157,7 @@ class _WesiClockState extends State<WesiClock> {
                   maxLines: 1,
                   style: TextStyle(
                     fontSize: digitalSize,
-                    fontWeight: FontWeight.w250,
+                    fontWeight: FontWeight.w200,
                     color: AppTheme.textPrimary,
                     letterSpacing: .8,
                     fontFeatures: const [FontFeature.tabularFigures()],
@@ -258,7 +253,12 @@ class _MiniMonthCalendar extends StatelessWidget {
       duration: const Duration(milliseconds: 420),
       curve: Curves.easeInOutCubic,
       width: width,
-      padding: EdgeInsets.fromLTRB(width < 80 ? 5 : 7, 6, width < 80 ? 5 : 7, 6),
+      padding: EdgeInsets.fromLTRB(
+        width < 80 ? 5 : 7,
+        6,
+        width < 80 ? 5 : 7,
+        6,
+      ),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(.56),
         borderRadius: BorderRadius.circular(11),
