@@ -45,6 +45,21 @@ def hasReleaseKey = ksPath != null &&
         !ksKeyPassword.isEmpty() &&
         file(ksPath).exists()
 
+// Раньше release без секретов молча подписывался стандартным debug-ключом.
+// Такая APK успешно собиралась, но Android запрещал установить её поверх
+// WesiOS, подписанного постоянным корпоративным ключом. Теперь любая задача
+// assembleRelease/bundleRelease и аналогичная завершается понятной ошибкой.
+def releaseBuildRequested = gradle.startParameter.taskNames.any {
+    it.toLowerCase().contains("release")
+}
+if (releaseBuildRequested && !hasReleaseKey) {
+    throw new GradleException(
+            "Release signing key is required. " +
+            "Set KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. " +
+            "Debug-signed release APKs are forbidden because they cannot update installed WesiOS builds."
+    )
+}
+
 android {
     namespace "com.wesi.wesios"
     compileSdkVersion 35
@@ -85,9 +100,11 @@ android {
 
     buildTypes {
         release {
-            signingConfig hasReleaseKey
-                    ? signingConfigs.release
-                    : signingConfigs.debug
+            // Никакого fallback на signingConfigs.debug. Если ключа нет,
+            // проверка выше останавливает именно release-задачу.
+            if (hasReleaseKey) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
