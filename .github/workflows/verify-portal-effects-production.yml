@@ -1,0 +1,85 @@
+name: Verify production animated portal
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - name: Wait for deployment
+        run: sleep 45
+      - name: Repeat complete HTTP loads
+        run: |
+          set -euo pipefail
+          URL='https://api.wesi-inc.ru/portal/?production-effects=20260805'
+          for i in $(seq 1 15); do
+            file="portal-$i.html"
+            metrics=$(curl -fsS --compressed --connect-timeout 8 --max-time 25 \
+              -A 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 Version/26.0 Mobile/15E148 Safari/604.1' \
+              -o "$file" -w '%{http_code} %{size_download} %{time_total}' "$URL")
+            echo "$i $metrics"
+            test "$(wc -c < "$file")" -gt 30000
+            grep -q 'runnerSvg' "$file"
+            grep -q 'ОДНА СИСТЕМА' "$file"
+            grep -q 'Скачай WesiOS' "$file"
+            grep -q 'data-bundle="app.js"' "$file"
+            grep -q 'data-bundle="motion-v6.js"' "$file"
+          done
+      - name: Install WebKit
+        run: |
+          npm init -y >/dev/null
+          npm install --silent playwright@1.54.2
+          npx playwright install --with-deps webkit >/dev/null
+      - name: Reopen live portal five times
+        run: |
+          cat > verify.mjs <<'JS'
+          import { webkit, devices } from 'playwright';
+          const browser=await webkit.launch({headless:true});
+          const context=await browser.newContext({...devices['iPhone 15 Pro'],ignoreHTTPSErrors:false});
+          const page=await context.newPage();
+          const errors=[];
+          page.on('pageerror',e=>errors.push(`page:${e.message}`));
+          page.on('requestfailed',r=>errors.push(`request:${r.url()}:${r.failure()?.errorText}`));
+          for(let i=1;i<=5;i++){
+            const response=await page.goto(`https://api.wesi-inc.ru/portal/?webkit-production=${i}-${Date.now()}`,{waitUntil:'domcontentloaded',timeout:30000});
+            await page.waitForTimeout(900);
+            const initial=await page.evaluate(()=>({
+              status:document.readyState,
+              background:getComputedStyle(document.body).backgroundColor,
+              text:document.body.innerText.length,
+              width:document.documentElement.scrollWidth,
+              viewport:innerWidth,
+              height:document.documentElement.scrollHeight,
+              form:!!document.getElementById('loginForm'),
+              runner:!!document.getElementById('runnerSvg'),
+              boot:!!document.getElementById('boot'),
+            }));
+            console.log('attempt',i,response?.status(),JSON.stringify(initial));
+            if(response?.status()!==200)throw new Error(`attempt ${i}: HTTP ${response?.status()}`);
+            if(initial.background==='rgb(255, 255, 255)'||initial.text<1200||!initial.form||!initial.runner||initial.boot)throw new Error(`attempt ${i}: incomplete page`);
+            if(initial.width>initial.viewport+2||initial.height<4000)throw new Error(`attempt ${i}: broken layout`);
+            await page.locator('#flowSection').scrollIntoViewIfNeeded();
+            await page.waitForTimeout(500);
+            const line=await page.evaluate(()=>({active:document.getElementById('runnerSvg')?.classList.contains('active'),length:document.getElementById('runnerHead')?.getTotalLength?.()||0}));
+            if(!line.active||line.length<500)throw new Error(`attempt ${i}: runner inactive ${JSON.stringify(line)}`);
+            await page.locator('#loginForm').scrollIntoViewIfNeeded();
+            if(!await page.locator('#loginForm').isVisible())throw new Error(`attempt ${i}: form hidden`);
+          }
+          console.log('errors',JSON.stringify(errors));
+          await page.screenshot({path:'production-portal.png',fullPage:true});
+          if(errors.length)throw new Error(errors.join('\n'));
+          await browser.close();
+          JS
+          node verify.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: production-animated-portal
+          path: production-portal.png
+          retention-days: 1
