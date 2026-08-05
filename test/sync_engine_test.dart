@@ -304,10 +304,10 @@ void main() {
   // ------------------------------------------------------------------ движок
 
   group('движок', () {
-    test('без настроенного сервера честно говорит об этом', () async {
+    test('корпоративный сервер известен, но без входа обмен не начинается', () async {
       final report = await SyncEngine.run(now: base);
       expect(report.ok, isFalse);
-      expect(report.firstFailure?.code, 'NOT_CONFIGURED');
+      expect(report.firstFailure?.code, 'NOT_SIGNED_IN');
     });
 
     test('без входа не пытается ничего отправить', () async {

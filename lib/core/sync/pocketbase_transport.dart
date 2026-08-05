@@ -41,9 +41,7 @@ class PocketBaseTransport implements SyncTransport {
 
   /// Транспорт из сохранённых настроек, или null — если сервер не настроен.
   static PocketBaseTransport? fromSettings() {
-    final url = SyncEndpoint.url;
-    if (url == null) return null;
-    final t = PocketBaseTransport(url);
+    final t = PocketBaseTransport(SyncEndpoint.url);
     final session = SyncEndpoint.session;
     final expires = DateTime.tryParse('${session?['expiresAt']}');
     if (session != null && expires != null && expires.isAfter(DateTime.now())) {
