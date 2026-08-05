@@ -62,7 +62,7 @@ class SyncAuto {
   }
 
   static void _onLocalChange() {
-    if (!SyncEndpoint.enabled || !SyncEndpoint.isConfigured) return;
+    if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) return;
     pending.value = true;
     _schedule(quiet);
   }
@@ -73,7 +73,7 @@ class SyncAuto {
   }
 
   static Future<void> _run() async {
-    if (!SyncEndpoint.enabled || !SyncEndpoint.isConfigured) {
+    if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
       pending.value = false;
       return;
     }

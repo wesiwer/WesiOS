@@ -586,11 +586,19 @@ void main() {
   });
 
   group('состояние доставки', () {
-    tearDown(() async => SyncEndpoint.configure(url: ''));
+    // Адрес сервера зашит в сборку, поэтому «уедет или нет» решает теперь
+    // единственное оставшееся обстоятельство — вход.
+    Future<void> signIn() => SyncEndpoint.saveSession(
+          token: 't',
+          userId: 'u',
+          expiresAt: DateTime.now().add(const Duration(days: 1)),
+        );
 
-    test('без входа сообщение остаётся локальным', () async {
-      // Известный адрес сервера ещё не означает, что пользователь вошёл.
-      // До действующей сессии сообщение не должно изображать отправку.
+    tearDown(() async => SyncEndpoint.clearSession());
+
+    test('без входа сообщение никуда не собирается', () async {
+      // Вечные «часики» означали бы «отправляется» — и висели бы всегда,
+      // выглядя как поломка.
       final chat = await ChatService.direct('e2', now: base);
       final m = (await ChatService.send(
           chatId: chat.id, body: 'Привет', now: base))!;
@@ -598,8 +606,22 @@ void main() {
       expect(ChatDelivery.whyLocal(chat), isNotNull);
     });
 
-    test('с сервером рабочее сообщение ждёт отправки', () async {
-      await SyncEndpoint.configure(url: '203.0.113.10:8090');
+    test('протухший пропуск — это не «подключено»', () async {
+      // Отправлять некуда ровно так же, как если бы входа не было вовсе.
+      await SyncEndpoint.saveSession(
+        token: 't',
+        userId: 'u',
+        expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+      );
+      final chat =
+          await ChatService.direct('e2', kind: ChatKind.work, now: base);
+      final m = (await ChatService.send(
+          chatId: chat.id, body: 'Привет', now: base))!;
+      expect(m.state, DeliveryState.local);
+    });
+
+    test('после входа рабочее сообщение ждёт отправки', () async {
+      await signIn();
       final chat =
           await ChatService.direct('e2', kind: ChatKind.work, now: base);
       final m = (await ChatService.send(
@@ -608,11 +630,11 @@ void main() {
       expect(ChatDelivery.whyLocal(chat), isNull);
     });
 
-    test('личное не уезжает даже при настроенном сервере', () async {
+    test('личное не уезжает даже при подключённом сервере', () async {
       // Подпись в шапке обещает «видят только собеседники». Пока нет
       // конвертного шифрования, обещание держится тем, что переписка не
       // покидает устройство.
-      await SyncEndpoint.configure(url: '203.0.113.10:8090');
+      await signIn();
       final chat =
           await ChatService.direct('e2', kind: ChatKind.personal, now: base);
       final m = (await ChatService.send(

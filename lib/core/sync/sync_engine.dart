@@ -234,9 +234,6 @@ class SyncEngine {
     }
 
     final t = transport ?? PocketBaseTransport.fromSettings();
-    if (t == null) {
-      return _finish(SyncReport(at: at, failure: SyncFailure.notConfigured));
-    }
     if (!t.isSignedIn) {
       return _finish(SyncReport(at: at, failure: SyncFailure.notSignedIn));
     }

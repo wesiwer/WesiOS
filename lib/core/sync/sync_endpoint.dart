@@ -5,9 +5,9 @@ import 'package:hive/hive.dart';
 
 /// Куда синхронизироваться и кем.
 ///
-/// Рабочая сборка всегда использует корпоративный сервер WesiOS. Метод
-/// [normalize] остаётся совместимым со старыми импортами и тестами, но его
-/// результат больше не выбирает production endpoint.
+/// Производственная сборка WesiOS работает только с корпоративным сервером.
+/// Адрес больше не вводится руками: это устраняет опечатки, небезопасный HTTP
+/// и ситуацию, когда сотрудник случайно подключил приложение не к Wesi Inc.
 class SyncEndpoint {
   static const String _box = 'wesios_settings';
   static const String _urlKey = 'sync_server_url';
@@ -17,13 +17,10 @@ class SyncEndpoint {
   static const String _lastRunKey = 'sync_last_run';
   static const String _seededKey = 'sync_seeded_at';
 
+  /// Единый российский сервер учётных записей и синхронизации WesiOS.
   static const String defaultUrl = 'https://api.wesi-inc.ru';
 
-  /// Нужен только старым мастерам и тестам, которые явно подставляют URL.
-  /// Пользовательский интерфейс этот флаг не включает: production считается
-  /// готовым к обмену только после появления серверной сессии.
-  static bool _legacyConfigured = false;
-
+  /// Меняется при входе, выходе и смене настроек — экраны перечитывают.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static Box<dynamic>? _open() {
@@ -34,38 +31,43 @@ class SyncEndpoint {
     }
   }
 
+  /// Старые установки могли сохранить IP или пустую строку. Для рабочих
+  /// запросов это больше не используется: приложение всегда идёт на домен с
+  /// действующим TLS-сертификатом.
   static String get rawUrl => defaultUrl;
+
   static String get login => '${_open()?.get(_loginKey) ?? ''}';
+
+  /// После успешного входа автоматический обмен включён по умолчанию.
   static bool get enabled => _open()?.get(_enabledKey) != false;
-  static bool get isConfigured => session != null || _legacyConfigured;
 
-  static String? normalize(String input) {
-    var value = input.trim();
-    if (value.isEmpty) return null;
-    while (value.endsWith('/')) {
-      value = value.substring(0, value.length - 1);
-    }
-    if (value.isEmpty) return null;
-
-    if (!value.contains('://')) {
-      final host = value.split(':').first;
-      final isBareIp = RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host);
-      value = '${isBareIp ? 'http' : 'https'}://$value';
-    }
-
-    final uri = Uri.tryParse(value);
-    if (uri == null || uri.host.isEmpty) return null;
-    if (uri.scheme != 'http' && uri.scheme != 'https') return null;
-    return '${uri.scheme}://${uri.authority}';
+  /// Есть ли действующий пропуск на сервер.
+  ///
+  /// **Пришло на смену `isConfigured`.** Тот отвечал на вопрос «указан ли
+  /// адрес», и после того как адрес зашили в сборку, стал истиной всегда —
+  /// то есть перестал что-либо значить. А на нём держалось важное: с каким
+  /// значком рождается сообщение и что написано в шапке чата. Получалось,
+  /// что у сообщений «часики» — «отправляется» — при том, что входа нет и
+  /// отправлять некуда; часики висели бы вечно.
+  ///
+  /// Срок проверяется здесь же: протухший пропуск ничем не лучше
+  /// отсутствующего, и транспорт его тоже не примет (см.
+  /// `PocketBaseTransport.fromSettings`).
+  static bool get isConnected {
+    final s = session;
+    if (s == null) return false;
+    final until = DateTime.tryParse('${s['expiresAt']}');
+    return until != null && until.isAfter(DateTime.now());
   }
 
+  /// Куда уходят запросы. Всегда один и тот же адрес — разбирать больше
+  /// нечего, поэтому и разборщика адресов здесь больше нет.
   static String get url => defaultUrl;
 
-  /// [url] не меняет production endpoint. Непустое значение лишь сохраняет
-  /// обратную совместимость со старыми служебными сценариями.
+  /// [url] оставлен в сигнатуре для совместимости со старым кодом, но
+  /// намеренно игнорируется. Логин хранится, пароль — никогда.
   static Future<void> configure({String? url, String? login}) async {
     final box = _open();
-    if (url != null) _legacyConfigured = url.trim().isNotEmpty;
     if (box == null) {
       revision.value++;
       return;
@@ -87,6 +89,9 @@ class SyncEndpoint {
     revision.value++;
   }
 
+  // ------------------------------------------------------------- сессия
+
+  /// Токен и срок его жизни. Пароль после входа нигде не сохраняется.
   static Map<String, dynamic>? get session {
     final raw = _open()?.get(_sessionKey);
     if (raw is! String) return null;
@@ -119,6 +124,8 @@ class SyncEndpoint {
     await _open()?.delete(_sessionKey);
     revision.value++;
   }
+
+  // -------------------------------------------------------------- отметки
 
   static DateTime? get lastRun {
     final raw = _open()?.get(_lastRunKey);

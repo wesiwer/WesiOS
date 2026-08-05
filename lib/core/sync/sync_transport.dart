@@ -9,8 +9,6 @@ class SyncFailure {
 
   static const SyncFailure offline =
       SyncFailure('NETWORK', 'Нет связи с сервером');
-  static const SyncFailure notConfigured =
-      SyncFailure('NOT_CONFIGURED', 'Адрес сервера не указан');
   static const SyncFailure notSignedIn =
       SyncFailure('NOT_SIGNED_IN', 'Вход на сервер не выполнен');
 
@@ -20,7 +18,6 @@ class SyncFailure {
     if (!russian) return message;
     return switch (code) {
       'NETWORK' => 'Нет связи с сервером',
-      'NOT_CONFIGURED' => 'Адрес сервера не указан',
       'NOT_SIGNED_IN' => 'Вход на сервер не выполнен',
       'BAD_CREDENTIALS' => 'Неверный логин или пароль',
       'FORBIDDEN' => 'Сервер отказал в доступе',

@@ -38,7 +38,7 @@ class ChatSync {
   static void watch() {
     _watchers++;
     if (_timer != null) return;
-    if (!SyncEndpoint.enabled || !SyncEndpoint.isConfigured) return;
+    if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) return;
     _timer = Timer.periodic(interval, (_) => _tick());
     // Первый обмен сразу: ждать пятнадцать секунд, только что войдя в чат,
     // незачем.
@@ -56,7 +56,7 @@ class ChatSync {
   static void nudge() => _tick();
 
   static void _tick() {
-    if (!SyncEndpoint.enabled || !SyncEndpoint.isConfigured) return;
+    if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) return;
     // Проход уже идёт — второй читал бы боксы, пока первый их переписывает.
     if (SyncEngine.busy.value) return;
     // Неудача здесь ничего не значит: связи нет — попробуем через

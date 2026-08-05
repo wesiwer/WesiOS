@@ -223,4 +223,62 @@ void main() {
       expect(run(), run());
     });
   });
+
+  group('прочитанное', () {
+    setUp(AlertService.forgetRead);
+
+    // Список уведомлений нигде не хранится — он пересчитывается из данных.
+    // Значит и «прочитано» держится не на списке, а на отпечатке содержимого.
+    List<Alert> fresh() => compute(
+          tasks: [task('Отчёт', due: DateTime(2026, 7, 10))],
+          balance: -1,
+        );
+
+    test('до открытия всё непрочитано', () {
+      final alerts = fresh();
+      expect(alerts.length, 2);
+      expect(alerts.every((a) => !a.read), isTrue);
+      expect(AlertService.unreadCount.value, 2);
+    });
+
+    test('открыли — и после пересчёта они остаются прочитанными', () {
+      AlertService.markAllRead(fresh());
+      expect(AlertService.unreadCount.value, 0);
+
+      // Именно здесь и ломалось раньше: значок считал все уведомления
+      // подряд, поэтому красная цифра возвращалась на то же место сразу
+      // после закрытия списка.
+      expect(fresh().every((a) => a.read), isTrue);
+      expect(AlertService.unreadCount.value, 0);
+    });
+
+    test('новый повод всплывает непрочитанным рядом с прочитанными', () {
+      AlertService.markAllRead(fresh());
+
+      final alerts = compute(
+        tasks: [task('Отчёт', due: DateTime(2026, 7, 10))],
+        balance: -1,
+        shieldConfigured: false,
+      );
+      final unread = alerts.where((a) => !a.read).toList();
+      expect(unread.length, 1);
+      expect(unread.single.title, contains('Защита'));
+      expect(AlertService.unreadCount.value, 1);
+    });
+
+    test('вернувшийся повод считается новым, а не «уже видели»', () {
+      AlertService.markAllRead(fresh());
+
+      // Баланс выправился — уведомление пропало, и отметка о нём больше не
+      // нужна. Ушёл в минус снова — это новое событие, и молчать о нём
+      // нельзя: ради таких случаев колокольчик и существует.
+      AlertService.markAllRead(
+          compute(tasks: [task('Отчёт', due: DateTime(2026, 7, 10))]));
+
+      final unread = fresh().where((a) => !a.read).toList();
+      expect(unread.length, 1);
+      expect(unread.single.level, AlertLevel.danger);
+      expect(unread.single.title, contains('Баланс'));
+    });
+  });
 }

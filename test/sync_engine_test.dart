@@ -304,7 +304,10 @@ void main() {
   // ------------------------------------------------------------------ движок
 
   group('движок', () {
-    test('корпоративный сервер известен, но без входа обмен не начинается', () async {
+    test('без входа честно говорит об этом', () async {
+      // Адрес зашит в сборку, поэтому «сервер не настроен» больше не
+      // существует как состояние: единственная причина, по которой обмен
+      // не идёт из коробки, — отсутствие входа. Про неё и надо говорить.
       final report = await SyncEngine.run(now: base);
       expect(report.ok, isFalse);
       expect(report.firstFailure?.code, 'NOT_SIGNED_IN');
@@ -606,30 +609,50 @@ void main() {
   // ------------------------------------------------------------------ адрес
 
   group('адрес сервера', () {
-    test('голый IP берётся по http — сертификата у него ещё нет', () {
-      expect(SyncEndpoint.normalize('203.0.113.10:8090'),
-          'http://203.0.113.10:8090');
-      expect(SyncEndpoint.normalize('203.0.113.10'), 'http://203.0.113.10');
+    // Раньше здесь проверялся разборщик адреса, набранного руками: голый IP
+    // по http, домен по https, мусор в null. Поля больше нет, разборщика
+    // тоже — проверять надо то, что осталось.
+
+    test('зашит в сборку и всегда по https', () {
+      expect(SyncEndpoint.url, SyncEndpoint.defaultUrl);
+      expect(SyncEndpoint.url, startsWith('https://'));
+      expect(Uri.parse(SyncEndpoint.url).host, isNotEmpty);
     });
 
-    test('домен берётся по https — пароли открытым текстом недопустимы', () {
-      expect(SyncEndpoint.normalize('sync.wesios.ru'), 'https://sync.wesios.ru');
-      expect(SyncEndpoint.normalize('  sync.wesios.ru/  '),
-          'https://sync.wesios.ru');
+    test('сохранённый адрес из старой установки ничего не решает', () async {
+      // На устройстве, где когда-то ввели IP с опечаткой, обмен молча не
+      // работал бы вечно: чинить стало нечего и негде.
+      await SyncEndpoint.configure(url: '203.0.113.10:8090');
+      expect(SyncEndpoint.url, SyncEndpoint.defaultUrl);
+    });
+  });
+
+  group('подключение', () {
+    tearDown(() async => SyncEndpoint.clearSession());
+
+    test('без пропуска — не подключены', () {
+      expect(SyncEndpoint.isConnected, isFalse);
     });
 
-    test('явная схема уважается', () {
-      expect(SyncEndpoint.normalize('http://sync.wesios.ru'),
-          'http://sync.wesios.ru');
-      expect(SyncEndpoint.normalize('https://203.0.113.10'),
-          'https://203.0.113.10');
+    test('действующий пропуск — подключены', () async {
+      await SyncEndpoint.saveSession(
+        token: 't',
+        userId: 'u',
+        expiresAt: DateTime.now().add(const Duration(days: 1)),
+      );
+      expect(SyncEndpoint.isConnected, isTrue);
     });
 
-    test('не адрес — это null, а не «как есть»', () {
-      expect(SyncEndpoint.normalize(''), isNull);
-      expect(SyncEndpoint.normalize('   '), isNull);
-      expect(SyncEndpoint.normalize('///'), isNull);
-      expect(SyncEndpoint.normalize('ftp://sync.wesios.ru'), isNull);
+    test('протухший пропуск не считается подключением', () async {
+      // Транспорт такой пропуск не примет, и если считать его подключением,
+      // то у сообщений останутся «часики» — обещание отправки, которого
+      // никто не выполнит.
+      await SyncEndpoint.saveSession(
+        token: 't',
+        userId: 'u',
+        expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
+      );
+      expect(SyncEndpoint.isConnected, isFalse);
     });
   });
 }

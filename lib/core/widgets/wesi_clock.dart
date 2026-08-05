@@ -138,7 +138,9 @@ class _WesiClockState extends State<WesiClock> {
           final available = constraints.hasBoundedWidth
               ? constraints.maxWidth
               : math.min(270.0, screenWidth - 32);
-          final calendarWidth = available < 205 ? 72.0 : 86.0;
+          // Ширина месяца — это читаемость чисел, а не украшение: на
+          // 86 px в клетку помещалось 6 px, и «17» превращалось в точки.
+          final calendarWidth = available < 205 ? 78.0 : 96.0;
           final gap = available < 205 ? 5.0 : 9.0;
           final clockWidth = math.max(72.0, available - calendarWidth - gap);
           final digitalSize = clockWidth < 104
@@ -254,9 +256,9 @@ class _MiniMonthCalendar extends StatelessWidget {
       curve: Curves.easeInOutCubic,
       width: width,
       padding: EdgeInsets.fromLTRB(
-        width < 80 ? 5 : 7,
+        width < 88 ? 5 : 7,
         6,
-        width < 80 ? 5 : 7,
+        width < 88 ? 5 : 7,
         6,
       ),
       decoration: BoxDecoration(
@@ -273,7 +275,7 @@ class _MiniMonthCalendar extends StatelessWidget {
             overflow: TextOverflow.fade,
             softWrap: false,
             style: TextStyle(
-              fontSize: width < 80 ? 7.2 : 8.2,
+              fontSize: width < 88 ? 7.6 : 9,
               fontWeight: FontWeight.w700,
               color: AppTheme.textSecondary,
             ),
@@ -287,7 +289,7 @@ class _MiniMonthCalendar extends StatelessWidget {
                     day,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: width < 80 ? 5.6 : 6.3,
+                      fontSize: width < 88 ? 6 : 7,
                       color: AppTheme.textMuted,
                     ),
                   ),
@@ -325,7 +327,7 @@ class _MiniMonthCalendar extends StatelessWidget {
                 child: Text(
                   '$day',
                   style: TextStyle(
-                    fontSize: width < 80 ? 5.6 : 6.4,
+                    fontSize: width < 88 ? 7 : 8,
                     height: 1,
                     fontWeight: today ? FontWeight.w800 : FontWeight.w500,
                     color: today ? Colors.white : AppTheme.textSecondary,

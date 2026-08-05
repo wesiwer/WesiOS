@@ -187,14 +187,35 @@ class AlertService {
   static int unreadOf(Iterable<Alert> alerts) =>
       alerts.where((alert) => !alert.read).length;
 
+  /// Пометить показанный набор прочитанным.
+  ///
+  /// Хранилище при этом **заменяется** текущим набором, а не пополняется.
+  /// Иначе отметка о пропавшем поводе живёт вечно, и вернувшаяся беда молчит:
+  /// баланс ушёл в минус, уведомление прочитали, баланс выправился,
+  /// уведомление исчезло — а когда счёт снова уходит в минус, отпечаток
+  /// совпадает со старым, и колокольчик об этом не говорит. Такое молчание
+  /// хуже лишней цифры: это ровно тот случай, ради которого колокольчик есть.
   static void markAllRead(List<Alert> alerts) {
     _ensureReadLoaded();
+    final current = <String>{};
     for (final alert in alerts) {
       alert.read = true;
-      _readIds.add(idOf(alert));
+      current.add(idOf(alert));
     }
+    _readIds
+      ..clear()
+      ..addAll(current);
     _persistReadIds();
     _updateUnread(alerts);
+  }
+
+  /// Только для тестов: забыть прочитанное.
+  @visibleForTesting
+  static void forgetRead() {
+    _readLoaded = true;
+    _readIds.clear();
+    _persistReadIds();
+    unreadCount.value = 0;
   }
 
   static void markRead(Alert alert, [List<Alert>? current]) {

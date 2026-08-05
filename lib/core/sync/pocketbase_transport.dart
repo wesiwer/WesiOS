@@ -39,8 +39,12 @@ class PocketBaseTransport implements SyncTransport {
 
   PocketBaseTransport(this.baseUrl);
 
-  /// Транспорт из сохранённых настроек, или null — если сервер не настроен.
-  static PocketBaseTransport? fromSettings() {
+  /// Транспорт на корпоративный сервер, с пропуском, если он ещё годен.
+  ///
+  /// Возврата null здесь больше нет: адрес зашит в сборку, «сервера не
+  /// настроен» не бывает. Отсутствие входа — отдельный случай, и о нём
+  /// говорит `isSignedIn`, а не отсутствие транспорта.
+  static PocketBaseTransport fromSettings() {
     final t = PocketBaseTransport(SyncEndpoint.url);
     final session = SyncEndpoint.session;
     final expires = DateTime.tryParse('${session?['expiresAt']}');

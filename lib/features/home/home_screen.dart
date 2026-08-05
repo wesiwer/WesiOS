@@ -213,29 +213,20 @@ class _DashboardTabState extends State<_DashboardTab> {
     }
   }
 
-  /// Помещается ли заряд мыслей в шапку рядом с часами.
-  ///
-  /// Блок не уже 170 px, иконки справа занимают ~120 px, лого и часам нужно
-  /// хотя бы 130 px. Ниже этой суммы он в строку не влезает и уезжает под
-  /// шапку отдельной строкой — иначе он давит на часы и на иконки.
-  static bool _chargeBelowHeader(BuildContext context) =>
-      MediaQuery.sizeOf(context).width < 460;
-
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       child: CustomScrollView(
         slivers: [
-          // Header: logo+clock | icons над зарядом мыслей
+          // Шапка: слева лого, часы и месяц, справа — иконки
           SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 10, 12, 12),
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Левая колонка: лого сверху, часы под ним
+                  // Левая колонка: лого сверху, часы с месяцем под ним
                   Expanded(
-                    flex: 5,
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -275,55 +266,44 @@ class _DashboardTabState extends State<_DashboardTab> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  // Правая колонка: иконки сверху, заряд мыслей под ними.
-                  //
-                  // Раньше заряд стоял отдельным Flexible В ОДНОМ РЯДУ с
-                  // иконками и прижимался к верху — то есть оказывался на
-                  // одной линии с поиском, колокольчиком и профилем и налезал
-                  // на них. Теперь он там, где ему и место: под иконками,
-                  // правее часов и над самой цитатой.
-                  Flexible(
-                    flex: 4,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _HoverIconButton(
-                              icon: Icons.search,
-                              onTap: () => GlobalSearchSheet.show(context),
-                            ),
-                            const SizedBox(width: 6),
-                            const AlertsBell(size: 28),
-                            const SizedBox(width: 6),
-                            const _ProfileDropdown(),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        // На узком экране блоку в 170 px рядом с часами уже
-                        // не хватает места — там он уезжает отдельной
-                        // строкой ниже (см. sliver под шапкой).
-                        if (!_chargeBelowHeader(context))
-                          const QuoteMindCharge(),
-                      ],
-                    ),
+                  // Справа только иконки, и колонка занимает ровно столько,
+                  // сколько им нужно: всё остальное отдано часам с месяцем.
+                  // Раньше здесь стоял ещё и заряд мыслей — он забирал
+                  // четыре девятых ширины, и календарю рядом с часами
+                  // доставалось 72 px, где числа уже не прочитать.
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _HoverIconButton(
+                            icon: Icons.search,
+                            onTap: () => GlobalSearchSheet.show(context),
+                          ),
+                          const SizedBox(width: 6),
+                          const AlertsBell(size: 28),
+                          const SizedBox(width: 6),
+                          const _ProfileDropdown(),
+                        ],
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
           ),
-          if (_chargeBelowHeader(context))
-            const SliverToBoxAdapter(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(16, 0, 12, 12),
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: QuoteMindCharge(),
-                ),
-              ),
+          // Заряд и цитата — одной ширины и одной колонкой: это про одно и
+          // то же, и разная ширина читалась как «блок не доехал». Развилки
+          // «широкий экран — в шапку, узкий — под неё» больше нет: на
+          // широком заряд всё равно оказывался вдвое уже соседа.
+          const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: QuoteMindCharge(),
             ),
+          ),
           const SliverToBoxAdapter(
             child: Padding(
               padding: EdgeInsets.fromLTRB(16, 0, 16, 16),

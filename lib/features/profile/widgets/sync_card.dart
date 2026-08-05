@@ -48,12 +48,12 @@ class ProfileSyncCard extends StatelessWidget {
     bool pending,
     SyncReport? report,
   ) {
-    final configured = SyncEndpoint.isConfigured;
+    final connected = SyncEndpoint.isConnected;
     final on = SyncEndpoint.enabled;
 
     final (icon, color, headline, detail) = _state(
       ru: ru,
-      configured: configured,
+      connected: connected,
       on: on,
       busy: busy,
       pending: pending,
@@ -109,7 +109,7 @@ class ProfileSyncCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 // Кнопка осталась, но она теперь про «прямо сейчас», а не
                 // про «иначе не уедет».
-                if (configured && on && !busy)
+                if (connected && on && !busy)
                   IconButton(
                     tooltip: ru ? 'Отправить сейчас' : 'Sync now',
                     icon: Icon(Icons.sync,
@@ -126,24 +126,24 @@ class ProfileSyncCard extends StatelessWidget {
     );
   }
 
-  /// Что показать. Порядок проверок — от «совсем не настроено» к мелочам:
+  /// Что показать. Порядок проверок — от «совсем не работает» к мелочам:
   /// человеку сначала надо знать, работает ли это вообще.
   (IconData, Color, String, String) _state({
     required bool ru,
-    required bool configured,
+    required bool connected,
     required bool on,
     required bool busy,
     required bool pending,
     required SyncReport? report,
   }) {
-    if (!configured) {
+    if (!connected) {
       return (
         Icons.cloud_off_outlined,
         AppTheme.textMuted,
-        ru ? 'Синхронизация не настроена' : 'Sync is not set up',
+        ru ? 'Вход на сервер не выполнен' : 'Not signed in',
         ru
-            ? 'Данные лежат только на этом устройстве. Нажмите, чтобы указать сервер.'
-            : 'Data stays on this device only. Tap to set the server.',
+            ? 'Данные лежат только на этом устройстве. Нажмите и войдите — адрес сервера уже известен.'
+            : 'Data stays on this device only. Tap and sign in — the server address is already known.',
       );
     }
     if (!on) {
@@ -152,8 +152,8 @@ class ProfileSyncCard extends StatelessWidget {
         AppTheme.textMuted,
         ru ? 'Синхронизация выключена' : 'Sync is off',
         ru
-            ? 'Сервер указан, но обмен не идёт. Нажмите, чтобы включить.'
-            : 'Server is set, but nothing is exchanged. Tap to turn it on.',
+            ? 'Вход есть, но обмен не идёт. Нажмите, чтобы включить.'
+            : 'Signed in, but nothing is exchanged. Tap to turn it on.',
       );
     }
     if (busy) {
