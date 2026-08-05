@@ -1,0 +1,53 @@
+name: Restore unauthenticated chat expectation
+
+on:
+  push:
+    branches: [chatgpt/fixed-server-test-migration]
+    paths:
+      - '.github/workflows/revert-chat-test-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/fixed-server-test-migration
+          fetch-depth: 0
+      - name: Restore correct chat semantics
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('test/chat_service_test.dart')
+          text = path.read_text(encoding='utf-8')
+          old = """    test('рабочее сообщение сразу ждёт отправки на корпоративный сервер', () async {
+                final chat = await ChatService.direct(
+                    'e2', kind: ChatKind.work, now: base);
+                final m = (await ChatService.send(
+                    chatId: chat.id, body: 'Привет', now: base))!;
+                expect(m.state, DeliveryState.pending);
+                expect(ChatDelivery.whyLocal(chat), isNull);
+              });""".replace('              ', '')
+          new = """    test('без входа сообщение остаётся локальным', () async {
+                // Известный адрес сервера ещё не означает, что пользователь вошёл.
+                // До действующей сессии сообщение не должно изображать отправку.
+                final chat = await ChatService.direct('e2', now: base);
+                final m = (await ChatService.send(
+                    chatId: chat.id, body: 'Привет', now: base))!;
+                expect(m.state, DeliveryState.local);
+                expect(ChatDelivery.whyLocal(chat), isNotNull);
+              });""".replace('              ', '')
+          if old not in text:
+              raise SystemExit('Не найден временно изменённый тест ChatService')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+      - name: Commit
+        run: |
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add test/chat_service_test.dart
+          git commit -m 'test: keep unauthenticated work messages local'
+          git push origin HEAD:chatgpt/fixed-server-test-migration
