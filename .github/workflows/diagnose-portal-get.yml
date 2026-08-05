@@ -3,8 +3,6 @@ name: Diagnose portal GET delivery
 on:
   pull_request:
     branches: [main]
-    paths:
-      - '.github/workflows/diagnose-portal-get.yml'
 
 permissions:
   contents: read
@@ -12,26 +10,90 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
-      - name: Download full portal resources
+      - name: Verify bundled HTML and embedded JavaScript
         run: |
-          set +e
-          mkdir -p out
-          BASE='https://api.wesi-inc.ru/portal'
-          for resource in '/' '/styles.css?v=6' '/portal-v6.css?v=1' '/app.js?v=6' '/motion-v6.js?v=1' '/app_icon.png'; do
-            safe=$(printf '%s' "$resource" | tr '/?=&' '____')
-            echo "=== GET $resource ==="
-            curl -v --compressed --connect-timeout 10 --max-time 30 \
-              -A 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 Version/26.0 Mobile/15E148 Safari/604.1' \
-              -w '\nRESULT http=%{http_code} size=%{size_download} start=%{time_starttransfer} total=%{time_total} speed=%{speed_download}\n' \
-              "$BASE$resource" -o "out/$safe" 2>&1 | tail -60
-            ls -l "out/$safe" 2>/dev/null || true
-            file "out/$safe" 2>/dev/null || true
-            echo
-          done
-          echo '=== HTML prefix ==='
-          sed -n '1,25p' out/__ 2>/dev/null || true
-          echo '=== JS syntax ==='
-          node --check out/_app.js_v_6 2>&1 || true
-          node --check out/_motion-v6.js_v_1 2>&1 || true
+          set -euo pipefail
+          curl -fsS --compressed --connect-timeout 10 --max-time 30 \
+            -A 'Mozilla/5.0 (iPhone; CPU iPhone OS 26_0 like Mac OS X) AppleWebKit/605.1.15 Version/26.0 Mobile/15E148 Safari/604.1' \
+            'https://api.wesi-inc.ru/portal/?webkit-diagnostic=1' -o portal.html
+          wc -c portal.html
+          grep -q 'data-bundle="styles.css"' portal.html
+          grep -q 'data-bundle="portal-v6.css"' portal.html
+          grep -q 'data-bundle="app.js"' portal.html
+          grep -q 'data-bundle="motion-v6.js"' portal.html
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          html = Path('portal.html').read_text(encoding='utf-8')
+          for name in ('app.js', 'motion-v6.js'):
+              m = re.search(rf'<script data-bundle="{re.escape(name)}">\n(.*?)\n</script>', html, re.S)
+              if not m:
+                  raise SystemExit(f'missing embedded {name}')
+              Path(name).write_text(m.group(1).replace('<\\/script', '</script'), encoding='utf-8')
+          PY
+          node --check app.js
+          node --check motion-v6.js
+
+      - name: Install Playwright WebKit
+        run: |
+          npm init -y >/dev/null
+          npm install --silent playwright@1.54.2
+          npx playwright install --with-deps webkit
+
+      - name: Render as iPhone WebKit
+        run: |
+          cat > render.mjs <<'JS'
+          import { webkit, devices } from 'playwright';
+          const browser = await webkit.launch({ headless: true });
+          const context = await browser.newContext({
+            ...devices['iPhone 15 Pro'],
+            ignoreHTTPSErrors: false,
+          });
+          const page = await context.newPage();
+          const events = [];
+          page.on('console', m => events.push(`console:${m.type()}:${m.text()}`));
+          page.on('pageerror', e => events.push(`pageerror:${e.message}`));
+          page.on('requestfailed', r => events.push(`failed:${r.url()}:${r.failure()?.errorText}`));
+          const response = await page.goto('https://api.wesi-inc.ru/portal/?webkit=2', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000,
+          });
+          await page.waitForTimeout(3000);
+          const result = await page.evaluate(() => {
+            const boot = document.getElementById('boot');
+            const app = document.getElementById('app');
+            const login = document.getElementById('loginView');
+            const title = document.querySelector('.hero-copy h1');
+            return {
+              title: document.title,
+              bodyBackground: getComputedStyle(document.body).backgroundColor,
+              bodyTextLength: document.body.innerText.length,
+              bootDisplay: boot ? getComputedStyle(boot).display : 'missing',
+              bootVisibility: boot ? getComputedStyle(boot).visibility : 'missing',
+              appDisplay: app ? getComputedStyle(app).display : 'missing',
+              appVisibility: app ? getComputedStyle(app).visibility : 'missing',
+              loginDisplay: login ? getComputedStyle(login).display : 'missing',
+              heroText: title?.textContent?.trim() || '',
+              scrollHeight: document.documentElement.scrollHeight,
+            };
+          });
+          console.log('HTTP', response?.status());
+          console.log('RESULT', JSON.stringify(result, null, 2));
+          console.log('EVENTS', JSON.stringify(events, null, 2));
+          await page.screenshot({ path: 'webkit-iphone.png', fullPage: false });
+          if (response?.status() !== 200) process.exitCode = 1;
+          if (result.bodyBackground === 'rgb(255, 255, 255)') process.exitCode = 1;
+          if (result.bodyTextLength < 200) process.exitCode = 1;
+          if (result.loginDisplay === 'none') process.exitCode = 1;
+          await browser.close();
+          JS
+          node render.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: portal-webkit-diagnostic
+          path: webkit-iphone.png
+          retention-days: 1
