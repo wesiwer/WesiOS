@@ -11,6 +11,7 @@ import 'models/chat_thread.dart';
 import 'services/ai_topic_judge.dart';
 import 'services/chat_delivery.dart';
 import 'services/chat_service.dart';
+import 'services/chat_sync.dart';
 import 'services/message_store.dart';
 import 'services/topic_judge.dart';
 import 'services/topic_privacy.dart';
@@ -71,6 +72,10 @@ class _ChatScreenState extends State<ChatScreen> {
     // Чистка при входе, а не по таймеру: сообщение с вышедшим сроком не
     // должно дождаться, пока кто-то вспомнит про уборку.
     MessageStore.sweep();
+    // Пока переписка открыта, обмениваемся с сервером часто — иначе
+    // сообщение собеседника приедет в лучшем случае при следующем запуске
+    // программы.
+    ChatSync.watch();
   }
 
   @override
@@ -78,6 +83,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // Отметку ставим и на выходе: человек мог читать долго, и всё, что
     // пришло за это время, он уже видел.
     ChatService.markOpened(widget.chatId);
+    ChatSync.unwatch();
     _input.dispose();
     _search.dispose();
     _scroll.dispose();
@@ -99,6 +105,8 @@ class _ChatScreenState extends State<ChatScreen> {
       kind: sticker == null ? MessageKind.text : MessageKind.sticker,
       replyTo: _replyTo?.id,
     );
+    // Отправили — не ждём следующего тика, отправляем сразу.
+    ChatSync.nudge();
     if (!mounted) return;
     setState(() {
       _input.clear();
@@ -133,9 +141,68 @@ class _ChatScreenState extends State<ChatScreen> {
         mine: m.authorId == ChatService.meId,
         onReply: () => setState(() => _replyTo = m),
         onEdit: () => _edit(m),
+        onReact: () => _pickReaction(m),
         onChanged: () => setState(() {}),
       ),
     );
+  }
+
+  /// Откликнуться на сообщение.
+  ///
+  /// Тот же символ повторно снимает отклик — иначе случайно поставленный
+  /// «палец вверх» убрать было бы нечем.
+  Future<void> _react(ChatMessage m, String emoji) async {
+    await MessageStore.react(id: m.id, by: ChatService.meId, emoji: emoji);
+    ChatSync.nudge();
+    if (mounted) setState(() {});
+  }
+
+  /// Показать набор откликов.
+  Future<void> _pickReaction(ChatMessage m) async {
+    final mine = m.reactions[ChatService.meId];
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: AppTheme.background,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+          border: Border.all(color: AppTheme.glassBorder),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+        child: Wrap(
+          alignment: WrapAlignment.center,
+          spacing: 10,
+          runSpacing: 10,
+          children: [
+            for (final e in MessageStore.reactionChoices)
+              GestureDetector(
+                onTap: () => Navigator.pop(context, e),
+                child: Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    // Свой отклик подсвечен: иначе непонятно, ставишь ты
+                    // его или снимаешь.
+                    color: e == mine
+                        ? AppTheme.accent.withOpacity(0.18)
+                        : AppTheme.surface.withOpacity(0.5),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: e == mine
+                          ? AppTheme.accent.withOpacity(0.6)
+                          : AppTheme.glassBorder,
+                    ),
+                  ),
+                  child: Center(
+                      child: Text(e, style: const TextStyle(fontSize: 24))),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+    if (picked != null) await _react(m, picked);
   }
 
   /// Поправить своё сообщение.
@@ -540,6 +607,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   : MessageStore.byId(m.replyTo!),
               onLongPress: () => _actions(m),
               highlight: searching ? _query : '',
+              onReact: (emoji) => _react(m, emoji),
             ),
           ],
         );
@@ -703,6 +771,7 @@ class _MessageActions extends StatelessWidget {
   final bool mine;
   final VoidCallback onReply;
   final VoidCallback onEdit;
+  final VoidCallback onReact;
   final VoidCallback onChanged;
 
   const _MessageActions({
@@ -710,6 +779,7 @@ class _MessageActions extends StatelessWidget {
     required this.mine,
     required this.onReply,
     required this.onEdit,
+    required this.onReact,
     required this.onChanged,
   });
 
@@ -735,6 +805,19 @@ class _MessageActions extends StatelessWidget {
               onReply();
             },
           ),
+          if (!message.isSystem)
+            _row(
+              context,
+              Icons.add_reaction_outlined,
+              ru ? 'Отклик' : 'React',
+              () {
+                Navigator.pop(context);
+                onReact();
+              },
+              hint: ru
+                  ? 'Ответить, не прерывая разговор'
+                  : 'Answer without interrupting',
+            ),
           // Править можно только своё и только слова. Отказ показывается не
           // здесь, а в самом хранилище: правило, живущее в одном экране,
           // обходится вторым.

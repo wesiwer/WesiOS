@@ -112,6 +112,19 @@ class ChatMessage {
   @HiveField(11)
   final DateTime? editedAt;
 
+  /// Реакции: кто и чем откликнулся. `идентификатор человека → символ`.
+  ///
+  /// **По одной реакции на человека, а не список.** Пять разных смайликов
+  /// от одного собеседника — это не пять мнений, а шум; в переписке из
+  /// десяти сообщений он занимает больше места, чем сами сообщения. Карта
+  /// вместо списка делает это правилом хранения, а не договорённостью,
+  /// которую надо соблюдать в каждом месте кода.
+  ///
+  /// null — старая запись. Пустая карта и её отсутствие означают одно и то
+  /// же, поэтому наружу всегда отдаётся карта ([reactions]).
+  @HiveField(12)
+  final Map<String, String>? reactionsRaw;
+
   const ChatMessage({
     required this.id,
     required this.chatId,
@@ -125,7 +138,19 @@ class ChatMessage {
     this.topicId,
     this.replyTo,
     this.editedAt,
+    this.reactionsRaw,
   });
+
+  Map<String, String> get reactions => reactionsRaw ?? const {};
+
+  /// Сколько человек откликнулось каждым символом — для показа.
+  Map<String, int> get reactionCounts {
+    final out = <String, int>{};
+    for (final emoji in reactions.values) {
+      out[emoji] = (out[emoji] ?? 0) + 1;
+    }
+    return out;
+  }
 
   bool get isSticker => kind == MessageKind.sticker;
 
@@ -165,6 +190,7 @@ class ChatMessage {
     Object? topicId = _unset,
     Object? expiresAt = _unset,
     DateTime? editedAt,
+    Map<String, String>? reactions,
   }) =>
       ChatMessage(
         id: id,
@@ -185,6 +211,7 @@ class ChatMessage {
             identical(topicId, _unset) ? this.topicId : topicId as String?,
         replyTo: replyTo,
         editedAt: editedAt ?? this.editedAt,
+        reactionsRaw: reactions ?? reactionsRaw,
       );
 
   static const Object _unset = Object();
@@ -202,6 +229,7 @@ class ChatMessage {
         'topicId': topicId,
         'replyTo': replyTo,
         'editedAt': editedAt?.toIso8601String(),
+        'reactions': reactionsRaw,
       };
 
   static ChatMessage? tryParse(Map<String, dynamic> json) {
@@ -230,6 +258,12 @@ class ChatMessage {
       topicId: json['topicId'] is String ? json['topicId'] as String : null,
       replyTo: json['replyTo'] is String ? json['replyTo'] as String : null,
       editedAt: DateTime.tryParse('${json['editedAt']}'),
+      reactionsRaw: json['reactions'] is Map
+          ? {
+              for (final e in (json['reactions'] as Map).entries)
+                '${e.key}': '${e.value}',
+            }
+          : null,
     );
   }
 }

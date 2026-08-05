@@ -12,6 +12,7 @@ import '../../features/team/models/employee_model.dart';
 import '../../features/team/models/team_permissions.dart';
 import '../../features/treasury/models/account_model.dart';
 import '../../features/treasury/models/transaction_model.dart';
+import 'sync_journal.dart';
 
 /// Описание одной синхронизируемой коллекции.
 ///
@@ -90,6 +91,13 @@ abstract class SyncCollection<T> {
   }
 
   Future<void> removeById(String id) async => box()?.delete(id);
+
+  /// Записи только что успешно уехали на сервер.
+  ///
+  /// По умолчанию не делает ничего. Нужно там, где у записи есть состояние
+  /// «дошло ли» — у сообщений. Движок про такие состояния знать не должен,
+  /// поэтому крючок здесь, а не в нём.
+  Future<void> afterUpload(Iterable<String> ids) async {}
 }
 
 // ------------------------------------------------------------------ помощники
@@ -506,12 +514,43 @@ class MessagesSync extends SyncCollection<ChatMessage> {
     return chat != null && ChatEnvelopePolicy.travels(chat.kind);
   }
 
+  /// Состояние доставки наружу **не уезжает**.
+  ///
+  /// «Моё сообщение ушло с этого телефона» — факт про этот телефон, и
+  /// собеседнику он не сообщает ничего. Уехав, он бы ещё и перетирал
+  /// местное состояние на других устройствах владельца.
+  ///
+  /// Приехавшее сообщение получает [DeliveryState.sent] по умолчанию — и
+  /// это правда: раз оно приехало, оно точно было отправлено.
   @override
-  Map<String, dynamic> encode(ChatMessage value) => value.toJson();
+  Map<String, dynamic> encode(ChatMessage value) =>
+      value.toJson()..remove('state');
 
   @override
   ChatMessage? decode(Map<String, dynamic> fields) =>
       ChatMessage.tryParse(fields);
+
+  /// Сообщение уехало — значит оно отправлено, и человеку пора это увидеть.
+  ///
+  /// До этого крючка состояние не менялось никогда: `markState` существовал,
+  /// но его никто не вызывал, и галочка под своим сообщением оставалась
+  /// «часиками» навсегда.
+  ///
+  /// **Отметка в журнале сохраняется прежней.** Иначе получилась бы качель:
+  /// пометили «отправлено» → журнал увидел правку → на следующем проходе
+  /// сообщение уехало снова → снова пометили. И так до бесконечности.
+  @override
+  Future<void> afterUpload(Iterable<String> ids) async {
+    final b = box();
+    if (b == null) return;
+    for (final id in ids) {
+      final m = b.get(id);
+      if (m == null || m.state != DeliveryState.pending) continue;
+      final stamp = SyncJournal.stampOf(name, id);
+      if (stamp != null) SyncJournal.expect(name, id, stamp);
+      await b.put(id, m.copyWith(state: DeliveryState.sent));
+    }
+  }
 
   /// Надгробие не дотягивается до архива.
   ///

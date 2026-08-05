@@ -451,6 +451,71 @@ void main() {
     });
   });
 
+  group('отклики', () {
+    Future<ChatMessage> written() async {
+      final chat = await ChatService.direct('e2', now: base);
+      return (await MessageStore.send(
+          chatId: chat.id, authorId: 'e2', body: 'Готово', now: base))!;
+    }
+
+    test('отклик ставится и виден', () async {
+      final m = await written();
+      expect(await MessageStore.react(id: m.id, by: 'own', emoji: '👍'),
+          isTrue);
+      expect(MessageStore.byId(m.id)!.reactions['own'], '👍');
+    });
+
+    test('тот же символ повторно — снимает', () async {
+      // Иначе случайно поставленный «палец вверх» убрать было бы нечем.
+      final m = await written();
+      await MessageStore.react(id: m.id, by: 'own', emoji: '👍');
+      await MessageStore.react(id: m.id, by: 'own', emoji: '👍');
+      expect(MessageStore.byId(m.id)!.reactions, isEmpty);
+    });
+
+    test('другой символ заменяет, а не добавляет', () async {
+      // Пять разных смайликов от одного человека — это не пять мнений, а
+      // шум: в переписке он занимает больше места, чем сами сообщения.
+      final m = await written();
+      await MessageStore.react(id: m.id, by: 'own', emoji: '👍');
+      await MessageStore.react(id: m.id, by: 'own', emoji: '🔥');
+
+      final after = MessageStore.byId(m.id)!;
+      expect(after.reactions.length, 1);
+      expect(after.reactions['own'], '🔥');
+    });
+
+    test('несколько человек считаются вместе', () async {
+      final m = await written();
+      await MessageStore.react(id: m.id, by: 'own', emoji: '👍');
+      await MessageStore.react(id: m.id, by: 'e2', emoji: '👍');
+      await MessageStore.react(id: m.id, by: 'e3', emoji: '🔥');
+
+      expect(MessageStore.byId(m.id)!.reactionCounts, {'👍': 2, '🔥': 1});
+    });
+
+    test('отклик на исчезнувшее сообщение не роняет', () async {
+      expect(
+          await MessageStore.react(id: 'нет-такого', by: 'own', emoji: '👍'),
+          isFalse);
+    });
+
+    test('отклики переживают перенос', () async {
+      final m = await written();
+      await MessageStore.react(id: m.id, by: 'own', emoji: '✅');
+      final back = ChatMessage.tryParse(MessageStore.byId(m.id)!.toJson())!;
+      expect(back.reactions['own'], '✅');
+    });
+
+    test('старая запись без откликов читается как пустая', () async {
+      // Поле появилось позже: у сообщений, написанных до него, его нет.
+      final m = await written();
+      expect(m.reactionsRaw, isNull);
+      expect(m.reactions, isEmpty);
+      expect(m.reactionCounts, isEmpty);
+    });
+  });
+
   group('срок хранения чата', () {
     test('новое сообщение живёт по сроку своего чата', () async {
       final chat = await ChatService.direct('e2', now: base);

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/core/sync/sync_codec.dart';
+import 'package:wesios/core/sync/sync_journal.dart';
 import 'package:wesios/features/chats/models/chat_message.dart';
 import 'package:wesios/features/chats/models/chat_policy.dart';
 import 'package:wesios/features/chats/models/chat_thread.dart';
@@ -30,6 +31,7 @@ void main() {
     Hive.registerAdapter(ChatMessageAdapter());
     Hive.registerAdapter(ChatThreadAdapter());
     await Hive.openBox('wesios_settings');
+    await SyncJournal.open();
     await MessageStore.open();
     await ChatService.open();
   });
@@ -148,6 +150,60 @@ void main() {
     test('битая запись не разбирается и не подставляет пустоту', () async {
       expect(await chats.applyFields({'id': 'x'}), isFalse);
       expect(await messages.applyFields({'id': 'x'}), isFalse);
+    });
+  });
+
+  group('состояние доставки движется', () {
+    test('уехавшее сообщение перестаёт быть «в ожидании»', () async {
+      // До этого крючка состояние не менялось никогда: markState был, но
+      // его никто не вызывал, и «часики» под своим сообщением висели вечно.
+      await thread('w', ChatKind.work);
+      final m = await message('w');
+      expect(m.state, DeliveryState.pending);
+
+      await messages.afterUpload([m.id]);
+      expect(MessageStore.byId(m.id)!.state, DeliveryState.sent);
+    });
+
+    test('чужое состояние не перебивается', () async {
+      // local означает «уезжать было некуда». Если такое сообщение всё же
+      // попало в отправку, помечать его «отправлено» нельзя — сначала надо
+      // разобраться, откуда оно там.
+      await thread('w', ChatKind.work);
+      final m = await message('w');
+      await MessageStore.markState(m.id, DeliveryState.local);
+
+      await messages.afterUpload([m.id]);
+      expect(MessageStore.byId(m.id)!.state, DeliveryState.local);
+    });
+
+    test('отметка в журнале не сдвигается — иначе качель', () async {
+      // Пометили «отправлено» → журнал увидел бы правку → на следующем
+      // проходе сообщение уехало бы снова → снова пометили. И так вечно.
+      await thread('w', ChatKind.work);
+      final m = await message('w');
+      await SyncJournal.record('messages', m.id, SyncStamp(base));
+
+      await messages.afterUpload([m.id]);
+      expect(SyncJournal.stampOf('messages', m.id)!.updatedAt, base);
+    });
+
+    test('состояние доставки на сервер не уезжает', () async {
+      // «Моё сообщение ушло с этого телефона» — факт про этот телефон.
+      // Собеседнику он не сообщает ничего, а на других устройствах
+      // владельца ещё и перетёр бы местное состояние.
+      await thread('w', ChatKind.work);
+      final m = await message('w');
+      expect(messages.encode(m).containsKey('state'), isFalse);
+    });
+
+    test('приехавшее считается отправленным', () async {
+      // Раз оно приехало — оно точно было отправлено. Показывать «часики»
+      // на сообщении, которое уже проделало весь путь, незачем.
+      await thread('w', ChatKind.work);
+      final m = await message('w');
+      final back = ChatMessage.tryParse(messages.encode(m))!;
+      expect(back.state, DeliveryState.sent);
     });
   });
 

@@ -247,6 +247,40 @@ class MessageStore {
     ));
   }
 
+  /// Набор откликов, между которыми выбирает человек.
+  ///
+  /// Короткий намеренно. Полная клавиатура смайликов превращает реакцию в
+  /// ещё одно сообщение — а её ценность ровно в том, что она отвечает, не
+  /// прерывая разговор.
+  static const List<String> reactionChoices = [
+    '👍', '❤️', '😄', '🤔', '👀', '🔥', '✅', '❌',
+  ];
+
+  /// Откликнуться на сообщение.
+  ///
+  /// Повторный тот же символ снимает отклик — иначе убрать случайный
+  /// «палец вверх» было бы нечем. Другой символ заменяет прежний: у
+  /// человека одно мнение, а не коллекция.
+  ///
+  /// Возвращает `false`, если сообщения уже нет.
+  static Future<bool> react({
+    required String id,
+    required String by,
+    required String emoji,
+  }) async {
+    final message = _opened?.get(id);
+    if (message == null) return false;
+
+    final next = Map<String, String>.from(message.reactions);
+    if (next[by] == emoji) {
+      next.remove(by);
+    } else {
+      next[by] = emoji;
+    }
+    await put(message.copyWith(reactions: next));
+    return true;
+  }
+
   static Future<void> markState(String id, DeliveryState state) async {
     final message = _opened?.get(id);
     if (message == null) return;

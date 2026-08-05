@@ -211,9 +211,16 @@ class SyncEngine {
   /// Один проход по всем коллекциям.
   ///
   /// [transport] передаётся тестами; в приложении берётся из настроек.
+  /// Один проход.
+  ///
+  /// [only] — обменяться лишь этими коллекциями. Нужно для переписки:
+  /// пока чат открыт, обмен идёт часто, и таскать при этом операции,
+  /// задачи, статьи и состав — лишняя работа для сервера с одним ядром.
+  /// null — все коллекции, как при обычном проходе.
   static Future<SyncReport> run({
     SyncTransport? transport,
     DateTime? now,
+    Set<String>? only,
   }) async {
     final at = now ?? DateTime.now();
 
@@ -240,6 +247,7 @@ class SyncEngine {
       final reports = <SyncCollectionReport>[];
 
       for (final c in SyncCodec.collections) {
+        if (only != null && !only.contains(c.name)) continue;
         reports.add(await _runOne(c, t, at));
       }
 
@@ -247,7 +255,11 @@ class SyncEngine {
       SyncJournal.clearExpectations();
 
       final report = SyncReport(at: at, collections: reports);
-      if (report.ok) await SyncEndpoint.markRun(at);
+      // Частичный обмен не считается «первым полным»: правило первого
+      // обмена (см. _onlyNewTo) должно отработать на всех коллекциях, а не
+      // на двух из семи. Иначе счета и состав приехали бы уже по обычным
+      // правилам слияния — то есть могли бы затереться пустой заготовкой.
+      if (report.ok && only == null) await SyncEndpoint.markRun(at);
 
       // Пропуск протух — выбрасываем его. Иначе экран продолжал бы
       // показывать «сервер подключён», а каждый следующий проход молча
@@ -309,6 +321,12 @@ class SyncEngine {
       return SyncCollectionReport(collection: c.name, applied: applied);
     }
     final pushed = await t.push(c.name, plan.toUpload);
+    if (pushed.failure == null) {
+      // Отправка удалась — сообщаем коллекции, что именно уехало. Пока это
+      // нужно одним сообщениям: у них есть состояние «дошло ли», и до этого
+      // момента оно не менялось никогда.
+      await c.afterUpload([for (final r in plan.toUpload) r.id]);
+    }
     return SyncCollectionReport(
       collection: c.name,
       applied: applied,

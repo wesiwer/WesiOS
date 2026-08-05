@@ -17,6 +17,9 @@ class MessageBubble extends StatelessWidget {
   /// Что подсветить в тексте — то, что человек ищет. Пусто — не подсвечивать.
   final String highlight;
 
+  /// Нажали на отклик — поставить или снять такой же.
+  final void Function(String emoji)? onReact;
+
   const MessageBubble({
     super.key,
     required this.message,
@@ -25,6 +28,7 @@ class MessageBubble extends StatelessWidget {
     this.showAuthor = false,
     this.replyTo,
     this.highlight = '',
+    this.onReact,
   });
 
   @override
@@ -112,6 +116,7 @@ class MessageBubble extends StatelessWidget {
               ],
               if (replyTo != null) _quoted(replyTo!),
               _body(),
+              if (message.reactions.isNotEmpty) _reactions(),
               const SizedBox(height: 3),
               _meta(ru),
             ],
@@ -155,6 +160,42 @@ class MessageBubble extends StatelessWidget {
       spans.add(TextSpan(text: message.body.substring(from)));
     }
     return Text.rich(TextSpan(style: base, children: spans));
+  }
+
+  /// Отклики под сообщением.
+  ///
+  /// Показываем символ и число, а не список имён: в группе из десяти
+  /// человек имена заняли бы больше места, чем само сообщение. Кто именно
+  /// откликнулся — видно долгим нажатием, там же, где остальные действия.
+  Widget _reactions() {
+    final counts = message.reactionCounts;
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 5,
+        runSpacing: 4,
+        children: [
+          for (final e in counts.entries)
+            GestureDetector(
+              onTap: onReact == null ? null : () => onReact!(e.key),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.surfaceLight.withOpacity(0.55),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: AppTheme.glassBorder),
+                ),
+                child: Text(
+                  e.value > 1 ? '${e.key} ${e.value}' : e.key,
+                  style: TextStyle(
+                      fontSize: 11.5, color: AppTheme.textSecondary),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Widget _quoted(ChatMessage source) => Container(
