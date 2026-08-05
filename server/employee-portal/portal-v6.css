@@ -17,8 +17,11 @@
 .runner-trail,.runner-head{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .runner-trail{stroke:url(#runnerGradient);stroke-width:3;opacity:.32;filter:url(#runnerGlow)}
 .runner-head{stroke:#ff7a22;stroke-width:4.2;filter:url(#runnerGlow)}
+#motionRail .rail-line{--runner-merge:0;overflow:visible;transition:background .28s ease,box-shadow .28s ease}
+#motionRail .rail-line:before{content:"";position:absolute;left:50%;top:-3px;width:18px;height:88px;transform:translate(-50%,-50%) scaleY(calc(.2 + var(--runner-merge)));transform-origin:50% 100%;border-radius:999px;background:linear-gradient(to bottom,rgba(255,176,92,0),rgba(255,111,27,.92) 58%,rgba(255,101,23,.18));filter:blur(5px);opacity:var(--runner-merge);pointer-events:none}
+#motionRail .rail-line.runner-merge-active{box-shadow:0 0 18px rgba(255,101,23,calc(.12 + var(--runner-merge)*.42))}
 .module-card{transition:opacity .15s,filter .35s;animation:cardBreath 5.5s ease-in-out infinite}
 .module-card:nth-of-type(2){animation-delay:-1.2s}.module-card:nth-of-type(3){animation-delay:-2.3s}.module-card:nth-of-type(4){animation-delay:-3.4s}
 @keyframes cardBreath{50%{filter:brightness(1.08)}}
 @media(max-width:900px){.intro-stage,.auth-bottom{grid-template-columns:1fr}.intro-visual{min-height:350px}.auth-copy{text-align:center}.auth-copy p{margin-left:auto;margin-right:auto}.auth-bottom{padding-top:90px}.login-panel{width:min(560px,100%);margin:0 auto}}
-@media(max-width:650px){.intro-stage{padding-top:50px}.intro-visual{min-height:280px}.intro-orbit{width:240px;height:240px}.intro-orbit:after{inset:34px}.intro-orbit i:first-child{inset:66px}.intro-orbit img{width:88px;height:88px;border-radius:25px}.auth-bottom{min-height:auto;padding:110px 0 70px;gap:38px}.auth-copy h2{font-size:40px}.runner-head{stroke-width:3.4}.runner-trail{stroke-width:2.4}}
+@media(max-width:650px){.intro-stage{padding-top:50px}.intro-visual{min-height:280px}.intro-orbit{width:240px;height:240px}.intro-orbit:after{inset:34px}.intro-orbit i:first-child{inset:66px}.intro-orbit img{width:88px;height:88px;border-radius:25px}.auth-bottom{min-height:auto;padding:110px 0 70px;gap:38px}.auth-copy h2{font-size:40px}.runner-head{stroke-width:3.4}.runner-trail{stroke-width:2.4}#motionRail .rail-line:before{height:70px;width:15px}}
