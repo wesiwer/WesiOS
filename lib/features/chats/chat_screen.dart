@@ -275,6 +275,38 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
+  /// Разметка ленты, живущая между кадрами.
+  ///
+  /// Пересчитывается только когда переписка изменилась. Иначе объект
+  /// создавался заново на каждую перерисовку — а вместе с ним терялись
+  /// отметки «про это место не спрашивать».
+  ChatLayout _layoutFor(List<ChatMessage> messages) {
+    final signature = messages.isEmpty
+        ? 'пусто'
+        : '${messages.length}/${messages.last.id}/${_manualMark(messages)}';
+    if (_layout != null && _layoutFor_ == signature) return _layout!;
+
+    _layout = _refined ?? TopicDivider.planFor(messages);
+    _layoutFor_ = signature;
+    return _layout!;
+  }
+
+  ChatLayout? _layout;
+  String? _layoutFor_;
+
+  /// Часть подписи состояния: сколько сообщений размечено вручную.
+  ///
+  /// Без этого разделение не появлялось бы до следующего сообщения:
+  /// количество и последний идентификатор от нажатия «Разделить» не
+  /// меняются, и разметка бралась бы из кэша — прежняя.
+  static int _manualMark(List<ChatMessage> messages) {
+    var n = 0;
+    for (final m in messages) {
+      if (m.topicId != null) n++;
+    }
+    return n;
+  }
+
   /// Спросить модель про спорные границы тем.
   ///
   /// Запускается после кадра, а не вместо него: местная разметка рисуется
@@ -306,7 +338,8 @@ class _ChatScreenState extends State<ChatScreen> {
         .then((result) {
       if (!mounted) return;
       setState(() {
-        _refined = TopicDivider.fromRefined(prepared, result);
+        _refined = TopicDivider.fromRefined(messages, prepared, result);
+        _layout = null;
         _refinedFor = signature;
         _refining = false;
       });
@@ -566,8 +599,12 @@ class _ChatScreenState extends State<ChatScreen> {
     // Вне поиска сначала рисуем местную разметку, а следующим кадром просим
     // модель уточнить её. Так заголовки появляются сразу, а не после
     // ожидания сети.
-    final blocks =
-        searching ? null : (_refined ?? TopicDivider.planFor(messages));
+    //
+    // Разметка держится в состоянии, а не считается заново на каждый кадр.
+    // Пересчёт выбрасывал объект вместе с пометками «не надо»: человек
+    // отвечал на вопрос, следующий кадр строил новую разметку, и тот же
+    // вопрос возвращался. Со стороны кнопка «Не надо» не работала.
+    final blocks = searching ? null : _layoutFor(messages);
     if (!searching) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _refineTopics(chat, messages);
@@ -635,6 +672,15 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _splitAt(List<ChatMessage> messages, int index) async {
     // Разделение — это метка темы на сообщениях после границы, а не
     // удаление и не перенос. Ничего не теряется, и решение обратимо.
+    //
+    // Разметку, посчитанную до этого, выбрасываем целиком — и местную, и
+    // полученную от модели. Иначе граница записалась бы, а на экране
+    // осталась бы прежняя картинка: ровно то, из-за чего кнопка выглядела
+    // неработающей.
+    _layout = null;
+    _refined = null;
+    _refinedFor = null;
+
     final topicId = 't${DateTime.now().microsecondsSinceEpoch}';
     await MessageStore.assignTopic(
       [for (var i = index; i < messages.length; i++) messages[i].id],
