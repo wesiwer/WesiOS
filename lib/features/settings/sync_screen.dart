@@ -9,12 +9,12 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
 
-/// Синхронизация с сервером.
+/// Вход в корпоративную синхронизацию WesiOS.
 ///
-/// Экран намеренно показывает адрес в том виде, в каком он реально уйдёт в
-/// запрос: человек набирает `203.0.113.10:8090`, а уходит
-/// `http://203.0.113.10:8090`. Молчаливая подстановка схемы — источник
-/// «почему не подключается», который невозможно увидеть.
+/// Адрес сервера больше не является пользовательской настройкой. Приложение
+/// всегда подключается к защищённому Wesi endpoint, поэтому человек вводит
+/// только свои учётные данные и не может случайно отправить пароль на чужой
+/// адрес из-за опечатки.
 class SyncScreen extends StatefulWidget {
   const SyncScreen({super.key});
 
@@ -28,8 +28,6 @@ class SyncScreen extends StatefulWidget {
 }
 
 class _SyncScreenState extends State<SyncScreen> {
-  late final TextEditingController _url =
-      TextEditingController(text: SyncEndpoint.rawUrl);
   late final TextEditingController _login =
       TextEditingController(text: SyncEndpoint.login);
   final TextEditingController _password = TextEditingController();
@@ -41,8 +39,13 @@ class _SyncScreenState extends State<SyncScreen> {
   bool get _ru => WesiLocale.isRussian;
 
   @override
+  void initState() {
+    super.initState();
+    SyncEndpoint.ensureDefaultServer();
+  }
+
+  @override
   void dispose() {
-    _url.dispose();
     _login.dispose();
     _password.dispose();
     super.dispose();
@@ -57,26 +60,19 @@ class _SyncScreenState extends State<SyncScreen> {
   }
 
   Future<void> _signIn() async {
-    final address = SyncEndpoint.normalize(_url.text);
-    if (address == null) {
-      _say(
-          _ru
-              ? 'Адрес не похож на адрес сервера'
-              : 'That does not look like a server address',
-          error: true);
-      return;
-    }
-    if (_login.text.trim().isEmpty || _password.text.isEmpty) {
+    final login = _login.text.trim();
+    final password = _password.text;
+    if (login.isEmpty || password.isEmpty) {
       _say(_ru ? 'Нужны логин и пароль' : 'Login and password required',
           error: true);
       return;
     }
 
     setState(() => _busy = true);
-    await SyncEndpoint.configure(url: address, login: _login.text);
+    await SyncEndpoint.configure(login: login);
 
-    final transport = PocketBaseTransport(address);
-    final res = await transport.signIn(_login.text.trim(), _password.text);
+    final transport = PocketBaseTransport(SyncEndpoint.url);
+    final res = await transport.signIn(login, password);
     if (!mounted) return;
     setState(() => _busy = false);
 
@@ -84,9 +80,9 @@ class _SyncScreenState extends State<SyncScreen> {
       _say(res.failure!.describe(russian: _ru), error: true);
       return;
     }
-    // Пароль в памяти дальше не нужен: держим пропуск, а не пароль.
+
     _password.clear();
-    _say(_ru ? 'Вход выполнен' : 'Signed in');
+    _say(_ru ? 'Сервер подключён' : 'Server connected');
   }
 
   Future<void> _signOut() async {
@@ -110,7 +106,6 @@ class _SyncScreenState extends State<SyncScreen> {
       valueListenable: SyncEndpoint.revision,
       builder: (context, _, __) {
         final signedIn = SyncEndpoint.session != null;
-        final address = SyncEndpoint.normalize(_url.text);
 
         return Scaffold(
           backgroundColor: AppTheme.background,
@@ -120,17 +115,23 @@ class _SyncScreenState extends State<SyncScreen> {
               children: [
                 Padding(
                   padding: EdgeInsets.fromLTRB(
-                      8, kTitleBarInset + 12, kHasCustomTitleBar ? 148 : 16, 0),
+                    8,
+                    kTitleBarInset + 12,
+                    kHasCustomTitleBar ? 148 : 16,
+                    0,
+                  ),
                   child: Row(
                     children: [
                       IconButton(
-                        icon:
-                            Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+                        icon: Icon(Icons.arrow_back,
+                            color: AppTheme.textPrimary),
                         onPressed: () => Navigator.pop(context),
                       ),
                       Expanded(
                         child: WesiTitle(
-                            _ru ? 'Синхронизация' : 'Sync', size: 22),
+                          _ru ? 'Синхронизация' : 'Sync',
+                          size: 22,
+                        ),
                       ),
                     ],
                   ),
@@ -141,28 +142,12 @@ class _SyncScreenState extends State<SyncScreen> {
                     children: [
                       _statusCard(signedIn),
                       const SizedBox(height: 14),
-                      _field(
-                        controller: _url,
-                        label: _ru ? 'Адрес сервера' : 'Server address',
-                        hint: '203.0.113.10:8090',
-                        onChanged: (_) => setState(() {}),
-                      ),
-                      if (address != null && address != _url.text.trim())
-                        Padding(
-                          padding: const EdgeInsets.only(top: 6, left: 4),
-                          child: Text(
-                            _ru
-                                ? 'Запрос уйдёт на $address'
-                                : 'Requests will go to $address',
-                            style: TextStyle(
-                                fontSize: 11, color: AppTheme.textMuted),
-                          ),
-                        ),
-                      const SizedBox(height: 12),
+                      _serverCard(),
+                      const SizedBox(height: 14),
                       _field(
                         controller: _login,
-                        label: _ru ? 'Логин' : 'Login',
-                        hint: 'wesi',
+                        label: _ru ? 'Логин или почта' : 'Login or email',
+                        hint: 'WesiOff',
                       ),
                       const SizedBox(height: 12),
                       _field(
@@ -218,7 +203,7 @@ class _SyncScreenState extends State<SyncScreen> {
                       const SizedBox(height: 18),
                       _whatSyncs(),
                       const SizedBox(height: 14),
-                      _honestNote(),
+                      _privacyNote(),
                     ],
                   ),
                 ),
@@ -229,6 +214,55 @@ class _SyncScreenState extends State<SyncScreen> {
       },
     );
   }
+
+  Widget _serverCard() => Container(
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: AppTheme.surface.withOpacity(0.35),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: AppTheme.glassBorder),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withOpacity(0.12),
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(Icons.cloud_outlined,
+                  size: 21, color: AppTheme.accent),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Wesi Cloud',
+                    style: TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    _ru
+                        ? 'Основной сервер выбирается автоматически'
+                        : 'The main server is selected automatically',
+                    style: TextStyle(
+                        fontSize: 11.5, color: AppTheme.textMuted),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.lock_outline,
+                size: 17, color: AppTheme.accentGreen),
+          ],
+        ),
+      );
 
   Widget _statusCard(bool signedIn) {
     final last = SyncEndpoint.lastRun;
@@ -258,7 +292,7 @@ class _SyncScreenState extends State<SyncScreen> {
                 Text(
                   signedIn
                       ? (_ru ? 'Сервер подключён' : 'Server connected')
-                      : (_ru ? 'Сервер не подключён' : 'Server not connected'),
+                      : (_ru ? 'Требуется вход' : 'Sign-in required'),
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -268,9 +302,7 @@ class _SyncScreenState extends State<SyncScreen> {
                 const SizedBox(height: 3),
                 Text(
                   last == null
-                      ? (_ru
-                          ? 'Обмена ещё не было'
-                          : 'No exchange yet')
+                      ? (_ru ? 'Обмена ещё не было' : 'No exchange yet')
                       : (_ru
                           ? 'Последний обмен: ${_when(last)}'
                           : 'Last exchange: ${_when(last)}'),
@@ -321,11 +353,11 @@ class _SyncScreenState extends State<SyncScreen> {
                 Text(
                   signedIn
                       ? (_ru
-                          ? 'Обмен раз при открытии программы, молча'
-                          : 'One exchange when the app opens, silently')
+                          ? 'Один тихий обмен при открытии программы'
+                          : 'One silent exchange when the app opens')
                       : (_ru
-                          ? 'Сначала войдите на сервер'
-                          : 'Sign in to the server first'),
+                          ? 'Сначала войдите в Wesi Cloud'
+                          : 'Sign in to Wesi Cloud first'),
                   style:
                       TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
@@ -336,8 +368,8 @@ class _SyncScreenState extends State<SyncScreen> {
             value: on && signedIn,
             activeColor: AppTheme.accent,
             onChanged: signedIn
-                ? (v) async {
-                    await SyncEndpoint.setEnabled(v);
+                ? (value) async {
+                    await SyncEndpoint.setEnabled(value);
                     if (mounted) setState(() {});
                   }
                 : null,
@@ -375,7 +407,7 @@ class _SyncScreenState extends State<SyncScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _ru ? 'Что уезжает на сервер' : 'What goes to the server',
+            _ru ? 'Что хранится на сервере' : 'What is stored on the server',
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w700,
@@ -383,16 +415,15 @@ class _SyncScreenState extends State<SyncScreen> {
             ),
           ),
           const SizedBox(height: 8),
-          for (final c in SyncCodec.collections)
+          for (final collection in SyncCodec.collections)
             Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Row(
                 children: [
-                  Icon(Icons.circle,
-                      size: 5, color: AppTheme.textMuted),
+                  Icon(Icons.circle, size: 5, color: AppTheme.textMuted),
                   const SizedBox(width: 8),
                   Text(
-                    names[c.name] ?? c.name,
+                    names[collection.name] ?? collection.name,
                     style: TextStyle(
                         fontSize: 12, color: AppTheme.textMuted),
                   ),
@@ -404,47 +435,41 @@ class _SyncScreenState extends State<SyncScreen> {
     );
   }
 
-  Widget _honestNote() {
-    return Container(
-      padding: const EdgeInsets.all(13),
-      decoration: BoxDecoration(
-        color: AppTheme.surface.withOpacity(0.25),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.glassBorder),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(Icons.info_outline, size: 16, color: AppTheme.textMuted),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              _ru
-                  ? 'Настройки, ключи и пароль Wesi Shield не уезжают никуда: '
-                      'они привязаны к устройству. Встроенные статьи справки '
-                      'тоже — они приходят с обновлением.\n\n'
-                      'Сейчас синхронизируются устройства одной учётной '
-                      'записи. Общий доступ сотрудников к одним и тем же '
-                      'данным — следующий шаг, он требует прав на стороне '
-                      'сервера.'
-                  : 'Settings, keys and the Wesi Shield password never leave '
-                      'the device. Built-in help articles do not either — '
-                      'they arrive with updates.\n\n'
-                      'Right now this syncs the devices of one account. '
-                      'Shared access for employees is the next step; it needs '
-                      'permissions on the server side.',
-              style: TextStyle(
-                  fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
+  Widget _privacyNote() => Container(
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: AppTheme.surface.withOpacity(0.25),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.glassBorder),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(Icons.security_outlined,
+                size: 16, color: AppTheme.textMuted),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                _ru
+                    ? 'Пароль после входа не сохраняется. На устройстве остаётся '
+                        'только ограниченный серверный токен. Пароль Wesi Shield '
+                        'и приватные ключи на сервер не отправляются.'
+                    : 'The password is not stored after sign-in. Only a limited '
+                        'server token remains on the device. Wesi Shield and '
+                        'private keys are never uploaded.',
+                style: TextStyle(
+                    fontSize: 11.5,
+                    height: 1.45,
+                    color: AppTheme.textMuted),
+              ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
+          ],
+        ),
+      );
 
   String _when(DateTime at) {
     final local = at.toLocal();
-    String two(int v) => v.toString().padLeft(2, '0');
+    String two(int value) => value.toString().padLeft(2, '0');
     return '${two(local.day)}.${two(local.month)}.${local.year} '
         '${two(local.hour)}:${two(local.minute)}';
   }
@@ -454,77 +479,78 @@ class _SyncScreenState extends State<SyncScreen> {
     required String label,
     required String hint,
     bool obscure = false,
-    ValueChanged<String>? onChanged,
-  }) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label,
-            style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted)),
-        const SizedBox(height: 5),
-        TextField(
-          controller: controller,
-          obscureText: obscure,
-          onChanged: onChanged,
-          style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
-          decoration: InputDecoration(
-            hintText: hint,
-            hintStyle:
-                TextStyle(fontSize: 13, color: AppTheme.textMuted),
-            isDense: true,
-            contentPadding:
-                const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            filled: true,
-            fillColor: AppTheme.surfaceLight.withOpacity(0.4),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppTheme.glassBorder),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppTheme.glassBorder),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(10),
-              borderSide: BorderSide(color: AppTheme.accent),
+  }) =>
+      Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted)),
+          const SizedBox(height: 5),
+          TextField(
+            controller: controller,
+            obscureText: obscure,
+            autocorrect: false,
+            enableSuggestions: !obscure,
+            style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+            decoration: InputDecoration(
+              hintText: hint,
+              hintStyle:
+                  TextStyle(fontSize: 13, color: AppTheme.textMuted),
+              filled: true,
+              fillColor: AppTheme.surface.withOpacity(0.35),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.glassBorder),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+                borderSide: BorderSide(color: AppTheme.accent),
+              ),
             ),
           ),
-        ),
-      ],
-    );
-  }
+        ],
+      );
 
   Widget _button({
     required String label,
-    VoidCallback? onTap,
-    bool filled = false,
+    required VoidCallback? onTap,
     bool muted = false,
-  }) {
-    final enabled = onTap != null;
-    final accent = muted ? AppTheme.textMuted : AppTheme.accent;
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
+    bool filled = false,
+  }) =>
+      Opacity(
+        opacity: onTap == null ? 0.45 : 1,
+        child: Material(
           color: filled
-              ? accent.withOpacity(enabled ? 0.18 : 0.06)
-              : AppTheme.surface.withOpacity(0.4),
+              ? AppTheme.accent
+              : muted
+                  ? AppTheme.surface.withOpacity(0.45)
+                  : AppTheme.surfaceLight.withOpacity(0.55),
           borderRadius: BorderRadius.circular(11),
-          border: Border.all(
-            color: enabled ? accent.withOpacity(0.5) : AppTheme.glassBorder,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(11),
+            child: Container(
+              alignment: Alignment.center,
+              constraints: const BoxConstraints(minHeight: 44),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(
+                  color: filled
+                      ? AppTheme.accent
+                      : AppTheme.glassBorder,
+                ),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: filled ? Colors.white : AppTheme.textSecondary,
+                ),
+              ),
+            ),
           ),
         ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w600,
-            color: enabled ? accent : AppTheme.textMuted,
-          ),
-        ),
-      ),
-    );
-  }
+      );
 }
