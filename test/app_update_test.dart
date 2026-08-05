@@ -1,7 +1,10 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:hive/hive.dart';
 import 'package:wesios/core/services/app_update_service.dart';
+import 'package:wesios/core/services/update_endpoint.dart';
 
 void main() {
   group('AppRelease.compareVersions', () {
@@ -101,6 +104,117 @@ void main() {
       final url = AppUpdateService.releaseFileUrl('app-manifest.json');
       expect(url, contains('/releases/download/app-latest/'));
       expect(url, endsWith('app-manifest.json'));
+    });
+  });
+
+  group('свой сервер как источник обновлений', () {
+    late Directory dir;
+
+    setUpAll(() async {
+      dir = Directory.systemTemp.createTempSync('wesios_update_src');
+      Hive.init(dir.path);
+      await Hive.openBox('wesios_settings');
+    });
+
+    tearDownAll(() async {
+      await Hive.close();
+      dir.deleteSync(recursive: true);
+    });
+
+    setUp(() => UpdateEndpoint.setOverride(null));
+
+    test('по умолчанию — свой сервер, а не GitHub', () {
+      expect(UpdateEndpoint.base, UpdateEndpoint.defaultBase);
+      expect(UpdateEndpoint.manifestUrl, endsWith('/app/app-manifest.json'));
+    });
+
+    test('адрес можно переопределить — иначе переезд сервера не пережить',
+        () async {
+      // Сборка со старым адресом остаётся у людей на руках, и обновиться,
+      // чтобы узнать новый адрес, она уже не может. Круг размыкается только
+      // настройкой.
+      await UpdateEndpoint.setOverride('https://other.example.com/files');
+      expect(UpdateEndpoint.manifestUrl,
+          'https://other.example.com/files/app/app-manifest.json');
+    });
+
+    test('лишние косые черты не превращаются в двойные', () async {
+      await UpdateEndpoint.setOverride('https://x.example.com/files///');
+      expect(UpdateEndpoint.fileUrl('/app/0.1.5+12/wesios-android.apk'),
+          'https://x.example.com/files/app/0.1.5+12/wesios-android.apk');
+    });
+
+    test('пустая строка возвращает адрес по умолчанию, а не ломает ссылки',
+        () async {
+      await UpdateEndpoint.setOverride('   ');
+      expect(UpdateEndpoint.base, UpdateEndpoint.defaultBase);
+    });
+  });
+
+  group('контрольная сумма в манифесте', () {
+    test('разбирается, когда сервер её прислал', () {
+      final release = AppRelease.tryParse({
+        'version': '0.1.5',
+        'build': 12,
+        'asset': 'wesios-android.apk',
+        'path': 'app/0.1.5+12/wesios-android.apk',
+        'sizeBytes': 26000000,
+        'sha256': 'ABCDEF0123456789',
+      })!;
+      expect(release.sha256, 'ABCDEF0123456789');
+    });
+
+    test('её отсутствие не мешает обновиться со старого источника', () {
+      // GitHub Releases сумму не отдаёт. Обновление оттуда должно остаться
+      // возможным, иначе запасной путь перестанет быть путём.
+      final release = AppRelease.tryParse({
+        'version': '0.1.5',
+        'build': 12,
+        'asset': 'wesios-android.apk',
+      })!;
+      expect(release.sha256, isNull);
+      expect(release.downloadUrl, isNull);
+    });
+
+    test('ссылка приклеивается, не теряя остального', () {
+      final base = AppRelease.tryParse({
+        'version': '0.1.5',
+        'build': 12,
+        'asset': 'wesios-android.apk',
+        'sizeBytes': 100,
+        'sha256': 'abc',
+        'notes': 'Что нового',
+      })!;
+      final withUrl = base.withDownloadUrl('https://s/app/x.apk');
+      expect(withUrl.downloadUrl, 'https://s/app/x.apk');
+      expect(withUrl.sha256, 'abc');
+      expect(withUrl.sizeBytes, 100);
+      expect(withUrl.notes, 'Что нового');
+      expect(withUrl.version, '0.1.5');
+    });
+  });
+
+  group('коды ошибок', () {
+    test('несовпадение суммы — отдельный код, а не «ошибка скачивания»', () {
+      // Обрыв связи чинится повтором, несовпадение суммы — нет. Смешав их в
+      // один код, человека отправили бы жать «повторить» до бесконечности.
+      final mismatch = UpdateError.byCode('W111');
+      final network = UpdateError.byCode('W103');
+      expect(mismatch.code, isNot(network.code));
+      expect(mismatch.titleRu, isNot(network.titleRu));
+      expect(mismatch.messageRu, contains('умма'));
+    });
+
+    test('у каждого кода свой заголовок — иначе они бесполезны', () {
+      const codes = [
+        'W101', 'W102', 'W103', 'W104', 'W105',
+        'W106', 'W107', 'W108', 'W109', 'W110', 'W111',
+        'A201', 'A202',
+      ];
+      final titles = [
+        for (final c in codes) UpdateError.byCode(c).titleRu,
+      ];
+      expect(titles.toSet().length, titles.length);
     });
   });
 }

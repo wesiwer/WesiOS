@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -9,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../constants/app_version.dart';
 import 'github_auth_service.dart';
+import 'update_endpoint.dart';
 
 enum UpdateStage { idle, checking, available, downloading, ready, installing, failed }
 
@@ -117,6 +119,29 @@ class UpdateError {
           titleEn: 'Update failed',
           messageRu: 'Во время скачивания или подготовки установки произошла ошибка.',
           messageEn: 'An error occurred while downloading or preparing the install.',
+          detail: detail,
+          logPath: logPath,
+        );
+      // Скачанное не совпало с тем, что обещал манифест.
+      //
+      // Отдельный код, а не «ошибка скачивания»: причина здесь другая и
+      // ведёт себя иначе. Обрыв связи чинится повтором, несовпадение суммы
+      // повтором не чинится — либо на сервере лежит не то, что выкладывали,
+      // либо файл подменили по дороге. И то и другое стоит того, чтобы
+      // человек это увидел, а не молча ставил.
+      case 'W111':
+        return UpdateError(
+          code: code,
+          titleRu: 'Файл не совпал с ожидаемым',
+          titleEn: 'Downloaded file does not match',
+          messageRu:
+              'Контрольная сумма скачанной сборки не сходится с той, что указана на сервере. Установка отменена, файл удалён.',
+          messageEn:
+              'The checksum of the downloaded build does not match the one on the server. Installation cancelled and the file deleted.',
+          helpRu:
+              'Повторите позже. Если повторяется — на сервере лежит не та сборка: перезапустите выкладку.',
+          helpEn:
+              'Try again later. If it repeats, the server holds a different build — re-run the deploy.',
           detail: detail,
           logPath: logPath,
         );
@@ -245,12 +270,29 @@ class AppRelease {
   final int? sizeBytes;
   final String? notes;
 
+  /// Прямая ссылка на файл. null — сборку надо забирать через GitHub API,
+  /// по пропуску (старый путь).
+  ///
+  /// По наличию этого поля и различаются два источника. Отдельного флага
+  /// «откуда» нет намеренно: флаг можно забыть выставить, а ссылку — нет,
+  /// без неё просто нечего скачивать.
+  final String? downloadUrl;
+
+  /// Контрольная сумма файла из манифеста. null — сервер её не прислал.
+  ///
+  /// Размер ловит обрыв закачки, но не подмену и не тихую порчу. Раз сервер
+  /// стал основным источником установочных файлов, проверять их обязан тот,
+  /// кто ставит.
+  final String? sha256;
+
   const AppRelease({
     required this.version,
     required this.build,
     required this.assetName,
     this.sizeBytes,
     this.notes,
+    this.downloadUrl,
+    this.sha256,
   });
 
   static AppRelease? tryParse(Map<String, dynamic> json) {
@@ -263,8 +305,19 @@ class AppRelease {
       assetName: asset,
       sizeBytes: (json['sizeBytes'] as num?)?.toInt(),
       notes: json['notes'] as String?,
+      sha256: json['sha256'] is String ? json['sha256'] as String : null,
     );
   }
+
+  AppRelease withDownloadUrl(String url) => AppRelease(
+        version: version,
+        build: build,
+        assetName: assetName,
+        sizeBytes: sizeBytes,
+        notes: notes,
+        downloadUrl: url,
+        sha256: sha256,
+      );
 
   bool isNewerThan(String currentVersion, int currentBuild) {
     final cmp = compareVersions(version, currentVersion);
@@ -453,6 +506,45 @@ class AppUpdateService {
     reportFailure(UpdateError.byCode(code, detail: detail, logPath: logPath));
   }
 
+  /// Спросить свой сервер. null — не ответил или ответил не тем; тогда
+  /// вызывающий идёт к GitHub.
+  ///
+  /// Молча, без сообщений об ошибке: недоступный сервер здесь не поломка, а
+  /// обычное дело — телефон в метро, ноутбук в чужой сети. Про неудачу
+  /// человеку скажут только если и запасной путь не сработает.
+  static Future<AppRelease?> _checkOnServer() async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final req = await client.getUrl(Uri.parse(UpdateEndpoint.manifestUrl));
+      req.headers.set(HttpHeaders.userAgentHeader, 'WesiOS');
+      final res = await req.close().timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) {
+        await res.drain<void>();
+        return null;
+      }
+      final json = jsonDecode(await res.transform(utf8.decoder).join());
+      if (json is! Map) return null;
+      final platform = json[platformKey!];
+      if (platform is! Map) return null;
+
+      final entry = Map<String, dynamic>.from(platform);
+      final parsed = AppRelease.tryParse(entry);
+      if (parsed == null) return null;
+
+      // Без пути скачивать нечего, а значит и объявлять обновление не о чем:
+      // человек увидел бы кнопку «Обновить», которая ничего не делает.
+      final path = entry['path'];
+      if (path is! String || path.isEmpty) return null;
+
+      return parsed.withDownloadUrl(UpdateEndpoint.fileUrl(path));
+    } catch (_) {
+      return null;
+    } finally {
+      client.close();
+    }
+  }
+
   static Future<AppRelease?> check({bool force = false}) async {
     if (!isSupported) return null;
     if (!force &&
@@ -463,6 +555,20 @@ class AppUpdateService {
     }
 
     progress.value = const UpdateProgress(stage: UpdateStage.checking);
+
+    // Сперва свой сервер. Он не требует никакого входа: сотруднику не нужна
+    // учётная запись на GitHub, чтобы обновить рабочее приложение.
+    final fromServer = await _checkOnServer();
+    if (fromServer != null) {
+      _release = fromServer;
+      _checkedAt = DateTime.now();
+      latest.value = fromServer;
+      progress.value = UpdateProgress(
+        stage: updateAvailable ? UpdateStage.available : UpdateStage.idle,
+      );
+      return fromServer;
+    }
+
     final client = HttpClient();
     try {
       final headers = await GitHubAuthService.authHeaders();
@@ -532,24 +638,41 @@ class AppUpdateService {
     final client = HttpClient();
     File? target;
     try {
-      final headers = await GitHubAuthService.authHeaders();
-      if (headers.isEmpty) {
-        reportFailure(UpdateError.byCode('W101'));
-        return;
-      }
-      final assets = _assetIdCache ?? await _assetIds(client, headers);
-      final assetId = assets?[release.assetName];
-      if (assetId == null) {
-        reportFailure(UpdateError.byCode('W102',
-            detail: release.assetName));
-        return;
-      }
+      final HttpClientResponse? response;
 
-      final response = await _openAsset(client, assetId, headers);
-      if (response == null || response.statusCode != 200) {
-        reportFailure(UpdateError.byCode('W103',
-            detail: 'HTTP ${response?.statusCode ?? '—'}'));
-        return;
+      final direct = release.downloadUrl;
+      if (direct != null) {
+        // Свой сервер: ссылка известна, пропуск не нужен.
+        final req = await client.getUrl(Uri.parse(direct));
+        req.headers.set(HttpHeaders.userAgentHeader, 'WesiOS');
+        final res = await req.close();
+        if (res.statusCode != 200) {
+          await res.drain<void>();
+          reportFailure(UpdateError.byCode('W103',
+              detail: 'сервер: HTTP ${res.statusCode}'));
+          return;
+        }
+        response = res;
+      } else {
+        final headers = await GitHubAuthService.authHeaders();
+        if (headers.isEmpty) {
+          reportFailure(UpdateError.byCode('W101'));
+          return;
+        }
+        final assets = _assetIdCache ?? await _assetIds(client, headers);
+        final assetId = assets?[release.assetName];
+        if (assetId == null) {
+          reportFailure(UpdateError.byCode('W102',
+              detail: release.assetName));
+          return;
+        }
+
+        response = await _openAsset(client, assetId, headers);
+        if (response == null || response.statusCode != 200) {
+          reportFailure(UpdateError.byCode('W103',
+              detail: 'HTTP ${response?.statusCode ?? '—'}'));
+          return;
+        }
       }
 
       final total =
@@ -581,6 +704,25 @@ class AppUpdateService {
       await sink.flush();
       await sink.close();
 
+      // Проверяем скачанное ДО того, как отдать его установщику.
+      //
+      // Дальше файл уходит в системный установщик Android или в bat-скрипт,
+      // который подменяет им работающую программу. Ни тот, ни другой уже не
+      // спросят, то ли это, что выкладывали. Единственный момент, когда это
+      // можно выяснить, — здесь.
+      final expected = release.sha256;
+      if (expected != null && expected.isNotEmpty) {
+        final actual = await _sha256Of(target);
+        if (actual.toLowerCase() != expected.toLowerCase()) {
+          await target.delete().catchError((_) => target!);
+          reportFailure(UpdateError.byCode(
+            'W111',
+            detail: 'ожидалось $expected, получено $actual',
+          ));
+          return;
+        }
+      }
+
       progress.value = UpdateProgress(
         stage: UpdateStage.installing,
         bytesDownloaded: downloaded,
@@ -610,6 +752,15 @@ class AppUpdateService {
     } finally {
       client.close();
     }
+  }
+
+  /// Контрольная сумма файла.
+  ///
+  /// Считается порциями, а не по всему файлу разом: APK весит 25 МБ, а на
+  /// телефоне это уже та память, из-за которой приложение снимают.
+  static Future<String> _sha256Of(File file) async {
+    final digest = await sha256.bind(file.openRead()).first;
+    return digest.toString();
   }
 
   static Future<Directory> _downloadDir() async {
