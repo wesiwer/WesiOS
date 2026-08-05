@@ -1,0 +1,13 @@
+name: Diagnose portal GET sentinel
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-portal-get-sentinel.yml'
+permissions:
+  contents: read
+jobs:
+  sentinel:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo sentinel
