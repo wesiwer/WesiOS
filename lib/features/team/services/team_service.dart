@@ -10,6 +10,7 @@ import '../models/employee_model.dart';
 import '../models/team_permissions.dart';
 import 'credentials_generator.dart';
 import 'login_pool_service.dart';
+import 'portal_account_service.dart';
 
 /// Результат создания сотрудника.
 ///
@@ -21,16 +22,27 @@ class CreatedEmployee {
   final EmployeeModel employee;
   final String password;
 
-  const CreatedEmployee(this.employee, this.password);
+  /// Создалась ли одновременно учётная запись на серверном портале.
+  ///
+  /// false не отменяет локальную карточку: владелец может работать офлайн,
+  /// а доступ к порталу повторно создастся при сбросе пароля после входа в
+  /// синхронизацию.
+  final bool portalProvisioned;
+
+  const CreatedEmployee(
+    this.employee,
+    this.password, {
+    this.portalProvisioned = false,
+  });
 }
 
 /// Сотрудники: кто есть, кто чем может пользоваться, кто под каким логином
 /// входит.
 ///
-/// Пока всё лежит на устройстве. Устроено так, чтобы переезд на сервер был
-/// заменой хранилища, а не переписыванием: наружу отдаются готовые модели, а
-/// не строки Hive, и проверка пароля уже сейчас идёт через хеш — ровно так,
-/// как её будет делать сервер.
+/// Пока основная карточка лежит на устройстве. Для первого входа сотрудника
+/// на сайт дополнительно создаётся auth-запись PocketBase с тем же логином и
+/// паролем. Внешний пароль нигде не сохраняется: сервер сразу превращает его
+/// в хеш.
 class TeamService {
   TeamService._();
 
@@ -169,7 +181,10 @@ class TeamService {
 
   /// Заводит сотрудника: занимает свободный логин, генерирует пароль.
   ///
-  /// Возвращает null, если свободных логинов не осталось.
+  /// После локального сохранения тем же логином и паролем создаётся доступ к
+  /// порталу сотрудников. Сетевая неудача не уничтожает карточку: человек
+  /// может быть заведен офлайн, а при последующем сбросе пароля серверная
+  /// учётная запись создастся или обновится повторно.
   static Future<CreatedEmployee?> create({
     required String fullName,
     String nickname = '',
@@ -218,7 +233,16 @@ class TeamService {
 
     await box.put(employee.id, employee);
     revision.value++;
-    return CreatedEmployee(employee, pass);
+
+    final portalProvisioned = await PortalAccountService.provision(
+      employee: employee,
+      password: pass,
+    );
+    return CreatedEmployee(
+      employee,
+      pass,
+      portalProvisioned: portalProvisioned,
+    );
   }
 
   /// Заводит карточку владельца — один раз, при первом открытии контактов.
@@ -250,6 +274,9 @@ class TeamService {
 
   /// Убирает сотрудника. Логин возвращается в свободные, пароль исчезает
   /// вместе с записью.
+  ///
+  /// Серверная деактивация будет отдельным endpoint: локальное удаление не
+  /// должно притворяться, что доступ на сервере отозван, если сети нет.
   static Future<bool> remove(String id) async {
     final box = _open();
     final employee = box?.get(id);
@@ -265,14 +292,22 @@ class TeamService {
   }
 
   /// Смена пароля — сотрудником себе или владельцем сотруднику.
-  static Future<void> setPassword(String id, String password) async {
+  static Future<bool> setPassword(String id, String password) async {
     final employee = byId(id);
-    if (employee == null) return;
+    if (employee == null) return false;
     final salt = _newSalt();
-    await save(employee.copyWith(
+    final updated = employee.copyWith(
       passwordSalt: salt,
       passwordHash: ShieldService.derive(password, salt, _iterations),
-    ));
+    );
+    await save(updated);
+
+    // Тот же пароль сразу становится действующим на портале. false означает,
+    // что локально пароль сменился, а сервер был недоступен.
+    return PortalAccountService.provision(
+      employee: updated,
+      password: password,
+    );
   }
 
   /// Выдаёт сотруднику новый пароль и возвращает его — показать один раз.
