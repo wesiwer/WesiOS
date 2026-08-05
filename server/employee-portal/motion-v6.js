@@ -12,6 +12,10 @@
   let pathLength = 0;
   let lastPathKey = '';
 
+  function clamp(value, min = 0, max = 1) {
+    return Math.max(min, Math.min(max, value));
+  }
+
   function point(node, x = .5, y = .5) {
     const r = node.getBoundingClientRect();
     return { x: r.left + r.width * x, y: r.top + r.height * y };
@@ -40,10 +44,11 @@
     const flow = $('flowSection');
     const board = document.querySelector('.flow-board');
     const rail = $('motionRail');
-    const auth = $('authorization');
-    if (!stage || !core || !flow || !board || !rail || !auth) return;
+    const railLine = rail?.querySelector('.rail-line');
+    if (!stage || !core || !flow || !board || !rail || !railLine) return;
 
     const o = point(origin, .02, .5);
+    const merge = point(railLine, .5, .015);
     const points = [
       o,
       { x: o.x + 70, y: o.y + 4 },
@@ -54,11 +59,12 @@
       point(flow, .77, .24),
       point(board, .55, .48),
       point(flow, .22, .76),
-      point(rail, .1, .22),
-      point(rail, .22, .64),
-      point(auth, .12, .26),
-      point(auth, .76, .5),
+      { x: merge.x + 118, y: merge.y - 210 },
+      { x: merge.x + 42, y: merge.y - 94 },
+      { x: merge.x, y: merge.y - 34 },
+      merge,
     ];
+
     const key = points.map(p => `${Math.round(p.x)},${Math.round(p.y)}`).join('|');
     if (key === lastPathKey) return;
     lastPathKey = key;
@@ -70,20 +76,26 @@
 
   function updateTarget() {
     const rail = $('motionRail');
-    const auth = $('authorization');
-    if (!rail || !auth) return;
+    const railLine = rail?.querySelector('.rail-line');
+    if (!rail || !railLine) return;
     const start = origin.getBoundingClientRect().top + scrollY - innerHeight * .7;
-    const end = auth.getBoundingClientRect().top + scrollY + auth.offsetHeight * .62;
-    target = Math.max(0, Math.min(1, (scrollY - start) / Math.max(1, end - start)));
+    const end = railLine.getBoundingClientRect().top + scrollY - innerHeight * .36;
+    target = clamp((scrollY - start) / Math.max(1, end - start));
   }
 
   function render() {
     buildPath();
     smooth += (target - smooth) * .075;
+
+    const railLine = document.querySelector('#motionRail .rail-line');
     if (pathLength > 0) {
       const visible = pathLength * smooth;
-      const trailLength = Math.min(150, 72 + innerWidth * .055);
-      const headLength = Math.min(44, 28 + innerWidth * .018);
+      const merge = clamp((smooth - .82) / .18);
+      const mergeEase = merge * merge * (3 - 2 * merge);
+      const baseTrailLength = Math.min(150, 72 + innerWidth * .055);
+      const baseHeadLength = Math.min(44, 28 + innerWidth * .018);
+      const trailLength = Math.max(34, baseTrailLength * (1 - mergeEase * .62));
+      const headLength = Math.max(9, baseHeadLength * (1 - mergeEase * .74));
       const trailStart = Math.max(0, visible - trailLength);
       const headStart = Math.max(0, visible - headLength);
 
@@ -91,11 +103,18 @@
       trail.style.strokeDashoffset = `${-trailStart}`;
       head.style.strokeDasharray = `${headLength} ${pathLength + headLength}`;
       head.style.strokeDashoffset = `${-headStart}`;
-      svg.classList.toggle('active', smooth > .002 && smooth < .995);
+      trail.style.opacity = `${.32 * (1 - mergeEase)}`;
+      head.style.opacity = `${1 - mergeEase}`;
+      svg.classList.toggle('active', smooth > .002 && smooth < .9995);
 
-      // Линия уходит под карточки в центральной части маршрута и снова
-      // появляется сверху после неё — это один и тот же путь, а не копии.
+      // Один и тот же путь проходит за карточками, а в финале точно входит
+      // в вертикальную ось шагов 01–02–03 и растворяется в ней.
       svg.style.zIndex = smooth > .13 && smooth < .48 ? '3' : '8';
+      if (railLine) {
+        const pulse = Math.sin(mergeEase * Math.PI);
+        railLine.style.setProperty('--runner-merge', pulse.toFixed(3));
+        railLine.classList.toggle('runner-merge-active', merge > .01 && merge < .995);
+      }
     }
     requestAnimationFrame(render);
   }
