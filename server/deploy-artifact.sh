@@ -28,6 +28,24 @@
 
 set -euo pipefail
 
+# Куда класть.
+#
+# **Два места, и второе проще.**
+#
+# `/srv/wesi-artifacts` — отдельный каталог, но его надо кому-то отдавать
+# наружу: блок `location /artifacts/` в nginx, правка конфига, `nginx -t`,
+# перезагрузка. Всё это требует root.
+#
+# `pb_public` внутри PocketBase — каталог, который PocketBase раздаёт сам,
+# по тем же адресам и по тому же сертификату. Ни строчки в nginx, ни root:
+# достаточно права записи у того пользователя, под которым идёт выкладка.
+# Проверяется одним запросом — если сервер отвечает
+# `{"message":"File not found."}`, значит статический обработчик PocketBase
+# работает и файлы из pb_public он отдаст.
+#
+#   WESI_ARTIFACTS=/opt/pocketbase/pb_public/artifacts bash deploy-artifact.sh ...
+#
+# Адрес получается один и тот же: https://ДОМЕН/artifacts/app/...
 ROOT="${WESI_ARTIFACTS:-/srv/wesi-artifacts}"
 APP_DIR="$ROOT/app"
 

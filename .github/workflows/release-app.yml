@@ -452,6 +452,7 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
           BUILD: ${{ needs.version.outputs.build }}
           NOTES: ${{ github.event.inputs.notes }}
+          ARTIFACTS_DIR: ${{ vars.WESI_ARTIFACTS_DIR }}
         run: |
           set -euo pipefail
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
@@ -473,8 +474,16 @@ jobs:
           # разбирает их сам скрипт на той стороне.
           NOTES_B64="$(printf '%s' "${NOTES:-}" | base64 -w0)"
 
+          # Куда класть — переменной репозитория WESI_ARTIFACTS_DIR.
+          # Пусто — каталог по умолчанию из самого скрипта.
+          #
+          # Смысл переменной в том, что раздавать файлы может либо nginx
+          # (нужен блок location и root), либо сам PocketBase из pb_public
+          # (не нужно ничего). Второе проще, и выбор не должен требовать
+          # правки этого файла.
           $SSH "$USER@$HOST" \
-            "bash '$REMOTE_TMP/deploy-artifact.sh' \
+            "WESI_ARTIFACTS='${ARTIFACTS_DIR}' \
+             bash '$REMOTE_TMP/deploy-artifact.sh' \
                --version '$VERSION' --build '$BUILD' \
                --from '$REMOTE_TMP' --notes-b64 '$NOTES_B64'"
 
