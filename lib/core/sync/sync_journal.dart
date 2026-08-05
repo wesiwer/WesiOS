@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 /// Отметка о записи: когда её последний раз трогали и не удалена ли она.
@@ -60,6 +61,17 @@ class SyncJournal {
   /// доставки событий значения не имеет — а он в Hive не гарантирован.
   static final Map<String, SyncStamp> _expected = {};
 
+  /// Счётчик **своих** правок — тех, что сделал человек, а не привёз обмен.
+  ///
+  /// По нему запускается автоматическая синхронизация. Считать здесь любые
+  /// изменения бокса нельзя: движок, применяя чужие правки, пишет в те же
+  /// боксы, счётчик бы дёрнулся, обмен запустился бы снова, снова записал —
+  /// и так по кругу, без единой правки от человека.
+  ///
+  /// Отличить одно от другого умеет только это место: движок предупреждает
+  /// про свои записи через [expect], и такие события сюда не попадают.
+  static final ValueNotifier<int> localChanges = ValueNotifier<int>(0);
+
   static String key(String collection, String id) => '$collection/$id';
 
   static Future<Box<dynamic>> open() async {
@@ -91,6 +103,8 @@ class SyncJournal {
         (expected ?? SyncStamp(DateTime.now(), deleted: event.deleted))
             .encode(),
       );
+      // Ожидания не было — значит правку сделал человек, и её надо отправить.
+      if (expected == null) localChanges.value++;
     });
   }
 

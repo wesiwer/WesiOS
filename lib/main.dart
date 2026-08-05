@@ -24,6 +24,7 @@ import 'core/services/firebase_rest_service.dart';
 import 'core/services/github_auth_service.dart';
 import 'core/services/github_release_download.dart';
 import 'core/services/secrets_service.dart';
+import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_engine.dart';
 import 'features/chats/models/chat_message.dart';
 import 'features/chats/models/chat_thread.dart';
@@ -88,6 +89,11 @@ void main() async {
   // до неё, и они выглядели бы как «не менялось никогда» — то есть проиграли
   // бы любому спору с сервером и тихо стёрлись бы чужой копией.
   unawaited(SyncEngine.runOnLaunch());
+
+  // Дальше обмен идёт сам, через пару секунд после того, как человек
+  // что-то поменял. Кнопка «Синхронизировать» остаётся — но нажимать её
+  // больше не обязано быть условием того, что данные доедут.
+  SyncAuto.start();
 
   CurrencyService.loadPrivacyMode();
   ThemeNotifier.load();
