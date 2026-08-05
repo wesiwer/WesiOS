@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../models/chat_message.dart';
 import '../services/topic_chunker.dart';
 import '../services/topic_judge.dart';
+import '../services/topic_refiner.dart';
 
 /// Заголовок блока темы в ленте.
 class TopicDivider extends StatelessWidget {
@@ -51,34 +52,74 @@ class TopicDivider extends StatelessWidget {
   /// сообщениями было бы преждевременно: она меняется с каждым новым
   /// сообщением, и синхронизировать её пришлось бы отдельно.
   static ChatLayout planFor(List<ChatMessage> messages) {
-    final input = [
-      for (final m in messages)
-        if (!m.isSystem)
-          ChunkInput(
-            id: m.id,
-            text: m.isSticker ? '' : m.body,
-            authorId: m.authorId,
-            at: m.at,
-          ),
-    ];
-    if (input.length < 4) return ChatLayout.empty;
+    final prepared = prepare(messages);
+    if (prepared == null) return ChatLayout.empty;
 
-    final plan = TopicChunker.plan(input);
+    final plan = TopicChunker.plan(prepared.input);
     return ChatLayout(
       headers: {
         for (final c in plan.chunks)
-          if (c.start > 0) c.start: c.title,
+          if (c.start > 0) prepared.toMessage(c.start): c.title,
       },
       questions: {
         for (final b in plan.questions)
-          b.index: TopicQuestion(
-            index: b.index,
+          prepared.toMessage(b.index): TopicQuestion(
+            index: prepared.toMessage(b.index),
             suggestedTitle: _titleAfter(plan, b.index),
             reason: b.reason,
             confidence: b.confidence,
           ),
       },
     );
+  }
+
+  /// Разметка, полученная после участия модели.
+  static ChatLayout fromRefined(
+    ChunkedMessages prepared,
+    RefinedTopics refined,
+  ) =>
+      ChatLayout(
+        headers: {
+          for (final c in refined.chunks)
+            if (c.start > 0) prepared.toMessage(c.start): c.title,
+        },
+        questions: {
+          for (final q in refined.questions)
+            prepared.toMessage(q.index): TopicQuestion(
+              index: prepared.toMessage(q.index),
+              suggestedTitle: q.suggestedTitle,
+              reason: q.reason,
+              confidence: q.confidence,
+            ),
+        },
+        judgedBy: refined.judgedBy,
+      );
+
+  /// Готовит переписку к разбору — и запоминает, какому сообщению
+  /// соответствует каждая позиция.
+  ///
+  /// **Зачем карта позиций.** Служебные строки («такой-то в группе») в
+  /// разбор не идут: они не часть разговора и сбивают счёт слов. Но лента
+  /// рисует их наравне со всеми, и позиция четвёртого сообщения в разборе
+  /// не равна позиции четвёртого сообщения на экране. Без пересчёта
+  /// заголовок темы уезжал вверх на столько строк, сколько служебных
+  /// оказалось выше, — тем заметнее, чем активнее живёт группа.
+  static ChunkedMessages? prepare(List<ChatMessage> messages) {
+    final input = <ChunkInput>[];
+    final positions = <int>[];
+    for (var i = 0; i < messages.length; i++) {
+      final m = messages[i];
+      if (m.isSystem) continue;
+      input.add(ChunkInput(
+        id: m.id,
+        text: m.isSticker ? '' : m.body,
+        authorId: m.authorId,
+        at: m.at,
+      ));
+      positions.add(i);
+    }
+    if (input.length < 4) return null;
+    return ChunkedMessages(input: input, positions: positions);
   }
 
   static String _titleAfter(ChunkPlan plan, int index) {
@@ -89,13 +130,37 @@ class TopicDivider extends StatelessWidget {
   }
 }
 
+/// Переписка, приведённая к виду для разбора, вместе с картой позиций.
+class ChunkedMessages {
+  final List<ChunkInput> input;
+
+  /// `positions[i]` — какому сообщению ленты соответствует `input[i]`.
+  final List<int> positions;
+
+  const ChunkedMessages({required this.input, required this.positions});
+
+  int toMessage(int chunkIndex) => chunkIndex >= 0 &&
+          chunkIndex < positions.length
+      ? positions[chunkIndex]
+      : (positions.isEmpty ? 0 : positions.last + 1);
+}
+
 /// Что рисовать между сообщениями.
 class ChatLayout {
   final Map<int, String> headers;
   final Map<int, TopicQuestion> questions;
+
+  /// Кто разметил — показывается человеку. Пустая строка означает, что
+  /// разметки ещё нет.
+  final String judgedBy;
+
   final Set<int> _dismissed = {};
 
-  ChatLayout({required this.headers, required this.questions});
+  ChatLayout({
+    required this.headers,
+    required this.questions,
+    this.judgedBy = '',
+  });
 
   static ChatLayout get empty =>
       ChatLayout(headers: const {}, questions: const {});

@@ -8,10 +8,13 @@ import '../../core/widgets/window_controls.dart';
 import '../team/services/team_service.dart';
 import 'models/chat_message.dart';
 import 'models/chat_thread.dart';
+import 'services/ai_topic_judge.dart';
 import 'services/chat_delivery.dart';
 import 'services/chat_service.dart';
 import 'services/message_store.dart';
+import 'services/topic_judge.dart';
 import 'services/topic_privacy.dart';
+import 'services/topic_refiner.dart';
 import 'widgets/chat_settings_sheet.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/sticker_sheet.dart';
@@ -47,6 +50,15 @@ class _ChatScreenState extends State<ChatScreen> {
   ChatMessage? _replyTo;
   bool _searching = false;
   String _query = '';
+
+  /// Разметка после участия модели. null — пока показываем местную.
+  ChatLayout? _refined;
+
+  /// По какому состоянию переписки она посчитана. Без этого модель
+  /// опрашивалась бы на каждую перерисовку экрана — то есть на каждое
+  /// нажатие клавиши в поле ввода.
+  String? _refinedFor;
+  bool _refining = false;
 
   bool get _ru => WesiLocale.isRussian;
 
@@ -194,6 +206,48 @@ class _ChatScreenState extends State<ChatScreen> {
         backgroundColor: AppTheme.surface,
       ));
     }
+  }
+
+  /// Спросить модель про спорные границы тем.
+  ///
+  /// Запускается после кадра, а не вместо него: местная разметка рисуется
+  /// сразу, модель уточняет её потом. Ждать ответа с пустым экраном ради
+  /// заголовков — плохой размен.
+  ///
+  /// Если модель не настроена, [TopicRefiner] сам вернёт местный результат,
+  /// и в разметке будет честно написано, чем она сделана.
+  void _refineTopics(ChatThread chat, List<ChatMessage> messages) {
+    if (_refining) return;
+    final prepared = TopicDivider.prepare(messages);
+    if (prepared == null) return;
+
+    // Подпись состояния: сколько сообщений и какое последнее. Пересчитываем
+    // только когда переписка действительно изменилась.
+    final signature = '${chat.id}/${messages.length}/${messages.last.id}';
+    if (_refinedFor == signature) return;
+
+    _refining = true;
+    TopicRefiner
+        .refine(
+      messages: prepared.input,
+      kind: chat.kind,
+      judge: TopicPrivacy.modelWillBeAsked(chat.kind)
+          ? AiTopicJudge()
+          : const HeuristicJudge(),
+      modelUrl: AiEndpoint.baseUrl,
+    )
+        .then((result) {
+      if (!mounted) return;
+      setState(() {
+        _refined = TopicDivider.fromRefined(prepared, result);
+        _refinedFor = signature;
+        _refining = false;
+      });
+    }).catchError((_) {
+      // Модель не ответила — остаёмся на местной разметке. Ошибка модели не
+      // должна мешать переписываться.
+      if (mounted) setState(() => _refining = false);
+    });
   }
 
   Future<void> _settings(ChatThread chat) async {
@@ -430,7 +484,17 @@ class _ChatScreenState extends State<ChatScreen> {
     // меняется словарь от сообщения к сообщению, а в выборке соседние
     // сообщения — не соседние. Границы получились бы выдуманными, и вопрос
     // «разделить тут?» задавался бы про место, которого в разговоре нет.
-    final blocks = searching ? null : TopicDivider.planFor(messages);
+    //
+    // Вне поиска сначала рисуем местную разметку, а следующим кадром просим
+    // модель уточнить её. Так заголовки появляются сразу, а не после
+    // ожидания сети.
+    final blocks =
+        searching ? null : (_refined ?? TopicDivider.planFor(messages));
+    if (!searching) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _refineTopics(chat, messages);
+      });
+    }
 
     return ListView.builder(
       controller: _scroll,

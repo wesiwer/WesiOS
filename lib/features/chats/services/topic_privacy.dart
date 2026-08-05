@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../models/chat_policy.dart';
+import 'ai_topic_judge.dart';
 
 /// Куда разрешено отправлять переписку ради разметки тем.
 ///
@@ -101,6 +102,36 @@ class TopicPrivacy {
     }
   }
 
+  /// Будет ли модель на самом деле спрошена про этот чат.
+  ///
+  /// **Разрешение и наличие — разные вещи, и путать их нельзя.**
+  /// [mayLeaveDevice] отвечает «можно ли». Здесь — «случится ли»: модель
+  /// должна быть ещё и настроена. Без этой проверки подпись под чатом
+  /// сообщала, что переписку читает модель разметки, в то время как никто
+  /// никуда не обращался — обещание было ложным ровно в ту сторону, в
+  /// которую врать особенно глупо: программа пугала слежкой, которой не
+  /// вела.
+  static bool modelWillBeAsked(ChatKind kind, {String? baseUrl}) =>
+      mayLeaveDevice(kind, baseUrl: baseUrl) && AiEndpoint.configured;
+
+  /// Чем на самом деле размечаются темы прямо сейчас.
+  ///
+  /// Показывается человеку рядом с блоками. Пока модель не настроена, это
+  /// «локальная эвристика» — и так и должно быть написано, а не «Wesi AI».
+  static String activeMechanism(ChatKind kind, {bool russian = true}) {
+    if (!modelWillBeAsked(kind)) {
+      return russian ? 'Локальная эвристика' : 'Local heuristics';
+    }
+    if (mode == TopicPrivacyMode.anyModel &&
+        looksExternal(AiEndpoint.baseUrl)) {
+      final host = Uri.tryParse(AiEndpoint.baseUrl)?.host ?? '';
+      return russian ? 'Внешняя модель: $host' : 'External model: $host';
+    }
+    return russian
+        ? 'Wesi AI · ${AiEndpoint.model}'
+        : 'Wesi AI · ${AiEndpoint.model}';
+  }
+
   /// Кто фактически может прочитать переписку этого типа — одной строкой.
   ///
   /// Именно это показывается человеку под чатом. Строка собирается из
@@ -108,7 +139,7 @@ class TopicPrivacy {
   /// поправить вслед за настройкой, рано или поздно начнёт врать.
   static String describe(ChatKind kind, {bool russian = true}) {
     final owner = ChatEnvelopePolicy.ownerCanRead(kind);
-    final ai = mayLeaveDevice(kind);
+    final ai = modelWillBeAsked(kind);
 
     if (!russian) {
       final who = <String>[

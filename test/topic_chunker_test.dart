@@ -156,8 +156,14 @@ void main() {
         'b|600|Понял, предупрежу людей про четверг',
       ]);
       final plan = TopicChunker.plan(messages);
+      // Было `greaterThanOrEqualTo(1)` — проверка, которая не проверяет
+      // ничего: кусок короче одного сообщения невозможен по построению, и
+      // условие выполнялось бы при любой поломке. Название теста при этом
+      // обещало обратное. Найдено при разборе ТЗ.
       for (final c in plan.chunks) {
-        expect(c.length, greaterThanOrEqualTo(1));
+        expect(c.length, greaterThanOrEqualTo(2),
+            reason: 'тема из одной реплики почти всегда означает ошибку '
+                'разбиения, а не настоящую тему');
       }
       // Границы не должны стоять вплотную друг к другу.
       final starts = [for (final c in plan.chunks) c.start];

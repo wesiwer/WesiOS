@@ -8,6 +8,7 @@ import '../../team/services/team_service.dart';
 import '../models/chat_thread.dart';
 import '../services/chat_service.dart';
 import '../services/message_store.dart';
+import '../services/topic_privacy.dart';
 
 /// Что можно настроить у разговора: срок хранения, а у группы ещё название и
 /// состав.
@@ -183,6 +184,49 @@ class _ChatSettingsSheetState extends State<ChatSettingsSheet> {
                 for (final days in ChatService.lifetimeChoices)
                   _lifetimeChip(days, chat.lifetimeDays),
               ],
+            ),
+            const SizedBox(height: 20),
+            _sectionTitle(_ru ? 'Разбиение на темы' : 'Topic blocks'),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Icon(
+                  TopicPrivacy.modelWillBeAsked(chat.kind)
+                      ? Icons.auto_awesome
+                      : Icons.calculate_outlined,
+                  size: 14,
+                  color: AppTheme.accent,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    TopicPrivacy.activeMechanism(chat.kind, russian: _ru),
+                    style: TextStyle(
+                        fontSize: 12.5, color: AppTheme.textPrimary),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              // Называем настоящий механизм, а не желаемый. Подпись «модель
+              // разметки» при неподключённой модели — это обещание, которого
+              // программа не держит, причём в сторону мнимой слежки.
+              TopicPrivacy.modelWillBeAsked(chat.kind)
+                  ? (_ru
+                      ? 'Спорные места уходят модели: она решает, где кончается '
+                          'одна тема, и даёт название. Наружу уходят только '
+                          'сообщения вокруг границы, а не вся переписка.'
+                      : 'Ambiguous boundaries are sent to the model; only the '
+                          'messages around a boundary leave the device.')
+                  : (_ru
+                      ? 'Модель не подключена. Границы находятся по паузам и '
+                          'смене словаря, названия — перечнем характерных слов. '
+                          'Переписка никуда не уходит.'
+                      : 'No model connected. Boundaries come from pauses and '
+                          'vocabulary shifts; nothing leaves the device.'),
+              style: TextStyle(
+                  fontSize: 10.5, height: 1.45, color: AppTheme.textMuted),
             ),
             if (chat.isGroup) ...[
               const SizedBox(height: 20),

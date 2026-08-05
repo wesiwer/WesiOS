@@ -162,6 +162,8 @@ void main() {
     test('подпись под чатом всегда соответствует настройке', () async {
       // Это главное правило: обещание «видят только собеседники»,
       // оставленное при включённой модели, — не приватность, а ложь о ней.
+      await AiEndpoint.configure(apiKey: 'ключ-для-проверки');
+
       await TopicPrivacy.setMode(TopicPrivacyMode.device);
       final quiet = TopicPrivacy.describe(ChatKind.personal);
       expect(quiet, contains('собеседники'));
@@ -171,6 +173,34 @@ void main() {
       final loud = TopicPrivacy.describe(ChatKind.personal);
       expect(loud, contains('модель'));
       expect(loud, isNot(quiet));
+
+      await AiEndpoint.configure(apiKey: '');
+    });
+
+    test('без настроенной модели подпись про неё не врёт', () async {
+      // Здесь подпись сообщала, что переписку читает модель разметки, в то
+      // время как никто никуда не обращался: judge просто не создавался.
+      // Ложь в сторону мнимой слежки — тоже ложь, и вреда от неё столько
+      // же: человек либо перестаёт верить подписи, либо перестаёт
+      // пользоваться личными чатами.
+      await AiEndpoint.configure(apiKey: '');
+      await TopicPrivacy.setMode(TopicPrivacyMode.anyModel);
+
+      expect(TopicPrivacy.modelWillBeAsked(ChatKind.personal), isFalse);
+      expect(TopicPrivacy.describe(ChatKind.personal),
+          isNot(contains('модель')));
+    });
+
+    test('человеку видно, чем размечено на самом деле', () async {
+      await AiEndpoint.configure(apiKey: '');
+      await TopicPrivacy.setMode(TopicPrivacyMode.ownServer);
+      expect(TopicPrivacy.activeMechanism(ChatKind.work),
+          contains('эвристика'));
+
+      await AiEndpoint.configure(apiKey: 'ключ-для-проверки');
+      expect(TopicPrivacy.activeMechanism(ChatKind.work), contains('Wesi AI'));
+
+      await AiEndpoint.configure(apiKey: '');
     });
 
     test('в рабочем чате владелец назван всегда', () async {
