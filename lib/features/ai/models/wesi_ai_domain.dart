@@ -6,6 +6,18 @@ enum WesiAiPersona { zane, nirvana, lobby }
 
 enum WesiAiRole { user, assistant, system, tool }
 
+/// Сообщение — единица общей временной шкалы, а не только текстовый пузырь.
+/// Генерация изображения, видео или аудио появляется в том же чате как
+/// полноценное сообщение и обновляется по мере выполнения задания.
+enum WesiAiMessageKind {
+  text,
+  generation,
+  artifact,
+  handoff,
+  status,
+  error,
+}
+
 enum WesiAiCapability {
   textChat,
   reasoning,
@@ -30,6 +42,20 @@ enum WesiAiJobState {
   completed,
   failed,
   cancelled,
+}
+
+/// Действия, доступные прямо на карточке результата в истории чата.
+enum WesiAiGenerationAction {
+  cancel,
+  retry,
+  regenerate,
+  createVariation,
+  edit,
+  upscale,
+  extend,
+  download,
+  useAsReference,
+  continueDiscussion,
 }
 
 class WesiAiAttachment {
@@ -82,15 +108,44 @@ class WesiAiArtifact {
   });
 }
 
+/// Состояние встроенной генерации, отображаемой прямо внутри сообщения.
+/// Карточка сначала показывает очередь/прогресс, затем без создания новой
+/// беседы превращается в готовый результат или ошибку с кнопкой повтора.
+class WesiAiInlineGeneration {
+  final String jobId;
+  final WesiAiCapability capability;
+  final WesiAiJobState state;
+  final double? progress;
+  final String prompt;
+  final String? statusText;
+  final String? error;
+  final List<String> resultArtifactIds;
+  final List<WesiAiGenerationAction> actions;
+
+  const WesiAiInlineGeneration({
+    required this.jobId,
+    required this.capability,
+    required this.state,
+    required this.prompt,
+    this.progress,
+    this.statusText,
+    this.error,
+    this.resultArtifactIds = const [],
+    this.actions = const [],
+  });
+}
+
 class WesiAiMessage {
   final String id;
   final String conversationId;
   final WesiAiRole role;
   final WesiAiPersona? persona;
+  final WesiAiMessageKind kind;
   final String text;
   final DateTime createdAt;
   final List<WesiAiAttachment> attachments;
   final List<String> artifactIds;
+  final WesiAiInlineGeneration? generation;
   final String? replyToId;
   final String? providerId;
   final String? modelId;
@@ -103,13 +158,43 @@ class WesiAiMessage {
     required this.text,
     required this.createdAt,
     this.persona,
+    this.kind = WesiAiMessageKind.text,
     this.attachments = const [],
     this.artifactIds = const [],
+    this.generation,
     this.replyToId,
     this.providerId,
     this.modelId,
     this.metadata = const {},
   });
+
+  WesiAiMessage copyWith({
+    String? text,
+    WesiAiMessageKind? kind,
+    List<WesiAiAttachment>? attachments,
+    List<String>? artifactIds,
+    WesiAiInlineGeneration? generation,
+    String? providerId,
+    String? modelId,
+    Map<String, Object?>? metadata,
+  }) {
+    return WesiAiMessage(
+      id: id,
+      conversationId: conversationId,
+      role: role,
+      persona: persona,
+      kind: kind ?? this.kind,
+      text: text ?? this.text,
+      createdAt: createdAt,
+      attachments: attachments ?? this.attachments,
+      artifactIds: artifactIds ?? this.artifactIds,
+      generation: generation ?? this.generation,
+      replyToId: replyToId,
+      providerId: providerId ?? this.providerId,
+      modelId: modelId ?? this.modelId,
+      metadata: metadata ?? this.metadata,
+    );
+  }
 }
 
 /// Сжатое состояние беседы, которое передаётся при смене персоны и модели.
@@ -199,13 +284,14 @@ class WesiAiGenerationJob {
   final String id;
   final String conversationId;
   final String sourceMessageId;
+  final String timelineMessageId;
   final WesiAiCapability capability;
   final WesiAiPersona requestedBy;
   final WesiAiJobState state;
   final double? progress;
   final String? providerId;
   final String? providerJobId;
-  final String? resultArtifactId;
+  final List<String> resultArtifactIds;
   final String? error;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -214,6 +300,7 @@ class WesiAiGenerationJob {
     required this.id,
     required this.conversationId,
     required this.sourceMessageId,
+    required this.timelineMessageId,
     required this.capability,
     required this.requestedBy,
     required this.state,
@@ -222,7 +309,7 @@ class WesiAiGenerationJob {
     this.progress,
     this.providerId,
     this.providerJobId,
-    this.resultArtifactId,
+    this.resultArtifactIds = const [],
     this.error,
   });
 }
