@@ -588,13 +588,14 @@ void main() {
   group('состояние доставки', () {
     tearDown(() async => SyncEndpoint.configure(url: ''));
 
-    test('рабочее сообщение сразу ждёт отправки на корпоративный сервер', () async {
-      final chat = await ChatService.direct(
-          'e2', kind: ChatKind.work, now: base);
+    test('без входа сообщение остаётся локальным', () async {
+      // Известный адрес сервера ещё не означает, что пользователь вошёл.
+      // До действующей сессии сообщение не должно изображать отправку.
+      final chat = await ChatService.direct('e2', now: base);
       final m = (await ChatService.send(
           chatId: chat.id, body: 'Привет', now: base))!;
-      expect(m.state, DeliveryState.pending);
-      expect(ChatDelivery.whyLocal(chat), isNull);
+      expect(m.state, DeliveryState.local);
+      expect(ChatDelivery.whyLocal(chat), isNotNull);
     });
 
     test('с сервером рабочее сообщение ждёт отправки', () async {
