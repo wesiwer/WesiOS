@@ -27,9 +27,82 @@ BACKUP="$PARENT/.${NAME}.previous"
 mkdir -p "$PARENT"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
-for file in index.html styles.css portal-v6.css app.js motion-v6.js app_icon.png; do
+
+# Safari и другие мобильные браузеры не должны зависеть от нескольких
+# блокирующих запросов к CSS/JS. На сервер публикуется самодостаточный HTML:
+# оба CSS и оба JS встраиваются прямо в index.html. Исходные файлы остаются
+# рядом только для диагностики и обратной совместимости.
+python3 - "$FROM" "$STAGE/index.html" <<'PY'
+from pathlib import Path
+import re
+import sys
+
+root = Path(sys.argv[1])
+out = Path(sys.argv[2])
+html = (root / "index.html").read_text(encoding="utf-8")
+styles = (root / "styles.css").read_text(encoding="utf-8")
+portal_styles = (root / "portal-v6.css").read_text(encoding="utf-8")
+app_js = (root / "app.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
+motion_js = (root / "motion-v6.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
+
+html, n1 = re.subn(
+    r'<link\s+rel="stylesheet"\s+href="\./styles\.css[^"]*"\s*/?>',
+    '<style data-bundle="styles.css">\n' + styles + '\n</style>',
+    html,
+    count=1,
+)
+html, n2 = re.subn(
+    r'<link\s+rel="stylesheet"\s+href="\./portal-v6\.css[^"]*"\s*/?>',
+    '<style data-bundle="portal-v6.css">\n' + portal_styles + '\n</style>',
+    html,
+    count=1,
+)
+html, n3 = re.subn(
+    r'<script\s+src="\./app\.js[^"]*"\s+defer></script>',
+    '<script data-bundle="app.js">\n' + app_js + '\n</script>',
+    html,
+    count=1,
+)
+html, n4 = re.subn(
+    r'<script\s+src="\./motion-v6\.js[^"]*"\s+defer></script>',
+    '<script data-bundle="motion-v6.js">\n' + motion_js + '\n</script>',
+    html,
+    count=1,
+)
+
+if (n1, n2, n3, n4) != (1, 1, 1, 1):
+    raise SystemExit(f"Не удалось собрать портал: replacements={(n1, n2, n3, n4)}")
+
+# Аварийное состояние: даже при ошибке одного из скриптов страница не может
+# навсегда остаться скрытой загрузочным экраном.
+html = html.replace(
+    '</head>',
+    '<style>html,body{background:#08080b;color:#f7f7f8}#app{visibility:visible!important}</style>'
+    '<script>(function(){setTimeout(function(){var b=document.getElementById("boot");'
+    'if(b){b.style.display="none"}var a=document.getElementById("app");'
+    'if(a){a.className+=(a.className.indexOf("ready")<0?" ready":"")}},1600)})();</script>'
+    '</head>',
+    1,
+)
+
+out.write_text(html, encoding="utf-8")
+print(f"Bundled portal size: {out.stat().st_size} bytes")
+PY
+
+for file in styles.css portal-v6.css app.js motion-v6.js app_icon.png; do
   install -m 0644 "$FROM/$file" "$STAGE/$file"
 done
+
+# Не публикуем половину новой версии: сначала собирается полный staging,
+# затем каталог переключается одним rename.
+test -s "$STAGE/index.html"
+grep -q 'data-bundle="styles.css"' "$STAGE/index.html"
+grep -q 'data-bundle="app.js"' "$STAGE/index.html"
+[[ "$(wc -c < "$STAGE/index.html")" -gt 25000 ]] || {
+  echo "Собранный index.html подозрительно мал" >&2
+  exit 2
+}
+
 rm -rf "$BACKUP"
 if [[ -d "$PORTAL_DIR" ]]; then mv "$PORTAL_DIR" "$BACKUP"; fi
 mv "$STAGE" "$PORTAL_DIR"
@@ -55,7 +128,6 @@ else
 fi
 
 test -s "$PORTAL_DIR/index.html"
-test -s "$PORTAL_DIR/motion-v6.js"
 test -s "$PORTAL_DIR/app_icon.png"
 printf 'Портал опубликован: %s\n' "$PORTAL_DIR"
 printf 'Основной URL: https://api.wesi-inc.ru/portal/\n'
