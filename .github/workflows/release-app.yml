@@ -353,3 +353,165 @@ jobs:
         run: |
           gh release upload "$RELEASE_TAG" app-manifest.json \
             --repo "$GITHUB_REPOSITORY" --clobber
+
+  # ------------------------------------------------------------- сервер
+  #
+  # Те же сборки уезжают на свой сервер и становятся там основным
+  # источником. GitHub Releases остаётся запасным путём: если сервер лежит
+  # или до него не дотянуться из сети сотрудника, приложение всё равно
+  # обновится.
+  #
+  # Идёт ПОСЛЕ публикации манифеста и только при успехе обеих сборок — по
+  # той же причине, что и манифест: выложить половину хуже, чем не
+  # выкладывать.
+  deploy-server:
+    needs: [version, build-windows, build-android, publish-manifest]
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      # Секреты проверяем первым делом и падаем, если их нет.
+      #
+      # Тихо пропустить выкладку нельзя: прогон окажется зелёным, в GitHub
+      # сборка появится, на сервере — нет, и разойдётся это молча. Разбирать
+      # такое потом дороже, чем один понятный отказ сейчас.
+      - name: Check server secrets
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          MISS=""
+          [ -n "${HOST:-}" ] || MISS="$MISS WESI_SERVER_HOST"
+          [ -n "${USER:-}" ] || MISS="$MISS WESI_SERVER_USER"
+          [ -n "${KEY:-}" ]  || MISS="$MISS WESI_SERVER_SSH_KEY"
+          if [ -n "$MISS" ]; then
+            echo "::error::Нет секретов:$MISS"
+            echo "Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "Секреты на месте"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: WesiOS-Windows
+          path: upload
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: WesiOS-Android
+          path: upload
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+
+          # Отпечаток сервера.
+          #
+          # Если он лежит в секрете WESI_SERVER_KNOWN_HOSTS — берём оттуда, и
+          # тогда подмена сервера посередине не пройдёт. Если секрета нет —
+          # спрашиваем сам сервер, и это заметно слабее: в первый раз мы
+          # верим тому, кто ответил. Пишем об этом в лог прямо, а не делаем
+          # вид, что проверка была.
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+            echo "Отпечаток сервера — из секрета"
+          else
+            ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+            echo "::warning::WESI_SERVER_KNOWN_HOSTS не задан — отпечаток взят с самого сервера."
+            echo "Чтобы закрыть это, выполните на сервере:  ssh-keyscan -H \$(hostname -f)"
+            echo "и положите вывод в секрет WESI_SERVER_KNOWN_HOSTS."
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload build to server
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD: ${{ needs.version.outputs.build }}
+          NOTES: ${{ github.event.inputs.notes }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          REMOTE_TMP="/tmp/wesios-upload-$GITHUB_RUN_ID"
+
+          $SSH "$USER@$HOST" "mkdir -p '$REMOTE_TMP'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            upload/wesios-windows-x64.zip \
+            upload/wesios-android.apk \
+            server/deploy-artifact.sh \
+            "$USER@$HOST:$REMOTE_TMP/"
+
+          # Текст «что нового» пишет человек, и он уезжает в команду,
+          # которая выполнится на сервере. Подставлять его туда как есть
+          # нельзя ни при каких кавычках: строка вида
+          #   '; rm -rf /srv; echo '
+          # это уже не описание версии, а команда. Кодируем в base64 —
+          # тогда в командной строке оказываются только буквы и цифры, а
+          # разбирает их сам скрипт на той стороне.
+          NOTES_B64="$(printf '%s' "${NOTES:-}" | base64 -w0)"
+
+          $SSH "$USER@$HOST" \
+            "bash '$REMOTE_TMP/deploy-artifact.sh' \
+               --version '$VERSION' --build '$BUILD' \
+               --from '$REMOTE_TMP' --notes-b64 '$NOTES_B64'"
+
+          # Прибираем за собой в любом случае: /tmp на сервере не бездонный,
+          # а каждая выкладка оставляет там по 40 МБ.
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE_TMP'"
+
+      # Выкладка без проверки — это надежда, а не выкладка.
+      #
+      # Файлы могут лечь на диск и при этом не отдаваться наружу: nginx не
+      # настроен на /artifacts, права не те, каталог не тот. Снаружи это
+      # выглядит как «обновление не приходит», и искать причину будут в
+      # приложении.
+      - name: Verify the server actually serves it
+        env:
+          BASE: ${{ vars.WESI_ARTIFACTS_URL || 'https://api.wesi-inc.ru/artifacts' }}
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD: ${{ needs.version.outputs.build }}
+        run: |
+          set -euo pipefail
+          MANIFEST="$BASE/app/app-manifest.json"
+          echo "Проверяю $MANIFEST"
+
+          if ! curl -fsS --max-time 30 "$MANIFEST" -o manifest.json; then
+            echo "::error::Манифест не отдаётся по $MANIFEST"
+            echo "Файлы на сервер легли, но наружу их не видно."
+            echo "Скорее всего nginx не настроен — см. server/nginx-artifacts.conf"
+            exit 1
+          fi
+          cat manifest.json
+
+          python3 - <<'PY'
+          import json, os, sys, urllib.request
+          m = json.load(open('manifest.json'))
+          want_v, want_b = os.environ['VERSION'], int(os.environ['BUILD'])
+          if m.get('version') != want_v or m.get('build') != want_b:
+              sys.exit(f"::error::Манифест показывает {m.get('version')}+{m.get('build')}, "
+                       f"а выкладывали {want_v}+{want_b}")
+          base = os.environ['BASE'].rstrip('/')
+          for name in ('windows', 'android'):
+              url = f"{base}/{m[name]['path']}"
+              req = urllib.request.Request(url, method='HEAD')
+              with urllib.request.urlopen(req, timeout=30) as r:
+                  got = int(r.headers.get('Content-Length', -1))
+              want = m[name]['sizeBytes']
+              if got != want:
+                  sys.exit(f"::error::{name}: сервер отдаёт {got} байт, в манифесте {want}")
+              print(f"{name}: {url} — {got} байт, сходится")
+          print("Сервер отдаёт ровно то, что выложили.")
+          PY
