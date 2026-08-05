@@ -279,30 +279,39 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ),
               if (e.hasContacts) ...[
                 const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    if (e.phone.trim().isNotEmpty)
-                      _chip(
-                        icon: Icons.phone,
-                        label: e.phone,
-                        onTap: () => _tapPhone(e.phone),
-                      ),
-                    if (e.email.trim().isNotEmpty)
-                      _chip(
-                        icon: Icons.alternate_email,
-                        label: e.email,
-                        onTap: () => _tapEmail(e.email),
-                      ),
-                    for (final entry in e.socials.entries)
-                      if (entry.value.trim().isNotEmpty)
+                // Ширина берётся у раскладки, а не задаётся числом: почта
+                // вроде `имя.фамилия@очень-длинный-домен.example.com` шире
+                // любого узкого экрана, и без предела ячейка вылезала за
+                // карточку жёлто-чёрной полосой. Поймано тестом раскладки.
+                LayoutBuilder(
+                  builder: (context, box) => Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (e.phone.trim().isNotEmpty)
                         _chip(
-                          icon: Icons.link,
-                          label: entry.key,
-                          onTap: () => _tapSocial(entry.key, entry.value),
+                          icon: Icons.phone,
+                          label: e.phone,
+                          maxWidth: box.maxWidth,
+                          onTap: () => _tapPhone(e.phone),
                         ),
-                  ],
+                      if (e.email.trim().isNotEmpty)
+                        _chip(
+                          icon: Icons.alternate_email,
+                          label: e.email,
+                          maxWidth: box.maxWidth,
+                          onTap: () => _tapEmail(e.email),
+                        ),
+                      for (final entry in e.socials.entries)
+                        if (entry.value.trim().isNotEmpty)
+                          _chip(
+                            icon: Icons.link,
+                            label: entry.key,
+                            maxWidth: box.maxWidth,
+                            onTap: () => _tapSocial(entry.key, entry.value),
+                          ),
+                    ],
+                  ),
                 ),
               ],
               if (_canSeeNotes && e.notes.trim().isNotEmpty) ...[
@@ -312,12 +321,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     Icon(Icons.sticky_note_2_outlined,
                         size: 13, color: AppTheme.textMuted),
                     const SizedBox(width: 6),
-                    Text(
-                      _ru
-                          ? 'Есть заметка — долгое нажатие'
-                          : 'Has a note — long press',
-                      style:
-                          TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                    // Expanded, а не голый Text: строка длиннее в английском,
+                    // а при увеличенном системном шрифте — длиннее в обоих.
+                    // Текст, которому не задали предела, рано или поздно за
+                    // него выходит.
+                    Expanded(
+                      child: Text(
+                        _ru
+                            ? 'Есть заметка — долгое нажатие'
+                            : 'Has a note — long press',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style:
+                            TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
                     ),
                   ],
                 ),
@@ -343,23 +360,44 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 color: AppTheme.accent)),
       );
 
+  /// Ячейка контакта: значок и текст, по нажатию — позвонить, написать,
+  /// открыть ссылку.
+  ///
+  /// [maxWidth] — сколько места есть на самом деле. `Wrap` даёт детям
+  /// неограниченную ширину, поэтому одним `Flexible` внутри не обойтись:
+  /// без внешнего предела ему нечего делить, и длинный адрес просто вылезает
+  /// за край карточки.
   Widget _chip({
     required IconData icon,
     required String label,
     required VoidCallback onTap,
+    required double maxWidth,
   }) {
-    return HoverButton(
-      onTap: onTap,
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      backgroundColor: AppTheme.surfaceLight.withOpacity(0.6),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 13, color: AppTheme.accent),
-          const SizedBox(width: 6),
-          Text(label,
-              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
-        ],
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: HoverButton(
+        onTap: onTap,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+        backgroundColor: AppTheme.surfaceLight.withOpacity(0.6),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 13, color: AppTheme.accent),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                label,
+                maxLines: 1,
+                // Обрезаем многоточием, а не переносим: ячейка в одну
+                // строку — это про «нажать и позвонить», а не про чтение
+                // адреса целиком. Полный адрес открывается по нажатию.
+                overflow: TextOverflow.ellipsis,
+                style:
+                    TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
