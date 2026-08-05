@@ -79,9 +79,6 @@ function portalAnyOwnerMarker(app) {
   }
 }
 
-/// Первый подтверждённый основной пользователь, который сохраняет свои
-/// учётные данные из профиля WesiOS, закрепляется как владелец. Маркер лежит
-/// на сервере и остаётся привязан к record id даже после смены email/логина.
 function portalClaimOwner(e) {
   if (e.hasSuperuserAuth()) return;
   if (!e.auth) throw new UnauthorizedError("Требуется вход владельца WesiOS");
@@ -125,9 +122,6 @@ routerAdd("GET", "/api/wesi/portal/session", (e) => {
   });
 }, $apis.requireAuth("users"));
 
-/// Владелец указывает собственный короткий логин и новый пароль в профиле
-/// WesiOS. Меняется текущая auth-запись, а не создаётся локальная заглушка.
-/// После этого те же данные принимают сайт и будущее стартовое окно WesiOS.
 routerAdd("POST", "/api/wesi/portal/profile/credentials", (e) => {
   portalClaimOwner(e);
   const body = e.requestInfo().body || {};
@@ -140,14 +134,14 @@ routerAdd("POST", "/api/wesi/portal/profile/credentials", (e) => {
     throw new BadRequestError("Пароль должен содержать от 8 до 128 символов");
   }
 
+  let existing = null;
   try {
-    const existing = e.app.findAuthRecordByEmail("users", email);
-    if (existing.id !== e.auth.id) {
-      throw new BadRequestError("Такой логин уже занят");
-    }
-  } catch (error) {
-    if (error instanceof BadRequestError) throw error;
-    // Записи с таким email нет — это нормальный путь смены логина.
+    existing = e.app.findAuthRecordByEmail("users", email);
+  } catch (_) {
+    existing = null;
+  }
+  if (existing && existing.id !== e.auth.id) {
+    throw new BadRequestError("Такой логин уже занят");
   }
 
   const record = e.auth;
@@ -167,9 +161,6 @@ routerAdd("POST", "/api/wesi/portal/profile/credentials", (e) => {
   });
 }, $apis.requireAuth("users"));
 
-/// Атомарно создаёт или обновляет серверную учётную запись сотрудника.
-/// Пароль передаётся WesiOS по HTTPS только в момент создания/сброса и сразу
-/// хешируется PocketBase. В ответе и логах пароль отсутствует.
 routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
   portalOwnerOnly(e);
   const body = e.requestInfo().body || {};
@@ -182,15 +173,18 @@ routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
     throw new BadRequestError("Пароль должен содержать от 8 до 128 символов");
   }
 
-  let record;
+  let record = null;
   let created = false;
   try {
     record = e.app.findAuthRecordByEmail("users", email);
-    if (portalOwnerMarker(e.app, record.id)) {
-      throw new BadRequestError("Логин владельца нельзя выдать сотруднику");
-    }
-  } catch (error) {
-    if (error instanceof BadRequestError) throw error;
+  } catch (_) {
+    record = null;
+  }
+
+  if (record && portalOwnerMarker(e.app, record.id)) {
+    throw new BadRequestError("Логин владельца нельзя выдать сотруднику");
+  }
+  if (!record) {
     const collection = e.app.findCollectionByNameOrId("users");
     record = new Record(collection);
     record.setEmail(email);
