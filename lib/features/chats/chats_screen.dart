@@ -14,6 +14,7 @@ import 'models/chat_thread.dart';
 import 'services/chat_service.dart';
 import 'services/message_store.dart';
 import 'services/topic_privacy.dart';
+import 'widgets/chat_settings_sheet.dart';
 
 /// Чаты.
 ///
@@ -78,6 +79,125 @@ class _ChatsScreenState extends State<ChatsScreen> {
     if (picked != null) await _openWith(picked, kind);
   }
 
+  /// Что заводим — разговор с человеком или группу.
+  Future<void> _startNew(ChatKind kind) async {
+    final group = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: AppTheme.background,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+          border: Border.all(color: AppTheme.glassBorder),
+        ),
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              dense: true,
+              leading: Icon(Icons.person_outline,
+                  size: 19, color: AppTheme.textPrimary),
+              title: Text(_ru ? 'Разговор с человеком' : 'Chat with a person',
+                  style:
+                      TextStyle(fontSize: 13.5, color: AppTheme.textPrimary)),
+              onTap: () => Navigator.pop(context, false),
+            ),
+            ListTile(
+              dense: true,
+              leading: Icon(Icons.groups_outlined,
+                  size: 19, color: AppTheme.textPrimary),
+              title: Text(_ru ? 'Группа' : 'Group',
+                  style:
+                      TextStyle(fontSize: 13.5, color: AppTheme.textPrimary)),
+              subtitle: Text(
+                _ru ? 'Несколько человек в одном разговоре' : 'Several people',
+                style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+              ),
+              onTap: () => Navigator.pop(context, true),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (group == null || !mounted) return;
+    if (group) {
+      await _newGroup(kind);
+    } else {
+      await _pickPersonFor(kind);
+    }
+  }
+
+  /// Завести группу: сначала название, потом состав.
+  ///
+  /// Именно в таком порядке. Группа без названия показалась бы в списке
+  /// словом «Группа» рядом с другой такой же, и различить их можно было бы
+  /// только зайдя внутрь.
+  Future<void> _newGroup(ChatKind kind) async {
+    final controller = TextEditingController();
+    final title = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: AppTheme.glassBorder),
+        ),
+        title: Text(_ru ? 'Название группы' : 'Group name',
+            style: TextStyle(fontSize: 15, color: AppTheme.textPrimary)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+          decoration: InputDecoration(
+            hintText: _ru ? 'Например: Склад' : 'For example: Warehouse',
+            hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+            isDense: true,
+            enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: AppTheme.glassBorder)),
+            focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: AppTheme.accent)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_ru ? 'Отмена' : 'Cancel',
+                style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: Text(_ru ? 'Дальше' : 'Next',
+                style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (title == null || title.trim().isEmpty || !mounted) return;
+
+    final members = await ChatMemberPicker.show(context, selected: const []);
+    if (members == null || !mounted) return;
+    if (members.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(_ru
+            ? 'Группа из одного человека — это заметки, а не разговор'
+            : 'A group of one is a notepad, not a chat'),
+        backgroundColor: AppTheme.surface,
+      ));
+      return;
+    }
+
+    final chat = await ChatService.group(
+      title: title,
+      memberIds: members,
+      kind: kind,
+    );
+    if (!mounted) return;
+    await ChatScreen.open(context, chat.id);
+    if (mounted) setState(() {});
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
@@ -130,7 +250,7 @@ class _ChatsScreenState extends State<ChatsScreen> {
       floatingActionButton: showPeople
           ? null
           : FloatingActionButton(
-              onPressed: () => _pickPersonFor(_kind ?? ChatKind.work),
+              onPressed: () => _startNew(_kind ?? ChatKind.work),
               backgroundColor: AppTheme.accent,
               child: const Icon(Icons.edit_outlined, color: Colors.white),
             ),
@@ -478,6 +598,26 @@ class _ChatsScreenState extends State<ChatsScreen> {
               onTap: () async {
                 await ChatService.togglePinned(chat.id);
                 if (mounted) Navigator.pop(context);
+              },
+            ),
+            ListTile(
+              dense: true,
+              leading:
+                  Icon(Icons.tune, size: 19, color: AppTheme.textPrimary),
+              title: Text(
+                _ru ? 'Настройки разговора' : 'Chat settings',
+                style: TextStyle(fontSize: 13.5, color: AppTheme.textPrimary),
+              ),
+              subtitle: Text(
+                chat.isGroup
+                    ? (_ru ? 'Срок хранения, состав' : 'Retention, members')
+                    : (_ru ? 'Срок хранения' : 'Retention'),
+                style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+              ),
+              onTap: () async {
+                Navigator.pop(context);
+                await ChatSettingsSheet.show(context, chat.id);
+                if (mounted) setState(() {});
               },
             ),
             ListTile(

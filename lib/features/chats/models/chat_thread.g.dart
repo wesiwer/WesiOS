@@ -25,13 +25,15 @@ class ChatThreadAdapter extends TypeAdapter<ChatThread> {
       pinned: fields[5] as bool,
       muted: fields[6] as bool,
       lastOpenedAt: fields[7] as DateTime?,
+      lifetimeDays: fields[8] as int?,
+      isGroupRaw: fields[9] as bool?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ChatThread obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(10)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -47,7 +49,11 @@ class ChatThreadAdapter extends TypeAdapter<ChatThread> {
       ..writeByte(6)
       ..write(obj.muted)
       ..writeByte(7)
-      ..write(obj.lastOpenedAt);
+      ..write(obj.lastOpenedAt)
+      ..writeByte(8)
+      ..write(obj.lifetimeDays)
+      ..writeByte(9)
+      ..write(obj.isGroupRaw);
   }
 
   @override

@@ -3,6 +3,9 @@ import 'dart:typed_data';
 
 import 'package:hive/hive.dart';
 
+import '../../features/chats/models/chat_message.dart';
+import '../../features/chats/models/chat_policy.dart';
+import '../../features/chats/models/chat_thread.dart';
 import '../../features/knowledge/models/article_model.dart';
 import '../../features/tasks/models/task_model.dart';
 import '../../features/team/models/employee_model.dart';
@@ -419,17 +422,137 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
   }
 }
 
+/// Разговоры.
+///
+/// Уезжают **только рабочие** — см. [ChatEnvelopePolicy.travels], там же
+/// написано, почему личные остаются на устройстве и что должно появиться,
+/// чтобы это изменилось.
+class ChatsSync extends SyncCollection<ChatThread> {
+  @override
+  String get name => 'chats';
+
+  @override
+  String get boxName => 'wesios_chats';
+
+  @override
+  String idOf(ChatThread value) => value.id;
+
+  @override
+  bool shouldSync(ChatThread value) =>
+      ChatEnvelopePolicy.travels(value.kind);
+
+  /// `lastOpenedAt` в [ChatThread.toJson] намеренно нет: «докуда я дочитал» —
+  /// это про устройство, а не про разговор. Уехав на сервер, эта отметка
+  /// обнуляла бы непрочитанное на телефоне каждый раз, когда человек
+  /// заглядывает в тот же чат с компьютера.
+  @override
+  Map<String, dynamic> encode(ChatThread value) => value.toJson();
+
+  @override
+  ChatThread? decode(Map<String, dynamic> fields) =>
+      ChatThread.tryParse(fields);
+
+  /// Своя отметка о прочтении переживает приезд чужой правки.
+  ///
+  /// Без этого достаточно было бы, чтобы кто-то переименовал группу, — и всё
+  /// непрочитанное во всех разговорах на этом устройстве обнулилось бы разом,
+  /// потому что запись легла бы поверх местной целиком.
+  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    if (b == null) return false;
+    final incoming = decode(fields);
+    if (incoming == null) return false;
+    final mine = b.get(incoming.id);
+    await b.put(
+      incoming.id,
+      mine == null
+          ? incoming
+          : incoming.copyWith(lastOpenedAt: mine.lastOpenedAt),
+    );
+    return true;
+  }
+}
+
+/// Сообщения.
+///
+/// Две вещи, которые здесь важнее самого переноса.
+///
+/// **Архивное не уезжает и не удаляется чужим надгробием.** Архив — это то,
+/// что человек решил сохранить у себя навсегда; он и заведён как местное
+/// решение. Отправлять его на сервер незачем, а позволить удалению с чужого
+/// устройства до него дотянуться — значит сломать единственное обещание,
+/// которое архив даёт.
+///
+/// **Личная переписка не уезжает вовсе**, пока нет конвертного шифрования, —
+/// по той же причине, что и сами личные чаты.
+class MessagesSync extends SyncCollection<ChatMessage> {
+  @override
+  String get name => 'messages';
+
+  @override
+  String get boxName => 'wesios_messages';
+
+  @override
+  String idOf(ChatMessage value) => value.id;
+
+  @override
+  bool shouldSync(ChatMessage value) {
+    if (value.archived) return false;
+    final chat = _chatOf(value.chatId);
+    // Сообщение без разговора — либо мусор, либо приехало вперёд своего
+    // чата. И то и другое лучше пропустить: отправлять переписку, про
+    // которую неизвестно, личная она или рабочая, нельзя.
+    return chat != null && ChatEnvelopePolicy.travels(chat.kind);
+  }
+
+  @override
+  Map<String, dynamic> encode(ChatMessage value) => value.toJson();
+
+  @override
+  ChatMessage? decode(Map<String, dynamic> fields) =>
+      ChatMessage.tryParse(fields);
+
+  /// Надгробие не дотягивается до архива.
+  ///
+  /// Проверка стоит здесь, а не только в [MessageStore.remove]: удаление,
+  /// приехавшее с другого устройства, идёт мимо неё — прямо в бокс.
+  @override
+  Future<void> removeById(String id) async {
+    final b = box();
+    if (b == null) return;
+    if (b.get(id)?.archived == true) return;
+    await b.delete(id);
+  }
+
+  static ChatThread? _chatOf(String chatId) {
+    if (!Hive.isBoxOpen('wesios_chats')) return null;
+    try {
+      return Hive.box<ChatThread>('wesios_chats').get(chatId);
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
 /// Что синхронизируется.
 class SyncCodec {
   /// Порядок важен: счета приезжают раньше операций, чтобы операция не
   /// провела в интерфейсе ни одного кадра, ссылаясь на ещё не приехавший
   /// счёт.
+  ///
+  /// По той же причине состав идёт раньше разговоров, а разговоры — раньше
+  /// сообщений: сообщение без своего чата не пройдёт даже отбор
+  /// ([MessagesSync.shouldSync]), а чат без людей показался бы разговором с
+  /// пустым именем.
   static final List<SyncCollection<dynamic>> collections = [
     AccountsSync(),
     TransactionsSync(),
     TasksSync(),
     ArticlesSync(),
     EmployeesSync(),
+    ChatsSync(),
+    MessagesSync(),
   ];
 
   static SyncCollection<dynamic>? byName(String name) {

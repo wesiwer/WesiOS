@@ -14,6 +14,9 @@ class MessageBubble extends StatelessWidget {
   final ChatMessage? replyTo;
   final VoidCallback onLongPress;
 
+  /// Что подсветить в тексте — то, что человек ищет. Пусто — не подсвечивать.
+  final String highlight;
+
   const MessageBubble({
     super.key,
     required this.message,
@@ -21,6 +24,7 @@ class MessageBubble extends StatelessWidget {
     required this.onLongPress,
     this.showAuthor = false,
     this.replyTo,
+    this.highlight = '',
   });
 
   @override
@@ -107,11 +111,7 @@ class MessageBubble extends StatelessWidget {
                 const SizedBox(height: 3),
               ],
               if (replyTo != null) _quoted(replyTo!),
-              Text(
-                message.body,
-                style: TextStyle(
-                    fontSize: 14, height: 1.35, color: AppTheme.textPrimary),
-              ),
+              _body(),
               const SizedBox(height: 3),
               _meta(ru),
             ],
@@ -119,6 +119,42 @@ class MessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Текст сообщения; найденное — подсвечено.
+  ///
+  /// Подсветка делается разбором строки, а не подстановкой разметки: в
+  /// переписке встречается что угодно, и текст, случайно похожий на разметку,
+  /// не должен превращаться в неё.
+  Widget _body() {
+    final base = TextStyle(
+        fontSize: 14, height: 1.35, color: AppTheme.textPrimary);
+    final needle = highlight.trim().toLowerCase();
+    if (needle.isEmpty) return Text(message.body, style: base);
+
+    final hay = message.body.toLowerCase();
+    final spans = <TextSpan>[];
+    var from = 0;
+    while (true) {
+      final hit = hay.indexOf(needle, from);
+      if (hit < 0) break;
+      if (hit > from) {
+        spans.add(TextSpan(text: message.body.substring(from, hit)));
+      }
+      spans.add(TextSpan(
+        text: message.body.substring(hit, hit + needle.length),
+        style: TextStyle(
+          backgroundColor: AppTheme.accent.withOpacity(0.28),
+          fontWeight: FontWeight.w700,
+        ),
+      ));
+      from = hit + needle.length;
+    }
+    if (spans.isEmpty) return Text(message.body, style: base);
+    if (from < message.body.length) {
+      spans.add(TextSpan(text: message.body.substring(from)));
+    }
+    return Text.rich(TextSpan(style: base, children: spans));
   }
 
   Widget _quoted(ChatMessage source) => Container(
@@ -153,19 +189,35 @@ class MessageBubble extends StatelessWidget {
           Icon(Icons.bookmark, size: 10, color: AppTheme.accent),
           const SizedBox(width: 4),
         ],
+        // Правку видно. Иначе поправленное сообщение — это возможность
+        // переписать сказанное задним числом так, что собеседник не отличит
+        // его от исходного.
+        if (message.edited) ...[
+          Text(
+            ru ? 'изменено' : 'edited',
+            style: TextStyle(fontSize: 9.5, color: AppTheme.textMuted),
+          ),
+          const SizedBox(width: 5),
+        ],
         Text(
           '${two(at.hour)}:${two(at.minute)}',
           style: TextStyle(fontSize: 9.5, color: AppTheme.textMuted),
         ),
         if (mine) ...[
-          const SizedBox(width: 4),
-          Icon(_stateIcon(), size: 11, color: _stateColor()),
+          // У `local` значка нет намеренно: сообщению некуда идти, и
+          // сообщать о его пути нечего. Пустое место честнее часиков,
+          // которые обещают отправку и висят вечно.
+          if (_stateIcon() case final icon?) ...[
+            const SizedBox(width: 4),
+            Icon(icon, size: 11, color: _stateColor()),
+          ],
         ],
       ],
     );
   }
 
-  IconData _stateIcon() => switch (message.state) {
+  IconData? _stateIcon() => switch (message.state) {
+        DeliveryState.local => null,
         DeliveryState.pending => Icons.schedule,
         DeliveryState.sent => Icons.check,
         DeliveryState.delivered => Icons.done_all,

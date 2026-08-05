@@ -44,6 +44,33 @@ class ChatThread {
   @HiveField(7)
   final DateTime? lastOpenedAt;
 
+  /// Сколько дней живут сообщения этого разговора. null — общее правило.
+  ///
+  /// **Почему nullable, а не число со значением по умолчанию.** Записи,
+  /// сохранённые до появления поля, приедут без него, и `fields[8] as int`
+  /// уронил бы чтение всего бокса — то есть разом все разговоры. Та же мина,
+  /// что уже была поймана на правах доступа. Плюс null здесь и по смыслу
+  /// правильнее: «отдельно не настраивали» — это не то же самое, что
+  /// «настроили ровно на тридцать дней», и при смене общего правила такой
+  /// чат должен поехать за ним, а не остаться на старом числе.
+  @HiveField(8)
+  final int? lifetimeDays;
+
+  /// Группа ли это. null — старая запись, считаем по числу участников.
+  ///
+  /// **Почему это отдельное поле, а не «больше двух участников».** Считать по
+  /// количеству казалось экономным ровно до первой проверки:
+  ///
+  /// - группу из двоих завести было нельзя — она немедленно превращалась в
+  ///   обычный разговор, и ни переименовать её, ни поменять состав не
+  ///   получалось;
+  /// - группа, из которой ушли до двоих, переставала быть группой, и выйти
+  ///   из неё было уже невозможно — оставшиеся запирались внутри.
+  ///
+  /// Групповой разговор — это решение человека, а не следствие арифметики.
+  @HiveField(9)
+  final bool? isGroupRaw;
+
   const ChatThread({
     required this.id,
     required this.kindName,
@@ -53,12 +80,20 @@ class ChatThread {
     this.pinned = false,
     this.muted = false,
     this.lastOpenedAt,
+    this.lifetimeDays,
+    this.isGroupRaw,
   });
 
   ChatKind get kind =>
       kindName == ChatKind.personal.name ? ChatKind.personal : ChatKind.work;
 
-  bool get isGroup => participantIds.length > 2;
+  bool get isGroup => isGroupRaw ?? participantIds.length > 2;
+
+  /// Свой срок хранения. null — общий.
+  Duration? get lifetime {
+    final days = lifetimeDays;
+    return (days == null || days <= 0) ? null : Duration(days: days);
+  }
 
   /// Собеседник в разговоре двоих. null для группы и для разговора с собой.
   String? otherThan(String meId) {
@@ -76,6 +111,7 @@ class ChatThread {
     DateTime? lastOpenedAt,
     List<String>? participantIds,
     ChatKind? kind,
+    Object? lifetimeDays = _unset,
   }) =>
       ChatThread(
         id: id,
@@ -86,7 +122,16 @@ class ChatThread {
         pinned: pinned ?? this.pinned,
         muted: muted ?? this.muted,
         lastOpenedAt: lastOpenedAt ?? this.lastOpenedAt,
+        // Метка «не передано»: без неё вернуть чат к общему правилу было бы
+        // нечем — null означал бы «оставь как есть». Та же ловушка, что уже
+        // ловилась в статьях, задачах и сообщениях.
+        lifetimeDays: identical(lifetimeDays, _unset)
+            ? this.lifetimeDays
+            : lifetimeDays as int?,
+        isGroupRaw: isGroupRaw,
       );
+
+  static const Object _unset = Object();
 
   /// Устойчивый идентификатор разговора двоих.
   ///
@@ -107,6 +152,8 @@ class ChatThread {
         'createdAt': createdAt.toIso8601String(),
         'pinned': pinned,
         'muted': muted,
+        'lifetimeDays': lifetimeDays,
+        'group': isGroup,
       };
 
   static ChatThread? tryParse(Map<String, dynamic> json) {
@@ -123,6 +170,10 @@ class ChatThread {
       createdAt: createdAt,
       pinned: json['pinned'] == true,
       muted: json['muted'] == true,
+      lifetimeDays: json['lifetimeDays'] is num
+          ? (json['lifetimeDays'] as num).toInt()
+          : null,
+      isGroupRaw: json['group'] is bool ? json['group'] as bool : null,
     );
   }
 }

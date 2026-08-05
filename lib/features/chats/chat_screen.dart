@@ -8,9 +8,11 @@ import '../../core/widgets/window_controls.dart';
 import '../team/services/team_service.dart';
 import 'models/chat_message.dart';
 import 'models/chat_thread.dart';
+import 'services/chat_delivery.dart';
 import 'services/chat_service.dart';
 import 'services/message_store.dart';
 import 'services/topic_privacy.dart';
+import 'widgets/chat_settings_sheet.dart';
 import 'widgets/message_bubble.dart';
 import 'widgets/sticker_sheet.dart';
 import 'widgets/topic_divider.dart';
@@ -38,10 +40,13 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _input = TextEditingController();
+  final TextEditingController _search = TextEditingController();
   final ScrollController _scroll = ScrollController();
   final FocusNode _focus = FocusNode();
 
   ChatMessage? _replyTo;
+  bool _searching = false;
+  String _query = '';
 
   bool get _ru => WesiLocale.isRussian;
 
@@ -62,6 +67,7 @@ class _ChatScreenState extends State<ChatScreen> {
     // пришло за это время, он уже видел.
     ChatService.markOpened(widget.chatId);
     _input.dispose();
+    _search.dispose();
     _scroll.dispose();
     _focus.dispose();
     super.dispose();
@@ -73,9 +79,10 @@ class _ChatScreenState extends State<ChatScreen> {
     final text = sticker ?? _input.text;
     if (text.trim().isEmpty) return;
 
-    await MessageStore.send(
+    // Через сервис, а не прямо в хранилище: срок жизни у чата может быть
+    // свой, и уедет ли сообщение куда-нибудь — тоже решается там.
+    await ChatService.send(
       chatId: chat.id,
-      authorId: ChatService.meId,
       body: text,
       kind: sticker == null ? MessageKind.text : MessageKind.sticker,
       replyTo: _replyTo?.id,
@@ -111,11 +118,100 @@ class _ChatScreenState extends State<ChatScreen> {
       backgroundColor: Colors.transparent,
       builder: (_) => _MessageActions(
         message: m,
+        mine: m.authorId == ChatService.meId,
         onReply: () => setState(() => _replyTo = m),
+        onEdit: () => _edit(m),
         onChanged: () => setState(() {}),
       ),
     );
   }
+
+  /// Поправить своё сообщение.
+  Future<void> _edit(ChatMessage m) async {
+    final controller = TextEditingController(text: m.body);
+    final text = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+            side: BorderSide(color: AppTheme.glassBorder)),
+        title: Text(_ru ? 'Поправить сообщение' : 'Edit message',
+            style: TextStyle(fontSize: 15, color: AppTheme.textPrimary)),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          maxLines: null,
+          style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+          decoration: InputDecoration(
+            isDense: true,
+            enabledBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: AppTheme.glassBorder)),
+            focusedBorder: OutlineInputBorder(
+                borderSide: BorderSide(color: AppTheme.accent)),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_ru ? 'Отмена' : 'Cancel',
+                style: TextStyle(color: AppTheme.textMuted)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: Text(_ru ? 'Сохранить' : 'Save',
+                style: TextStyle(color: AppTheme.accent)),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (text == null || !mounted) return;
+
+    final result = await MessageStore.edit(
+      id: m.id,
+      by: ChatService.meId,
+      body: text,
+    );
+    if (!mounted) return;
+    setState(() {});
+
+    final complaint = switch (result) {
+      MessageEditResult.ok || MessageEditResult.unchanged => null,
+      MessageEditResult.gone =>
+        _ru ? 'Сообщения больше нет' : 'The message is gone',
+      MessageEditResult.notMine =>
+        _ru ? 'Чужое сообщение править нельзя' : 'Not your message',
+      MessageEditResult.notEditable =>
+        _ru ? 'Это сообщение не правится' : 'This message cannot be edited',
+      MessageEditResult.empty => _ru
+          ? 'Пустое сообщение. Чтобы убрать его, удалите'
+          : 'Empty message. Delete it instead',
+    };
+    if (complaint != null) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(complaint),
+        backgroundColor: AppTheme.surface,
+      ));
+    }
+  }
+
+  Future<void> _settings(ChatThread chat) async {
+    final left = await ChatSettingsSheet.show(context, chat.id);
+    if (!mounted) return;
+    // Вышли из группы — оставаться в её переписке не на что.
+    if (left == true) {
+      Navigator.pop(context);
+      return;
+    }
+    setState(() {});
+  }
+
+  void _stopSearch() => setState(() {
+        _searching = false;
+        _query = '';
+        _search.clear();
+      });
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +228,10 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           );
         }
-        final messages = MessageStore.of(chat.id);
+        final searching = _searching && _query.trim().isNotEmpty;
+        final messages = searching
+            ? MessageStore.search(chat.id, _query)
+            : MessageStore.of(chat.id);
 
         return Scaffold(
           backgroundColor: AppTheme.background,
@@ -140,13 +239,19 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Column(
               children: [
                 _header(chat),
+                if (_searching) _searchBar(found: messages.length),
                 Expanded(
                   child: messages.isEmpty
-                      ? _empty()
-                      : _list(chat, messages),
+                      ? (searching ? _nothingFound() : _empty())
+                      : _list(chat, messages, searching: searching),
                 ),
-                if (_replyTo != null) _replyBar(),
-                _composer(),
+                // В поиске нижняя часть не нужна: там показан не разговор, а
+                // выборка из него, и «ответить» на строчку из выборки значило
+                // бы ответить непонятно куда.
+                if (!_searching) ...[
+                  if (_replyTo != null) _replyBar(),
+                  _composer(),
+                ],
               ],
             ),
           ),
@@ -158,14 +263,19 @@ class _ChatScreenState extends State<ChatScreen> {
   Widget _header(ChatThread chat) {
     final other = chat.otherThan(ChatService.meId);
     final person = other == null ? null : TeamService.byId(other);
+    // Две строки под названием собираются из настоящего положения дел, а не
+    // пишутся руками: кто читает — и уедет ли написанное отсюда вообще.
+    final local = ChatDelivery.whyLocal(chat, russian: _ru);
     return Padding(
       padding: EdgeInsets.fromLTRB(
           8, kTitleBarInset + 10, kHasCustomTitleBar ? 148 : 12, 6),
       child: Row(
         children: [
           IconButton(
-            icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-            onPressed: () => Navigator.pop(context),
+            icon: Icon(_searching ? Icons.close : Icons.arrow_back,
+                color: AppTheme.textPrimary),
+            onPressed: () =>
+                _searching ? _stopSearch() : Navigator.pop(context),
           ),
           if (person != null)
             WesiAvatar(size: 34, index: person.avatarIndex, photo: person.photo)
@@ -204,13 +314,91 @@ class _ChatScreenState extends State<ChatScreen> {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
                 ),
+                if (local != null)
+                  Text(
+                    local,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 9.5, color: AppTheme.textMuted),
+                  ),
               ],
             ),
+          ),
+          IconButton(
+            tooltip: _ru ? 'Поиск' : 'Search',
+            icon: Icon(Icons.search, size: 19, color: AppTheme.textMuted),
+            onPressed: () => setState(() => _searching = !_searching),
+          ),
+          IconButton(
+            tooltip: _ru ? 'О разговоре' : 'About the chat',
+            icon: Icon(Icons.tune, size: 18, color: AppTheme.textMuted),
+            onPressed: () => _settings(chat),
           ),
         ],
       ),
     );
   }
+
+  Widget _searchBar({required int found}) => Padding(
+        padding: const EdgeInsets.fromLTRB(14, 0, 14, 8),
+        child: TextField(
+          controller: _search,
+          autofocus: true,
+          onChanged: (v) => setState(() => _query = v),
+          style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+          decoration: InputDecoration(
+            hintText: _ru ? 'Искать в переписке' : 'Search this chat',
+            hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+            prefixIcon:
+                Icon(Icons.search, size: 18, color: AppTheme.textMuted),
+            suffixIcon: _query.trim().isEmpty
+                ? null
+                : Padding(
+                    padding: const EdgeInsets.only(right: 12),
+                    child: Center(
+                      widthFactor: 1,
+                      child: Text(
+                        _ru ? 'найдено $found' : '$found found',
+                        style: TextStyle(
+                            fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                    ),
+                  ),
+            isDense: true,
+            filled: true,
+            fillColor: AppTheme.surfaceLight.withOpacity(0.4),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(11),
+              borderSide: BorderSide(color: AppTheme.glassBorder),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(11),
+              borderSide: BorderSide(color: AppTheme.glassBorder),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(11),
+              borderSide: BorderSide(color: AppTheme.accent),
+            ),
+          ),
+        ),
+      );
+
+  Widget _nothingFound() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(
+            _ru
+                ? 'Ничего не найдено.\n\nПоиск идёт по тому, что ещё хранится: '
+                    'сообщения старше срока уже стёрты, а сохранённое навсегда '
+                    'ищется в архиве.'
+                : 'Nothing found.\n\nOnly messages still kept are searched; '
+                    'archived ones are searched in the archive.',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+                fontSize: 12.5, height: 1.5, color: AppTheme.textMuted),
+          ),
+        ),
+      );
 
   Widget _empty() => Center(
         child: Padding(
@@ -229,11 +417,20 @@ class _ChatScreenState extends State<ChatScreen> {
         ),
       );
 
-  Widget _list(ChatThread chat, List<ChatMessage> messages) {
+  Widget _list(
+    ChatThread chat,
+    List<ChatMessage> messages, {
+    required bool searching,
+  }) {
     // Блоки тем считаются из самой переписки. Заголовок вставляется перед
     // первым сообщением каждого блока, а спорные места превращаются в
     // карточку с вопросом.
-    final blocks = TopicDivider.planFor(messages);
+    //
+    // В поиске блоков нет намеренно: они считаются по паузам и по тому, как
+    // меняется словарь от сообщения к сообщению, а в выборке соседние
+    // сообщения — не соседние. Границы получились бы выдуманными, и вопрос
+    // «разделить тут?» задавался бы про место, которого в разговоре нет.
+    final blocks = searching ? null : TopicDivider.planFor(messages);
 
     return ListView.builder(
       controller: _scroll,
@@ -242,8 +439,8 @@ class _ChatScreenState extends State<ChatScreen> {
       itemBuilder: (context, i) {
         final m = messages[i];
         final mine = m.authorId == ChatService.meId;
-        final divider = blocks.headerAt(i);
-        final question = blocks.questionAt(i);
+        final divider = blocks?.headerAt(i);
+        final question = blocks?.questionAt(i);
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -253,8 +450,12 @@ class _ChatScreenState extends State<ChatScreen> {
               TopicQuestionCard(
                 question: question,
                 onSplit: () => _splitAt(messages, question.index),
-                onKeep: () => setState(() => blocks.dismiss(question.index)),
+                onKeep: () =>
+                    setState(() => blocks?.dismiss(question.index)),
               ),
+            // В выборке рядом оказываются сообщения из разных дней, и без
+            // даты непонятно, что именно нашлось.
+            if (searching) _foundAt(m),
             MessageBubble(
               message: m,
               mine: mine,
@@ -263,10 +464,28 @@ class _ChatScreenState extends State<ChatScreen> {
                   ? null
                   : MessageStore.byId(m.replyTo!),
               onLongPress: () => _actions(m),
+              highlight: searching ? _query : '',
             ),
           ],
         );
       },
+    );
+  }
+
+  Widget _foundAt(ChatMessage m) {
+    final at = m.at.toLocal();
+    String two(int v) => v.toString().padLeft(2, '0');
+    final who = TeamService.byId(m.authorId)?.displayName ??
+        (m.authorId == ChatService.meId ? (_ru ? 'Вы' : 'You') : '');
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 2, left: 4, right: 4),
+      child: Text(
+        '${[
+          if (who.isNotEmpty) who,
+        ].join()} · ${two(at.day)}.${two(at.month)}.${at.year} '
+            '${two(at.hour)}:${two(at.minute)}',
+        style: TextStyle(fontSize: 9.5, color: AppTheme.textMuted),
+      ),
     );
   }
 
@@ -406,12 +625,16 @@ class _ChatScreenState extends State<ChatScreen> {
 /// Что можно сделать с сообщением.
 class _MessageActions extends StatelessWidget {
   final ChatMessage message;
+  final bool mine;
   final VoidCallback onReply;
+  final VoidCallback onEdit;
   final VoidCallback onChanged;
 
   const _MessageActions({
     required this.message,
+    required this.mine,
     required this.onReply,
+    required this.onEdit,
     required this.onChanged,
   });
 
@@ -437,6 +660,22 @@ class _MessageActions extends StatelessWidget {
               onReply();
             },
           ),
+          // Править можно только своё и только слова. Отказ показывается не
+          // здесь, а в самом хранилище: правило, живущее в одном экране,
+          // обходится вторым.
+          if (mine && message.editable)
+            _row(
+              context,
+              Icons.edit_outlined,
+              ru ? 'Изменить' : 'Edit',
+              () {
+                Navigator.pop(context);
+                onEdit();
+              },
+              hint: ru
+                  ? 'У сообщения появится пометка «изменено»'
+                  : 'The message will be marked as edited',
+            ),
           if (!message.isSticker)
             _row(
               context,

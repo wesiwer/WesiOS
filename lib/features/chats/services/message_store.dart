@@ -5,6 +5,30 @@ import 'package:hive/hive.dart';
 
 import '../models/chat_message.dart';
 
+/// Чем закончилась попытка поправить сообщение.
+///
+/// Перечисление, а не `bool`: человеку надо сказать, почему не вышло, а
+/// собирать текст отказа в хранилище — значит тащить туда язык интерфейса.
+enum MessageEditResult {
+  ok,
+
+  /// Сообщения уже нет — истекло или удалено, пока диалог был открыт.
+  gone,
+
+  /// Чужое. Правка чужих слов от чужого имени — подделка, а не удобство.
+  notMine,
+
+  /// Стикер или служебная строка: править нечего.
+  notEditable,
+
+  /// Пустой текст. Стереть сообщение можно удалением, но не так, чтобы от
+  /// него остался пустой пузырь.
+  empty,
+
+  /// Текст не изменился — записывать «изменено» не за что.
+  unchanged,
+}
+
 /// Хранилище переписки.
 ///
 /// **Два правила, и они противоположны друг другу.**
@@ -80,6 +104,27 @@ class MessageStore {
     return out;
   }
 
+  /// Найти в переписке одного чата.
+  ///
+  /// Стикеры пропускаются: в теле у них лежит `react:0`, и поиск слова
+  /// «react» вываливал бы горсть картинок вместо разговора.
+  ///
+  /// Регистр не важен — человек ищет «пятница», а написано «Пятницу».
+  /// Приведение к нижнему регистру делается один раз для запроса, а не на
+  /// каждое сообщение по два раза.
+  static List<ChatMessage> search(
+    String chatId,
+    String query, {
+    DateTime? now,
+  }) {
+    final needle = query.trim().toLowerCase();
+    if (needle.isEmpty) return const [];
+    return [
+      for (final m in of(chatId, now: now))
+        if (!m.isSticker && m.body.toLowerCase().contains(needle)) m,
+    ];
+  }
+
   /// Всё, что в архиве, — новое сверху.
   static List<ChatMessage> archive() {
     final box = _opened;
@@ -116,6 +161,7 @@ class MessageStore {
     String? replyTo,
     Duration? lifetime,
     DateTime? now,
+    DeliveryState state = DeliveryState.pending,
   }) async {
     final text = kind == MessageKind.text ? body.trim() : body;
     if (text.isEmpty) return null;
@@ -128,12 +174,44 @@ class MessageStore {
       body: text,
       at: at,
       kind: kind,
-      state: DeliveryState.pending,
+      // Состояние приходит снаружи, а не решается здесь: чтобы его выбрать,
+      // надо знать, уезжает ли этот чат и настроен ли сервер, — а хранилище
+      // про то и другое знать не должно. См. `ChatDelivery.initialFor`.
+      state: state,
       expiresAt: expiryFor(at, lifetime: lifetime),
       replyTo: replyTo,
     );
     await put(message);
     return message;
+  }
+
+  /// Поправить написанное.
+  ///
+  /// Автор проверяется **здесь**, а не только в диалоге. Правило, которое
+  /// живёт в одном экране, обходится вторым экраном — эта ошибка уже была
+  /// поймана на назначении задач, и повторять её незачем.
+  static Future<MessageEditResult> edit({
+    required String id,
+    required String by,
+    required String body,
+    DateTime? now,
+  }) async {
+    final message = _opened?.get(id);
+    if (message == null) return MessageEditResult.gone;
+    if (message.authorId != by) return MessageEditResult.notMine;
+    if (!message.editable) return MessageEditResult.notEditable;
+
+    final text = body.trim();
+    if (text.isEmpty) return MessageEditResult.empty;
+    if (text == message.body) return MessageEditResult.unchanged;
+
+    // Срок жизни не пересчитывается: сообщение написано тогда, когда
+    // написано, и правка опечатки не должна продлевать ему жизнь ещё на
+    // месяц. Иначе достаточно было бы раз в месяц дописывать точку, чтобы
+    // переписка не стиралась никогда, — а месячный срок ровно от этого и
+    // защищает.
+    await put(message.copyWith(body: text, editedAt: now ?? DateTime.now()));
+    return MessageEditResult.ok;
   }
 
   /// Убрать сообщение из чата.
@@ -206,6 +284,49 @@ class MessageStore {
     await box.deleteAll(dead);
     revision.value++;
     return dead.length;
+  }
+
+  /// Пересчитать срок жизни уже написанного в чате — **только в сторону
+  /// продления**.
+  ///
+  /// Асимметрия намеренная и она здесь главное.
+  ///
+  /// Продление ничего не разрушает: человек сказал «пусть хранится дольше», и
+  /// разумно, что это относится и к тому, что уже написано, — иначе настройка
+  /// начинает действовать только с завтрашнего дня и выглядит сломанной.
+  ///
+  /// Укорачивание задним числом разрушает: поставив «хранить неделю» на чат,
+  /// которому месяц, человек одним нажатием стёр бы три недели переписки — и
+  /// узнал бы об этом уже после. Такое решение принимают отдельно и явно,
+  /// кнопкой «очистить», а не побочным следствием настройки.
+  ///
+  /// Уже истёкшие не воскрешаются: их для человека нет, и возвращать их
+  /// сменой настройки было бы сюрпризом в обратную сторону.
+  ///
+  /// Возвращает, скольким сообщениям срок продлился.
+  static Future<int> extendLifetime(
+    String chatId,
+    Duration lifetime, {
+    DateTime? now,
+  }) async {
+    final box = _opened;
+    if (box == null) return 0;
+    final at = now ?? DateTime.now();
+    var touched = 0;
+
+    for (final m in box.values.toList()) {
+      if (m.chatId != chatId || m.archived || m.isExpired(at)) continue;
+      final current = m.expiresAt;
+      // null — не истекает вовсе; куда уж дольше.
+      if (current == null) continue;
+      final wanted = m.at.add(lifetime);
+      if (!wanted.isAfter(current)) continue;
+      await box.put(m.id, m.copyWith(expiresAt: wanted));
+      touched++;
+    }
+
+    if (touched > 0) revision.value++;
+    return touched;
   }
 
   /// Очистить чат руками. Архивное остаётся.

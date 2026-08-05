@@ -126,6 +126,8 @@ class DeliveryStateAdapter extends TypeAdapter<DeliveryState> {
     switch (reader.readByte()) {
       case 0:
         return DeliveryState.pending;
+      case 5:
+        return DeliveryState.local;
       case 1:
         return DeliveryState.sent;
       case 2:
@@ -144,6 +146,9 @@ class DeliveryStateAdapter extends TypeAdapter<DeliveryState> {
     switch (obj) {
       case DeliveryState.pending:
         writer.writeByte(0);
+        break;
+      case DeliveryState.local:
+        writer.writeByte(5);
         break;
       case DeliveryState.sent:
         writer.writeByte(1);
