@@ -2,6 +2,10 @@ name: Deploy employee portal
 
 on:
   workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-employee-portal.yml'
   push:
     branches: [main]
     paths:
@@ -40,6 +44,8 @@ jobs:
           test -s assets/images/app_icon.png
           grep -q './app_icon.png' server/employee-portal/index.html
           grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
+          grep -q '/api/wesi/portal/profile/credentials' server/pb_hooks/employee_portal.pb.js
+          grep -q 'OWNER_MARKER_RID' server/pb_hooks/employee_portal.pb.js
 
       - name: Check server secrets
         env:
@@ -100,7 +106,7 @@ jobs:
             "WESI_ARTIFACTS_DIR='$ARTIFACTS_DIR' WESI_PORTAL_DIR='${PORTAL_DIR:-}' bash '$REMOTE/deploy-employee-portal.sh' --from '$REMOTE'"
           $SSH "$USER@$HOST" "rm -rf '$REMOTE'"
 
-      - name: Verify deployed portal
+      - name: Verify deployed portal and auth boundary
         run: |
           set -euo pipefail
           BASE='https://api.wesi-inc.ru/portal/'
@@ -109,8 +115,20 @@ jobs:
           grep -q './app_icon.png' portal.html
           curl -fsS --max-time 30 "${BASE}app_icon.png?v=${GITHUB_SHA}" -o app_icon.png
           test "$(wc -c < app_icon.png)" -gt 1000
-          CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 'https://api.wesi-inc.ru/api/wesi/portal/manifest' || true)
-          case "$CODE" in
+
+          MANIFEST_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+            'https://api.wesi-inc.ru/api/wesi/portal/manifest' || true)
+          case "$MANIFEST_CODE" in
             401|403) echo 'Защита manifest работает.' ;;
-            *) echo "::error::Неожиданный HTTP $CODE у защищённого manifest"; exit 1 ;;
+            *) echo "::error::Неожиданный HTTP $MANIFEST_CODE у защищённого manifest"; exit 1 ;;
+          esac
+
+          OWNER_CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+            -X POST -H 'Content-Type: application/json' \
+            -d '{"login":"ci-check","password":"not-a-real-password"}' \
+            'https://api.wesi-inc.ru/api/wesi/portal/profile/credentials' || true)
+          case "$OWNER_CODE" in
+            401|403) echo 'Endpoint профиля владельца требует авторизацию.' ;;
+            404) echo '::error::Endpoint профиля владельца не загрузился.'; exit 1 ;;
+            *) echo "::error::Неожиданный HTTP $OWNER_CODE у endpoint профиля"; exit 1 ;;
           esac
