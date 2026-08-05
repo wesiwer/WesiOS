@@ -17,14 +17,11 @@ import 'network_probe.dart';
 class MonitorService {
   static const String _box = 'wesios_settings';
   static const String _key = 'sysadmin_targets';
+  static const String _defaultsAppliedKey = 'sysadmin_wesi_defaults_v1';
 
   /// Инфраструктура владельца, которая появляется при первом открытии
   /// модуля. Пароли и SSH-ключи здесь принципиально отсутствуют: мониторинг
   /// использует только публичные адреса и защищённые HTTP-проверки.
-  ///
-  /// Пользовательские правки сохраняются поверх этого списка. Если человек
-  /// осознанно удалил все узлы, сохранится JSON `[]`, и значения по умолчанию
-  /// не воскреснут после перезапуска.
   static const List<MonitorTarget> defaultTargets = [
     MonitorTarget(
       id: 'wesi-russia-server',
@@ -78,6 +75,7 @@ class MonitorService {
   static final Map<String, List<ProbeSample>> _history = {};
   static final Map<String, TlsInfo?> _tls = {};
   static final Map<String, ServerLoad?> _load = {};
+  static bool _defaultsWriteScheduled = false;
 
   static Box<dynamic>? _open() {
     try {
@@ -90,29 +88,63 @@ class MonitorService {
   // ------------------------------------------------------------------ список
 
   static List<MonitorTarget> get targets {
-    final raw = _open()?.get(_key);
+    final box = _open();
+    final raw = box?.get(_key);
+    var stored = <MonitorTarget>[];
 
-    // Ключ отсутствует только у новой установки или у версии приложения,
-    // которая ещё не открывала этот модуль. В этом случае сразу показываем
-    // настоящую инфраструктуру WesiOS, а не пустой экран с ручным вводом.
-    if (raw == null) return List<MonitorTarget>.unmodifiable(defaultTargets);
-    if (raw is! String || raw.isEmpty) return const [];
-
-    try {
-      final decoded = jsonDecode(raw);
-      if (decoded is! List) return const [];
-      return [
-        for (final e in decoded)
-          if (e is Map<String, dynamic>)
-            if (MonitorTarget.tryParse(e) case final t?) t,
-      ];
-    } catch (_) {
-      return const [];
+    if (raw is String && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is List) {
+          stored = [
+            for (final e in decoded)
+              if (e is Map<String, dynamic>)
+                if (MonitorTarget.tryParse(e) case final t?) t,
+          ];
+        }
+      } catch (_) {
+        stored = <MonitorTarget>[];
+      }
     }
+
+    // Это миграция, а не вечное принудительное восстановление. Она один раз
+    // добавляет инфраструктуру владельца и новой, и уже установленной версии
+    // приложения. После этого человек может удалить или изменить любой узел,
+    // и он не появится снова при следующем запуске.
+    final defaultsApplied = box?.get(_defaultsAppliedKey) == true;
+    if (defaultsApplied) return stored;
+
+    final merged = <MonitorTarget>[...stored];
+    final ids = stored.map((target) => target.id).toSet();
+    for (final target in defaultTargets) {
+      if (ids.add(target.id)) merged.add(target);
+    }
+
+    if (box != null && !_defaultsWriteScheduled) {
+      _defaultsWriteScheduled = true;
+      scheduleMicrotask(() async {
+        try {
+          await box.put(
+            _key,
+            jsonEncode([for (final target in merged) target.toJson()]),
+          );
+          await box.put(_defaultsAppliedKey, true);
+          revision.value++;
+        } finally {
+          _defaultsWriteScheduled = false;
+        }
+      });
+    }
+
+    return List<MonitorTarget>.unmodifiable(merged);
   }
 
   static Future<void> _save(List<MonitorTarget> list) async {
-    await _open()?.put(_key, jsonEncode([for (final t in list) t.toJson()]));
+    final box = _open();
+    await box?.put(_key, jsonEncode([for (final t in list) t.toJson()]));
+    // Любая ручная правка означает, что человек уже получил стартовый набор.
+    // Без этой отметки удалённый узел вернулся бы при следующем чтении.
+    await box?.put(_defaultsAppliedKey, true);
     revision.value++;
   }
 
