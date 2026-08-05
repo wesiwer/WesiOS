@@ -1,0 +1,206 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#06070b">
+  <meta name="robots" content="noindex,nofollow,noarchive">
+  <meta name="description" content="Закрытый портал сотрудников Wesi Inc для загрузки WesiOS.">
+  <title>WesiOS · Employee Access</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="noise" aria-hidden="true"></div>
+  <div class="aurora" aria-hidden="true">
+    <span class="orb orb-a"></span>
+    <span class="orb orb-b"></span>
+    <span class="orb orb-c"></span>
+  </div>
+  <canvas id="constellation" aria-hidden="true"></canvas>
+
+  <div class="boot" id="boot" aria-live="polite">
+    <div class="boot-mark" aria-hidden="true"><span>W</span></div>
+    <div class="boot-line"><i></i></div>
+    <p>Инициализация защищённого контура</p>
+  </div>
+
+  <main class="app-shell" id="app" aria-hidden="true">
+    <header class="topbar reveal">
+      <a class="brand" href="#" aria-label="WesiOS">
+        <span class="brand-mark">W</span>
+        <span class="brand-copy">
+          <strong>WesiOS</strong>
+          <small>PRIVATE EMPLOYEE NETWORK</small>
+        </span>
+      </a>
+      <div class="top-actions">
+        <span class="status-chip"><i></i><span id="systemStatus">Защищённый контур</span></span>
+        <button class="icon-button hidden" id="logoutButton" type="button" aria-label="Выйти" title="Выйти">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M8 12h10"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <section class="view login-view active" id="loginView">
+      <div class="login-copy reveal delay-1">
+        <div class="eyebrow"><span></span> WESI INC · INTERNAL</div>
+        <h1>Рабочая среда<br><em>нового поколения.</em></h1>
+        <p class="lead">Единая операционная система компании: коммуникации, финансы, задачи, знания и собственный искусственный интеллект.</p>
+        <div class="feature-rail">
+          <article>
+            <span>01</span>
+            <div><strong>Закрытый доступ</strong><small>Только действующие сотрудники</small></div>
+          </article>
+          <article>
+            <span>02</span>
+            <div><strong>Единая версия</strong><small>Всегда актуальная сборка</small></div>
+          </article>
+          <article>
+            <span>03</span>
+            <div><strong>Синхронизация</strong><small>Windows и Android в одном контуре</small></div>
+          </article>
+        </div>
+      </div>
+
+      <div class="login-panel glass reveal delay-2">
+        <div class="panel-glow" aria-hidden="true"></div>
+        <div class="panel-head">
+          <div class="mini-mark">W</div>
+          <div>
+            <p>EMPLOYEE ACCESS</p>
+            <h2>Вход в WesiOS</h2>
+          </div>
+        </div>
+        <p class="panel-note">Используйте логин и пароль, выданные администратором компании.</p>
+
+        <form id="loginForm" novalidate>
+          <label class="field">
+            <span>Логин или почта</span>
+            <span class="input-wrap">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20a8 8 0 0 1 16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg>
+              <input id="identity" name="identity" autocomplete="username" inputmode="email" placeholder="employee" required>
+            </span>
+          </label>
+          <label class="field">
+            <span>Пароль</span>
+            <span class="input-wrap">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12a2 2 0 0 1 2 2v7H4v-7a2 2 0 0 1 2-2Z"/></svg>
+              <input id="password" name="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required>
+              <button class="password-toggle" id="passwordToggle" type="button" aria-label="Показать пароль">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg>
+              </button>
+            </span>
+          </label>
+          <div class="form-message" id="loginMessage" role="alert"></div>
+          <button class="primary-button" id="loginButton" type="submit">
+            <span>Войти в систему</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+            <i class="button-shine"></i>
+          </button>
+        </form>
+        <div class="security-note">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 2.8 8.5 7 10 4.2-1.5 7-5.4 7-10V6l-7-3Z"/><path d="m9.5 12 1.7 1.7 3.6-4"/></svg>
+          <span>Данные передаются по зашифрованному соединению и не сохраняются в браузере после выхода.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="view dashboard-view" id="dashboardView">
+      <div class="dashboard-hero reveal">
+        <div>
+          <div class="eyebrow"><span></span> ДОСТУП ПОДТВЕРЖДЁН</div>
+          <h1>Добро пожаловать,<br><em id="employeeName">сотрудник</em></h1>
+          <p>Ваша персональная точка входа в экосистему Wesi Inc.</p>
+        </div>
+        <div class="version-orbit" aria-label="Текущая версия WesiOS">
+          <span class="orbit-ring ring-one"></span>
+          <span class="orbit-ring ring-two"></span>
+          <div class="version-core">
+            <small>АКТУАЛЬНАЯ</small>
+            <strong id="heroVersion">—</strong>
+            <span id="heroBuild">build —</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="dashboard-grid">
+        <article class="release-card glass reveal delay-1">
+          <div class="card-kicker">
+            <span class="live-dot"></span>
+            <span>ТЕКУЩИЙ РЕЛИЗ</span>
+            <time id="publishedAt">Проверяем сервер…</time>
+          </div>
+          <div class="release-title">
+            <div class="app-icon"><span>W</span></div>
+            <div>
+              <h2>WesiOS</h2>
+              <p>Corporate Operating System</p>
+            </div>
+          </div>
+          <div class="release-meta">
+            <div><small>Версия</small><strong id="releaseVersion">—</strong></div>
+            <div><small>Сборка</small><strong id="releaseBuild">—</strong></div>
+            <div><small>Канал</small><strong>Private α</strong></div>
+          </div>
+          <div class="changelog" id="changelog">
+            <span>Что нового</span>
+            <p>Загружаем описание обновления…</p>
+          </div>
+        </article>
+
+        <article class="download-card glass reveal delay-2" data-platform="windows">
+          <div class="platform-icon windows-icon" aria-hidden="true">
+            <i></i><i></i><i></i><i></i>
+          </div>
+          <div class="platform-copy">
+            <span>DESKTOP</span>
+            <h3>Windows</h3>
+            <p>Полная версия для рабочего компьютера. Портативная сборка x64.</p>
+          </div>
+          <div class="platform-meta">
+            <span id="windowsSize">—</span><span>ZIP · x64</span>
+          </div>
+          <button class="download-button" type="button" data-download="windows" disabled>
+            <span>Скачать для Windows</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14"/></svg>
+          </button>
+          <div class="download-progress"><i></i></div>
+        </article>
+
+        <article class="download-card glass reveal delay-3" data-platform="android">
+          <div class="platform-icon android-icon" aria-hidden="true">
+            <span></span><i></i><i></i>
+          </div>
+          <div class="platform-copy">
+            <span>MOBILE</span>
+            <h3>Android</h3>
+            <p>Мобильный доступ к задачам, чатам и данным компании.</p>
+          </div>
+          <div class="platform-meta">
+            <span id="androidSize">—</span><span>APK · Android</span>
+          </div>
+          <button class="download-button" type="button" data-download="android" disabled>
+            <span>Скачать для Android</span>
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0 4-4m-4 4-4-4M5 20h14"/></svg>
+          </button>
+          <div class="download-progress"><i></i></div>
+        </article>
+      </div>
+
+      <section class="trust-strip reveal delay-3">
+        <article><span class="trust-icon">01</span><div><strong>Проверенная сборка</strong><small>Размер и SHA-256 сверяются перед публикацией</small></div></article>
+        <article><span class="trust-icon">02</span><div><strong>Единый источник</strong><small>Версия обновляется автоматически после релиза</small></div></article>
+        <article><span class="trust-icon">03</span><div><strong>Корпоративный доступ</strong><small>Загрузка доступна после входа сотрудника</small></div></article>
+      </section>
+
+      <footer class="footer reveal delay-3">
+        <span>WESI INC · PRIVATE INFRASTRUCTURE</span>
+        <span id="footerStatus">Связь с сервером установлена</span>
+      </footer>
+    </section>
+  </main>
+
+  <div class="toast-stack" id="toastStack" aria-live="polite"></div>
+  <script src="./app.js" defer></script>
+</body>
+</html>
