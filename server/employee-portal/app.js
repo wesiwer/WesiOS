@@ -225,82 +225,62 @@
   }
 
   function initMotion() {
-    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-
+    const root = document.documentElement;
     const revealNodes = $$('[data-scroll-reveal]');
-    const parallaxNodes = $$('[data-parallax]');
-    const floatCards = $$('[data-float]');
-    const stage = $('#moduleStage');
-    let stageActive = false;
-    let scheduled = false;
+    const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-    document.documentElement.classList.add('motion-ready');
+    root.classList.add('motion-ready');
 
-    if ('IntersectionObserver' in window) {
-      const revealObserver = new IntersectionObserver(entries => {
+    const reveal = node => {
+      if (!node || node.classList.contains('visible')) return;
+      node.classList.add('visible');
+      setTimeout(() => node.classList.add('settled'), 820);
+    };
+
+    if (reduced || !('IntersectionObserver' in window)) {
+      revealNodes.forEach(reveal);
+    } else {
+      // Почти два экрана запаса. На быстром свайпе слой уже создан и его
+      // transition успевает начаться до попадания элемента в viewport.
+      const observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
           if (!entry.isIntersecting) return;
-          entry.target.classList.add('visible');
-          revealObserver.unobserve(entry.target);
+          reveal(entry.target);
+          observer.unobserve(entry.target);
         });
-      }, { threshold: .08, rootMargin: '90px 0px' });
-      revealNodes.forEach(node => revealObserver.observe(node));
-
-      if (stage) {
-        const stageObserver = new IntersectionObserver(entries => {
-          stageActive = entries[0]?.isIntersecting || false;
-          if (stageActive) schedule();
-        }, { rootMargin: '35% 0px' });
-        stageObserver.observe(stage);
-      }
-    } else {
-      revealNodes.forEach(node => node.classList.add('visible'));
-      stageActive = true;
+      }, { threshold: .001, rootMargin: '90% 0px 90% 0px' });
+      revealNodes.forEach(node => observer.observe(node));
     }
 
-    function render() {
-      scheduled = false;
-      const y = scrollY;
-      parallaxNodes.forEach(node => {
-        const factor = Number(node.dataset.parallax || 0);
-        node.style.transform = `translate3d(0,${(y * factor).toFixed(1)}px,0)`;
-      });
+    const syncVisibility = () => root.classList.toggle('motion-paused', document.hidden);
+    document.addEventListener('visibilitychange', syncVisibility, { passive: true });
+    syncVisibility();
 
-      if (stage && stageActive) {
-        const rect = stage.getBoundingClientRect();
-        const progress = Math.max(0, Math.min(1, (innerHeight - rect.top) / (innerHeight + rect.height)));
-        floatCards.forEach((node, index) => {
-          const phase = progress * 6.2 + index * 1.4;
-          const dx = Math.sin(phase * .88) * (6 + index * 1.5);
-          const dy = Math.cos(phase) * (9 + index * 1.8);
-          const rotation = Math.sin(phase * .54) * (1.4 + index * .22);
-          node.style.transform = `translate3d(${dx.toFixed(1)}px,${dy.toFixed(1)}px,0) rotate(${rotation.toFixed(2)}deg)`;
-        });
-      }
-      document.documentElement.style.setProperty('--scroll', Math.min(1, y / Math.max(1, document.documentElement.scrollHeight - innerHeight)).toFixed(4));
-    }
-
-    function schedule() {
-      if (!scheduled && !document.hidden) {
-        scheduled = true;
-        requestAnimationFrame(render);
-      }
-    }
-
-    addEventListener('scroll', schedule, { passive: true });
-    addEventListener('resize', schedule, { passive: true });
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) schedule(); });
-    schedule();
+    if (reduced) return;
 
     $$('[data-tilt-card]').forEach(card => {
+      let frame = 0;
+      let nextX = 0;
+      let nextY = 0;
+
+      const renderTilt = () => {
+        frame = 0;
+        card.style.transform = `perspective(900px) rotateX(${nextY.toFixed(2)}deg) rotateY(${nextX.toFixed(2)}deg) translate3d(0,-2px,0)`;
+      };
+
       card.addEventListener('pointermove', event => {
         if (innerWidth < 900 || event.pointerType === 'touch') return;
         const rect = card.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / rect.width - .5;
-        const y = (event.clientY - rect.top) / rect.height - .5;
-        card.style.transform = `perspective(900px) rotateX(${-y * 3}deg) rotateY(${x * 4}deg) translateY(-2px)`;
-      });
-      card.addEventListener('pointerleave', () => { card.style.transform = ''; });
+        nextX = ((event.clientX - rect.left) / rect.width - .5) * 4;
+        nextY = -((event.clientY - rect.top) / rect.height - .5) * 3;
+        if (!frame) frame = requestAnimationFrame(renderTilt);
+      }, { passive: true });
+
+      card.addEventListener('pointerleave', () => {
+        if (frame) cancelAnimationFrame(frame);
+        frame = 0;
+        card.style.transform = '';
+      }, { passive: true });
     });
   }
 

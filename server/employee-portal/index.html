@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" class="is-booting">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
@@ -9,13 +9,40 @@
   <title>WesiOS · Wesi Inc</title>
   <link rel="icon" href="./app_icon.png">
   <link rel="apple-touch-icon" href="./app_icon.png">
-  <link rel="stylesheet" href="./styles.css?v=9">
-  <link rel="stylesheet" href="./portal-v6.css?v=9">
+  <link rel="preload" href="./app_icon.png" as="image" fetchpriority="high">
+  <link rel="stylesheet" href="./styles.css?v=10">
+  <link rel="stylesheet" href="./portal-v6.css?v=10">
+  <script>
+    window.__WESI_BOOT_STARTED__ = performance.now();
+    window.__WESI_BOOT_FAILSAFE__ = setTimeout(function () {
+      var root = document.documentElement;
+      if (root.classList.contains('is-booting')) {
+        root.classList.remove('is-booting');
+        root.classList.add('is-ready', 'boot-failsafe');
+      }
+    }, 2600);
+  </script>
+  <noscript><style>.boot{display:none!important}.app-shell{visibility:visible!important;opacity:1!important;transform:none!important}</style></noscript>
 </head>
 <body>
+  <div class="boot" id="siteBoot" role="status" aria-live="polite" aria-label="Подготовка WesiOS">
+    <div class="boot-visual" aria-hidden="true">
+      <i class="boot-orbit boot-orbit-a"></i>
+      <i class="boot-orbit boot-orbit-b"></i>
+      <i class="boot-orbit boot-orbit-c"></i>
+      <img class="boot-logo" src="./app_icon.png" alt="" decoding="async" fetchpriority="high">
+    </div>
+    <div class="boot-copy">
+      <strong><span>Wesi</span><em>OS</em></strong>
+      <p id="bootStatus">Подготавливаем интерфейс</p>
+    </div>
+    <div class="boot-line" aria-hidden="true"><i id="bootProgress"></i></div>
+    <small id="bootPercent">0%</small>
+  </div>
+
   <div class="grid-bg" aria-hidden="true"></div>
-  <div class="orange-glow glow-a" data-parallax=".035" aria-hidden="true"></div>
-  <div class="orange-glow glow-b" data-parallax="-.025" aria-hidden="true"></div>
+  <div class="orange-glow glow-a" aria-hidden="true"></div>
+  <div class="orange-glow glow-b" aria-hidden="true"></div>
 
   <svg class="runner-svg" id="runnerSvg" aria-hidden="true">
     <defs>
@@ -24,18 +51,15 @@
         <stop offset=".46" stop-color="#ff6517"/>
         <stop offset="1" stop-color="#ffb15c"/>
       </linearGradient>
-      <filter id="runnerGlow" x="-60%" y="-60%" width="220%" height="220%">
-        <feGaussianBlur stdDeviation="2.4" result="blur"/>
-        <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
-      </filter>
     </defs>
+    <path id="runnerAura" class="runner-aura"/>
     <path id="runnerTrail" class="runner-trail"/>
     <path id="runnerHead" class="runner-head"/>
   </svg>
 
   <main class="app-shell" id="app">
     <header class="topbar reveal">
-      <a class="brand" href="#top"><img class="brand-logo" src="./app_icon.png" alt="WesiOS"><span class="brand-copy"><strong><span>Wesi</span><em>OS</em></strong></span></a>
+      <a class="brand" href="#top"><img class="brand-logo" src="./app_icon.png" alt="WesiOS" decoding="async" fetchpriority="high"><span class="brand-copy"><strong><span>Wesi</span><em>OS</em></strong></span></a>
       <div class="secure-label"><span></span>Закрытый контур</div>
       <button class="icon-button hidden" id="logoutButton" type="button" aria-label="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M8 12h10"/></svg></button>
     </header>
@@ -49,7 +73,7 @@
           <div class="hero-points"><span><b>01</b> Единая учётная запись</span><span><b>02</b> Защищённые сборки</span><span><b>03</b> Windows и Android</span></div>
         </div>
         <div class="intro-visual reveal delay-2" aria-hidden="true">
-          <div class="intro-orbit"><i></i><i></i><img src="./app_icon.png" alt=""></div>
+          <div class="intro-orbit"><i></i><i></i><img src="./app_icon.png" alt="" decoding="async" fetchpriority="high"></div>
         </div>
       </div>
 
@@ -65,7 +89,7 @@
           <article class="module-card card-chat" data-float="2"><small>ЧАТЫ</small><strong>12</strong><span>Новых сообщений</span></article>
           <article class="module-card card-ai" data-float="3"><small>WESI AI</small><strong>Зейн</strong><span>Контекст сохранён</span></article>
           <article class="module-card card-task" data-float="4"><small>ЗАДАЧИ</small><strong>10/10</strong><span>План выполнен</span></article>
-          <div class="orbit-core" id="orbitCore"><img src="./app_icon.png" alt=""><span>WesiOS</span></div>
+          <div class="orbit-core" id="orbitCore"><img src="./app_icon.png" alt="" decoding="async"><span>WesiOS</span></div>
         </div>
       </section>
 
@@ -92,7 +116,7 @@
         </div>
         <div class="login-panel surface" data-scroll-reveal data-tilt-card>
           <div class="panel-accent"></div>
-          <div class="panel-head"><img src="./app_icon.png" alt=""><div><small>WESIOS ACCESS</small><h2>Авторизация</h2></div></div>
+          <div class="panel-head"><img src="./app_icon.png" alt="" decoding="async"><div><small>WESIOS ACCESS</small><h2>Авторизация</h2></div></div>
           <p class="panel-note">Введите логин и пароль, которые WesiOS выдал при создании сотрудника.</p>
           <form id="loginForm" novalidate>
             <label class="field"><span>Логин или почта</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M4 20a8 8 0 0 1 16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg><input id="identity" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="employee" required></span></label>
@@ -109,7 +133,7 @@
     <section class="view dashboard-view" id="dashboardView">
       <div class="dashboard-head reveal"><div><span class="section-label">ДОСТУП ПОДТВЕРЖДЁН</span><h1>Здравствуйте, <em id="employeeName">сотрудник</em></h1><p>Выберите платформу и скачайте актуальную сборку.</p></div><div class="version-badge"><small>ТЕКУЩАЯ ВЕРСИЯ</small><strong id="heroVersion">—</strong><span id="heroBuild">build —</span></div></div>
       <div class="dashboard-grid">
-        <article class="release-card surface reveal delay-1"><div class="card-kicker"><span class="live-dot"></span><span>АКТУАЛЬНЫЙ РЕЛИЗ</span><time id="publishedAt">Проверяем сервер…</time></div><div class="release-title"><img src="./app_icon.png" alt="WesiOS"><div><h2>WesiOS</h2><p>Business Operating System</p></div></div><div class="release-meta"><div><small>Версия</small><strong id="releaseVersion">—</strong></div><div><small>Сборка</small><strong id="releaseBuild">—</strong></div><div><small>Канал</small><strong>Private</strong></div></div><div class="changelog" id="changelog"><span>Что нового</span><p>Загружаем описание обновления…</p></div></article>
+        <article class="release-card surface reveal delay-1"><div class="card-kicker"><span class="live-dot"></span><span>АКТУАЛЬНЫЙ РЕЛИЗ</span><time id="publishedAt">Проверяем сервер…</time></div><div class="release-title"><img src="./app_icon.png" alt="WesiOS" decoding="async"><div><h2>WesiOS</h2><p>Business Operating System</p></div></div><div class="release-meta"><div><small>Версия</small><strong id="releaseVersion">—</strong></div><div><small>Сборка</small><strong id="releaseBuild">—</strong></div><div><small>Канал</small><strong>Private</strong></div></div><div class="changelog" id="changelog"><span>Что нового</span><p>Загружаем описание обновления…</p></div></article>
         <article class="download-card surface reveal delay-2" data-platform="windows"><div class="platform-symbol windows-symbol"><i></i><i></i><i></i><i></i></div><small>DESKTOP</small><h3>Windows</h3><p>Версия для рабочего компьютера. Портативная сборка x64.</p><div class="platform-meta"><span id="windowsSize">—</span><span>ZIP · x64</span></div><button class="download-button" data-download="windows" disabled><span>Скачать для Windows</span></button></article>
         <article class="download-card surface reveal delay-3" data-platform="android"><div class="platform-symbol android-symbol"><span></span><i></i><i></i></div><small>MOBILE</small><h3>Android</h3><p>Мобильный доступ к чатам, задачам и данным компании.</p><div class="platform-meta"><span id="androidSize">—</span><span>APK · Android</span></div><button class="download-button" data-download="android" disabled><span>Скачать для Android</span></button></article>
       </div>
@@ -117,7 +141,7 @@
     </section>
   </main>
   <div class="toast-stack" id="toastStack"></div>
-  <script src="./app.js?v=9" defer></script>
-  <script src="./motion-v6.js?v=9" defer></script>
+  <script src="./app.js?v=10" defer></script>
+  <script src="./motion-v6.js?v=10" defer></script>
 </body>
 </html>

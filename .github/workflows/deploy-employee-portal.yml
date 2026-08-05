@@ -43,7 +43,11 @@ jobs:
           grep -q './app_icon.png' server/employee-portal/index.html
           grep -q 'portal-v6.css' server/employee-portal/index.html
           grep -q 'motion-v6.js' server/employee-portal/index.html
+          grep -q 'siteBoot' server/employee-portal/index.html
+          grep -q 'runnerAura' server/employee-portal/index.html
           grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
+          node --check server/employee-portal/app.js
+          node --check server/employee-portal/motion-v6.js
 
       - name: Check server secrets
         env:
@@ -114,7 +118,9 @@ jobs:
           grep -q 'WesiOS' portal.html
           grep -q 'portal-v6.css' portal.html
           grep -q 'motion-v6.js' portal.html
+          grep -q 'siteBoot' portal.html
           curl -fsS --max-time 30 "${BASE}motion-v6.js?v=${GITHUB_SHA}" -o motion-v6.js
+          node --check motion-v6.js
           test "$(wc -c < motion-v6.js)" -gt 1000
           curl -fsS --max-time 30 "${BASE}app_icon.png?v=${GITHUB_SHA}" -o app_icon.png
           test "$(wc -c < app_icon.png)" -gt 1000
