@@ -1,5 +1,7 @@
 import 'package:hive/hive.dart';
 
+import 'chat_attachment.dart';
+
 part 'chat_message.g.dart';
 
 /// Что за сообщение.
@@ -15,6 +17,13 @@ enum MessageKind {
   /// Служебное: «тема разделена», «человек вошёл в группу».
   @HiveField(2)
   system,
+
+  /// Файл: документ, картинка, звук. Что именно — решает тип содержимого
+  /// вложения, а не отдельный вид сообщения. Заводить `image` рядом с
+  /// `file` значило бы решать одно и то же в двух местах и однажды
+  /// разойтись.
+  @HiveField(3)
+  file,
 }
 
 /// Что случилось с сообщением по пути.
@@ -125,6 +134,11 @@ class ChatMessage {
   @HiveField(12)
   final Map<String, String>? reactionsRaw;
 
+  /// Описание приложенного файла. Сам файл лежит на диске — см.
+  /// [ChatAttachment].
+  @HiveField(13)
+  final Map<String, String>? attachmentRaw;
+
   const ChatMessage({
     required this.id,
     required this.chatId,
@@ -139,9 +153,15 @@ class ChatMessage {
     this.replyTo,
     this.editedAt,
     this.reactionsRaw,
+    this.attachmentRaw,
   });
 
   Map<String, String> get reactions => reactionsRaw ?? const {};
+
+  /// Приложенный файл. null — сообщение без вложения.
+  ChatAttachment? get attachment => ChatAttachment.tryParse(attachmentRaw);
+
+  bool get isFile => kind == MessageKind.file;
 
   /// Сколько человек откликнулось каждым символом — для показа.
   Map<String, int> get reactionCounts {
@@ -191,6 +211,7 @@ class ChatMessage {
     Object? expiresAt = _unset,
     DateTime? editedAt,
     Map<String, String>? reactions,
+    Map<String, String>? attachment,
   }) =>
       ChatMessage(
         id: id,
@@ -212,6 +233,7 @@ class ChatMessage {
         replyTo: replyTo,
         editedAt: editedAt ?? this.editedAt,
         reactionsRaw: reactions ?? reactionsRaw,
+        attachmentRaw: attachment ?? attachmentRaw,
       );
 
   static const Object _unset = Object();
@@ -230,6 +252,7 @@ class ChatMessage {
         'replyTo': replyTo,
         'editedAt': editedAt?.toIso8601String(),
         'reactions': reactionsRaw,
+        'attachment': attachmentRaw,
       };
 
   static ChatMessage? tryParse(Map<String, dynamic> json) {
@@ -261,6 +284,12 @@ class ChatMessage {
       reactionsRaw: json['reactions'] is Map
           ? {
               for (final e in (json['reactions'] as Map).entries)
+                '${e.key}': '${e.value}',
+            }
+          : null,
+      attachmentRaw: json['attachment'] is Map
+          ? {
+              for (final e in (json['attachment'] as Map).entries)
                 '${e.key}': '${e.value}',
             }
           : null,

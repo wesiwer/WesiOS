@@ -1,10 +1,14 @@
+import 'dart:io';
+
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../../team/services/team_service.dart';
+import '../models/chat_attachment.dart';
 import '../models/chat_message.dart';
 import '../models/chat_policy.dart';
 import '../models/chat_thread.dart';
+import 'attachment_store.dart';
 import 'chat_delivery.dart';
 import 'message_store.dart';
 
@@ -165,6 +169,57 @@ class ChatService {
       state: ChatDelivery.initialFor(chat),
       now: now,
     );
+  }
+
+  /// Приложить файл к разговору.
+  ///
+  /// Сообщение создаётся первым и **только потом** к нему кладётся файл:
+  /// имя файла на диске содержит идентификатор сообщения, а до создания
+  /// сообщения его неоткуда взять. Если файл положить не удалось, сообщение
+  /// удаляется — пустой пузырь без вложения хуже, чем отсутствие пузыря.
+  ///
+  /// Возвращает сообщение либо код отказа строкой ([AttachmentStore.tooBig]
+  /// и прочие).
+  static Future<Object?> sendFile({
+    required String chatId,
+    required String sourcePath,
+    String? displayName,
+    String caption = '',
+    DateTime? now,
+  }) async {
+    final chat = byId(chatId);
+    if (chat == null) return null;
+
+    final message = await MessageStore.send(
+      chatId: chat.id,
+      authorId: meId,
+      // Подпись под файлом — это тело сообщения. Пустое тело хранилище не
+      // примет, поэтому при отсутствии подписи кладём имя файла: в списке
+      // разговоров и в поиске оно и нужно.
+      body: caption.trim().isEmpty
+          ? (displayName ?? sourcePath.split(Platform.pathSeparator).last)
+          : caption.trim(),
+      kind: MessageKind.file,
+      lifetime: chat.lifetime,
+      state: ChatDelivery.initialFor(chat),
+      now: now,
+    );
+    if (message == null) return null;
+
+    final result = await AttachmentStore.take(
+      sourcePath: sourcePath,
+      messageId: message.id,
+      displayName: displayName,
+    );
+
+    if (result is! ChatAttachment) {
+      await MessageStore.remove(message.id);
+      return result;
+    }
+
+    await MessageStore.put(
+        message.copyWith(attachment: result.toMap()));
+    return MessageStore.byId(message.id);
   }
 
   /// Служебная строка в ленте: «такого-то добавили», «такой-то вышел».
@@ -350,6 +405,10 @@ class ChatService {
             : '');
     final body = switch (last.kind) {
       MessageKind.sticker => 'стикер',
+      // Название файла, а не подпись: в списке разговоров важнее «что
+      // прислали», чем комментарий к этому.
+      MessageKind.file =>
+        last.attachment?.isImage == true ? 'картинка' : 'файл',
       MessageKind.system => last.body,
       MessageKind.text => last.body,
     };

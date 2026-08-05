@@ -1,9 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/localization/wesi_locale.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../team/services/team_service.dart';
 import '../data/sticker_packs.dart';
+import '../models/chat_attachment.dart';
 import '../models/chat_message.dart';
 
 /// Сообщение в ленте.
@@ -20,6 +23,9 @@ class MessageBubble extends StatelessWidget {
   /// Нажали на отклик — поставить или снять такой же.
   final void Function(String emoji)? onReact;
 
+  /// Нажали на вложение.
+  final VoidCallback? onOpenAttachment;
+
   const MessageBubble({
     super.key,
     required this.message,
@@ -29,6 +35,7 @@ class MessageBubble extends StatelessWidget {
     this.replyTo,
     this.highlight = '',
     this.onReact,
+    this.onOpenAttachment,
   });
 
   @override
@@ -115,6 +122,10 @@ class MessageBubble extends StatelessWidget {
                 const SizedBox(height: 3),
               ],
               if (replyTo != null) _quoted(replyTo!),
+              if (message.attachment case final file?) ...[
+                _attachment(context, file),
+                const SizedBox(height: 6),
+              ],
               _body(),
               if (message.reactions.isNotEmpty) _reactions(),
               const SizedBox(height: 3),
@@ -161,6 +172,86 @@ class MessageBubble extends StatelessWidget {
     }
     return Text.rich(TextSpan(style: base, children: spans));
   }
+
+  /// Приложенный файл.
+  ///
+  /// Картинка показывается сразу, остальное — карточкой с именем и
+  /// размером. Показывать имя файла вместо самой картинки значит заставить
+  /// человека открывать её, чтобы вспомнить, что он прислал.
+  Widget _attachment(BuildContext context, ChatAttachment file) {
+    if (file.isImage && file.isHere) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: ConstrainedBox(
+          // Предел по высоте: вертикальная фотография во весь экран
+          // выталкивает из ленты всё остальное.
+          constraints: const BoxConstraints(maxHeight: 260),
+          child: GestureDetector(
+            onTap: onOpenAttachment,
+            child: Image.file(
+              File(file.path),
+              fit: BoxFit.cover,
+              // Файл мог быть удалён снаружи — каталог чистили, телефон
+              // переносили. Пустая рамка честнее, чем красный крест
+              // Flutter поверх переписки.
+              errorBuilder: (context, _, __) => _fileCard(file, missing: true),
+            ),
+          ),
+        ),
+      );
+    }
+    return _fileCard(file, missing: !file.isHere);
+  }
+
+  Widget _fileCard(ChatAttachment file, {bool missing = false}) =>
+      GestureDetector(
+        onTap: missing ? null : onOpenAttachment,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+          decoration: BoxDecoration(
+            color: AppTheme.surfaceLight.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: AppTheme.glassBorder),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                missing
+                    ? Icons.report_gmailerrorred_outlined
+                    : (file.isImage
+                        ? Icons.image_outlined
+                        : Icons.insert_drive_file_outlined),
+                size: 20,
+                color: missing ? AppTheme.accentRed : AppTheme.accent,
+              ),
+              const SizedBox(width: 9),
+              Flexible(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      file.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: AppTheme.textPrimary),
+                    ),
+                    Text(
+                      missing ? 'файла нет на устройстве' : file.sizeLabel,
+                      style: TextStyle(
+                          fontSize: 10.5, color: AppTheme.textMuted),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
 
   /// Отклики под сообщением.
   ///

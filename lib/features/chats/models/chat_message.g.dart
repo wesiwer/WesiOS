@@ -30,13 +30,14 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
       replyTo: fields[10] as String?,
       editedAt: fields[11] as DateTime?,
       reactionsRaw: (fields[12] as Map?)?.cast<String, String>(),
+      attachmentRaw: (fields[13] as Map?)?.cast<String, String>(),
     );
   }
 
   @override
   void write(BinaryWriter writer, ChatMessage obj) {
     writer
-      ..writeByte(13)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -62,7 +63,9 @@ class ChatMessageAdapter extends TypeAdapter<ChatMessage> {
       ..writeByte(11)
       ..write(obj.editedAt)
       ..writeByte(12)
-      ..write(obj.reactionsRaw);
+      ..write(obj.reactionsRaw)
+      ..writeByte(13)
+      ..write(obj.attachmentRaw);
   }
 
   @override
@@ -89,6 +92,8 @@ class MessageKindAdapter extends TypeAdapter<MessageKind> {
         return MessageKind.sticker;
       case 2:
         return MessageKind.system;
+      case 3:
+        return MessageKind.file;
       default:
         return MessageKind.text;
     }
@@ -105,6 +110,9 @@ class MessageKindAdapter extends TypeAdapter<MessageKind> {
         break;
       case MessageKind.system:
         writer.writeByte(2);
+        break;
+      case MessageKind.file:
+        writer.writeByte(3);
         break;
     }
   }

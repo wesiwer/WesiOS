@@ -1,5 +1,7 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 
 import '../../core/localization/wesi_locale.dart';
 import '../../core/theme/app_theme.dart';
@@ -9,6 +11,7 @@ import '../team/services/team_service.dart';
 import 'models/chat_message.dart';
 import 'models/chat_thread.dart';
 import 'services/ai_topic_judge.dart';
+import 'services/attachment_store.dart';
 import 'services/chat_delivery.dart';
 import 'services/chat_service.dart';
 import 'services/chat_sync.dart';
@@ -145,6 +148,66 @@ class _ChatScreenState extends State<ChatScreen> {
         onChanged: () => setState(() {}),
       ),
     );
+  }
+
+  /// Приложить файл.
+  ///
+  /// Подпись берётся из поля ввода: человек часто пишет «вот договор» и
+  /// прикладывает — заставлять его отправлять это двумя сообщениями
+  /// незачем.
+  Future<void> _attach() async {
+    final chat = _chat;
+    if (chat == null) return;
+
+    final picked = await FilePicker.platform.pickFiles(withData: false);
+    final file = picked?.files.singleOrNull;
+    final path = file?.path;
+    if (path == null) return;
+
+    final result = await ChatService.sendFile(
+      chatId: chat.id,
+      sourcePath: path,
+      displayName: file!.name,
+      caption: _input.text,
+    );
+    ChatSync.nudge();
+    if (!mounted) return;
+
+    if (result is ChatMessage) {
+      setState(() {
+        _input.clear();
+        _replyTo = null;
+      });
+      _toBottom();
+      return;
+    }
+
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(switch (result) {
+        AttachmentStore.tooBig => _ru
+            ? 'Файл больше ${AttachmentStore.maxBytes ~/ (1024 * 1024)} МБ. '
+                'Такой не отправится: хранилища для больших файлов пока нет, '
+                'и отправка молча висела бы.'
+            : 'File is too large',
+        AttachmentStore.empty =>
+          _ru ? 'Файл пустой' : 'The file is empty',
+        AttachmentStore.gone =>
+          _ru ? 'Файл не найден' : 'File not found',
+        _ => _ru ? 'Не удалось приложить файл' : 'Could not attach the file',
+      }),
+      backgroundColor: AppTheme.surface,
+    ));
+  }
+
+  /// Открыть вложение системными средствами.
+  ///
+  /// Своего просмотрщика нет намеренно: у телефона и компьютера уже есть
+  /// приложения для pdf, таблиц и картинок, и они умеют это лучше.
+  Future<void> _openAttachment(ChatMessage m) async {
+    final file = m.attachment;
+    if (file == null || !file.isHere) return;
+    await Share.shareXFiles([XFile(file.path)], text: file.name);
   }
 
   /// Откликнуться на сообщение.
@@ -657,6 +720,7 @@ class _ChatScreenState extends State<ChatScreen> {
               onLongPress: () => _actions(m),
               highlight: searching ? _query : '',
               onReact: (emoji) => _react(m, emoji),
+              onOpenAttachment: () => _openAttachment(m),
             ),
           ],
         );
@@ -752,6 +816,12 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: Icon(Icons.emoji_emotions_outlined,
                 size: 22, color: AppTheme.textMuted),
             onPressed: _stickers,
+          ),
+          IconButton(
+            tooltip: _ru ? 'Приложить файл' : 'Attach a file',
+            icon: Icon(Icons.attach_file,
+                size: 21, color: AppTheme.textMuted),
+            onPressed: _attach,
           ),
           Expanded(
             child: ConstrainedBox(
