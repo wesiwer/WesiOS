@@ -17,9 +17,9 @@ body{position:relative}
 .auth-copy h2{margin:18px 0 16px;font-size:clamp(42px,6vw,72px);line-height:.98;letter-spacing:-.055em}
 .auth-copy p{max-width:520px;color:var(--muted);font-size:15px;line-height:1.7}
 
-/* Один SVG расположен в координатах всего документа. Его маршрут строится
-   только при изменении геометрии, а не на каждом кадре прокрутки. */
-.runner-svg{position:absolute;left:0;top:0;width:100%;z-index:8;pointer-events:none;overflow:visible;opacity:0;transition:opacity .24s ease;contain:layout style;will-change:opacity}
+/* Один SVG использует один из трёх заранее подготовленных маршрутов.
+   На прокрутке меняется только dashoffset, геометрия не строится заново. */
+.runner-svg{position:absolute;left:0;top:0;width:100vw;z-index:8;pointer-events:none;overflow:visible;opacity:0;transition:opacity .24s ease;contain:layout style;will-change:opacity}
 .runner-svg.active{opacity:1}
 .runner-trail,.runner-head{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 .runner-trail{stroke:url(#runnerGradient);stroke-width:3;opacity:.34;filter:url(#runnerGlow)}
@@ -35,11 +35,24 @@ body{position:relative}
 .motion-ready [data-scroll-reveal]:not(.visible){opacity:0!important;transform:translate3d(0,18px,0)!important}
 .motion-ready [data-scroll-reveal].visible{opacity:1!important;transform:none!important;transition:opacity .68s var(--ease),transform .68s var(--ease)}
 
-.orange-glow{filter:blur(72px)!important;opacity:.12!important;contain:strict;transform:translateZ(0);will-change:transform}
+/* Визуальный blur запечён в радиальный градиент: тот же мягкий свет без
+   дорогостоящего размытия большого фиксированного слоя на каждом кадре. */
+.orange-glow{filter:none!important;opacity:1!important;contain:strict;will-change:transform;background:radial-gradient(circle at center,rgba(255,101,23,.22) 0%,rgba(255,101,23,.12) 28%,rgba(255,101,23,.045) 48%,transparent 72%)!important}
+.glow-b{background:radial-gradient(circle at center,rgba(255,139,36,.19) 0%,rgba(255,101,23,.09) 34%,transparent 72%)!important}
 .module-stage,.flow-board{contain:layout paint style}
-.module-card{transition:opacity .2s,border-color .3s,box-shadow .3s;animation:cardBreath 5.8s ease-in-out infinite;backface-visibility:hidden;transform:translateZ(0)}
-.module-card:nth-of-type(2){animation-delay:-1.2s}.module-card:nth-of-type(3){animation-delay:-2.3s}.module-card:nth-of-type(4){animation-delay:-3.4s}
-@keyframes cardBreath{50%{opacity:.93;border-color:rgba(255,101,23,.38);box-shadow:0 20px 48px rgba(0,0,0,.4),0 0 20px rgba(255,101,23,.055)}}
+
+/* Плавающие траектории карточек заранее заданы keyframes и выполняются
+   композитором. JavaScript больше не вычисляет sin/cos при прокрутке. */
+.module-card{transition:border-color .3s,box-shadow .3s;backface-visibility:hidden;transform:translateZ(0);will-change:transform,opacity}
+.baked-float-1{animation:bakedFloat1 8.2s ease-in-out infinite,cardBreath 5.8s ease-in-out infinite}
+.baked-float-2{animation:bakedFloat2 9.1s ease-in-out infinite,cardBreath 6.2s ease-in-out -1.2s infinite}
+.baked-float-3{animation:bakedFloat3 8.7s ease-in-out infinite,cardBreath 6.5s ease-in-out -2.3s infinite}
+.baked-float-4{animation:bakedFloat4 9.5s ease-in-out infinite,cardBreath 6.9s ease-in-out -3.4s infinite}
+@keyframes bakedFloat1{0%,100%{transform:translate3d(0,0,0) rotate(-.25deg)}32%{transform:translate3d(9px,-13px,0) rotate(1.25deg)}68%{transform:translate3d(-6px,7px,0) rotate(-1deg)}}
+@keyframes bakedFloat2{0%,100%{transform:translate3d(0,0,0) rotate(.35deg)}36%{transform:translate3d(-10px,-8px,0) rotate(-1.35deg)}73%{transform:translate3d(7px,12px,0) rotate(.9deg)}}
+@keyframes bakedFloat3{0%,100%{transform:translate3d(0,0,0) rotate(-.3deg)}29%{transform:translate3d(8px,11px,0) rotate(1.15deg)}66%{transform:translate3d(-11px,-7px,0) rotate(-1.2deg)}}
+@keyframes bakedFloat4{0%,100%{transform:translate3d(0,0,0) rotate(.2deg)}41%{transform:translate3d(-7px,13px,0) rotate(-1deg)}76%{transform:translate3d(10px,-9px,0) rotate(1.3deg)}}
+@keyframes cardBreath{0%,100%{opacity:1;border-color:#46464e;box-shadow:0 18px 45px rgba(0,0,0,.36)}50%{opacity:.93;border-color:rgba(255,101,23,.38);box-shadow:0 20px 48px rgba(0,0,0,.4),0 0 20px rgba(255,101,23,.055)}}
 .flow-wire{will-change:opacity;filter:none!important}
 @keyframes wirePulse{50%{opacity:.26}}
 .flow-node{will-change:transform;backface-visibility:hidden}
@@ -47,11 +60,11 @@ body{position:relative}
 @media(max-width:900px){.intro-stage,.auth-bottom{grid-template-columns:1fr}.intro-visual{min-height:350px}.auth-copy{text-align:center}.auth-copy p{margin-left:auto;margin-right:auto}.auth-bottom{padding-top:90px}.login-panel{width:min(560px,100%);margin:0 auto}}
 @media(max-width:650px){
   .topbar{-webkit-backdrop-filter:blur(11px);backdrop-filter:blur(11px)}
-  .orange-glow{filter:blur(54px)!important;opacity:.095!important}
+  .orange-glow{opacity:.82!important}
   .intro-stage{padding-top:50px}.intro-visual{min-height:280px}.intro-orbit{width:240px;height:240px}.intro-orbit:after{inset:34px}.intro-orbit i:first-child{inset:66px}.intro-orbit img{width:88px;height:88px;border-radius:25px}
   .auth-bottom{min-height:auto;padding:110px 0 70px;gap:38px}.auth-copy h2{font-size:40px}
   .runner-head{stroke-width:3.3}.runner-trail{stroke-width:2.3}
   #motionRail .rail-line:before{height:70px;width:15px;filter:blur(3px)}
-  .module-card{animation-duration:7s}
+  .baked-float-1{animation-duration:9.8s,7s}.baked-float-2{animation-duration:10.4s,7.4s}.baked-float-3{animation-duration:10.1s,7.8s}.baked-float-4{animation-duration:10.8s,8.1s}
 }
 @media(prefers-reduced-motion:reduce){.runner-svg{display:none}.module-card{animation:none}.intro-orbit:before,.intro-orbit:after,.intro-orbit i{animation:none}}
