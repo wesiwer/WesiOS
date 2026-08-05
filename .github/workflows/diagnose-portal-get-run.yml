@@ -1,0 +1,13 @@
+name: Diagnose portal GET run
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-portal-get-run.yml'
+permissions:
+  contents: read
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo run
