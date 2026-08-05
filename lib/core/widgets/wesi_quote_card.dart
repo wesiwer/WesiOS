@@ -5,11 +5,6 @@ import '../localization/wesi_locale.dart';
 import '../services/quote_mind_charge_service.dart';
 
 /// Карточка с фразой дня на главном экране.
-///
-/// По умолчанию берёт фразу текущего слота ([WesiQuotes.current]) — она
-/// стабильна в пределах нескольких часов, поэтому экран не мельтешит. Кнопка
-/// «обновить» показывает случайную, если захотелось другую прямо сейчас.
-/// Каждый refresh учитывается в [QuoteMindChargeService] (прогресс «заряда»).
 class WesiQuoteCard extends StatefulWidget {
   const WesiQuoteCard({super.key});
 
@@ -18,7 +13,7 @@ class WesiQuoteCard extends StatefulWidget {
 }
 
 class _WesiQuoteCardState extends State<WesiQuoteCard> {
-  WesiQuote? _manual; // выбранная вручную, перебивает фразу слота
+  WesiQuote? _manual;
 
   Future<void> _refresh() async {
     setState(() => _manual = WesiQuotes.random());
@@ -27,11 +22,26 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
 
   @override
   Widget build(BuildContext context) {
+    // Карточка слушает тему сама. Раньше она полагалась на перестроение всей
+    // Home, поэтому после переключения светлой/тёмной темы могла несколько
+    // секунд оставаться со старым градиентом и цветом текста.
+    return ValueListenableBuilder<AppThemeMode>(
+      valueListenable: ThemeNotifier.instance,
+      builder: (context, _, __) => ValueListenableBuilder<String>(
+        valueListenable: WesiLocale.localeNotifier,
+        builder: (context, __, ___) => _content(),
+      ),
+    );
+  }
+
+  Widget _content() {
     final quote = _manual ?? WesiQuotes.current();
     final text = WesiLocale.isRussian ? quote.ru : quote.en;
 
-    return Container(
-      padding: EdgeInsets.fromLTRB(18, 16, 12, 16),
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 420),
+      curve: Curves.easeInOutCubic,
+      padding: const EdgeInsets.fromLTRB(18, 16, 12, 16),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppTheme.glassBorder),
@@ -48,7 +58,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: EdgeInsets.only(top: 2),
+            padding: const EdgeInsets.only(top: 2),
             child: Icon(Icons.format_quote,
                 size: 18, color: AppTheme.accent.withOpacity(0.8)),
           ),
@@ -59,7 +69,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 AnimatedSwitcher(
-                  duration: Duration(milliseconds: 250),
+                  duration: const Duration(milliseconds: 250),
                   child: Text(
                     text,
                     key: ValueKey(text),
@@ -71,10 +81,8 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
                     ),
                   ),
                 ),
-                // Автор рисуется только если он есть — у народных фраз
-                // подпись не нужна вовсе, пустой прочерк выглядел бы багом.
                 if (quote.author != null) ...[
-                  SizedBox(height: 6),
+                  const SizedBox(height: 6),
                   Text(
                     '— ${quote.author}',
                     style: TextStyle(
@@ -84,7 +92,7 @@ class _WesiQuoteCardState extends State<WesiQuoteCard> {
               ],
             ),
           ),
-          SizedBox(width: 8),
+          const SizedBox(width: 8),
           IconButton(
             tooltip: WesiLocale.isRussian ? 'Другая фраза' : 'Another quote',
             icon: Icon(Icons.refresh,
