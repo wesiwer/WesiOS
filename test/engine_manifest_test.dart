@@ -72,4 +72,33 @@ void main() {
       expect(release.packages, isEmpty);
     });
   });
+
+  group('движок со своего сервера', () {
+    test('ссылка приклеивается, не теряя версии и списка пакетов', () {
+      final base = EngineRelease.tryParse(const {
+        'version': '2026.08.01',
+        'asset': 'wesios-engine-sarimax-win64.zip',
+        'sizeBytes': 367001600,
+        'packages': {'statsmodels': '0.14.6'},
+      })!;
+
+      final onServer = base.withDownloadUrl(
+          'https://api.example.com/artifacts/engines/2026.08.01/x.zip');
+
+      expect(onServer.downloadUrl, endsWith('/2026.08.01/x.zip'));
+      expect(onServer.version, '2026.08.01');
+      expect(onServer.sizeBytes, 367001600);
+      expect(onServer.packages['statsmodels'], '0.14.6');
+    });
+
+    test('без ссылки движок остаётся на старом пути через GitHub', () {
+      // Отдельного признака «откуда» нет намеренно: признак можно забыть
+      // выставить, а ссылку — нет, без неё просто нечего скачивать.
+      final base = EngineRelease.tryParse(const {
+        'version': '2026.08.01',
+        'asset': 'x.zip',
+      })!;
+      expect(base.downloadUrl, isNull);
+    });
+  });
 }

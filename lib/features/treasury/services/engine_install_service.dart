@@ -7,6 +7,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/services/github_release_download.dart';
+import '../../../core/services/update_endpoint.dart';
 import 'forecast_engine_kind.dart';
 
 /// Стадия установки движка — используется и баннером на экране прогноза,
@@ -51,11 +52,15 @@ class EngineRelease {
   /// показываем в настройках, чтобы было видно, что именно установлено.
   final Map<String, String> packages;
 
+  /// Прямая ссылка на свой сервер. null — качаем через GitHub, по пропуску.
+  final String? downloadUrl;
+
   const EngineRelease({
     required this.version,
     required this.assetName,
     this.sizeBytes,
     this.packages = const {},
+    this.downloadUrl,
   });
 
   static EngineRelease? tryParse(Map<String, dynamic> json) {
@@ -72,6 +77,14 @@ class EngineRelease {
           const {},
     );
   }
+
+  EngineRelease withDownloadUrl(String url) => EngineRelease(
+        version: version,
+        assetName: assetName,
+        sizeBytes: sizeBytes,
+        packages: packages,
+        downloadUrl: url,
+      );
 }
 
 /// Скачивает и устанавливает готовые движки прогноза (Prophet/SARIMAX) —
@@ -164,6 +177,16 @@ class EngineInstallService {
         DateTime.now().difference(_manifestFetchedAt!) < _manifestTtl;
     if (!force && fresh && _manifest != null) return _manifest;
 
+    // Сперва свой сервер — по той же причине, что и у обновлений
+    // приложения: сотруднику не нужна учётная запись на GitHub, чтобы
+    // поставить движок прогноза.
+    final fromServer = await _fetchServerManifest();
+    if (fromServer != null && fromServer.isNotEmpty) {
+      _manifest = fromServer;
+      _manifestFetchedAt = DateTime.now();
+      return _manifest;
+    }
+
     final client = HttpClient();
     try {
       final asset = await GitHubReleaseDownload.open(
@@ -193,6 +216,54 @@ class EngineInstallService {
       return _manifest;
     } catch (_) {
       return _manifest; // офлайн — отдаём то, что уже знали (может быть null)
+    } finally {
+      client.close();
+    }
+  }
+
+  /// Манифест движков со своего сервера.
+  ///
+  /// null — сервер не ответил или на нём движков пока нет; тогда работает
+  /// прежний путь через GitHub. Молча, без жалоб: недоступный сервер здесь
+  /// не поломка, а обычное дело.
+  ///
+  /// Формат тот же, что у GitHub, плюс `path` — относительный путь к файлу.
+  /// Одинаковый формат намеренно: один разборщик, одна модель, и никакой
+  /// возможности расходиться между двумя источниками.
+  static Future<Map<ForecastEngineKind, EngineRelease>?>
+      _fetchServerManifest() async {
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final url = '${UpdateEndpoint.base}/engines/manifest.json';
+      final req = await client.getUrl(Uri.parse(url));
+      req.headers.set(HttpHeaders.userAgentHeader, 'WesiOS');
+      final res = await req.close().timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) {
+        await res.drain<void>();
+        return null;
+      }
+      final decoded = jsonDecode(await res.transform(utf8.decoder).join());
+      if (decoded is! Map) return null;
+      final engines = decoded['engines'];
+      if (engines is! Map) return null;
+
+      final parsed = <ForecastEngineKind, EngineRelease>{};
+      for (final kind in _assetName.keys) {
+        final entry = engines[kind.name];
+        if (entry is! Map) continue;
+        final map = Map<String, dynamic>.from(entry);
+        final release = EngineRelease.tryParse(map);
+        if (release == null) continue;
+        final path = map['path'];
+        // Без пути качать нечего. Записать такой движок в манифест значило
+        // бы показать кнопку «Установить», которая ничего не устанавливает.
+        if (path is! String || path.isEmpty) continue;
+        parsed[kind] = release.withDownloadUrl(UpdateEndpoint.fileUrl(path));
+      }
+      return parsed;
+    } catch (_) {
+      return null;
     } finally {
       client.close();
     }
@@ -255,32 +326,53 @@ class EngineInstallService {
     final client = HttpClient();
     File? tempZip;
     try {
-      final asset = await GitHubReleaseDownload.open(
-        client,
-        tag: _releaseTag,
-        asset: assetName,
-        // Движок весит от 350 МБ до 1,7 ГБ: тридцати секунд по умолчанию
-        // хватает только на установление связи, не на саму загрузку.
-        timeout: const Duration(minutes: 5),
-      );
-      if (!asset.ok) {
-        _update(
-          kind,
-          EngineInstallProgress(
-            stage: InstallStage.failed,
-            // Отдельный код, а не «HTTP 404»: закрытый репозиторий без входа
-            // в GitHub — единственная причина отказа, которую человек может
-            // устранить сам, и она не должна выглядеть как поломка сервера.
-            error: switch (asset.status) {
-              ReleaseFetch.needsSignIn => 'github_sign_in',
-              ReleaseFetch.notFound => 'not_published',
-              _ => 'network',
-            },
-          ),
+      final HttpClientResponse response;
+
+      final direct = release?.downloadUrl;
+      if (direct != null) {
+        // Свой сервер: ссылка известна, пропуск не нужен.
+        final req = await client.getUrl(Uri.parse(direct));
+        req.headers.set(HttpHeaders.userAgentHeader, 'WesiOS');
+        final res = await req.close().timeout(const Duration(minutes: 5));
+        if (res.statusCode != 200) {
+          await res.drain<void>();
+          _update(
+            kind,
+            const EngineInstallProgress(
+                stage: InstallStage.failed, error: 'network'),
+          );
+          return;
+        }
+        response = res;
+      } else {
+        final asset = await GitHubReleaseDownload.open(
+          client,
+          tag: _releaseTag,
+          asset: assetName,
+          // Движок весит от 350 МБ до 1,7 ГБ: тридцати секунд по умолчанию
+          // хватает только на установление связи, не на саму загрузку.
+          timeout: const Duration(minutes: 5),
         );
-        return;
+        if (!asset.ok) {
+          _update(
+            kind,
+            EngineInstallProgress(
+              stage: InstallStage.failed,
+              // Отдельный код, а не «HTTP 404»: закрытый репозиторий без
+              // входа в GitHub — единственная причина отказа, которую
+              // человек может устранить сам, и она не должна выглядеть как
+              // поломка сервера.
+              error: switch (asset.status) {
+                ReleaseFetch.needsSignIn => 'github_sign_in',
+                ReleaseFetch.notFound => 'not_published',
+                _ => 'network',
+              },
+            ),
+          );
+          return;
+        }
+        response = asset.response!;
       }
-      final response = asset.response!;
 
       final total = response.contentLength > 0 ? response.contentLength : null;
       final tempDir = await getTemporaryDirectory();
