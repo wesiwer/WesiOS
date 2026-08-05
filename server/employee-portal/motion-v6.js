@@ -1,30 +1,44 @@
 (() => {
   'use strict';
+
   const svg = document.getElementById('runnerSvg');
   const trail = document.getElementById('runnerTrail');
   const head = document.getElementById('runnerHead');
   const origin = document.getElementById('runnerOrigin');
-  if (!svg || !trail || !head || !origin || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const rail = document.getElementById('motionRail');
+  const railLine = rail?.querySelector('.rail-line');
+  const stage = document.getElementById('moduleStage');
+  const core = document.getElementById('orbitCore');
+  const flow = document.getElementById('flowSection');
+  const board = document.querySelector('.flow-board');
 
-  const $ = (id) => document.getElementById(id);
+  if (!svg || !trail || !head || !origin || !rail || !railLine || !stage || !core || !flow || !board) return;
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+
   let target = 0;
   let smooth = 0;
   let pathLength = 0;
-  let lastPathKey = '';
+  let startY = 0;
+  let endY = 1;
+  let frame = 0;
+  let rebuildFrame = 0;
+  let lastWidth = 0;
+  let lastHeight = 0;
 
-  function clamp(value, min = 0, max = 1) {
-    return Math.max(min, Math.min(max, value));
-  }
+  const clamp = (value, min = 0, max = 1) => Math.max(min, Math.min(max, value));
 
-  function point(node, x = .5, y = .5) {
-    const r = node.getBoundingClientRect();
-    return { x: r.left + r.width * x, y: r.top + r.height * y };
+  function documentPoint(node, x = .5, y = .5) {
+    const rect = node.getBoundingClientRect();
+    return {
+      x: rect.left + scrollX + rect.width * x,
+      y: rect.top + scrollY + rect.height * y,
+    };
   }
 
   function catmullRom(points) {
     if (points.length < 2) return '';
     let d = `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`;
-    for (let i = 0; i < points.length - 1; i++) {
+    for (let i = 0; i < points.length - 1; i += 1) {
       const p0 = points[Math.max(0, i - 1)];
       const p1 = points[i];
       const p2 = points[i + 1];
@@ -39,88 +53,121 @@
   }
 
   function buildPath() {
-    const stage = $('moduleStage');
-    const core = $('orbitCore');
-    const flow = $('flowSection');
-    const board = document.querySelector('.flow-board');
-    const rail = $('motionRail');
-    const railLine = rail?.querySelector('.rail-line');
-    if (!stage || !core || !flow || !board || !rail || !railLine) return;
+    rebuildFrame = 0;
+    const pageHeight = Math.max(document.documentElement.scrollHeight, document.body.scrollHeight, innerHeight);
+    const pageWidth = Math.max(document.documentElement.clientWidth, innerWidth);
 
-    const o = point(origin, .02, .5);
-    const merge = point(railLine, .5, .015);
+    if (pageWidth !== lastWidth || pageHeight !== lastHeight) {
+      lastWidth = pageWidth;
+      lastHeight = pageHeight;
+      svg.setAttribute('viewBox', `0 0 ${pageWidth} ${pageHeight}`);
+      svg.setAttribute('width', `${pageWidth}`);
+      svg.setAttribute('height', `${pageHeight}`);
+      svg.style.height = `${pageHeight}px`;
+    }
+
+    const o = documentPoint(origin, .02, .5);
+    const merge = documentPoint(railLine, .5, .015);
     const points = [
       o,
       { x: o.x + 70, y: o.y + 4 },
-      point(stage, .17, .24),
-      point(core, .48, .18),
-      point(stage, .83, .34),
-      point(stage, .73, .76),
-      point(flow, .77, .24),
-      point(board, .55, .48),
-      point(flow, .22, .76),
-      { x: merge.x + 118, y: merge.y - 210 },
-      { x: merge.x + 42, y: merge.y - 94 },
+      documentPoint(stage, .17, .24),
+      documentPoint(core, .48, .18),
+      documentPoint(stage, .83, .34),
+      documentPoint(stage, .73, .76),
+      documentPoint(flow, .77, .24),
+      documentPoint(board, .55, .48),
+      documentPoint(flow, .22, .76),
+      { x: merge.x + Math.min(118, pageWidth * .18), y: merge.y - 210 },
+      { x: merge.x + Math.min(42, pageWidth * .08), y: merge.y - 94 },
       { x: merge.x, y: merge.y - 34 },
       merge,
     ];
 
-    const key = points.map(p => `${Math.round(p.x)},${Math.round(p.y)}`).join('|');
-    if (key === lastPathKey) return;
-    lastPathKey = key;
     const d = catmullRom(points);
     trail.setAttribute('d', d);
     head.setAttribute('d', d);
     pathLength = trail.getTotalLength();
+    startY = o.y - innerHeight * .7;
+    endY = merge.y - innerHeight * .36;
+    updateTarget();
+    draw(true);
+  }
+
+  function requestBuild() {
+    if (rebuildFrame) cancelAnimationFrame(rebuildFrame);
+    rebuildFrame = requestAnimationFrame(buildPath);
   }
 
   function updateTarget() {
-    const rail = $('motionRail');
-    const railLine = rail?.querySelector('.rail-line');
-    if (!rail || !railLine) return;
-    const start = origin.getBoundingClientRect().top + scrollY - innerHeight * .7;
-    const end = railLine.getBoundingClientRect().top + scrollY - innerHeight * .36;
-    target = clamp((scrollY - start) / Math.max(1, end - start));
+    target = clamp((scrollY - startY) / Math.max(1, endY - startY));
+    schedule();
+  }
+
+  function applyLine(progress) {
+    if (!pathLength) return;
+    const visible = pathLength * progress;
+    const merge = clamp((progress - .82) / .18);
+    const mergeEase = merge * merge * (3 - 2 * merge);
+    const baseTrailLength = Math.min(150, 72 + innerWidth * .055);
+    const baseHeadLength = Math.min(44, 28 + innerWidth * .018);
+    const trailLength = Math.max(34, baseTrailLength * (1 - mergeEase * .62));
+    const headLength = Math.max(9, baseHeadLength * (1 - mergeEase * .74));
+    const trailStart = Math.max(0, visible - trailLength);
+    const headStart = Math.max(0, visible - headLength);
+
+    trail.style.strokeDasharray = `${trailLength} ${pathLength + trailLength}`;
+    trail.style.strokeDashoffset = `${-trailStart}`;
+    head.style.strokeDasharray = `${headLength} ${pathLength + headLength}`;
+    head.style.strokeDashoffset = `${-headStart}`;
+    trail.style.opacity = `${.34 * (1 - mergeEase)}`;
+    head.style.opacity = `${1 - mergeEase}`;
+    svg.classList.toggle('active', progress > .002 && progress < .9995);
+    svg.style.zIndex = progress > .13 && progress < .48 ? '3' : '8';
+
+    const pulse = Math.sin(mergeEase * Math.PI);
+    railLine.style.setProperty('--runner-merge', pulse.toFixed(3));
+    railLine.classList.toggle('runner-merge-active', merge > .01 && merge < .995);
+  }
+
+  function draw(force = false) {
+    if (!force) smooth += (target - smooth) * .14;
+    if (Math.abs(target - smooth) < .0007) smooth = target;
+    applyLine(smooth);
   }
 
   function render() {
-    buildPath();
-    smooth += (target - smooth) * .075;
+    frame = 0;
+    draw();
+    if (Math.abs(target - smooth) > .0007 && !document.hidden) schedule();
+  }
 
-    const railLine = document.querySelector('#motionRail .rail-line');
-    if (pathLength > 0) {
-      const visible = pathLength * smooth;
-      const merge = clamp((smooth - .82) / .18);
-      const mergeEase = merge * merge * (3 - 2 * merge);
-      const baseTrailLength = Math.min(150, 72 + innerWidth * .055);
-      const baseHeadLength = Math.min(44, 28 + innerWidth * .018);
-      const trailLength = Math.max(34, baseTrailLength * (1 - mergeEase * .62));
-      const headLength = Math.max(9, baseHeadLength * (1 - mergeEase * .74));
-      const trailStart = Math.max(0, visible - trailLength);
-      const headStart = Math.max(0, visible - headLength);
-
-      trail.style.strokeDasharray = `${trailLength} ${pathLength + trailLength}`;
-      trail.style.strokeDashoffset = `${-trailStart}`;
-      head.style.strokeDasharray = `${headLength} ${pathLength + headLength}`;
-      head.style.strokeDashoffset = `${-headStart}`;
-      trail.style.opacity = `${.32 * (1 - mergeEase)}`;
-      head.style.opacity = `${1 - mergeEase}`;
-      svg.classList.toggle('active', smooth > .002 && smooth < .9995);
-
-      // Один и тот же путь проходит за карточками, а в финале точно входит
-      // в вертикальную ось шагов 01–02–03 и растворяется в ней.
-      svg.style.zIndex = smooth > .13 && smooth < .48 ? '3' : '8';
-      if (railLine) {
-        const pulse = Math.sin(mergeEase * Math.PI);
-        railLine.style.setProperty('--runner-merge', pulse.toFixed(3));
-        railLine.classList.toggle('runner-merge-active', merge > .01 && merge < .995);
-      }
-    }
-    requestAnimationFrame(render);
+  function schedule() {
+    if (!frame && !document.hidden) frame = requestAnimationFrame(render);
   }
 
   addEventListener('scroll', updateTarget, { passive: true });
-  addEventListener('resize', () => { lastPathKey = ''; updateTarget(); }, { passive: true });
-  updateTarget();
-  requestAnimationFrame(render);
+  addEventListener('resize', requestBuild, { passive: true });
+  addEventListener('orientationchange', requestBuild, { passive: true });
+  addEventListener('load', requestBuild, { once: true });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && frame) {
+      cancelAnimationFrame(frame);
+      frame = 0;
+    } else {
+      requestBuild();
+    }
+  });
+
+  if (document.fonts?.ready) document.fonts.ready.then(requestBuild).catch(() => {});
+  if ('ResizeObserver' in window) {
+    let resizeTimer = 0;
+    const observer = new ResizeObserver(() => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(requestBuild, 120);
+    });
+    observer.observe(document.getElementById('app') || document.body);
+  }
+
+  requestBuild();
 })();
