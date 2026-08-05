@@ -1,12 +1,13 @@
 /// Защищённые маршруты портала сотрудников WesiOS.
 ///
-/// Портал только проверяет серверные auth-записи коллекции users. Создание
-/// такой записи выполняет WesiOS в момент создания сотрудника через
-/// /api/wesi/portal/employees/provision.
+/// Источник истины для входа — auth-коллекция PocketBase `users`.
+/// WesiOS создаёт или обновляет запись на сервере, а сайт только проверяет
+/// введённые логин и пароль стандартным auth-with-password.
 
 const PORTAL_ARTIFACTS_ROOT = $os.getenv("WESI_ARTIFACTS_DIR") ||
   "/opt/pocketbase/pb_public/artifacts";
-const PORTAL_OWNER_EMAIL = ($os.getenv("WESI_OWNER_EMAIL") || "").trim().toLowerCase();
+const OWNER_MARKER_COLL = "system";
+const OWNER_MARKER_RID = "portal-owner";
 
 function portalReadText(fs, name) {
   const raw = fs.readFile(name);
@@ -40,34 +41,78 @@ function portalFileName(value, fallback) {
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-/// Разрешает создание сотрудников только доверенной основной учётной записи.
-/// Серверные аккаунты сотрудников всегда имеют домен @wesi.local, поэтому
-/// они не могут создавать другие аккаунты. Владелец входит в WesiOS своей
-/// обычной подтверждённой почтой. При необходимости её можно дополнительно
-/// зафиксировать переменной WESI_OWNER_EMAIL.
-function portalOwnerOnly(e) {
-  if (e.hasSuperuserAuth()) return;
-  if (!e.auth) {
-    throw new UnauthorizedError("Требуется вход владельца WesiOS");
+function portalLogin(login) {
+  const normalized = String(login || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(normalized)) {
+    throw new BadRequestError(
+      "Логин должен содержать 3–32 латинских символа, цифры, точку, дефис или подчёркивание",
+    );
   }
-  const email = e.auth.getString("email").trim().toLowerCase();
-  const isEmployeeAccount = email.endsWith("@wesi.local");
-  const matchesConfiguredOwner = PORTAL_OWNER_EMAIL !== "" && email === PORTAL_OWNER_EMAIL;
-  const isPrimaryVerifiedAccount = !isEmployeeAccount && e.auth.getBool("verified");
-  if (!matchesConfiguredOwner && !isPrimaryVerifiedAccount) {
-    throw new ForbiddenError("Создавать учётные записи сотрудников может только владелец");
+  return normalized;
+}
+
+function portalLoginEmail(login) {
+  return portalLogin(login) + "@wesi.local";
+}
+
+function portalOwnerMarker(app, ownerId) {
+  try {
+    return app.findFirstRecordByFilter(
+      "wesios_records",
+      "owner='" + ownerId + "' && coll='" + OWNER_MARKER_COLL +
+        "' && rid='" + OWNER_MARKER_RID + "' && deleted=false",
+    );
+  } catch (_) {
+    return null;
   }
 }
 
-function portalLoginEmail(login, email) {
-  if (typeof email === "string" && email.trim() !== "") {
-    return email.trim().toLowerCase();
+function portalAnyOwnerMarker(app) {
+  try {
+    return app.findFirstRecordByFilter(
+      "wesios_records",
+      "coll='" + OWNER_MARKER_COLL + "' && rid='" +
+        OWNER_MARKER_RID + "' && deleted=false",
+    );
+  } catch (_) {
+    return null;
   }
-  const normalized = String(login || "").trim().toLowerCase();
-  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(normalized)) {
-    throw new BadRequestError("Логин должен содержать 3–32 латинских символа, цифры, точку, дефис или подчёркивание");
+}
+
+/// Первый подтверждённый основной пользователь, который сохраняет свои
+/// учётные данные из профиля WesiOS, закрепляется как владелец. Маркер лежит
+/// на сервере и остаётся привязан к record id даже после смены email/логина.
+function portalClaimOwner(e) {
+  if (e.hasSuperuserAuth()) return;
+  if (!e.auth) throw new UnauthorizedError("Требуется вход владельца WesiOS");
+  if (portalOwnerMarker(e.app, e.auth.id)) return;
+
+  if (portalAnyOwnerMarker(e.app)) {
+    throw new ForbiddenError("Профиль владельца уже закреплён за другой учётной записью");
   }
-  return normalized + "@wesi.local";
+
+  const email = e.auth.getString("email").trim().toLowerCase();
+  if (email.endsWith("@wesi.local") || !e.auth.getBool("verified")) {
+    throw new ForbiddenError("Первичную настройку может выполнить только подтверждённая основная учётная запись");
+  }
+
+  const collection = e.app.findCollectionByNameOrId("wesios_records");
+  const marker = new Record(collection);
+  marker.set("owner", e.auth.id);
+  marker.set("org", "wesi-inc");
+  marker.set("coll", OWNER_MARKER_COLL);
+  marker.set("rid", OWNER_MARKER_RID);
+  marker.set("payload", {"kind": "portal-owner", "ownerId": e.auth.id});
+  marker.set("stamp", new Date().toISOString());
+  marker.set("deleted", false);
+  e.app.save(marker);
+}
+
+function portalOwnerOnly(e) {
+  if (e.hasSuperuserAuth()) return;
+  if (!e.auth || !portalOwnerMarker(e.app, e.auth.id)) {
+    throw new ForbiddenError("Создавать учётные записи сотрудников может только владелец");
+  }
 }
 
 routerAdd("GET", "/api/wesi/portal/session", (e) => {
@@ -80,16 +125,58 @@ routerAdd("GET", "/api/wesi/portal/session", (e) => {
   });
 }, $apis.requireAuth("users"));
 
+/// Владелец указывает собственный короткий логин и новый пароль в профиле
+/// WesiOS. Меняется текущая auth-запись, а не создаётся локальная заглушка.
+/// После этого те же данные принимают сайт и будущее стартовое окно WesiOS.
+routerAdd("POST", "/api/wesi/portal/profile/credentials", (e) => {
+  portalClaimOwner(e);
+  const body = e.requestInfo().body || {};
+  const login = portalLogin(body.login);
+  const password = String(body.password || "");
+  const name = String(body.name || "").trim();
+  const email = portalLoginEmail(login);
+
+  if (password.length < 8 || password.length > 128) {
+    throw new BadRequestError("Пароль должен содержать от 8 до 128 символов");
+  }
+
+  try {
+    const existing = e.app.findAuthRecordByEmail("users", email);
+    if (existing.id !== e.auth.id) {
+      throw new BadRequestError("Такой логин уже занят");
+    }
+  } catch (error) {
+    if (error instanceof BadRequestError) throw error;
+    // Записи с таким email нет — это нормальный путь смены логина.
+  }
+
+  const record = e.auth;
+  record.setEmail(email);
+  record.setPassword(password);
+  record.setVerified(true);
+  record.setIfFieldExists("name", name || login);
+  record.setIfFieldExists("username", login);
+  record.setIfFieldExists("employeeLogin", login);
+  e.app.save(record);
+
+  return e.json(200, {
+    "id": record.id,
+    "email": record.getString("email"),
+    "login": login,
+    "owner": true,
+  });
+}, $apis.requireAuth("users"));
+
 /// Атомарно создаёт или обновляет серверную учётную запись сотрудника.
 /// Пароль передаётся WesiOS по HTTPS только в момент создания/сброса и сразу
 /// хешируется PocketBase. В ответе и логах пароль отсутствует.
 routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
   portalOwnerOnly(e);
   const body = e.requestInfo().body || {};
-  const login = String(body.login || "").trim().toLowerCase();
+  const login = portalLogin(body.login);
   const password = String(body.password || "");
   const name = String(body.name || "").trim();
-  const email = portalLoginEmail(login, body.email);
+  const email = portalLoginEmail(login);
 
   if (password.length < 8 || password.length > 128) {
     throw new BadRequestError("Пароль должен содержать от 8 до 128 символов");
@@ -99,7 +186,11 @@ routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
   let created = false;
   try {
     record = e.app.findAuthRecordByEmail("users", email);
-  } catch (_) {
+    if (portalOwnerMarker(e.app, record.id)) {
+      throw new BadRequestError("Логин владельца нельзя выдать сотруднику");
+    }
+  } catch (error) {
+    if (error instanceof BadRequestError) throw error;
     const collection = e.app.findCollectionByNameOrId("users");
     record = new Record(collection);
     record.setEmail(email);
@@ -162,7 +253,9 @@ routerAdd("GET", "/api/wesi/portal/download/{platform}", (e) => {
   }
 
   const path = portalSafePath(entry.path);
-  const fallback = platform === "windows" ? "wesios-windows-x64.zip" : "wesios-android.apk";
+  const fallback = platform === "windows"
+    ? "wesios-windows-x64.zip"
+    : "wesios-android.apk";
   const name = portalFileName(entry.asset, fallback);
 
   e.response.header().set("Cache-Control", "private, no-store");
