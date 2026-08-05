@@ -29,6 +29,11 @@ on:
         description: 'Что нового (показывается в приложении)'
         required: false
         default: ''
+      deploy_to_server:
+        description: 'Выложить и на свой сервер (нужен блок nginx из server/nginx-artifacts.conf)'
+        type: boolean
+        required: false
+        default: true
 
 permissions:
   contents: write
@@ -366,6 +371,11 @@ jobs:
   # выкладывать.
   deploy-server:
     needs: [version, build-windows, build-android, publish-manifest]
+    # Выключается осознанно, галочкой при запуске, — а не «само пропустится,
+    # если что-то не так». Пока nginx не отдаёт /artifacts, выкладке некуда
+    # ложиться, и честный красный прогон здесь никому не поможет: сборки-то
+    # собрались и в Releases уехали.
+    if: ${{ github.event.inputs.deploy_to_server != 'false' }}
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
