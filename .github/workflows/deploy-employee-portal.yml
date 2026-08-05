@@ -7,6 +7,7 @@ on:
     paths:
       - 'server/employee-portal/**'
       - 'server/pb_hooks/employee_portal.pb.js'
+      - 'server/pb_hooks/employee_portal_static.pb.js'
       - 'server/deploy-employee-portal.sh'
       - '.github/workflows/deploy-employee-portal.yml'
 
@@ -32,9 +33,12 @@ jobs:
           test -s server/employee-portal/index.html
           test -s server/employee-portal/styles.css
           test -s server/employee-portal/app.js
+          test -s server/pb_hooks/employee_portal.pb.js
+          test -s server/pb_hooks/employee_portal_static.pb.js
           grep -q 'WesiOS' server/employee-portal/index.html
           grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
           grep -q '/api/wesi/portal/download' server/pb_hooks/employee_portal.pb.js
+          grep -q '/portal/{path...}' server/pb_hooks/employee_portal_static.pb.js
 
       - name: Check server secrets
         env:
@@ -82,6 +86,7 @@ jobs:
             server/employee-portal/styles.css \
             server/employee-portal/app.js \
             server/pb_hooks/employee_portal.pb.js \
+            server/pb_hooks/employee_portal_static.pb.js \
             server/deploy-employee-portal.sh \
             "$USER@$HOST:$REMOTE/"
 
@@ -93,11 +98,17 @@ jobs:
 
       - name: Verify public portal and auth boundary
         env:
-          PORTAL_URL: ${{ vars.WESI_PORTAL_URL || 'https://api.wesi-inc.ru/artifacts/portal/' }}
+          PORTAL_URL: ${{ vars.WESI_PORTAL_URL || 'https://api.wesi-inc.ru/portal/' }}
+          FALLBACK_URL: https://api.wesi-inc.ru/artifacts/portal/
         run: |
           set -euo pipefail
-          echo "Проверяю $PORTAL_URL"
-          curl -fsS --max-time 30 "$PORTAL_URL" -o portal.html
+
+          URL="$PORTAL_URL"
+          if ! curl -fsS --max-time 30 "$URL" -o portal.html; then
+            echo "::warning::Основной адрес $URL пока недоступен; проверяю $FALLBACK_URL"
+            URL="$FALLBACK_URL"
+            curl -fsS --max-time 30 "$URL" -o portal.html
+          fi
           grep -q 'WesiOS' portal.html
           grep -q 'EMPLOYEE ACCESS' portal.html
 
@@ -105,9 +116,9 @@ jobs:
             'https://api.wesi-inc.ru/api/wesi/portal/manifest' || true)
           case "$CODE" in
             401|403) echo 'Защищённый endpoint установлен и без входа не пускает.' ;;
-            404) echo '::warning::Портал опубликован, но PocketBase hook не установлен из-за прав на сервере.' ;;
+            404) echo '::warning::Статика опубликована, но PocketBase hooks не установлены из-за прав на сервере.' ;;
             200) echo '::error::Manifest доступен без авторизации.'; cat response.txt; exit 1 ;;
             *) echo "::warning::Неожиданный ответ защищённого endpoint: HTTP $CODE" ;;
           esac
 
-          echo "Портал опубликован: $PORTAL_URL"
+          echo "Портал опубликован: $URL"
