@@ -19,6 +19,22 @@ enum ArticleSection {
   personal,
 }
 
+/// Название раздела для человека.
+///
+/// Живёт рядом с самим перечислением, потому что раздел показывается в двух
+/// местах — чипами на экране базы и переключателем в редакторе. Названия
+/// стояли там по отдельности и разошлись: один и тот же раздел назывался
+/// «Регламенты» в одном месте и «Работа» в другом.
+extension ArticleSectionLabel on ArticleSection {
+  String label(bool russian) => switch (this) {
+        ArticleSection.about => russian ? 'О системе' : 'About',
+        ArticleSection.guide => russian ? 'Инструкции' : 'How-to',
+        ArticleSection.playbook => russian ? 'Работа' : 'Work',
+        ArticleSection.finance => russian ? 'Деньги' : 'Money',
+        ArticleSection.personal => russian ? 'Жизнь' : 'Life',
+      };
+}
+
 /// Статья базы знаний.
 ///
 /// [body] — либо Quill Delta JSON (после rich-редактора), либо старый
@@ -67,6 +83,21 @@ class ArticleModel {
   @HiveField(10)
   final bool isFolder;
 
+  /// Место в папке. null — «куда попадёт».
+  ///
+  /// Нужно потому, что путеводитель — это последовательность: «первый день»
+  /// обязан стоять раньше «если что-то пошло не так». Сортировка по
+  /// алфавиту или по дате правки ставила бы их как придётся, и человек
+  /// читал бы главы вразнобой, не понимая, что их вообще читают подряд.
+  ///
+  /// Поле nullable намеренно: на устройствах уже лежат записи без него, и
+  /// non-nullable `int` сломал бы им чтение (Hive пишет `fields[11] as int`).
+  @HiveField(11)
+  final int? orderRaw;
+
+  /// Место в папке; у чужих записей — в конец.
+  int get order => orderRaw ?? 10000;
+
   const ArticleModel({
     required this.id,
     required this.title,
@@ -79,6 +110,7 @@ class ArticleModel {
     this.pinned = false,
     this.parentId,
     this.isFolder = false,
+    this.orderRaw,
   });
 
   /// Отличает «параметр не передали» от «передали null».
@@ -99,6 +131,7 @@ class ArticleModel {
     bool? pinned,
     Object? parentId = _unset,
     bool? isFolder,
+    int? orderRaw,
   }) =>
       ArticleModel(
         id: id,
@@ -114,6 +147,7 @@ class ArticleModel {
             ? this.parentId
             : parentId as String?,
         isFolder: isFolder ?? this.isFolder,
+        orderRaw: orderRaw ?? this.orderRaw,
       );
 
   /// Текст статьи без разметки — для превью и для поиска.

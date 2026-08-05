@@ -28,13 +28,14 @@ class ArticleModelAdapter extends TypeAdapter<ArticleModel> {
       pinned: fields[8] as bool,
       parentId: fields[9] as String?,
       isFolder: fields[10] as bool,
+      orderRaw: fields[11] as int?,
     );
   }
 
   @override
   void write(BinaryWriter writer, ArticleModel obj) {
     writer
-      ..writeByte(11)
+      ..writeByte(12)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -56,7 +57,9 @@ class ArticleModelAdapter extends TypeAdapter<ArticleModel> {
       ..writeByte(9)
       ..write(obj.parentId)
       ..writeByte(10)
-      ..write(obj.isFolder);
+      ..write(obj.isFolder)
+      ..writeByte(11)
+      ..write(obj.orderRaw);
   }
 
   @override

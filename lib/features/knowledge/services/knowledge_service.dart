@@ -3,7 +3,6 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/localization/wesi_locale.dart';
 import '../data/builtin_articles.dart';
-import '../data/ota_error_codes_article.dart';
 import '../models/article_model.dart';
 
 /// Хранилище базы знаний.
@@ -25,16 +24,14 @@ class KnowledgeService {
   /// Записывает встроенные статьи. Идемпотентно:
   /// - не трогает пользовательские;
   /// - у встроенных сохраняет pin и updatedAt;
+  /// - убирает встроенные, которых в коде больше нет;
   /// - revision++ только если реально что-то изменилось.
   static Future<void> seed({bool force = false}) async {
     if (_seeded && !force) return;
     final box = await _articlesBox;
     var changed = false;
 
-    final builtins = [
-      ...BuiltinArticles.all(WesiLocale.isRussian),
-      builtinOtaErrorCodesArticle(WesiLocale.isRussian, DateTime.now()),
-    ];
+    final builtins = BuiltinArticles.all(WesiLocale.isRussian);
 
     for (final article in builtins) {
       final existing = box.get(article.id);
@@ -54,6 +51,8 @@ class KnowledgeService {
       if (next.title != existing.title ||
           next.body != existing.body ||
           next.section != existing.section ||
+          next.orderRaw != existing.orderRaw ||
+          next.parentId != existing.parentId ||
           !_sameTags(next.tags, existing.tags) ||
           next.pinned != existing.pinned) {
         await box.put(article.id, next);
@@ -61,8 +60,45 @@ class KnowledgeService {
       }
     }
 
+    if (await _pruneStale(box, {for (final a in builtins) a.id})) {
+      changed = true;
+    }
+
     _seeded = true;
     if (changed) revision.value++;
+  }
+
+  /// Убирает встроенные статьи, которых в коде больше нет.
+  ///
+  /// Без этого справку невозможно переписать: посев умеет только добавлять,
+  /// поэтому на устройстве, где приложение уже стояло, старые статьи живут
+  /// вечно рядом с новыми. Человек видит две базы знаний сразу и не понимает,
+  /// какая настоящая, — а удалить старые руками нельзя, встроенные не
+  /// удаляются намеренно.
+  ///
+  /// Пользовательские записи не трогаются никогда. Но те из них, что лежали
+  /// внутри исчезнувшей встроенной папки, поднимаются в корень: иначе они
+  /// остаются в дереве без пути к себе — формально целы, а найти их можно
+  /// только поиском.
+  static Future<bool> _pruneStale(
+    Box<ArticleModel> box,
+    Set<String> keep,
+  ) async {
+    final stale = <String>{
+      for (final a in box.values)
+        if (a.builtIn && !keep.contains(a.id)) a.id,
+    };
+    if (stale.isEmpty) return false;
+
+    final orphans = [
+      for (final a in box.values)
+        if (!a.builtIn && a.parentId != null && stale.contains(a.parentId)) a,
+    ];
+    for (final a in orphans) {
+      await box.put(a.id, a.copyWith(parentId: null));
+    }
+    await box.deleteAll(stale);
+    return true;
   }
 
   static bool _sameTags(List<String> a, List<String> b) {
@@ -155,16 +191,34 @@ class KnowledgeService {
     };
   }
 
+  /// В каком порядке показывать соседей по папке.
+  ///
+  /// Порядок задан явно ([ArticleModel.order]) — потому что справка читается
+  /// подряд: «первый день» обязан стоять раньше «если что-то пошло не так».
+  /// По алфавиту получалось «Если…» перед «Первый…», и главы выглядели
+  /// набором несвязанных заметок, а не путём.
+  ///
+  /// Закреплённое человеком всё равно идёт первым: это его собственная
+  /// пометка, и она сильнее нашего замысла.
+  static int compare(ArticleModel a, ArticleModel b) {
+    if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
+    final byOrder = a.order.compareTo(b.order);
+    if (byOrder != 0) return byOrder;
+    if (a.isFolder != b.isFolder) return a.isFolder ? -1 : 1;
+    return a.title.compareTo(b.title);
+  }
+
   static List<ArticleModel> getRoots() {
     final box = _box;
     if (box == null) return [];
-    return box.values.where((a) => a.parentId == null).toList();
+    return box.values.where((a) => a.parentId == null).toList()..sort(compare);
   }
 
   static List<ArticleModel> getChildren(String parentId) {
     final box = _box;
     if (box == null) return [];
-    return box.values.where((a) => a.parentId == parentId).toList();
+    return box.values.where((a) => a.parentId == parentId).toList()
+      ..sort(compare);
   }
 
   static bool hasChildren(String parentId) {

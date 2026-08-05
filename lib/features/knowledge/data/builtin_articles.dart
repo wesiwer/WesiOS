@@ -1,1462 +1,2085 @@
-import '../../../core/constants/app_version.dart';
 import 'dart:convert';
 
+import '../../../core/constants/app_version.dart';
 import '../models/article_model.dart';
 
-/// Полная документация WesiOS — встроенные статьи базы знаний.
+/// Встроенная справка WesiOS.
 ///
-/// Иерархия: папки (isFolder=true) содержат дочерние статьи (parentId).
-/// При каждом запуске встроенные статьи перезаписываются (KnowledgeService.seed).
+/// **Для кого она.** Для человека, который открыл программу впервые, и для
+/// него же через полгода, когда вопрос будет уже не «куда нажать», а «как
+/// вообще принято поступать». Поэтому здесь два пласта: как устроена
+/// система и как устроены вещи, ради которых её открывают, — деньги, работа,
+/// собственная голова.
+///
+/// **Чего здесь нет и не будет.** Устройства программы изнутри: названий
+/// классов, полей моделей, формул из кода. Прежняя справка состояла из них
+/// почти целиком — таблицы полей, идентификаторы хранилища, формула Z-оценки.
+/// Человеку, который ищет «куда записать зарплату», это не отвечало ни на
+/// один вопрос, зато выглядело так, будто отвечает.
+///
+/// **Как это устроено технически.** Тело статьи — документ Quill в формате
+/// Delta. Раньше он собирался склейкой строк, и вокруг этой склейки успело
+/// накопиться три разных способа сломать разметку: незакрытая кавычка,
+/// атрибут блока не на том операторе, вложенный JSON без экранирования.
+/// Теперь документ собирается объектами ([_Doc]) и кодируется `jsonEncode`
+/// один раз в конце — ни один из тех способов больше не существует.
 class BuiltinArticles {
   const BuiltinArticles._();
 
   static List<ArticleModel> all(bool ru) {
-    final now = DateTime.now();
-
-    // ─── Helper ─────────────────────────────────────────────────────────────
-    ArticleModel folder(String id, String title, {String? parentId, bool pinned = false}) =>
-        ArticleModel(
-          id: id,
-          title: title,
-          body: '',
-          section: ArticleSection.about,
-          tags: ru ? const ['документация'] : const ['documentation'],
-          createdAt: now,
-          updatedAt: now,
-          builtIn: true,
-          pinned: pinned,
-          parentId: parentId,
-          isFolder: true,
-        );
-
-    ArticleModel article(String id, String title, String body,
-            {String? parentId, bool pinned = false, List<String>? tags}) =>
-        ArticleModel(
-          id: id,
-          title: title,
-          body: body,
-          section: ArticleSection.about,
-          tags: tags ?? (ru ? const ['документация'] : const ['documentation']),
-          createdAt: now,
-          updatedAt: now,
-          builtIn: true,
-          pinned: pinned,
-          parentId: parentId,
-        );
-
-    // ─── Rich content helpers ───────────────────────────────────────────────
-    //
-    // ПОЧЕМУ ЭТО ВЫГЛЯДИТ ИМЕННО ТАК. В формате Delta, которым Quill хранит
-    // документ, атрибуты БЛОКА (заголовок, маркер списка) ставятся не на сам
-    // текст, а на перевод строки, который этот блок закрывает. Здесь было
-    // написано наоборот — `{"insert":"Заголовок\n","attributes":{"header":1}}`
-    // одной операцией, — и редактор такую разметку читал неверно: заголовки и
-    // списки в статьях выглядели не тем, чем должны были.
-    //
-    // Правильная форма: текст отдельной операцией, а перевод строки —
-    // отдельной, и атрибут висит именно на ней.
-    //
-    // Текст ещё и экранируется через jsonEncode: собранный вручную JSON
-    // ломался от любой кавычки внутри строки.
-    String esc(String t) => jsonEncode(t);
-    String lineBreak([String? attrs]) => attrs == null
-        ? '{"insert":"\\n"}'
-        : '{"insert":"\\n","attributes":$attrs}';
-
-    String header(String t, int level) =>
-        '{"insert":${esc(t)}},${lineBreak('{"header":$level}')}';
-
-    String h1(String t) => header(t, 1);
-    String h2(String t) => header(t, 2);
-    String h3(String t) => header(t, 3);
-    String p(String t) => '{"insert":${esc(t)}},${lineBreak()}';
-    String bold(String t) =>
-        '{"insert":${esc(t)},"attributes":{"bold":true}}';
-    String italic(String t) =>
-        '{"insert":${esc(t)},"attributes":{"italic":true}}';
-    String link(String text, String url) =>
-        '{"insert":${esc(text)},"attributes":{"link":${esc(url)}}}';
-    String bullet(String t) =>
-        '{"insert":${esc(t)}},${lineBreak('{"list":"bullet"}')}';
-    String numbered(String t) =>
-        '{"insert":${esc(t)}},${lineBreak('{"list":"ordered"}')}';
-    String br() => lineBreak();
-    // Вложенный JSON обязан быть ЭКРАНИРОВАН. Здесь стояло
-    // `{"insert":{"chart":"$json"}}` — то есть готовый JSON диаграммы
-    // вставлялся внутрь строкового значения как есть, со всеми своими
-    // кавычками. Всё тело статьи после этого переставало разбираться, и
-    // статья показывалась сырым текстом.
-    String embedImage(String url) => '{"insert":{"image":${esc(url)}}}';
-    String embedVideo(String url) => '{"insert":{"video":${esc(url)}}}';
-    String embedTable(String json) => '{"insert":{"table":${esc(json)}}}';
-    String embedChart(String json) => '{"insert":{"chart":${esc(json)}}}';
-
-    // ─── Chart data helpers ─────────────────────────────────────────────────
-    // Собираются jsonEncode, а не склейкой: заголовок с кавычкой или
-    // подпись с апострофом ломали разметку целиком.
-    String chart(String type, String title, List<String> labels,
-            List<double> values,
-            {String source = 'manual'}) =>
-        jsonEncode({
-          'type': type,
-          'title': title,
-          'source': source,
-          'data': values,
-          'labels': labels,
-        });
-
-    String chartBar(String title, List<String> labels, List<double> values) =>
-        chart('bar', title, labels, values);
-    String chartLine(String title, List<String> labels, List<double> values) =>
-        chart('line', title, labels, values);
-    String chartPie(String title, List<String> labels, List<double> values) =>
-        chart('pie', title, labels, values);
-    String chartLinked(String type, String source, String title) =>
-        chart(type, title, const [], const [], source: source);
-
-    // ─── Table data helper ──────────────────────────────────────────────────
-    String tableJson(List<List<String>> rows) => jsonEncode(rows);
-
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  ROOT FOLDER: WesiOS
-    // ═══════════════════════════════════════════════════════════════════════
-
-    // ─── Root folder ────────────────────────────────────────────────────────
-    final root = folder('wesios_root', ru ? 'WesiOS' : 'WesiOS');
-
-    // ─── About article ──────────────────────────────────────────────────────
-    final aboutBody = '[${h1(ru ? 'WesiOS — персональная операционная система' : 'WesiOS — Personal Operating System')},'
-        '${p(ru ? 'WesiOS — это комплексная система управления личными и профессиональными процессами. Объединяет финансы, задачи, аналитику, базу знаний и инструменты в едином интерфейсе.' : 'WesiOS is a comprehensive system for managing personal and professional processes. Combines finance, tasks, analytics, knowledge base and tools in a unified interface.')},'
-        '${h2(ru ? 'Версия' : 'Version')},'
-        '${p(AppVersion.display)},'
-        '${h2(ru ? 'Ключевые принципы' : 'Key Principles')},'
-        '${bullet(ru ? 'Все данные хранятся локально (Hive) — приватность по умолчанию' : 'All data stored locally (Hive) — privacy by default')},'
-        '${bullet(ru ? 'Firebase — опционально, для облачных функций' : 'Firebase — optional, for cloud functions')},'
-        '${bullet(ru ? 'Мультивалютность: RUB, USD, EUR, GBP, CNY, UAH, BYN, KZT' : 'Multi-currency: RUB, USD, EUR, GBP, CNY, UAH, BYN, KZT')},'
-        '${bullet(ru ? 'Кроссплатформенность: Windows, Android' : 'Cross-platform: Windows, Android')},'
-        '${bullet(ru ? 'Светлая и тёмная тема с анимированным переходом' : 'Light and dark theme with animated transition')},'
-        '${h2(ru ? 'Архитектура модулей' : 'Module Architecture')},'
-        '${embedChart(chartBar(ru ? 'Модули WesiOS' : 'WesiOS Modules',
-          [ru ? 'Treasury' : 'Treasury', ru ? 'Tasks' : 'Tasks', ru ? 'Forecast' : 'Forecast', ru ? 'Analytics' : 'Analytics', ru ? 'Calendar' : 'Calendar', ru ? 'Knowledge' : 'Knowledge'],
-          [100, 85, 90, 75, 70, 95]))},'
-        '${br()},'
-        '${p(ru ? 'Диаграмма выше показывает относительную сложность и функциональность каждого модуля в системе.' : 'The chart above shows the relative complexity and functionality of each module in the system.')}'
-        ']';
-
-    final about = article('wesios_about',
-        ru ? 'О WesiOS' : 'About WesiOS',
-        aboutBody,
-        parentId: 'wesios_root',
-        pinned: true,
-        tags: ru ? ['о программе', 'версия'] : ['about', 'version']);
-
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  FOLDER: Модули / Modules
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final modulesFolder = folder('wesios_modules', ru ? 'Модули' : 'Modules', parentId: 'wesios_root');
-
-    // ─── Wesi Treasury ──────────────────────────────────────────────────────
-    final treasuryFolder = folder('wesios_treasury', ru ? 'Wesi Treasury' : 'Wesi Treasury', parentId: 'wesios_modules');
-
-    final treasuryBody = '[${h1(ru ? 'Wesi Treasury — управление финансами' : 'Wesi Treasury — Finance Management')},'
-        '${p(ru ? 'Treasury — центральный модуль учёта финансов. Все суммы хранятся в RUB-эквиваленте, отображаются через CurrencyService в выбранной валюте.' : 'Treasury is the central finance tracking module. All amounts stored in RUB equivalent, displayed via CurrencyService in selected currency.')},'
-        '${h2(ru ? 'TransactionModel' : 'TransactionModel')},'
-        '${p(ru ? 'Основная модель транзакции:' : 'Core transaction model:')},'
-        '${embedTable(tableJson([
-          [ru ? 'Поле' : 'Field', ru ? 'Тип' : 'Type', ru ? 'Описание' : 'Description'],
-          ['id', 'String', ru ? 'Уникальный ID' : 'Unique ID'],
-          ['amount', 'double', ru ? 'Сумма в RUB' : 'Amount in RUB'],
-          ['currency', 'String', ru ? 'Валюта операции' : 'Transaction currency'],
-          ['category', 'String', ru ? 'Категория' : 'Category'],
-          ['type', 'String', ru ? 'income / expense / transfer' : 'income / expense / transfer'],
-          ['date', 'DateTime', ru ? 'Дата операции' : 'Transaction date'],
-          ['note', 'String', ru ? 'Примечание' : 'Note'],
-          ['isRecurring', 'bool', ru ? 'Повторяющаяся' : 'Recurring'],
-          ['recurringRule', 'String?', ru ? 'Правило повторения' : 'Recurrence rule'],
-          ['accountId', 'String?', ru ? 'ID счёта' : 'Account ID'],
-          ['tags', 'List<String>', ru ? 'Теги' : 'Tags'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'Z-Score аномалии' : 'Z-Score Anomalies')},'
-        '${p(ru ? 'Автоматическое обнаружение аномальных транзакций:' : 'Automatic anomaly detection:')},'
-        '${bullet(ru ? 'μ (среднее) — средняя сумма по категории' : 'μ (mean) — average amount per category')},'
-        '${bullet(ru ? 'σ (стандартное отклонение) — разброс сумм' : 'σ (std dev) — amount spread')},'
-        '${bullet(ru ? 'Z = (x − μ) / σ — если |Z| > 2.0 → аномалия' : 'Z = (x − μ) / σ — if |Z| > 2.0 → anomaly')},'
-        '${embedChart(chartLinked('line', 'treasury', ru ? 'Баланс за 7 месяцев' : 'Balance over 7 months'))},'
-        '${br()},'
-        '${h2(ru ? 'Recurring платежи' : 'Recurring Payments')},'
-        '${p(ru ? 'Поддерживаемые правила повторения:' : 'Supported recurrence rules:')},'
-        '${bullet('daily — ежедневно / daily')},'
-        '${bullet('weekly — еженедельно / weekly')},'
-        '${bullet('monthly — ежемесячно / monthly')},'
-        '${bullet('yearly — ежегодно / yearly')},'
-        '${h2(ru ? 'Как создать транзакцию' : 'How to Create a Transaction')},'
-        '${numbered(ru ? 'Откройте модуль Treasury' : 'Open Treasury module')},'
-        '${numbered(ru ? 'Нажмите + для новой операции' : 'Tap + for new operation')},'
-        '${numbered(ru ? 'Укажите сумму, категорию, тип' : 'Enter amount, category, type')},'
-        '${numbered(ru ? 'Добавьте теги и примечание' : 'Add tags and note')},'
-        '${numbered(ru ? 'Сохраните — транзакция появится в списке' : 'Save — transaction appears in list')}'
-        ']';
-
-    final treasury = article('wesios_treasury_article',
-        ru ? 'Управление финансами' : 'Finance Management',
-        treasuryBody,
-        parentId: 'wesios_treasury',
-        tags: ru ? ['treasury', 'финансы', 'транзакции'] : ['treasury', 'finance', 'transactions']);
-
-
-    // ─── Wesi Forecast ──────────────────────────────────────────────────────
-    final forecastFolder = folder('wesios_forecast', ru ? 'Wesi Forecast' : 'Wesi Forecast', parentId: 'wesios_modules');
-
-    final forecastBody = '[${h1(ru ? 'Wesi Forecast — прогнозирование' : 'Wesi Forecast — Forecasting')},'
-        '${p(ru ? 'Прогнозирование финансового состояния на основе исторических данных. Использует Holt-Winters + Monte-Carlo через Firebase Cloud Functions.' : 'Financial forecasting based on historical data. Uses Holt-Winters + Monte-Carlo via Firebase Cloud Functions.')},'
-        '${h2(ru ? 'Holt-Winters формулы' : 'Holt-Winters Formulas')},'
-        '${p(ru ? 'Тройное экспоненциальное сглаживание:' : 'Triple exponential smoothing:')},'
-        '${embedTable(tableJson([
-          [ru ? 'Компонент' : 'Component', ru ? 'Формула' : 'Formula', ru ? 'Описание' : 'Description'],
-          ['Level', 'L_t = α·(Y_t/S_{t-m}) + (1-α)·(L_{t-1}+T_{t-1})', ru ? 'Уровень ряда' : 'Series level'],
-          ['Trend', 'T_t = β·(L_t-L_{t-1}) + (1-β)·T_{t-1}', ru ? 'Тренд' : 'Trend'],
-          ['Season', 'S_t = γ·(Y_t/L_t) + (1-γ)·S_{t-m}', ru ? 'Сезонность' : 'Seasonality'],
-          ['Forecast', 'F_{t+h} = (L_t + h·T_t)·S_{t-m+h}', ru ? 'Прогноз' : 'Forecast'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'Monte-Carlo симуляция' : 'Monte-Carlo Simulation')},'
-        '${bullet(ru ? '5000 итераций случайного блуждания' : '5000 random walk iterations')},'
-        '${bullet(ru ? 'B_{t+1} = B_t + N(μ, σ) — следующий баланс' : 'B_{t+1} = B_t + N(μ, σ) — next balance')},'
-        '${bullet(ru ? 'P10 = 10-й перцентиль (пессимистичный)' : 'P10 = 10th percentile (pessimistic)')},'
-        '${bullet(ru ? 'P50 = медиана (реалистичный)' : 'P50 = median (realistic)')},'
-        '${bullet(ru ? 'P90 = 90-й перцентиль (оптимистичный)' : 'P90 = 90th percentile (optimistic)')},'
-        '${embedChart(chartLinked('area', 'forecast', ru ? 'Прогноз баланса' : 'Balance Forecast'))},'
-        '${br()},'
-        '${h2(ru ? 'Anomaly Filter' : 'Anomaly Filter')},'
-        '${p(ru ? 'Фильтр аномалий отсекает выбросы перед прогнозированием. Порог: |Z| > 2.0.' : 'Anomaly filter removes outliers before forecasting. Threshold: |Z| > 2.0.')}'
-        ']';
-
-    final forecast = article('wesios_forecast_article',
-        ru ? 'Прогнозирование' : 'Forecasting',
-        forecastBody,
-        parentId: 'wesios_forecast',
-        tags: ru ? ['forecast', 'прогноз', 'holt-winters', 'monte-carlo'] : ['forecast', 'holt-winters', 'monte-carlo']);
-
-    // ─── Wesi Sandbox ───────────────────────────────────────────────────────
-    final sandboxFolder = folder('wesios_sandbox', ru ? 'Wesi Sandbox' : 'Wesi Sandbox', parentId: 'wesios_modules');
-
-    final sandboxBody = '[${h1(ru ? 'Wesi Sandbox — песочница' : 'Wesi Sandbox — Sandbox')},'
-        '${p(ru ? 'Изолированное зеркало Treasury для тестирования сценариев. Данные Sandbox не влияют на реальный баланс.' : 'Isolated mirror of Treasury for scenario testing. Sandbox data does not affect real balance.')},'
-        '${h2(ru ? 'Сценарии' : 'Scenarios')},'
-        '${embedTable(tableJson([
-          [ru ? 'Сценарий' : 'Scenario', ru ? 'Описание' : 'Description'],
-          [ru ? 'Стартап' : 'Startup', ru ? 'Начальный капитал, рост расходов' : 'Initial capital, growing expenses'],
-          [ru ? 'Фриланс' : 'Freelancer', ru ? 'Нерегулярный доход, волатильность' : 'Irregular income, volatility'],
-          [ru ? 'Кризис' : 'Crisis', ru ? 'Резкое падение доходов' : 'Sharp income drop'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'Клонирование из реального' : 'Clone from Real')},'
-        '${p(ru ? 'Кнопка «Клонировать» копирует все транзакции из Treasury в Sandbox для анализа «что если».' : '«Clone» button copies all transactions from Treasury to Sandbox for «what if» analysis.')}'
-        ']';
-
-    final sandbox = article('wesios_sandbox_article',
-        ru ? 'Песочница' : 'Sandbox',
-        sandboxBody,
-        parentId: 'wesios_sandbox',
-        tags: ru ? ['sandbox', 'песочница', 'сценарии'] : ['sandbox', 'scenarios']);
-
-    // ─── Wesi Shield ────────────────────────────────────────────────────────
-    final shieldFolder = folder('wesios_shield', ru ? 'Wesi Shield' : 'Wesi Shield', parentId: 'wesios_modules');
-
-    final shieldBody = '[${h1(ru ? 'Wesi Shield — безопасность' : 'Wesi Shield — Security')},'
-        '${p(ru ? 'Модуль защиты данных и приватности.' : 'Data protection and privacy module.')},'
-        '${h2(ru ? 'Privacy Mode' : 'Privacy Mode')},'
-        '${bullet(ru ? 'Суммы скрыты (***)' : 'Amounts hidden (***)')},'
-        '${bullet(ru ? 'Данные не отображаются в UI' : 'Data not shown in UI')},'
-        '${h2(ru ? 'Biometric Lock' : 'Biometric Lock')},'
-        '${bullet(ru ? 'Face ID / Touch ID / Fingerprint' : 'Face ID / Touch ID / Fingerprint')},'
-        '${bullet(ru ? 'Защита входа в приложение' : 'App entry protection')},'
-        '${h2(ru ? 'PIN-код' : 'PIN Code')},'
-        '${bullet(ru ? 'SHA-256 + salt' : 'SHA-256 + salt')},'
-        '${bullet(ru ? '4-6 цифр' : '4-6 digits')},'
-        '${h2(ru ? 'ShieldGate' : 'ShieldGate')},'
-        '${p(ru ? 'Промежуточный экран блокировки. Требует PIN или биометрию для доступа к данным.' : 'Intermediate lock screen. Requires PIN or biometrics to access data.')}'
-        ']';
-
-    final shield = article('wesios_shield_article',
-        ru ? 'Безопасность' : 'Security',
-        shieldBody,
-        parentId: 'wesios_shield',
-        tags: ru ? ['shield', 'безопасность', 'privacy', 'pin'] : ['shield', 'security', 'privacy', 'pin']);
-
-
-    // ─── Wesi Tasks ─────────────────────────────────────────────────────────
-    final tasksFolder = folder('wesios_tasks', ru ? 'Wesi Tasks' : 'Wesi Tasks', parentId: 'wesios_modules');
-
-    final tasksBody = '[${h1(ru ? 'Wesi Tasks — управление задачами' : 'Wesi Tasks — Task Management')},'
-        '${p(ru ? 'Система управления задачами с приоритетами, фильтрами и drag-drop.' : 'Task management system with priorities, filters and drag-drop.')},'
-        '${h2(ru ? 'Приоритеты' : 'Priorities')},'
-        '${embedTable(tableJson([
-          [ru ? 'Приоритет' : 'Priority', ru ? 'Цвет' : 'Color', ru ? 'Значение' : 'Meaning'],
-          [ru ? 'Критический' : 'Critical', ru ? 'Красный' : 'Red', ru ? 'Срочно, блокирует другие задачи' : 'Urgent, blocks other tasks'],
-          [ru ? 'Высокий' : 'High', ru ? 'Оранжевый' : 'Orange', ru ? 'Важно, влияет на результат' : 'Important, affects outcome'],
-          [ru ? 'Средний' : 'Medium', ru ? 'Жёлтый' : 'Yellow', ru ? 'Стандартный приоритет' : 'Standard priority'],
-          [ru ? 'Низкий' : 'Low', ru ? 'Зелёный' : 'Green', ru ? 'Может подождать' : 'Can wait'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'Статусы' : 'Statuses')},'
-        '${bullet(ru ? 'todo — к выполнению' : 'todo — to do')},'
-        '${bullet(ru ? 'in_progress — в работе' : 'in_progress — in progress')},'
-        '${bullet(ru ? 'done — выполнено' : 'done — done')},'
-        '${bullet(ru ? 'archived — в архиве' : 'archived — archived')},'
-        '${embedChart(chartPie(ru ? 'Распределение задач' : 'Task Distribution',
-          [ru ? 'Выполнено' : 'Done', ru ? 'В работе' : 'In Progress', ru ? 'К выполнению' : 'To Do', ru ? 'Архив' : 'Archived'],
-          [45.0, 25.0, 20.0, 10.0]))},'
-        '${br()},'
-        '${h2(ru ? 'Интеграция с Calendar' : 'Calendar Integration')},'
-        '${p(ru ? 'Задачи с дедлайном автоматически отображаются в календаре.' : 'Tasks with deadlines automatically appear in calendar.')}'
-        ']';
-
-    final tasks = article('wesios_tasks_article',
-        ru ? 'Задачи' : 'Tasks',
-        tasksBody,
-        parentId: 'wesios_tasks',
-        tags: ru ? ['tasks', 'задачи', 'приоритеты'] : ['tasks', 'priorities']);
-
-    // ─── Wesi Calculator ────────────────────────────────────────────────────
-    final calcFolder = folder('wesios_calculator', ru ? 'Wesi Calculator' : 'Wesi Calculator', parentId: 'wesios_modules');
-
-    final calcBody = '[${h1(ru ? 'Wesi Calculator — калькулятор' : 'Wesi Calculator — Calculator')},'
-        '${p(ru ? 'Научный калькулятор с историей вычислений и конвертацией валют.' : 'Scientific calculator with calculation history and currency conversion.')},'
-        '${h2(ru ? 'Режимы' : 'Modes')},'
-        '${bullet(ru ? 'Classic — стандартный калькулятор' : 'Classic — standard calculator')},'
-        '${bullet(ru ? 'Scientific — тригонометрия, логарифмы, степени' : 'Scientific — trigonometry, logarithms, powers')},'
-        '${h2(ru ? 'Функции' : 'Functions')},'
-        '${embedTable(tableJson([
-          [ru ? 'Функция' : 'Function', ru ? 'Описание' : 'Description'],
-          ['sin, cos, tan', ru ? 'Тригонометрия' : 'Trigonometry'],
-          ['log, ln', ru ? 'Логарифмы' : 'Logarithms'],
-          ['x², x³, xʸ', ru ? 'Степени' : 'Powers'],
-          ['√, ³√', ru ? 'Корни' : 'Roots'],
-          ['π, e', ru ? 'Константы' : 'Constants'],
-          ['!, %', ru ? 'Факториал, процент' : 'Factorial, percent'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'История' : 'History')},'
-        '${p(ru ? 'Последние 50 вычислений сохраняются. Тап на историю — вставка в поле ввода.' : 'Last 50 calculations saved. Tap history — insert into input field.')}'
-        ']';
-
-    final calc = article('wesios_calc_article',
-        ru ? 'Калькулятор' : 'Calculator',
-        calcBody,
-        parentId: 'wesios_calculator',
-        tags: ru ? ['calculator', 'калькулятор', 'научный'] : ['calculator', 'scientific']);
-
-    // ─── Wesi Calendar ──────────────────────────────────────────────────────
-    final calendarFolder = folder('wesios_calendar', ru ? 'Wesi Calendar' : 'Wesi Calendar', parentId: 'wesios_modules');
-
-    final calendarBody = '[${h1(ru ? 'Wesi Calendar — календарь' : 'Wesi Calendar — Calendar')},'
-        '${p(ru ? 'Календарь с событиями из задач и транзакций.' : 'Calendar with events from tasks and transactions.')},'
-        '${h2(ru ? 'Виды' : 'Views')},'
-        '${bullet(ru ? 'Месяц — обзор всего месяца' : 'Month — full month overview')},'
-        '${bullet(ru ? 'Неделя — детальный план' : 'Week — detailed plan')},'
-        '${bullet(ru ? 'День — почасовой график' : 'Day — hourly schedule')},'
-        '${h2(ru ? 'Цветные индикаторы' : 'Color Indicators')},'
-        '${embedTable(tableJson([
-          [ru ? 'Цвет' : 'Color', ru ? 'Источник' : 'Source'],
-          [ru ? 'Синий' : 'Blue', ru ? 'Задачи с дедлайном' : 'Tasks with deadline'],
-          [ru ? 'Зелёный' : 'Green', ru ? 'Доходы' : 'Income'],
-          [ru ? 'Красный' : 'Red', ru ? 'Расходы' : 'Expenses'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'Интеграция' : 'Integration')},'
-        '${p(ru ? 'События из Tasks и Treasury автоматически появляются в календаре.' : 'Events from Tasks and Treasury automatically appear in calendar.')}'
-        ']';
-
-    final calendar = article('wesios_calendar_article',
-        ru ? 'Календарь' : 'Calendar',
-        calendarBody,
-        parentId: 'wesios_calendar',
-        tags: ru ? ['calendar', 'календарь', 'события'] : ['calendar', 'events']);
-
-    // ─── Wesi Analytics ─────────────────────────────────────────────────────
-    final analyticsFolder = folder('wesios_analytics', ru ? 'Wesi Analytics' : 'Wesi Analytics', parentId: 'wesios_modules');
-
-    final analyticsBody = '[${h1(ru ? 'Wesi Analytics — аналитика' : 'Wesi Analytics — Analytics')},'
-        '${p(ru ? 'Визуализация финансовых данных: графики, метрики, heatmap.' : 'Financial data visualization: charts, metrics, heatmap.')},'
-        '${h2(ru ? 'Графики' : 'Charts')},'
-        '${bullet(ru ? 'Bar — столбчатый (доходы/расходы по категориям)' : 'Bar — by category')},'
-        '${bullet(ru ? 'Line — линейный (динамика баланса)' : 'Line — balance dynamics')},'
-        '${bullet(ru ? 'Pie — круговой (структура расходов)' : 'Pie — expense structure')},'
-        '${bullet(ru ? 'Heatmap — тепловая карта (активность по дням)' : 'Heatmap — daily activity')},'
-        '${embedChart(chartLinked('bar', 'analytics', ru ? 'Аналитика по категориям' : 'Category Analytics'))},'
-        '${br()},'
-        '${h2(ru ? 'Метрики' : 'Metrics')},'
-        '${embedTable(tableJson([
-          [ru ? 'Метрика' : 'Metric', ru ? 'Описание' : 'Description'],
-          [ru ? 'Общий баланс' : 'Total Balance', ru ? 'Сумма всех счетов' : 'Sum of all accounts'],
-          [ru ? 'Доход за период' : 'Period Income', ru ? 'Сумма income-транзакций' : 'Sum of income transactions'],
-          [ru ? 'Расход за период' : 'Period Expense', ru ? 'Сумма expense-транзакций' : 'Sum of expense transactions'],
-          [ru ? 'Средний чек' : 'Average Check', ru ? 'Средняя сумма транзакции' : 'Average transaction amount'],
-          [ru ? 'Топ категория' : 'Top Category', ru ? 'Категория с наибольшим расходом' : 'Category with highest expense'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'Периоды' : 'Periods')},'
-        '${bullet(ru ? 'Неделя' : 'Week')},'
-        '${bullet(ru ? 'Месяц' : 'Month')},'
-        '${bullet(ru ? 'Квартал' : 'Quarter')},'
-        '${bullet(ru ? 'Год' : 'Year')}'
-        ']';
-
-    final analytics = article('wesios_analytics_article',
-        ru ? 'Аналитика' : 'Analytics',
-        analyticsBody,
-        parentId: 'wesios_analytics',
-        tags: ru ? ['analytics', 'аналитика', 'графики'] : ['analytics', 'charts']);
-
-
-    // ─── Wesi Home ──────────────────────────────────────────────────────────
-    final homeFolder = folder('wesios_home', ru ? 'Wesi Home' : 'Wesi Home', parentId: 'wesios_modules');
-
-    final homeBody = '[${h1(ru ? 'Wesi Home — главный экран' : 'Wesi Home — Home Screen')},'
-        '${p(ru ? 'Центральная панель с быстрым доступом ко всем модулям.' : 'Central dashboard with quick access to all modules.')},'
-        '${h2(ru ? 'Компоненты' : 'Components')},'
-        '${bullet(ru ? 'WesiClock — часы (digital / analog)' : 'WesiClock — digital / analog clock')},'
-        '${bullet(ru ? 'Quick Actions — быстрые действия' : 'Quick Actions — quick actions')},'
-        '${bullet(ru ? 'Balance Card — текущий баланс' : 'Balance Card — current balance')},'
-        '${bullet(ru ? 'Calendar Preview — ближайшие события' : 'Calendar Preview — upcoming events')},'
-        '${bullet(ru ? 'Tasks Preview — активные задачи' : 'Tasks Preview — active tasks')},'
-        '${bullet(ru ? 'Global Search — поиск по всем модулям' : 'Global Search — search across all modules')},'
-        '${bullet(ru ? 'Alerts — уведомления и напоминания' : 'Alerts — notifications and reminders')},'
-        '${h2(ru ? 'Bottom Navigation' : 'Bottom Navigation')},'
-        '${p(ru ? '5 табов через IndexedStack (без анимации переключения для скорости):' : '5 tabs via IndexedStack (no transition animation for speed):')},'
-        '${embedTable(tableJson([
-          [ru ? 'Таб' : 'Tab', ru ? 'Содержимое' : 'Content'],
-          [ru ? 'Главная' : 'Home', ru ? 'Dashboard, часы, быстрые действия' : 'Dashboard, clock, quick actions'],
-          [ru ? 'Treasury' : 'Treasury', ru ? 'Финансы, операции, прогноз' : 'Finance, operations, forecast'],
-          [ru ? 'Задачи' : 'Tasks', ru ? 'Список задач, фильтры' : 'Task list, filters'],
-          [ru ? 'Аналитика' : 'Analytics', ru ? 'Графики, метрики' : 'Charts, metrics'],
-          [ru ? 'Ещё' : 'More', ru ? 'Календарь, Калькулятор, База знаний, Настройки' : 'Calendar, Calculator, Knowledge, Settings'],
-        ]))},'
-        '${br()},'
-        '${embedChart(chartBar(ru ? 'Активность по модулям' : 'Module Activity',
-          [ru ? 'Главная' : 'Home', ru ? 'Treasury' : 'Treasury', ru ? 'Задачи' : 'Tasks', ru ? 'Аналитика' : 'Analytics'],
-          [95.0, 88.0, 72.0, 65.0]))}'
-        ']';
-
-    final home = article('wesios_home_article',
-        ru ? 'Главный экран' : 'Home Screen',
-        homeBody,
-        parentId: 'wesios_home',
-        tags: ru ? ['home', 'главный экран', 'dashboard'] : ['home', 'dashboard']);
-
-    // ─── Wesi Profile ───────────────────────────────────────────────────────
-    final profileFolder = folder('wesios_profile', ru ? 'Wesi Profile' : 'Wesi Profile', parentId: 'wesios_modules');
-
-    final profileBody = '[${h1(ru ? 'Wesi Profile — профиль' : 'Wesi Profile — Profile')},'
-        '${p(ru ? 'Управление профилем пользователя.' : 'User profile management.')},'
-        '${h2(ru ? 'Аватарки' : 'Avatars')},'
-        '${p(ru ? '8 пресетов аватарок + возможность загрузки своей:' : '8 avatar presets + custom upload:')},'
-        '${embedTable(tableJson([
-          [ru ? 'Пресет' : 'Preset', ru ? 'Описание' : 'Description'],
-          ['1', ru ? 'Классический' : 'Classic'],
-          ['2', ru ? 'Минималистичный' : 'Minimalist'],
-          ['3', ru ? 'Геометрический' : 'Geometric'],
-          ['4', ru ? 'Природный' : 'Nature'],
-          ['5', ru ? 'Технологичный' : 'Tech'],
-          ['6', ru ? 'Абстрактный' : 'Abstract'],
-          ['7', ru ? 'Монохромный' : 'Monochrome'],
-          ['8', ru ? 'Цветной' : 'Colorful'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'Founder Story' : 'Founder Story')},'
-        '${p(ru ? 'История создания WesiOS с Easter-egg (лого смерти с косой в разделе истории).' : 'WesiOS creation story with Easter-egg (death logo with scythe in history section).')}'
-        ']';
-
-    final profile = article('wesios_profile_article',
-        ru ? 'Профиль' : 'Profile',
-        profileBody,
-        parentId: 'wesios_profile',
-        tags: ru ? ['profile', 'профиль', 'аватар'] : ['profile', 'avatar']);
-
-    // ─── Wesi Settings ──────────────────────────────────────────────────────
-    final settingsFolder = folder('wesios_settings', ru ? 'Wesi Settings' : 'Wesi Settings', parentId: 'wesios_modules');
-
-    final settingsBody = '[${h1(ru ? 'Wesi Settings — настройки' : 'Wesi Settings — Settings')},'
-        '${p(ru ? 'Глобальные настройки приложения.' : 'Global application settings.')},'
-        '${h2(ru ? 'Язык' : 'Language')},'
-        '${bullet('RU — русский')},'
-        '${bullet('EN — English')},'
-        '${h2(ru ? 'Тема' : 'Theme')},'
-        '${bullet(ru ? 'Тёмная (Carbon)' : 'Dark (Carbon)')},'
-        '${bullet(ru ? 'Светлая (White/Grey/Blue)' : 'Light (White/Grey/Blue)')},'
-        '${h2(ru ? 'Firebase' : 'Firebase')},'
-        '${bullet(ru ? 'Подключение к проекту Firebase' : 'Connect to Firebase project')},'
-        '${bullet(ru ? 'Cloud Functions — прогнозирование' : 'Cloud Functions — forecasting')},'
-        '${h2(ru ? 'GitHub' : 'GitHub')},'
-        '${bullet(ru ? 'Токен для доступа к репозиторию' : 'Token for repository access')},'
-        '${bullet(ru ? 'OTA обновления через Releases' : 'OTA updates via Releases')},'
-        '${h2(ru ? 'Безопасность' : 'Security')},'
-        '${bullet(ru ? 'PIN-код' : 'PIN code')},'
-        '${bullet(ru ? 'Биометрия' : 'Biometrics')},'
-        '${bullet(ru ? 'Privacy Mode' : 'Privacy Mode')}'
-        ']';
-
-    final settings = article('wesios_settings_article',
-        ru ? 'Настройки' : 'Settings',
-        settingsBody,
-        parentId: 'wesios_settings',
-        tags: ru ? ['settings', 'настройки', 'тема', 'язык'] : ['settings', 'theme', 'language']);
-
-    // ─── Knowledge Base (self-reference) ────────────────────────────────────
-    final kbFolder = folder('wesios_kb', ru ? 'Knowledge Base' : 'Knowledge Base', parentId: 'wesios_modules');
-
-    final kbBody = '[${h1(ru ? 'Knowledge Base — база знаний' : 'Knowledge Base — Knowledge Base')},'
-        '${p(ru ? 'Система документации с rich-редактором, иерархией и связанными данными.' : 'Documentation system with rich editor, hierarchy and linked data.')},'
-        '${h2(ru ? 'Возможности редактора' : 'Editor Features')},'
-        '${bullet(ru ? 'Форматирование: bold, italic, underline, strike' : 'Formatting: bold, italic, underline, strike')},'
-        '${bullet(ru ? 'Заголовки H1/H2/H3' : 'Headings H1/H2/H3')},'
-        '${bullet(ru ? 'Списки: bullet, numbered' : 'Lists: bullet, numbered')},'
-        '${bullet(ru ? 'Ссылки: https:// и wesios://article/ID' : 'Links: https:// and wesios://article/ID')},'
-        '${bullet(ru ? 'Изображения: URL и с устройства' : 'Images: URL and from device')},'
-        '${bullet(ru ? 'Видео: URL и с устройства' : 'Video: URL and from device')},'
-        '${bullet(ru ? 'Аудио: URL и с устройства' : 'Audio: URL and from device')},'
-        '${bullet(ru ? 'Таблицы: диалог строки×столбцы' : 'Tables: dialog rows×columns')},'
-        '${bullet(ru ? 'Графики: bar, line, pie, area' : 'Charts: bar, line, pie, area')},'
-        '${bullet(ru ? 'Emoji: 300+ смайликов' : 'Emoji: 300+ emojis')},'
-        '${h2(ru ? 'Иерархия' : 'Hierarchy')},'
-        '${p(ru ? 'Статьи организованы в дерево: папки (isFolder) содержат дочерние статьи (parentId).' : 'Articles organized in tree: folders (isFolder) contain child articles (parentId).')},'
-        '${embedChart(chartBar(ru ? 'Структура базы знаний' : 'Knowledge Base Structure',
-          [ru ? 'Модули' : 'Modules', ru ? 'Сервисы' : 'Services', ru ? 'Архитектура' : 'Architecture'],
-          [12.0, 8.0, 5.0]))}'
-        ']';
-
-    final kb = article('wesios_kb_article',
-        ru ? 'База знаний' : 'Knowledge Base',
-        kbBody,
-        parentId: 'wesios_kb',
-        tags: ru ? ['knowledge', 'база знаний', 'редактор'] : ['knowledge', 'editor']);
-
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  FOLDER: Системные сервисы / System Services
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final servicesFolder = folder('wesios_services', ru ? 'Системные сервисы' : 'System Services', parentId: 'wesios_root');
-
-    // ─── WesiLocale ─────────────────────────────────────────────────────────
-    final localeArticle = article('wesios_locale',
-        ru ? 'WesiLocale — локализация' : 'WesiLocale — Localization',
-        '[${h1(ru ? 'WesiLocale' : 'WesiLocale')},'
-        '${p(ru ? 'Система локализации RU/EN с Hive persistence.' : 'RU/EN localization system with Hive persistence.')},'
-        '${h2(ru ? 'Ключевые методы' : 'Key Methods')},'
-        '${embedTable(tableJson([
-          [ru ? 'Метод' : 'Method', ru ? 'Описание' : 'Description'],
-          ['get(key)', ru ? 'Получить строку по ключу' : 'Get string by key'],
-          ['setLanguage(lang)', ru ? 'Сменить язык' : 'Change language'],
-          ['isRussian', ru ? 'true = RU' : 'true = RU'],
-          ['load()', ru ? 'Загрузить из Hive' : 'Load from Hive'],
-        ]))},'
-        '${br()},'
-        '${p(ru ? '80+ строк на каждом языке.' : '80+ strings per language.')}'
-        ']',
-        parentId: 'wesios_services',
-        tags: ru ? ['locale', 'локализация', 'ru', 'en'] : ['locale', 'localization']);
-
-    // ─── CurrencyService ────────────────────────────────────────────────────
-    final currencyArticle = article('wesios_currency',
-        ru ? 'CurrencyService — валюты' : 'CurrencyService — Currencies',
-        '[${h1(ru ? 'CurrencyService' : 'CurrencyService')},'
-        '${p(ru ? 'Мультивалютность и конвертация.' : 'Multi-currency and conversion.')},'
-        '${h2(ru ? 'Поддерживаемые валюты' : 'Supported Currencies')},'
-        '${embedTable(tableJson([
-          [ru ? 'Валюта' : 'Currency', ru ? 'Код' : 'Code', ru ? 'Символ' : 'Symbol'],
-          [ru ? 'Рубль' : 'Ruble', 'RUB', '₽'],
-          [ru ? 'Доллар' : 'Dollar', 'USD', r'$'],
-          [ru ? 'Евро' : 'Euro', 'EUR', '€'],
-          [ru ? 'Фунт' : 'Pound', 'GBP', '£'],
-          [ru ? 'Юань' : 'Yuan', 'CNY', '¥'],
-          [ru ? 'Гривна' : 'Hryvnia', 'UAH', '₴'],
-          [ru ? 'Бел. рубль' : 'Bel. Ruble', 'BYN', 'Br'],
-          [ru ? 'Тенге' : 'Tenge', 'KZT', '₸'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'API курсов' : 'Exchange API')},'
-        '${p(ru ? 'exchangerate.host + fallback на зашитые курсы.' : 'exchangerate.host + fallback to hardcoded rates.')}'
-        ']',
-        parentId: 'wesios_services',
-        tags: ru ? ['currency', 'валюты', 'конвертация'] : ['currency', 'conversion']);
-
-    // ─── AppUpdateService ───────────────────────────────────────────────────
-    final updateArticle = article('wesios_update',
-        ru ? 'AppUpdateService — обновления' : 'AppUpdateService — Updates',
-        '[${h1(ru ? 'AppUpdateService' : 'AppUpdateService')},'
-        '${p(ru ? 'OTA обновления через GitHub Releases.' : 'OTA updates via GitHub Releases.')},'
-        '${h2(ru ? 'Процесс' : 'Process')},'
-        '${numbered(ru ? 'Проверка app-manifest.json' : 'Check app-manifest.json')},'
-        '${numbered(ru ? 'Сравнение версий (semver)' : 'Version comparison (semver)')},'
-        '${numbered(ru ? 'Скачивание новой сборки' : 'Download new build')},'
-        '${numbered(ru ? 'Установка' : 'Install')},'
-        '${h2(ru ? 'Файлы релиза' : 'Release Files')},'
-        '${embedTable(tableJson([
-          [ru ? 'Файл' : 'File', ru ? 'Платформа' : 'Platform'],
-          ['wesios-windows-x64.zip', 'Windows'],
-          ['wesios-android.apk', 'Android'],
-          ['app-manifest.json', 'OTA'],
-        ]))}'
-        ']',
-        parentId: 'wesios_services',
-        tags: ru ? ['update', 'обновления', 'ota'] : ['update', 'ota']);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  FOLDER: Архитектура / Architecture
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final archFolder = folder('wesios_arch', ru ? 'Архитектура' : 'Architecture', parentId: 'wesios_root');
-
-    final archBody = '[${h1(ru ? 'Архитектура WesiOS' : 'WesiOS Architecture')},'
-        '${h2(ru ? 'Принципы' : 'Principles')},'
-        '${bullet(ru ? 'Локальное хранение — Hive' : 'Local storage — Hive')},'
-        '${bullet(ru ? 'Опциональное облако — Firebase' : 'Optional cloud — Firebase')},'
-        '${bullet(ru ? 'Мультивалютность — CurrencyService' : 'Multi-currency — CurrencyService')},'
-        '${bullet(ru ? 'Темизация — ThemeNotifier + AnimatedTheme' : 'Theming — ThemeNotifier + AnimatedTheme')},'
-        '${bullet(ru ? 'Локализация — WesiLocale + Hive' : 'Localization — WesiLocale + Hive')},'
-        '${h2(ru ? 'Hive typeId' : 'Hive typeId')},'
-        '${embedTable(tableJson([
-          [ru ? 'typeId' : 'typeId', ru ? 'Модель' : 'Model'],
-          ['1', 'TransactionModel'],
-          ['2', 'CurrencyRatesModel'],
-          ['3', 'AppUpdateModel'],
-          ['10', 'TaskModel'],
-          ['11', 'CalendarEventModel'],
-          ['12', 'CRMActionModel'],
-          ['13', 'AudioVaultItemModel'],
-          ['14', 'AIMessageModel'],
-          ['15', 'AIChatSessionModel'],
-          ['16', 'ArticleSection'],
-          ['17', 'ArticleModel'],
-        ]))},'
-        '${br()},'
-        '${h2(ru ? 'CI/CD' : 'CI/CD')},'
-        '${bullet(ru ? 'build.yml — Windows + Android CI' : 'build.yml — Windows + Android CI')},'
-        '${bullet(ru ? 'release-app.yml — релизные сборки' : 'release-app.yml — release builds')},'
-        '${bullet(ru ? 'Android подпись через Secrets' : 'Android signing via Secrets')}'
-        ']';
-
-    final arch = article('wesios_arch_article',
-        ru ? 'Обзор архитектуры' : 'Architecture Overview',
-        archBody,
-        parentId: 'wesios_arch',
-        tags: ru ? ['architecture', 'архитектура', 'hive'] : ['architecture', 'hive']);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  ДЕНЬГИ (finance deep dive)
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final moneyFolder = folder('wesios_money', ru ? 'Деньги' : 'Money', parentId: 'wesios_kb');
-
-    final debtsBody = '[${h1(ru ? 'Долги: как гасить и не утонуть' : 'Debt: How to Pay Off Without Drowning')},'
-        '${p(ru ? 'Долги — не приговор, но требуют системы. Главное правило: не платить всем понемногу, а закрывать по приоритету.' : 'Debt is not a sentence, but it needs a system. The main rule: do not pay everyone a little, but close by priority.')},'
-        '${br()},'
-        '${h2(ru ? 'Снежный ком vs Лавина' : 'Snowball vs Avalanche')},'
-        '${p(ru ? 'Два проверенных метода. Выбирай тот, который лучше работает для твоей психики:' : 'Two proven methods. Choose the one that works better for your psyche:')},'
-        '${h3(ru ? 'Снежный ком (Snowball)' : 'Snowball')},'
-        '${bullet(ru ? 'Сортируй долги от меньшего к большему' : 'Sort debts from smallest to largest')},'
-        '${bullet(ru ? 'Закрывай самый маленький первым — быстрая победа даёт мотивацию' : 'Close the smallest first — a quick win gives motivation')},'
-        '${bullet(ru ? 'Перекинь освободившийся платёж на следующий по списку' : 'Redirect the freed payment to the next one on the list')},'
-        '${bullet(ru ? 'Плюс: эмоциональная разрядка. Минус: переплата по процентам выше' : 'Plus: emotional relief. Minus: higher interest overpayment')},'
-        '${h3(ru ? 'Лавина (Avalanche)' : 'Avalanche')},'
-        '${bullet(ru ? 'Сортируй долги от высокой ставки к низкой' : 'Sort debts from highest rate to lowest')},'
-        '${bullet(ru ? 'Закрывай самый дорогой первым — экономишь больше денег' : 'Close the most expensive first — you save more money')},'
-        '${bullet(ru ? 'Плюс: меньше переплата. Минус: первые результаты медленнее' : 'Plus: less overpayment. Minus: first results are slower')},'
-        '${br()},'
-        '${h2(ru ? 'Когда рефинансировать' : 'When to Refinance')},'
-        '${p(ru ? 'Рефинансирование имеет смысл, если:' : 'Refinancing makes sense if:')},'
-        '${bullet(ru ? 'Новая ставка минимум на 2–3% ниже текущей' : 'New rate is at least 2–3% lower than current')},'
-        '${bullet(ru ? 'Срок остался достаточно длинным (от 2 лет) — иначе экономия съест комиссия' : 'Remaining term is long enough (2+ years) — otherwise fees eat savings')},'
-        '${bullet(ru ? 'Нет скрытых штрафов за досрочное погашение' : 'No hidden penalties for early repayment')},'
-        '${bullet(ru ? 'Пересчитай полную стоимость: новый кредит + комиссии + страховки' : 'Recalculate total cost: new loan + fees + insurance')},'
-        '${br()},'
-        '${h2(ru ? 'Чего избегать' : 'What to Avoid')},'
-        '${bullet(ru ? 'Не бери новый кредит, чтобы закрыть старый — это круговая зависимость' : 'Do not take a new loan to close the old one — it is circular dependency')},'
-        '${bullet(ru ? 'Не игнорируй микрозаймы — их ставки 300%+ годовых' : 'Do not ignore microloans — their rates are 300%+ annually')},'
-        '${bullet(ru ? 'Не прячь голову в песок: чем раньше признаешь проблему, тем больше вариантов' : 'Do not bury your head in the sand: the earlier you admit the problem, the more options')},'
-        '${bullet(ru ? 'Не отдавай последние деньги на долги — оставь подушку безопасности' : 'Do not give your last money to debts — keep a safety cushion')}'
-        ']';
-
-    final debts = article('wesios_debts', ru ? 'Долги: как гасить' : 'Debt: How to Pay Off', debtsBody,
-        parentId: 'wesios_money',
-        tags: ru ? ['долги', 'финансы', 'снежный ком', 'лавина'] : ['debt', 'finance', 'snowball', 'avalanche']);
-
-    final insuranceBody = '[${h1(ru ? 'Страхование: что реально нужно' : 'Insurance: What You Actually Need')},'
-        '${p(ru ? 'Страхование — это не инвестиция. Это защита от катастрофы. Плати только за то, что реально снизит риск краха.' : 'Insurance is not an investment. It is protection against catastrophe. Pay only for what actually reduces the risk of ruin.')},'
-        '${br()},'
-        '${h2(ru ? 'Что реально нужно' : 'What You Actually Need')},'
-        '${h3(ru ? 'Медицинское (ОМС + ДМС)' : 'Health Insurance')},'
-        '${bullet(ru ? 'ОМС — база, бесплатно. Покрывает экстренную помощь и госпитализацию' : 'Public health insurance — base, free. Covers emergency care and hospitalization')},'
-        '${bullet(ru ? 'ДМС — если хочешь выбор врачей, быструю диагностику, стоматологию' : 'Private health insurance — if you want choice of doctors, fast diagnostics, dentistry')},'
-        '${bullet(ru ? 'Проверь: покрывает ли заграницу, если ездишь' : 'Check: does it cover abroad if you travel')},'
-        '${h3(ru ? 'Страхование жизни (если есть иждивенцы)' : 'Life Insurance (if you have dependents)')},'
-        '${bullet(ru ? 'Нужно, если от твоего дохода зависят дети, родители, партнёр' : 'Needed if children, parents, or partner depend on your income')},'
-        '${bullet(ru ? 'Сумма = 5–10 годовых расходов семьи' : 'Amount = 5–10 annual family expenses')},'
-        '${bullet(ru ? 'Выбирай срочное (term), а не накопительное — дешевле и прозрачнее' : 'Choose term, not whole life — cheaper and more transparent')},'
-        '${h3(ru ? 'Имущество (квартира, авто)' : 'Property (apartment, car)')},'
-        '${bullet(ru ? 'Квартира: полис от затопления, пожара, кражи. Особенно если ипотека' : 'Apartment: policy against flooding, fire, theft. Especially if mortgage')},'
-        '${bullet(ru ? 'Авто: ОСАГО обязательно. КАСКО — если машина дороже 3 годовых доходов' : 'Car: mandatory liability insurance. Comprehensive — if car is worth > 3 annual incomes')},'
-        '${br()},'
-        '${h2(ru ? 'Что часто лишнее' : 'What Is Often Unnecessary')},'
-        '${bullet(ru ? 'Накопительное страхование жизни — дорого, доходность ниже депозита' : 'Whole life insurance — expensive, returns lower than deposits')},'
-        '${bullet(ru ? 'Страхование от потери работы — обычно много исключений, сложно получить выплату' : 'Job loss insurance — usually many exclusions, hard to claim')},'
-        '${bullet(ru ? 'Страхование телефона/гаджетов — часто дороже ремонта, много отказов' : 'Phone/gadget insurance — often more expensive than repair, many rejections')},'
-        '${bullet(ru ? 'Страхование путешествий «на всякий» — читай мелкий шрифт, часто не покрывает' : 'Travel insurance "just in case" — read the fine print, often does not cover')},'
-        '${br()},'
-        '${h2(ru ? 'Правило 80/20' : 'The 80/20 Rule')},'
-        '${p(ru ? '80% защиты даёт 20% страховок: медицина + жизнь (если есть иждивенцы) + имущество. Остальное — маркетинг.' : '80% of protection comes from 20% of insurances: health + life (if dependents) + property. The rest is marketing.')}'
-        ']';
-
-    final insurance = article('wesios_insurance', ru ? 'Страхование' : 'Insurance', insuranceBody,
-        parentId: 'wesios_money',
-        tags: ru ? ['страхование', 'финансы', 'защита'] : ['insurance', 'finance', 'protection']);
-
-    final pensionBody = '[${h1(ru ? 'Пенсия и длинный горизонт' : 'Pension and Long-Term Planning')},'
-        '${p(ru ? 'Даже если тебе 25 — пенсия твоя личная ответственность. Государственная пенсия — дополнение, а не основа.' : 'Even if you are 25 — pension is your personal responsibility. State pension is a supplement, not a foundation.')},'
-        '${br()},'
-        '${h2(ru ? 'Простые шаги без сложных терминов' : 'Simple Steps Without Complex Terms')},'
-        '${numbered(ru ? 'Начни с 5% от дохода — незаметно, но через 10 лет накопится серьёзная сумма' : 'Start with 5% of income — unnoticeable, but over 10 years it accumulates significantly')},'
-        '${numbered(ru ? 'Увеличивай на 1% каждый год — пока не дойдёшь до 15–20%' : 'Increase by 1% each year — until you reach 15–20%')},'
-        '${numbered(ru ? 'Используй налоговый вычет: в РФ ИИС тип Б даёт вычет 13% от взносов' : 'Use tax deduction: in Russia IIS type B gives 13% deduction on contributions')},'
-        '${numbered(ru ? 'Не клади всё в один инструмент: раздели между депозитом, облигациями, фондами' : 'Do not put everything in one instrument: split between deposits, bonds, funds')},'
-        '${numbered(ru ? 'Пересматривай план раз в год — жизнь меняется, план тоже должен' : 'Review the plan annually — life changes, the plan should too')},'
-        '${br()},'
-        '${h2(ru ? 'Правило 72' : 'The Rule of 72')},'
-        '${p(ru ? 'Чтобы узнать, за сколько лет капитал удвоится — раздели 72 на процент доходности:' : 'To know how many years it takes to double capital — divide 72 by the return rate:')},'
-        '${bullet(ru ? 'Депозит 6% → 72 / 6 = 12 лет на удвоение' : 'Deposit 6% → 72 / 6 = 12 years to double')},'
-        '${bullet(ru ? 'Облигации 8% → 72 / 8 = 9 лет' : 'Bonds 8% → 72 / 8 = 9 years')},'
-        '${bullet(ru ? 'Индексный фонд 10% → 72 / 10 = 7.2 года' : 'Index fund 10% → 72 / 10 = 7.2 years')},'
-        '${br()},'
-        '${h2(ru ? 'Главная ошибка' : 'The Biggest Mistake')},'
-        '${p(ru ? 'Ждать «когда будет больше денег». Начни сейчас с любой суммы. Время — главный актив, не деньги.' : 'Waiting for "when there is more money". Start now with any amount. Time is the main asset, not money.')}'
-        ']';
-
-    final pension = article('wesios_pension', ru ? 'Пенсия и длинный горизонт' : 'Pension and Long-Term', pensionBody,
-        parentId: 'wesios_money',
-        tags: ru ? ['пенсия', 'инвестиции', 'долгосрочка'] : ['pension', 'investments', 'long-term']);
-
-    final moneyPsychBody = '[${h1(ru ? 'Психология денег' : 'Money Psychology')},'
-        '${p(ru ? 'Деньги — это не только цифры. Это эмоции, убеждения, страхи. Понять свою психологию — важнее любого бюджета.' : 'Money is not just numbers. It is emotions, beliefs, fears. Understanding your psychology is more important than any budget.')},'
-        '${br()},'
-        '${h2(ru ? 'Страх бедности' : 'Fear of Poverty')},'
-        '${p(ru ? 'Если ты постоянно боишься остаться без денег — даже при хорошем доходе:' : 'If you constantly fear being broke — even with good income:')},'
-        '${bullet(ru ? 'Признай: страх редко связан с реальной угрозой, чаще — с детским опытом' : 'Admit: fear is rarely tied to real threat, more often to childhood experience')},'
-        '${bullet(ru ? 'Создай подушку безопасности: 3–6 месяцев расходов — это лечит тревогу лучше любого шопинга' : 'Build a safety cushion: 3–6 months of expenses — it cures anxiety better than any shopping')},'
-        '${bullet(ru ? 'Веди учёт в Wesi Treasury — конкретные цифры снимают тревожную неопределённость' : 'Track in Wesi Treasury — concrete numbers remove anxious uncertainty')},'
-        '${br()},'
-        '${h2(ru ? '«Я этого заслужил»' : '"I Deserve This"')},'
-        '${p(ru ? 'Классическая ловушка: тяжёлая неделя → «надо себя побаловать» → импульсивная покупка → сожаление.' : 'Classic trap: hard week → "need to treat myself" → impulse purchase → regret.')},'
-        '${bullet(ru ? 'Отложи покупку на 48 часов — 80% желаний пройдут' : 'Postpone the purchase for 48 hours — 80% of desires will pass')},'
-        '${bullet(ru ? 'Задай вопрос: «Я покупаю вещь или эмоцию?»' : 'Ask: "Am I buying a thing or an emotion?"')},'
-        '${bullet(ru ? 'Создай «фонд удовольствий» в Treasury — фиксированная сумма на спонтанность, но в рамках' : 'Create a "fun fund" in Treasury — fixed amount for spontaneity, but within limits')},'
-        '${br()},'
-        '${h2(ru ? 'Покупки из тревоги' : 'Anxiety Purchases')},'
-        '${p(ru ? 'Когда нервничаешь — мозг ищет быструю награду. Шопинг даёт дофамин, но кратковременный.' : 'When nervous — the brain seeks a quick reward. Shopping gives dopamine, but short-lived.')},'
-        '${bullet(ru ? 'Замени покупку на прогулку, душ, разговор с другом — те же 20 минут, но без минуса на счету' : 'Replace shopping with a walk, shower, talk with a friend — same 20 minutes, but no account minus')},'
-        '${bullet(ru ? 'Если всё же купил — не бей себя. Запиши в Treasury, проанализируй через месяц' : 'If you still bought — do not beat yourself up. Log it in Treasury, analyze in a month')},'
-        '${br()},'
-        '${h2(ru ? 'Практика: неделя осознанности' : 'Practice: Week of Awareness')},'
-        '${numbered(ru ? 'Записывай каждую покупку в Treasury сразу' : 'Log every purchase in Treasury immediately')},'
-        '${numbered(ru ? 'Вечером отмечай: что чувствовал перед покупкой?' : 'In the evening note: what did you feel before the purchase?')},'
-        '${numbered(ru ? 'В конце недели посмотри паттерны — увидишь триггеры' : 'At the end of the week look at patterns — you will see triggers')}'
-        ']';
-
-    final moneyPsych = article('wesios_money_psych', ru ? 'Психология денег' : 'Money Psychology', moneyPsychBody,
-        parentId: 'wesios_money',
-        tags: ru ? ['психология', 'деньги', 'тревога', 'привычки'] : ['psychology', 'money', 'anxiety', 'habits']);
-    // ═══════════════════════════════════════════════════════════════════════
-    //  РАБОТА И НАВЫКИ
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final workFolder = folder('wesios_work', ru ? 'Работа и навыки' : 'Work & Skills', parentId: 'wesios_kb');
-
-    final learningBody = '[${h1(ru ? 'Обучение без выгорания' : 'Learning Without Burnout')},'
-        '${p(ru ? 'Новые навыки — инвестиция. Но если учиться неправильно, выгорание придёт быстрее результата.' : 'New skills are an investment. But if you learn incorrectly, burnout comes faster than results.')},'
-        '${br()},'
-        '${h2(ru ? 'Как выбирать курсы' : 'How to Choose Courses')},'
-        '${bullet(ru ? 'Сначала практика — потом теория. Не читай 500 страниц, если ещё не написал строчку кода' : 'Practice first — theory later. Do not read 500 pages if you have not written a line of code')},'
-        '${bullet(ru ? 'Проверяй автора: делал ли он то, чему учит? Или только продаёт?' : 'Check the author: have they done what they teach? Or only selling?')},'
-        '${bullet(ru ? 'Смотри отзывы с конкретикой: «стало проще» — плохо; «автоматизировал отчётность за 2 часа» — хорошо' : 'Look for specific reviews: "became easier" is bad; "automated reporting in 2 hours" is good')},'
-        '${bullet(ru ? 'Не покупай курс «на потом» — начни с бесплатного материала, убедись, что тема тебе нужна' : 'Do not buy a course "for later" — start with free material, make sure the topic is needed')},'
-        '${br()},'
-        '${h2(ru ? 'Практика vs теория' : 'Practice vs Theory')},'
-        '${p(ru ? 'Правило 70/20/10: 70% практики, 20% обучения у других, 10% теории. Большинство делают наоборот.' : 'Rule 70/20/10: 70% practice, 20% learning from others, 10% theory. Most do the opposite.')},'
-        '${bullet(ru ? 'Проектный подход: учись на реальном проекте, даже если маленьком' : 'Project approach: learn on a real project, even if small')},'
-        '${bullet(ru ? 'Принцип Pomodoro: 25 минут практики, 5 минут перерыв. Не 3 часа залипания' : 'Pomodoro principle: 25 minutes practice, 5 minutes break. Not 3 hours of zoning out')},'
-        '${bullet(ru ? 'Сразу применяй: прочитал про паттерн — используй в текущем коде, не «запомнишь на потом»' : 'Apply immediately: read about a pattern — use it in current code, do not "remember for later"')},'
-        '${br()},'
-        '${h2(ru ? 'Портфолио' : 'Portfolio')},'
-        '${p(ru ? 'Портфолио — это не красивые скриншоты. Это доказательство, что ты можешь.' : 'Portfolio is not pretty screenshots. It is proof that you can.')},'
-        '${bullet(ru ? '3–5 проектов лучше, чем 20 слабых. Выбирай лучшее' : '3–5 projects are better than 20 weak ones. Choose the best')},'
-        '${bullet(ru ? 'Описывай задачу → решение → результат (цифры!). «Сделал» — плохо; «сократил время на 40%» — хорошо' : 'Describe problem → solution → result (numbers!). "Did" is bad; "reduced time by 40%" is good')},'
-        '${bullet(ru ? 'GitHub — обязательно. Даже если приватный репозиторий, покажи структуру и README' : 'GitHub is mandatory. Even if private repo, show structure and README')},'
-        '${bullet(ru ? 'Обновляй раз в квартал — устаревшее портфолио хуже, чем никакого' : 'Update quarterly — outdated portfolio is worse than none')}'
-        ']';
-
-    final learning = article('wesios_learning', ru ? 'Обучение без выгорания' : 'Learning Without Burnout', learningBody,
-        parentId: 'wesios_work',
-        tags: ru ? ['обучение', 'навыки', 'портфолио', 'курсы'] : ['learning', 'skills', 'portfolio', 'courses']);
-
-    final careerChangeBody = '[${h1(ru ? 'Смена профессии: первые шаги' : 'Career Change: First Steps')},'
-        '${p(ru ? 'Смена профессии — это марафон, не спринт. Главное: не бросать текущий доход, пока новый не подтверждён.' : 'Career change is a marathon, not a sprint. The key: do not quit current income until the new one is confirmed.')},'
-        '${br()},'
-        '${h2(ru ? 'Параллельный переход' : 'Parallel Transition')},'
-        '${numbered(ru ? 'Определи, какие навыки новой профессии пересекаются с текущей — это твой мост' : 'Identify which skills of the new profession overlap with current — that is your bridge')},'
-        '${numbered(ru ? 'Начни с 5–10 часов в неделю — вечером, выходные. Не жги мосты' : 'Start with 5–10 hours a week — evenings, weekends. Do not burn bridges')},'
-        '${numbered(ru ? 'Возьми первый проект за символическую сумму или бесплатно — для портфолио и обратной связи' : 'Take the first project for symbolic pay or free — for portfolio and feedback')},'
-        '${numbered(ru ? 'Найди ментора — человек, который уже прошёл этот путь' : 'Find a mentor — someone who has already walked this path')},'
-        '${numbered(ru ? 'Когда новый доход покрывает 50–70% текущего — можно думать о полном переходе' : 'When new income covers 50–70% of current — you can consider full transition')},'
-        '${br()},'
-        '${h2(ru ? 'Финансовые подушки' : 'Financial Cushions')},'
-        '${bullet(ru ? 'Минимум: 6 месяцев расходов — если переход затянется' : 'Minimum: 6 months of expenses — if transition takes longer')},'
-        '${bullet(ru ? 'Идеал: 12 месяцев — спокойно учишься, не паникуешь' : 'Ideal: 12 months — you learn calmly, without panic')},'
-        '${bullet(ru ? 'Отдельный счёт: «деньги на переход» — не трогай на бытовые траты' : 'Separate account: "transition money" — do not touch for daily expenses')},'
-        '${bullet(ru ? 'Учти: первые 3–6 месяцев новой профессии доход может быть ниже' : 'Consider: first 3–6 months of new profession income may be lower')},'
-        '${br()},'
-        '${h2(ru ? 'Красные флаги' : 'Red Flags')},'
-        '${bullet(ru ? '«Бросай всё сейчас» — кто так говорит, не платит твои счета' : '"Quit everything now" — whoever says that does not pay your bills')},'
-        '${bullet(ru ? '«За 3 месяца станешь senior» — ложь, не верь' : '"Become senior in 3 months" — lie, do not believe')},'
-        '${bullet(ru ? '«Все так делают» — твой путь уникален, не копируй слепо' : '"Everyone does it" — your path is unique, do not copy blindly')}'
-        ']';
-
-    final careerChange = article('wesios_career', ru ? 'Смена профессии' : 'Career Change', careerChangeBody,
-        parentId: 'wesios_work',
-        tags: ru ? ['карьера', 'переход', 'навыки', 'финансы'] : ['career', 'transition', 'skills', 'finance']);
-
-    final negotiationsBody = '[${h1(ru ? 'Переговоры: зарплата, ставки, условия' : 'Negotiations: Salary, Rates, Terms')},'
-        '${p(ru ? 'Переговоры — не конфликт, а поиск точки, где обе стороны выигрывают. Готовься заранее.' : 'Negotiations are not conflict, but finding a point where both sides win. Prepare in advance.')},'
-        '${br()},'
-        '${h2(ru ? 'Скрипты' : 'Scripts')},'
-        '${h3(ru ? 'Зарплата' : 'Salary')},'
-        '${p(ru ? 'Когда спрашивают ожидания:' : 'When asked about expectations:')},'
-        '${bullet(ru ? '«Я ищу рыночную компенсацию для этого уровня. Можете поделиться вилкой бюджета?» — перекладываешь мяч' : '"I am looking for market compensation for this level. Can you share the budget range?" — you pass the ball')},'
-        '${bullet(ru ? '«Мой текущий пакет X. Для перехода рассматриваю Y+» — конкретика, но гибкость' : '"My current package is X. For a move I consider Y+" — specifics, but flexibility')},'
-        '${bullet(ru ? 'Не называй число первым, если можешь избежать. Информация — валюта' : 'Do not name a number first if you can avoid it. Information is currency')},'
-        '${h3(ru ? 'Ставки фрилансера' : 'Freelance Rates')},'
-        '${bullet(ru ? 'Посчитай желаемый годовой доход → раздели на 1000 рабочих часов → это твоя ставка' : 'Calculate desired annual income → divide by 1000 working hours → that is your rate')},'
-        '${bullet(ru ? 'Добавь 20% на непредвиденное: правки, задержки, переработки' : 'Add 20% for unforeseen: revisions, delays, overtime')},'
-        '${bullet(ru ? 'Никогда не опускай ставку «чтобы взять проект» — клиент, который не ценит твою цену, не ценит и работу' : 'Never lower your rate "to get the project" — a client who does not value your price does not value your work')},'
-        '${br()},'
-        '${h2(ru ? 'Принципы' : 'Principles')},'
-        '${bullet(ru ? 'Молчание — инструмент. После предложения помолчи 3 секунды — часто услышишь улучшение' : 'Silence is a tool. After an offer, pause for 3 seconds — often you will hear an improvement')},'
-        '${bullet(ru ? 'Пакет, а не зарплата: отпуск, ДМС, гибкий график, удалёнка — всё имеет цену' : 'Package, not salary: vacation, health insurance, flexible hours, remote — everything has value')},'
-        '${bullet(ru ? 'Письменное подтверждение: устные обещания — это обещания. Договор — это договор' : 'Written confirmation: verbal promises are promises. Contract is a contract')},'
-        '${bullet(ru ? 'Готовься к «нет»: лучший результат переговоров — когда ты готов уйти' : 'Prepare for "no": the best negotiation result is when you are ready to walk away')}'
-        ']';
-
-    final negotiations = article('wesios_negotiations', ru ? 'Переговоры' : 'Negotiations', negotiationsBody,
-        parentId: 'wesios_work',
-        tags: ru ? ['переговоры', 'зарплата', 'ставки', 'фриланс'] : ['negotiations', 'salary', 'rates', 'freelance']);
-
-    final remoteBody = '[${h1(ru ? 'Удалёнка и домашний офис' : 'Remote Work & Home Office')},'
-        '${p(ru ? 'Работать из дома — навык. Без границ дом превращается в офис 24/7, а офис — в спальню.' : 'Working from home is a skill. Without boundaries, home becomes an office 24/7, and the office becomes a bedroom.')},'
-        '${br()},'
-        '${h2(ru ? 'Границы' : 'Boundaries')},'
-        '${bullet(ru ? 'Физическая: отдельная комната или хотя бы угол со столом. Не работай с дивана' : 'Physical: separate room or at least a corner with a desk. Do not work from the couch')},'
-        '${bullet(ru ? 'Временная: чёткие часы работы. Скажи семье: «с 9 до 18 я на работе, даже если дома»' : 'Temporal: clear working hours. Tell family: "from 9 to 6 I am at work, even if at home"')},'
-        '${bullet(ru ? 'Цифровая: отдельный аккаунт/браузер для работы. Закрывай рабочие вкладки вечером' : 'Digital: separate account/browser for work. Close work tabs in the evening')},'
-        '${bullet(ru ? 'Социальная: не отвечай на рабочие сообщения после 19:00, если не критично' : 'Social: do not reply to work messages after 7 PM unless critical')},'
-        '${br()},'
-        '${h2(ru ? 'Эргономика' : 'Ergonomics')},'
-        '${bullet(ru ? 'Монитор на уровне глаз, расстояние 50–70 см. Шея скажет спасибо' : 'Monitor at eye level, 50–70 cm away. Your neck will thank you')},'
-        '${bullet(ru ? 'Клавиатура и мышь на одном уровне с локтями — запястья ровные' : 'Keyboard and mouse at elbow level — wrists straight')},'
-        '${bullet(ru ? 'Встаёшь каждый час: 5 минут ходьбы, растяжка, глаза в окно' : 'Stand up every hour: 5 minutes walk, stretch, eyes out the window')},'
-        '${bullet(ru ? 'Хороший стул или подушка на сиденье — 8 часов в день, это инвестиция' : 'Good chair or cushion on seat — 8 hours a day, it is an investment')},'
-        '${br()},'
-        '${h2(ru ? '«Я на работе» без офиса' : '"I Am at Work" Without an Office')},'
-        '${p(ru ? 'Психологический трюк: одевайся для работы (не пижама), включай рабочий плейлист, завари кофе в «рабочую» кружку.' : 'Psychological trick: dress for work (not pajamas), turn on work playlist, make coffee in the "work" mug.')},'
-        '${bullet(ru ? 'Ритуал начала: 5 минут планирования дня перед экраном' : 'Start ritual: 5 minutes of day planning before the screen')},'
-        '${bullet(ru ? 'Ритуал конца: закрой ноутбук, скажи вслух «работа закончена»' : 'End ritual: close laptop, say aloud "work is done"')},'
-        '${bullet(ru ? 'Если лень — работай 10 минут. Часто инерция подхватывает' : 'If lazy — work for 10 minutes. Often inertia kicks in')}'
-        ']';
-
-    final remote = article('wesios_remote', ru ? 'Удалёнка и домашний офис' : 'Remote Work', remoteBody,
-        parentId: 'wesios_work',
-        tags: ru ? ['удалёнка', 'офис', 'эргономика', 'границы'] : ['remote', 'office', 'ergonomics', 'boundaries']);
-    // ═══════════════════════════════════════════════════════════════════════
-    //  ГОЛОВА И ОТНОШЕНИЯ
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final mindFolder = folder('wesios_mind', ru ? 'Голова и отношения' : 'Mind & Relationships', parentId: 'wesios_kb');
-
-    final stressBody = '[${h1(ru ? 'Стресс и тревога: бытовые техники' : 'Stress & Anxiety: Everyday Techniques')},'
-        '${p(ru ? 'Стресс — не враг. Он сигнализирует о угрозе. Проблема, когда он не выключается.' : 'Stress is not the enemy. It signals a threat. The problem is when it does not turn off.')},'
-        '${br()},'
-        '${h2(ru ? 'Дыхание' : 'Breathing')},'
-        '${p(ru ? 'Самый быстрый способ снизить тревогу — замедлить дыхание. Нейробиология: медленное дыхание активирует парасимпатическую нервную систему.' : 'The fastest way to reduce anxiety is to slow breathing. Neurobiology: slow breathing activates the parasympathetic nervous system.')},'
-        '${bullet(ru ? '4-7-8: вдох 4 сек, задержка 7, выдох 8. 3–4 цикла — эффект за 1 минуту' : '4-7-8: inhale 4 sec, hold 7, exhale 8. 3–4 cycles — effect in 1 minute')},'
-        '${bullet(ru ? 'Квадратное дыхание: 4-4-4-4 (вдох-задержка-выдох-задержка). Хорошо перед важным разговором' : 'Box breathing: 4-4-4-4 (inhale-hold-exhale-hold). Good before an important conversation')},'
-        '${bullet(ru ? 'Длинный выдох: выдыхай в 2 раза дольше, чем вдыхаешь. Мгновенный эффект' : 'Long exhale: exhale twice as long as inhale. Instant effect')},'
-        '${br()},'
-        '${h2(ru ? 'Заземление' : 'Grounding')},'
-        '${p(ru ? 'Когда мысли несутся — верни внимание в тело и пространство.' : 'When thoughts race — bring attention back to body and space.')},'
-        '${bullet(ru ? '5-4-3-2-1: 5 вещей, которые видишь; 4 — слышишь; 3 — чувствуешь; 2 — пахнут; 1 — вкус' : '5-4-3-2-1: 5 things you see; 4 — hear; 3 — feel; 2 — smell; 1 — taste')},'
-        '${bullet(ru ? 'Холодная вода на запястья или лицо — активирует рефлекс ныряния, замедляет сердцебиение' : 'Cold water on wrists or face — activates dive reflex, slows heartbeat')},'
-        '${bullet(ru ? 'Прогулка босиком по траве/земле — если есть возможность' : 'Barefoot walk on grass/ground — if possible')},'
-        '${br()},'
-        '${h2(ru ? 'Когда уже к специалисту' : 'When to See a Professional')},'
-        '${p(ru ? 'Самопомощь — хорошо, но не всегда достаточно. Обращайся, если:' : 'Self-help is good, but not always enough. Seek help if:')},'
-        '${bullet(ru ? 'Тревога мешает работать или спать более 2 недель' : 'Anxiety interferes with work or sleep for more than 2 weeks')},'
-        '${bullet(ru ? 'Появились физические симптомы: боли в груди, головокружение, постоянная усталость' : 'Physical symptoms appear: chest pain, dizziness, constant fatigue')},'
-        '${bullet(ru ? 'Мысли о самоповреждении — даже флэш-моменты' : 'Thoughts of self-harm — even flash moments')},'
-        '${bullet(ru ? 'Панические атаки повторяются — это лечится, не терпи' : 'Panic attacks repeat — this is treatable, do not endure')},'
-        '${br()},'
-        '${h2(ru ? 'Практика: тревожный дневник' : 'Practice: Anxiety Journal')},'
-        '${numbered(ru ? 'Запиши, что произошло' : 'Write what happened')},'
-        '${numbered(ru ? 'Оцени тревогу от 1 до 10' : 'Rate anxiety from 1 to 10')},'
-        '${numbered(ru ? 'Что ты думаешь, что произойдёт? (катастрофа)' : 'What do you think will happen? (catastrophe)')},'
-        '${numbered(ru ? 'Что реально произошло в прошлый раз, когда так думал?' : 'What actually happened last time you thought this?')},'
-        '${numbered(ru ? 'Через неделю перечитай — увидишь паттерн' : 'Re-read in a week — you will see the pattern')}'
-        ']';
-
-    final stress = article('wesios_stress', ru ? 'Стресс и тревога' : 'Stress & Anxiety', stressBody,
-        parentId: 'wesios_mind',
-        tags: ru ? ['стресс', 'тревога', 'дыхание', 'заземление'] : ['stress', 'anxiety', 'breathing', 'grounding']);
-
-    final communicationBody = '[${h1(ru ? 'Общение: сложные разговоры' : 'Communication: Difficult Conversations')},'
-        '${p(ru ? 'Сложные разговоры — не про победу, а про понимание. Цель: не «доказать», а «договориться».' : 'Difficult conversations are not about winning, but about understanding. Goal: not "prove", but "agree".')},'
-        '${br()},'
-        '${h2(ru ? 'Критика' : 'Giving Criticism')},'
-        '${bullet(ru ? 'Ситуация-поведение-влияние: «В отчёте (ситуация) пропущены цифры (поведение), клиент запутался (влияние)»' : 'Situation-behavior-impact: "In the report (situation) numbers are missing (behavior), client got confused (impact)"')},'
-        '${bullet(ru ? 'Не «ты плохой», а «действие создало проблему»' : 'Not "you are bad", but "the action created a problem"')},'
-        '${bullet(ru ? 'Предложи решение: «В следующий раз проверь цифры перед отправкой»' : 'Offer a solution: "Next time check numbers before sending"')},'
-        '${br()},'
-        '${h2(ru ? 'Просьбы' : 'Making Requests')},'
-        '${bullet(ru ? 'Конкретика: не «помоги», а «проверь отчёт к 17:00»' : 'Specifics: not "help me", but "check the report by 5 PM"')},'
-        '${bullet(ru ? 'Объясни зачем: «Если не проверим — клиент получит ошибку»' : 'Explain why: "If we do not check — client gets an error"')},'
-        '${bullet(ru ? 'Дай выбор: «Ты можешь сделать сегодня или завтра утром?»' : 'Give choice: "Can you do it today or tomorrow morning?"')},'
-        '${br()},'
-        '${h2(ru ? 'Конфликты без разрушения' : 'Conflict Without Destruction')},'
-        '${bullet(ru ? 'Слушай до конца, не перебивай. Часто человек сам находит решение, если его выслушают' : 'Listen to the end, do not interrupt. Often the person finds a solution themselves if heard')},'
-        '${bullet(ru ? 'Повтори своими словами: «Ты говоришь, что…» — покажи, что услышал' : 'Repeat in your own words: "You are saying that…" — show you heard')},'
-        '${bullet(ru ? 'Найди общий интерес: «Нам обоим важно, чтобы проект вышел в срок»' : 'Find common interest: "We both care that the project is delivered on time"')},'
-        '${bullet(ru ? 'Отдели позицию от человека: «Я не согласен с решением, но уважаю тебя»' : 'Separate position from person: "I disagree with the decision, but I respect you"')},'
-        '${bullet(ru ? 'Если накал растёт — сделай паузу: «Давай перерыв 10 минут»' : 'If tension rises — take a break: "Let us take a 10-minute break"')}'
-        ']';
-
-    final communication = article('wesios_communication', ru ? 'Общение' : 'Communication', communicationBody,
-        parentId: 'wesios_mind',
-        tags: ru ? ['общение', 'критика', 'конфликт', 'просьбы'] : ['communication', 'criticism', 'conflict', 'requests']);
-
-    final lonelinessBody = '[${h1(ru ? 'Одиночество и круг' : 'Loneliness & Circle')},'
-        '${p(ru ? 'Работать в одиночку — нормально. Но поддержка нужна всем. Вопрос: как её строить, если нет офиса и команды?' : 'Working alone is normal. But everyone needs support. Question: how to build it without an office and team?')},'
-        '${br()},'
-        '${h2(ru ? 'Типы поддержки' : 'Types of Support')},'
-        '${h3(ru ? 'Эмоциональная' : 'Emotional')},'
-        '${bullet(ru ? 'Человек, которому можно сказать «всё провалилось» и не услышать советов' : 'Someone you can say "everything failed" to and not hear advice')},'
-        '${bullet(ru ? 'Не обязательно друг — может быть партнёр, родственник, терапевт' : 'Not necessarily a friend — can be partner, relative, therapist')},'
-        '${h3(ru ? 'Практическая' : 'Practical')},'
-        '${bullet(ru ? 'Коллега, с которым можно обсудить код, архитектуру, ставку' : 'Colleague to discuss code, architecture, rates with')},'
-        '${bullet(ru ? 'Сообщества: Telegram-чаты, Discord-серверы по специализации' : 'Communities: Telegram chats, Discord servers by specialization')},'
-        '${h3(ru ? 'Информационная' : 'Informational')},'
-        '${bullet(ru ? 'Ментор, который уже прошёл твой путь' : 'Mentor who has already walked your path')},'
-        '${bullet(ru ? 'Блогер/автор, чей опыт близок к твоему' : 'Blogger/author whose experience is close to yours')},'
-        '${br()},'
-        '${h2(ru ? 'Как строить круг' : 'How to Build Your Circle')},'
-        '${numbered(ru ? 'Начни с одного человека — не пытайся собрать армию сразу' : 'Start with one person — do not try to gather an army immediately')},'
-        '${numbered(ru ? 'Будь первым: напиши коллеге с вопросом, предложи кофе онлайн' : 'Be first: write a colleague with a question, offer virtual coffee')},'
-        '${numbered(ru ? 'Участвуй в сообществах: отвечай на вопросы, делись опытом — репутация строится' : 'Participate in communities: answer questions, share experience — reputation builds')},'
-        '${numbered(ru ? 'Поддерживай регулярность: раз в месяц созвон, раз в неделю сообщение' : 'Maintain regularity: monthly call, weekly message')},'
-        '${numbered(ru ? 'Качество > количество: 2–3 близких связи лучше 50 поверхностных' : 'Quality > quantity: 2–3 close connections better than 50 superficial')},'
-        '${br()},'
-        '${h2(ru ? 'Если работаешь один' : 'If You Work Alone')},'
-        '${bullet(ru ? 'Коворкинг раз в неделю — даже если не разговариваешь, энергия других людей помогает' : 'Coworking once a week — even if you do not talk, energy of other people helps')},'
-        '${bullet(ru ? 'Публичные проекты: open source, блог — создают связи через общее дело' : 'Public projects: open source, blog — create connections through shared work')},'
-        '${bullet(ru ? 'Не стыдись одиночества — стыд вредит больше, чем само одиночество' : 'Do not be ashamed of loneliness — shame hurts more than loneliness itself')}'
-        ']';
-
-    final loneliness = article('wesios_loneliness', ru ? 'Одиночество и круг' : 'Loneliness & Circle', lonelinessBody,
-        parentId: 'wesios_mind',
-        tags: ru ? ['одиночество', 'поддержка', 'сеть', 'коллеги'] : ['loneliness', 'support', 'network', 'colleagues']);
-
-    final comparisonBody = '[${h1(ru ? 'Сравнение с другими' : 'Comparison With Others')},'
-        '${p(ru ? 'Соцсети показывают лучшие 1% жизни человека. Сравниваешься с этим — проигрываешь всегда.' : 'Social media shows the best 1% of a person\'s life. Comparing yourself to this — you always lose.')},'
-        '${br()},'
-        '${h2(ru ? 'Механизм' : 'The Mechanism')},'
-        '${p(ru ? 'Мозг эволюционно настроен сравнивать себя с племенем — чтобы понять своё место. В древности это работало. В интернете — ломается.' : 'The brain is evolutionarily tuned to compare itself with the tribe — to understand its place. In ancient times it worked. On the internet — it breaks.')},'
-        '${bullet(ru ? '«Успешный успех» — это маркетинг. За каждым постом — 20 провалов, которые не показали' : '"Successful success" is marketing. Behind every post — 20 failures that were not shown')},'
-        '${bullet(ru ? 'Алгоритмы показывают то, что вызывает эмоции. Зависть — сильная эмоция. Ты в ловушке.' : 'Algorithms show what triggers emotions. Envy is a strong emotion. You are in a trap.')},'
-        '${br()},'
-        '${h2(ru ? 'Как не сливать энергию' : 'How to Not Drain Energy')},'
-        '${bullet(ru ? 'Сравнивай себя с собой вчерашним, а не с кем-то в интернете' : 'Compare yourself to yesterday\'s you, not to someone on the internet')},'
-        '${bullet(ru ? 'Лимит на соцсети: 30 минут в день, таймер. Или убери ленту, оставь только сообщения' : 'Social media limit: 30 minutes a day, timer. Or remove feed, keep only messages')},'
-        '${bullet(ru ? 'Задай вопрос: «Что я сейчас делаю вместо того, чтобы делать?»' : 'Ask: "What am I doing right now instead of what I should be doing?"')},'
-        '${bullet(ru ? 'Подпишись на людей, которые учат, а не хвастаются — разница в энергии огромна' : 'Follow people who teach, not brag — the energy difference is huge')},'
-        '${bullet(ru ? 'Веди дневник достижений: каждый день 3 вещи, которые сделал. Это реальность, не фильтр' : 'Keep an achievement journal: every day 3 things you did. This is reality, not a filter')},'
-        '${br()},'
-        '${h2(ru ? 'Практика: цифровой детокс' : 'Practice: Digital Detox')},'
-        '${numbered(ru ? 'Убери все уведомления соцсетей с телефона' : 'Remove all social media notifications from phone')},'
-        '${numbered(ru ? 'Удали приложения, оставь только веб-версию (меньше удобства = меньше залипания)' : 'Delete apps, keep only web version (less convenience = less zoning out)')},'
-        '${numbered(ru ? '«Тихие часы»: 1–2 часа в день без телефона — читай, гуляй, разговаривай' : '"Quiet hours": 1–2 hours a day without phone — read, walk, talk')},'
-        '${numbered(ru ? 'Раз в неделю полный день без соцсетей — заметь, что изменилось' : 'Once a week full day without social media — notice what changed')}'
-        ']';
-
-    final comparison = article('wesios_comparison', ru ? 'Сравнение с другими' : 'Comparison With Others', comparisonBody,
-        parentId: 'wesios_mind',
-        tags: ru ? ['сравнение', 'соцсети', 'энергия', 'детокс'] : ['comparison', 'social media', 'energy', 'detox']);
-    // ═══════════════════════════════════════════════════════════════════════
-    //  ПРИВЫЧКИ И ВНИМАНИЕ
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final habitsFolder = folder('wesios_habits', ru ? 'Привычки и внимание' : 'Habits & Attention', parentId: 'wesios_kb');
-
-    final habitFormBody = '[${h1(ru ? 'Формирование привычек' : 'Habit Formation')},'
-        '${p(ru ? 'Привычка — это автоматизированное поведение. Мозг экономит энергию, повторяя то, что уже знает. Используй это.' : 'A habit is automated behavior. The brain saves energy by repeating what it already knows. Use this.')},'
-        '${br()},'
-        '${h2(ru ? 'Маленькие шаги' : 'Small Steps')},'
-        '${bullet(ru ? 'Не «буду бегать по часу», а «надену кроссовки». Маленькое действие запускает инерцию' : 'Not "I will run for an hour", but "I will put on sneakers". Small action triggers inertia')},'
-        '${bullet(ru ? 'Правило 2 минут: если привычка занимает меньше 2 минут — делай сразу. Зарядка, запись расхода, стакан воды' : '2-minute rule: if habit takes less than 2 minutes — do it immediately. Stretching, logging expense, glass of water')},'
-        '${bullet(ru ? 'Уменьши порог входа: книга на подушке, зубная нить на виду, Wesi Treasury на главном экране' : 'Lower the barrier: book on pillow, dental floss in sight, Wesi Treasury on home screen')},'
-        '${br()},'
-        '${h2(ru ? 'Триггеры' : 'Triggers')},'
-        '${p(ru ? 'Триггер — сигнал, который запускает привычку. Свяжи новую привычку с существующей:' : 'Trigger — a signal that launches a habit. Link new habit to existing one:')},'
-        '${bullet(ru ? 'После кофе — 5 минут планирования в Wesi Treasury' : 'After coffee — 5 minutes of planning in Wesi Treasury')},'
-        '${bullet(ru ? 'После обеда — 10 минут прогулка' : 'After lunch — 10 minute walk')},'
-        '${bullet(ru ? 'Перед сном — 5 минут дневник (3 достижения дня)' : 'Before sleep — 5 minute journal (3 daily achievements)')},'
-        '${bullet(ru ? 'Каждый понедельник — обзор финансов за неделю в Treasury' : 'Every Monday — weekly finance review in Treasury')},'
-        '${br()},'
-        '${h2(ru ? 'Срывы без самобичевания' : 'Relapses Without Self-Flagellation')},'
-        '${p(ru ? 'Срыв — не провал, а данные. Каждый срыв учит, что не работает.' : 'A relapse is not failure, but data. Every relapse teaches what does not work.')},'
-        '${bullet(ru ? 'Не «я слабый», а «что помешало?» — время, место, настроение, люди' : 'Not "I am weak", but "what prevented it?" — time, place, mood, people')},'
-        '${bullet(ru ? 'Правило «никогда не пропускай дважды»: один срыв — случайность, два — паттерн' : '"Never miss twice" rule: one relapse is chance, two is a pattern')},'
-        '${bullet(ru ? 'Верни порог: если сложно — упрости привычку в 2 раза, не бросай' : 'Lower the bar: if hard — simplify the habit by half, do not quit')},'
-        '${bullet(ru ? 'Отпразднуй неделю без срыва — мозг любит награды' : 'Celebrate a week without relapse — the brain loves rewards')}'
-        ']';
-
-    final habitForm = article('wesios_habit_form', ru ? 'Формирование привычек' : 'Habit Formation', habitFormBody,
-        parentId: 'wesios_habits',
-        tags: ru ? ['привычки', 'триггеры', 'срывы', 'планирование'] : ['habits', 'triggers', 'relapses', 'planning']);
-
-    final digitalMinBody = '[${h1(ru ? 'Цифровой минимализм' : 'Digital Minimalism')},'
-        '${p(ru ? 'Внимание — самый ценный ресурс. Технологии созданы, чтобы его захватывать. Бери контроль обратно.' : 'Attention is the most valuable resource. Technology is designed to capture it. Take control back.')},'
-        '${br()},'
-        '${h2(ru ? 'Уведомления' : 'Notifications')},'
-        '${bullet(ru ? 'Отключи все, кроме: звонки, SMS, календарь, банк' : 'Disable all except: calls, SMS, calendar, bank')},'
-        '${bullet(ru ? 'Убери значки с иконок — красные точки — это манипуляция' : 'Remove badges from icons — red dots are manipulation')},'
-        '${bullet(ru ? 'Группируй уведомления: 3 раза в день, а не каждые 5 минут' : 'Batch notifications: 3 times a day, not every 5 minutes')},'
-        '${bullet(ru ? 'WesiOS: настройте уведомления в Settings → Notifications. Только важное' : 'WesiOS: configure notifications in Settings → Notifications. Only important')},'
-        '${br()},'
-        '${h2(ru ? 'Ленты' : 'Feeds')},'
-        '${bullet(ru ? 'Убери бесконечную ленту: удали приложения соцсетей, используй веб-версию с таймером' : 'Remove infinite scroll: delete social media apps, use web version with timer')},'
-        '${bullet(ru ? 'Подпишись на 10 источников максимум. Качество > количество' : 'Subscribe to max 10 sources. Quality > quantity')},'
-        '${bullet(ru ? 'RSS вместо ленты: Feedly, Inoreader — ты контролируешь, что читаешь' : 'RSS instead of feed: Feedly, Inoreader — you control what you read')},'
-        '${br()},'
-        '${h2(ru ? 'Тихие часы' : 'Quiet Hours')},'
-        '${bullet(ru ? 'Утро: первый час без телефона. Мозг свежий — не трать на ленту' : 'Morning: first hour without phone. Brain is fresh — do not waste on feed')},'
-        '${bullet(ru ? 'Вечер: за 1 час до сна — экраны off. Читай бумажную книгу, разговаривай' : 'Evening: 1 hour before sleep — screens off. Read paper book, talk')},'
-        '${bullet(ru ? 'Работа: 90 минут фокуса, 15 минут перерыв. Телефон в другой комнате' : 'Work: 90 minutes focus, 15 minutes break. Phone in another room')},'
-        '${br()},'
-        '${h2(ru ? 'Внимание как ресурс' : 'Attention as a Resource')},'
-        '${p(ru ? 'Представь, что внимание — это деньги. Каждое уведомление, каждый скролл — трата. Бюджет внимания важнее бюджета денег.' : 'Imagine attention is money. Every notification, every scroll — an expense. Attention budget is more important than money budget.')},'
-        '${bullet(ru ? 'Веди «дневник внимания»: что отвлекало сегодня и сколько раз' : 'Keep an "attention journal": what distracted you today and how many times')},'
-        '${bullet(ru ? 'Установи «таксу» на отвлечение: каждый раз, когда залип — 10 отжиманий или 5 минут уборки' : 'Set a "tax" on distraction: every time you zone out — 10 push-ups or 5 minutes cleaning')},'
-        '${bullet(ru ? 'Используй Wesi Treasury для учёта не только денег, но и времени — фиксируй, куда уходит день' : 'Use Wesi Treasury to track not only money but time — log where the day goes')}'
-        ']';
-
-    final digitalMin = article('wesios_digital_min', ru ? 'Цифровой минимализм' : 'Digital Minimalism', digitalMinBody,
-        parentId: 'wesios_habits',
-        tags: ru ? ['минимализм', 'внимание', 'уведомления', 'продуктивность'] : ['minimalism', 'attention', 'notifications', 'productivity']);
-
-    final decisionsBody = '[${h1(ru ? 'Решения: как не застревать в выборе' : 'Decisions: How to Not Get Stuck')},'
-        '${p(ru ? 'Паралич анализа — когда выборов слишком много, и ты ничего не делаешь. Есть выход.' : 'Analysis paralysis — when there are too many choices and you do nothing. There is a way out.')},'
-        '${br()},'
-        '${h2(ru ? 'Критерии «достаточно хорошо»' : '"Good Enough" Criteria')},'
-        '${p(ru ? 'Перфекционизм в решениях — враг. Цель не «лучшее», а «достаточно хорошее».' : 'Perfectionism in decisions is the enemy. Goal is not "best", but "good enough".')},'
-        '${bullet(ru ? 'Задай 3 критерия максимум. Больше — анализ бесконечен' : 'Set max 3 criteria. More — analysis is endless')},'
-        '${bullet(ru ? 'Оцени каждый вариант по шкале 1–5. Сумма > 12 = «достаточно хорошо»' : 'Rate each option 1–5. Sum > 12 = "good enough"')},'
-        '${bullet(ru ? 'Дай себе дедлайн: 24 часа на быстрые решения, 1 неделя на важные' : 'Give yourself a deadline: 24 hours for quick decisions, 1 week for important')},'
-        '${bullet(ru ? 'После решения — не оглядывайся. Доверь себе' : 'After decision — do not look back. Trust yourself')},'
-        '${br()},'
-        '${h2(ru ? 'Техники' : 'Techniques')},'
-        '${h3(ru ? '10-10-10' : '10-10-10')},'
-        '${p(ru ? 'Спроси себя: как я буду чувствовать это решение через 10 минут, 10 месяцев, 10 лет?' : 'Ask yourself: how will I feel about this decision in 10 minutes, 10 months, 10 years?')},'
-        '${bullet(ru ? 'Через 10 минут: часто эмоции улягутся, решение станет очевидным' : 'In 10 minutes: emotions often settle, decision becomes obvious')},'
-        '${bullet(ru ? 'Через 10 месяцев: увидишь реальное влияние' : 'In 10 months: you will see real impact')},'
-        '${bullet(ru ? 'Через 10 лет: поймёшь, что на самом деле важно' : 'In 10 years: you will understand what really matters')},'
-        '${h3(ru ? 'Правило 37%' : '37% Rule')},'
-        '${p(ru ? 'Исследуй 37% вариантов, затем выбирай лучший из оставшихся. Математически оптимально.' : 'Explore 37% of options, then choose the best of the rest. Mathematically optimal.')},'
-        '${bullet(ru ? 'Квартира: посмотри 10 из 27 → бери лучшую из оставшихся 17' : 'Apartment: see 10 of 27 → take best of remaining 17')},'
-        '${bullet(ru ? 'Работа: пообщайся с 3–4 компаниями, затем принимай оффер' : 'Job: talk to 3–4 companies, then accept offer')},'
-        '${br()},'
-        '${h2(ru ? 'Когда выбор не важен' : 'When Choice Does Not Matter')},'
-        '${p(ru ? 'Многие решения — обратимые. Не трать энергию на то, что можно изменить позже.' : 'Many decisions are reversible. Do not waste energy on what can be changed later.')},'
-        '${bullet(ru ? 'Редактор кода? VS Code, IntelliJ, Vim — все работают. Выбери один и забудь' : 'Code editor? VS Code, IntelliJ, Vim — all work. Pick one and forget')},'
-        '${bullet(ru ? 'Фреймворк? Flutter, React, Vue — все делают приложения. Начни с любого' : 'Framework? Flutter, React, Vue — all make apps. Start with any')},'
-        '${bullet(ru ? 'Цвет стены? Покрась, если не нравится — перекрась' : 'Wall color? Paint it, if you do not like it — repaint')}'
-        ']';
-
-    final decisions = article('wesios_decisions', ru ? 'Решения' : 'Decisions', decisionsBody,
-        parentId: 'wesios_habits',
-        tags: ru ? ['решения', 'выбор', 'перфекционизм', 'продуктивность'] : ['decisions', 'choice', 'perfectionism', 'productivity']);
-    // ═══════════════════════════════════════════════════════════════════════
-    //  ЖИЗНЬ ВОКРУГ
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final lifeFolder = folder('wesios_life', ru ? 'Жизнь вокруг' : 'Life Around', parentId: 'wesios_kb');
-
-    final homeLifeBody = '[${h1(ru ? 'Дом и быт: порядок без перфекционизма' : 'Home & Household: Order Without Perfectionism')},'
-        '${p(ru ? 'Порядок в доме — это не эстетика, а экономия энергии. Когда всё на своих местах, мозг не тратит силы на поиск.' : 'Order at home is not aesthetics, but energy saving. When everything is in its place, the brain does not waste energy searching.')},'
-        '${br()},'
-        '${h2(ru ? 'Порядок без перфекционизма' : 'Order Without Perfectionism')},'
-        '${bullet(ru ? 'Правило «одной минуты»: если занимает меньше минуты — сделай сразу. Вешай пальто, мой чашку' : 'One-minute rule: if it takes less than a minute — do it immediately. Hang coat, wash cup')},'
-        '${bullet(ru ? '«Домашняя зона отчуждения»: один ящик/полка для «пока не знаю куда». Раз в месяц разбирай' : 'Home limbo zone: one drawer/shelf for "not sure where yet". Sort once a month')},'
-        '${bullet(ru ? 'Не выбрасывай всё подряд. Спроси: «использовал за год?» — нет → убирай' : 'Do not throw everything away. Ask: "used in a year?" — no → remove')},'
-        '${bullet(ru ? 'Порядок — не цель, а инструмент. Достаточно 80% порядка, 100% — перфекционизм' : 'Order is not a goal, but a tool. 80% order is enough, 100% is perfectionism')},'
-        '${br()},'
-        '${h2(ru ? 'Рутина, которая экономит силы' : 'Routine That Saves Energy')},'
-        '${p(ru ? 'Рутина — это автопилот для быта. Чем больше автоматизировано, тем больше энергии на важное.' : 'Routine is autopilot for household. The more automated, the more energy for what matters.')},'
-        '${bullet(ru ? 'Воскресенье — день планирования: меню на неделю, список покупок, уборка 30 минут' : 'Sunday — planning day: weekly menu, shopping list, 30 min cleaning')},'
-        '${bullet(ru ? 'Вечерняя рутина: посуда, завтрак на завтра, одежда на завтра. Утро начинается спокойно' : 'Evening routine: dishes, breakfast for tomorrow, clothes for tomorrow. Morning starts calmly')},'
-        '${bullet(ru ? 'Финансовая рутина: понедельник — обзор недели в Wesi Treasury, 1-е число — обзор месяца' : 'Finance routine: Monday — weekly review in Wesi Treasury, 1st — monthly review')},'
-        '${bullet(ru ? 'Одинаковые завтраки/обеды — не скучно, а экономит решения. Мозг любит шаблоны' : 'Same breakfasts/lunches — not boring, but saves decisions. Brain loves patterns')},'
-        '${br()},'
-        '${h2(ru ? 'Пространство для работы' : 'Workspace')},'
-        '${bullet(ru ? 'Рабочий стол: только то, что нужно сейчас. Всё остальное — в ящик' : 'Desk: only what you need now. Everything else — in drawer')},'
-        '${bullet(ru ? 'Провода: один кабель-органайзер, не спагетти' : 'Cables: one cable organizer, not spaghetti')},'
-        '${bullet(ru ? 'Растения: одно, но живое. Зелень снижает стресс' : 'Plants: one, but alive. Greenery reduces stress')},'
-        '${bullet(ru ? 'Свет: дневной свет лучше любой лампы. Стол у окна, если можно' : 'Light: daylight better than any lamp. Desk by window if possible')}'
-        ']';
-
-    final homeLife = article('wesios_home', ru ? 'Дом и быт' : 'Home & Household', homeLifeBody,
-        parentId: 'wesios_life',
-        tags: ru ? ['дом', 'быт', 'рутина', 'порядок'] : ['home', 'household', 'routine', 'order']);
-
-    final restBody = '[${h1(ru ? 'Отдых как навык' : 'Rest as a Skill')},'
-        '${p(ru ? 'Отдых — не лень. Это восстановление ресурса. Без отдыха продуктивность падает, ошибки растут, выгорание приближается.' : 'Rest is not laziness. It is resource recovery. Without rest, productivity drops, errors grow, burnout approaches.')},'
-        '${br()},'
-        '${h2(ru ? 'Ежедневное восстановление' : 'Daily Recovery')},'
-        '${bullet(ru ? 'Микроперерывы: каждые 90 минут — 10 минут от экрана. Глаза, спина, мозг скажут спасибо' : 'Microbreaks: every 90 minutes — 10 minutes off screen. Eyes, back, brain will thank you')},'
-        '${bullet(ru ? 'Прогулка: 15 минут после обеда — лучше кофе для бодрости' : 'Walk: 15 minutes after lunch — better than coffee for alertness')},'
-        '${bullet(ru ? 'Дневной сон: 10–20 минут до 15:00. Дольше — инерция, позже — бессонница' : 'Nap: 10–20 minutes before 3 PM. Longer — grogginess, later — insomnia')},'
-        '${bullet(ru ? 'Вечер: 1 час без экранов перед сном. Читай, растяжка, разговор' : 'Evening: 1 hour screen-free before sleep. Read, stretch, talk')},'
-        '${br()},'
-        '${h2(ru ? 'Отпуск' : 'Vacation')},'
-        '${bullet(ru ? 'Минимум: 1 неделя каждые 3 месяца. Мозг перезагружается не за 2 дня' : 'Minimum: 1 week every 3 months. Brain does not reboot in 2 days')},'
-        '${bullet(ru ? 'Полный отрыв: не проверяй почту, не отвечай на сообщения. Делегируй заранее' : 'Full disconnect: do not check email, do not reply to messages. Delegate in advance')},'
-        '${bullet(ru ? 'Активный отдых > пассивный. Прогулки, спорт, природа — лучше, чем сериалы' : 'Active rest > passive. Walks, sports, nature — better than TV shows')},'
-        '${bullet(ru ? 'Планируй отпуск заранее: предвкушение — часть отдыха' : 'Plan vacation in advance: anticipation is part of rest')},'
-        '${br()},'
-        '${h2(ru ? 'Отдых от работы внутри дня' : 'Rest From Work Within the Day')},'
-        '${p(ru ? 'Не работай больше 6 часов подряд. После 6 часов эффективность падает экспоненциально.' : 'Do not work more than 6 hours straight. After 6 hours efficiency drops exponentially.')},'
-        '${bullet(ru ? 'Техника Pomodoro: 25 минут работы, 5 минут отдыха. 4 цикла — длинный перерыв 15–30 минут' : 'Pomodoro technique: 25 minutes work, 5 minutes rest. 4 cycles — long break 15–30 minutes')},'
-        '${bullet(ru ? 'Переключение контекста: после кодинга — прогулка, не ещё кодинг' : 'Context switching: after coding — walk, not more coding')},'
-        '${bullet(ru ? 'Физическая активность: 20 минут упражнений — лучше перерыв, чем соцсети' : 'Physical activity: 20 minutes exercise — better break than social media')}'
-        ']';
-
-    final rest = article('wesios_rest', ru ? 'Отдых как навык' : 'Rest as a Skill', restBody,
-        parentId: 'wesios_life',
-        tags: ru ? ['отдых', 'восстановление', 'помодоро', 'выгорание'] : ['rest', 'recovery', 'pomodoro', 'burnout']);
-
-    final expVsThingsBody = '[${h1(ru ? 'Опыт vs вещи' : 'Experiences vs Things')},'
-        '${p(ru ? 'Исследования показывают: опыт даёт больше счастья, чем вещи. Почему?' : 'Research shows: experiences bring more happiness than things. Why?')},'
-        '${br()},'
-        '${h2(ru ? 'Почему опыт лучше' : 'Why Experience Is Better')},'
-        '${bullet(ru ? 'Опыт не стареет. Вещь устаревает, ломается, надоедает. Воспоминание — нет' : 'Experience does not age. Things become outdated, break, get boring. Memories do not')},'
-        '${bullet(ru ? 'Опыт связан с идентичностью. «Я тот, кто путешествовал» — сильнее, чем «у меня есть iPhone»' : 'Experience is tied to identity. "I am the one who traveled" is stronger than "I have an iPhone"')},'
-        '${bullet(ru ? 'Опыт социален. Вещь — индивидуальна. Поездку можно обсуждать, вещь — нет' : 'Experience is social. Things are individual. A trip can be discussed, a thing cannot')},'
-        '${bullet(ru ? 'Опыт не сравнивается. Вещи сравниваются с чужими. Воспоминания — уникальны' : 'Experience is not compared. Things are compared with others. Memories are unique')},'
-        '${br()},'
-        '${h2(ru ? 'Когда вещь выгоднее' : 'When a Thing Is Better')},'
-        '${p(ru ? 'Не всё черно-бело. Иногда вещь — правильный выбор:' : 'Not everything is black and white. Sometimes a thing is the right choice:')},'
-        '${bullet(ru ? 'Инструменты работы: хороший ноутбук, стул, монитор — инвестиция в доход' : 'Work tools: good laptop, chair, monitor — investment in income')},'
-        '${bullet(ru ? 'Вещи, которые экономят время: робот-пылесос, посудомойка — время = деньги' : 'Things that save time: robot vacuum, dishwasher — time = money')},'
-        '${bullet(ru ? 'Вещи, которые создают опыт: гитара, велосипед, фотоаппарат' : 'Things that create experience: guitar, bicycle, camera')},'
-        '${br()},'
-        '${h2(ru ? 'Правило 50/30/20 для досуга' : '50/30/20 Rule for Leisure')},'
-        '${p(ru ? 'Раздели досуговый бюджет:' : 'Divide your leisure budget:')},'
-        '${bullet(ru ? '50% — опыт: поездки, курсы, концерты, спорт' : '50% — experience: trips, courses, concerts, sports')},'
-        '${bullet(ru ? '30% — вещи-инструменты: оборудование, книги, софт' : '30% — tool things: equipment, books, software')},'
-        '${bullet(ru ? '20% — вещи-удовольствия: без вины, но в рамках' : '20% — pleasure things: without guilt, but within limits')},'
-        '${br()},'
-        '${h2(ru ? 'Практика: опытный квартал' : 'Practice: Experiential Quarter')},'
-        '${numbered(ru ? 'Выбери один опыт в квартал: курс, поездка, марафон' : 'Choose one experience per quarter: course, trip, marathon')},'
-        '${numbered(ru ? 'Запланируй заранее, забронируй — обязательство повышает вероятность' : 'Plan in advance, book — commitment increases probability')},'
-        '${numbered(ru ? 'Зафиксируй в Wesi Treasury как инвестицию в себя' : 'Log in Wesi Treasury as an investment in yourself')},'
-        '${numbered(ru ? 'После — запиши 3 момента, которые запомнились. Усиливает эффект' : 'After — write down 3 moments you remember. Amplifies the effect')}'
-        ']';
-
-    final expVsThings = article('wesios_exp_vs_things', ru ? 'Опыт vs вещи' : 'Experiences vs Things', expVsThingsBody,
-        parentId: 'wesios_life',
-        tags: ru ? ['опыт', 'вещи', 'счастье', 'инвестиции'] : ['experience', 'things', 'happiness', 'investment']);
-
-    final legalBody = '[${h1(ru ? 'Простые юридические вещи' : 'Simple Legal Matters')},'
-        '${p(ru ? 'Юридическая грамотность — не про адвоката, а про базовую защиту. Несколько простых правил спасают нервы и деньги.' : 'Legal literacy is not about a lawyer, but basic protection. A few simple rules save nerves and money.')},'
-        '${br()},'
-        '${h2(ru ? 'Договор аренды' : 'Rental Agreement')},'
-        '${bullet(ru ? 'Всегда письменно. Устная договорённость — это обещание, не договор' : 'Always in writing. Verbal agreement is a promise, not a contract')},'
-        '${bullet(ru ? 'Проверь: кто собственник? Паспорт + выписка из ЕГРН. Не верь посредникам' : 'Check: who is the owner? Passport + EGRN extract. Do not trust intermediaries')},'
-        '${bullet(ru ? 'Фиксируй состояние квартиры: фото/видео при заселении. Подпись арендодателя на акте' : 'Document apartment condition: photos/video on move-in. Landlord signature on act')},'
-        '${bullet(ru ? 'Срок и условия расторжения: пропиши заранее, сколько предупреждать' : 'Term and termination conditions: specify in advance how much notice')},'
-        '${bullet(ru ? 'Депозит: что покрывает, когда возвращается, в каком виде' : 'Deposit: what it covers, when returned, in what form')},'
-        '${br()},'
-        '${h2(ru ? 'Расписка' : 'IOU / Receipt')},'
-        '${bullet(ru ? 'Обязательно письменно: сумма прописью, дата, срок возврата, подписи обеих сторон' : 'Mandatory in writing: amount in words, date, repayment term, both signatures')},'
-        '${bullet(ru ? 'Свидетели: 2 человека, паспортные данные. Без свидетелей — сложно доказать' : 'Witnesses: 2 people, passport details. Without witnesses — hard to prove')},'
-        '${bullet(ru ? 'Не давай в долг больше, чем готов потерять. Это правило, не совет' : 'Do not lend more than you are ready to lose. This is a rule, not advice')},'
-        '${br()},'
-        '${h2(ru ? 'Что хранить «на всякий»' : 'What to Keep "Just in Case"')},'
-        '${bullet(ru ? 'Копии паспорта: скан + фото на облаке. Потеря паспорта без копии — кошмар' : 'Passport copies: scan + photo in cloud. Losing passport without copy — nightmare')},'
-        '${bullet(ru ? 'Договоры: аренда, работа, кредит — храни в одном месте, цифровом и бумажном' : 'Contracts: rental, employment, loan — keep in one place, digital and paper')},'
-        '${bullet(ru ? 'Чеки и квитанции: 3 года для налогов, 5 лет для крупных покупок' : 'Receipts and invoices: 3 years for taxes, 5 years for large purchases')},'
-        '${bullet(ru ? 'Медицинские документы: выписки, анализы — пригодятся при смене врача' : 'Medical documents: extracts, tests — useful when changing doctor')},'
-        '${bullet(ru ? 'Финансовые: выписки, договоры страхования, завещание' : 'Financial: statements, insurance contracts, will')},'
-        '${br()},'
-        '${h2(ru ? 'WesiOS: учёт договоров' : 'WesiOS: Contract Tracking')},'
-        '${p(ru ? 'Используй Wesi Treasury для учёта: дата договора, сумма, срок, напоминания. Не полагайся на память.' : 'Use Wesi Treasury to track: contract date, amount, term, reminders. Do not rely on memory.')}'
-        ']';
-
-    final legal = article('wesios_legal', ru ? 'Простые юридические вещи' : 'Simple Legal Matters', legalBody,
-        parentId: 'wesios_life',
-        tags: ru ? ['юриспруденция', 'договор', 'расписка', 'документы'] : ['law', 'contract', 'receipt', 'documents']);
-    // ═══════════════════════════════════════════════════════════════════════
-    //  ДЛЯ САМОЗАНЯТЫХ
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final freelanceFolder = folder('wesios_freelance', ru ? 'Для самозанятых' : 'For Freelancers', parentId: 'wesios_kb');
-
-    final firstClientsBody = '[${h1(ru ? 'Первые клиенты' : 'First Clients')},'
-        '${p(ru ? 'Начать без портфолио и репутации — сложно, но возможно. Главное: показать результат, а не обещания.' : 'Starting without portfolio and reputation is hard, but possible. The key: show results, not promises.')},'
-        '${br()},'
-        '${h2(ru ? 'Где искать' : 'Where to Look')},'
-        '${bullet(ru ? 'Свой круг: друзья, знакомые, бывшие коллеги. 70% первых клиентов — от знакомых' : 'Your circle: friends, acquaintances, former colleagues. 70% of first clients come from connections')},'
-        '${bullet(ru ? 'Фриланс-биржи: Upwork, Toptal, Freelancer — для портфолио и рейтинга. Демпингуй на первых 2–3 проектах' : 'Freelance platforms: Upwork, Toptal, Freelancer — for portfolio and rating. Undercut on first 2–3 projects')},'
-        '${bullet(ru ? 'Сообщества: Telegram-чаты, Discord, Reddit — отвечай на вопросы, предлагай помощь' : 'Communities: Telegram chats, Discord, Reddit — answer questions, offer help')},'
-        '${bullet(ru ? 'Контент: блог, YouTube, GitHub — клиенты приходят к тем, кто учит' : 'Content: blog, YouTube, GitHub — clients come to those who teach')},'
-        '${br()},'
-        '${h2(ru ? 'Холодные сообщения без стыда' : 'Cold Outreach Without Shame')},'
-        '${p(ru ? 'Холодное письмо — не спам, если оно персонализировано и полезно.' : 'Cold email is not spam if it is personalized and useful.')},'
-        '${bullet(ru ? 'Исследуй клиента: что он делает, какие проблемы видишь. Не шаблон' : 'Research the client: what they do, what problems you see. Not a template')},'
-        '${bullet(ru ? 'Предложи конкретику: «вижу, что у вас… я могу… за X»' : 'Offer specifics: "I see you have… I can… for X"')},'
-        '${bullet(ru ? 'Коротко: 3–4 предложения. Длинные письма не читают' : 'Short: 3–4 sentences. Long emails are not read')},'
-        '${bullet(ru ? 'Признай риск: «я понимаю, что это холодное письмо, но…» — снижает защиту' : 'Acknowledge risk: "I understand this is a cold email, but…" — lowers defense')},'
-        '${bullet(ru ? 'Не жди ответа на каждое. Конверсия 1–3% — норма. 100 писем = 1–3 клиента' : 'Do not expect reply to every one. 1–3% conversion is normal. 100 emails = 1–3 clients')},'
-        '${br()},'
-        '${h2(ru ? 'Минимальный оффер' : 'Minimum Viable Offer')},'
-        '${p(ru ? 'Не продавай «всё под ключ». Продавай конкретный результат за конкретные деньги и срок.' : 'Do not sell "turnkey everything". Sell a specific result for specific money and time.')},'
-        '${bullet(ru ? 'Чёткий скоуп: что входит, что не входит. Пропиши в договоре' : 'Clear scope: what is included, what is not. Specify in contract')},'
-        '${bullet(ru ? 'Предоплата 30–50%: без предоплаты — хобби, не бизнес' : '30–50% upfront: without upfront — it is a hobby, not business')},'
-        '${bullet(ru ? 'Первый проект — упрощённый: сделай хорошо, получи отзыв, масштабируй' : 'First project — simplified: do well, get review, scale')},'
-        '${bullet(ru ? 'Документируй всё: переписка, договор, ТЗ. Wesi Treasury — фиксируй доходы и расходы по проекту' : 'Document everything: correspondence, contract, specs. Wesi Treasury — log project income and expenses')}'
-        ']';
-
-    final firstClients = article('wesios_first_clients', ru ? 'Первые клиенты' : 'First Clients', firstClientsBody,
-        parentId: 'wesios_freelance',
-        tags: ru ? ['клиенты', 'фриланс', 'холодные письма', 'оффер'] : ['clients', 'freelance', 'cold outreach', 'offer']);
-
-    final redFlagsBody = '[${h1(ru ? 'Когда отказывать клиенту' : 'When to Refuse a Client')},'
-        '${p(ru ? 'Не каждый клиент — твой клиент. Умение отказывать — навык, который экономит время, нервы и репутацию.' : 'Not every client is your client. Ability to say no — a skill that saves time, nerves, and reputation.')},'
-        '${br()},'
-        '${h2(ru ? 'Красные флаги до начала' : 'Red Flags Before Start')},'
-        '${bullet(ru ? '«Сделаешь быстро?» — без ТЗ, без срока, без бюджета. Это не проект, а исследование' : '"Can you do it quickly?" — without specs, timeline, budget. This is not a project, but research')},'
-        '${bullet(ru ? '«Денег нет, но будет потом» — обещания не платят счета' : '"No money now, but later" — promises do not pay bills')},'
-        '${bullet(ru ? '«Друг сказал, что это просто» — не ценит экспертизу, будет торговаться' : '"My friend said it is simple" — does not value expertise, will haggle')},'
-        '${bullet(ru ? '«Уже работал с 5 фрилансерами, все плохие» — клиент — проблема, не исполнители' : '"Already worked with 5 freelancers, all bad" — the client is the problem, not the executors')},'
-        '${bullet(ru ? 'Не хочет договор — значит, не собирается платить' : 'Does not want a contract — means they do not intend to pay')},'
-        '${br()},'
-        '${h2(ru ? 'Красные флаги в процессе' : 'Red Flags During the Project')},'
-        '${bullet(ru ? 'Постоянные «маленькие правки» вне скоупа — это не правки, а бесплатная работа' : 'Constant "small fixes" outside scope — these are not fixes, but free work')},'
-        '${bullet(ru ? 'Задержка оплаты без объяснения — первый звонок. Второй — тревога' : 'Payment delay without explanation — first bell. Second — alarm')},'
-        '${bullet(ru ? '«Давай сначала сделаем, потом обсудим деньги» — классика мошенничества' : '"Let us do it first, then discuss money" — classic scam')},'
-        '${bullet(ru ? 'Микроменеджмент: контроль каждый час, правки через 10 минут после сдачи' : 'Micromanagement: checking every hour, fixes 10 minutes after delivery')},'
-        '${br()},'
-        '${h2(ru ? 'Как отказать' : 'How to Refuse')},'
-        '${bullet(ru ? 'Вежливо, но твёрдо: «Спасибо за предложение, но это не мой профиль/не по моей ставке»' : 'Politely but firmly: "Thank you for the offer, but this is not my profile/not my rate"')},'
-        '${bullet(ru ? 'Не оправдывайся. «Занят» — достаточно. Подробности — слабость' : 'Do not justify. "Busy" is enough. Details are weakness')},'
-        '${bullet(ru ? 'Предложи альтернативу: «Не могу, но знаю коллегу, который…» — репутация растёт' : 'Offer alternative: "I cannot, but I know a colleague who…" — reputation grows')},'
-        '${bullet(ru ? 'Запиши в Wesi Treasury: почему отказал. Через месяц увидишь паттерн — кто твой клиент' : 'Log in Wesi Treasury: why you refused. In a month you will see the pattern — who is your client')}'
-        ']';
-
-    final redFlags = article('wesios_red_flags', ru ? 'Когда отказывать' : 'When to Refuse', redFlagsBody,
-        parentId: 'wesios_freelance',
-        tags: ru ? ['клиенты', 'красные флаги', 'отказ', 'фриланс'] : ['clients', 'red flags', 'refusal', 'freelance']);
-
-    final accountingBody = '[${h1(ru ? 'Бухгалтерия на пальцах' : 'Accounting in Plain Terms')},'
-        '${p(ru ? 'Бухгалтерия — не страх, а инструмент. Если вести сразу — потом не будет головной боли.' : 'Accounting is not fear, but a tool. If you keep it up — there will be no headache later.')},'
-        '${br()},'
-        '${h2(ru ? 'Что писать в Wesi Treasury' : 'What to Log in Wesi Treasury')},'
-        '${bullet(ru ? 'Каждый доход: дата, клиент, сумма, валюта, проект. Сразу, не «потом вспомню»' : 'Every income: date, client, amount, currency, project. Immediately, not "I will remember later"')},'
-        '${bullet(ru ? 'Каждый расход: дата, категория, сумма, чек/квитанция. Фото чека — обязательно' : 'Every expense: date, category, amount, receipt. Photo of receipt — mandatory')},'
-        '${bullet(ru ? 'Налоги: откладывай 6% (УСН) или 13% (НДФЛ) с каждого дохода на отдельный счёт' : 'Taxes: set aside 6% (simplified tax) or 13% (income tax) from every income to a separate account')},'
-        '${bullet(ru ? 'Валюта: если работаешь с иностранцами — фиксируй курс на дату. Treasury хранит в RUB-эквиваленте' : 'Currency: if working with foreigners — log rate on date. Treasury stores in RUB equivalent')},'
-        '${br()},'
-        '${h2(ru ? 'Что хранить' : 'What to Keep')},'
-        '${bullet(ru ? 'Чеки и квитанции: 5 лет. Цифровые копии — в облаке' : 'Receipts and invoices: 5 years. Digital copies — in cloud')},'
-        '${bullet(ru ? 'Договоры: бессрочно, пока не истёк срок исковой давности' : 'Contracts: indefinitely, until statute of limitations expires')},'
-        '${bullet(ru ? 'Выписки банка: 3 года для налоговой' : 'Bank statements: 3 years for tax office')},'
-        '${bullet(ru ? 'Акты выполненных работ: подписанные клиентом. Без подписи — доказательств нет' : 'Work completion acts: signed by client. Without signature — no proof')},'
-        '${br()},'
-        '${h2(ru ? 'Простая схема учёта' : 'Simple Accounting Scheme')},'
-        '${numbered(ru ? 'Получил деньги → сразу в Treasury (доход)' : 'Received money → immediately in Treasury (income)')},'
-        '${numbered(ru ? 'Отложил налоги (6–13%) на отдельный счёт' : 'Set aside taxes (6–13%) to separate account')},'
-        '${numbered(ru ? 'Заплатил за расход → сразу в Treasury (расход)' : 'Paid for expense → immediately in Treasury (expense)')},'
-        '${numbered(ru ? 'Раз в месяц: проверь баланс, заплати налоги, сделай выписку' : 'Once a month: check balance, pay taxes, make statement')},'
-        '${numbered(ru ? 'Раз в квартал: сверь с банком, подготовь декларацию' : 'Once a quarter: reconcile with bank, prepare declaration')},'
-        '${numbered(ru ? 'Раз в год: налоговая декларация, проверь вычеты' : 'Once a year: tax declaration, check deductions')}'
-        ']';
-
-    final accounting = article('wesios_accounting', ru ? 'Бухгалтерия на пальцах' : 'Simple Accounting', accountingBody,
-        parentId: 'wesios_freelance',
-        tags: ru ? ['бухгалтерия', 'налоги', 'учёт', 'Treasury'] : ['accounting', 'taxes', 'tracking', 'Treasury']);
-
-    final stabilityBody = '[${h1(ru ? 'Выход на стабильность' : 'Reaching Stability')},'
-        '${p(ru ? 'Фриланс — волна. Стабильность — это когда волны не топят, а качат.' : 'Freelance is a wave. Stability is when waves do not drown, but rock.')},'
-        '${br()},'
-        '${h2(ru ? 'Ретейнеры' : 'Retainers')},'
-        '${bullet(ru ? 'Фиксированная ежемесячная оплата за фиксированный объём работы. Предсказуемый доход' : 'Fixed monthly payment for fixed scope of work. Predictable income')},'
-        '${bullet(ru ? 'Начни с 1 клиента. 20–30% времени под ретейнер — остальное на проекты' : 'Start with 1 client. 20–30% time under retainer — rest on projects')},'
-        '${bullet(ru ? 'Условия: чёткий скоуп, часы, канал связи, срок оплаты (аванс!)' : 'Terms: clear scope, hours, communication channel, payment term (advance!)')},'
-        '${bullet(ru ? 'Не больше 2–3 ретейнеров — иначе превращаешься в наёмного' : 'No more than 2–3 retainers — otherwise you become an employee')},'
-        '${br()},'
-        '${h2(ru ? 'Пакеты' : 'Packages')},'
-        '${bullet(ru ? 'Не продавай часы — продавай результат. «Сайт за X» лучше, чем «100 часов по Y»' : 'Do not sell hours — sell results. "Site for X" is better than "100 hours at Y"')},'
-        '${bullet(ru ? '3 пакета: базовый, стандартный, премиум. 80% выбирают средний' : '3 packages: basic, standard, premium. 80% choose middle')},'
-        '${bullet(ru ? 'Пакет = скоуп + срок + правки + поддержка. Всё прописано заранее' : 'Package = scope + timeline + revisions + support. Everything specified in advance')},'
-        '${br()},'
-        '${h2(ru ? 'Повторные продажи' : 'Repeat Sales')},'
-        '${p(ru ? 'Новый клиент в 5–7 раз дороже, чем старый. Инвестируй в отношения.' : 'New client is 5–7 times more expensive than old one. Invest in relationships.')},'
-        '${bullet(ru ? 'После проекта: напиши через неделю — всё работает? Нужна ли поддержка?' : 'After project: write in a week — everything working? Need support?')},'
-        '${bullet(ru ? 'Предложи обслуживание: обновления, бэкапы, мониторинг — пассивный доход' : 'Offer maintenance: updates, backups, monitoring — passive income')},'
-        '${bullet(ru ? 'Запиши в Wesi Treasury: дата контакта, результат, следующий шаг' : 'Log in Wesi Treasury: contact date, result, next step')},'
-        '${bullet(ru ? 'День рождения клиента — напиши. Мелочь, но запоминается' : 'Client\'s birthday — write. Small thing, but memorable')},'
-        '${br()},'
-        '${h2(ru ? 'Метрики стабильности' : 'Stability Metrics')},'
-        '${bullet(ru ? 'Предсказуемый доход: 50%+ от ретейнеров и повторных продаж' : 'Predictable income: 50%+ from retainers and repeat sales')},'
-        '${bullet(ru ? 'Подушка: 6 месяцев расходов на отдельном счёте' : 'Cushion: 6 months of expenses on separate account')},'
-        '${bullet(ru ? 'Разнообразие: не более 30% дохода от одного клиента' : 'Diversity: no more than 30% income from one client')},'
-        '${bullet(ru ? 'Время: 20% времени на поиск клиентов — норма. Если 50% — кризис' : 'Time: 20% time on client acquisition is normal. If 50% — crisis')}'
-        ']';
-
-    final stability = article('wesios_stability', ru ? 'Выход на стабильность' : 'Reaching Stability', stabilityBody,
-        parentId: 'wesios_freelance',
-        tags: ru ? ['стабильность', 'ретейнеры', 'пакеты', 'продажи'] : ['stability', 'retainers', 'packages', 'sales']);
-    // ═══════════════════════════════════════════════════════════════════════
-    //  МЕТА (про саму базу)
-    // ═══════════════════════════════════════════════════════════════════════
-
-    final metaFolder = folder('wesios_meta', ru ? 'Мета' : 'Meta', parentId: 'wesios_kb');
-
-    final howToUseBody = '[${h1(ru ? 'Как пользоваться этой базой' : 'How to Use This Knowledge Base')},'
-        '${p(ru ? 'База знаний WesiOS — не энциклопедия, а практичный справочник. Читай выборочно, применяй сразу.' : 'WesiOS Knowledge Base is not an encyclopedia, but a practical handbook. Read selectively, apply immediately.')},'
-        '${br()},'
-        '${h2(ru ? 'Если «всё горит»' : 'If Everything Is on Fire')},'
-        '${p(ru ? 'Когда кризис — не читай всё подряд. Сфокусируйся на одном:' : 'When in crisis — do not read everything. Focus on one:')},'
-        '${numbered(ru ? 'Деньги горят → «Долги: как гасить» + открой Wesi Treasury, посмотри реальную картину' : 'Money is burning → "Debt: How to Pay Off" + open Wesi Treasury, see the real picture')},'
-        '${numbered(ru ? 'Выгорание → «Отдых как навык» + «Стресс и тревога» + сделай перерыв сегодня' : 'Burnout → "Rest as a Skill" + "Stress & Anxiety" + take a break today')},'
-        '${numbered(ru ? 'Конфликт → «Общение: сложные разговоры» + напиши письмо, не отправляй сразу' : 'Conflict → "Communication: Difficult Conversations" + write a letter, do not send immediately')},'
-        '${numbered(ru ? 'Нет клиентов → «Первые клиенты» + напиши 10 холодных писем сегодня' : 'No clients → "First Clients" + write 10 cold emails today')},'
-        '${numbered(ru ? 'Не знаю, куда расти → «Обучение без выгорания» + «Смена профессии»' : 'Do not know where to grow → "Learning Without Burnout" + "Career Change"')},'
-        '${br()},'
-        '${h2(ru ? 'Если «хочу расти»' : 'If You Want to Grow')},'
-        '${p(ru ? 'Когда есть ресурс — читай системно. План на квартал:' : 'When you have resources — read systematically. Quarterly plan:')},'
-        '${numbered(ru ? 'Месяц 1: Деньги → «Долги», «Страхование», «Пенсия». Зафиксируй в Treasury' : 'Month 1: Money → "Debt", "Insurance", "Pension". Log in Treasury')},'
-        '${numbered(ru ? 'Месяц 2: Работа → «Обучение», «Переговоры», «Удалёнка». Примени на практике' : 'Month 2: Work → "Learning", "Negotiations", "Remote". Apply in practice')},'
-        '${numbered(ru ? 'Месяц 3: Голова → «Стресс», «Общение», «Привычки». Веди дневник' : 'Month 3: Mind → "Stress", "Communication", "Habits". Keep a journal')},'
-        '${br()},'
-        '${h2(ru ? 'Как работать со статьями' : 'How to Work With Articles')},'
-        '${bullet(ru ? 'Не читай про запас — читай, когда тема актуальна' : 'Do not read in advance — read when the topic is relevant')},'
-        '${bullet(ru ? 'Выделяй главное: используй редактор WesiOS, добавляй заметки' : 'Highlight key points: use WesiOS editor, add notes')},'
-        '${bullet(ru ? 'Делись: перешли коллеге, обсудите. Обучение через обсуждение — мощнее' : 'Share: forward to colleague, discuss. Learning through discussion is stronger')},'
-        '${bullet(ru ? 'Возвращайся: перечитывай через месяц. Новый контекст — новое понимание' : 'Come back: re-read in a month. New context — new understanding')},'
-        '${bullet(ru ? 'Дополняй: если нашёл ошибку или хочешь добавить — напиши в Issues репозитория' : 'Add: if you found an error or want to add — write in repository Issues')}'
-        ']';
-
-    final howToUse = article('wesios_how_to_use', ru ? 'Как пользоваться базой' : 'How to Use This Base', howToUseBody,
-        parentId: 'wesios_meta',
-        tags: ru ? ['мета', 'навигация', 'база знаний', 'WesiOS'] : ['meta', 'navigation', 'knowledge base', 'WesiOS']);
-
-    final quarterlyBody = '[${h1(ru ? 'Чеклист квартала' : 'Quarterly Checklist')},'
-        '${p(ru ? '10 вопросов раз в 3 месяца. 30 минут честных ответов — лучше, чем год самообмана.' : '10 questions every 3 months. 30 minutes of honest answers — better than a year of self-deception.')},'
-        '${br()},'
-        '${h2(ru ? 'Деньги' : 'Money')},'
-        '${numbered(ru ? 'Моя подушка безопасности: сколько месяцев расходов? (цель: 3–6)' : 'My safety cushion: how many months of expenses? (goal: 3–6)')},'
-        '${numbered(ru ? 'Мой долг: растёт или падает? Какой план погашения?' : 'My debt: growing or falling? What is the repayment plan?')},'
-        '${numbered(ru ? 'Мои доходы: откуда 80%? Если от 1 источника — риск' : 'My income: where does 80% come from? If from 1 source — risk')},'
-        '${br()},'
-        '${h2(ru ? 'Энергия' : 'Energy')},'
-        '${numbered(ru ? 'Как я чувствую себя по утрам? (1–10) Тенденция?' : 'How do I feel in the morning? (1–10) Trend?')},'
-        '${numbered(ru ? 'Сколько часов в неделю я работаю? (цель: 40–50, не 60+)' : 'How many hours do I work per week? (goal: 40–50, not 60+)')},'
-        '${numbered(ru ? 'Когда последний раз был полноценный отпуск? (цель: каждые 3 месяца)' : 'When was the last real vacation? (goal: every 3 months)')},'
-        '${br()},'
-        '${h2(ru ? 'Смысл' : 'Meaning')},'
-        '${numbered(ru ? 'Чем я занимаюсь — моё? Или «надо» / «привычка»?' : 'What I do — is it mine? Or "should" / "habit"?')},'
-        '${numbered(ru ? 'Что я выучил за квартал? 1 новый навык или 1 глубокое знание' : 'What did I learn this quarter? 1 new skill or 1 deep knowledge')},'
-        '${br()},'
-        '${h2(ru ? 'Отношения' : 'Relationships')},'
-        '${numbered(ru ? 'С кем я провожу больше всего времени? Эти люди меня растят или тянут вниз?' : 'Who do I spend the most time with? Do these people grow me or pull me down?')},'
-        '${numbered(ru ? 'Когда последний раз говорил «нет»? Если давно — проверь границы' : 'When did I last say "no"? If long ago — check boundaries')},'
-        '${br()},'
-        '${h2(ru ? 'Что делать с ответами' : 'What to Do With Answers')},'
-        '${bullet(ru ? 'Зафиксируй в Wesi Treasury: создай транзакцию «Квартальный обзор» с заметками' : 'Log in Wesi Treasury: create a transaction "Quarterly Review" with notes')},'
-        '${bullet(ru ? 'Выбери 1 действие на квартал. Не 10 — одно. Сфокусируйся' : 'Choose 1 action for the quarter. Not 10 — one. Focus')},'
-        '${bullet(ru ? 'Поставь напоминание через 3 месяца. Цикл повторяется' : 'Set a reminder for 3 months. Cycle repeats')}'
-        ']';
-
-    final quarterly = article('wesios_quarterly', ru ? 'Чеклист квартала' : 'Quarterly Checklist', quarterlyBody,
-        parentId: 'wesios_meta',
-        tags: ru ? ['чеклист', 'квартал', 'рефлексия', 'рост'] : ['checklist', 'quarterly', 'reflection', 'growth']);
-
-    // ═══════════════════════════════════════════════════════════════════════
-    //  RETURN ALL ARTICLES
-    // ═══════════════════════════════════════════════════════════════════════
-
+    final c = _Ctx(ru, DateTime.now());
     return [
-      // Money
-      moneyFolder, debts, insurance, pension, moneyPsych,
-      // Work
-      workFolder, learning, careerChange, negotiations, remote,
-      // Mind
-      mindFolder, stress, communication, loneliness, comparison,
-      // Habits
-      habitsFolder, habitForm, digitalMin, decisions,
-      // Life
-      lifeFolder, homeLife, rest, expVsThings, legal,
-      // Freelance
-      freelanceFolder, firstClients, redFlags, accounting, stability,
-      // Meta
-      metaFolder, howToUse, quarterly,
-      // Root
-      root,
-      about,
-      // Modules folder
-      modulesFolder,
-      // Treasury
-      treasuryFolder, treasury,
-      // Forecast
-      forecastFolder, forecast,
-      // Sandbox
-      sandboxFolder, sandbox,
-      // Shield
-      shieldFolder, shield,
-      // Tasks
-      tasksFolder, tasks,
-      // Calculator
-      calcFolder, calc,
-      // Calendar
-      calendarFolder, calendar,
-      // Analytics
-      analyticsFolder, analytics,
-      // Home
-      homeFolder, home,
-      // Profile
-      profileFolder, profile,
-      // Settings
-      settingsFolder, settings,
-      // Knowledge Base
-      kbFolder, kb,
-      // Services folder
-      servicesFolder,
-      localeArticle,
-      currencyArticle,
-      updateArticle,
-      // Architecture folder
-      archFolder,
-      arch,
+      ..._start(c),
+      ..._modules(c),
+      ..._money(c),
+      ..._work(c),
+      ..._life(c),
     ];
   }
+
+  // ═══════════════════════════════════════════════════════ Начало
+
+  static List<ArticleModel> _start(_Ctx c) {
+    final root = c.folder(
+      'kb_start',
+      c.t('Начало', 'Start here'),
+      order: 0,
+      pinned: true,
+      section: ArticleSection.about,
+    );
+
+    final what = c.article(
+      'kb_start_what',
+      c.t('Что такое WesiOS', 'What WesiOS is'),
+      parentId: 'kb_start',
+      order: 0,
+      section: ArticleSection.about,
+      tags: c.tags(['о программе', 'начало'], ['about', 'start']),
+      doc: _Doc()
+        ..h1(c.t('Что такое WesiOS', 'What WesiOS is'))
+        ..p(c.t(
+          'WesiOS — рабочее место для одного человека или небольшой команды. '
+              'В одном окне живут деньги, задачи, календарь, переписка и эта '
+              'справка. Смысл не в том, чтобы заменить пять приложений, а в '
+              'том, чтобы цифры в них перестали расходиться.',
+          'WesiOS is a workplace for one person or a small team. Money, '
+              'tasks, calendar, chats and this handbook live in one window. '
+              'The point is not to replace five apps but to stop their '
+              'numbers from disagreeing.',
+        ))
+        ..h2(c.t('Чем это не является', 'What it is not'))
+        ..bullets([
+          c.t(
+            'Не банк. Программа не двигает ваши деньги — она записывает то, '
+                'что уже произошло.',
+            'Not a bank. It does not move your money — it records what has '
+                'already happened.',
+          ),
+          c.t(
+            'Не бухгалтерия. Отчётность в налоговую отсюда не сдают.',
+            'Not accounting software. You do not file taxes from here.',
+          ),
+          c.t(
+            'Не советник. Прогноз показывает продолжение ваших же привычек, '
+                'а не то, что случится наверняка.',
+            'Not an adviser. The forecast continues your own habits; it does '
+                'not know the future.',
+          ),
+        ])
+        ..h2(c.t('На чём всё держится', 'What it stands on'))
+        ..bullets([
+          c.t(
+            'Данные лежат на вашем устройстве. Не «в облаке, но безопасно» — '
+                'на устройстве.',
+            'Data lives on your device. Not "in the cloud but safely" — on '
+                'the device.',
+          ),
+          c.t(
+            'Сервер нужен только чтобы связать телефон и компьютер. Без него '
+                'работает всё, кроме этой связи.',
+            'The server only links your phone and computer. Without it '
+                'everything works except that link.',
+          ),
+          c.t(
+            'Программа не притворяется. Если что-то не отправилось — так и '
+                'написано, а не «галочка доставлено».',
+            'The app does not pretend. If something was not sent, it says '
+                'so instead of showing a checkmark.',
+          ),
+        ])
+        ..h2(c.t('Версия', 'Version'))
+        ..p(c.t(
+          'Сейчас установлена ${AppVersion.display}. Буква α означает: '
+              'программа живая, и что-то ещё будет меняться.',
+          'You are running ${AppVersion.display}. The α means the app is '
+              'still moving and some things will change.',
+        ))
+        ..h2(c.t('Куда дальше', 'Where next'))
+        ..p(c.t(
+          'Следующая статья — «Первые 20 минут». Она короткая и её стоит '
+              'пройти руками, а не глазами.',
+          'Next up is "The first 20 minutes". It is short, and it is worth '
+              'doing rather than reading.',
+        )),
+    );
+
+    final first = c.article(
+      'kb_start_first',
+      c.t('Первые 20 минут', 'The first 20 minutes'),
+      parentId: 'kb_start',
+      order: 1,
+      section: ArticleSection.guide,
+      tags: c.tags(['начало', 'настройка'], ['start', 'setup']),
+      doc: _Doc()
+        ..h1(c.t('Первые 20 минут', 'The first 20 minutes'))
+        ..p(c.t(
+          'Цель — чтобы к концу этих двадцати минут программа показывала '
+              'ваши настоящие цифры, а не пустой экран. Пустой экран '
+              'закрывают и не возвращаются.',
+          'The goal is that by the end the app shows your real numbers '
+              'instead of an empty screen. Empty screens get closed and not '
+              'reopened.',
+        ))
+        ..h2(c.t('По шагам', 'Step by step'))
+        ..steps([
+          c.t(
+            'Заведите счета: карта, наличные, накопительный. У каждого '
+                'поставьте остаток, который там сейчас.',
+            'Add your accounts: card, cash, savings. Give each the balance '
+                'it actually has right now.',
+          ),
+          c.t(
+            'Внесите последние 5–10 трат. Не за месяц — за последние дни, '
+                'по памяти.',
+            'Enter your last 5–10 expenses. Not a whole month — just the '
+                'recent days, from memory.',
+          ),
+          c.t(
+            'Внесите доход: зарплату, перевод, выручку. Хотя бы один.',
+            'Enter one income: salary, transfer, revenue. At least one.',
+          ),
+          c.t(
+            'Отметьте регулярные платежи — аренду, подписки, кредит. Их '
+                'достаточно завести один раз.',
+            'Mark the recurring payments — rent, subscriptions, loan. You '
+                'enter them once.',
+          ),
+          c.t(
+            'Зайдите в Аналитику. Если там появилась осмысленная картина — '
+                'вы всё сделали правильно.',
+            'Open Analytics. If it shows a picture that makes sense, you '
+                'did it right.',
+          ),
+        ])
+        ..h2(c.t('Чего делать не надо', 'What not to do'))
+        ..bullets([
+          c.t(
+            'Не восстанавливайте историю за год. Она не нужна ни прогнозу, '
+                'ни вам, а бросают почти всегда именно на этом.',
+            'Do not reconstruct a year of history. Neither the forecast nor '
+                'you need it, and this is where people give up.',
+          ),
+          c.t(
+            'Не придумывайте идеальные категории. Хватит десятка, остальные '
+                'появятся сами.',
+            'Do not design perfect categories. Ten is plenty; the rest will '
+                'appear on their own.',
+          ),
+          c.t(
+            'Не настраивайте сервер сразу. Сначала пусть программа станет '
+                'нужной на одном устройстве.',
+            'Do not set up the server yet. First let the app become useful '
+                'on one device.',
+          ),
+        ])
+        ..h2(c.t('Открыть сейчас', 'Open now'))
+        ..route(c.t('Открыть Казну', 'Open Treasury'), 'treasury'),
+    );
+
+    final map = c.article(
+      'kb_start_map',
+      c.t('Что где лежит', 'Where things are'),
+      parentId: 'kb_start',
+      order: 2,
+      section: ArticleSection.about,
+      tags: c.tags(['навигация', 'начало'], ['navigation', 'start']),
+      doc: _Doc()
+        ..h1(c.t('Что где лежит', 'Where things are'))
+        ..p(c.t(
+          'Разделов немного, и у каждого одна работа. Если непонятно, куда '
+              'идти, — вопрос почти всегда решается тем, чтобы назвать вслух, '
+              'что вы ищете.',
+          'There are few sections and each has one job. When you are unsure '
+              'where to go, saying out loud what you are looking for usually '
+              'settles it.',
+        ))
+        ..table([
+          [c.t('Раздел', 'Section'), c.t('Отвечает на вопрос', 'Answers')],
+          [
+            c.t('Главная', 'Home'),
+            c.t('Как дела прямо сейчас', 'How things stand right now'),
+          ],
+          [
+            c.t('Казна', 'Treasury'),
+            c.t('Сколько есть и куда ушло', 'How much there is and where it went'),
+          ],
+          [
+            c.t('Прогноз', 'Forecast'),
+            c.t('Хватит ли до конца месяца', 'Will it last until month end'),
+          ],
+          [
+            c.t('Аналитика', 'Analytics'),
+            c.t('На чём именно уходит', 'What exactly the money goes on'),
+          ],
+          [
+            c.t('Задачи', 'Tasks'),
+            c.t('Что я должен сделать', 'What I owe someone'),
+          ],
+          [
+            c.t('Календарь', 'Calendar'),
+            c.t('Что и когда произойдёт', 'What happens when'),
+          ],
+          [
+            c.t('Чаты', 'Chats'),
+            c.t('О чём мы договорились', 'What we agreed on'),
+          ],
+          [
+            c.t('Контакты', 'Contacts'),
+            c.t('Кто в команде и что ему видно', 'Who is on the team and what they see'),
+          ],
+          [
+            c.t('База знаний', 'Handbook'),
+            c.t('Как это делается', 'How things are done'),
+          ],
+        ])
+        ..p('')
+        ..h2(c.t('Две вещи, которые ищут дольше всего', 'Two things people hunt for'))
+        ..bullets([
+          c.t(
+            'Поиск по всему сразу — лупа в шапке главной. Он ищет и по '
+                'операциям, и по задачам, и по статьям.',
+            'Search across everything — the magnifier on Home. It covers '
+                'operations, tasks and articles at once.',
+          ),
+          c.t(
+            'Настройки, синхронизация и выход — в профиле, значок справа '
+                'вверху.',
+            'Settings, sync and sign-out live in the profile, top right.',
+          ),
+        ]),
+    );
+
+    final data = c.article(
+      'kb_start_data',
+      c.t('Где живут ваши данные', 'Where your data lives'),
+      parentId: 'kb_start',
+      order: 3,
+      section: ArticleSection.about,
+      tags: c.tags(['данные', 'приватность'], ['data', 'privacy']),
+      doc: _Doc()
+        ..h1(c.t('Где живут ваши данные', 'Where your data lives'))
+        ..p(c.t(
+          'Короткий ответ: на этом устройстве. Длинный — ниже, и его стоит '
+              'прочитать один раз, чтобы потом не гадать.',
+          'Short answer: on this device. The long one is below, and it is '
+              'worth reading once so you never have to guess.',
+        ))
+        ..h2(c.t('Что остаётся здесь всегда', 'What never leaves'))
+        ..bullets([
+          c.t('Пароль Wesi Shield и всё, что он закрывает.',
+              'The Wesi Shield password and everything it locks.'),
+          c.t('Личная переписка — она не уходит с устройства даже при '
+              'включённой синхронизации.',
+              'Personal chats — they stay on the device even with sync on.'),
+          c.t('Настройки и оформление: они привязаны к конкретному аппарату.',
+              'Settings and appearance: they belong to this particular device.'),
+        ])
+        ..h2(c.t('Что уезжает, если вы вошли на сервер',
+            'What travels once you sign in'))
+        ..bullets([
+          c.t('Счета и операции.', 'Accounts and operations.'),
+          c.t('Задачи.', 'Tasks.'),
+          c.t('Ваши статьи в базе знаний.', 'Your own handbook articles.'),
+          c.t('Состав команды и рабочая переписка.',
+              'Team members and work chats.'),
+        ])
+        ..h2(c.t('Как это проверить', 'How to check'))
+        ..p(c.t(
+          'Профиль → Синхронизация. Пока там написано, что вход не выполнен, '
+              'с устройства не уходит ничего вообще. Это не настройка '
+              'приватности, а простой факт: отправлять некуда.',
+          'Profile → Sync. While it says you are not signed in, nothing '
+              'leaves the device at all. That is not a privacy setting, just '
+              'a fact: there is nowhere to send it.',
+        ))
+        ..h2(c.t('Что будет, если телефон потеряется',
+            'What if the phone is lost'))
+        ..p(c.t(
+          'Всё, что успело уехать на сервер, вернётся на новом устройстве '
+              'после входа. Всё, что не уехало, потеряется вместе с '
+              'телефоном. Это и есть настоящая причина включить '
+              'синхронизацию — не удобство, а второй экземпляр.',
+          'Whatever reached the server comes back on a new device after you '
+              'sign in. Whatever did not is gone with the phone. That is the '
+              'real reason to turn sync on: not convenience, a second copy.',
+        )),
+    );
+
+    final keep = c.article(
+      'kb_start_keep',
+      c.t('Как не забросить через неделю', 'How not to quit in a week'),
+      parentId: 'kb_start',
+      order: 4,
+      section: ArticleSection.personal,
+      tags: c.tags(['привычка', 'начало'], ['habit', 'start']),
+      doc: _Doc()
+        ..h1(c.t('Как не забросить через неделю', 'How not to quit in a week'))
+        ..p(c.t(
+          'Учёт бросают не потому, что он сложный. Его бросают потому, что '
+              'он ничего не даёт первые дни, а требует каждый день. Это '
+              'лечится, и способ известный.',
+          'People abandon tracking not because it is hard. They abandon it '
+              'because it gives nothing for the first few days while asking '
+              'for something every day. There is a known fix.',
+        ))
+        ..h2(c.t('Три правила', 'Three rules'))
+        ..steps([
+          c.t(
+            'Записывайте сразу, а не вечером. Вечером вы вспомните половину '
+                'и решите, что учёт врёт.',
+            'Record immediately, not in the evening. By evening you recall '
+                'half of it and conclude the tracking lies.',
+          ),
+          c.t(
+            'Пропустили день — не начинайте заново. Пропуск не обнуляет '
+                'месяц, а попытка «начать с чистого листа» обнуляет.',
+            'Missed a day? Do not start over. A gap does not void the month; '
+                'starting over does.',
+          ),
+          c.t(
+            'Смотрите Аналитику раз в неделю, а не каждый день. Ежедневный '
+                'просмотр показывает шум и злит.',
+            'Check Analytics weekly, not daily. Daily you only see noise, '
+                'and it is annoying.',
+          ),
+        ])
+        ..h2(c.t('Признак, что получилось', 'The sign it worked'))
+        ..p(c.t(
+          'Через месяц вы перестанете задавать себе вопрос «а сколько у меня '
+              'вообще есть». Не потому, что стало больше, — потому что вы '
+              'знаете ответ, не открывая приложение.',
+          'After a month you stop asking yourself "how much do I even have". '
+              'Not because there is more, but because you know the answer '
+              'without opening the app.',
+        )),
+    );
+
+    return [root, what, first, map, data, keep];
+  }
+
+  // ═══════════════════════════════════════════════════════ Модули
+
+  static List<ArticleModel> _modules(_Ctx c) {
+    final root = c.folder(
+      'kb_modules',
+      c.t('Как пользоваться', 'Using WesiOS'),
+      order: 1,
+      section: ArticleSection.guide,
+    );
+
+    final out = <ArticleModel>[root];
+
+    // ── Казна ────────────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_money', c.t('Казна', 'Treasury'),
+        parentId: 'kb_modules', order: 0, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_money_first',
+      c.t('Первая операция', 'Your first operation'),
+      parentId: 'kb_m_money',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['казна', 'операции'], ['treasury', 'operations']),
+      doc: _Doc()
+        ..h1(c.t('Первая операция', 'Your first operation'))
+        ..p(c.t(
+          'Операция — это одна запись о том, что деньги пришли, ушли или '
+              'переехали между вашими счетами. Больше в ней ничего нет.',
+          'An operation is one record that money came in, went out, or moved '
+              'between your own accounts. That is all it is.',
+        ))
+        ..h2(c.t('Как добавить', 'How to add one'))
+        ..steps([
+          c.t('Откройте Казну и нажмите «плюс».',
+              'Open Treasury and tap the plus.'),
+          c.t('Выберите тип: приход, расход или перевод.',
+              'Pick the type: income, expense or transfer.'),
+          c.t('Укажите сумму и счёт, с которого это произошло.',
+              'Enter the amount and the account it happened on.'),
+          c.t('Выберите категорию — по ней потом строится Аналитика.',
+              'Choose a category — Analytics is built from these.'),
+          c.t('Дату меняйте, только если вносите задним числом.',
+              'Change the date only if you are entering something from the past.'),
+        ])
+        ..h2(c.t('Про категории', 'About categories'))
+        ..p(c.t(
+          'Категория отвечает на вопрос «на что», а не «где». «Продукты» — '
+              'категория, «Пятёрочка» — нет: магазин может продать и хлеб, и '
+              'зарядку, и это разные строки в вашей жизни.',
+          'A category answers "what for", not "where". "Groceries" is a '
+              'category, "the corner shop" is not: the same shop sells bread '
+              'and phone chargers, and those are different lines in your life.',
+        ))
+        ..h2(c.t('Частая ошибка', 'The common mistake'))
+        ..p(c.t(
+          'Перевод между своими счетами — это не расход. Если снять наличные '
+              'и записать это тратой, месяц покажет, что вы потратили вдвое '
+              'больше, чем на самом деле.',
+          'Moving money between your own accounts is not spending. If you '
+              'withdraw cash and log it as an expense, the month will claim '
+              'you spent twice what you did.',
+        )),
+    ));
+
+    out.add(c.article(
+      'kb_m_money_accounts',
+      c.t('Счета и переводы', 'Accounts and transfers'),
+      parentId: 'kb_m_money',
+      order: 1,
+      section: ArticleSection.guide,
+      tags: c.tags(['счета', 'переводы'], ['accounts', 'transfers']),
+      doc: _Doc()
+        ..h1(c.t('Счета и переводы', 'Accounts and transfers'))
+        ..p(c.t(
+          'Счёт — это место, где лежат деньги: карта, наличные в кармане, '
+              'накопительный, счёт бизнеса. Общий баланс складывается из них.',
+          'An account is a place where money sits: a card, cash in your '
+              'pocket, savings, a business account. The total balance is '
+              'their sum.',
+        ))
+        ..h2(c.t('Сколько счетов заводить', 'How many accounts'))
+        ..p(c.t(
+          'Столько, сколько вы реально различаете. Если вам всё равно, с '
+              'какой из двух карт платить, — заведите один счёт. Разделение '
+              'ради порядка, а не ради количества.',
+          'As many as you actually tell apart. If you do not care which of '
+              'two cards you pay with, make it one account. Split for '
+              'clarity, not for the count.',
+        ))
+        ..h2(c.t('Перевод', 'Transfers'))
+        ..bullets([
+          c.t('Общий баланс от перевода не меняется — меняется, где деньги.',
+              'A transfer does not change the total — it changes where the '
+                  'money is.'),
+          c.t('Перевод не попадает в расходы и не портит Аналитику.',
+              'Transfers stay out of expenses and do not distort Analytics.'),
+          c.t('Снятие наличных — это перевод «карта → наличные».',
+              'Withdrawing cash is a transfer: card → cash.'),
+        ])
+        ..h2(c.t('Если баланс разошёлся с реальностью',
+            'If the balance disagrees with reality'))
+        ..p(c.t(
+          'Не пересчитывайте всё заново. Добавьте одну операцию на разницу с '
+              'категорией «Корректировка» — и дальше живите. Точность прошлого '
+              'месяца не стоит вечера вашей жизни.',
+          'Do not redo everything. Add one operation for the difference with '
+              'a "Correction" category and move on. Last month\'s precision '
+              'is not worth an evening of your life.',
+        )),
+    ));
+
+    out.add(c.article(
+      'kb_m_money_repeat',
+      c.t('Регулярные платежи', 'Recurring payments'),
+      parentId: 'kb_m_money',
+      order: 2,
+      section: ArticleSection.guide,
+      tags: c.tags(['подписки', 'платежи'], ['subscriptions', 'payments']),
+      doc: _Doc()
+        ..h1(c.t('Регулярные платежи', 'Recurring payments'))
+        ..p(c.t(
+          'Аренда, подписки, кредит, интернет — то, что списывается само. '
+              'Их заводят один раз, и дальше программа знает, что они будут.',
+          'Rent, subscriptions, a loan, internet — the things that charge '
+              'themselves. You enter them once and the app knows they are '
+              'coming.',
+        ))
+        ..h2(c.t('Зачем это отмечать', 'Why mark them'))
+        ..bullets([
+          c.t('Прогноз перестаёт быть наивным: он видит, что через неделю '
+              'спишется аренда.',
+              'The forecast stops being naive: it sees rent leaving next week.'),
+          c.t('Колокольчик предупреждает заранее, а не постфактум.',
+              'The bell warns you beforehand instead of afterwards.'),
+          c.t('Видно сумму всех подписок за месяц — обычно она неприятно '
+              'удивляет.',
+              'You see what all subscriptions cost per month — usually an '
+                  'unpleasant surprise.'),
+        ])
+        ..h2(c.t('Как завести', 'How to add one'))
+        ..steps([
+          c.t('Создайте обычную операцию с датой первого списания.',
+              'Create a normal operation dated at the first charge.'),
+          c.t('Включите «повторяется» и выберите период.',
+              'Turn on "recurring" and pick the period.'),
+          c.t('Проверьте на главной: платёж должен появиться в ближайших.',
+              'Check Home: the payment should show up in what is coming.'),
+        ])
+        ..h2(c.t('Раз в год — тоже регулярно', 'Yearly counts too'))
+        ..p(c.t(
+          'Страховка, домен, годовая подписка. Именно они забываются, потому '
+              'что случаются реже, чем вы вспоминаете о них.',
+          'Insurance, a domain, an annual plan. These are exactly the ones '
+              'you forget, because they happen less often than you think of '
+              'them.',
+        )),
+    ));
+
+    // ── Прогноз ──────────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_forecast', c.t('Прогноз', 'Forecast'),
+        parentId: 'kb_modules', order: 1, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_forecast_read',
+      c.t('Как читать прогноз', 'How to read the forecast'),
+      parentId: 'kb_m_forecast',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['прогноз'], ['forecast']),
+      doc: _Doc()
+        ..h1(c.t('Как читать прогноз', 'How to read the forecast'))
+        ..p(c.t(
+          'Прогноз отвечает на один вопрос: если дальше будет как сейчас, '
+              'сколько останется через месяц. Не «сколько будет», а «если '
+              'ничего не менять».',
+          'The forecast answers one question: if things continue as they '
+              'are, what is left in a month. Not "what will be" — "what if '
+              'nothing changes".',
+        ))
+        ..h2(c.t('Три вещи на графике', 'Three things on the chart'))
+        ..bullets([
+          c.t('Линия — самый вероятный ход событий.',
+              'The line — the most likely path.'),
+          c.t('Полоса вокруг неё — насколько программа не уверена. Широкая '
+              'полоса означает «данных мало», а не «всё плохо».',
+              'The band around it — how unsure the app is. A wide band means '
+                  '"not enough data", not "things are bad".'),
+          c.t('Отметки на линии — известные будущие списания.',
+              'The marks on the line — known future charges.'),
+        ])
+        ..h2(c.t('Когда ему верить', 'When to trust it'))
+        ..p(c.t(
+          'После двух-трёх месяцев записей. До этого он честно строит линию '
+              'по тому немногому, что есть, и полоса неуверенности будет '
+              'шире самого прогноза.',
+          'After two or three months of records. Before that it honestly '
+              'draws a line through the little it has, and the uncertainty '
+              'band will be wider than the forecast itself.',
+        ))
+        ..h2(c.t('Чего он не знает', 'What it cannot know'))
+        ..p(c.t(
+          'Что вы собрались в отпуск, что у вас сломалась стиральная машина '
+              'и что в марте будет премия. Всё это можно внести вручную '
+              'будущей датой — тогда прогноз это учтёт.',
+          'That you are going on holiday, that your washing machine died, or '
+              'that a bonus lands in March. You can enter any of those with '
+              'a future date and the forecast will take them in.',
+        )),
+    ));
+
+    // ── Аналитика ────────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_analytics', c.t('Аналитика', 'Analytics'),
+        parentId: 'kb_modules', order: 2, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_analytics_read',
+      c.t('Куда уходят деньги', 'Where the money goes'),
+      parentId: 'kb_m_analytics',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['аналитика', 'расходы'], ['analytics', 'spending']),
+      doc: _Doc()
+        ..h1(c.t('Куда уходят деньги', 'Where the money goes'))
+        ..p(c.t(
+          'Аналитика показывает не «много или мало», а «на что». Это разные '
+              'вопросы, и полезен второй: сумму вы и так примерно знаете, а '
+              'состав — почти никогда.',
+          'Analytics does not show "a lot or a little" — it shows "on what". '
+              'Those are different questions, and the second one is useful: '
+              'you roughly know the total, but almost never the breakdown.',
+        ))
+        ..h2(c.t('С чего начинать смотреть', 'Where to look first'))
+        ..steps([
+          c.t('Три самые крупные категории месяца. Обычно там 60–70% всего.',
+              'The three biggest categories of the month. Usually 60–70% of '
+                  'everything.'),
+          c.t('Сравнение с прошлым месяцем — что выросло вдвое.',
+              'The comparison with last month — what doubled.'),
+          c.t('Мелкие частые траты. Они не видны поодиночке и заметны только '
+              'в сумме.',
+              'Small frequent purchases. Invisible one by one, obvious in '
+                  'total.'),
+        ])
+        ..h2(c.t('Необычные операции', 'Unusual operations'))
+        ..p(c.t(
+          'Программа помечает траты, которые сильно выбиваются из ваших '
+              'обычных по этой категории. Это не обвинение — это способ '
+              'заметить ошибку ввода или списание, о котором вы забыли.',
+          'The app marks purchases that stand far out from your usual ones '
+              'in that category. It is not an accusation — it is a way to '
+              'catch a typo or a charge you forgot about.',
+        )),
+    ));
+
+    // ── Задачи ───────────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_tasks', c.t('Задачи', 'Tasks'),
+        parentId: 'kb_modules', order: 3, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_tasks_first',
+      c.t('Задачи и сроки', 'Tasks and deadlines'),
+      parentId: 'kb_m_tasks',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['задачи', 'сроки'], ['tasks', 'deadlines']),
+      doc: _Doc()
+        ..h1(c.t('Задачи и сроки', 'Tasks and deadlines'))
+        ..p(c.t(
+          'Задача здесь — то, что вы кому-то должны, включая себя. Список '
+              'нужен не чтобы всё успеть, а чтобы не держать это в голове.',
+          'A task here is something you owe someone, yourself included. The '
+              'list is not for getting everything done — it is for not '
+              'holding it in your head.',
+        ))
+        ..h2(c.t('Правила, которые делают список рабочим',
+            'What makes a list work'))
+        ..bullets([
+          c.t('Формулируйте действием: не «отчёт», а «отправить отчёт Ане».',
+              'Phrase it as an action: not "report" but "send the report to '
+                  'Anna".'),
+          c.t('Срок ставьте только настоящий. Выдуманные сроки обесценивают '
+              'настоящие, и через месяц красное перестаёт что-либо значить.',
+              'Set only real deadlines. Invented ones devalue the real ones, '
+                  'and within a month red stops meaning anything.'),
+          c.t('Большое разбивайте на подзадачи. «Сделать сайт» не делается, '
+              '«написать текст на главную» — делается.',
+              'Break big things into subtasks. "Build a website" never gets '
+                  'done; "write the homepage copy" does.'),
+        ])
+        ..h2(c.t('Просроченное', 'Overdue'))
+        ..p(c.t(
+          'Раз в неделю просмотрите просроченное и честно решите по каждой: '
+              'делаю сейчас, переношу с новым сроком или удаляю. Третий '
+              'вариант — не поражение, а самый частый правильный ответ.',
+          'Once a week go through the overdue list and decide honestly for '
+              'each: do it now, move it with a new date, or delete it. The '
+              'third option is not defeat — it is usually the right answer.',
+        )),
+    ));
+
+    // ── Календарь ────────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_calendar', c.t('Календарь', 'Calendar'),
+        parentId: 'kb_modules', order: 4, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_calendar_first',
+      c.t('День, неделя, месяц', 'Day, week, month'),
+      parentId: 'kb_m_calendar',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['календарь'], ['calendar']),
+      doc: _Doc()
+        ..h1(c.t('День, неделя, месяц', 'Day, week, month'))
+        ..p(c.t(
+          'В календаре видно и события, и сроки задач, и будущие списания '
+              'сразу. Это единственное место, где «занят» и «денег не будет» '
+              'стоят рядом.',
+          'The calendar shows events, task deadlines and upcoming charges in '
+              'one place. It is the only view where "busy" and "no money '
+              'left" sit side by side.',
+        ))
+        ..h2(c.t('Небольшой месяц на главной', 'The small month on Home'))
+        ..p(c.t(
+          'Рядом с часами стоит месяц целиком: сегодняшнее число подсвечено, '
+              'по нажатию открывается полный календарь. Он там ровно для '
+              'одного — ответить «какое сегодня» и «сколько до конца недели», '
+              'не открывая ничего.',
+          'Next to the clock there is a whole month with today highlighted; '
+              'tapping it opens the full calendar. It exists for exactly one '
+              'purpose: answering "what is the date" and "how long until the '
+              'weekend" without opening anything.',
+        ))
+        ..h2(c.t('Открыть сейчас', 'Open now'))
+        ..route(c.t('Открыть календарь', 'Open calendar'), 'calendar'),
+    ));
+
+    // ── Чаты ─────────────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_chats', c.t('Чаты', 'Chats'),
+        parentId: 'kb_modules', order: 5, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_chats_first',
+      c.t('Переписка', 'Messaging'),
+      parentId: 'kb_m_chats',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['чаты', 'переписка'], ['chats', 'messaging']),
+      doc: _Doc()
+        ..h1(c.t('Переписка', 'Messaging'))
+        ..p(c.t(
+          'Чаты внутри WesiOS нужны, чтобы договорённости лежали рядом с '
+              'задачами и деньгами, а не в третьем приложении, где их потом '
+              'не найти.',
+          'Chats inside WesiOS exist so that agreements sit next to the '
+              'tasks and the money, instead of in a third app where nobody '
+              'finds them later.',
+        ))
+        ..h2(c.t('Что умеет', 'What it can do'))
+        ..bullets([
+          c.t('Личные и групповые разговоры.', 'One-to-one and group chats.'),
+          c.t('Правка отправленного — с пометкой, что сообщение изменено.',
+              'Editing a sent message — marked as edited.'),
+          c.t('Файлы и картинки до 20 МБ.', 'Files and images up to 20 MB.'),
+          c.t('Реакции и поиск внутри переписки.',
+              'Reactions and search inside a conversation.'),
+          c.t('Срок хранения на конкретный чат: старое стирается само.',
+              'A retention period per chat: old messages clear themselves.'),
+        ])
+        ..h2(c.t('Значки под сообщением', 'The marks under a message'))
+        ..table([
+          [c.t('Значок', 'Mark'), c.t('Что означает', 'Meaning')],
+          [
+            c.t('Часики', 'Clock'),
+            c.t('Ждёт отправки на сервер', 'Waiting to be sent'),
+          ],
+          [
+            c.t('Галочка', 'Check'),
+            c.t('Ушло на сервер', 'Reached the server'),
+          ],
+          [
+            c.t('Ничего', 'Nothing'),
+            c.t('Сообщению некуда ехать — вы не вошли на сервер или это '
+                'личный чат', 'Nowhere to go — you are not signed in, or '
+                'this is a personal chat'),
+          ],
+        ])
+        ..p(''),
+    ));
+
+    out.add(c.article(
+      'kb_m_chats_privacy',
+      c.t('Что уезжает, а что остаётся', 'What travels and what stays'),
+      parentId: 'kb_m_chats',
+      order: 1,
+      section: ArticleSection.about,
+      tags: c.tags(['чаты', 'приватность'], ['chats', 'privacy']),
+      doc: _Doc()
+        ..h1(c.t('Что уезжает, а что остаётся', 'What travels and what stays'))
+        ..p(c.t(
+          'В чатах два вида разговоров, и разница между ними не в оформлении, '
+              'а в том, покидает ли переписка устройство.',
+          'There are two kinds of conversation here, and the difference is '
+              'not cosmetic: it is whether the messages leave the device.',
+        ))
+        ..bullets([
+          c.t('Рабочий чат уезжает на сервер и доступен на всех ваших '
+              'устройствах.',
+              'A work chat goes to the server and is available on all your '
+                  'devices.'),
+          c.t('Личный чат не уезжает никуда. На втором устройстве его не '
+              'будет — это цена обещания «видят только собеседники».',
+              'A personal chat goes nowhere. It will not appear on your '
+                  'second device — that is the price of "only the two of you '
+                  'see this".'),
+        ])
+        ..h2(c.t('Почему так, а не шифрование', 'Why this and not encryption'))
+        ..p(c.t(
+          'Настоящее сквозное шифрование ещё не сделано. Пока его нет, '
+              'обещание держится единственным честным способом: личная '
+              'переписка физически не покидает аппарат. Обратное — написать '
+              '«защищено» и отправить на сервер как есть.',
+          'Proper end-to-end encryption is not built yet. Until it is, the '
+              'promise is kept the only honest way: personal messages simply '
+              'never leave the device. The alternative would be writing '
+              '"secure" and sending them anyway.',
+        )),
+    ));
+
+    // ── Команда ──────────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_team', c.t('Команда', 'Team'),
+        parentId: 'kb_modules', order: 6, section: ArticleSection.playbook));
+
+    out.add(c.article(
+      'kb_m_team_add',
+      c.t('Как завести сотрудника', 'Adding a person'),
+      parentId: 'kb_m_team',
+      order: 0,
+      section: ArticleSection.playbook,
+      tags: c.tags(['команда', 'сотрудники'], ['team', 'people']),
+      doc: _Doc()
+        ..h1(c.t('Как завести сотрудника', 'Adding a person'))
+        ..steps([
+          c.t('Контакты → «плюс». Заполните имя и должность.',
+              'Contacts → plus. Fill in the name and role.'),
+          c.t('Программа предложит свободный логин и пароль. Их можно '
+              'заменить своими.',
+              'The app suggests a free login and password. You may replace '
+                  'them.'),
+          c.t('Отметьте, что человеку видно. По умолчанию не видно почти '
+              'ничего — это правильное начало.',
+              'Set what the person can see. By default almost nothing — that '
+                  'is the right starting point.'),
+          c.t('Передайте логин и пароль лично. Не в общем чате.',
+              'Hand the login and password over in person. Not in a group '
+                  'chat.'),
+        ])
+        ..h2(c.t('Логин занять нельзя дважды', 'A login is taken only once'))
+        ..p(c.t(
+          'Программа держит список занятых логинов и не даст выдать один и '
+              'тот же двоим. Освобождается он только когда вы смените логин '
+              'или удалите человека.',
+          'The app keeps a list of taken logins and will not hand the same '
+              'one to two people. It frees up only when you change the login '
+              'or remove the person.',
+        )),
+    ));
+
+    out.add(c.article(
+      'kb_m_team_rights',
+      c.t('Права: кто что видит', 'Permissions: who sees what'),
+      parentId: 'kb_m_team',
+      order: 1,
+      section: ArticleSection.playbook,
+      tags: c.tags(['права', 'доступ'], ['permissions', 'access']),
+      doc: _Doc()
+        ..h1(c.t('Права: кто что видит', 'Permissions: who sees what'))
+        ..p(c.t(
+          'Права устроены как дерево: сначала модуль целиком, потом отдельные '
+              'части внутри него. Базу знаний можно закрыть вплоть до '
+              'конкретной статьи.',
+          'Permissions form a tree: the whole module first, then individual '
+              'parts inside. The handbook can be restricted down to a single '
+              'article.',
+        ))
+        ..h2(c.t('Правило по умолчанию', 'The default rule'))
+        ..p(c.t(
+          'Выдавайте не то, что «пусть будет», а то, без чего человек не '
+              'сможет работать. Расширить права занимает минуту, а вернуть '
+              'увиденное назад нельзя.',
+          'Grant what the person cannot work without, not what "might come '
+              'in handy". Widening access takes a minute; un-seeing what was '
+              'seen is impossible.',
+        ))
+        ..h2(c.t('Проверка', 'Checking'))
+        ..p(c.t(
+          'Настройка, которая ни на что не влияет, хуже её отсутствия. '
+              'Поэтому после выдачи прав стоит войти под этим логином и '
+              'посмотреть своими глазами, что видно.',
+          'A setting that changes nothing is worse than no setting at all. '
+              'After granting access, sign in as that person and look at what '
+              'is actually visible.',
+        )),
+    ));
+
+    // ── Защита ───────────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_shield', c.t('Защита', 'Shield'),
+        parentId: 'kb_modules', order: 7, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_shield_first',
+      c.t('Замок на приложение', 'Locking the app'),
+      parentId: 'kb_m_shield',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['защита', 'пароль'], ['shield', 'password']),
+      doc: _Doc()
+        ..h1(c.t('Замок на приложение', 'Locking the app'))
+        ..p(c.t(
+          'Wesi Shield закрывает приложение отдельным паролем. Смысл '
+              'простой: разблокированный телефон в чужих руках не должен '
+              'означать «показал все свои деньги».',
+          'Wesi Shield locks the app behind its own password. The point is '
+              'simple: an unlocked phone in someone else\'s hands should not '
+              'mean "showed them all my money".',
+        ))
+        ..h2(c.t('Что важно знать до включения', 'Before you turn it on'))
+        ..bullets([
+          c.t('Пароль хранится только на этом устройстве и никуда не '
+              'уезжает.',
+              'The password stays on this device and never travels.'),
+          c.t('Восстановить его нельзя. Забытый пароль означает потерю '
+              'доступа к тому, что он закрывает.',
+              'It cannot be recovered. A forgotten password means losing '
+                  'access to what it protects.'),
+          c.t('Можно закрыть либо всё приложение, либо только денежную часть.',
+              'You can lock either the whole app or just the money part.'),
+        ])
+        ..h2(c.t('Открыть сейчас', 'Open now'))
+        ..route(c.t('Открыть защиту', 'Open Shield'), 'shield'),
+    ));
+
+    // ── Синхронизация ────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_sync', c.t('Синхронизация', 'Sync'),
+        parentId: 'kb_modules', order: 8, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_sync_first',
+      c.t('Связать телефон и компьютер', 'Linking phone and computer'),
+      parentId: 'kb_m_sync',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['синхронизация'], ['sync']),
+      doc: _Doc()
+        ..h1(c.t('Связать телефон и компьютер', 'Linking phone and computer'))
+        ..p(c.t(
+          'Адрес сервера вводить не нужно — он зашит в программу. Нужны '
+              'только логин и пароль, и один раз на каждом устройстве.',
+          'You do not enter a server address — it is built into the app. '
+              'Only a login and password, once per device.',
+        ))
+        ..steps([
+          c.t('Профиль → Синхронизация.', 'Profile → Sync.'),
+          c.t('Введите логин и пароль, нажмите «Войти».',
+              'Enter login and password, tap "Sign in".'),
+          c.t('Дальше обмен идёт сам, через пару секунд после любой правки.',
+              'From then on the exchange happens by itself, a couple of '
+                  'seconds after any change.'),
+          c.t('На втором устройстве войдите под тем же логином.',
+              'On the second device sign in with the same login.'),
+        ])
+        ..h2(c.t('Кнопка «Синхронизировать сейчас»', 'The "Sync now" button'))
+        ..p(c.t(
+          'Она осталась, но нажимать её не обязано быть условием того, что '
+              'данные доедут. Она про «прямо сию секунду», а не про «иначе не '
+              'уедет».',
+          'It is still there, but pressing it is not a condition for your '
+              'data arriving. It means "right this second", not "otherwise '
+              'it will not go".',
+        )),
+    ));
+
+    out.add(c.article(
+      'kb_m_sync_trouble',
+      c.t('Если обмен не идёт', 'If sync is not working'),
+      parentId: 'kb_m_sync',
+      order: 1,
+      section: ArticleSection.guide,
+      tags: c.tags(['синхронизация', 'ошибки'], ['sync', 'errors']),
+      doc: _Doc()
+        ..h1(c.t('Если обмен не идёт', 'If sync is not working'))
+        ..p(c.t(
+          'Сначала посмотрите, что написано в карточке синхронизации в '
+              'профиле. Она называет причину словами, и почти всегда это одна '
+              'из трёх.',
+          'First read what the sync card in your profile says. It names the '
+              'reason in plain words, and it is almost always one of three.',
+        ))
+        ..table([
+          [c.t('Написано', 'It says'), c.t('Что делать', 'What to do')],
+          [
+            c.t('Вход не выполнен', 'Not signed in'),
+            c.t('Войдите логином и паролем. Пропуск живёт около двух недель '
+                'и потом просит повторить вход.',
+                'Sign in again. The pass lasts about two weeks and then asks '
+                    'for a repeat.'),
+          ],
+          [
+            c.t('Нет связи с сервером', 'No connection'),
+            c.t('Проверьте интернет. Правки не потеряются — они уедут при '
+                'первой возможности.',
+                'Check the internet. Nothing is lost — changes go out at the '
+                    'first opportunity.'),
+          ],
+          [
+            c.t('Неверный логин или пароль', 'Wrong login or password'),
+            c.t('Проверьте раскладку и регистр. Логин всегда маленькими '
+                'буквами.', 'Check the keyboard layout and case. Logins are '
+                'always lowercase.'),
+          ],
+        ])
+        ..p('')
+        ..h2(c.t('Данные на двух устройствах разошлись',
+            'The two devices disagree'))
+        ..p(c.t(
+          'Побеждает более поздняя правка. Если вы поменяли одну и ту же '
+              'операцию в двух местах, останется та, которую сделали позже, '
+              'а не та, которая «правильнее» — программа этого знать не '
+              'может.',
+          'The later edit wins. If you changed the same operation in two '
+              'places, the later one survives — not the "more correct" one, '
+              'which the app has no way of knowing.',
+        )),
+    ));
+
+    // ── Обновления ───────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_update', c.t('Обновления', 'Updates'),
+        parentId: 'kb_modules', order: 9, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_update_how',
+      c.t('Как приходит обновление', 'How updates arrive'),
+      parentId: 'kb_m_update',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['обновление'], ['update']),
+      doc: _Doc()
+        ..h1(c.t('Как приходит обновление', 'How updates arrive'))
+        ..p(c.t(
+          'Программа сама проверяет, вышла ли новая версия, и показывает '
+              'полоску на главной. Скачивание и установка запускаются только '
+              'по вашему нажатию.',
+          'The app checks for a new version by itself and shows a banner on '
+              'Home. Downloading and installing start only when you tap.',
+        ))
+        ..bullets([
+          c.t('На компьютере: скачивается архив, программа закрывается, '
+              'подменяет себя и открывается заново.',
+              'On desktop: an archive downloads, the app closes, replaces '
+                  'itself and reopens.'),
+          c.t('На телефоне: скачивается пакет и открывается обычная установка '
+              'Android.',
+              'On phone: a package downloads and the normal Android '
+                  'installer opens.'),
+          c.t('Данные обновление не трогает.', 'Updates never touch your data.'),
+        ]),
+    ));
+
+    out.add(c.article(
+      'kb_m_update_fail',
+      c.t('Если обновление не встало', 'If the update did not install'),
+      parentId: 'kb_m_update',
+      order: 1,
+      section: ArticleSection.guide,
+      tags: c.tags(['обновление', 'ошибки'], ['update', 'errors']),
+      doc: _Doc()
+        ..h1(c.t('Если обновление не встало', 'If the update did not install'))
+        ..p(c.t(
+          'При сбое программа показывает окно с коротким кодом. Код нужен, '
+              'чтобы отличить «не скачалось» от «скачалось, но не '
+              'заменилось», — лечится это по-разному.',
+          'On failure the app shows a short code. The code separates "did '
+              'not download" from "downloaded but did not replace" — those '
+              'are fixed differently.',
+        ))
+        ..h2(c.t('Компьютер', 'Desktop'))
+        ..table([
+          [c.t('Код', 'Code'), c.t('Что произошло', 'What happened'),
+            c.t('Что делать', 'What to do')],
+          ['W101', c.t('Не удалось получить список версий',
+              'Could not get the version list'),
+            c.t('Проверьте интернет и повторите',
+                'Check the internet and retry')],
+          ['W103', c.t('Скачивание оборвалось', 'Download interrupted'),
+            c.t('Повторите — файл докачается заново',
+                'Retry — the file downloads again')],
+          ['W105', c.t('Архив не распаковался', 'Archive did not unpack'),
+            c.t('Повторите; если снова — освободите место на диске',
+                'Retry; if it repeats, free some disk space')],
+          ['W107', c.t('Файлы не заменились', 'Files were not replaced'),
+            c.t('Чаще всего антивирус. Добавьте папку WesiOS в исключения',
+                'Usually antivirus. Add the WesiOS folder to exclusions')],
+          ['W109', c.t('Программа не закрылась полностью',
+              'The app did not fully quit'),
+            c.t('Закройте все окна WesiOS и повторите',
+                'Close every WesiOS window and retry')],
+        ])
+        ..p('')
+        ..h2(c.t('Телефон', 'Phone'))
+        ..table([
+          [c.t('Код', 'Code'), c.t('Что произошло', 'What happened'),
+            c.t('Что делать', 'What to do')],
+          ['A201', c.t('Установка запрещена', 'Install not allowed'),
+            c.t('Разрешите установку из этого источника в настройках Android',
+                'Allow installs from this source in Android settings')],
+          ['A202', c.t('Установщик не открылся', 'Installer did not open'),
+            c.t('Повторите', 'Retry')],
+        ])
+        ..p('')
+        ..h2(c.t('Самый частый случай', 'The most common one'))
+        ..p(c.t(
+          'Скачалось, программа закрылась, открылась — и версия та же. Это '
+              'W107: антивирус не дал заменить файлы. Исключение для папки с '
+              'программой решает вопрос насовсем.',
+          'It downloaded, the app closed, reopened — and the version is '
+              'unchanged. That is W107: the antivirus blocked the file '
+              'replacement. An exclusion for the app folder settles it for '
+              'good.',
+        )),
+    ));
+
+    // ── База знаний ──────────────────────────────────────────────────────
+    out.add(c.folder('kb_m_kb', c.t('База знаний', 'Handbook'),
+        parentId: 'kb_modules', order: 10, section: ArticleSection.guide));
+
+    out.add(c.article(
+      'kb_m_kb_write',
+      c.t('Как писать свои статьи', 'Writing your own articles'),
+      parentId: 'kb_m_kb',
+      order: 0,
+      section: ArticleSection.guide,
+      tags: c.tags(['база знаний', 'статьи'], ['handbook', 'articles']),
+      doc: _Doc()
+        ..h1(c.t('Как писать свои статьи', 'Writing your own articles'))
+        ..p(c.t(
+          'Встроенные статьи помечены и не удаляются — они приходят с '
+              'обновлением. Всё остальное здесь ваше: пишите, складывайте в '
+              'папки, удаляйте.',
+          'Built-in articles are marked and cannot be deleted — they arrive '
+              'with updates. Everything else here is yours: write it, file '
+              'it, delete it.',
+        ))
+        ..h2(c.t('Что сюда стоит писать', 'What belongs here'))
+        ..bullets([
+          c.t('То, что вы объясняли кому-то дважды.',
+              'Anything you have explained to someone twice.'),
+          c.t('Порядок действий, который легко забыть за полгода.',
+              'A procedure that is easy to forget in six months.'),
+          c.t('Решения и почему они такие. Через год «почему» будет ценнее '
+              '«что».',
+              'Decisions and why they were made. In a year the "why" beats '
+                  'the "what".'),
+        ])
+        ..h2(c.t('Разделы', 'Sections'))
+        ..p(c.t(
+          'Раздел — это срез поперёк дерева: он собирает статьи одного рода '
+              'из разных папок. Ставьте его по смыслу текста, а не по месту, '
+              'куда положили.',
+          'A section is a slice across the tree: it gathers articles of one '
+              'kind from different folders. Choose it by what the text is '
+              'about, not by where you filed it.',
+        ))
+        ..h2(c.t('Ссылки внутрь программы', 'Links into the app'))
+        ..p(c.t(
+          'В статью можно вставить ссылку, которая открывает нужный экран '
+              'или другую статью. Инструкция, из которой можно сразу перейти '
+              'туда, о чём она, читается совсем иначе.',
+          'An article can carry a link that opens a screen or another '
+              'article. A guide you can act on from the page itself reads '
+              'very differently.',
+        )),
+    ));
+
+    return out;
+  }
+
+  // ═══════════════════════════════════════════════════════ Деньги
+
+  static List<ArticleModel> _money(_Ctx c) {
+    final root = c.folder(
+      'kb_money',
+      c.t('Деньги', 'Money'),
+      order: 2,
+      section: ArticleSection.finance,
+    );
+
+    return [
+      root,
+      c.article(
+        'kb_money_start',
+        c.t('С чего начать', 'Where to start'),
+        parentId: 'kb_money',
+        order: 0,
+        section: ArticleSection.finance,
+        tags: c.tags(['деньги', 'начало'], ['money', 'start']),
+        doc: _Doc()
+          ..h1(c.t('С чего начать', 'Where to start'))
+          ..p(c.t(
+            'Не с бюджета и не с инвестиций. С одной цифры: сколько уходит в '
+                'месяц. Пока она неизвестна, любое решение о деньгах — '
+                'угадывание.',
+            'Not with a budget and not with investing. With one number: how '
+                'much leaves per month. Until you know it, every money '
+                'decision is a guess.',
+          ))
+          ..h2(c.t('Порядок, который работает', 'The order that works'))
+          ..steps([
+            c.t('Месяц просто записывайте траты. Ничего не меняйте.',
+                'Spend one month just recording. Change nothing.'),
+            c.t('Посмотрите три крупнейшие категории. Решение почти всегда '
+                'там, а не в кофе.',
+                'Look at the three biggest categories. The answer is there, '
+                    'not in your coffee.'),
+            c.t('Соберите подушку на один месяц жизни.',
+                'Build one month of living expenses as a cushion.'),
+            c.t('Разберитесь с долгами, если они есть.',
+                'Deal with debt, if any.'),
+            c.t('И только потом — накопления и всё остальное.',
+                'Only then — saving and everything else.'),
+          ])
+          ..h2(c.t('Почему именно так', 'Why this order'))
+          ..p(c.t(
+            'Каждый следующий шаг бессмысленен без предыдущего. Копить, имея '
+                'долг под большой процент, — это платить банку за то, чтобы '
+                'чувствовать себя ответственным.',
+            'Each step is pointless without the one before. Saving while '
+                'carrying high-interest debt means paying the bank for the '
+                'feeling of being responsible.',
+          )),
+      ),
+      c.article(
+        'kb_money_cushion',
+        c.t('Подушка: сколько и где', 'The cushion: how much and where'),
+        parentId: 'kb_money',
+        order: 1,
+        section: ArticleSection.finance,
+        tags: c.tags(['подушка', 'сбережения'], ['cushion', 'savings']),
+        doc: _Doc()
+          ..h1(c.t('Подушка: сколько и где', 'The cushion: how much and where'))
+          ..p(c.t(
+            'Подушка — это не накопления. Это сумма, которая позволяет не '
+                'принимать плохих решений в плохой момент: не соглашаться на '
+                'первую попавшуюся работу и не брать кредит на ремонт '
+                'холодильника.',
+            'A cushion is not savings. It is the amount that lets you avoid '
+                'bad decisions at a bad moment: not taking the first job '
+                'offered, not borrowing to fix a fridge.',
+          ))
+          ..h2(c.t('Сколько', 'How much'))
+          ..bullets([
+            c.t('Первая цель — один месяц расходов. Она достижима и меняет '
+                'ощущение сразу.',
+                'First target: one month of expenses. Reachable, and it '
+                    'changes how you feel immediately.'),
+            c.t('Дальше — три месяца. Этого хватает на спокойный поиск '
+                'работы.',
+                'Then three months. Enough for an unhurried job search.'),
+            c.t('Шесть месяцев — если доход нерегулярный или вы один '
+                'кормилец.',
+                'Six months if your income is irregular or you are the only '
+                    'earner.'),
+          ])
+          ..h2(c.t('Где держать', 'Where to keep it'))
+          ..p(c.t(
+            'Там, откуда можно забрать сегодня и без потерь. Подушка в '
+                'акциях — это не подушка: беда обычно приходит ровно тогда, '
+                'когда рынок внизу.',
+            'Somewhere you can take it today without a loss. A cushion in '
+                'stocks is not a cushion: trouble tends to arrive exactly '
+                'when the market is down.',
+          ))
+          ..h2(c.t('Признак, что это работает', 'The sign it works'))
+          ..p(c.t(
+            'Сломавшаяся техника перестаёт быть катастрофой и становится '
+                'расходом. Разница между этими двумя словами и есть весь '
+                'смысл подушки.',
+            'A broken appliance stops being a disaster and becomes an '
+                'expense. The distance between those two words is the whole '
+                'point.',
+          )),
+      ),
+      c.article(
+        'kb_money_budget',
+        c.t('Бюджет, который не бросают', 'A budget you will not abandon'),
+        parentId: 'kb_money',
+        order: 2,
+        section: ArticleSection.finance,
+        tags: c.tags(['бюджет'], ['budget']),
+        doc: _Doc()
+          ..h1(c.t('Бюджет, который не бросают',
+              'A budget you will not abandon'))
+          ..p(c.t(
+            'Подробный бюджет по двадцати категориям бросают за две недели. '
+                'Работает грубый, из трёх частей, потому что его не надо '
+                'помнить.',
+            'A detailed twenty-category budget dies in two weeks. A rough '
+                'three-part one works, because there is nothing to remember.',
+          ))
+          ..h2(c.t('Три части', 'Three parts'))
+          ..bullets([
+            c.t('Обязательное: жильё, еда, транспорт, кредиты, связь.',
+                'Fixed: housing, food, transport, loans, phone.'),
+            c.t('Свободное: всё, на что вы тратите по желанию.',
+                'Free: everything you spend by choice.'),
+            c.t('Отложенное: то, что уходит с карты в день зарплаты.',
+                'Saved: what leaves the account on payday.'),
+          ])
+          ..h2(c.t('Главный приём', 'The one trick'))
+          ..p(c.t(
+            'Откладывать в день получения, а не в конце месяца из остатка. '
+                'Остатка не бывает — это не жадность, а свойство внимания.',
+            'Save on the day you get paid, not from what is left at month '
+                'end. There is never anything left — that is not greed, it '
+                'is how attention works.',
+          ))
+          ..h2(c.t('Когда бюджет всё-таки нарушен',
+              'When the budget breaks anyway'))
+          ..p(c.t(
+            'Это нормально и случается у всех. Плохо не превышение, а вывод '
+                '«значит, учёт не работает». Превышение — это как раз '
+                'информация, ради которой всё затевалось.',
+            'That is normal and happens to everyone. The overspend is not '
+                'the problem; the conclusion "so tracking does not work" is. '
+                'The overspend is exactly the information you were after.',
+          )),
+      ),
+      c.article(
+        'kb_money_debt',
+        c.t('Долги: какой гасить первым', 'Debt: which one first'),
+        parentId: 'kb_money',
+        order: 3,
+        section: ArticleSection.finance,
+        tags: c.tags(['долги', 'кредит'], ['debt', 'loans']),
+        doc: _Doc()
+          ..h1(c.t('Долги: какой гасить первым', 'Debt: which one first'))
+          ..p(c.t(
+            'Если долгов несколько, порядок важнее суммы платежа. Есть два '
+                'честных подхода, и оба лучше, чем платить всем понемногу.',
+            'With several debts the order matters more than the payment '
+                'size. There are two honest approaches, and both beat paying '
+                'a little to everyone.',
+          ))
+          ..h2(c.t('По ставке', 'By interest rate'))
+          ..p(c.t(
+            'Сначала самый дорогой процент. Математически это дешевле всего '
+                'и заканчивается быстрее.',
+            'Highest rate first. Mathematically the cheapest and the fastest '
+                'to finish.',
+          ))
+          ..h2(c.t('По размеру', 'By size'))
+          ..p(c.t(
+            'Сначала самый маленький долг. Дороже на бумаге, но каждый '
+                'закрытый долг — это видимая победа, а бросают обычно от '
+                'ощущения бесконечности.',
+            'Smallest balance first. More expensive on paper, but each '
+                'closed debt is a visible win — and people usually quit from '
+                'the feeling that it never ends.',
+          ))
+          ..h2(c.t('Что не работает', 'What does not work'))
+          ..bullets([
+            c.t('Новый кредит, чтобы закрыть старый, без изменения привычек.',
+                'A new loan to close an old one without changing habits.'),
+            c.t('Копить и обслуживать дорогой долг одновременно.',
+                'Saving and servicing expensive debt at the same time.'),
+            c.t('Не считать, сколько всего должны. Пока цифра неизвестна, '
+                'она кажется больше, чем есть.',
+                'Not knowing the total. While the number is unknown it feels '
+                    'bigger than it is.'),
+          ]),
+      ),
+      c.article(
+        'kb_money_big',
+        c.t('Крупная покупка', 'A big purchase'),
+        parentId: 'kb_money',
+        order: 4,
+        section: ArticleSection.finance,
+        tags: c.tags(['покупки', 'планирование'], ['purchases', 'planning']),
+        doc: _Doc()
+          ..h1(c.t('Крупная покупка', 'A big purchase'))
+          ..p(c.t(
+            'Крупная — это та, которую нельзя оплатить из месячного остатка, '
+                'не задев обязательное. Для неё есть простой порядок.',
+            'Big means you cannot pay for it from the monthly leftover '
+                'without touching the fixed part. There is a simple order '
+                'for it.',
+          ))
+          ..steps([
+            c.t('Назовите точную сумму. Не «примерно», а с доставкой и всем '
+                'сопутствующим.',
+                'Name the exact amount. Not "about" — with delivery and '
+                    'everything around it.'),
+            c.t('Разделите на число месяцев, которые готовы ждать. Получилась '
+                'ежемесячная сумма.',
+                'Divide by the months you are willing to wait. That is your '
+                    'monthly amount.'),
+            c.t('Внесите её как регулярный платёж самому себе — тогда '
+                'прогноз будет её учитывать.',
+                'Enter it as a recurring payment to yourself — then the '
+                    'forecast accounts for it.'),
+            c.t('Дождитесь конца срока. Если к тому моменту вещь всё ещё '
+                'нужна — покупайте спокойно.',
+                'Wait it out. If you still want the thing at the end, buy it '
+                    'without second thoughts.'),
+          ])
+          ..h2(c.t('Про рассрочку', 'About instalments'))
+          ..p(c.t(
+            'Рассрочка не делает вещь дешевле — она делает её незаметнее. '
+                'Проверка простая: если вы не готовы отложить эту сумму '
+                'четыре месяца, вы не готовы платить её четыре месяца.',
+            'Instalments do not make a thing cheaper, only less noticeable. '
+                'The test is simple: if you are not willing to save that '
+                'amount for four months, you are not willing to pay it for '
+                'four months.',
+          )),
+      ),
+      c.article(
+        'kb_money_uneven',
+        c.t('Когда доход скачет', 'When income is uneven'),
+        parentId: 'kb_money',
+        order: 5,
+        section: ArticleSection.finance,
+        tags: c.tags(['доход', 'фриланс'], ['income', 'freelance']),
+        doc: _Doc()
+          ..h1(c.t('Когда доход скачет', 'When income is uneven'))
+          ..p(c.t(
+            'У фрилансера, сезонного дела и сдельной работы месяц на месяц '
+                'не приходится. Обычные советы про «десять процентов от '
+                'зарплаты» тут не работают.',
+            'For freelancers, seasonal businesses and piecework, months do '
+                'not match. The usual "save ten percent of your salary" '
+                'advice does not apply.',
+          ))
+          ..h2(c.t('Приём: платить себе зарплату',
+              'The trick: pay yourself a salary'))
+          ..steps([
+            c.t('Посчитайте средний доход за последние 6–12 месяцев.',
+                'Work out the average income over the last 6–12 months.'),
+            c.t('Возьмите примерно 70% от него — это ваша «зарплата».',
+                'Take roughly 70% of it — that is your "salary".'),
+            c.t('Всё, что приходит сверх, откладывайте на буфер.',
+                'Everything above that goes into a buffer.'),
+            c.t('В плохой месяц берите недостающее из буфера, а не из '
+                'привычек.',
+                'In a bad month draw the difference from the buffer, not '
+                    'from your habits.'),
+          ])
+          ..h2(c.t('Отдельно про налоги', 'Taxes deserve their own place'))
+          ..p(c.t(
+            'Откладывайте налог сразу, в день поступления, и считайте эти '
+                'деньги чужими. Налог, который «где-то в общей сумме», '
+                'обнаруживается ровно тогда, когда его нечем заплатить.',
+            'Set tax aside the day the money arrives and treat it as someone '
+                'else\'s. Tax that lives "somewhere in the total" is '
+                'discovered exactly when there is nothing to pay it with.',
+          )),
+      ),
+    ];
+  }
+
+  // ═══════════════════════════════════════════════════════ Работа
+
+  static List<ArticleModel> _work(_Ctx c) {
+    final root = c.folder(
+      'kb_work',
+      c.t('Работа и дело', 'Work'),
+      order: 3,
+      section: ArticleSection.playbook,
+    );
+
+    return [
+      root,
+      c.article(
+        'kb_work_start',
+        c.t('Первая работа', 'Your first job'),
+        parentId: 'kb_work',
+        order: 0,
+        section: ArticleSection.playbook,
+        tags: c.tags(['работа', 'начало'], ['work', 'start']),
+        doc: _Doc()
+          ..h1(c.t('Первая работа', 'Your first job'))
+          ..p(c.t(
+            'Первые месяцы почти всегда страшнее, чем оказываются. Помогает '
+                'знать несколько вещей заранее.',
+            'The first months are almost always scarier in advance than they '
+                'turn out to be. A few things help to know beforehand.',
+          ))
+          ..h2(c.t('Что действительно важно', 'What actually matters'))
+          ..bullets([
+            c.t('Спрашивать сразу, а не через три дня молчаливого тупика. '
+                'Вопрос стоит дешевле переделки.',
+                'Ask right away instead of three days of silent stalling. A '
+                    'question is cheaper than redoing the work.'),
+            c.t('Записывать, что вам объяснили. Второй раз объясняют хуже.',
+                'Write down what you were told. The second explanation is '
+                    'always worse.'),
+            c.t('Предупреждать о срыве срока заранее, а не в день сдачи. '
+                'Опоздание прощают, внезапность — нет.',
+                'Warn about a slip in advance, not on the deadline. People '
+                    'forgive lateness, not surprises.'),
+          ])
+          ..h2(c.t('Про договор', 'About the contract'))
+          ..p(c.t(
+            'Прочитайте, что написано про испытательный срок, сроки выплат и '
+                'что происходит при увольнении. Это три места, где потом '
+                'возникают все споры.',
+            'Read what it says about the probation period, payment dates and '
+                'what happens if you leave. Those three spots produce every '
+                'later dispute.',
+          )),
+      ),
+      c.article(
+        'kb_work_price',
+        c.t('Сколько просить за работу', 'What to charge'),
+        parentId: 'kb_work',
+        order: 1,
+        section: ArticleSection.playbook,
+        tags: c.tags(['цена', 'переговоры'], ['pricing', 'negotiation']),
+        doc: _Doc()
+          ..h1(c.t('Сколько просить за работу', 'What to charge'))
+          ..p(c.t(
+            'Самая частая ошибка — называть цену от своих расходов. Заказчику '
+                'всё равно, сколько вы платите за квартиру; ему важно, чего '
+                'стоит результат.',
+            'The most common mistake is pricing from your own costs. The '
+                'client does not care what your rent is; they care what the '
+                'result is worth.',
+          ))
+          ..h2(c.t('Три опоры', 'Three anchors'))
+          ..bullets([
+            c.t('Нижняя граница: ниже неё браться незачем, лучше отдохнуть.',
+                'A floor: below it the work is not worth taking at all.'),
+            c.t('Рынок: сколько берут за похожее. Спросите у двоих-троих.',
+                'The market: what others charge for similar work. Ask two or '
+                    'three people.'),
+            c.t('Ценность: что заказчик получит. Одна и та же работа стоит '
+                'разного в разных ситуациях.',
+                'The value: what the client gets. The same work is worth '
+                    'different amounts in different situations.'),
+          ])
+          ..h2(c.t('Как называть', 'How to say it'))
+          ..p(c.t(
+            'Называйте цифру спокойно и не извиняйтесь. Пауза после названной '
+                'цены — не ваша задача её заполнять. Готовность объяснить '
+                'состав работы — да; готовность сразу снизить — нет.',
+            'Say the number calmly and do not apologise. The pause after it '
+                'is not yours to fill. Be ready to explain what the work '
+                'includes — not to drop the price on the spot.',
+          ))
+          ..h2(c.t('Признак, что цена низкая',
+              'A sign your price is too low'))
+          ..p(c.t(
+            'Соглашаются сразу и без вопросов — почти всегда. Это не повод '
+                'отказываться от этого заказа, но повод поднять цену '
+                'следующему.',
+            'Everyone agrees immediately, every time. Not a reason to refuse '
+                'this job, but a reason to raise the price for the next one.',
+          )),
+      ),
+      c.article(
+        'kb_work_deal',
+        c.t('Договориться письменно', 'Put it in writing'),
+        parentId: 'kb_work',
+        order: 2,
+        section: ArticleSection.playbook,
+        tags: c.tags(['договор', 'заказчик'], ['agreement', 'client']),
+        doc: _Doc()
+          ..h1(c.t('Договориться письменно', 'Put it in writing'))
+          ..p(c.t(
+            'Спор почти никогда не про злой умысел. Он про то, что двое '
+                'по-разному помнят разговор месячной давности. Письменная '
+                'договорённость — не про недоверие, а про память.',
+            'Disputes are almost never about bad faith. They are about two '
+                'people remembering a month-old conversation differently. '
+                'Writing it down is not about distrust — it is about memory.',
+          ))
+          ..h2(c.t('Что записать обязательно', 'What must be written down'))
+          ..bullets([
+            c.t('Что именно считается сделанным.',
+                'What exactly counts as done.'),
+            c.t('Сколько и когда платят.', 'How much and when they pay.'),
+            c.t('Сколько правок входит в цену.',
+                'How many revisions the price includes.'),
+            c.t('Что происходит, если работу отменяют посередине.',
+                'What happens if the work is cancelled halfway.'),
+          ])
+          ..h2(c.t('Достаточно переписки', 'A chat is enough'))
+          ..p(c.t(
+            'Не всегда нужен договор на трёх листах. Часто хватает сообщения '
+                '«итого: делаю то-то, срок такой, сумма такая, две правки» — '
+                'и ответа «да». Именно поэтому переписка живёт внутри '
+                'программы рядом с деньгами.',
+            'You do not always need a three-page contract. Often a message '
+                'saying "to confirm: I do X by date Y for amount Z, two '
+                'revisions" and a "yes" is enough. That is exactly why chats '
+                'live inside the app next to the money.',
+          )),
+      ),
+      c.article(
+        'kb_work_self',
+        c.t('Самозанятость: как это устроено',
+            'Self-employment: how it works'),
+        parentId: 'kb_work',
+        order: 3,
+        section: ArticleSection.playbook,
+        tags: c.tags(['самозанятость', 'налоги'], ['self-employed', 'taxes']),
+        doc: _Doc()
+          ..h1(c.t('Самозанятость: как это устроено',
+              'Self-employment: how it works'))
+          ..p(c.t(
+            'Общая механика одинакова почти везде: вы регистрируетесь, '
+                'выставляете чек за каждую оплату и раз в месяц платите налог '
+                'с полученного. Ставки и правила зависят от страны и '
+                'меняются — их обязательно надо проверить в официальном '
+                'источнике, а не в справке приложения.',
+            'The general mechanics are similar almost everywhere: you '
+                'register, issue a receipt for each payment, and pay tax on '
+                'the total once a month. Rates and rules depend on the '
+                'country and change — check an official source, not an app '
+                'handbook.',
+          ))
+          ..h2(c.t('Что важно с первого дня', 'What matters from day one'))
+          ..bullets([
+            c.t('Чек выставлять сразу при получении денег, а не в конце '
+                'месяца по памяти.',
+                'Issue the receipt when the money arrives, not from memory '
+                    'at month end.'),
+            c.t('Налог откладывать в тот же день. Считайте эти деньги '
+                'чужими.',
+                'Set the tax aside the same day. Treat that money as '
+                    'someone else\'s.'),
+            c.t('Хранить, кто и за что заплатил. Через год вы не вспомните.',
+                'Keep a record of who paid for what. In a year you will not '
+                    'remember.'),
+          ])
+          ..h2(c.t('Как это ведут здесь', 'How to track it here'))
+          ..p(c.t(
+            'Заведите отдельный счёт для дела и отдельную категорию для '
+                'налога. Тогда «сколько я заработал» и «сколько из этого '
+                'моё» перестают быть одним числом.',
+            'Create a separate account for the business and a separate '
+                'category for tax. Then "what I earned" and "what is mine" '
+                'stop being the same number.',
+          )),
+      ),
+      c.article(
+        'kb_work_burn',
+        c.t('Выгорание', 'Burnout'),
+        parentId: 'kb_work',
+        order: 4,
+        section: ArticleSection.personal,
+        tags: c.tags(['выгорание', 'усталость'], ['burnout', 'fatigue']),
+        doc: _Doc()
+          ..h1(c.t('Выгорание', 'Burnout'))
+          ..p(c.t(
+            'Выгорание — не «устал». Устал проходит за выходные. Выгорание '
+                'не проходит за отпуск и возвращается на второй день после '
+                'выхода.',
+            'Burnout is not tiredness. Tiredness passes over a weekend. '
+                'Burnout survives a holiday and comes back on your second '
+                'day at work.',
+          ))
+          ..h2(c.t('Ранние признаки', 'Early signs'))
+          ..bullets([
+            c.t('Воскресный вечер портится задолго до понедельника.',
+                'Sunday evening spoils long before Monday.'),
+            c.t('Простые задачи стали занимать втрое дольше.',
+                'Simple tasks take three times longer.'),
+            c.t('Раздражение на людей, которые ни при чём.',
+                'Irritation at people who have nothing to do with it.'),
+            c.t('Пропало любопытство — не силы, а именно интерес.',
+                'Curiosity is gone — not energy, interest.'),
+          ])
+          ..h2(c.t('Что помогает раньше', 'What helps early'))
+          ..p(c.t(
+            'Не героическое усилие, а границы: конец рабочего дня, выходной '
+                'без переписки, один отказ в неделю. Выгорание растёт из '
+                'постоянного «ещё чуть-чуть», а не из объёма работы как '
+                'такового.',
+            'Not heroic effort but boundaries: an end to the working day, a '
+                'day off with no messages, one refusal a week. Burnout grows '
+                'from constant "just a bit more", not from the volume of '
+                'work itself.',
+          ))
+          ..h2(c.t('Когда пора к специалисту', 'When to get help'))
+          ..p(c.t(
+            'Если состояние держится месяцами, задевает сон и отношения — это '
+                'не вопрос дисциплины и не лечится списком дел. Поговорите с '
+                'врачом или психотерапевтом.',
+            'If it lasts for months and reaches your sleep and your '
+                'relationships, it is not a discipline problem and no to-do '
+                'list will fix it. Talk to a doctor or a therapist.',
+          )),
+      ),
+    ];
+  }
+
+  // ═══════════════════════════════════════════════════════ Жизнь
+
+  static List<ArticleModel> _life(_Ctx c) {
+    final root = c.folder(
+      'kb_life',
+      c.t('Жизнь', 'Life'),
+      order: 4,
+      section: ArticleSection.personal,
+    );
+
+    return [
+      root,
+      c.article(
+        'kb_life_habit',
+        c.t('Привычка держится на среде', 'Habits run on surroundings'),
+        parentId: 'kb_life',
+        order: 0,
+        section: ArticleSection.personal,
+        tags: c.tags(['привычки'], ['habits']),
+        doc: _Doc()
+          ..h1(c.t('Привычка держится на среде', 'Habits run on surroundings'))
+          ..p(c.t(
+            'Сила воли — расходуемая вещь, и к вечеру её нет. Поэтому '
+                'привычки, построенные на «надо себя заставить», держатся '
+                'ровно до первой тяжёлой недели.',
+            'Willpower is consumable and by evening it is gone. Habits built '
+                'on "I must make myself" last exactly until the first hard '
+                'week.',
+          ))
+          ..h2(c.t('Что работает вместо воли', 'What works instead'))
+          ..bullets([
+            c.t('Убрать препятствие: форма для зала — у двери, а не в шкафу.',
+                'Remove the obstacle: gym clothes by the door, not in the '
+                    'wardrobe.'),
+            c.t('Привязать к тому, что уже происходит: после чистки зубов, '
+                'после обеда.',
+                'Attach it to something that already happens: after brushing '
+                    'your teeth, after lunch.'),
+            c.t('Уменьшить до неловко маленького: две минуты, одна страница, '
+                'одна запись.',
+                'Shrink it to embarrassingly small: two minutes, one page, '
+                    'one entry.'),
+          ])
+          ..h2(c.t('Правило пропуска', 'The missed-day rule'))
+          ..p(c.t(
+            'Пропустить один раз — ничего. Пропустить два подряд — уже начало '
+                'конца. Возвращайтесь на следующий день, даже в уменьшенном '
+                'виде.',
+            'Missing once is nothing. Missing twice in a row is where it '
+                'ends. Come back the next day, even in the shrunken version.',
+          )),
+      ),
+      c.article(
+        'kb_life_attention',
+        c.t('Куда исчез день', 'Where the day went'),
+        parentId: 'kb_life',
+        order: 1,
+        section: ArticleSection.personal,
+        tags: c.tags(['внимание', 'время'], ['attention', 'time']),
+        doc: _Doc()
+          ..h1(c.t('Куда исчез день', 'Where the day went'))
+          ..p(c.t(
+            'Ощущение «весь день что-то делал и ничего не сделал» почти '
+                'всегда означает не лень, а раздробленное внимание.',
+            'The feeling of "busy all day and nothing done" almost never '
+                'means laziness. It means shattered attention.',
+          ))
+          ..h2(c.t('Откуда берётся', 'Where it comes from'))
+          ..p(c.t(
+            'После каждого переключения нужно время, чтобы вернуться в '
+                'задачу. Десять переключений за час — это час, в котором '
+                'работы почти не было, хотя вы не отдыхали ни минуты.',
+            'Every switch costs time to get back into the task. Ten switches '
+                'in an hour is an hour with almost no work in it, even '
+                'though you never rested.',
+          ))
+          ..h2(c.t('Что делать', 'What to do'))
+          ..steps([
+            c.t('Выберите одну задачу на ближайший час. Одну.',
+                'Pick one task for the next hour. One.'),
+            c.t('Уберите уведомления на это время, а не «на потом».',
+                'Silence notifications for that hour, not "later".'),
+            c.t('Мысли о других делах записывайте, а не выполняйте.',
+                'Write other thoughts down instead of acting on them.'),
+            c.t('Через час сделайте перерыв по-настоящему — без экрана.',
+                'After the hour take a real break — away from a screen.'),
+          ])
+          ..h2(c.t('Про списки', 'About lists'))
+          ..p(c.t(
+            'Список дел нужен не для дисциплины, а чтобы голова перестала '
+                'держать всё сразу. Записанное перестаёт всплывать посреди '
+                'другой работы.',
+            'A to-do list is not for discipline. It is so your head stops '
+                'holding everything at once. Written things stop surfacing '
+                'in the middle of other work.',
+          )),
+      ),
+      c.article(
+        'kb_life_sleep',
+        c.t('Сон', 'Sleep'),
+        parentId: 'kb_life',
+        order: 2,
+        section: ArticleSection.personal,
+        tags: c.tags(['сон', 'здоровье'], ['sleep', 'health']),
+        doc: _Doc()
+          ..h1(c.t('Сон', 'Sleep'))
+          ..p(c.t(
+            'Недосып не отдаёт долг по выходным и первым делом бьёт по тому, '
+                'чем вы принимаете решения. Экономия на сне — самая дорогая '
+                'из бытовых.',
+            'Lost sleep is not repaid at the weekend, and the first thing it '
+                'takes is the part of you that makes decisions. Cutting '
+                'sleep is the most expensive saving there is.',
+          ))
+          ..h2(c.t('Три вещи, которые дают больше всего',
+              'The three that matter most'))
+          ..bullets([
+            c.t('Ложиться и вставать примерно в одно время, включая выходные.',
+                'Roughly the same times to bed and up, weekends included.'),
+            c.t('Час до сна — без яркого экрана и без рабочих разговоров.',
+                'An hour before bed with no bright screen and no work talk.'),
+            c.t('Прохладная тёмная комната. Это даёт больше, чем любые '
+                'добавки.',
+                'A cool dark room. It beats any supplement.'),
+          ])
+          ..h2(c.t('Если не спится от мыслей',
+              'If your head will not stop'))
+          ..p(c.t(
+            'Запишите то, что крутится, — хоть в задачи, хоть на бумагу. '
+                'Голова держит мысль ночью именно потому, что боится её '
+                'потерять.',
+            'Write down whatever is spinning — in tasks or on paper. Your '
+                'head keeps a thought at night precisely because it is '
+                'afraid of losing it.',
+          )),
+      ),
+      c.article(
+        'kb_life_talk',
+        c.t('Трудный разговор', 'A hard conversation'),
+        parentId: 'kb_life',
+        order: 3,
+        section: ArticleSection.personal,
+        tags: c.tags(['разговор', 'отношения'], ['conversation', 'people']),
+        doc: _Doc()
+          ..h1(c.t('Трудный разговор', 'A hard conversation'))
+          ..p(c.t(
+            'Разговор, который откладывают, дорожает. Через месяц придётся '
+                'обсуждать не только сам вопрос, но и месяц молчания.',
+            'A postponed conversation gets more expensive. In a month you '
+                'will be discussing not only the issue but also the month of '
+                'silence.',
+          ))
+          ..h2(c.t('Порядок, который снижает температуру',
+              'An order that lowers the heat'))
+          ..steps([
+            c.t('Скажите факт, а не оценку: «счёт пришёл на неделю позже», а '
+                'не «ты вечно тянешь».',
+                'State a fact, not a judgement: "the invoice came a week '
+                    'late", not "you always drag".'),
+            c.t('Скажите, чем это обернулось для вас.',
+                'Say what it cost you.'),
+            c.t('Скажите, чего хотите дальше — конкретно.',
+                'Say what you want going forward — specifically.'),
+            c.t('Замолчите и дайте ответить.',
+                'Then stop talking and let them answer.'),
+          ])
+          ..h2(c.t('Чего не делать', 'What not to do'))
+          ..bullets([
+            c.t('Не собирать список претензий за полгода.',
+                'Do not bring six months of grievances.'),
+            c.t('Не начинать в переписке то, что требует голоса.',
+                'Do not start in text what needs a voice.'),
+            c.t('Не требовать признания вины. Вам нужен другой исход, а не '
+                'капитуляция.',
+                'Do not demand an admission of guilt. You want a different '
+                    'outcome, not a surrender.'),
+          ]),
+      ),
+      c.article(
+        'kb_life_docs',
+        c.t('Документы и что делать, если потерял',
+            'Documents, and losing them'),
+        parentId: 'kb_life',
+        order: 4,
+        section: ArticleSection.personal,
+        tags: c.tags(['документы', 'быт'], ['documents', 'everyday']),
+        doc: _Doc()
+          ..h1(c.t('Документы и что делать, если потерял',
+              'Documents, and losing them'))
+          ..p(c.t(
+            'Порядок действий зависит от страны, но подготовка везде одна и '
+                'та же, и делается заранее — потому что в момент потери '
+                'думать некогда.',
+            'The exact procedure depends on the country, but the preparation '
+                'is the same everywhere and is done in advance — because at '
+                'the moment of loss there is no time to think.',
+          ))
+          ..h2(c.t('Что сделать сегодня', 'Do this today'))
+          ..bullets([
+            c.t('Сфотографируйте главные документы и положите копии туда, '
+                'куда попадёте без телефона.',
+                'Photograph your main documents and store copies where you '
+                    'can reach them without your phone.'),
+            c.t('Запишите номера банковских телефонов отдельно от телефона.',
+                'Write down your bank\'s phone numbers somewhere other than '
+                    'your phone.'),
+            c.t('Держите один запасной способ входа в почту.',
+                'Keep one backup way into your email.'),
+          ])
+          ..h2(c.t('Если потеряли', 'If it is gone'))
+          ..steps([
+            c.t('Сначала блокируйте то, чем можно воспользоваться: карты, '
+                'доступы.',
+                'First block what can be used: cards, access.'),
+            c.t('Потом заявляйте о потере официально.',
+                'Then report the loss officially.'),
+            c.t('Потом восстанавливайте. Именно в этом порядке.',
+                'Then replace. In that order.'),
+          ])
+          ..h2(c.t('Здесь этому место есть', 'There is a place for this here'))
+          ..p(c.t(
+            'Свой список «где что лежит» удобно завести статьёй в этой базе '
+                'знаний и закрыть паролем Wesi Shield.',
+            'Your own "where everything is" list works well as an article in '
+                'this handbook, locked behind the Wesi Shield password.',
+          )),
+      ),
+      c.article(
+        'kb_life_hard',
+        c.t('Когда всё навалилось', 'When it all piles up'),
+        parentId: 'kb_life',
+        order: 5,
+        section: ArticleSection.personal,
+        tags: c.tags(['стресс', 'помощь'], ['stress', 'help']),
+        doc: _Doc()
+          ..h1(c.t('Когда всё навалилось', 'When it all piles up'))
+          ..p(c.t(
+            'Бывает состояние, когда дел столько, что не делается ни одно. '
+                'Это не лень и не слабость: голова не умеет держать двадцать '
+                'открытых вопросов и работать одновременно.',
+            'There is a state where there is so much to do that nothing gets '
+                'done. It is not laziness or weakness: a head cannot hold '
+                'twenty open questions and work at the same time.',
+          ))
+          ..h2(c.t('Первое действие', 'The first move'))
+          ..p(c.t(
+            'Выгрузить всё из головы на бумагу или в задачи. Не сортировать, '
+                'не оценивать — просто выписать. Список из двадцати пунктов '
+                'почти всегда оказывается короче, чем ощущение от него.',
+            'Empty your head onto paper or into tasks. Do not sort or judge '
+                '— just write. A list of twenty items is almost always '
+                'shorter than the feeling of it.',
+          ))
+          ..h2(c.t('Второе', 'The second'))
+          ..steps([
+            c.t('Отметьте то, что горит по-настоящему. Обычно таких два-три.',
+                'Mark what is genuinely on fire. Usually two or three items.'),
+            c.t('Одно из них сделайте сейчас, даже плохо.',
+                'Do one of them now, even badly.'),
+            c.t('Остальное поставьте на конкретный день, а не «скоро».',
+                'Give the rest a specific day, not "soon".'),
+          ])
+          ..h2(c.t('И самое важное', 'And the important part'))
+          ..p(c.t(
+            'Если тяжесть держится неделями, мешает спать, есть и общаться — '
+                'это не про организацию дел. Поговорите с близким человеком '
+                'или со специалистом. Просить помощи — обычное действие, а не '
+                'крайняя мера.',
+            'If the weight stays for weeks and gets in the way of sleeping, '
+                'eating and talking to people, it is not about organising '
+                'tasks. Talk to someone close to you, or to a professional. '
+                'Asking for help is an ordinary move, not a last resort.',
+          )),
+      ),
+    ];
+  }
+}
+
+/// Общее для всех статей: язык, время создания и сборка записи.
+class _Ctx {
+  _Ctx(this.ru, this.now);
+
+  final bool ru;
+  final DateTime now;
+
+  /// Выбор языка одной строкой.
+  ///
+  /// Раньше `ru ? … : …` стоял в каждой строке текста, и в паре мест обе
+  /// ветки оказались одинаковыми, а в паре — русская фраза с английским
+  /// хвостом. Здесь то же самое, но вызов один и его видно.
+  String t(String russian, String english) => ru ? russian : english;
+
+  List<String> tags(List<String> russian, List<String> english) =>
+      ru ? russian : english;
+
+  ArticleModel folder(
+    String id,
+    String title, {
+    String? parentId,
+    required int order,
+    required ArticleSection section,
+    bool pinned = false,
+  }) =>
+      ArticleModel(
+        id: id,
+        title: title,
+        body: '',
+        section: section,
+        tags: const [],
+        createdAt: now,
+        updatedAt: now,
+        builtIn: true,
+        pinned: pinned,
+        parentId: parentId,
+        isFolder: true,
+        orderRaw: order,
+      );
+
+  ArticleModel article(
+    String id,
+    String title, {
+    required _Doc doc,
+    required String parentId,
+    required int order,
+    required ArticleSection section,
+    required List<String> tags,
+    bool pinned = false,
+  }) =>
+      ArticleModel(
+        id: id,
+        title: title,
+        body: doc.body,
+        section: section,
+        tags: tags,
+        createdAt: now,
+        updatedAt: now,
+        builtIn: true,
+        pinned: pinned,
+        parentId: parentId,
+        orderRaw: order,
+      );
+}
+
+/// Документ статьи в формате Delta.
+///
+/// **Почему объектами, а не строками.** В Delta атрибут блока — заголовок,
+/// маркер списка — принадлежит не тексту, а переводу строки, который этот
+/// блок закрывает. Собранный вручную JSON нарушал это правило молча:
+/// компилятор ничего не знает о Delta, анализатор тоже, и ошибка всплывала
+/// уже в готовой статье как «заголовки выглядят не так». Здесь правило
+/// записано ровно один раз — в [_line], — и обойти его больше нечем.
+///
+/// Кодирование тоже одно, в самом конце: кавычка внутри текста, апостроф в
+/// подписи и вложенный JSON таблицы раньше ломали разметку целиком, каждый
+/// своим способом.
+class _Doc {
+  final List<Map<String, Object?>> _ops = [];
+
+  void _line(String text, [Map<String, Object?>? attributes]) {
+    if (text.isNotEmpty) _ops.add({'insert': text});
+    _ops.add(attributes == null
+        ? {'insert': '\n'}
+        : {'insert': '\n', 'attributes': attributes});
+  }
+
+  void h1(String text) => _line(text, {'header': 1});
+
+  void h2(String text) => _line(text, {'header': 2});
+
+  void p(String text) => _line(text);
+
+  void bullets(List<String> items) {
+    for (final item in items) {
+      _line(item, {'list': 'bullet'});
+    }
+  }
+
+  void steps(List<String> items) {
+    for (final item in items) {
+      _line(item, {'list': 'ordered'});
+    }
+  }
+
+  void table(List<List<String>> rows) {
+    _ops.add({
+      'insert': {'table': jsonEncode(rows)}
+    });
+    _ops.add({'insert': '\n'});
+  }
+
+  /// Ссылка, открывающая экран программы прямо из статьи.
+  void route(String text, String path) {
+    _ops.add({
+      'insert': text,
+      'attributes': {'link': 'wesios://route/$path'},
+    });
+    _ops.add({'insert': '\n'});
+  }
+
+  String get body => jsonEncode(_ops);
 }

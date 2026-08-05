@@ -71,13 +71,69 @@ void main() {
         }
       });
 
-      test('версия в статье «О программе» не захардкожена в прошлое', () {
-        final about = articles.firstWhere((a) => a.id == 'wesios_about');
+      test('версия в статье «Что такое WesiOS» не захардкожена в прошлое', () {
+        final about = articles.firstWhere((a) => a.id == 'kb_start_what');
         // Совпадает с версией приложения — иначе справка врёт о самой себе.
         expect(about.plainText, contains(AppVersionProbe.display));
       });
 
-      test('у каждой статьи есть заголовок', () {
+      test('в каждом разделе есть хоть одна статья', () {
+        // Разделы — это чипы фильтра на экране. Раньше все встроенные статьи
+        // лежали в одном разделе, и четыре чипа из пяти показывали пустой
+        // экран: фильтр выглядел сломанным, потому что и был.
+        for (final section in ArticleSection.values) {
+          expect(
+            articles.any((a) => !a.isFolder && a.section == section),
+            isTrue,
+            reason: 'раздел ${section.name} пуст — чип покажет пустоту',
+          );
+        }
+      });
+
+      test('порядок внутри папки задан и не повторяется', () {
+        // Справка читается подряд, и «первый день» обязан стоять раньше
+        // «если что-то пошло не так». Одинаковый порядок у соседей означает,
+        // что их взаимное место решает алфавит, то есть случай.
+        final byParent = <String?, List<ArticleModel>>{};
+        for (final a in articles) {
+          byParent.putIfAbsent(a.parentId, () => []).add(a);
+        }
+        for (final entry in byParent.entries) {
+          final orders = [for (final a in entry.value) a.orderRaw];
+          expect(orders.contains(null), isFalse,
+              reason: 'в «${entry.key}» есть запись без порядка');
+          expect(orders.toSet().length, orders.length,
+              reason: 'в «${entry.key}» порядок повторяется: $orders');
+        }
+      });
+
+      test('нет внутренностей программы в тексте', () {
+        // Прежняя справка состояла из них почти целиком: таблицы полей
+        // моделей, имя хранилища, формула Z-оценки. Человеку, искавшему
+        // «куда записать зарплату», это не отвечало ни на что.
+        const forbidden = [
+          'TransactionModel',
+          'ArticleModel',
+          'Hive',
+          'parentId',
+          'isFolder',
+          'Z-Score',
+          'Z-оценк',
+          'jsonEncode',
+          'Delta',
+          'Firebase',
+          'Holt-Winters',
+        ];
+        for (final a in articles) {
+          if (a.isFolder && a.body.isEmpty) continue;
+          for (final word in forbidden) {
+            expect(a.plainText.contains(word), isFalse,
+                reason: 'в «${a.title}» осталось «$word»');
+          }
+        }
+      });
+
+test('у каждой статьи есть заголовок', () {
         for (final a in articles) {
           expect(a.title.trim(), isNotEmpty, reason: a.id);
         }
@@ -108,7 +164,35 @@ void main() {
       });
     });
   }
+
+  group('оба языка', () {
+    final ru = BuiltinArticles.all(true);
+    final en = BuiltinArticles.all(false);
+
+    test('состав деревьев совпадает', () {
+      expect([for (final a in ru) a.id], [for (final a in en) a.id]);
+    });
+
+    test('перевод есть у каждого заголовка', () {
+      // Здесь встречалось `ru ? 'Wesi Treasury' : 'Wesi Treasury'` — обе
+      // ветки одинаковые, то есть перевода нет, а выглядит как есть.
+      final byId = {for (final a in en) a.id: a};
+      for (final a in ru) {
+        expect(a.title, isNot(byId[a.id]!.title),
+            reason: 'заголовок «${a.title}» не переведён (${a.id})');
+      }
+    });
+
+    test('тексты статей тоже разные', () {
+      final byId = {for (final a in en) a.id: a};
+      for (final a in ru) {
+        if (a.isFolder) continue;
+        expect(a.plainText, isNot(byId[a.id]!.plainText), reason: a.id);
+      }
+    });
+  });
 }
+
 
 /// Версия берётся из самого приложения.
 ///

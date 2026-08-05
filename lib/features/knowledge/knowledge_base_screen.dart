@@ -57,13 +57,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     });
   }
 
-  String _sectionLabel(ArticleSection s) => switch (s) {
-        ArticleSection.about => _ru ? 'О программе' : 'About',
-        ArticleSection.playbook => _ru ? 'Регламенты' : 'Playbooks',
-        ArticleSection.guide => _ru ? 'Инструкции' : 'Guides',
-        ArticleSection.finance => _ru ? 'Финансы' : 'Finance',
-        ArticleSection.personal => _ru ? 'Личное' : 'Personal',
-      };
+  String _sectionLabel(ArticleSection s) => s.label(_ru);
 
   IconData _sectionIcon(ArticleSection s) => switch (s) {
         ArticleSection.about => Icons.info_outline,
@@ -91,16 +85,31 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
     return KnowledgeService.getSubtree(a.id).any((c) => p.allowsArticle(c.id));
   }
 
-  /// Статьи для текущего вида (поиск, папка, или корень).
+  /// Показывать плоским списком, а не деревом.
+  ///
+  /// И поиск, и выбор раздела — это срезы поперёк дерева: нужное лежит в
+  /// разных папках на разной глубине. Показывать при этом дерево значило бы
+  /// показывать почти пустой экран.
+  bool get _flat => _query.isNotEmpty || _section != null;
+
+  /// Статьи для текущего вида (поиск, раздел, папка или корень).
   List<ArticleModel> _visibleArticles() {
     final Iterable<ArticleModel> source;
     if (_query.isNotEmpty) {
-      source = _articles.where((a) => a.matches(_query));
+      source = _articles.where(
+          (a) => a.matches(_query) && (_section == null || a.section == _section));
+    } else if (_section != null) {
+      // Папки в срез не идут: раздел папки — это раздел её содержимого, и
+      // она бы дублировала собственные статьи, стоящие рядом.
+      //
+      // Раньше срез считался только по текущему уровню, а все встроенные
+      // статьи лежали в одном разделе. Четыре чипа из пяти показывали пустой
+      // экран, и выглядело это как «фильтр не работает» — что было правдой.
+      source = _articles.where((a) => !a.isFolder && a.section == _section);
     } else if (_currentFolderId != null) {
-      source = KnowledgeService.getChildren(_currentFolderId!)
-          .where((a) => _section == null || a.section == _section);
+      source = KnowledgeService.getChildren(_currentFolderId!);
     } else {
-      source = _roots.where((a) => _section == null || a.section == _section);
+      source = _roots;
     }
     return source.where(_isAllowed).toList();
   }
@@ -223,7 +232,7 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
                   ? Center(child: CircularProgressIndicator(color: AppTheme.accent.withOpacity(0.5)))
                   : visible.isEmpty
                       ? _empty()
-                      : _query.isNotEmpty
+                      : _flat
                           ? _searchList(visible)
                           : _treeList(visible),
             ),
@@ -302,18 +311,33 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
               Icon(_currentFolderId != null ? Icons.folder_open_outlined : Icons.menu_book, size: 34, color: AppTheme.textMuted),
               const SizedBox(height: 12),
               Text(
-                _query.isEmpty
-                    ? (_currentFolderId != null
-                        ? (_ru ? 'Папка пуста' : 'Folder is empty')
-                        : (_ru ? 'Здесь пока пусто' : 'Nothing here yet'))
-                    : (_ru ? 'Ничего не найдено' : 'Nothing found'),
-                style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
+                _query.isNotEmpty
+                    ? (_ru ? 'Ничего не найдено' : 'Nothing found')
+                    : _section != null
+                        ? (_ru ? 'В этом разделе пусто' : 'This section is empty')
+                        : _currentFolderId != null
+                            ? (_ru ? 'Папка пуста' : 'Folder is empty')
+                            : (_ru ? 'Здесь пока пусто' : 'Nothing here yet'),
+                style: TextStyle(
+                    fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
               ),
               const SizedBox(height: 6),
               Text(
-                _currentFolderId != null
-                    ? (_ru ? 'Добавьте статью или подпапку.' : 'Add an article or subfolder.')
-                    : (_ru ? 'Запишите регламент, инструкцию или разбор.' : 'Write down a playbook or a guide.'),
+                _query.isNotEmpty
+                    ? (_ru
+                        ? 'Поиск идёт по заголовкам, тексту и тегам.'
+                        : 'Search covers titles, text and tags.')
+                    : _section != null
+                        ? (_ru
+                            ? 'Раздел ставится у статьи при правке.'
+                            : 'A section is chosen when you edit an article.')
+                        : _currentFolderId != null
+                            ? (_ru
+                                ? 'Добавьте статью или подпапку.'
+                                : 'Add an article or subfolder.')
+                            : (_ru
+                                ? 'Начните с папки «Начало».'
+                                : 'Start with the "Start here" folder.'),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
@@ -332,19 +356,17 @@ class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
   }
 
   /// Древовидный список с expand/collapse.
+  ///
+  /// Порядок здесь не пересчитывается: он уже задан
+  /// [KnowledgeService.compare] и одинаков во всех местах, где показываются
+  /// соседи по папке. Своя сортировка по алфавиту стояла тут раньше — и
+  /// главы путеводителя шли вразнобой, потому что «Если…» идёт перед
+  /// «Первый…».
   Widget _treeList(List<ArticleModel> items) {
-    final sorted = [...items]..sort((a, b) {
-      if (a.isFolder && !b.isFolder) return -1;
-      if (!a.isFolder && b.isFolder) return 1;
-      if (a.pinned && !b.pinned) return -1;
-      if (!a.pinned && b.pinned) return 1;
-      return a.title.compareTo(b.title);
-    });
-
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-      itemCount: sorted.length,
-      itemBuilder: (context, i) => _treeTile(sorted[i], level: 0),
+      itemCount: items.length,
+      itemBuilder: (context, i) => _treeTile(items[i], level: 0),
     );
   }
 
@@ -564,19 +586,23 @@ class _ArticleScreenState extends State<ArticleScreen> {
     if (mounted) Navigator.pop(context);
   }
 
+  /// Ссылка внутрь программы: другая статья или экран.
+  ///
+  /// Экран раньше не открывался — показывалась подсказка «Переход: /treasury»
+  /// и всё. Инструкция, из которой нельзя перейти туда, о чём она,
+  /// бесполезна ровно в тот момент, когда её читают.
   void _onInternalRoute(String route) {
     if (route.startsWith('article:')) {
       final id = route.substring('article:'.length);
       KnowledgeService.getById(id).then((a) {
         if (a != null && mounted) {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => ArticleScreen(article: a)));
+          Navigator.push(context,
+              MaterialPageRoute(builder: (_) => ArticleScreen(article: a)));
         }
       });
       return;
     }
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(_ru ? 'Переход: $route' : 'Navigate: $route'), backgroundColor: AppTheme.surface, behavior: SnackBarBehavior.floating),
-    );
+    Navigator.pushNamed(context, route);
   }
 
   List<ArticleModel> _breadcrumb() {

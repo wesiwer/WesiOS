@@ -122,7 +122,9 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
   void initState() {
     super.initState();
     final a = widget.initial;
-    _section = a?.section ?? ArticleSection.playbook;
+    // «Инструкции» по умолчанию: чаще всего человек записывает сюда порядок
+    // действий, который не хочет вспоминать заново.
+    _section = a?.section ?? ArticleSection.guide;
     _parentId = a?.parentId ?? widget.initialParentId;
     _isFolder = a?.isFolder ?? false;
     _loadParentName();
@@ -298,13 +300,7 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
     );
   }
 
-  String _sectionLabel(ArticleSection s) => switch (s) {
-        ArticleSection.about => _ru ? 'О программе' : 'About',
-        ArticleSection.playbook => _ru ? 'Регламенты' : 'Playbooks',
-        ArticleSection.guide => _ru ? 'Инструкции' : 'Guides',
-        ArticleSection.finance => _ru ? 'Финансы' : 'Finance',
-        ArticleSection.personal => _ru ? 'Личное' : 'Personal',
-      };
+  String _sectionLabel(ArticleSection s) => s.label(_ru);
 
   Future<void> _loadParentName() async {
     if (_parentId == null) { setState(() => _parentName = null); return; }
