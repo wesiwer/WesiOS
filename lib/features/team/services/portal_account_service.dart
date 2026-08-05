@@ -4,25 +4,26 @@ import 'dart:io';
 import '../../../core/sync/sync_endpoint.dart';
 import '../models/employee_model.dart';
 
-/// Связывает локальную карточку сотрудника с auth-записью PocketBase.
+/// Создаёт серверную auth-запись сотрудника одновременно с локальной
+/// карточкой WesiOS.
 ///
-/// Сотрудник получает тот же логин и пароль в приложении и на портале
-/// загрузки. Внешний API PocketBase для регистрации закрыт, поэтому запись
-/// создаёт защищённый owner-only endpoint `/api/wesi/portal/employees/provision`.
+/// Сервер получает пароль только по HTTPS, сразу хеширует его PocketBase и
+/// никогда не возвращает обратно. После provision клиент выполняет реальный
+/// тестовый вход теми же данными: успешным считается только аккаунт, который
+/// уже действительно принимает логин и пароль.
 class PortalAccountService {
   const PortalAccountService._();
+
+  static const String defaultServer = 'https://api.wesi-inc.ru';
 
   static Future<bool> provision({
     required EmployeeModel employee,
     required String password,
   }) async {
-    final base = SyncEndpoint.url;
+    final base = SyncEndpoint.url ?? defaultServer;
     final session = SyncEndpoint.session;
-    final token = session?['token'];
-
-    // Создание карточки не должно ломаться в офлайне. После подключения
-    // синхронизации пароль можно сбросить — это повторно вызовет provision.
-    if (base == null || token is! String || token.isEmpty) return false;
+    final ownerToken = session?['token'];
+    if (ownerToken is! String || ownerToken.isEmpty) return false;
 
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 8);
@@ -31,7 +32,7 @@ class PortalAccountService {
         Uri.parse('$base/api/wesi/portal/employees/provision'),
       );
       request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, token);
+      request.headers.set(HttpHeaders.authorizationHeader, ownerToken);
       request.write(jsonEncode({
         'login': employee.login,
         'name': employee.displayName,
@@ -39,8 +40,24 @@ class PortalAccountService {
       }));
 
       final response = await request.close().timeout(const Duration(seconds: 15));
-      await response.drain<void>();
-      return response.statusCode == 200 || response.statusCode == 201;
+      final responseText = await utf8.decoder.bind(response).join();
+      if (response.statusCode != 200 && response.statusCode != 201) {
+        return false;
+      }
+
+      // Не доверяем только коду provision: сразу проверяем тот же путь входа,
+      // которым пользуется портал сотрудников.
+      final auth = await client.postUrl(
+        Uri.parse('$base/api/collections/users/auth-with-password'),
+      );
+      auth.headers.contentType = ContentType.json;
+      auth.write(jsonEncode({
+        'identity': '${employee.login}@wesi.local',
+        'password': password,
+      }));
+      final authResponse = await auth.close().timeout(const Duration(seconds: 15));
+      await authResponse.drain<void>();
+      return authResponse.statusCode == 200 && responseText.isNotEmpty;
     } catch (_) {
       return false;
     } finally {
