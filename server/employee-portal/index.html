@@ -9,114 +9,154 @@
   <title>WesiOS · Wesi Inc</title>
   <link rel="icon" href="./app_icon.png">
   <link rel="apple-touch-icon" href="./app_icon.png">
-  <link rel="stylesheet" href="./styles.css?v=6">
-  <link rel="stylesheet" href="./portal-v6.css?v=1">
-  <script>setTimeout(()=>{document.getElementById('boot')?.classList.add('done');document.getElementById('app')?.classList.add('ready')},850)</script>
+  <link rel="stylesheet" href="./styles.css?v=7">
+  <link rel="stylesheet" href="./portal-v6.css?v=2">
+  <style>
+    :root{--s-bg:#08080b;--s-panel:#141419;--s-panel-2:#1b1b21;--s-border:#303038;--s-text:#f6f6f8;--s-muted:#9c9ca6;--s-orange:#ff6818;--s-orange-2:#ff8b2b;--s-danger:#ff7488;--s-green:#72dea9}
+    html{background:var(--s-bg);scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+    body{margin:0;background:var(--s-bg);color:var(--s-text);font-family:Inter,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;overflow-x:hidden}
+    *,*:before,*:after{box-sizing:border-box}
+    button,input{font:inherit}
+    button{color:inherit}
+    .hidden{display:none!important}
+    .view{display:none}
+    .view.active{display:block}
+    #app{display:block!important;visibility:visible!important;opacity:1!important;width:min(1120px,calc(100% - 32px));margin:0 auto;min-height:100vh}
+    .stable-progress{position:fixed;left:0;right:0;top:0;height:2px;z-index:100;background:linear-gradient(90deg,var(--s-orange),var(--s-orange-2));transform:scaleX(0);transform-origin:left;will-change:transform;pointer-events:none}
+    .stable-header{position:sticky;top:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:16px;height:76px;padding:0 2px;border-bottom:1px solid rgba(255,255,255,.08);background:rgba(8,8,11,.96)}
+    .stable-brand{display:flex;align-items:center;gap:12px;color:var(--s-text);text-decoration:none}
+    .stable-logo{width:44px;height:44px;border-radius:13px;object-fit:cover;background:#111116}
+    .stable-brand strong{font-size:21px;letter-spacing:-.035em}.stable-brand em{font-style:normal;color:var(--s-orange)}
+    .stable-status{display:flex;align-items:center;gap:9px;color:#85858e;font-size:10px;letter-spacing:.11em;text-transform:uppercase}.stable-status:before{content:"";width:22px;height:2px;background:var(--s-orange)}
+    .stable-icon-button{width:40px;height:40px;border:1px solid var(--s-border);border-radius:12px;background:var(--s-panel);display:grid;place-items:center;cursor:pointer}.stable-icon-button svg{width:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+    .stable-hero{min-height:calc(100svh - 76px);display:grid;grid-template-columns:minmax(0,1.05fr) minmax(320px,.72fr);gap:64px;align-items:center;padding:72px 2vw 82px}
+    .stable-kicker{display:flex;align-items:center;gap:11px;color:#aaaab3;font-size:10px;font-weight:800;letter-spacing:.18em;text-transform:uppercase}.stable-kicker:before{content:"";width:30px;height:2px;background:linear-gradient(90deg,var(--s-orange),transparent)}
+    .stable-hero h1{margin:20px 0 18px;font-size:clamp(58px,9vw,106px);line-height:.9;letter-spacing:-.07em}.stable-hero h1 em{font-style:normal;color:var(--s-orange)}
+    .stable-hero>div>p{max-width:650px;margin:0;color:var(--s-muted);font-size:17px;line-height:1.72}
+    .stable-points{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:30px}.stable-point{min-height:98px;padding:16px;border:1px solid var(--s-border);border-radius:17px;background:var(--s-panel)}.stable-point b{display:block;color:var(--s-orange);font-size:11px;letter-spacing:.13em}.stable-point span{display:block;margin-top:12px;color:#c7c7ce;font-size:12px;line-height:1.45}
+    .stable-visual{position:relative;min-height:440px;display:grid;place-items:center}.stable-core{position:relative;width:260px;height:260px;border:1px solid #393940;border-radius:64px;background:linear-gradient(145deg,#1b1b21,#101014);display:grid;place-items:center;box-shadow:0 30px 80px rgba(0,0,0,.45)}.stable-core:before,.stable-core:after{content:"";position:absolute;border:1px solid rgba(255,104,24,.2);border-radius:50%;animation:stableSpin 18s linear infinite}.stable-core:before{width:360px;height:360px}.stable-core:after{width:430px;height:430px;border-style:dashed;animation-direction:reverse;animation-duration:28s}.stable-core img{width:116px;height:116px;border-radius:32px;position:relative;z-index:2}.stable-orbit-dot{position:absolute;z-index:3;width:10px;height:10px;border-radius:50%;background:var(--s-orange);box-shadow:0 0 18px rgba(255,104,24,.8);transform:translate(177px,-94px)}
+    @keyframes stableSpin{to{transform:rotate(360deg)}}
+    .stable-section{padding:112px 2vw;border-top:1px solid rgba(255,255,255,.06)}
+    .stable-section-head{display:grid;grid-template-columns:.85fr 1.15fr;gap:54px;align-items:end;margin-bottom:46px}.stable-section h2{margin:16px 0 0;font-size:clamp(38px,6vw,72px);line-height:.98;letter-spacing:-.055em}.stable-section-head p{margin:0;color:var(--s-muted);font-size:15px;line-height:1.75;max-width:580px}
+    .stable-module-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:13px}.stable-module{position:relative;min-height:230px;padding:22px;border:1px solid var(--s-border);border-radius:22px;background:linear-gradient(150deg,var(--s-panel-2),#111115);overflow:hidden;transition:transform .22s ease,border-color .22s ease}.stable-module:hover{transform:translateY(-4px);border-color:rgba(255,104,24,.5)}.stable-module:after{content:"";position:absolute;width:100px;height:2px;left:22px;bottom:22px;background:linear-gradient(90deg,var(--s-orange),transparent)}.stable-module small{color:var(--s-orange);font-size:9px;font-weight:850;letter-spacing:.16em}.stable-module strong{display:block;margin-top:60px;font-size:30px}.stable-module span{display:block;margin-top:7px;color:var(--s-muted);font-size:11px}
+    .stable-flow{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}.stable-flow-card{padding:24px;border:1px solid var(--s-border);border-radius:22px;background:var(--s-panel);min-height:190px}.stable-flow-card b{display:grid;place-items:center;width:42px;height:42px;border-radius:13px;background:rgba(255,104,24,.12);color:var(--s-orange);font-size:11px}.stable-flow-card h3{margin:30px 0 9px;font-size:23px}.stable-flow-card p{margin:0;color:var(--s-muted);font-size:12px;line-height:1.65}
+    .stable-steps{position:relative;display:grid;gap:0;max-width:900px;margin:0 auto}.stable-steps:before{content:"";position:absolute;left:38px;top:38px;bottom:38px;width:2px;background:linear-gradient(var(--s-orange),rgba(255,104,24,.12))}.stable-step{position:relative;display:grid;grid-template-columns:76px 1fr;gap:26px;align-items:start;padding:35px 0}.stable-step>b{position:relative;z-index:2;width:76px;height:76px;border-radius:22px;display:grid;place-items:center;border:1px solid rgba(255,104,24,.5);background:var(--s-panel);color:var(--s-orange);font-size:14px}.stable-step h3{margin:7px 0 10px;font-size:31px}.stable-step p{margin:0;color:var(--s-muted);line-height:1.65}
+    .stable-auth{display:grid;grid-template-columns:minmax(0,.9fr) minmax(360px,.72fr);gap:70px;align-items:center;padding:120px 2vw 90px;border-top:1px solid rgba(255,255,255,.06)}.stable-auth-copy h2{margin:18px 0 17px;font-size:clamp(42px,6vw,70px);line-height:.98;letter-spacing:-.055em}.stable-auth-copy p{max-width:520px;color:var(--s-muted);line-height:1.72}
+    .stable-panel{padding:28px;border:1px solid #3b3b43;border-radius:24px;background:linear-gradient(155deg,#1a1a20,#101014);box-shadow:0 28px 70px rgba(0,0,0,.43)}.stable-panel-head{display:flex;align-items:center;gap:14px}.stable-panel-head img{width:52px;height:52px;border-radius:16px}.stable-panel-head small{color:var(--s-orange);font-size:9px;font-weight:850;letter-spacing:.16em}.stable-panel-head h3{margin:5px 0 0;font-size:24px}.stable-note{margin:22px 0;color:var(--s-muted);font-size:12px;line-height:1.65}.stable-field{display:block;margin-bottom:16px}.stable-field>span:first-child{display:block;margin:0 0 8px 2px;color:#c6c6cd;font-size:10px}.stable-input{height:54px;display:flex;align-items:center;gap:10px;padding:0 14px;border:1px solid #36363e;border-radius:15px;background:#0d0d11}.stable-input:focus-within{border-color:var(--s-orange);box-shadow:0 0 0 3px rgba(255,104,24,.1)}.stable-input svg{width:18px;flex:none;fill:none;stroke:#777781;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}.stable-input input{width:100%;min-width:0;border:0;outline:0;background:transparent;color:var(--s-text);font-size:14px}.stable-input input::placeholder{color:#55555e}.stable-password-toggle{width:34px;height:34px;display:grid;place-items:center;border:0;background:transparent;cursor:pointer}.form-message{min-height:22px;color:var(--s-danger);font-size:11px}.stable-primary{width:100%;height:52px;border:0;border-radius:15px;background:linear-gradient(110deg,#ff5e0b,#ff8424);font-weight:850;cursor:pointer;box-shadow:0 15px 34px rgba(255,91,5,.2)}.stable-primary:disabled{opacity:.52}.stable-security{display:flex;align-items:center;gap:10px;margin-top:17px;color:#7e7e87;font-size:10px}.stable-security:before{content:"";width:20px;height:2px;background:var(--s-orange)}
+    .stable-footer{display:flex;justify-content:space-between;gap:20px;padding:20px 2px;border-top:1px solid rgba(255,255,255,.06);color:#686871;font-size:8px;letter-spacing:.13em}
+    .dashboard-view{padding:64px 2vw 20px}.stable-dashboard-head{display:flex;justify-content:space-between;gap:32px;align-items:end;margin-bottom:32px}.stable-dashboard-head h1{margin:17px 0 12px;font-size:clamp(40px,6vw,72px);line-height:.98;letter-spacing:-.055em}.stable-dashboard-head h1 em{font-style:normal;color:var(--s-orange)}.stable-dashboard-head p{margin:0;color:var(--s-muted)}.stable-version{min-width:185px;padding:20px;border:1px solid var(--s-border);border-radius:20px;background:var(--s-panel);text-align:right}.stable-version small{display:block;color:#777780;font-size:8px;letter-spacing:.15em}.stable-version strong{display:block;margin:8px 0 4px;font-size:27px}.stable-version span{color:var(--s-orange);font-size:10px}.stable-dashboard-grid{display:grid;grid-template-columns:1.15fr .9fr .9fr;gap:14px}.stable-release,.stable-download{padding:23px;border:1px solid #393941;border-radius:22px;background:linear-gradient(155deg,#1b1b21,#111115)}.stable-release{min-height:320px}.stable-release-title{display:flex;align-items:center;gap:15px;margin:24px 0}.stable-release-title img{width:60px;height:60px;border-radius:18px}.stable-release-title h2{margin:0;font-size:27px}.stable-release-title p{margin:5px 0 0;color:var(--s-muted);font-size:11px}.stable-release-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.stable-release-meta div{padding:13px;border:1px solid #303037;border-radius:13px;background:#111115}.stable-release-meta small{display:block;color:#777780;font-size:8px}.stable-release-meta strong{display:block;margin-top:7px}.stable-changelog{margin-top:17px;padding:15px;border:1px solid #303037;border-radius:14px;background:#111115}.stable-changelog span{color:var(--s-orange);font-size:9px;font-weight:800}.stable-changelog p{margin:8px 0 0;color:var(--s-muted);font-size:11px;line-height:1.55}.stable-download{min-height:320px;display:flex;flex-direction:column}.stable-download small{color:var(--s-orange);font-size:9px;font-weight:800;letter-spacing:.15em}.stable-download h3{margin:20px 0 10px;font-size:30px}.stable-download p{margin:0;color:var(--s-muted);font-size:12px;line-height:1.6}.stable-platform-meta{display:flex;justify-content:space-between;margin-top:auto;padding:18px 0;color:#8d8d96;font-size:9px}.download-button{height:48px;border:0;border-radius:14px;background:#f2f2f4;color:#101014;font-weight:850;cursor:pointer}.download-button:disabled{opacity:.4}.toast-stack{position:fixed;right:18px;bottom:18px;z-index:100;display:grid;gap:8px}.toast{max-width:320px;padding:13px 15px;border:1px solid #3b3b43;border-radius:13px;background:#18181e;box-shadow:0 15px 40px rgba(0,0,0,.4);font-size:11px}.toast.error{border-color:rgba(255,116,136,.5)}
+    @media(max-width:900px){#app{width:min(100% - 24px,760px)}.stable-hero{grid-template-columns:1fr;gap:35px;padding:54px 0 75px}.stable-visual{min-height:340px}.stable-core{width:210px;height:210px;border-radius:52px}.stable-core:before{width:290px;height:290px}.stable-core:after{width:350px;height:350px}.stable-core img{width:92px;height:92px;border-radius:27px}.stable-orbit-dot{transform:translate(143px,-76px)}.stable-section{padding:86px 0}.stable-section-head{grid-template-columns:1fr;gap:20px}.stable-module-grid{grid-template-columns:repeat(2,1fr)}.stable-auth{grid-template-columns:1fr;padding:90px 0 72px;gap:38px}.stable-panel{width:min(580px,100%);margin:0 auto}.stable-dashboard-grid{grid-template-columns:1fr}.stable-dashboard-head{align-items:start}.stable-release,.stable-download{min-height:auto}}
+    @media(max-width:620px){#app{width:calc(100% - 24px)}.stable-header{height:68px}.stable-status{display:none}.stable-hero{min-height:auto;padding-top:54px}.stable-hero h1{font-size:64px}.stable-hero>div>p{font-size:15px}.stable-points{grid-template-columns:1fr}.stable-point{min-height:auto}.stable-visual{min-height:280px;overflow:hidden}.stable-core{width:176px;height:176px;border-radius:44px}.stable-core:before{width:238px;height:238px}.stable-core:after{width:286px;height:286px}.stable-core img{width:78px;height:78px;border-radius:23px}.stable-orbit-dot{display:none}.stable-section{padding:72px 0}.stable-section h2{font-size:43px}.stable-module-grid{grid-template-columns:1fr 1fr;gap:9px}.stable-module{min-height:174px;padding:17px}.stable-module strong{margin-top:42px;font-size:23px}.stable-module:after{left:17px;bottom:17px;width:65px}.stable-flow{grid-template-columns:1fr}.stable-flow-card{min-height:auto}.stable-steps:before{left:28px}.stable-step{grid-template-columns:56px 1fr;gap:18px;padding:27px 0}.stable-step>b{width:56px;height:56px;border-radius:17px}.stable-step h3{font-size:25px;margin-top:3px}.stable-step p{font-size:12px}.stable-auth-copy h2{font-size:43px}.stable-panel{padding:20px;border-radius:20px}.stable-dashboard-head{display:grid}.stable-version{width:100%;text-align:left}.stable-release-meta{grid-template-columns:1fr}.stable-footer{display:grid}.dashboard-view{padding:50px 0 16px}}
+    @media(max-width:430px){.stable-module-grid{grid-template-columns:1fr}.stable-module{min-height:155px}.stable-module strong{margin-top:30px}.stable-hero h1{font-size:58px}}
+    @media(prefers-reduced-motion:reduce){html{scroll-behavior:auto}.stable-core:before,.stable-core:after{animation:none}.stable-module{transition:none}}
+  </style>
 </head>
 <body>
-  <div class="grid-bg" aria-hidden="true"></div>
-  <div class="orange-glow glow-a" data-parallax=".055" aria-hidden="true"></div>
-  <div class="orange-glow glow-b" data-parallax="-.035" aria-hidden="true"></div>
-  <svg class="runner-svg" id="runnerSvg" aria-hidden="true">
-    <defs>
-      <linearGradient id="runnerGradient" x1="0" x2="1">
-        <stop offset="0" stop-color="#ff6517" stop-opacity="0"/>
-        <stop offset=".45" stop-color="#ff6517"/>
-        <stop offset="1" stop-color="#ffb15c"/>
-      </linearGradient>
-      <filter id="runnerGlow"><feGaussianBlur stdDeviation="3.2" result="blur"/><feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
-    </defs>
-    <path id="runnerTrail" class="runner-trail"/>
-    <path id="runnerHead" class="runner-head"/>
-  </svg>
-
-  <div class="boot" id="boot"><img class="boot-logo" src="./app_icon.png" alt=""><div class="boot-line"><i></i></div><p>WesiOS</p></div>
-
-  <main class="app-shell" id="app">
-    <header class="topbar reveal">
-      <a class="brand" href="#top"><img class="brand-logo" src="./app_icon.png" alt="WesiOS"><span class="brand-copy"><strong><span>Wesi</span><em>OS</em></strong></span></a>
-      <div class="secure-label"><span></span>Закрытый контур</div>
-      <button class="icon-button hidden" id="logoutButton" type="button" aria-label="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M8 12h10"/></svg></button>
+  <div class="stable-progress" id="stableProgress" aria-hidden="true"></div>
+  <main id="app">
+    <header class="stable-header">
+      <a class="stable-brand" href="#top"><img class="stable-logo" src="./app_icon.png" alt="WesiOS"><strong>Wesi<em>OS</em></strong></a>
+      <div class="stable-status">Закрытый контур</div>
+      <button class="stable-icon-button hidden" id="logoutButton" type="button" aria-label="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M8 12h10"/></svg></button>
     </header>
 
     <section class="view login-view active" id="loginView">
-      <div class="login-stage intro-stage" id="top">
-        <div class="hero-copy reveal delay-1">
-          <span class="section-label">WESI INC · ЗАКРЫТЫЙ КОНТУР</span>
-          <h1><span>Wesi</span><em>OS</em></h1>
-          <p>Единая рабочая среда для общения, задач, финансов, аналитики, знаний и Wesi AI.</p>
-          <div class="hero-points"><span><b>01</b> Единая учётная запись</span><span><b>02</b> Защищённые сборки</span><span><b>03</b> Windows и Android</span></div>
+      <section class="stable-hero" id="top">
+        <div>
+          <span class="stable-kicker">Wesi Inc · единая система</span>
+          <h1>Wesi<em>OS</em></h1>
+          <p>Единая рабочая среда для общения, задач, финансов, аналитики, знаний и Wesi AI. Вся основная информация отображается сразу — без ожидания анимаций и дополнительных загрузчиков.</p>
+          <div class="stable-points">
+            <article class="stable-point"><b>01</b><span>Единая учётная запись сотрудника</span></article>
+            <article class="stable-point"><b>02</b><span>Защищённые корпоративные сборки</span></article>
+            <article class="stable-point"><b>03</b><span>Работа на Windows и Android</span></article>
+          </div>
         </div>
-        <div class="intro-visual reveal delay-2" aria-hidden="true">
-          <div class="intro-orbit"><i></i><i></i><img src="./app_icon.png" alt=""></div>
-        </div>
-      </div>
+        <div class="stable-visual" aria-hidden="true"><div class="stable-core"><img src="./app_icon.png" alt=""><i class="stable-orbit-dot"></i></div></div>
+      </section>
 
-      <section class="showcase" id="showcase">
-        <div class="showcase-copy" data-scroll-reveal>
-          <span class="section-label runner-origin" id="runnerOrigin">ОДНА СИСТЕМА · ВСЯ КОМПАНИЯ</span>
-          <h2>Работа не распадается<br>на десятки сервисов.</h2>
-          <p>Модули WesiOS связаны между собой и продолжают один рабочий контекст.</p>
+      <section class="stable-section">
+        <div class="stable-section-head">
+          <div><span class="stable-kicker">Одна система · вся компания</span><h2>Работа не распадается на десятки сервисов.</h2></div>
+          <p>Модули WesiOS связаны между собой и продолжают единый рабочий контекст. Карточки остаются лёгкими и не блокируют прокрутку на телефоне.</p>
         </div>
-        <div class="module-stage" id="moduleStage">
-          <div class="orbit-rings" aria-hidden="true"><i></i><i></i><i></i></div>
-          <article class="module-card card-finance" data-float="1"><small>ФИНАНСЫ</small><strong>−₽2.1k</strong><span>Баланс Wesi Inc</span></article>
-          <article class="module-card card-chat" data-float="2"><small>ЧАТЫ</small><strong>12</strong><span>Новых сообщений</span></article>
-          <article class="module-card card-ai" data-float="3"><small>WESI AI</small><strong>Зейн</strong><span>Контекст сохранён</span></article>
-          <article class="module-card card-task" data-float="4"><small>ЗАДАЧИ</small><strong>10/10</strong><span>План выполнен</span></article>
-          <div class="orbit-core" id="orbitCore"><img src="./app_icon.png" alt=""><span>WesiOS</span></div>
+        <div class="stable-module-grid">
+          <article class="stable-module"><small>ФИНАНСЫ</small><strong>−₽2.1k</strong><span>Баланс Wesi Inc</span></article>
+          <article class="stable-module"><small>ЧАТЫ</small><strong>12</strong><span>Новых сообщений</span></article>
+          <article class="stable-module"><small>WESI AI</small><strong>Зейн</strong><span>Рабочий контекст сохранён</span></article>
+          <article class="stable-module"><small>ЗАДАЧИ</small><strong>10/10</strong><span>План выполнен</span></article>
         </div>
       </section>
 
-      <section class="flow-section" id="flowSection">
-        <div class="flow-copy" data-scroll-reveal><span class="section-label">ЕДИНЫЙ ПОТОК</span><h2>События проходят<br>сквозь всю систему.</h2><p>Задача становится сообщением, сообщение — решением, а решение сразу отражается в данных компании.</p></div>
-        <div class="flow-board" data-scroll-reveal>
-          <div class="flow-wire wire-a"></div><div class="flow-wire wire-b"></div><div class="flow-wire wire-c"></div>
-          <article class="flow-node node-one"><b>01</b><span>Чат</span></article><article class="flow-node node-two"><b>02</b><span>Задача</span></article><article class="flow-node node-three"><b>03</b><span>Результат</span></article>
+      <section class="stable-section">
+        <div class="stable-section-head">
+          <div><span class="stable-kicker">Единый поток</span><h2>События проходят сквозь всю систему.</h2></div>
+          <p>Задача становится сообщением, сообщение — решением, а результат сразу отражается в данных компании.</p>
+        </div>
+        <div class="stable-flow">
+          <article class="stable-flow-card"><b>01</b><h3>Общение</h3><p>Рабочие чаты сохраняют контекст сотрудников и проектов.</p></article>
+          <article class="stable-flow-card"><b>02</b><h3>Исполнение</h3><p>Решения превращаются в задачи, сроки и понятные действия.</p></article>
+          <article class="stable-flow-card"><b>03</b><h3>Результат</h3><p>Финансы, аналитика и отчётность обновляются в общей системе.</p></article>
         </div>
       </section>
 
-      <section class="motion-rail" id="motionRail">
-        <div class="rail-line"></div>
-        <article class="motion-step" data-scroll-reveal><b>01</b><div><h3>Скачай WesiOS</h3><p>Установите рабочее приложение и начните вход в экосистему.</p></div></article>
-        <article class="motion-step" data-scroll-reveal><b>02</b><div><h3>Войди в свой профиль</h3><p>Используйте свои данные сотрудника для входа в систему.</p></div></article>
-        <article class="motion-step" data-scroll-reveal><b>03</b><div><h3>Прочитай базу знаний</h3><p>Изучите ключевые инструкции, регламенты и материалы компании.</p></div></article>
+      <section class="stable-section">
+        <div class="stable-steps">
+          <article class="stable-step"><b>01</b><div><h3>Скачай WesiOS</h3><p>Установи актуальную корпоративную сборку на Windows или Android.</p></div></article>
+          <article class="stable-step"><b>02</b><div><h3>Войди в свой профиль</h3><p>Используй логин и пароль, выданные при создании учётной записи сотрудника.</p></div></article>
+          <article class="stable-step"><b>03</b><div><h3>Прочитай базу знаний</h3><p>Изучи инструкции, правила работы и основные материалы компании.</p></div></article>
+        </div>
       </section>
 
-      <section class="auth-bottom" id="authorization">
-        <div class="auth-copy" data-scroll-reveal>
-          <span class="section-label">ЗАЩИЩЁННЫЙ ВХОД</span>
+      <section class="stable-auth" id="authorization">
+        <div class="stable-auth-copy">
+          <span class="stable-kicker">Защищённый вход</span>
           <h2>Всё готово.<br>Осталось войти.</h2>
-          <p>Авторизация проверяется непосредственно на сервере WesiOS. Доступ получают только действующие учётные записи.</p>
+          <p>Авторизация проверяется непосредственно на сервере WesiOS. Доступ получают только действующие учётные записи сотрудников.</p>
         </div>
-        <div class="login-panel surface" data-scroll-reveal data-tilt-card>
-          <div class="panel-accent"></div>
-          <div class="panel-head"><img src="./app_icon.png" alt=""><div><small>WESIOS ACCESS</small><h2>Авторизация</h2></div></div>
-          <p class="panel-note">Введите логин и пароль, которые WesiOS выдал при создании сотрудника.</p>
+        <div class="stable-panel">
+          <div class="stable-panel-head"><img src="./app_icon.png" alt=""><div><small>WESIOS ACCESS</small><h3>Авторизация</h3></div></div>
+          <p class="stable-note">Введите логин и пароль, которые WesiOS выдал при создании сотрудника.</p>
           <form id="loginForm" novalidate>
-            <label class="field"><span>Логин или почта</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M4 20a8 8 0 0 1 16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg><input id="identity" autocomplete="username" placeholder="employee" required></span></label>
-            <label class="field"><span>Пароль</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12a2 2 0 0 1 2 2v7H4v-7a2 2 0 0 1 2-2Z"/></svg><input id="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required><button class="password-toggle" id="passwordToggle" type="button" aria-label="Показать пароль"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span></label>
+            <label class="stable-field"><span>Логин или почта</span><span class="stable-input"><svg viewBox="0 0 24 24"><path d="M4 20a8 8 0 0 1 16 0M12 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8Z"/></svg><input id="identity" autocomplete="username" autocapitalize="none" spellcheck="false" placeholder="employee" required></span></label>
+            <label class="stable-field"><span>Пароль</span><span class="stable-input"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12a2 2 0 0 1 2 2v7H4v-7a2 2 0 0 1 2-2Z"/></svg><input id="password" type="password" autocomplete="current-password" placeholder="••••••••••••" required><button class="stable-password-toggle" id="passwordToggle" type="button" aria-label="Показать пароль"><svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="2.5"/></svg></button></span></label>
             <div class="form-message" id="loginMessage" role="alert"></div>
-            <button class="primary-button" id="loginButton" type="submit"><span>Войти</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="stable-primary" id="loginButton" type="submit"><span>Войти</span></button>
           </form>
-          <div class="security-note"><span></span>Сайт проверяет учётную запись непосредственно на сервере WesiOS.</div>
+          <div class="stable-security">Проверка выполняется непосредственно на сервере WesiOS.</div>
         </div>
       </section>
-      <footer class="public-footer"><span>WESI INC · PRIVATE INFRASTRUCTURE</span><span>api.wesi-inc.ru</span></footer>
+      <footer class="stable-footer"><span>WESI INC · PRIVATE INFRASTRUCTURE</span><span>api.wesi-inc.ru</span></footer>
     </section>
 
     <section class="view dashboard-view" id="dashboardView">
-      <div class="dashboard-head reveal"><div><span class="section-label">ДОСТУП ПОДТВЕРЖДЁН</span><h1>Здравствуйте, <em id="employeeName">сотрудник</em></h1><p>Выберите платформу и скачайте актуальную сборку.</p></div><div class="version-badge"><small>ТЕКУЩАЯ ВЕРСИЯ</small><strong id="heroVersion">—</strong><span id="heroBuild">build —</span></div></div>
-      <div class="dashboard-grid">
-        <article class="release-card surface reveal delay-1"><div class="card-kicker"><span class="live-dot"></span><span>АКТУАЛЬНЫЙ РЕЛИЗ</span><time id="publishedAt">Проверяем сервер…</time></div><div class="release-title"><img src="./app_icon.png" alt="WesiOS"><div><h2>WesiOS</h2><p>Business Operating System</p></div></div><div class="release-meta"><div><small>Версия</small><strong id="releaseVersion">—</strong></div><div><small>Сборка</small><strong id="releaseBuild">—</strong></div><div><small>Канал</small><strong>Private</strong></div></div><div class="changelog" id="changelog"><span>Что нового</span><p>Загружаем описание обновления…</p></div></article>
-        <article class="download-card surface reveal delay-2" data-platform="windows"><div class="platform-symbol windows-symbol"><i></i><i></i><i></i><i></i></div><small>DESKTOP</small><h3>Windows</h3><p>Версия для рабочего компьютера. Портативная сборка x64.</p><div class="platform-meta"><span id="windowsSize">—</span><span>ZIP · x64</span></div><button class="download-button" data-download="windows" disabled><span>Скачать для Windows</span></button></article>
-        <article class="download-card surface reveal delay-3" data-platform="android"><div class="platform-symbol android-symbol"><span></span><i></i><i></i></div><small>MOBILE</small><h3>Android</h3><p>Мобильный доступ к чатам, задачам и данным компании.</p><div class="platform-meta"><span id="androidSize">—</span><span>APK · Android</span></div><button class="download-button" data-download="android" disabled><span>Скачать для Android</span></button></article>
+      <div class="stable-dashboard-head">
+        <div><span class="stable-kicker">Доступ подтверждён</span><h1>Здравствуйте, <em id="employeeName">сотрудник</em></h1><p>Выберите платформу и скачайте актуальную сборку.</p></div>
+        <div class="stable-version"><small>ТЕКУЩАЯ ВЕРСИЯ</small><strong id="heroVersion">—</strong><span id="heroBuild">build —</span></div>
       </div>
-      <footer class="footer"><span>WESI INC · PRIVATE INFRASTRUCTURE</span><span id="footerStatus">Связь с сервером установлена</span></footer>
+      <div class="stable-dashboard-grid">
+        <article class="stable-release">
+          <time id="publishedAt">Проверяем сервер…</time>
+          <div class="stable-release-title"><img src="./app_icon.png" alt="WesiOS"><div><h2>WesiOS</h2><p>Business Operating System</p></div></div>
+          <div class="stable-release-meta"><div><small>Версия</small><strong id="releaseVersion">—</strong></div><div><small>Сборка</small><strong id="releaseBuild">—</strong></div><div><small>Канал</small><strong>Private</strong></div></div>
+          <div class="stable-changelog" id="changelog"><span>Что нового</span><p>Загружаем описание обновления…</p></div>
+        </article>
+        <article class="stable-download" data-platform="windows"><small>DESKTOP</small><h3>Windows</h3><p>Портативная сборка x64 для рабочего компьютера.</p><div class="stable-platform-meta"><span id="windowsSize">—</span><span>ZIP · x64</span></div><button class="download-button" data-download="windows" disabled><span>Скачать для Windows</span></button></article>
+        <article class="stable-download" data-platform="android"><small>MOBILE</small><h3>Android</h3><p>Мобильный доступ к чатам, задачам и данным компании.</p><div class="stable-platform-meta"><span id="androidSize">—</span><span>APK · Android</span></div><button class="download-button" data-download="android" disabled><span>Скачать для Android</span></button></article>
+      </div>
+      <footer class="stable-footer"><span>WESI INC · PRIVATE INFRASTRUCTURE</span><span id="footerStatus">Связь с сервером установлена</span></footer>
     </section>
   </main>
   <div class="toast-stack" id="toastStack"></div>
-  <script src="./app.js?v=6" defer></script>
-  <script src="./motion-v6.js?v=1" defer></script>
+  <script src="./app.js?v=7" defer></script>
+  <script src="./motion-v6.js?v=2" defer></script>
+  <script>
+    (function(){
+      var bar=document.getElementById('stableProgress'),scheduled=false;
+      function draw(){var root=document.documentElement,max=Math.max(1,root.scrollHeight-innerHeight);if(bar)bar.style.transform='scaleX('+Math.min(1,scrollY/max)+')';scheduled=false}
+      addEventListener('scroll',function(){if(!scheduled){scheduled=true;requestAnimationFrame(draw)}},{passive:true});
+      addEventListener('resize',draw,{passive:true});draw();
+    })();
+  </script>
 </body>
 </html>
