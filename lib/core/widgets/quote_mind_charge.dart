@@ -4,11 +4,11 @@ import '../localization/wesi_locale.dart';
 import '../services/quote_mind_charge_service.dart';
 import '../theme/app_theme.dart';
 
-/// Компактный блок «заряд умных мыслей» — справа от часов на Home.
+/// Блок «заряд умных мыслей».
 ///
-/// Текст-призыв + прогресс-бар (0…10 цитат). При достижении 10 —
-/// короткий салют (цвет = AppTheme.accent) и поздравление.
-/// При 40 — секретная надпись.
+/// На телефоне занимает всю доступную ширину — ровно как карточка цитаты.
+/// На широком экране растягивается внутри своей колонки, не оставляя узкий
+/// случайный прямоугольник справа от часов.
 class QuoteMindCharge extends StatefulWidget {
   const QuoteMindCharge({super.key});
 
@@ -38,8 +38,6 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
     QuoteMindChargeService.celebratePrimary.addListener(_onPrimary);
     QuoteMindChargeService.celebrateSecret.addListener(_onSecret);
 
-    // Если уже достигли порогов раньше — сразу показываем состояние
-    // (без повторного салюта).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (QuoteMindChargeService.reachedSecret) {
@@ -105,7 +103,8 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
               clipBehavior: Clip.none,
               children: [
                 Container(
-                  constraints: const BoxConstraints(minWidth: 170, maxWidth: 230),
+                  width: double.infinity,
+                  constraints: const BoxConstraints(minWidth: 170),
                   padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(12),
@@ -170,7 +169,6 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
                     ],
                   ),
                 ),
-                // Салют поверх — лёгкие «искры» из центра блока
                 Positioned.fill(
                   child: IgnorePointer(
                     child: AnimatedBuilder(
@@ -198,7 +196,6 @@ class _QuoteMindChargeState extends State<QuoteMindCharge>
   }
 }
 
-/// Простой радиальный «салют» из точек — без внешних пакетов.
 class _SparksPainter extends CustomPainter {
   _SparksPainter({required this.progress, required this.color});
 
@@ -214,7 +211,6 @@ class _SparksPainter extends CustomPainter {
     final maxR = math.max(size.width, size.height) * 0.85;
     final t = Curves.easeOut.transform(progress);
     final fade = (1.0 - progress).clamp(0.0, 1.0);
-
     final paint = Paint()..style = PaintingStyle.fill;
 
     for (var i = 0; i < _n; i++) {
