@@ -44,7 +44,14 @@ jobs:
           grep -q 'portal-v6.css' server/employee-portal/index.html
           grep -q 'motion-v6.js' server/employee-portal/index.html
           grep -q 'siteBoot' server/employee-portal/index.html
-          grep -q 'runnerAura' server/employee-portal/index.html
+          # Проверяем то, без чего страница молча теряет движение:
+          # оба слоя огонька и полосу прокрутки. Раньше здесь стоял
+          # `runnerAura` — имя из реализации на SVG; проверка пережила
+          # саму реализацию и уронила выкладку.
+          grep -q 'runnerBack' server/employee-portal/index.html
+          grep -q 'runnerFront' server/employee-portal/index.html
+          grep -q 'scrollProgress' server/employee-portal/index.html
+          grep -q 'offset-path' server/employee-portal/portal-v6.css
           grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
           node --check server/employee-portal/app.js
           node --check server/employee-portal/motion-v6.js
