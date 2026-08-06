@@ -24,6 +24,8 @@ import 'core/services/firebase_rest_service.dart';
 import 'core/services/github_auth_service.dart';
 import 'core/services/github_release_download.dart';
 import 'core/services/secrets_service.dart';
+import 'core/notifications/notification_watcher.dart';
+import 'core/notifications/wesi_notifications.dart';
 import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_engine.dart';
 import 'features/chats/models/chat_message.dart';
@@ -89,6 +91,11 @@ void main() async {
   await TeamService.forgetUnrememberedSession();
   unawaited(SyncEngine.runOnLaunch());
   SyncAuto.start();
+
+  // Уведомления: разрешение спрашивается один раз, а следить за поводами
+  // начинаем сразу. Первый проход молчит намеренно — см. NotificationWatcher.
+  unawaited(WesiNotifications.init());
+  NotificationWatcher.start();
 
   CurrencyService.loadPrivacyMode();
   ThemeNotifier.load();

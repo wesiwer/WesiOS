@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/feedback/wesi_feedback.dart';
+import '../../core/notifications/wesi_notifications.dart';
 import '../../core/constants/app_version.dart';
 import '../../core/services/app_icon_service.dart';
 import '../../core/services/backup_service.dart';
@@ -158,10 +159,85 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     : 'Overdue, deadlines, charges — the bell on Home',
                 onTap: () => Navigator.pushNamed(context, '/home'),
               ),
-              _plannedTile(
-                icon: Icons.notifications,
-                title: WesiLocale.get('push_notifications'),
-                subtitle: ru ? 'Нужен сервер' : 'Requires a server',
+              // Системные уведомления. Раньше здесь стояла заглушка
+              // «нужен сервер» — она была неправдой: сообщать о просрочке,
+              // списании и пришедшем сообщении можно и с самого устройства,
+              // сервер нужен только для доставки в закрытое приложение.
+              ValueListenableBuilder<int>(
+                valueListenable: WesiNotifications.revision,
+                builder: (context, _, __) {
+                  if (!WesiNotifications.isSupported) {
+                    return _plannedTile(
+                      icon: Icons.notifications,
+                      title: ru ? 'Системные уведомления' : 'System notifications',
+                      subtitle: ru
+                          ? 'Эта платформа их не показывает'
+                          : 'Not available on this platform',
+                    );
+                  }
+                  final on = WesiNotifications.enabled;
+                  return Column(
+                    children: [
+                      _tile(
+                        icon: Icons.notifications,
+                        title: ru ? 'Системные уведомления' : 'System notifications',
+                        subtitle: ru
+                            ? 'Приходят, даже когда окно свёрнуто'
+                            : 'Arrive even when the window is minimised',
+                        trailing: Switch(
+                          value: on,
+                          activeColor: AppTheme.accent,
+                          onChanged: (v) async {
+                            await WesiNotifications.setEnabled(v);
+                            if (v) await WesiNotifications.init();
+                          },
+                        ),
+                      ),
+                      // Виды показываются только при включённом главном:
+                      // четыре переключателя под выключенным — это четыре
+                      // настройки, которые ничего не делают.
+                      if (on)
+                        for (final kind in NotifyKind.values)
+                          _tile(
+                            icon: switch (kind) {
+                              NotifyKind.alert => Icons.warning_amber_outlined,
+                              NotifyKind.message => Icons.chat_bubble_outline,
+                              NotifyKind.sync => Icons.sync_problem,
+                              NotifyKind.update => Icons.system_update_alt,
+                            },
+                            title: switch (kind) {
+                              NotifyKind.alert =>
+                                ru ? 'Сроки и деньги' : 'Deadlines and money',
+                              NotifyKind.message =>
+                                ru ? 'Сообщения' : 'Messages',
+                              NotifyKind.sync =>
+                                ru ? 'Сбои обмена' : 'Sync failures',
+                              NotifyKind.update =>
+                                ru ? 'Обновления' : 'Updates',
+                            },
+                            subtitle: switch (kind) {
+                              NotifyKind.alert => ru
+                                  ? 'Просрочки, ближайшие списания, минус на счету'
+                                  : 'Overdue, upcoming charges, negative balance',
+                              NotifyKind.message => ru
+                                  ? 'Пришедшее в переписке'
+                                  : 'Incoming messages',
+                              NotifyKind.sync => ru
+                                  ? 'Когда данные не уехали на сервер'
+                                  : 'When data did not reach the server',
+                              NotifyKind.update =>
+                                ru ? 'Вышла новая версия' : 'A new version is out',
+                            },
+                            trailing: Switch(
+                              value: WesiNotifications.kindEnabled(kind),
+                              activeColor: AppTheme.accent,
+                              onChanged: (v) =>
+                                  WesiNotifications.setKindEnabled(kind, v),
+                            ),
+                          ),
+                    ],
+                  );
+                },
               ),
               _plannedTile(
                 icon: Icons.email,
