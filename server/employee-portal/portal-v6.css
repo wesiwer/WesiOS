@@ -84,7 +84,24 @@ body{position:relative}
 @keyframes bakedFloat4{0%,100%{transform:translate3d(0,0,0) rotate(.15deg)}42%{transform:translate3d(-6px,11px,0) rotate(-.58deg)}76%{transform:translate3d(8px,-7px,0) rotate(.68deg)}}
 @keyframes cardGlow{0%,100%{opacity:.18}50%{opacity:.48}}
 
-.flow-wire{will-change:opacity;filter:none!important;transform:translateZ(0)}
+/* Провода идут под углами — это и делало схему живой.
+   Здесь стояло `transform:translateZ(0)` ради слоя композитора, и оно
+   молча отменяло `rotate()` из базовых стилей: transform — одно свойство,
+   последнее объявление забирает всё. Линии стали параллельными, и понять
+   причину по внешнему виду было нельзя. Слой поднимаем через
+   `backface-visibility`, а угол задаём явно у каждого провода. */
+.flow-wire{will-change:opacity,transform;filter:none!important;backface-visibility:hidden}
+.wire-a{transform:rotate(-15deg)}
+.wire-b{transform:rotate(22deg)}
+.wire-c{transform:rotate(-8deg)}
+/* Лёгкое качание: угол дышит на пару градусов, и схема перестаёт быть
+   чертежом. Одна трансформация на провод — композитору всё равно. */
+.wire-a{animation:wirePulse 2.8s ease-in-out infinite,wireSwayA 9s ease-in-out infinite}
+.wire-b{animation:wirePulse 2.8s ease-in-out -.8s infinite,wireSwayB 11s ease-in-out infinite}
+.wire-c{animation:wirePulse 2.8s ease-in-out -1.5s infinite,wireSwayC 10s ease-in-out infinite}
+@keyframes wireSwayA{50%{transform:rotate(-11deg)}}
+@keyframes wireSwayB{50%{transform:rotate(18deg)}}
+@keyframes wireSwayC{50%{transform:rotate(-12deg)}}
 @keyframes wirePulse{50%{opacity:.26}}
 .flow-node{will-change:transform;backface-visibility:hidden;transform:translateZ(0)}
 
@@ -157,14 +174,14 @@ body{position:relative}
 .is-booting .grain{opacity:0}
 
 /* ─────────────────────────────────── блик по карточкам при появлении */
-/* НИКАКОГО position здесь. Карточки модулей и узлы потока стоят
-   absolute, и правило `position:relative` в этом же наборе молча
-   отменяло их раскладку — они съезжали в левый верхний угол своего
-   контейнера. Блику достаточно того, что у элементов уже есть своя
-   система координат. */
-.module-card,.flow-node,.motion-step{overflow:hidden}
-.module-card::after,.flow-node::after,.motion-step::after,.login-panel::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.075) 50%,transparent 62%);transform:translate3d(-120%,0,0)}
-[data-scroll-reveal].visible::after{animation:sheenPass 1.35s cubic-bezier(.22,.61,.36,1) .18s both}
+/* Блик живёт только там, где обрезка уже была своей.
+   Здесь стояло `overflow:hidden` на карточках модулей, узлах потока и
+   шагах — ради того, чтобы блик не выезжал за края. Ценой этого резалось
+   всё остальное: свечения, тени и значки, выходящие за границу карточки.
+   Ради одной декорации ломать содержимое нельзя, поэтому блик остался на
+   панели входа и доске потока: у них `overflow:hidden` был изначально. */
+.login-panel::after,.flow-board::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.075) 50%,transparent 62%);transform:translate3d(-120%,0,0)}
+.login-panel[data-scroll-reveal].visible::after,.flow-board[data-scroll-reveal].visible::after{animation:sheenPass 1.35s cubic-bezier(.22,.61,.36,1) .18s both}
 @keyframes sheenPass{0%{opacity:0;transform:translate3d(-120%,0,0)}22%{opacity:1}100%{opacity:0;transform:translate3d(120%,0,0)}}
 
 /* Карточка чуть подаётся вперёд под курсором — без теней и фильтров,
@@ -177,7 +194,7 @@ body{position:relative}
 @media (prefers-reduced-motion:reduce){
   .scroll-progress i{transition:none}
   .spotlight,.grain{display:none}
-  .module-card::after,.flow-node::after,.motion-step::after,.login-panel::after{animation:none!important;opacity:0!important}
+  .login-panel::after,.flow-board::after{animation:none!important;opacity:0!important}
 }
 
 /* ─────────────────────────────────── огонёк на траектории
@@ -267,4 +284,48 @@ body{position:relative}
   .split-on .section-label{animation:none}
   .hero-ticker-row,.orbit-dot,.orbit-pulse,.scroll-hint i{animation:none}
   .orbit-pulse{opacity:0}
+}
+
+/* ═══════════════════════════════════ шаги змейкой
+   Раньше все три шага прижимались к левому краю, а линия шла вдоль него:
+   справа оставалась пустая половина экрана на всю высоту блока. Теперь
+   линия по центру, а шаги расходятся в стороны через один — путь читается
+   как путь, и пустота исчезает сама, потому что её больше нечем занять. */
+@media(min-width:901px){
+  .motion-rail{max-width:1040px;padding:96px 0 112px}
+  #motionRail .rail-line{left:50%;margin-left:-1px}
+  .motion-step{grid-template-columns:1fr 74px 1fr;gap:38px;align-items:center;padding:30px 0}
+  .motion-step b{grid-column:2;grid-row:1;justify-self:center}
+  .motion-step>div{grid-column:3;grid-row:1}
+  /* Считаем среди article: линия — div и в счёт не идёт. */
+  .motion-step:nth-of-type(even)>div{grid-column:1;text-align:right}
+  .motion-step h3{margin:0 0 8px;font-size:25px}
+  .motion-step p{max-width:40ch}
+  .motion-step:nth-of-type(even) p{margin-left:auto}
+
+  /* Отвод от линии к тексту — короткая перемычка вместо пустоты. */
+  .motion-step:before{content:'';position:absolute;top:50%;width:26px;height:1px;background:linear-gradient(90deg,rgba(255,101,23,.75),transparent);pointer-events:none}
+  .motion-step:nth-of-type(odd):before{left:calc(50% + 37px)}
+  .motion-step:nth-of-type(even):before{right:calc(50% + 37px);background:linear-gradient(270deg,rgba(255,101,23,.75),transparent)}
+}
+
+/* ═══════════════════════════════════ карточки модулей плотнее
+   Они стояли по углам с зазором в полполя посередине и цеплялись за края
+   на узком экране. Сдвинуты внутрь и разведены по высоте — сетка стала
+   компактнее, а обрезаться о край больше нечему. */
+.module-stage{min-height:560px}
+.card-finance{left:5%;top:5%}
+.card-chat{right:4%;top:19%}
+.card-ai{left:8%;bottom:11%}
+.card-task{right:7%;bottom:3%}
+
+@media(max-width:900px){
+  .module-stage{min-height:500px}
+  /* Отступ от края не меньше 14 px: карточки покачиваются на ±11 px, и
+     при отступе в один процент (около четырёх пикселей) край экрана
+     срезал у них угол на каждом обороте анимации. */
+  .card-finance{left:14px;top:3%}
+  .card-chat{right:14px;top:20%}
+  .card-ai{left:18px;bottom:14%}
+  .card-task{right:16px;bottom:2%}
 }
