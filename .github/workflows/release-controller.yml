@@ -8,45 +8,13 @@ on:
 
 permissions:
   actions: write
-  contents: write
+  contents: read
 
 jobs:
   release-controller:
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
-      - name: Repair apksigner certificate parser on main
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          API="repos/$GITHUB_REPOSITORY/contents/.github/workflows/repair-android-signature.yml"
-          SHA=$(gh api "$API?ref=main" --jq '.sha')
-          gh api "$API?ref=main" --jq '.content' | tr -d '\n' | base64 -d > workflow.yml
-
-          python3 - <<'PY'
-          from pathlib import Path
-          path = Path('workflow.yml')
-          text = path.read_text(encoding='utf-8')
-          old = "/Signer #1 certificate SHA-256 digest/{print $2; exit}"
-          new = "/certificate SHA-256 digest/{print $NF; exit}"
-          if old not in text:
-              if new in text:
-                  print('Certificate parser is already repaired')
-              else:
-                  raise SystemExit('Expected apksigner parser was not found')
-          else:
-              path.write_text(text.replace(old, new, 1), encoding='utf-8')
-          PY
-
-          CONTENT=$(base64 -w0 workflow.yml)
-          gh api --method PUT "$API" \
-            -f message='ci(release): support current apksigner certificate output' \
-            -f content="$CONTENT" \
-            -f sha="$SHA" \
-            -f branch='main' >/dev/null
-
       - name: Dispatch signed release workflow on main
         env:
           GH_TOKEN: ${{ github.token }}
@@ -75,15 +43,10 @@ jobs:
               --json databaseId,createdAt \
               --jq ".[] | select(.createdAt >= \"$STARTED_AT\") | .databaseId" \
               | head -1)
-            if [ -n "$RUN_ID" ]; then
-              break
-            fi
+            if [ -n "$RUN_ID" ]; then break; fi
             sleep 4
           done
-          test -n "$RUN_ID" || {
-            echo "::error::GitHub принял dispatch, но запуск не появился за 120 секунд"
-            exit 1
-          }
+          test -n "$RUN_ID" || { echo "::error::Запуск не появился"; exit 1; }
           echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "Signed release run: $RUN_ID"
 
@@ -96,10 +59,8 @@ jobs:
           gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
           RESULT=$?
           if [ "$RESULT" -ne 0 ]; then
-            echo ""
             echo "========== FAILED RELEASE LOGS =========="
             gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed || true
-            echo "========================================="
             exit "$RESULT"
           fi
 
@@ -109,5 +70,4 @@ jobs:
           RUN_ID: ${{ steps.locate.outputs.run_id }}
         run: |
           gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
-            --json conclusion,status,url,displayTitle \
-            --jq '.'
+            --json conclusion,status,url,displayTitle --jq '.'
