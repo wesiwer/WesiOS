@@ -31,7 +31,7 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Validate portal assets
+      - name: Validate portal assets and hooks
         run: |
           set -euo pipefail
           test -s server/employee-portal/index.html
@@ -39,41 +39,39 @@ jobs:
           test -s server/employee-portal/portal-v6.css
           test -s server/employee-portal/app.js
           test -s server/employee-portal/motion-v6.js
+          test -s server/pb_hooks/employee_portal.pb.js
+          test -s server/pb_hooks/employee_portal_static.pb.js
           test -s assets/images/app_icon.png
           grep -q './app_icon.png' server/employee-portal/index.html
           grep -q 'portal-v6.css' server/employee-portal/index.html
           grep -q 'motion-v6.js' server/employee-portal/index.html
           grep -q 'siteBoot' server/employee-portal/index.html
-          # Проверяем то, без чего страница молча теряет движение:
-          # оба слоя огонька и полосу прокрутки. Раньше здесь стоял
-          # `runnerAura` — имя из реализации на SVG; проверка пережила
-          # саму реализацию и уронила выкладку.
           grep -q 'runnerBack' server/employee-portal/index.html
           grep -q 'runnerFront' server/employee-portal/index.html
           grep -q 'scrollProgress' server/employee-portal/index.html
           grep -q 'offset-path' server/employee-portal/portal-v6.css
           grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
-          # Светлая тема: палитра, кнопка и установка темы до первой
-          # отрисовки. Без последнего человек со светлой темой встречает
-          # вспышку чёрного во весь экран на каждой загрузке.
           grep -q 'data-theme="light"' server/employee-portal/styles.css
           grep -q 'themeSwitch' server/employee-portal/index.html
           grep -q "localStorage.getItem('wesi-theme')" server/employee-portal/index.html
-          # Знак WesiOS: объявление и все шесть мест, где на него ссылаются.
           grep -q 'id="wesiMark"' server/employee-portal/index.html
           test "$(grep -o 'href="#wesiMark"' server/employee-portal/index.html | wc -l)" -eq 6
           grep -q -- '--logo-ink' server/employee-portal/styles.css
-          # Аварийный блок вклеивается последним и при равной специфичности
-          # переигрывает styles.css. Числом цвет фона там задавать нельзя —
-          # светлая тема перестанет включаться ровно на сервере и нигде
-          # больше.
           grep -q 'background:var(--bg,' server/deploy-employee-portal.sh
-          # Строки комментариев отбрасываем: объяснение, почему так делать
-          # нельзя, само содержит запрещённый образец.
           ! grep -v '^[[:space:]]*#' server/deploy-employee-portal.sh \
             | grep -q 'html,body{background:#'
+
+          # Проверяем синтаксис всех исполняемых JavaScript-файлов до SSH.
           node --check server/employee-portal/app.js
           node --check server/employee-portal/motion-v6.js
+          node --check server/pb_hooks/employee_portal.pb.js
+          node --check server/pb_hooks/employee_portal_static.pb.js
+
+          # Критические маршруты обязаны физически присутствовать в hook.
+          grep -q '/api/wesi/portal/profile/credentials' \
+            server/pb_hooks/employee_portal.pb.js
+          grep -q '/api/wesi/portal/employees/provision' \
+            server/pb_hooks/employee_portal.pb.js
 
       - name: Check server secrets
         env:
@@ -136,42 +134,65 @@ jobs:
             "WESI_ARTIFACTS_DIR='$ARTIFACTS_DIR' WESI_PORTAL_DIR='${PORTAL_DIR:-}' bash '$REMOTE/deploy-employee-portal.sh' --from '$REMOTE'"
           $SSH "$USER@$HOST" "rm -rf '$REMOTE'"
 
-      - name: Verify deployed portal
+      - name: Verify deployed portal and auth routes
         run: |
           set -euo pipefail
           BASE='https://api.wesi-inc.ru/portal/'
+          API='https://api.wesi-inc.ru'
           curl -fsS --max-time 30 "${BASE}?v=${GITHUB_SHA}" -o portal.html
           grep -q 'WesiOS' portal.html
           grep -q 'portal-v6.css' portal.html
           grep -q 'motion-v6.js' portal.html
           grep -q 'siteBoot' portal.html
-          # Движение должно доехать целиком, а не наполовину.
           grep -q 'runnerFront' portal.html
           grep -q 'scrollProgress' portal.html
           grep -q 'offset-path' portal.html
-          # Светлая тема доехала целиком: палитра, кнопка и выбор темы до
-          # первой отрисовки.
           grep -q 'data-theme="light"' portal.html
           grep -q 'themeSwitch' portal.html
           grep -q "localStorage.getItem('wesi-theme')" portal.html
           grep -q 'id="wesiMark"' portal.html
           grep -q -- '--logo-ink' portal.html
 
-          # Запрет на «тихий» кеш. Без него выкладка проходит, файлы на
-          # сервере новые, а человек продолжает видеть прежнюю страницу —
-          # и это неотличимо от «ничего не сделали».
           CACHE=$(curl -fsSI --max-time 20 "${BASE}" | tr -d '\r' | grep -i '^cache-control:' || true)
           echo "Заголовок: ${CACHE:-(нет)}"
           case "$CACHE" in
             *no-cache*|*no-store*) echo 'Кеш не даст показать старую страницу.' ;;
             *) echo '::error::Нет Cache-Control — браузер будет держать старую версию часами'; exit 1 ;;
           esac
+
           curl -fsS --max-time 30 "${BASE}motion-v6.js?v=${GITHUB_SHA}" -o motion-v6.js
           node --check motion-v6.js
           test "$(wc -c < motion-v6.js)" -gt 1000
           curl -fsS --max-time 30 "${BASE}app_icon.png?v=${GITHUB_SHA}" -o app_icon.png
           test "$(wc -c < app_icon.png)" -gt 1000
-          CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 'https://api.wesi-inc.ru/api/wesi/portal/manifest' || true)
+
+          # Неавторизованный запрос должен быть отвергнут middleware. 404
+          # означает, что hook не загрузился; 5xx — что он загрузился сломанным.
+          check_protected_route() {
+            local method="$1"
+            local path="$2"
+            local code
+            code=$(curl -sS -o route-response.txt -w '%{http_code}' \
+              --max-time 20 -X "$method" \
+              -H 'Content-Type: application/json' -d '{}' \
+              "$API$path" || true)
+            case "$code" in
+              401|403)
+                echo "Маршрут защищён и загружен: $path ($code)"
+                ;;
+              *)
+                echo "::error::Маршрут $path вернул HTTP $code"
+                cat route-response.txt || true
+                exit 1
+                ;;
+            esac
+          }
+
+          check_protected_route POST '/api/wesi/portal/profile/credentials'
+          check_protected_route POST '/api/wesi/portal/employees/provision'
+
+          CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
+            "$API/api/wesi/portal/manifest" || true)
           case "$CODE" in
             401|403) echo 'Защита manifest работает.' ;;
             *) echo "::error::Неожиданный HTTP $CODE у защищённого manifest"; exit 1 ;;
