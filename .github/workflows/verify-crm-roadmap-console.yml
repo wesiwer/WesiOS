@@ -26,7 +26,10 @@ jobs:
         run: flutter build apk --debug
 
   windows:
-    runs-on: windows-latest
+    # Проект генерирует CMake под Visual Studio 2019/2022. Новый
+    # windows-latest уже перешёл на образ VS2026 и не содержит ожидаемый
+    # генератор, поэтому используем стабильный совместимый образ.
+    runs-on: windows-2022
     timeout-minutes: 55
     steps:
       - uses: actions/checkout@v4
