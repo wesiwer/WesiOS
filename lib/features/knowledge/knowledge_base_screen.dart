@@ -1,16 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../core/localization/wesi_locale.dart';
-import '../team/services/team_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
+import '../team/services/team_service.dart';
 import 'models/article_model.dart';
+import 'screens/article_editor_screen.dart';
 import 'services/knowledge_service.dart';
 import 'widgets/article_body_view.dart';
-import 'screens/article_editor_screen.dart';
 
-/// База знаний с древовидной структурой.
+/// База знаний: папки, поиск, разделы и явное состояние ошибки.
 class KnowledgeBaseScreen extends StatefulWidget {
   const KnowledgeBaseScreen({super.key});
 
@@ -19,523 +21,450 @@ class KnowledgeBaseScreen extends StatefulWidget {
 }
 
 class _KnowledgeBaseScreenState extends State<KnowledgeBaseScreen> {
-  List<ArticleModel> _articles = [];
-  List<ArticleModel> _roots = [];
+  List<ArticleModel> _articles = const [];
   ArticleSection? _section;
   String _query = '';
+  String? _folderId;
   bool _loading = true;
-
-  /// ID папки, в которую вошли (null = корень).
-  String? _currentFolderId;
-
-  /// Раскрытые папки (их ID).
-  final Set<String> _expanded = <String>{};
+  String? _error;
+  int _loadEpoch = 0;
 
   bool get _ru => WesiLocale.isRussian;
 
   @override
   void initState() {
     super.initState();
+    KnowledgeService.revision.addListener(_reloadFromRevision);
     _load();
-    KnowledgeService.revision.addListener(_load);
   }
 
   @override
   void dispose() {
-    KnowledgeService.revision.removeListener(_load);
+    KnowledgeService.revision.removeListener(_reloadFromRevision);
     super.dispose();
   }
 
-  Future<void> _load() async {
-    await KnowledgeService.seed();
-    final all = await KnowledgeService.getAll();
-    if (!mounted) return;
-    setState(() {
-      _articles = all;
-      _roots = KnowledgeService.getRoots();
-      _loading = false;
-    });
-  }
+  void _reloadFromRevision() => _load(showSpinner: false);
 
-  String _sectionLabel(ArticleSection s) => s.label(_ru);
-
-  IconData _sectionIcon(ArticleSection s) => switch (s) {
-        ArticleSection.about => Icons.info_outline,
-        ArticleSection.playbook => Icons.rule_folder_outlined,
-        ArticleSection.guide => Icons.school_outlined,
-        ArticleSection.finance => Icons.account_balance_wallet_outlined,
-        ArticleSection.personal => Icons.person_outline,
-      };
-
-  /// Открыта ли статья тому, кто сейчас в приложении.
-  ///
-  /// Права на базу знаний настраиваются вплоть до отдельной статьи, и
-  /// применять их надо ЗДЕСЬ, а не только в редакторе прав. Настройка,
-  /// которая ни на что не влияет, хуже её отсутствия: владелец считает, что
-  /// закрыл раздел, а тот открыт.
-  ///
-  /// Папка видна, если открыта она сама или хоть что-то внутри неё: иначе
-  /// разрешённая статья оказалась бы недостижимой, потому что путь к ней
-  /// закрыт.
-  bool _isAllowed(ArticleModel a) {
-    final p = TeamService.currentPermissions;
-    if (p.knowledgeAll) return true;
-    if (p.allowsArticle(a.id)) return true;
-    if (!a.isFolder) return false;
-    return KnowledgeService.getSubtree(a.id).any((c) => p.allowsArticle(c.id));
-  }
-
-  /// Показывать плоским списком, а не деревом.
-  ///
-  /// И поиск, и выбор раздела — это срезы поперёк дерева: нужное лежит в
-  /// разных папках на разной глубине. Показывать при этом дерево значило бы
-  /// показывать почти пустой экран.
-  bool get _flat => _query.isNotEmpty || _section != null;
-
-  /// Статьи для текущего вида (поиск, раздел, папка или корень).
-  List<ArticleModel> _visibleArticles() {
-    final Iterable<ArticleModel> source;
-    if (_query.isNotEmpty) {
-      source = _articles.where(
-          (a) => a.matches(_query) && (_section == null || a.section == _section));
-    } else if (_section != null) {
-      // Папки в срез не идут: раздел папки — это раздел её содержимого, и
-      // она бы дублировала собственные статьи, стоящие рядом.
-      //
-      // Раньше срез считался только по текущему уровню, а все встроенные
-      // статьи лежали в одном разделе. Четыре чипа из пяти показывали пустой
-      // экран, и выглядело это как «фильтр не работает» — что было правдой.
-      source = _articles.where((a) => !a.isFolder && a.section == _section);
-    } else if (_currentFolderId != null) {
-      source = KnowledgeService.getChildren(_currentFolderId!);
-    } else {
-      source = _roots;
+  Future<void> _load({bool showSpinner = true}) async {
+    final epoch = ++_loadEpoch;
+    if (mounted && showSpinner) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
     }
-    return source.where(_isAllowed).toList();
+
+    try {
+      await KnowledgeService.seed().timeout(const Duration(seconds: 15));
+      final articles = await KnowledgeService.getAll()
+          .timeout(const Duration(seconds: 15));
+      if (!mounted || epoch != _loadEpoch) return;
+      setState(() {
+        _articles = articles;
+        _loading = false;
+        _error = null;
+      });
+    } on TimeoutException {
+      if (!mounted || epoch != _loadEpoch) return;
+      setState(() {
+        _loading = false;
+        _error = _ru
+            ? 'База знаний не ответила за 15 секунд. Повторите загрузку.'
+            : 'Knowledge Base did not respond within 15 seconds.';
+      });
+    } catch (_) {
+      if (!mounted || epoch != _loadEpoch) return;
+      setState(() {
+        _loading = false;
+        _error = _ru
+            ? 'Не удалось открыть локальную базу знаний.'
+            : 'Could not open the local Knowledge Base.';
+      });
+    }
   }
 
-  /// Хлебные крошки: путь от корня до текущей папки.
-  List<ArticleModel> _breadcrumb() {
-    if (_currentFolderId == null) return [];
-    return KnowledgeService.getBreadcrumb(_currentFolderId!);
+  bool _isAllowed(ArticleModel article) {
+    final permissions = TeamService.currentPermissions;
+    if (permissions.knowledgeAll || permissions.allowsArticle(article.id)) {
+      return true;
+    }
+    if (!article.isFolder) return false;
+    return _descendants(article.id)
+        .any((child) => permissions.allowsArticle(child.id));
   }
 
-  void _enterFolder(ArticleModel folder) {
-    setState(() => _currentFolderId = folder.id);
+  List<ArticleModel> _descendants(String rootId) {
+    final result = <ArticleModel>[];
+    final seen = <String>{rootId};
+    var parents = <String>{rootId};
+    while (parents.isNotEmpty) {
+      final next = <String>{};
+      for (final article in _articles) {
+        if (article.parentId != null &&
+            parents.contains(article.parentId) &&
+            seen.add(article.id)) {
+          result.add(article);
+          next.add(article.id);
+        }
+      }
+      parents = next;
+    }
+    return result;
   }
 
-  void _goToRoot() {
-    setState(() => _currentFolderId = null);
+  List<ArticleModel> get _visible {
+    Iterable<ArticleModel> source = _articles;
+    final q = _query.trim().toLowerCase();
+
+    if (q.isNotEmpty) {
+      source = source.where((a) => a.matches(q));
+    } else if (_section != null) {
+      source = source.where(
+        (a) => !a.isFolder && a.section == _section,
+      );
+    } else {
+      source = source.where((a) => a.parentId == _folderId);
+    }
+
+    final list = source.where(_isAllowed).toList()
+      ..sort(KnowledgeService.compare);
+    return list;
   }
 
-  void _goToBreadcrumb(int index) {
-    final crumbs = _breadcrumb();
-    if (index < 0 || index >= crumbs.length) {
-      setState(() => _currentFolderId = null);
+  ArticleModel? get _folder {
+    final id = _folderId;
+    if (id == null) return null;
+    for (final article in _articles) {
+      if (article.id == id) return article;
+    }
+    return null;
+  }
+
+  void _goBack() {
+    final folder = _folder;
+    if (folder == null) {
+      Navigator.pop(context);
+    } else {
+      setState(() => _folderId = folder.parentId);
+    }
+  }
+
+  Future<void> _create() async {
+    await ArticleEditorScreen.open(
+      context,
+      initialParentId: _query.isEmpty && _section == null ? _folderId : null,
+    );
+    await _load(showSpinner: false);
+  }
+
+  Future<void> _open(ArticleModel article) async {
+    if (article.isFolder) {
+      setState(() {
+        _folderId = article.id;
+        _query = '';
+        _section = null;
+      });
       return;
     }
-    setState(() => _currentFolderId = crumbs[index].id);
-  }
-
-  void _toggleExpand(String folderId) {
-    setState(() {
-      if (_expanded.contains(folderId)) {
-        _expanded.remove(folderId);
-      } else {
-        _expanded.add(folderId);
-      }
-    });
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => ArticleScreen(article: article)),
+    );
+    await _load(showSpinner: false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final visible = _visibleArticles();
-    final crumb = _breadcrumb();
-
     return Scaffold(
       backgroundColor: AppTheme.background,
       floatingActionButton: FloatingActionButton.extended(
-        backgroundColor: AppTheme.accent,
         onPressed: _create,
+        backgroundColor: AppTheme.accent,
         icon: const Icon(Icons.add, color: Colors.white),
-        label: Text(_ru ? 'Статья' : 'Article', style: const TextStyle(color: Colors.white)),
+        label: Text(
+          _ru ? 'Статья' : 'Article',
+          style: const TextStyle(color: Colors.white),
+        ),
       ),
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
-            Padding(
-              padding: EdgeInsets.fromLTRB(8, kTitleBarInset + 8, 16, 0),
-              child: Row(
-                children: [
-                  if (_currentFolderId != null)
-                    IconButton(
-                      icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-                      onPressed: () {
-                        final crumbs = _breadcrumb();
-                        if (crumbs.length > 1) {
-                          _goToBreadcrumb(crumbs.length - 2);
-                        } else {
-                          _goToRoot();
-                        }
-                      },
-                    )
-                  else
-                    IconButton(
-                      icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                  Expanded(child: WesiTitle(_ru ? 'База знаний' : 'Knowledge Base', size: 22)),
-                ],
-              ),
-            ),
-            // Search
-            Padding(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 0),
-              child: SizedBox(
-                height: 40,
-                child: TextField(
-                  style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
-                  onChanged: (v) { setState(() => _query = v); },
-                  decoration: InputDecoration(
-                    isDense: true,
-                    prefixIcon: Icon(Icons.search, size: 18, color: AppTheme.textMuted),
-                    hintText: _ru ? 'Поиск по заголовку, тексту и тегам' : 'Search titles, text and tags',
-                    hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-                    filled: true,
-                    fillColor: AppTheme.surface.withOpacity(0.5),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10), borderSide: BorderSide.none),
-                  ),
-                ),
-              ),
-            ),
+            _header(),
+            _searchField(),
             const SizedBox(height: 12),
-            // Section chips
-            SizedBox(
-              height: 36,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                children: [
-                  _chip(null, _ru ? 'Все' : 'All'),
-                  ...ArticleSection.values.map((s) => _chip(s, _sectionLabel(s))),
-                ],
-              ),
-            ),
+            _sectionChips(),
+            if (_folder != null && _query.isEmpty && _section == null)
+              _folderPath(),
             const SizedBox(height: 8),
-            // Breadcrumb
-            if (crumb.isNotEmpty) _buildBreadcrumb(crumb),
-            // Content
-            Expanded(
-              child: _loading
-                  ? Center(child: CircularProgressIndicator(color: AppTheme.accent.withOpacity(0.5)))
-                  : visible.isEmpty
-                      ? _empty()
-                      : _flat
-                          ? _searchList(visible)
-                          : _treeList(visible),
-            ),
+            Expanded(child: _content()),
           ],
         ),
       ),
     );
   }
 
-  Widget _chip(ArticleSection? s, String label) {
-    final sel = s == _section;
+  Widget _header() => Padding(
+        padding: EdgeInsets.fromLTRB(8, kTitleBarInset + 8, 16, 0),
+        child: Row(
+          children: [
+            IconButton(
+              icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+              onPressed: _goBack,
+            ),
+            Expanded(
+              child: WesiTitle(
+                _folder?.title ?? (_ru ? 'База знаний' : 'Knowledge Base'),
+                size: 22,
+              ),
+            ),
+          ],
+        ),
+      );
+
+  Widget _searchField() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: SizedBox(
+          height: 42,
+          child: TextField(
+            onChanged: (value) => setState(() => _query = value),
+            style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
+            decoration: InputDecoration(
+              isDense: true,
+              prefixIcon:
+                  Icon(Icons.search, size: 18, color: AppTheme.textMuted),
+              hintText: _ru
+                  ? 'Поиск по заголовку, тексту и тегам'
+                  : 'Search titles, text and tags',
+              hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
+              filled: true,
+              fillColor: AppTheme.surface.withOpacity(0.5),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: BorderSide.none,
+              ),
+            ),
+          ),
+        ),
+      );
+
+  Widget _sectionChips() => SizedBox(
+        height: 36,
+        child: ListView(
+          scrollDirection: Axis.horizontal,
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          children: [
+            _chip(null, _ru ? 'Все' : 'All'),
+            for (final section in ArticleSection.values)
+              _chip(section, section.label(_ru)),
+          ],
+        ),
+      );
+
+  Widget _chip(ArticleSection? section, String label) {
+    final selected = section == _section;
     return Padding(
       padding: const EdgeInsets.only(right: 8),
-      child: GestureDetector(
-        onTap: () { setState(() => _section = s); },
+      child: InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () => setState(() {
+          _section = section;
+          _query = '';
+        }),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
           decoration: BoxDecoration(
-            color: sel ? AppTheme.accent.withOpacity(0.16) : AppTheme.surface.withOpacity(0.4),
+            color: selected
+                ? AppTheme.accent.withOpacity(0.16)
+                : AppTheme.surface.withOpacity(0.4),
             borderRadius: BorderRadius.circular(10),
-            border: Border.all(color: sel ? AppTheme.accent.withOpacity(0.5) : AppTheme.glassBorder),
-          ),
-          child: Text(label, style: TextStyle(fontSize: 12, fontWeight: sel ? FontWeight.w700 : FontWeight.w400, color: sel ? AppTheme.accent : AppTheme.textSecondary)),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBreadcrumb(List<ArticleModel> crumbs) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            GestureDetector(
-              onTap: _goToRoot,
-              child: Text(
-                _ru ? 'Корень' : 'Root',
-                style: TextStyle(fontSize: 12, color: AppTheme.accent, fontWeight: FontWeight.w600),
-              ),
+            border: Border.all(
+              color: selected
+                  ? AppTheme.accent.withOpacity(0.5)
+                  : AppTheme.glassBorder,
             ),
-            ...crumbs.asMap().entries.expand((entry) {
-              final i = entry.key;
-              final a = entry.value;
-              return [
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                  child: Icon(Icons.chevron_right, size: 14, color: AppTheme.textMuted),
-                ),
-                GestureDetector(
-                  onTap: () => _goToBreadcrumb(i),
-                  child: Text(
-                    a.title,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: i == crumbs.length - 1 ? AppTheme.textPrimary : AppTheme.accent,
-                      fontWeight: i == crumbs.length - 1 ? FontWeight.w700 : FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ];
-            }).toList(),
-          ],
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
+              color: selected ? AppTheme.accent : AppTheme.textSecondary,
+            ),
+          ),
         ),
       ),
     );
   }
 
-  Widget _empty() => Center(
+  Widget _folderPath() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+        child: Text(
+          _ru ? 'Папка: ${_folder!.title}' : 'Folder: ${_folder!.title}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+        ),
+      );
+
+  Widget _content() {
+    if (_loading) {
+      return Center(
+        child: CircularProgressIndicator(color: AppTheme.accent),
+      );
+    }
+    if (_error != null) return _errorView();
+    final visible = _visible;
+    if (visible.isEmpty) return _emptyView();
+    return RefreshIndicator(
+      color: AppTheme.accent,
+      onRefresh: _load,
+      child: ListView.builder(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
+        itemCount: visible.length,
+        itemBuilder: (context, index) => _tile(visible[index]),
+      ),
+    );
+  }
+
+  Widget _errorView() => Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(_currentFolderId != null ? Icons.folder_open_outlined : Icons.menu_book, size: 34, color: AppTheme.textMuted),
+              Icon(Icons.cloud_off_outlined,
+                  size: 38, color: AppTheme.accentRed),
               const SizedBox(height: 12),
               Text(
-                _query.isNotEmpty
-                    ? (_ru ? 'Ничего не найдено' : 'Nothing found')
-                    : _section != null
-                        ? (_ru ? 'В этом разделе пусто' : 'This section is empty')
-                        : _currentFolderId != null
-                            ? (_ru ? 'Папка пуста' : 'Folder is empty')
-                            : (_ru ? 'Здесь пока пусто' : 'Nothing here yet'),
-                style: TextStyle(
-                    fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                _query.isNotEmpty
-                    ? (_ru
-                        ? 'Поиск идёт по заголовкам, тексту и тегам.'
-                        : 'Search covers titles, text and tags.')
-                    : _section != null
-                        ? (_ru
-                            ? 'Раздел ставится у статьи при правке.'
-                            : 'A section is chosen when you edit an article.')
-                        : _currentFolderId != null
-                            ? (_ru
-                                ? 'Добавьте статью или подпапку.'
-                                : 'Add an article or subfolder.')
-                            : (_ru
-                                ? 'Начните с папки «Начало».'
-                                : 'Start with the "Start here" folder.'),
+                _error!,
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.45,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 16),
+              FilledButton.icon(
+                onPressed: _load,
+                icon: const Icon(Icons.refresh),
+                label: Text(_ru ? 'Повторить' : 'Retry'),
               ),
             ],
           ),
         ),
       );
 
-  /// Плоский список для поиска (без дерева, просто тайлы).
-  Widget _searchList(List<ArticleModel> items) {
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-      itemCount: items.length,
-      itemBuilder: (context, i) => _tile(items[i], level: 0, isSearch: true),
-    );
-  }
-
-  /// Древовидный список с expand/collapse.
-  ///
-  /// Порядок здесь не пересчитывается: он уже задан
-  /// [KnowledgeService.compare] и одинаков во всех местах, где показываются
-  /// соседи по папке. Своя сортировка по алфавиту стояла тут раньше — и
-  /// главы путеводителя шли вразнобой, потому что «Если…» идёт перед
-  /// «Первый…».
-  Widget _treeList(List<ArticleModel> items) {
-    return ListView.builder(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 96),
-      itemCount: items.length,
-      itemBuilder: (context, i) => _treeTile(items[i], level: 0),
-    );
-  }
-
-  /// Рекурсивный тайл дерева: папка → expand/collapse → дочерние.
-  ///
-  /// Глубина ограничена: петля в данных (A внутри B, B внутри A) раскрывала
-  /// бы вложенность бесконечно и роняла бы экран переполнением стека.
-  /// Ограничение стоит здесь, а не только в проверке при выборе родителя,
-  /// потому что петлю на диске мог оставить прежний билд.
-  static const int _maxTreeDepth = 12;
-
-  Widget _treeTile(ArticleModel a, {required int level}) {
-    if (level > _maxTreeDepth) return const SizedBox.shrink();
-    final isExpanded = _expanded.contains(a.id);
-    final children = isExpanded ? KnowledgeService.getChildren(a.id) : <ArticleModel>[];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _tile(a, level: level, isSearch: false),
-        if (isExpanded && children.isNotEmpty)
-          ...children.map((child) => _treeTile(child, level: level + 1)),
-      ],
-    );
-  }
-
-  Widget _tile(ArticleModel a, {required int level, required bool isSearch}) {
-    final isFolder = a.isFolder;
-    final hasChildren = KnowledgeService.hasChildren(a.id);
-    final isExpanded = _expanded.contains(a.id);
-    final indent = level * 20.0;
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(14),
-          onTap: () {
-            if (isFolder) {
-              if (isSearch) {
-                _enterFolder(a);
-              } else {
-                if (hasChildren) {
-                  _toggleExpand(a.id);
-                } else {
-                  _enterFolder(a);
-                }
-              }
-            } else {
-              _open(a);
-            }
-          },
-          child: Container(
-            margin: EdgeInsets.only(left: indent),
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: AppTheme.surface.withOpacity(0.36),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: a.pinned ? AppTheme.accent.withOpacity(0.4) : AppTheme.glassBorder),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Icon(
-                      isFolder
-                          ? (isExpanded ? Icons.folder_open : Icons.folder)
-                          : _sectionIcon(a.section),
-                      size: 18,
-                      color: isFolder ? AppTheme.accent : AppTheme.accent,
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        a.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
-                      ),
-                    ),
-                    if (a.builtIn)
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: AppTheme.textMuted.withOpacity(0.14),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          _ru ? 'встроенная' : 'built-in',
-                          style: TextStyle(fontSize: 9, color: AppTheme.textMuted),
-                        ),
-                      ),
-                    if (isFolder && hasChildren && !isSearch)
-                      IconButton(
-                        icon: Icon(
-                          isExpanded ? Icons.expand_less : Icons.expand_more,
-                          size: 18,
-                          color: AppTheme.textMuted,
-                        ),
-                        onPressed: () => _toggleExpand(a.id),
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.only(left: 8),
-                      ),
-                    if (!isFolder || level == 0)
-                      IconButton(
-                        icon: Icon(
-                          a.pinned ? Icons.push_pin : Icons.push_pin_outlined,
-                          size: 15,
-                          color: a.pinned ? AppTheme.accent : AppTheme.textMuted,
-                        ),
-                        onPressed: () => KnowledgeService.togglePin(a),
-                        constraints: const BoxConstraints(),
-                        padding: const EdgeInsets.only(left: 8),
-                      ),
-                  ],
+  Widget _emptyView() => Center(
+        child: Padding(
+          padding: const EdgeInsets.all(28),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.menu_book_outlined,
+                  size: 38, color: AppTheme.textMuted),
+              const SizedBox(height: 12),
+              Text(
+                _query.isNotEmpty
+                    ? (_ru ? 'Ничего не найдено' : 'Nothing found')
+                    : (_ru ? 'Здесь пока пусто' : 'Nothing here yet'),
+                style: TextStyle(
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
                 ),
-                if (!isFolder) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    a.excerpt,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Widget _tile(ArticleModel article) => Padding(
+        padding: const EdgeInsets.only(bottom: 10),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => _open(article),
+            child: Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.surface.withOpacity(0.4),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: article.pinned
+                      ? AppTheme.accent.withOpacity(0.4)
+                      : AppTheme.glassBorder,
+                ),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(
+                    article.isFolder
+                        ? Icons.folder_outlined
+                        : Icons.article_outlined,
+                    color: AppTheme.accent,
                   ),
-                ],
-                if (a.tags.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 6,
-                    children: a.tags.map((t) => Text('#$t', style: TextStyle(fontSize: 10, color: AppTheme.textMuted))).toList(),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          article.title,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        if (!article.isFolder && article.excerpt.isNotEmpty) ...[
+                          const SizedBox(height: 5),
+                          Text(
+                            article.excerpt,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 12,
+                              height: 1.35,
+                              color: AppTheme.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
+                  if (!article.isFolder)
+                    IconButton(
+                      tooltip: _ru ? 'Закрепить' : 'Pin',
+                      onPressed: () => KnowledgeService.togglePin(article),
+                      icon: Icon(
+                        article.pinned
+                            ? Icons.push_pin
+                            : Icons.push_pin_outlined,
+                        size: 17,
+                        color: article.pinned
+                            ? AppTheme.accent
+                            : AppTheme.textMuted,
+                      ),
+                    )
+                  else
+                    Icon(Icons.chevron_right, color: AppTheme.textMuted),
                 ],
-                if (isFolder && hasChildren && !isExpanded && !isSearch) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    '${KnowledgeService.getChildren(a.id).length} ${_ru ? 'элементов' : 'items'}',
-                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
-                  ),
-                ],
-              ],
+              ),
             ),
           ),
         ),
-      ),
-    );
-  }
-
-  Future<void> _open(ArticleModel a) async {
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => ArticleScreen(article: a)));
-    await _load();
-  }
-
-  Future<void> _create() async {
-    final result = await ArticleEditorScreen.open(
-      context,
-      initialParentId: _currentFolderId,
-    );
-    if (result != null) await _load();
-  }
+      );
 }
-
-// ═══════════════════════════════════════════════════════════════════════════
-// ArticleScreen — просмотр статьи с хлебными крошками и дочерними статьями
-// ═══════════════════════════════════════════════════════════════════════════
 
 class ArticleScreen extends StatefulWidget {
   final ArticleModel article;
+
   const ArticleScreen({super.key, required this.article});
 
   @override
@@ -544,229 +473,104 @@ class ArticleScreen extends StatefulWidget {
 
 class _ArticleScreenState extends State<ArticleScreen> {
   late ArticleModel _article = widget.article;
-  List<ArticleModel> _children = [];
   bool get _ru => WesiLocale.isRussian;
 
-  @override
-  void initState() {
-    super.initState();
-    _loadChildren();
-  }
-
-  void _loadChildren() {
-    setState(() {
-      _children = KnowledgeService.getChildren(_article.id);
-    });
-  }
-
   Future<void> _edit() async {
-    final result = await ArticleEditorScreen.open(context, initial: _article);
-    if (result != null) {
-      setState(() => _article = result);
-      _loadChildren();
-    }
+    final updated = await ArticleEditorScreen.open(context, initial: _article);
+    if (updated != null && mounted) setState(() => _article = updated);
   }
 
   Future<void> _delete() async {
-    final ok = await showDialog<bool>(
+    final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text(_ru ? 'Удалить статью?' : 'Delete article?', style: TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
-        content: Text(_article.title, style: TextStyle(color: AppTheme.textSecondary)),
+        title: Text(_ru ? 'Удалить статью?' : 'Delete article?'),
+        content: Text(_article.title),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(WesiLocale.get('cancel'), style: TextStyle(color: AppTheme.textMuted))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(_ru ? 'Удалить' : 'Delete', style: TextStyle(color: AppTheme.accentRed))),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(
+              _ru ? 'Удалить' : 'Delete',
+              style: TextStyle(color: AppTheme.accentRed),
+            ),
+          ),
         ],
       ),
     );
-    if (ok != true) return;
+    if (confirmed != true) return;
     await KnowledgeService.delete(_article.id);
     if (mounted) Navigator.pop(context);
   }
 
-  /// Ссылка внутрь программы: другая статья или экран.
-  ///
-  /// Экран раньше не открывался — показывалась подсказка «Переход: /treasury»
-  /// и всё. Инструкция, из которой нельзя перейти туда, о чём она,
-  /// бесполезна ровно в тот момент, когда её читают.
-  void _onInternalRoute(String route) {
-    if (route.startsWith('article:')) {
-      final id = route.substring('article:'.length);
-      KnowledgeService.getById(id).then((a) {
-        if (a != null && mounted) {
-          Navigator.push(context,
-              MaterialPageRoute(builder: (_) => ArticleScreen(article: a)));
-        }
-      });
-      return;
-    }
-    Navigator.pushNamed(context, route);
-  }
-
-  List<ArticleModel> _breadcrumb() {
-    return KnowledgeService.getBreadcrumb(_article.id);
+  void _route(String route) {
+    if (!route.startsWith('article:')) return;
+    final id = route.substring('article:'.length);
+    KnowledgeService.getById(id).then((article) {
+      if (article != null && mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ArticleScreen(article: article)),
+        );
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    final crumb = _breadcrumb();
-    final isFolder = _article.isFolder;
-
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
             Padding(
               padding: EdgeInsets.fromLTRB(8, kTitleBarInset + 8, 8, 0),
               child: Row(
                 children: [
-                  IconButton(icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary), onPressed: () => Navigator.pop(context)),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+                  ),
                   const Spacer(),
-                  IconButton(icon: Icon(Icons.edit_outlined, size: 19, color: AppTheme.textMuted), onPressed: _edit),
+                  IconButton(
+                    onPressed: _edit,
+                    icon: Icon(Icons.edit_outlined,
+                        color: AppTheme.textMuted),
+                  ),
                   if (!_article.builtIn)
-                    IconButton(icon: Icon(Icons.delete_outline, size: 19, color: AppTheme.textMuted), onPressed: _delete),
-                  SizedBox(width: kHasCustomTitleBar ? 140 : 0),
+                    IconButton(
+                      onPressed: _delete,
+                      icon: Icon(Icons.delete_outline,
+                          color: AppTheme.accentRed),
+                    ),
                 ],
               ),
             ),
-            // Breadcrumb
-            if (crumb.length > 1)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    children: crumb.asMap().entries.expand((entry) {
-                      final i = entry.key;
-                      final a = entry.value;
-                      return [
-                        if (i > 0)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: Icon(Icons.chevron_right, size: 14, color: AppTheme.textMuted),
-                          ),
-                        GestureDetector(
-                          onTap: i < crumb.length - 1
-                              ? () {
-                                  Navigator.pushReplacement(
-                                    context,
-                                    MaterialPageRoute(builder: (_) => ArticleScreen(article: a)),
-                                  );
-                                }
-                              : null,
-                          child: Text(
-                            a.title,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: i == crumb.length - 1 ? AppTheme.textMuted : AppTheme.accent,
-                              fontWeight: i == crumb.length - 1 ? FontWeight.w400 : FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ];
-                    }).toList(),
-                  ),
-                ),
-              ),
             Expanded(
               child: ListView(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
                 children: [
-                  // Title with folder icon
-                  Row(
-                    children: [
-                      if (isFolder)
-                        Padding(
-                          padding: const EdgeInsets.only(right: 10),
-                          child: Icon(Icons.folder, size: 28, color: AppTheme.accent),
-                        ),
-                      Expanded(
-                        child: Text(
-                          _article.title,
-                          style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary),
-                        ),
-                      ),
-                    ],
+                  Text(
+                    _article.title,
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textPrimary,
+                    ),
                   ),
                   const SizedBox(height: 14),
-                  if (!isFolder || _article.body.isNotEmpty)
-                    ArticleBodyView(article: _article, onInternalRoute: _onInternalRoute),
-                  if (isFolder && _children.isNotEmpty) ...[
-                    const SizedBox(height: 24),
-                    Divider(color: AppTheme.glassBorder, height: 1),
-                    const SizedBox(height: 16),
-                    Text(
-                      _ru ? 'Содержимое папки' : 'Folder contents',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
-                    ),
-                    const SizedBox(height: 12),
-                    ..._children.map((child) => _childTile(child)),
-                  ],
+                  ArticleBodyView(
+                    article: _article,
+                    onInternalRoute: _route,
+                  ),
                 ],
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _childTile(ArticleModel child) {
-    final isFolder = child.isFolder;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (_) => ArticleScreen(article: child)),
-            ).then((_) => _loadChildren());
-          },
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: AppTheme.surface.withOpacity(0.3),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppTheme.glassBorder),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  isFolder ? Icons.folder : Icons.article_outlined,
-                  size: 18,
-                  color: isFolder ? AppTheme.accent : AppTheme.accent,
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        child.title,
-                        style: TextStyle(fontWeight: FontWeight.w600, color: AppTheme.textPrimary),
-                      ),
-                      if (!isFolder)
-                        Text(
-                          child.excerpt,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 12, color: AppTheme.textSecondary),
-                        ),
-                    ],
-                  ),
-                ),
-                Icon(Icons.chevron_right, size: 18, color: AppTheme.textMuted),
-              ],
-            ),
-          ),
         ),
       ),
     );
