@@ -1,25 +1,19 @@
 import 'package:flutter/material.dart';
-import '../../core/widgets/wesi_wordmark.dart';
-import '../../core/theme/app_theme.dart';
+
 import '../../core/localization/wesi_locale.dart';
-import '../../core/widgets/window_controls.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/widgets/module_scaffold.dart';
+import '../../core/widgets/wesi_wordmark.dart';
+import '../../core/widgets/window_controls.dart';
 import '../team/models/team_permissions.dart';
 import '../team/services/team_service.dart';
 
-/// Вкладка «Ещё» — витрина всех модулей WesiOS.
-///
-/// Раньше здесь сразу открывались Настройки, из-за чего остальные разделы
-/// (база знаний, CRM, ИИ, аудио, roadmap) были не видны вообще — о них можно
-/// было узнать только из кода. Теперь это карта продукта: видно и что уже
-/// работает, и что задумано, с честной пометкой стадии у каждого модуля.
 class MoreTab extends StatelessWidget {
   const MoreTab({super.key});
 
   @override
   Widget build(BuildContext context) {
     final ru = WesiLocale.isRussian;
-
     final sections = <_Section>[
       _Section(
         title: ru ? 'Работа' : 'Work',
@@ -37,8 +31,10 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.roadmap,
             icon: Icons.timeline,
             title: 'Roadmap',
-            subtitle: ru ? 'Проекты во времени, диаграмма Ганта' : 'Projects over time, Gantt chart',
-            stage: ModuleStage.planned,
+            subtitle: ru
+                ? 'Проекты, этапы, вехи, зависимости и диаграмма Ганта'
+                : 'Projects, phases, milestones, dependencies, and Gantt',
+            stage: ModuleStage.ready,
           ),
           _ModuleItem(
             route: '/calendar',
@@ -68,9 +64,7 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.contacts,
             icon: Icons.contacts,
             title: ru ? 'Контакты' : 'Contacts',
-            subtitle: ru
-                ? 'Сотрудники, связь, доступы'
-                : 'Employees, contacts, access',
+            subtitle: ru ? 'Сотрудники, связь, доступы' : 'Employees, contacts, access',
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
@@ -78,16 +72,6 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.chats,
             icon: Icons.forum_outlined,
             title: ru ? 'Чаты' : 'Chats',
-            // Подпись обязана описывать то, что есть сейчас.
-            //
-            // Здесь стояло «каркас, появятся с сервером» и метка
-            // «планируется» — при том, что переписка, группы, поиск, архив
-            // и блоки тем работают на устройстве целиком. Такая подпись
-            // отговаривает открывать готовый модуль, а это худший вид
-            // ошибки в интерфейсе: работа сделана и спрятана.
-            //
-            // Сервера ждёт ровно одно — доставка сообщений другому человеку.
-            // Так и написано.
             subtitle: ru
                 ? 'Группы, темы, архив. Доставка другим — с сервером'
                 : 'Groups, topics, archive. Delivery awaits the server',
@@ -98,8 +82,10 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.crm,
             icon: Icons.people_alt,
             title: 'CRM',
-            subtitle: ru ? 'Клиенты, сделки, история' : 'Clients, deals, history',
-            stage: ModuleStage.planned,
+            subtitle: ru
+                ? 'Клиенты, воронка сделок, касания и напоминания'
+                : 'Clients, deal pipeline, interactions, and follow-ups',
+            stage: ModuleStage.ready,
           ),
           _ModuleItem(
             route: '/ai',
@@ -127,9 +113,7 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.forecast,
             icon: Icons.query_stats,
             title: ru ? 'Прогноз' : 'Forecast',
-            subtitle: ru
-                ? 'Monte-Carlo, Cash Gap, «Что если?»'
-                : 'Monte-Carlo, Cash Gap, What-If',
+            subtitle: ru ? 'Monte-Carlo, Cash Gap, «Что если?»' : 'Monte-Carlo, Cash Gap, What-If',
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
@@ -145,9 +129,7 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.analytics,
             icon: Icons.analytics,
             title: ru ? 'Аналитика' : 'Analytics',
-            subtitle: ru
-                ? 'KPI, динамика, здоровье бизнеса'
-                : 'KPIs, trends, business health',
+            subtitle: ru ? 'KPI, динамика, здоровье бизнеса' : 'KPIs, trends, business health',
             stage: ModuleStage.ready,
           ),
         ],
@@ -184,10 +166,21 @@ class MoreTab extends StatelessWidget {
             icon: Icons.dns_outlined,
             title: ru ? 'Системный администратор' : 'System administrator',
             subtitle: ru
-                ? 'Серверы, домены, сайт: отклик, сертификаты, нагрузка'
-                : 'Servers, domains, site: latency, certificates, load',
+                ? 'Серверы, домены, TLS, нагрузка и Wesi Console'
+                : 'Servers, domains, TLS, load, and Wesi Console',
             stage: ModuleStage.ready,
           ),
+          if (TeamService.isOwnerSession)
+            _ModuleItem(
+              route: '/sysadmin/console',
+              module: TeamModules.sysadmin,
+              icon: Icons.terminal,
+              title: 'Wesi Console',
+              subtitle: ru
+                  ? 'Диагностика сети и серверов с Android-панелью клавиш'
+                  : 'Network and server diagnostics with Android key bar',
+              stage: ModuleStage.ready,
+            ),
           _ModuleItem(
             route: '/keys',
             module: TeamModules.keys,
@@ -223,30 +216,34 @@ class MoreTab extends StatelessWidget {
       ),
     ];
 
+    final visibleSections = sections
+        .map((section) => _Section(
+              title: section.title,
+              items: section.items
+                  .where((item) =>
+                      item.module == null ||
+                      TeamService.currentPermissions.allows(item.module!))
+                  .toList(),
+            ))
+        .where((section) => section.items.isNotEmpty);
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: ListView(
         padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 32),
         children: [
           WesiTitle(ru ? 'Ещё' : 'More'),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Text(
             ru
-                ? 'Все модули WesiOS. Пометка у каждого показывает, что уже работает, а что пока макет.'
-                : 'Every WesiOS module. The badge on each shows what already works and what is still a mock-up.',
+                ? 'Все модули WesiOS. Пометка показывает их реальную готовность.'
+                : 'Every WesiOS module. Each badge reflects its real readiness.',
             style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
           ),
-          SizedBox(height: 24),
-          for (final section in sections.map((s) => _Section(
-                title: s.title,
-                items: s.items
-                    .where((i) =>
-                        i.module == null ||
-                        TeamService.currentPermissions.allows(i.module!))
-                    .toList(),
-              )).where((s) => s.items.isNotEmpty)) ...[
+          const SizedBox(height: 24),
+          for (final section in visibleSections) ...[
             Padding(
-              padding: EdgeInsets.only(left: 4, bottom: 10),
+              padding: const EdgeInsets.only(left: 4, bottom: 10),
               child: Text(
                 section.title.toUpperCase(),
                 style: TextStyle(
@@ -257,7 +254,7 @@ class MoreTab extends StatelessWidget {
                 ),
               ),
             ),
-            ...section.items.map((item) => _tile(context, item, ru)),
+            for (final item in section.items) _tile(context, item, ru),
             const SizedBox(height: 22),
           ],
         ],
@@ -267,16 +264,16 @@ class MoreTab extends StatelessWidget {
 
   Widget _tile(BuildContext context, _ModuleItem item, bool ru) {
     return Padding(
-      padding: EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: () => Navigator.pushNamed(context, item.route),
           child: Container(
-            padding: EdgeInsets.all(14),
+            padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: AppTheme.surface.withOpacity(0.4),
+              color: AppTheme.surface.withOpacity(.4),
               borderRadius: BorderRadius.circular(14),
               border: Border.all(color: AppTheme.glassBorder),
             ),
@@ -287,7 +284,7 @@ class MoreTab extends StatelessWidget {
                   height: 38,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(11),
-                    color: item.stage.color.withOpacity(0.12),
+                    color: item.stage.color.withOpacity(.12),
                   ),
                   child: Icon(item.icon, size: 19, color: item.stage.color),
                 ),
@@ -308,21 +305,19 @@ class MoreTab extends StatelessWidget {
                               ),
                             ),
                           ),
-                          SizedBox(width: 8),
+                          const SizedBox(width: 8),
                           _badge(item.stage, ru),
                         ],
                       ),
-                      SizedBox(height: 2),
+                      const SizedBox(height: 2),
                       Text(
                         item.subtitle,
-                        style: TextStyle(
-                            fontSize: 12, color: AppTheme.textMuted),
+                        style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                       ),
                     ],
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios,
-                    size: 13, color: AppTheme.textMuted),
+                Icon(Icons.arrow_forward_ios, size: 13, color: AppTheme.textMuted),
               ],
             ),
           ),
@@ -331,21 +326,19 @@ class MoreTab extends StatelessWidget {
     );
   }
 
-  Widget _badge(ModuleStage stage, bool ru) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-      decoration: BoxDecoration(
-        color: stage.color.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: stage.color.withOpacity(0.35)),
-      ),
-      child: Text(
-        ru ? stage.labelRu : stage.labelEn,
-        style: TextStyle(
-            fontSize: 9, fontWeight: FontWeight.w700, color: stage.color),
-      ),
-    );
-  }
+  Widget _badge(ModuleStage stage, bool ru) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+        decoration: BoxDecoration(
+          color: stage.color.withOpacity(.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: stage.color.withOpacity(.35)),
+        ),
+        child: Text(
+          ru ? stage.labelRu : stage.labelEn,
+          style: TextStyle(
+              fontSize: 9, fontWeight: FontWeight.w700, color: stage.color),
+        ),
+      );
 }
 
 class _Section {
@@ -360,8 +353,6 @@ class _ModuleItem {
   final String title;
   final String subtitle;
   final ModuleStage stage;
-
-  /// Ключ права из [TeamModules]. null — раздел открыт всегда.
   final String? module;
 
   const _ModuleItem({
