@@ -1,0 +1,28 @@
+name: Inspect Flutter Windows template
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  template:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+      - name: Generate clean template
+        run: |
+          flutter create --platforms=windows --project-name wesios /tmp/wesios_template
+          echo '=== ROOT CMAKE ==='
+          cat /tmp/wesios_template/windows/CMakeLists.txt
+          echo '=== RUNNER CMAKE ==='
+          cat /tmp/wesios_template/windows/runner/CMakeLists.txt
+          echo '=== FLUTTER CMAKE ==='
+          cat /tmp/wesios_template/windows/flutter/CMakeLists.txt
+          echo '=== END ==='
