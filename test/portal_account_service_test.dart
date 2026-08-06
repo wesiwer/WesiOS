@@ -16,7 +16,7 @@ void main() {
     test('explains missing production hook', () {
       final message = PortalAccountService.messageForResponse(
         404,
-        '{"message":"The requested resource was not found."}',
+        '{"message":"Something went wrong while processing your request."}',
         fallback: 'Сервер не принял данные.',
       );
 
