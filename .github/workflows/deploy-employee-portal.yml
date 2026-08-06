@@ -59,6 +59,10 @@ jobs:
           grep -q 'data-theme="light"' server/employee-portal/styles.css
           grep -q 'themeSwitch' server/employee-portal/index.html
           grep -q "localStorage.getItem('wesi-theme')" server/employee-portal/index.html
+          # Знак WesiOS: объявление и все шесть мест, где на него ссылаются.
+          grep -q 'id="wesiMark"' server/employee-portal/index.html
+          test "$(grep -o 'href="#wesiMark"' server/employee-portal/index.html | wc -l)" -eq 6
+          grep -q -- '--logo-ink' server/employee-portal/styles.css
           # Аварийный блок вклеивается последним и при равной специфичности
           # переигрывает styles.css. Числом цвет фона там задавать нельзя —
           # светлая тема перестанет включаться ровно на сервере и нигде
@@ -150,6 +154,8 @@ jobs:
           grep -q 'data-theme="light"' portal.html
           grep -q 'themeSwitch' portal.html
           grep -q "localStorage.getItem('wesi-theme')" portal.html
+          grep -q 'id="wesiMark"' portal.html
+          grep -q -- '--logo-ink' portal.html
 
           # Запрет на «тихий» кеш. Без него выкладка проходит, файлы на
           # сервере новые, а человек продолжает видеть прежнюю страницу —

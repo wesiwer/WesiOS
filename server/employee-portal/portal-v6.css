@@ -38,7 +38,7 @@ body{position:relative}
 .intro-orbit:after{inset:44px;border-style:dashed;animation-duration:27s;animation-direction:reverse}
 .intro-orbit i:first-child{inset:86px;border-color:rgba(var(--veil-rgb),.09);animation-duration:34s}
 .intro-orbit i:last-child{width:9px;height:9px;inset:auto;top:28px;left:78px;border:0;background:var(--orange);box-shadow:0 0 20px rgba(var(--a3),.85)}
-.intro-orbit img{width:116px;height:116px;border-radius:32px;box-shadow:0 0 70px rgba(var(--a3),.18);transform:translateZ(0)}
+.intro-orbit .wesi-mark{width:116px;height:116px;border-radius:32px;box-shadow:0 0 70px rgba(var(--a3),.18);transform:translateZ(0)}
 @keyframes introSpin{to{transform:translateZ(0) rotate(360deg)}}
 
 .auth-bottom{min-height:100vh;display:grid;grid-template-columns:minmax(0,.9fr) minmax(360px,.7fr);gap:clamp(40px,7vw,90px);align-items:center;padding:120px 3vw 80px}
@@ -127,7 +127,7 @@ body{position:relative}
   .intro-orbit{width:240px;height:240px}
   .intro-orbit:after{inset:34px}
   .intro-orbit i:first-child{inset:66px}
-  .intro-orbit img{width:88px;height:88px;border-radius:25px}
+  .intro-orbit .wesi-mark{width:88px;height:88px;border-radius:25px}
   .auth-bottom{min-height:auto;padding:110px 0 70px;gap:38px}
   .auth-copy h2{font-size:40px}
         #motionRail .rail-line:before{height:70px;width:15px}
@@ -388,12 +388,22 @@ body{position:relative}
    чёрному, — при прежней прозрачности картинка выглядит грязной. */
 :root[data-theme="light"] .grain{opacity:.028}
 
-/* Логотип. Иконка приложения нарисована на своём тёмном фоне, и на белой
-   странице ей нужна не тень, а тонкая обводка, иначе она висит в воздухе
-   тёмным пятном. */
-:root[data-theme="light"] .brand-logo,
-:root[data-theme="light"] .intro-orbit img,
-:root[data-theme="light"] .boot-logo{box-shadow:0 10px 26px rgba(var(--shadow-rgb),.28),0 0 0 1px rgba(var(--a3),.16)}
+/* ── Знак WesiOS ────────────────────────────────────────────────────────
+   Подложка живёт здесь, а не в SVG: тогда у знака остаются те же
+   скругления, тени и свечение, что были у картинки, и все прежние правила
+   размеров продолжают работать без единой правки.
+
+   Своего скругления здесь нет намеренно. У каждого из шести мест оно уже
+   задано в пикселях и подобрано под размер; поставь радиус ещё и тут — он
+   как более позднее правило переиграет их все, и знак в шапке скруглится
+   слабее, чем был. */
+.wesi-mark{display:block;background:linear-gradient(140deg,var(--logo-bg1),var(--logo-bg2))}
+
+/* На белой странице знаку нужна не тень, а тонкая обводка: без неё светлая
+   подложка растворяется в карточке, а тёмная висела бы в воздухе пятном. */
+:root[data-theme="light"] .wesi-mark{box-shadow:0 8px 22px rgba(var(--shadow-rgb),.22),0 0 0 1px rgba(var(--a3),.28)}
+:root[data-theme="light"] .boot-logo{box-shadow:0 12px 30px rgba(var(--shadow-rgb),.26),0 0 0 1px rgba(var(--a3),.28)}
+:root[data-theme="light"] .intro-orbit .wesi-mark{box-shadow:0 14px 40px rgba(var(--shadow-rgb),.2),0 0 0 1px rgba(var(--a3),.28)}
 
 /* Провода схемы. На чёрном оранжевая линия светится и её видно даже в
    нижней точке пульсации; на белом синяя линия в те же 26% прозрачности
