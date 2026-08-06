@@ -26,9 +26,14 @@ class KnowledgeService {
       return box;
     });
     _opening = future;
-    future.whenComplete(() {
-      if (identical(_opening, future)) _opening = null;
-    });
+    future.then<void>(
+      (_) {
+        if (identical(_opening, future)) _opening = null;
+      },
+      onError: (Object _, StackTrace __) {
+        if (identical(_opening, future)) _opening = null;
+      },
+    );
     return future;
   }
 
@@ -40,9 +45,14 @@ class KnowledgeService {
 
     final future = _seed(force);
     _seeding = future;
-    future.whenComplete(() {
-      if (identical(_seeding, future)) _seeding = null;
-    });
+    future.then<void>(
+      (_) {
+        if (identical(_seeding, future)) _seeding = null;
+      },
+      onError: (Object _, StackTrace __) {
+        if (identical(_seeding, future)) _seeding = null;
+      },
+    );
     return future;
   }
 
@@ -94,9 +104,13 @@ class KnowledgeService {
     };
     if (stale.isEmpty) return false;
 
-    for (final article in box.values.where(
-      (a) => !a.builtIn && a.parentId != null && stale.contains(a.parentId),
-    )) {
+    final orphans = box.values
+        .where(
+          (a) =>
+              !a.builtIn && a.parentId != null && stale.contains(a.parentId),
+        )
+        .toList();
+    for (final article in orphans) {
       await box.put(article.id, article.copyWith(parentId: null));
     }
     await box.deleteAll(stale);
