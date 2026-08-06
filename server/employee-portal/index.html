@@ -3,16 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-  <meta name="theme-color" content="#08080b">
+  <meta name="theme-color" content="#08080b" id="themeColor">
   <meta name="robots" content="noindex,nofollow,noarchive">
   <meta name="description" content="Закрытая платформа Wesi Inc и загрузка WesiOS.">
   <title>WesiOS · Wesi Inc</title>
   <link rel="icon" href="./app_icon.png">
   <link rel="apple-touch-icon" href="./app_icon.png">
   <link rel="preload" href="./app_icon.png" as="image" fetchpriority="high">
-  <link rel="stylesheet" href="./styles.css?v=12">
-  <link rel="stylesheet" href="./portal-v6.css?v=12">
+  <link rel="stylesheet" href="./styles.css?v=13">
+  <link rel="stylesheet" href="./portal-v6.css?v=13">
   <script>
+    /* Тему ставим до первой отрисовки и до подключения стилей.
+       Если сделать это позже, из app.js, человек со светлой темой успеет
+       увидеть чёрную вспышку во весь экран: браузер уже нарисовал страницу
+       по умолчанию, и переключение приходит вторым кадром. Отдельного файла
+       здесь быть не может по той же причине — запрос к нему тоже кадр. */
+    (function () {
+      try {
+        var saved = localStorage.getItem('wesi-theme');
+        if (saved === 'light') {
+          document.documentElement.setAttribute('data-theme', 'light');
+          var meta = document.getElementById('themeColor');
+          if (meta) meta.setAttribute('content', '#f4f6fb');
+        }
+      } catch (e) { /* приватный режим: остаёмся на тёмной */ }
+    })();
+
     window.__WESI_BOOT_STARTED__ = performance.now();
     window.__WESI_BOOT_FAILSAFE__ = setTimeout(function () {
       var root = document.documentElement;
@@ -77,7 +93,17 @@
     <header class="topbar reveal">
       <a class="brand" href="#top"><img class="brand-logo" src="./app_icon.png" alt="WesiOS" decoding="async" fetchpriority="high"><span class="brand-copy"><strong><span>Wesi</span><em>OS</em></strong></span></a>
       <div class="secure-label"><span></span>Закрытый контур</div>
-      <button class="icon-button hidden" id="logoutButton" type="button" aria-label="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M8 12h10"/></svg></button>
+      <div class="topbar-tools">
+        <!-- Переключатель темы. Обе иконки на месте всегда, бегунок стоит
+             под текущей — так видно не только куда нажать, но и в каком
+             положении сейчас находишься. -->
+        <button class="theme-switch" id="themeSwitch" type="button" role="switch" aria-checked="false" aria-label="Светлая тема">
+          <i class="theme-knob" aria-hidden="true"></i>
+          <span class="theme-face theme-face-dark" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.5 14.6A8.5 8.5 0 0 1 9.4 3.5a8.5 8.5 0 1 0 11.1 11.1Z"/></svg></span>
+          <span class="theme-face theme-face-light" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.1"/><path d="M12 2.6v2.2M12 19.2v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.6 12h2.2M19.2 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg></span>
+        </button>
+        <button class="icon-button hidden" id="logoutButton" type="button" aria-label="Выйти"><svg viewBox="0 0 24 24"><path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4M14 8l4 4-4 4M8 12h10"/></svg></button>
+      </div>
     </header>
 
     <section class="view login-view active" id="loginView">
@@ -178,7 +204,7 @@
   </main>
   <div class="grain" aria-hidden="true"></div>
   <div class="toast-stack" id="toastStack"></div>
-  <script src="./app.js?v=12" defer></script>
-  <script src="./motion-v6.js?v=12" defer></script>
+  <script src="./app.js?v=13" defer></script>
+  <script src="./motion-v6.js?v=13" defer></script>
 </body>
 </html>

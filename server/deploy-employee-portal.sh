@@ -82,12 +82,25 @@ if (n1, n2, n3, n4) != (1, 1, 1, 1):
 
 # Аварийное состояние: даже при ошибке одного из скриптов страница не может
 # навсегда остаться скрытой загрузочным экраном.
+#
+# Цвета здесь берутся из токенов, а не задаются числом. Этот блок вклеивается
+# последним, и `html,body{background:#08080b}` пережил бы объявление из
+# styles.css по правилу «побеждает последнее при равной специфичности» —
+# светлая тема на сервере просто не включалась бы, оставаясь при этом
+# полностью рабочей у меня на машине. Запасное значение в var() закрывает
+# случай, когда стилей нет вовсе.
+#
+# Классы состояния живут на <html> (`is-booting` / `is-ready`), а сам экран
+# загрузки — это #siteBoot. Прежняя версия искала #boot и дописывала класс
+# элементу #app; ни того, ни другого в разметке давно нет, то есть страховка
+# ничего не страховала.
 html = html.replace(
     '</head>',
-    '<style>html,body{background:#08080b;color:#f7f7f8}#app{visibility:visible!important}</style>'
-    '<script>(function(){setTimeout(function(){var b=document.getElementById("boot");'
-    'if(b){b.style.display="none"}var a=document.getElementById("app");'
-    'if(a){a.className+=(a.className.indexOf("ready")<0?" ready":"")}},1600)})();</script>'
+    '<style>html,body{background:var(--bg,#08080b);color:var(--text,#f7f7f8)}'
+    '.boot-failsafe .app-shell{visibility:visible!important;opacity:1!important}</style>'
+    '<script>(function(){setTimeout(function(){var r=document.documentElement;'
+    'if(r.classList.contains("is-booting")){r.classList.remove("is-booting");'
+    'r.classList.add("is-ready","boot-failsafe")}},3200)})();</script>'
     '</head>',
     1,
 )

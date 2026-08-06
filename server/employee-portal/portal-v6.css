@@ -6,23 +6,23 @@ body{position:relative}
    страницу максимум через 2.6 секунды. */
 .boot{display:none!important}
 .is-booting body{overflow:hidden}
-.is-booting .boot{display:grid!important;position:fixed;inset:0;z-index:100;place-content:center;justify-items:center;gap:0;background:radial-gradient(circle at 50% 44%,rgba(255,101,23,.105),transparent 31%),#08080b;opacity:1;visibility:visible;pointer-events:auto}
+.is-booting .boot{display:grid!important;position:fixed;inset:0;z-index:100;place-content:center;justify-items:center;gap:0;background:radial-gradient(circle at 50% 44%,rgba(var(--a3),.105),transparent 31%),var(--bg);opacity:1;visibility:visible;pointer-events:auto}
 .is-ready .boot{display:grid!important;opacity:0;visibility:hidden;pointer-events:none;transition:opacity .42s ease,visibility .42s step-end}
 .is-booting .app-shell{visibility:hidden!important;opacity:0!important;transform:translate3d(0,8px,0);pointer-events:none}
 .is-ready .app-shell,.boot-failsafe .app-shell{visibility:visible!important;opacity:1!important;transform:none!important;pointer-events:auto;transition:opacity .46s cubic-bezier(.2,.8,.2,1),transform .46s cubic-bezier(.2,.8,.2,1)}
 .boot-visual{position:relative;width:152px;height:152px;display:grid;place-items:center;contain:layout paint;transform:translateZ(0)}
-.boot-logo{position:relative;z-index:3;width:76px;height:76px;border-radius:22px;box-shadow:0 18px 54px rgba(0,0,0,.52),0 0 0 1px rgba(255,255,255,.055),0 0 42px rgba(255,101,23,.17);animation:bootLogo 2.2s cubic-bezier(.45,0,.55,1) infinite;will-change:transform}
-.boot-orbit{position:absolute;inset:0;border-radius:50%;border:1px solid rgba(255,101,23,.22);will-change:transform;transform:translateZ(0)}
+.boot-logo{position:relative;z-index:3;width:76px;height:76px;border-radius:22px;box-shadow:0 18px 54px rgba(var(--shadow-rgb),.52),0 0 0 1px rgba(var(--veil-rgb),.055),0 0 42px rgba(var(--a3),.17);animation:bootLogo 2.2s cubic-bezier(.45,0,.55,1) infinite;will-change:transform}
+.boot-orbit{position:absolute;inset:0;border-radius:50%;border:1px solid rgba(var(--a3),.22);will-change:transform;transform:translateZ(0)}
 .boot-orbit-a{animation:bootSpin 5.8s linear infinite}
-.boot-orbit-b{inset:20px;border-style:dashed;border-color:rgba(255,139,36,.23);animation:bootSpin 8.4s linear reverse infinite}
-.boot-orbit-c{inset:42px;border-color:rgba(255,255,255,.075);animation:bootSpin 11.2s linear infinite}
+.boot-orbit-b{inset:20px;border-style:dashed;border-color:rgba(var(--a5),.23);animation:bootSpin 8.4s linear reverse infinite}
+.boot-orbit-c{inset:42px;border-color:rgba(var(--veil-rgb),.075);animation:bootSpin 11.2s linear infinite}
 .boot-copy{margin-top:22px;text-align:center}
 .boot-copy strong{display:inline-flex;font-size:25px;letter-spacing:-.045em}
 .boot-copy strong em{font-style:normal;color:var(--orange)}
-.boot-copy p{margin:8px 0 0;color:#92929b;font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
-.boot-line{width:min(230px,62vw);height:3px;margin-top:21px;border-radius:99px;background:#1c1c21;overflow:hidden;box-shadow:inset 0 1px rgba(255,255,255,.025)}
-.boot-line i{display:block;width:100%;height:100%;border-radius:inherit;background:linear-gradient(90deg,#ff5e0a,#ff8b24,#ffb15c);box-shadow:0 0 16px rgba(255,101,23,.5);transform:scaleX(0);transform-origin:0 50%;transition:transform .24s cubic-bezier(.2,.8,.2,1);animation:none!important;will-change:transform}
-.boot small{margin-top:10px;color:#66666f;font-size:8px;font-weight:850;letter-spacing:.17em}
+.boot-copy p{margin:8px 0 0;color:var(--t2);font-size:9px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}
+.boot-line{width:min(230px,62vw);height:3px;margin-top:21px;border-radius:99px;background:var(--panel-u);overflow:hidden;box-shadow:inset 0 1px rgba(var(--veil-rgb),.025)}
+.boot-line i{display:block;width:100%;height:100%;border-radius:inherit;background:linear-gradient(90deg,rgb(var(--a2)),rgb(var(--a5)),rgb(var(--a6)));box-shadow:0 0 16px rgba(var(--a3),.5);transform:scaleX(0);transform-origin:0 50%;transition:transform .24s cubic-bezier(.2,.8,.2,1);animation:none!important;will-change:transform}
+.boot small{margin-top:10px;color:var(--t4);font-size:8px;font-weight:850;letter-spacing:.17em}
 @keyframes bootSpin{to{transform:rotate(360deg)}}
 @keyframes bootLogo{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(0,-3px,0) scale(1.025)}}
 
@@ -33,12 +33,12 @@ body{position:relative}
 
 .intro-stage{grid-template-columns:minmax(0,1fr) minmax(280px,.72fr)}
 .intro-visual{display:grid;place-items:center;min-height:420px}
-.intro-orbit{position:relative;width:320px;height:320px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle,rgba(255,101,23,.11),transparent 62%);contain:layout paint;transform:translateZ(0)}
-.intro-orbit:before,.intro-orbit:after,.intro-orbit i{content:"";position:absolute;inset:0;border-radius:50%;border:1px solid rgba(255,101,23,.18);animation:introSpin 19s linear infinite;will-change:transform;transform:translateZ(0)}
+.intro-orbit{position:relative;width:320px;height:320px;border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle,rgba(var(--a3),.11),transparent 62%);contain:layout paint;transform:translateZ(0)}
+.intro-orbit:before,.intro-orbit:after,.intro-orbit i{content:"";position:absolute;inset:0;border-radius:50%;border:1px solid rgba(var(--a3),.18);animation:introSpin 19s linear infinite;will-change:transform;transform:translateZ(0)}
 .intro-orbit:after{inset:44px;border-style:dashed;animation-duration:27s;animation-direction:reverse}
-.intro-orbit i:first-child{inset:86px;border-color:rgba(255,255,255,.09);animation-duration:34s}
-.intro-orbit i:last-child{width:9px;height:9px;inset:auto;top:28px;left:78px;border:0;background:var(--orange);box-shadow:0 0 20px rgba(255,101,23,.85)}
-.intro-orbit img{width:116px;height:116px;border-radius:32px;box-shadow:0 0 70px rgba(255,101,23,.18);transform:translateZ(0)}
+.intro-orbit i:first-child{inset:86px;border-color:rgba(var(--veil-rgb),.09);animation-duration:34s}
+.intro-orbit i:last-child{width:9px;height:9px;inset:auto;top:28px;left:78px;border:0;background:var(--orange);box-shadow:0 0 20px rgba(var(--a3),.85)}
+.intro-orbit img{width:116px;height:116px;border-radius:32px;box-shadow:0 0 70px rgba(var(--a3),.18);transform:translateZ(0)}
 @keyframes introSpin{to{transform:translateZ(0) rotate(360deg)}}
 
 .auth-bottom{min-height:100vh;display:grid;grid-template-columns:minmax(0,.9fr) minmax(360px,.7fr);gap:clamp(40px,7vw,90px);align-items:center;padding:120px 3vw 80px}
@@ -50,8 +50,8 @@ body{position:relative}
    на каждом кадре прокрутки. */
 .showcase,.flow-section,.motion-rail,.auth-bottom{position:relative;z-index:4}
 #motionRail .rail-line{--runner-merge:0;overflow:visible;transition:box-shadow .22s ease;contain:layout style}
-#motionRail .rail-line:before{content:"";position:absolute;left:50%;top:-3px;width:18px;height:88px;transform:translate3d(-50%,-50%,0) scaleY(calc(.2 + var(--runner-merge)));transform-origin:50% 100%;border-radius:999px;background:linear-gradient(to bottom,rgba(255,176,92,0),rgba(255,111,27,.92) 58%,rgba(255,101,23,.18));opacity:var(--runner-merge);pointer-events:none;will-change:transform,opacity}
-#motionRail .rail-line.runner-merge-active{box-shadow:0 0 18px rgba(255,101,23,calc(.12 + var(--runner-merge)*.42))}
+#motionRail .rail-line:before{content:"";position:absolute;left:50%;top:-3px;width:18px;height:88px;transform:translate3d(-50%,-50%,0) scaleY(calc(.2 + var(--runner-merge)));transform-origin:50% 100%;border-radius:999px;background:linear-gradient(to bottom,rgba(var(--a6),0),rgba(var(--a3),.92) 58%,rgba(var(--a3),.18));opacity:var(--runner-merge);pointer-events:none;will-change:transform,opacity}
+#motionRail .rail-line.runner-merge-active{box-shadow:0 0 18px rgba(var(--a3),calc(.12 + var(--runner-merge)*.42))}
 
 /* Элементы начинают проявляться примерно за один экран до появления.
    Поэтому быстрый свайп уже встречает подготовленный слой, а не запускает
@@ -63,16 +63,16 @@ body{position:relative}
 
 /* Фоновые блики теперь не зависят от scroll-событий. Они двигаются
    заранее заданными transform-keyframes на compositor thread. */
-.orange-glow{filter:none!important;opacity:1!important;contain:strict;will-change:transform;background:radial-gradient(circle at center,rgba(255,101,23,.22) 0%,rgba(255,101,23,.12) 28%,rgba(255,101,23,.045) 48%,transparent 72%)!important;transform:translate3d(0,0,0)}
+.orange-glow{filter:none!important;opacity:1!important;contain:strict;will-change:transform;background:radial-gradient(circle at center,rgba(var(--a3),.22) 0%,rgba(var(--a3),.12) 28%,rgba(var(--a3),.045) 48%,transparent 72%)!important;transform:translate3d(0,0,0)}
 .glow-a{animation:glowDriftA 18s cubic-bezier(.45,0,.55,1) alternate infinite}
-.glow-b{background:radial-gradient(circle at center,rgba(255,139,36,.19) 0%,rgba(255,101,23,.09) 34%,transparent 72%)!important;animation:glowDriftB 22s cubic-bezier(.45,0,.55,1) alternate infinite}
+.glow-b{background:radial-gradient(circle at center,rgba(var(--a5),.19) 0%,rgba(var(--a3),.09) 34%,transparent 72%)!important;animation:glowDriftB 22s cubic-bezier(.45,0,.55,1) alternate infinite}
 @keyframes glowDriftA{to{transform:translate3d(34px,28px,0) scale(1.08)}}
 @keyframes glowDriftB{to{transform:translate3d(-30px,-24px,0) scale(1.07)}}
 
 .module-stage,.flow-board{contain:layout paint style;transform:translateZ(0)}
 .module-card{overflow:hidden;transition:border-color .3s,box-shadow .3s;backface-visibility:hidden;transform:translateZ(0);will-change:transform;contain:layout paint style}
 .module-card>*{position:relative;z-index:1}
-.module-card:after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(circle at 22% 8%,rgba(255,128,44,.16),transparent 43%),linear-gradient(135deg,rgba(255,255,255,.025),transparent 52%);opacity:.22;animation:cardGlow 6.6s cubic-bezier(.45,0,.55,1) infinite;will-change:opacity}
+.module-card:after{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none;background:radial-gradient(circle at 22% 8%,rgba(var(--a4),.16),transparent 43%),linear-gradient(135deg,rgba(var(--veil-rgb),.025),transparent 52%);opacity:.22;animation:cardGlow 6.6s cubic-bezier(.45,0,.55,1) infinite;will-change:opacity}
 .baked-float-1{animation:bakedFloat1 9.4s cubic-bezier(.45,0,.55,1) infinite}
 .baked-float-2{animation:bakedFloat2 10.2s cubic-bezier(.45,0,.55,1) -.9s infinite}
 .baked-float-3{animation:bakedFloat3 9.8s cubic-bezier(.45,0,.55,1) -1.8s infinite}
@@ -120,7 +120,7 @@ body{position:relative}
 @media(max-width:650px){
   /* Live backdrop-filter на sticky-панели — одна из главных причин дёргания
      Safari. На телефоне он заменён визуально равнозначным запечённым слоем. */
-  .topbar{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:linear-gradient(180deg,rgba(8,8,11,.975),rgba(8,8,11,.91) 72%,rgba(8,8,11,.79));box-shadow:0 12px 30px rgba(8,8,11,.22)}
+  .topbar{-webkit-backdrop-filter:none!important;backdrop-filter:none!important;background:linear-gradient(180deg,rgba(var(--bg-rgb),.975),rgba(var(--bg-rgb),.91) 72%,rgba(var(--bg-rgb),.79));box-shadow:0 12px 30px rgba(var(--bg-rgb),.22)}
   .orange-glow{opacity:.86!important}
   .intro-stage{padding-top:50px}
   .intro-visual{min-height:280px}
@@ -148,16 +148,16 @@ body{position:relative}
 
 
 /* ─────────────────────────────────── полоса прокрутки страницы */
-.scroll-progress{position:fixed;inset:0 0 auto 0;height:3px;z-index:95;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,.045),rgba(255,255,255,.02))}
-.scroll-progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:0 50%;background:linear-gradient(90deg,#ff5f10,#ff8a3d 58%,#ffc27a);box-shadow:0 0 14px rgba(255,101,23,.55);will-change:transform}
+.scroll-progress{position:fixed;inset:0 0 auto 0;height:3px;z-index:95;pointer-events:none;background:linear-gradient(90deg,rgba(var(--veil-rgb),.045),rgba(var(--veil-rgb),.02))}
+.scroll-progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:0 50%;background:linear-gradient(90deg,rgb(var(--a2)),rgb(var(--a5)) 58%,rgb(var(--a7)));box-shadow:0 0 14px rgba(var(--a3),.55);will-change:transform}
 /* Светящаяся голова полосы: отдельный слой, чтобы свечение не растягивалось
    вместе с заливкой — растянутая тень выглядит смазанной. */
-.scroll-progress b{position:absolute;top:50%;left:0;width:56px;height:3px;margin:-1.5px 0 0 -56px;border-radius:3px;opacity:0;background:linear-gradient(90deg,rgba(255,194,122,0),rgba(255,214,168,.95));box-shadow:0 0 20px rgba(255,138,61,.75);transition:opacity .3s ease;will-change:transform}
+.scroll-progress b{position:absolute;top:50%;left:0;width:56px;height:3px;margin:-1.5px 0 0 -56px;border-radius:3px;opacity:0;background:linear-gradient(90deg,rgba(var(--a7),0),rgba(var(--a8),.95));box-shadow:0 0 20px rgba(var(--a5),.75);transition:opacity .3s ease;will-change:transform}
 .is-booting .scroll-progress{opacity:0}
 
 /* ─────────────────────────────────── подсветка под курсором */
 .spotlight{position:fixed;top:0;left:0;width:1px;height:1px;z-index:1;pointer-events:none;opacity:0;transition:opacity .5s ease;will-change:transform}
-.spotlight::before{content:'';position:absolute;left:-320px;top:-320px;width:640px;height:640px;border-radius:50%;background:radial-gradient(circle,rgba(255,101,23,.10),rgba(255,101,23,.035) 42%,transparent 66%)}
+.spotlight::before{content:'';position:absolute;left:-320px;top:-320px;width:640px;height:640px;border-radius:50%;background:radial-gradient(circle,rgba(var(--a3),.10),rgba(var(--a3),.035) 42%,transparent 66%)}
 .spotlight.visible{opacity:1}
 @media (hover:none),(pointer:coarse){.spotlight{display:none}}
 
@@ -180,7 +180,7 @@ body{position:relative}
    всё остальное: свечения, тени и значки, выходящие за границу карточки.
    Ради одной декорации ломать содержимое нельзя, поэтому блик остался на
    панели входа и доске потока: у них `overflow:hidden` был изначально. */
-.login-panel::after,.flow-board::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.075) 50%,transparent 62%);transform:translate3d(-120%,0,0)}
+.login-panel::after,.flow-board::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;background:linear-gradient(115deg,transparent 38%,rgba(var(--veil-rgb),.075) 50%,transparent 62%);transform:translate3d(-120%,0,0)}
 .login-panel[data-scroll-reveal].visible::after,.flow-board[data-scroll-reveal].visible::after{animation:sheenPass 1.35s cubic-bezier(.22,.61,.36,1) .18s both}
 @keyframes sheenPass{0%{opacity:0;transform:translate3d(-120%,0,0)}22%{opacity:1}100%{opacity:0;transform:translate3d(120%,0,0)}}
 
@@ -207,14 +207,14 @@ body{position:relative}
 .runner>i{position:absolute;left:0;top:0;display:block;offset-rotate:auto;offset-distance:0%;will-change:transform}
 
 /* Голова: плотное ядро с ореолом. */
-.runner-head{width:15px;height:5px;margin:-2.5px 0 0 -7.5px;border-radius:99px;background:linear-gradient(90deg,rgba(255,160,80,.25),#ffd7ae 62%,#fff2e2);box-shadow:0 0 12px rgba(255,122,34,.95),0 0 30px rgba(255,101,23,.5)}
+.runner-head{width:15px;height:5px;margin:-2.5px 0 0 -7.5px;border-radius:99px;background:linear-gradient(90deg,rgba(var(--a6),.25),rgb(var(--a8)) 62%,rgb(var(--a9)));box-shadow:0 0 12px rgba(var(--a4),.95),0 0 30px rgba(var(--a3),.5)}
 /* Хвост: три звена, каждое отстаёт и тускнеет — комета, а не палка. */
-.runner-tail{border-radius:99px;background:linear-gradient(90deg,rgba(255,101,23,0),rgba(255,124,40,.85))}
+.runner-tail{border-radius:99px;background:linear-gradient(90deg,rgba(var(--a3),0),rgba(var(--a4),.85))}
 .runner-tail-1{width:46px;height:3.6px;margin:-1.8px 0 0 -46px;opacity:.72}
 .runner-tail-2{width:92px;height:2.6px;margin:-1.3px 0 0 -92px;opacity:.4}
 .runner-tail-3{width:150px;height:1.8px;margin:-.9px 0 0 -150px;opacity:.2}
 /* Мягкое пятно света вокруг головы — оно и делает огонёк «горячим». */
-.runner-glow{width:190px;height:190px;margin:-95px 0 0 -95px;border-radius:50%;background:radial-gradient(circle,rgba(255,101,23,.3),rgba(255,101,23,.09) 38%,transparent 68%);offset-rotate:0deg}
+.runner-glow{width:190px;height:190px;margin:-95px 0 0 -95px;border-radius:50%;background:radial-gradient(circle,rgba(var(--a3),.3),rgba(var(--a3),.09) 38%,transparent 68%);offset-rotate:0deg}
 
 @media (max-width:650px){
   .runner-head{width:12px;height:4px;margin:-2px 0 0 -6px}
@@ -243,16 +243,16 @@ body{position:relative}
 
 /* ═══════════════════════════════════ орбита логотипа */
 .orbit-dot{position:absolute;inset:6%;animation:orbitSpin 17s linear infinite;pointer-events:none}
-.orbit-dot b{position:absolute;left:50%;top:-3px;width:7px;height:7px;margin-left:-3.5px;border-radius:50%;background:#ff8a3d;box-shadow:0 0 10px rgba(255,122,34,.95),0 0 22px rgba(255,101,23,.6)}
+.orbit-dot b{position:absolute;left:50%;top:-3px;width:7px;height:7px;margin-left:-3.5px;border-radius:50%;background:rgb(var(--a5));box-shadow:0 0 10px rgba(var(--a4),.95),0 0 22px rgba(var(--a3),.6)}
 .orbit-dot-2{inset:19%;animation-duration:23s;animation-direction:reverse}
-.orbit-dot-2 b{width:5px;height:5px;margin-left:-2.5px;background:#ffc27a}
+.orbit-dot-2 b{width:5px;height:5px;margin-left:-2.5px;background:rgb(var(--a7))}
 .orbit-dot-3{inset:32%;animation-duration:13s}
 .orbit-dot-3 b{width:4px;height:4px;margin-left:-2px;opacity:.75}
 @keyframes orbitSpin{to{transform:rotate(360deg)}}
 
 /* Импульс, уходящий от логотипа наружу. Два экземпляра со сдвигом фазы —
    получается непрерывное «дыхание» без единого лишнего элемента. */
-.orbit-pulse{position:absolute;inset:30%;border-radius:50%;border:1px solid rgba(255,101,23,.5);opacity:0;animation:orbitPulse 4.6s cubic-bezier(.22,.61,.36,1) infinite;pointer-events:none}
+.orbit-pulse{position:absolute;inset:30%;border-radius:50%;border:1px solid rgba(var(--a3),.5);opacity:0;animation:orbitPulse 4.6s cubic-bezier(.22,.61,.36,1) infinite;pointer-events:none}
 .orbit-pulse-2{animation-delay:2.3s}
 @keyframes orbitPulse{0%{transform:scale(.72);opacity:0}18%{opacity:.55}100%{transform:scale(1.75);opacity:0}}
 
@@ -260,14 +260,14 @@ body{position:relative}
 .hero-extras{grid-column:1/-1;display:grid;gap:22px;margin-top:34px;justify-items:center}
 .hero-ticker{position:relative;width:100%;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
 .hero-ticker-row{display:flex;align-items:center;gap:18px;width:max-content;animation:tickerRun 34s linear infinite;will-change:transform}
-.hero-ticker span{font-size:12.5px;letter-spacing:.26em;text-transform:uppercase;color:#8a8a94;white-space:nowrap}
-.hero-ticker em{font-style:normal;color:#ff6517;opacity:.75}
+.hero-ticker span{font-size:12.5px;letter-spacing:.26em;text-transform:uppercase;color:var(--t2);white-space:nowrap}
+.hero-ticker em{font-style:normal;color:rgb(var(--a3));opacity:.75}
 /* Ряд продублирован в разметке, поэтому сдвиг ровно на половину даёт шов
    без стыка — лента идёт бесконечно и никогда не «прыгает». */
 @keyframes tickerRun{to{transform:translate3d(-50%,0,0)}}
 
-.scroll-hint{display:inline-flex;align-items:center;gap:11px;padding:9px 17px;border-radius:999px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.022);color:#8a8a94;font-size:12px;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;transition:color .3s ease,border-color .3s ease,transform .3s ease}
-.scroll-hint:hover{color:#ffb15c;border-color:rgba(255,101,23,.42);transform:translate3d(0,-2px,0)}
+.scroll-hint{display:inline-flex;align-items:center;gap:11px;padding:9px 17px;border-radius:999px;border:1px solid rgba(var(--veil-rgb),.09);background:rgba(var(--veil-rgb),.022);color:var(--t2);font-size:12px;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;transition:color .3s ease,border-color .3s ease,transform .3s ease}
+.scroll-hint:hover{color:rgb(var(--a6));border-color:rgba(var(--a3),.42);transform:translate3d(0,-2px,0)}
 .scroll-hint i{position:relative;width:9px;height:9px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(45deg);animation:hintBob 1.9s cubic-bezier(.45,0,.55,1) infinite}
 @keyframes hintBob{0%,100%{transform:rotate(45deg) translate3d(0,-2px,0);opacity:.55}50%{transform:rotate(45deg) translate3d(0,3px,0);opacity:1}}
 
@@ -304,9 +304,9 @@ body{position:relative}
   .motion-step:nth-of-type(even) p{margin-left:auto}
 
   /* Отвод от линии к тексту — короткая перемычка вместо пустоты. */
-  .motion-step:before{content:'';position:absolute;top:50%;width:26px;height:1px;background:linear-gradient(90deg,rgba(255,101,23,.75),transparent);pointer-events:none}
+  .motion-step:before{content:'';position:absolute;top:50%;width:26px;height:1px;background:linear-gradient(90deg,rgba(var(--a3),.75),transparent);pointer-events:none}
   .motion-step:nth-of-type(odd):before{left:calc(50% + 37px)}
-  .motion-step:nth-of-type(even):before{right:calc(50% + 37px);background:linear-gradient(270deg,rgba(255,101,23,.75),transparent)}
+  .motion-step:nth-of-type(even):before{right:calc(50% + 37px);background:linear-gradient(270deg,rgba(var(--a3),.75),transparent)}
 }
 
 /* ═══════════════════════════════════ карточки модулей плотнее
@@ -338,3 +338,73 @@ body{position:relative}
    продолжает занимать место. */
 .view-dashboard .runner,
 .view-dashboard .scroll-progress{display:none}
+
+/* ── Переключатель темы ─────────────────────────────────────────────────
+   Обе иконки на месте всегда, бегунок стоит под текущей. Так видно не
+   только куда нажать, но и в каком положении находишься сейчас — иконка,
+   меняющаяся на противоположную, каждый раз заставляет гадать, показывает
+   она текущее состояние или будущее. */
+.topbar-tools{display:flex;align-items:center;gap:10px}
+.theme-switch{position:relative;width:66px;height:34px;flex:none;padding:0;border:1px solid var(--soft);border-radius:999px;background:var(--panel);cursor:pointer;display:grid;grid-template-columns:1fr 1fr;place-items:center;overflow:hidden;transition:border-color .3s var(--ease),background .3s var(--ease)}
+.theme-switch:hover{border-color:rgba(var(--a3),.55)}
+.theme-switch:focus-visible{outline:2px solid rgba(var(--a3),.75);outline-offset:2px}
+.theme-knob{position:absolute;left:3px;top:3px;width:26px;height:26px;border-radius:50%;background:linear-gradient(140deg,rgb(var(--a4)),rgb(var(--a2)));box-shadow:0 4px 12px rgba(var(--a3),.45);transition:transform .44s cubic-bezier(.34,1.4,.64,1);will-change:transform}
+.theme-face{position:relative;z-index:1;display:grid;place-items:center;width:100%;height:100%;color:var(--t4);transition:color .3s var(--ease)}
+.theme-face svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.theme-face-dark{color:var(--on-accent)}
+:root[data-theme="light"] .theme-knob{transform:translateX(32px)}
+:root[data-theme="light"] .theme-face-dark{color:var(--t4)}
+:root[data-theme="light"] .theme-face-light{color:var(--on-accent)}
+@media(prefers-reduced-motion:reduce){.theme-knob{transition:none}}
+
+/* Смена темы — единственный момент, когда цвета обязаны переезжать плавно.
+   Класс снимается по таймеру из app.js: держать переход постоянно нельзя,
+   иначе каждое наведение на карточку начинает тянуть за собой полусекундную
+   анимацию фона. */
+.theme-shifting,
+.theme-shifting *,
+.theme-shifting *::before,
+.theme-shifting *::after{transition:background-color .4s ease,border-color .4s ease,color .4s ease,box-shadow .4s ease,fill .4s ease,stroke .4s ease!important}
+
+/* ── Светлая тема: места, где смены токена недостаточно ─────────────────
+   Механическая подстановка знает про цвет, но не про смысл. Здесь собрано
+   то, где на белом нужен не тот же цвет, а другое решение. */
+
+/* Текст на акцентной заливке. В тёмной он берётся из --text и совпадает с
+   белым; в светлой --text это почти чёрный, и надпись на синей кнопке
+   становится грязной. */
+:root[data-theme="light"] .primary-button,
+:root[data-theme="light"] .download-button:not(:disabled):hover{color:var(--on-accent)}
+
+/* Дорожка полосы загрузки. В тёмной она темнее фона, в светлой белое на
+   белом — дорожки просто не видно, пока не поедет заливка. */
+:root[data-theme="light"] .boot-line{background:var(--panel2)}
+
+/* Подсказка в поле ввода. В тёмной --line-2 читается как приглушённый
+   текст, на белом тем же цветом выходит почти невидимая надпись. */
+:root[data-theme="light"] .input-wrap input::placeholder{color:var(--t3)}
+
+/* Зерно поверх страницы. Тёмный шум по белому заметнее, чем светлый по
+   чёрному, — при прежней прозрачности картинка выглядит грязной. */
+:root[data-theme="light"] .grain{opacity:.028}
+
+/* Логотип. Иконка приложения нарисована на своём тёмном фоне, и на белой
+   странице ей нужна не тень, а тонкая обводка, иначе она висит в воздухе
+   тёмным пятном. */
+:root[data-theme="light"] .brand-logo,
+:root[data-theme="light"] .intro-orbit img,
+:root[data-theme="light"] .boot-logo{box-shadow:0 10px 26px rgba(var(--shadow-rgb),.28),0 0 0 1px rgba(var(--a3),.16)}
+
+/* Провода схемы. На чёрном оранжевая линия светится и её видно даже в
+   нижней точке пульсации; на белом синяя линия в те же 26% прозрачности
+   исчезает совсем. Поэтому в светлой теме и цвет глубже, и нижняя точка
+   пульсации выше — иначе схема распадается на отдельные карточки без
+   связей между ними. */
+:root[data-theme="light"] .flow-wire{background:linear-gradient(90deg,transparent,rgb(var(--a6)),transparent);box-shadow:0 0 10px rgba(var(--a3),.2)}
+:root[data-theme="light"] .wire-a{animation:wirePulseLight 2.8s ease-in-out infinite,wireSwayA 9s ease-in-out infinite}
+:root[data-theme="light"] .wire-b{animation:wirePulseLight 2.8s ease-in-out -.8s infinite,wireSwayB 11s ease-in-out infinite}
+:root[data-theme="light"] .wire-c{animation:wirePulseLight 2.8s ease-in-out -1.5s infinite,wireSwayC 10s ease-in-out infinite}
+@keyframes wirePulseLight{50%{opacity:.52}}
+
+/* Вертикальная нить шагов на экране загрузок — та же история. */
+:root[data-theme="light"] .rail-line{background:linear-gradient(rgb(var(--a5)),rgba(var(--a3),.28))}

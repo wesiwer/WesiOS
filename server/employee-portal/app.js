@@ -34,7 +34,43 @@
     androidSize: $('#androidSize'),
     footerStatus: $('#footerStatus'),
     toastStack: $('#toastStack'),
+    themeSwitch: $('#themeSwitch'),
+    themeColor: $('#themeColor'),
   };
+
+  const THEME_KEY = 'wesi-theme';
+  const THEME_BAR = { dark: '#08080b', light: '#f4f6fb' };
+
+  /** Текущая тема. Источник истины — атрибут на <html>: его же ставит
+   *  встроенный скрипт в <head> до первой отрисовки, и расходиться им
+   *  негде. */
+  function currentTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  }
+
+  function applyTheme(theme, animate) {
+    const root = document.documentElement;
+    if (animate) {
+      // Плавный переход включается только на время самой смены. Оставить
+      // его насовсем нельзя: тогда любое наведение на карточку потянет за
+      // собой пол-секунды анимации фона, и страница начнёт «тормозить»
+      // ровно там, где до этого была мгновенной.
+      root.classList.add('theme-shifting');
+      clearTimeout(applyTheme.timer);
+      applyTheme.timer = setTimeout(() => root.classList.remove('theme-shifting'), 460);
+    }
+    if (theme === 'light') root.setAttribute('data-theme', 'light');
+    else root.removeAttribute('data-theme');
+
+    // Цвет системной панели браузера на телефоне. Без него шапка Chrome
+    // остаётся чёрной над белой страницей.
+    els.themeColor?.setAttribute('content', THEME_BAR[theme] || THEME_BAR.dark);
+    if (els.themeSwitch) {
+      els.themeSwitch.setAttribute('aria-checked', theme === 'light' ? 'true' : 'false');
+      els.themeSwitch.setAttribute('aria-label', theme === 'light' ? 'Тёмная тема' : 'Светлая тема');
+    }
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* приватный режим */ }
+  }
 
   function json(value) {
     try { return value ? JSON.parse(value) : null; } catch (_) { return null; }
@@ -326,6 +362,10 @@
 
   function bind() {
     preventPinchZoom();
+    applyTheme(currentTheme(), false);
+    els.themeSwitch?.addEventListener('click', () => {
+      applyTheme(currentTheme() === 'light' ? 'dark' : 'light', true);
+    });
     els.passwordToggle?.addEventListener('click', () => {
       els.password.type = els.password.type === 'password' ? 'text' : 'password';
     });

@@ -53,6 +53,21 @@ jobs:
           grep -q 'scrollProgress' server/employee-portal/index.html
           grep -q 'offset-path' server/employee-portal/portal-v6.css
           grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
+          # Светлая тема: палитра, кнопка и установка темы до первой
+          # отрисовки. Без последнего человек со светлой темой встречает
+          # вспышку чёрного во весь экран на каждой загрузке.
+          grep -q 'data-theme="light"' server/employee-portal/styles.css
+          grep -q 'themeSwitch' server/employee-portal/index.html
+          grep -q "localStorage.getItem('wesi-theme')" server/employee-portal/index.html
+          # Аварийный блок вклеивается последним и при равной специфичности
+          # переигрывает styles.css. Числом цвет фона там задавать нельзя —
+          # светлая тема перестанет включаться ровно на сервере и нигде
+          # больше.
+          grep -q 'background:var(--bg,' server/deploy-employee-portal.sh
+          # Строки комментариев отбрасываем: объяснение, почему так делать
+          # нельзя, само содержит запрещённый образец.
+          ! grep -v '^[[:space:]]*#' server/deploy-employee-portal.sh \
+            | grep -q 'html,body{background:#'
           node --check server/employee-portal/app.js
           node --check server/employee-portal/motion-v6.js
 
@@ -130,6 +145,11 @@ jobs:
           grep -q 'runnerFront' portal.html
           grep -q 'scrollProgress' portal.html
           grep -q 'offset-path' portal.html
+          # Светлая тема доехала целиком: палитра, кнопка и выбор темы до
+          # первой отрисовки.
+          grep -q 'data-theme="light"' portal.html
+          grep -q 'themeSwitch' portal.html
+          grep -q "localStorage.getItem('wesi-theme')" portal.html
 
           # Запрет на «тихий» кеш. Без него выкладка проходит, файлы на
           # сервере новые, а человек продолжает видеть прежнюю страницу —
