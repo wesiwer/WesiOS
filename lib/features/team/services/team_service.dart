@@ -298,6 +298,24 @@ class TeamService {
     return loginOk;
   }
 
+  /// Сохраняет только локальный PBKDF2-хеш пароля, без сетевого запроса.
+  ///
+  /// Нужен владельцу после того, как сервер уже принял данные и контрольный
+  /// вход прошёл: повторная публикация тех же учётных данных создавала вторую
+  /// точку отказа после фактически успешной операции.
+  static Future<bool> setPasswordLocally(String id, String password) async {
+    final employee = byId(id);
+    if (employee == null || password.length < 8 || password.length > 128) {
+      return false;
+    }
+    final salt = _newSalt();
+    await save(employee.copyWith(
+      passwordSalt: salt,
+      passwordHash: ShieldService.derive(password, salt, _iterations),
+    ));
+    return true;
+  }
+
   /// Меняет локальный пароль и сразу возвращает точный результат сервера.
   static Future<PortalCredentialResult?> setPasswordDetailed(
     String id,
@@ -311,12 +329,9 @@ class TeamService {
       );
     }
 
-    final salt = _newSalt();
-    final updated = employee.copyWith(
-      passwordSalt: salt,
-      passwordHash: ShieldService.derive(password, salt, _iterations),
-    );
-    await save(updated);
+    if (!await setPasswordLocally(id, password)) return null;
+    final updated = byId(id);
+    if (updated == null) return null;
 
     final portal = await PortalAccountService.provisionDetailed(
       employee: updated,
