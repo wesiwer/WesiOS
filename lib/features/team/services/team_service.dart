@@ -17,13 +17,10 @@ import 'portal_account_service.dart';
 ///
 /// Пароль возвращается ЗДЕСЬ и только здесь — это единственный момент, когда
 /// он существует в открытом виде. Дальше в базе лежит его хеш, и показать
-/// пароль повторно нельзя ни владельцу, ни кому-либо ещё: можно лишь выдать
-/// новый.
+/// пароль повторно нельзя: можно лишь выдать новый.
 class CreatedEmployee {
   final EmployeeModel employee;
   final String password;
-
-  /// Создалась ли одновременно учётная запись на серверном портале.
   final bool portalProvisioned;
 
   const CreatedEmployee(
@@ -31,6 +28,14 @@ class CreatedEmployee {
     this.password, {
     this.portalProvisioned = false,
   });
+}
+
+/// Новый пароль вместе с фактическим результатом серверной активации.
+class ResetEmployeePassword {
+  final String password;
+  final PortalCredentialResult portal;
+
+  const ResetEmployeePassword(this.password, this.portal);
 }
 
 /// Сотрудники: кто есть, кто чем может пользоваться, кто под каким логином
@@ -105,8 +110,10 @@ class TeamService {
 
   static bool get remembered => _settings()?.get(_rememberKey) != false;
 
-  static Future<void> signIn(EmployeeModel employee,
-      {bool remember = true}) async {
+  static Future<void> signIn(
+    EmployeeModel employee, {
+    bool remember = true,
+  }) async {
     final box = _settings();
     if (box == null) return;
     await box.put(_currentKey, employee.id);
@@ -206,17 +213,21 @@ class TeamService {
     await box.put(employee.id, employee);
     revision.value++;
 
-    final portalProvisioned = await PortalAccountService.provision(
+    final portal = await PortalAccountService.provisionDetailed(
       employee: employee,
       password: pass,
     );
-    await EmployeeAdminService.setActivated(employee.id, portalProvisioned);
+    await EmployeeAdminService.setActivationResult(
+      employee.id,
+      success: portal.ok,
+      message: portal.message,
+    );
     revision.value++;
 
     return CreatedEmployee(
       employee,
       pass,
-      portalProvisioned: portalProvisioned,
+      portalProvisioned: portal.ok,
     );
   }
 
@@ -287,30 +298,73 @@ class TeamService {
     return loginOk;
   }
 
-  static Future<bool> setPassword(String id, String password) async {
+  /// Сохраняет только локальный PBKDF2-хеш пароля, без сетевого запроса.
+  ///
+  /// Нужен владельцу после того, как сервер уже принял данные и контрольный
+  /// вход прошёл: повторная публикация тех же учётных данных создавала вторую
+  /// точку отказа после фактически успешной операции.
+  static Future<bool> setPasswordLocally(String id, String password) async {
     final employee = byId(id);
-    if (employee == null) return false;
+    if (employee == null || password.length < 8 || password.length > 128) {
+      return false;
+    }
     final salt = _newSalt();
-    final updated = employee.copyWith(
+    await save(employee.copyWith(
       passwordSalt: salt,
       passwordHash: ShieldService.derive(password, salt, _iterations),
-    );
-    await save(updated);
+    ));
+    return true;
+  }
 
-    final provisioned = await PortalAccountService.provision(
+  /// Меняет локальный пароль и сразу возвращает точный результат сервера.
+  static Future<PortalCredentialResult?> setPasswordDetailed(
+    String id,
+    String password,
+  ) async {
+    final employee = byId(id);
+    if (employee == null) return null;
+    if (password.length < 8 || password.length > 128) {
+      return const PortalCredentialResult.failure(
+        'Пароль должен содержать от 8 до 128 символов.',
+      );
+    }
+
+    if (!await setPasswordLocally(id, password)) return null;
+    final updated = byId(id);
+    if (updated == null) return null;
+
+    final portal = await PortalAccountService.provisionDetailed(
       employee: updated,
       password: password,
     );
-    await EmployeeAdminService.setActivated(id, provisioned);
+    await EmployeeAdminService.setActivationResult(
+      id,
+      success: portal.ok,
+      message: portal.message,
+    );
     revision.value++;
-    return provisioned;
+    return portal;
   }
 
-  static Future<String?> resetPassword(String id) async {
+  static Future<bool> setPassword(String id, String password) async {
+    final result = await setPasswordDetailed(id, password);
+    return result?.ok == true;
+  }
+
+  /// Выдаёт новый пароль, повторно создаёт серверную запись и возвращает
+  /// человеку как сам пароль, так и фактический результат активации.
+  static Future<ResetEmployeePassword?> resetPasswordDetailed(String id) async {
     if (byId(id) == null) return null;
     final pass = CredentialsGenerator.password();
-    await setPassword(id, pass);
-    return pass;
+    final portal = await setPasswordDetailed(id, pass);
+    if (portal == null) return null;
+    return ResetEmployeePassword(pass, portal);
+  }
+
+  /// Совместимость со старым интерфейсом сброса пароля.
+  static Future<String?> resetPassword(String id) async {
+    final result = await resetPasswordDetailed(id);
+    return result?.password;
   }
 
   static Map<String, double> generateDemoStats({Random? random}) {

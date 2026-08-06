@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -7,14 +8,21 @@ import '../models/employee_model.dart';
 class PortalCredentialResult {
   final bool ok;
   final String message;
+  final int? statusCode;
 
-  const PortalCredentialResult._(this.ok, this.message);
+  const PortalCredentialResult._(
+    this.ok,
+    this.message, {
+    this.statusCode,
+  });
 
   const PortalCredentialResult.success([String message = ''])
       : this._(true, message);
 
-  const PortalCredentialResult.failure(String message)
-      : this._(false, message);
+  const PortalCredentialResult.failure(
+    String message, {
+    int? statusCode,
+  }) : this._(false, message, statusCode: statusCode);
 }
 
 /// Связывает локальные профили WesiOS с auth-записями PocketBase.
@@ -28,10 +36,7 @@ class PortalAccountService {
 
   static String get _base => SyncEndpoint.url;
 
-  /// Установить владельцу короткий логин и пароль для сайта и будущего
-  /// стартового окна WesiOS. Нужна уже существующая серверная сессия:
-  /// неизвестный локальный пользователь не может сам назначить себя
-  /// владельцем сервера.
+  /// Установить владельцу короткий логин и пароль для сайта и WesiOS.
   static Future<PortalCredentialResult> configureCurrentProfile({
     required EmployeeModel employee,
     required String login,
@@ -41,7 +46,8 @@ class PortalAccountService {
     final token = session?['token'];
     if (token is! String || token.isEmpty) {
       return const PortalCredentialResult.failure(
-        'Сначала войдите в раздел «Синхронизация» своей текущей серверной учётной записью.',
+        'Сначала войдите в разделе «Синхронизация» своей текущей серверной учётной записью.',
+        statusCode: 401,
       );
     }
 
@@ -51,9 +57,9 @@ class PortalAccountService {
         'Логин: 3–32 латинских символа, цифры, точка, дефис или подчёркивание.',
       );
     }
-    if (password.length < 8) {
+    if (password.length < 8 || password.length > 128) {
       return const PortalCredentialResult.failure(
-        'Пароль должен содержать минимум 8 символов.',
+        'Пароль должен содержать от 8 до 128 символов.',
       );
     }
 
@@ -71,12 +77,17 @@ class PortalAccountService {
         'name': employee.displayName,
       }));
 
-      final response = await request.close().timeout(const Duration(seconds: 18));
+      final response =
+          await request.close().timeout(const Duration(seconds: 18));
       final responseText = await utf8.decoder.bind(response).join();
       if (response.statusCode != 200) {
         return PortalCredentialResult.failure(
-          _messageFrom(responseText,
-              fallback: 'Сервер не принял новые данные.'),
+          messageForResponse(
+            response.statusCode,
+            responseText,
+            fallback: 'Сервер не принял новые данные.',
+          ),
+          statusCode: response.statusCode,
         );
       }
 
@@ -88,11 +99,18 @@ class PortalAccountService {
         'identity': '$normalized@wesi.local',
         'password': password,
       }));
-      final authResponse = await auth.close().timeout(const Duration(seconds: 18));
+      final authResponse =
+          await auth.close().timeout(const Duration(seconds: 18));
       final authText = await utf8.decoder.bind(authResponse).join();
       if (authResponse.statusCode != 200) {
-        return const PortalCredentialResult.failure(
-          'Данные сохранены, но контрольный вход не прошёл. Повторите отправку.',
+        return PortalCredentialResult.failure(
+          messageForResponse(
+            authResponse.statusCode,
+            authText,
+            fallback:
+                'Данные сохранены, но контрольный вход не прошёл. Повторите отправку.',
+          ),
+          statusCode: authResponse.statusCode,
         );
       }
 
@@ -116,6 +134,10 @@ class PortalAccountService {
       return const PortalCredentialResult.success(
         'Профиль отправлен на сервер и проверен контрольным входом.',
       );
+    } on TimeoutException {
+      return const PortalCredentialResult.failure(
+        'Сервер WesiOS не ответил вовремя. Повторите попытку.',
+      );
     } on SocketException {
       return const PortalCredentialResult.failure(
         'Нет связи с сервером WesiOS.',
@@ -138,24 +160,27 @@ class PortalAccountService {
   }
 
   /// Создать или обновить серверный аккаунт сотрудника одновременно с его
-  /// локальной карточкой. Для владельца это обновление его текущей auth-
-  /// записи, а не создание второго «сотрудника» с тем же логином.
-  static Future<bool> provision({
+  /// локальной карточкой и вернуть понятную причину результата.
+  static Future<PortalCredentialResult> provisionDetailed({
     required EmployeeModel employee,
     required String password,
   }) async {
     if (employee.isOwner) {
-      final result = await configureCurrentProfile(
+      return configureCurrentProfile(
         employee: employee,
         login: employee.login,
         password: password,
       );
-      return result.ok;
     }
 
     final session = SyncEndpoint.session;
     final ownerToken = session?['token'];
-    if (ownerToken is! String || ownerToken.isEmpty) return false;
+    if (ownerToken is! String || ownerToken.isEmpty) {
+      return const PortalCredentialResult.failure(
+        'Сначала войдите в синхронизацию под учётной записью владельца.',
+        statusCode: 401,
+      );
+    }
 
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 8);
@@ -166,15 +191,23 @@ class PortalAccountService {
       request.headers.contentType = ContentType.json;
       request.headers.set(HttpHeaders.authorizationHeader, ownerToken);
       request.write(jsonEncode({
-        'login': employee.login,
+        'login': employee.login.toLowerCase(),
         'name': employee.displayName,
         'password': password,
       }));
 
-      final response = await request.close().timeout(const Duration(seconds: 15));
-      await response.drain<void>();
+      final response =
+          await request.close().timeout(const Duration(seconds: 18));
+      final responseText = await utf8.decoder.bind(response).join();
       if (response.statusCode != 200 && response.statusCode != 201) {
-        return false;
+        return PortalCredentialResult.failure(
+          messageForResponse(
+            response.statusCode,
+            responseText,
+            fallback: 'Сервер не создал учётную запись сотрудника.',
+          ),
+          statusCode: response.statusCode,
+        );
       }
 
       final auth = await client.postUrl(
@@ -185,24 +218,113 @@ class PortalAccountService {
         'identity': '${employee.login.toLowerCase()}@wesi.local',
         'password': password,
       }));
-      final authResponse = await auth.close().timeout(const Duration(seconds: 15));
-      await authResponse.drain<void>();
-      return authResponse.statusCode == 200;
+      final authResponse =
+          await auth.close().timeout(const Duration(seconds: 18));
+      final authText = await utf8.decoder.bind(authResponse).join();
+      if (authResponse.statusCode != 200) {
+        return PortalCredentialResult.failure(
+          messageForResponse(
+            authResponse.statusCode,
+            authText,
+            fallback:
+                'Учётная запись создана, но контрольный вход сотрудника не прошёл.',
+          ),
+          statusCode: authResponse.statusCode,
+        );
+      }
+
+      return const PortalCredentialResult.success(
+        'Учётная запись сотрудника создана и проверена.',
+      );
+    } on TimeoutException {
+      return const PortalCredentialResult.failure(
+        'Сервер WesiOS не ответил вовремя. Активацию можно повторить.',
+      );
+    } on SocketException {
+      return const PortalCredentialResult.failure(
+        'Нет связи с сервером WesiOS. Активацию можно повторить.',
+      );
+    } on HandshakeException {
+      return const PortalCredentialResult.failure(
+        'Не удалось проверить сертификат сервера.',
+      );
+    } on FormatException {
+      return const PortalCredentialResult.failure(
+        'Сервер вернул непонятный ответ.',
+      );
     } catch (_) {
-      return false;
+      return const PortalCredentialResult.failure(
+        'Не удалось активировать сотрудника на сервере.',
+      );
     } finally {
       client.close(force: true);
     }
   }
 
-  static String _messageFrom(String raw, {required String fallback}) {
+  /// Совместимость со старым кодом, которому достаточно только результата.
+  static Future<bool> provision({
+    required EmployeeModel employee,
+    required String password,
+  }) async {
+    final result = await provisionDetailed(
+      employee: employee,
+      password: password,
+    );
+    return result.ok;
+  }
+
+  /// Переводит служебные ответы PocketBase в сообщение, полезное человеку.
+  /// Оставлено публичным, чтобы точное поведение можно было проверять тестом.
+  static String messageForResponse(
+    int statusCode,
+    String raw, {
+    required String fallback,
+  }) {
+    final extracted = _messageFrom(raw);
+    if (extracted != null && !_isGenericServerMessage(extracted)) {
+      return extracted;
+    }
+
+    return switch (statusCode) {
+      400 => fallback,
+      401 => 'Серверная сессия истекла. Войдите в синхронизацию заново.',
+      403 => 'Сервер не подтвердил права владельца.',
+      404 =>
+        'Серверный модуль входа не установлен или не обновлён. Повторите после обновления сервера.',
+      >= 500 => 'Серверный модуль входа временно недоступен.',
+      _ => fallback,
+    };
+  }
+
+  static String? _messageFrom(String raw) {
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is Map && decoded['message'] is String) {
-        final message = (decoded['message'] as String).trim();
-        if (message.isNotEmpty) return message;
+      if (decoded is Map) {
+        final direct = decoded['message'];
+        if (direct is String && direct.trim().isNotEmpty) {
+          return direct.trim();
+        }
+        final data = decoded['data'];
+        if (data is Map) {
+          for (final value in data.values) {
+            if (value is Map && value['message'] is String) {
+              final message = (value['message'] as String).trim();
+              if (message.isNotEmpty) return message;
+            }
+          }
+        }
       }
     } catch (_) {}
-    return fallback;
+    return null;
+  }
+
+  static bool _isGenericServerMessage(String message) {
+    final normalized = message.trim().toLowerCase();
+    return normalized == 'something went wrong while processing your request.' ||
+        normalized == 'something went wrong while processing your request' ||
+        normalized == 'an error occurred while processing your request.' ||
+        normalized == 'an error occurred while processing your request' ||
+        normalized == 'failed to process the request.' ||
+        normalized == 'failed to process the request';
   }
 }

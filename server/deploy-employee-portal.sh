@@ -16,7 +16,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "$FROM" ]] || { echo "Нужен --from" >&2; exit 2; }
-for file in index.html styles.css portal-v6.css app.js motion-v6.js app_icon.png; do
+for file in index.html styles.css portal-v6.css app.js motion-v6.js app_icon.png \
+  employee_portal.pb.js employee_portal_static.pb.js; do
   [[ -s "$FROM/$file" ]] || { echo "Нет файла $FROM/$file" >&2; exit 2; }
 done
 
@@ -45,14 +46,8 @@ portal_styles = (root / "portal-v6.css").read_text(encoding="utf-8")
 app_js = (root / "app.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
 motion_js = (root / "motion-v6.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
 
-# Замена передаётся функцией, а не строкой.
-#
-# `re.subn` разбирает строковую замену как шаблон: обратный слеш в ней —
-# начало escape-последовательности. Стоило появиться в скрипте безобидному
-# `split(/(\s+)/)`, и выкладка падала с `bad escape \s`, указывая на
-# позицию внутри вклеиваемого кода, а не на настоящую причину. Функция
-# отдаёт текст как есть, и содержимое файлов перестаёт что-либо значить
-# для регулярного выражения.
+# re.subn разбирает строковую замену как шаблон, поэтому отдаём содержимое
+# через функцию: регулярные выражения внутри клиентского JS остаются данными.
 def inline(pattern, replacement, source):
     return re.subn(pattern, lambda _: replacement, source, count=1)
 
@@ -82,18 +77,6 @@ if (n1, n2, n3, n4) != (1, 1, 1, 1):
 
 # Аварийное состояние: даже при ошибке одного из скриптов страница не может
 # навсегда остаться скрытой загрузочным экраном.
-#
-# Цвета здесь берутся из токенов, а не задаются числом. Этот блок вклеивается
-# последним, и `html,body{background:#08080b}` пережил бы объявление из
-# styles.css по правилу «побеждает последнее при равной специфичности» —
-# светлая тема на сервере просто не включалась бы, оставаясь при этом
-# полностью рабочей у меня на машине. Запасное значение в var() закрывает
-# случай, когда стилей нет вовсе.
-#
-# Классы состояния живут на <html> (`is-booting` / `is-ready`), а сам экран
-# загрузки — это #siteBoot. Прежняя версия искала #boot и дописывала класс
-# элементу #app; ни того, ни другого в разметке давно нет, то есть страховка
-# ничего не страховала.
 html = html.replace(
     '</head>',
     '<style>html,body{background:var(--bg,#08080b);color:var(--text,#f7f7f8)}'
@@ -113,8 +96,6 @@ for file in styles.css portal-v6.css app.js motion-v6.js app_icon.png; do
   install -m 0644 "$FROM/$file" "$STAGE/$file"
 done
 
-# Не публикуем половину новой версии: сначала собирается полный staging,
-# затем каталог переключается одним rename.
 test -s "$STAGE/index.html"
 grep -q 'data-bundle="styles.css"' "$STAGE/index.html"
 grep -q 'data-bundle="app.js"' "$STAGE/index.html"
@@ -123,29 +104,66 @@ grep -q 'data-bundle="app.js"' "$STAGE/index.html"
   exit 2
 }
 
+# Не публикуем половину новой версии: сначала собирается полный staging,
+# затем каталог переключается одним rename.
 rm -rf "$BACKUP"
 if [[ -d "$PORTAL_DIR" ]]; then mv "$PORTAL_DIR" "$BACKUP"; fi
 mv "$STAGE" "$PORTAL_DIR"
 rm -rf "$BACKUP"
 
-HOOK_SOURCES=("$FROM/employee_portal.pb.js" "$FROM/employee_portal_static.pb.js")
+HOOK_SOURCES=(
+  "$FROM/employee_portal.pb.js"
+  "$FROM/employee_portal_static.pb.js"
+)
+HOOK_MODE=""
+
 install_hooks() {
   local prefix=("$@")
   "${prefix[@]}" mkdir -p "$HOOK_DIR"
   local source
   for source in "${HOOK_SOURCES[@]}"; do
-    [[ -f "$source" ]] || continue
-    "${prefix[@]}" install -m 0644 "$source" "$HOOK_DIR/$(basename "$source")"
+    "${prefix[@]}" install -m 0644 \
+      "$source" "$HOOK_DIR/$(basename "$source")"
   done
 }
 
-if [[ -w "$HOOK_DIR" ]] || { [[ ! -e "$HOOK_DIR" ]] && [[ -w "$(dirname "$HOOK_DIR")" ]]; }; then
+if [[ -w "$HOOK_DIR" ]] || {
+  [[ ! -e "$HOOK_DIR" ]] && [[ -w "$(dirname "$HOOK_DIR")" ]]
+}; then
   install_hooks
+  HOOK_MODE="direct"
 elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
   install_hooks sudo
+  HOOK_MODE="sudo"
 else
-  echo "ПРЕДУПРЕЖДЕНИЕ: hooks не обновлены из-за прав" >&2
+  echo "ОШИБКА: нет прав обновить PocketBase hooks в $HOOK_DIR." >&2
+  echo "Выкладка остановлена: без новых hooks вход и активация сотрудников не работают." >&2
+  echo "Разрешите deploy-пользователю запись в каталог или passwordless sudo для install." >&2
+  exit 3
 fi
+
+# Раньше отсутствие прав было только предупреждением, workflow становился
+# зелёным, а сервер продолжал выполнять старый код. Теперь каждый файл
+# сверяется с источником и несовпадение останавливает выкладку.
+for source in "${HOOK_SOURCES[@]}"; do
+  target="$HOOK_DIR/$(basename "$source")"
+  if [[ "$HOOK_MODE" == "sudo" ]]; then
+    sudo -n cmp -s "$source" "$target" || {
+      echo "ОШИБКА: установленный hook не совпадает: $target" >&2
+      exit 3
+    }
+  else
+    cmp -s "$source" "$target" || {
+      echo "ОШИБКА: установленный hook не совпадает: $target" >&2
+      exit 3
+    }
+  fi
+  printf 'PocketBase hook подтверждён: %s\n' "$target"
+done
+
+# PocketBase на Unix автоматически перечитывает изменённые *.pb.js. Даём
+# файловому наблюдателю короткое окно до внешней проверки маршрутов в CI.
+sleep 2
 
 test -s "$PORTAL_DIR/index.html"
 test -s "$PORTAL_DIR/app_icon.png"

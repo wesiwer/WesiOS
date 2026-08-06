@@ -52,25 +52,37 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
       return;
     }
     if (draft.password.length < 8) {
-      _say(_ru ? 'Пароль должен быть не короче 8 символов.' : 'Use at least 8 characters.',
-          error: true);
+      _say(
+        _ru
+            ? 'Пароль должен быть не короче 8 символов.'
+            : 'Use at least 8 characters.',
+        error: true,
+      );
       return;
     }
     if (draft.password != draft.confirmation) {
-      _say(_ru ? 'Пароли не совпадают.' : 'Passwords do not match.', error: true);
+      _say(
+        _ru ? 'Пароли не совпадают.' : 'Passwords do not match.',
+        error: true,
+      );
       return;
     }
 
     final other = TeamService.byLogin(login);
     if (other != null && other.id != me.id) {
-      _say(_ru ? 'Такой логин уже занят локальным профилем.' : 'That login is already used.',
-          error: true);
+      _say(
+        _ru
+            ? 'Такой логин уже занят локальным профилем.'
+            : 'That login is already used.',
+        error: true,
+      );
       return;
     }
 
     setState(() {
       _sending = true;
-      _status = _ru ? 'Отправляю и проверяю вход…' : 'Publishing and verifying…';
+      _status =
+          _ru ? 'Отправляю и проверяю вход…' : 'Publishing and verifying…';
       _statusError = false;
     });
 
@@ -101,9 +113,11 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
       return;
     }
 
-    // setPassword сохраняет только локальный хеш и повторно подтверждает
-    // серверную запись. Открытый пароль после выхода из метода исчезает.
-    final passwordOk = await TeamService.setPassword(me.id, draft.password);
+    // Сервер уже изменил запись и подтвердил контрольный вход. Здесь нужен
+    // только локальный PBKDF2-хеш: второй сетевой запрос после успеха создавал
+    // ложную точку отказа и мог показать ошибку при уже изменённом профиле.
+    final passwordOk =
+        await TeamService.setPasswordLocally(me.id, draft.password);
     if (!mounted) return;
     setState(() => _sending = false);
     _say(
@@ -112,8 +126,8 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
               ? 'Готово: профиль отправлен на сервер, логин и пароль проверены.'
               : 'Done: the profile was published and verified.')
           : (_ru
-              ? 'Серверный вход проверен, но повторная локальная проверка не завершилась.'
-              : 'Server sign-in worked, but the local confirmation failed.'),
+              ? 'Серверный вход работает, но локальный хеш пароля не сохранился.'
+              : 'Server sign-in works, but the local password hash was not saved.'),
       error: !passwordOk,
     );
   }
@@ -156,7 +170,10 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                         ? 'Эти данные будут отправлены на api.wesi-inc.ru и станут едиными для сайта и приложения.'
                         : 'These credentials will be used by the site and the app.',
                     style: TextStyle(
-                        fontSize: 12, height: 1.45, color: AppTheme.textMuted),
+                      fontSize: 12,
+                      height: 1.45,
+                      color: AppTheme.textMuted,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _dialogField(
@@ -171,9 +188,12 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                     hint: _ru ? 'Минимум 8 символов' : 'At least 8 characters',
                     obscure: !visible,
                     suffix: IconButton(
-                      onPressed: () => setDialogState(() => visible = !visible),
+                      onPressed: () =>
+                          setDialogState(() => visible = !visible),
                       icon: Icon(
-                        visible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        visible
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
                         size: 19,
                         color: AppTheme.textMuted,
                       ),
@@ -190,8 +210,11 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                   Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(Icons.lock_outline,
-                          size: 16, color: AppTheme.accentGreen),
+                      Icon(
+                        Icons.lock_outline,
+                        size: 16,
+                        color: AppTheme.accentGreen,
+                      ),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -199,9 +222,10 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                               ? 'Открытый пароль не записывается ни в Hive, ни в логи.'
                               : 'The plain password is never stored or logged.',
                           style: TextStyle(
-                              fontSize: 10.5,
-                              height: 1.4,
-                              color: AppTheme.textMuted),
+                            fontSize: 10.5,
+                            height: 1.4,
+                            color: AppTheme.textMuted,
+                          ),
                         ),
                       ),
                     ],
@@ -213,8 +237,10 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: Text(_ru ? 'Отмена' : 'Cancel',
-                  style: TextStyle(color: AppTheme.textMuted)),
+              child: Text(
+                _ru ? 'Отмена' : 'Cancel',
+                style: TextStyle(color: AppTheme.textMuted),
+              ),
             ),
             TextButton(
               onPressed: () => Navigator.pop(
@@ -228,7 +254,9 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
               child: Text(
                 _ru ? 'Отправить на сервер' : 'Publish to server',
                 style: TextStyle(
-                    color: AppTheme.accent, fontWeight: FontWeight.w700),
+                  color: AppTheme.accent,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -247,11 +275,14 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
     required String hint,
     bool obscure = false,
     Widget? suffix,
-  }) => Column(
+  }) =>
+      Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label,
-              style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+          ),
           const SizedBox(height: 5),
           TextField(
             controller: controller,
@@ -300,15 +331,20 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
               children: [
                 Row(
                   children: [
-                    Icon(Icons.badge_outlined,
-                        size: 20, color: AppTheme.accent),
+                    Icon(
+                      Icons.badge_outlined,
+                      size: 20,
+                      color: AppTheme.accent,
+                    ),
                     const SizedBox(width: 11),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _ru ? 'Единый вход WesiOS' : 'Unified WesiOS sign-in',
+                            _ru
+                                ? 'Единый вход WesiOS'
+                                : 'Unified WesiOS sign-in',
                             style: TextStyle(
                               fontSize: 13.5,
                               fontWeight: FontWeight.w700,
@@ -321,7 +357,9 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                                 ? (_ru ? 'Профиль не заведён' : 'No profile')
                                 : '${_ru ? 'Логин' : 'Login'}: ${me.login}',
                             style: TextStyle(
-                                fontSize: 11.5, color: AppTheme.textMuted),
+                              fontSize: 11.5,
+                              color: AppTheme.textMuted,
+                            ),
                           ),
                         ],
                       ),
@@ -344,7 +382,10 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                       ? 'Задайте собственный логин и пароль. Приложение отправит их на сервер и сразу проверит вход тем же способом, что использует сайт.'
                       : 'Set your login and password. The app publishes and verifies them using the same server as the site.',
                   style: TextStyle(
-                      fontSize: 10.8, height: 1.45, color: AppTheme.textMuted),
+                    fontSize: 10.8,
+                    height: 1.45,
+                    color: AppTheme.textMuted,
+                  ),
                 ),
                 if (_status != null) ...[
                   const SizedBox(height: 10),
@@ -384,8 +425,11 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                             ),
                             const SizedBox(width: 9),
                           ] else ...[
-                            const Icon(Icons.cloud_upload_outlined,
-                                size: 18, color: Colors.white),
+                            const Icon(
+                              Icons.cloud_upload_outlined,
+                              size: 18,
+                              color: Colors.white,
+                            ),
                             const SizedBox(width: 9),
                           ],
                           Text(

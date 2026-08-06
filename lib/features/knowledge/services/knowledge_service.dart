@@ -5,32 +5,61 @@ import '../../../core/localization/wesi_locale.dart';
 import '../data/builtin_articles.dart';
 import '../models/article_model.dart';
 
-/// Хранилище базы знаний.
 class KnowledgeService {
   static const String _boxName = 'wesios_knowledge';
-
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static Box<ArticleModel>? _box;
-
-  /// Уже сеяли в этом процессе — повторный seed на каждом _load не нужен.
+  static Future<Box<ArticleModel>>? _opening;
+  static Future<void>? _seeding;
   static bool _seeded = false;
 
-  static Future<Box<ArticleModel>> get _articlesBox async {
-    _box ??= await Hive.openBox<ArticleModel>(_boxName);
-    return _box!;
+  /// Все параллельные вызовы используют одно открытие Hive-box.
+  static Future<Box<ArticleModel>> get _articlesBox {
+    final ready = _box;
+    if (ready != null && ready.isOpen) return Future.value(ready);
+    final running = _opening;
+    if (running != null) return running;
+
+    final future = Hive.openBox<ArticleModel>(_boxName).then((box) {
+      _box = box;
+      return box;
+    });
+    _opening = future;
+    future.then<void>(
+      (_) {
+        if (identical(_opening, future)) _opening = null;
+      },
+      onError: (Object _, StackTrace __) {
+        if (identical(_opening, future)) _opening = null;
+      },
+    );
+    return future;
   }
 
-  /// Записывает встроенные статьи. Идемпотентно:
-  /// - не трогает пользовательские;
-  /// - у встроенных сохраняет pin и updatedAt;
-  /// - убирает встроенные, которых в коде больше нет;
-  /// - revision++ только если реально что-то изменилось.
-  static Future<void> seed({bool force = false}) async {
+  /// Старт приложения и экран присоединяются к одному посеву статей.
+  static Future<void> seed({bool force = false}) {
+    if (_seeded && !force) return Future.value();
+    final running = _seeding;
+    if (running != null) return running;
+
+    final future = _seed(force);
+    _seeding = future;
+    future.then<void>(
+      (_) {
+        if (identical(_seeding, future)) _seeding = null;
+      },
+      onError: (Object _, StackTrace __) {
+        if (identical(_seeding, future)) _seeding = null;
+      },
+    );
+    return future;
+  }
+
+  static Future<void> _seed(bool force) async {
     if (_seeded && !force) return;
     final box = await _articlesBox;
     var changed = false;
-
     final builtins = BuiltinArticles.all(WesiLocale.isRussian);
 
     for (final article in builtins) {
@@ -42,8 +71,6 @@ class KnowledgeService {
       }
       if (!existing.builtIn) continue;
 
-      // Обновляем текст из кода, pin пользователя сохраняем,
-      // updatedAt НЕ трогаем — иначе сортировка «прыгает».
       final next = article.copyWith(
         pinned: existing.pinned,
         updatedAt: existing.updatedAt,
@@ -63,23 +90,10 @@ class KnowledgeService {
     if (await _pruneStale(box, {for (final a in builtins) a.id})) {
       changed = true;
     }
-
     _seeded = true;
     if (changed) revision.value++;
   }
 
-  /// Убирает встроенные статьи, которых в коде больше нет.
-  ///
-  /// Без этого справку невозможно переписать: посев умеет только добавлять,
-  /// поэтому на устройстве, где приложение уже стояло, старые статьи живут
-  /// вечно рядом с новыми. Человек видит две базы знаний сразу и не понимает,
-  /// какая настоящая, — а удалить старые руками нельзя, встроенные не
-  /// удаляются намеренно.
-  ///
-  /// Пользовательские записи не трогаются никогда. Но те из них, что лежали
-  /// внутри исчезнувшей встроенной папки, поднимаются в корень: иначе они
-  /// остаются в дереве без пути к себе — формально целы, а найти их можно
-  /// только поиском.
   static Future<bool> _pruneStale(
     Box<ArticleModel> box,
     Set<String> keep,
@@ -90,12 +104,14 @@ class KnowledgeService {
     };
     if (stale.isEmpty) return false;
 
-    final orphans = [
-      for (final a in box.values)
-        if (!a.builtIn && a.parentId != null && stale.contains(a.parentId)) a,
-    ];
-    for (final a in orphans) {
-      await box.put(a.id, a.copyWith(parentId: null));
+    final orphans = box.values
+        .where(
+          (a) =>
+              !a.builtIn && a.parentId != null && stale.contains(a.parentId),
+        )
+        .toList();
+    for (final article in orphans) {
+      await box.put(article.id, article.copyWith(parentId: null));
     }
     await box.deleteAll(stale);
     return true;
@@ -115,8 +131,7 @@ class KnowledgeService {
       ..sort((a, b) {
         if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
         final byDate = b.updatedAt.compareTo(a.updatedAt);
-        if (byDate != 0) return byDate;
-        return a.id.compareTo(b.id);
+        return byDate != 0 ? byDate : a.id.compareTo(b.id);
       });
     return list;
   }
@@ -132,14 +147,11 @@ class KnowledgeService {
         .toList();
   }
 
-  static Future<ArticleModel?> getById(String id) async {
-    final box = await _articlesBox;
-    return box.get(id);
-  }
+  static Future<ArticleModel?> getById(String id) async =>
+      (await _articlesBox).get(id);
 
   static Future<void> save(ArticleModel article) async {
-    final box = await _articlesBox;
-    await box.put(article.id, article);
+    await (await _articlesBox).put(article.id, article);
     revision.value++;
   }
 
@@ -176,12 +188,12 @@ class KnowledgeService {
     return true;
   }
 
-  static Future<void> togglePin(ArticleModel article) async {
-    await save(article.copyWith(
-      pinned: !article.pinned,
-      updatedAt: article.updatedAt,
-    ));
-  }
+  static Future<void> togglePin(ArticleModel article) => save(
+        article.copyWith(
+          pinned: !article.pinned,
+          updatedAt: article.updatedAt,
+        ),
+      );
 
   static Future<Map<ArticleSection, int>> counts() async {
     final all = await getAll();
@@ -191,15 +203,6 @@ class KnowledgeService {
     };
   }
 
-  /// В каком порядке показывать соседей по папке.
-  ///
-  /// Порядок задан явно ([ArticleModel.order]) — потому что справка читается
-  /// подряд: «первый день» обязан стоять раньше «если что-то пошло не так».
-  /// По алфавиту получалось «Если…» перед «Первый…», и главы выглядели
-  /// набором несвязанных заметок, а не путём.
-  ///
-  /// Закреплённое человеком всё равно идёт первым: это его собственная
-  /// пометка, и она сильнее нашего замысла.
   static int compare(ArticleModel a, ArticleModel b) {
     if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
     final byOrder = a.order.compareTo(b.order);
@@ -210,31 +213,28 @@ class KnowledgeService {
 
   static List<ArticleModel> getRoots() {
     final box = _box;
-    if (box == null) return [];
+    if (box == null || !box.isOpen) return [];
     return box.values.where((a) => a.parentId == null).toList()..sort(compare);
   }
 
   static List<ArticleModel> getChildren(String parentId) {
     final box = _box;
-    if (box == null) return [];
+    if (box == null || !box.isOpen) return [];
     return box.values.where((a) => a.parentId == parentId).toList()
       ..sort(compare);
   }
 
   static bool hasChildren(String parentId) {
     final box = _box;
-    if (box == null) return false;
-    return box.values.any((a) => a.parentId == parentId);
+    return box != null &&
+        box.isOpen &&
+        box.values.any((a) => a.parentId == parentId);
   }
 
   static List<ArticleModel> getBreadcrumb(String articleId) {
     final box = _box;
-    if (box == null) return [];
+    if (box == null || !box.isOpen) return [];
     final result = <ArticleModel>[];
-    // Защита от петли в данных: если A лежит в B, а B — в A, этот цикл
-    // крутился бы вечно и вешал экран намертво. Петлю на диске мог оставить
-    // любой прежний билд, поэтому обход обязан быть устойчивым сам по себе,
-    // а не только полагаться на проверку при выборе родителя.
     final seen = <String>{};
     var current = box.get(articleId);
     while (current != null && seen.add(current.id)) {
@@ -245,20 +245,18 @@ class KnowledgeService {
     return result;
   }
 
-  /// Все потомки статьи, включая её саму — для проверки «не кладём папку
-  /// внутрь самой себя».
   static Set<String> subtreeIds(String rootId) {
     final box = _box;
-    if (box == null) return {rootId};
+    if (box == null || !box.isOpen) return {rootId};
     final ids = <String>{rootId};
     var grew = true;
-    // Обход волнами вместо рекурсии: на петле рекурсия переполнила бы стек,
-    // а здесь множество просто перестаёт расти.
     while (grew) {
       grew = false;
-      for (final a in box.values) {
-        final p = a.parentId;
-        if (p != null && ids.contains(p) && ids.add(a.id)) grew = true;
+      for (final article in box.values) {
+        final parent = article.parentId;
+        if (parent != null && ids.contains(parent) && ids.add(article.id)) {
+          grew = true;
+        }
       }
     }
     return ids;
@@ -266,13 +264,13 @@ class KnowledgeService {
 
   static List<ArticleModel> getSubtree(String rootId) {
     final box = _box;
-    if (box == null) return [];
+    if (box == null || !box.isOpen) return [];
     final result = <ArticleModel>[];
-    // seen — та же защита от петли: без него рекурсия переполняла бы стек.
     final seen = <String>{rootId};
-    void collect(String pid) {
-      final children = box.values.where((a) => a.parentId == pid).toList();
-      for (final child in children) {
+
+    void collect(String parentId) {
+      for (final child
+          in box.values.where((a) => a.parentId == parentId).toList()) {
         if (!seen.add(child.id)) continue;
         result.add(child);
         collect(child.id);

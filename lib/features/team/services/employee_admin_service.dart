@@ -11,6 +11,8 @@ class EmployeeAdminService {
 
   static const String _settingsBox = 'wesios_settings';
   static const String _activationKey = 'team_account_activation';
+  static const String _activationErrorKey = 'team_account_activation_error';
+  static const String _activationAttemptKey = 'team_account_activation_attempt';
   static const String _deletedKey = 'team_deleted_archive';
 
   static Box<dynamic>? _box() {
@@ -21,21 +23,55 @@ class EmployeeAdminService {
     }
   }
 
-  static Map<String, dynamic> _activationMap() {
-    final raw = _box()?.get(_activationKey);
+  static Map<String, dynamic> _map(String key) {
+    final raw = _box()?.get(key);
     return raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
   }
+
+  static Map<String, dynamic> _activationMap() => _map(_activationKey);
 
   /// Успешно ли создана и проверена серверная учётная запись.
   static bool isActivated(String employeeId) =>
       _activationMap()[employeeId] == true;
 
-  static Future<void> setActivated(String employeeId, bool value) async {
+  /// Последняя понятная причина, почему серверная активация не завершилась.
+  static String activationError(String employeeId) {
+    final value = _map(_activationErrorKey)[employeeId];
+    return value is String ? value : '';
+  }
+
+  /// Когда приложение последний раз действительно обращалось к серверу.
+  static DateTime? lastActivationAttempt(String employeeId) {
+    final value = _map(_activationAttemptKey)[employeeId];
+    return value is String ? DateTime.tryParse(value) : null;
+  }
+
+  static Future<void> setActivated(String employeeId, bool value) =>
+      setActivationResult(employeeId, success: value);
+
+  static Future<void> setActivationResult(
+    String employeeId, {
+    required bool success,
+    String message = '',
+  }) async {
     final box = _box();
     if (box == null) return;
-    final map = _activationMap();
-    map[employeeId] = value;
-    await box.put(_activationKey, map);
+
+    final activation = _activationMap();
+    activation[employeeId] = success;
+    await box.put(_activationKey, activation);
+
+    final errors = _map(_activationErrorKey);
+    if (success || message.trim().isEmpty) {
+      errors.remove(employeeId);
+    } else {
+      errors[employeeId] = message.trim();
+    }
+    await box.put(_activationErrorKey, errors);
+
+    final attempts = _map(_activationAttemptKey);
+    attempts[employeeId] = DateTime.now().toIso8601String();
+    await box.put(_activationAttemptKey, attempts);
   }
 
   static List<Map<String, dynamic>> get deleted {
@@ -46,8 +82,9 @@ class EmployeeAdminService {
             .map((e) => Map<String, dynamic>.from(e))
             .toList()
         : <Map<String, dynamic>>[];
-    rows.sort((a, b) =>
-        '${b['deletedAt']}'.compareTo('${a['deletedAt']}'));
+    rows.sort(
+      (a, b) => '${b['deletedAt']}'.compareTo('${a['deletedAt']}'),
+    );
     return rows;
   }
 
@@ -74,11 +111,18 @@ class EmployeeAdminService {
       'deletedAt': DateTime.now().toIso8601String(),
       'reason': reason.trim(),
       'wasActivated': isActivated(employee.id),
+      'activationError': activationError(employee.id),
     });
     await box.put(_deletedKey, rows);
 
-    final activation = _activationMap()..remove(employee.id);
-    await box.put(_activationKey, activation);
+    for (final key in [
+      _activationKey,
+      _activationErrorKey,
+      _activationAttemptKey,
+    ]) {
+      final values = _map(key)..remove(employee.id);
+      await box.put(key, values);
+    }
   }
 
   static Future<void> deleteArchiveEntry(String employeeId) async {
