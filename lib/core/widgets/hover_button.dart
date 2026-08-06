@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../feedback/wesi_feedback.dart';
 import '../theme/app_theme.dart';
 
 class HoverButton extends StatefulWidget {
@@ -32,7 +33,18 @@ class _HoverButtonState extends State<HoverButton> {
 
   bool get _active => _isHovered || _isFocused;
 
-  void _activate() => widget.onTap?.call();
+  /// Отклик стоит здесь, а не на каждой кнопке по коду.
+  ///
+  /// Через эту кнопку проходит почти всё, что человек нажимает намеренно.
+  /// Расставлять вызовы по экранам значило бы гарантированно где-то забыть,
+  /// а отклик, который срабатывает через раз, читается как «кнопка иногда
+  /// не работает».
+  void _tap() {
+    WesiFeedback.tap();
+    widget.onTap?.call();
+  }
+
+  void _activate() => _tap();
 
   @override
   Widget build(BuildContext context) {
@@ -54,7 +66,7 @@ class _HoverButtonState extends State<HoverButton> {
         ),
       },
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: widget.onTap == null ? null : _tap,
         child: AnimatedContainer(
           duration: Duration(milliseconds: 200),
           curve: Curves.easeOutCubic,
@@ -119,6 +131,11 @@ class _HoverIconButtonState extends State<HoverIconButton> {
 
   bool get _active => _isHovered || _isFocused;
 
+  void _tap() {
+    WesiFeedback.tap();
+    widget.onTap?.call();
+  }
+
   @override
   Widget build(BuildContext context) {
     return FocusableActionDetector(
@@ -131,13 +148,13 @@ class _HoverIconButtonState extends State<HoverIconButton> {
       actions: <Type, Action<Intent>>{
         ActivateIntent: CallbackAction<ActivateIntent>(
           onInvoke: (_) {
-            widget.onTap?.call();
+            _tap();
             return null;
           },
         ),
       },
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: widget.onTap == null ? null : _tap,
         child: AnimatedContainer(
           duration: Duration(milliseconds: 150),
           padding: EdgeInsets.all(8),

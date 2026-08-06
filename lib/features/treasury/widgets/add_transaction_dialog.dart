@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../core/feedback/wesi_feedback.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/hover_button.dart';
 import '../../../core/widgets/window_controls.dart';
@@ -264,6 +265,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                       final amount = double.tryParse(_amountCtrl.text);
                       if (_titleCtrl.text.isNotEmpty && amount != null) {
                         final rub = CurrencyService.toRub(amount);
+                        WesiFeedback.success();
                         Navigator.pop(context, {
                           'title': _titleCtrl.text,
                           'amount': rub,

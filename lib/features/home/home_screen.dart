@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/feedback/wesi_feedback.dart';
 import '../../core/theme/app_theme.dart';
 import '../../widgets/glass_card.dart';
 import '../../core/widgets/window_controls.dart';
@@ -65,6 +66,7 @@ class _HomeScreenState extends State<HomeScreen>
 
   void _onTabTap(int i) {
     if (i == _selectedIndex) return;
+    WesiFeedback.select();
     setState(() {
       _selectedIndex = i;
       _built.add(i);

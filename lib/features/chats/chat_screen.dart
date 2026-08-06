@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/feedback/wesi_feedback.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_avatar.dart';
@@ -110,6 +111,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     // Отправили — не ждём следующего тика, отправляем сразу.
     ChatSync.nudge();
+    WesiFeedback.send();
     if (!mounted) return;
     setState(() {
       _input.clear();

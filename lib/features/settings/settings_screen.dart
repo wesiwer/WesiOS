@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../core/feedback/wesi_feedback.dart';
 import '../../core/constants/app_version.dart';
 import '../../core/services/app_icon_service.dart';
 import '../../core/services/backup_service.dart';
@@ -99,6 +100,54 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: WesiLocale.isRussian ? 'Русский' : 'English',
                 onTap: _showLanguagePicker,
               ),
+              const SizedBox(height: 24),
+              _section(ru ? 'Отклик' : 'Feedback'),
+              // Показывается только то, что это устройство умеет. Вибрация
+              // на настольном компьютере и звуковые щелчки в кармане — это
+              // не «на всякий случай», это обещание того, чего не будет.
+              if (WesiFeedback.supportsHaptics || WesiFeedback.supportsSound)
+                ValueListenableBuilder<int>(
+                  valueListenable: WesiFeedback.revision,
+                  builder: (context, _, __) => Column(
+                    children: [
+                      if (WesiFeedback.supportsHaptics)
+                        _tile(
+                          icon: Icons.vibration,
+                          title: ru ? 'Тактильный отклик' : 'Haptics',
+                          subtitle: ru
+                              ? 'Короткая отдача на нажатие, отправку и ошибку'
+                              : 'A short buzz on taps, sends and errors',
+                          trailing: Switch(
+                            value: WesiFeedback.haptics,
+                            activeColor: AppTheme.accent,
+                            onChanged: (v) async {
+                              await WesiFeedback.setHaptics(v);
+                              // Пробный отклик сразу: переключатель, который
+                              // ничего не делает в момент нажатия, проверяют
+                              // потом и не находят.
+                              if (v) WesiFeedback.success();
+                            },
+                          ),
+                        ),
+                      if (WesiFeedback.supportsSound)
+                        _tile(
+                          icon: Icons.volume_up_outlined,
+                          title: ru ? 'Звуки' : 'Sounds',
+                          subtitle: ru
+                              ? 'Тихие короткие сигналы на действия'
+                              : 'Quiet short cues for actions',
+                          trailing: Switch(
+                            value: WesiFeedback.sound,
+                            activeColor: AppTheme.accent,
+                            onChanged: (v) async {
+                              await WesiFeedback.setSound(v);
+                              if (v) WesiFeedback.success();
+                            },
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
               const SizedBox(height: 24),
               _section(WesiLocale.get('notifications')),
               _tile(

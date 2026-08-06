@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/feedback/wesi_feedback.dart';
 import '../../core/widgets/module_header.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_avatar.dart';
@@ -109,7 +110,12 @@ class _TasksScreenState extends State<TasksScreen> {
         ],
       ),
     );
-    if (ok == true) await _service.delete(task.id);
+    if (ok != true) return;
+    // Отдельный отклик у необратимого: он ощутимо не такой, как у обычного
+    // нажатия, и это единственный способ заметить промах до того, как
+    // задача исчезнет.
+    WesiFeedback.warning();
+    await _service.delete(task.id);
   }
 
   @override
