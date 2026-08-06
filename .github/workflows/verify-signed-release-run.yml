@@ -1,0 +1,79 @@
+name: Verify signed release completion
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  verify-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TARGET_SHA: d765d5bc882dd8f722badb67b9678348b2d3545e
+      TARGET_WORKFLOW: Build signed WesiOS release
+    steps:
+      - name: Wait for the exact main release run
+        shell: bash
+        run: |
+          set -euo pipefail
+          RUN_ID=""
+          for attempt in $(seq 1 30); do
+            RUN_ID=$(gh api \
+              -H 'Accept: application/vnd.github+json' \
+              "/repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=100" \
+              --jq '.workflow_runs[] | select(.name == env.TARGET_WORKFLOW and .event == "push") | .id' \
+              | head -1 || true)
+            if [ -n "$RUN_ID" ]; then break; fi
+            echo "Waiting for release run ($attempt/30)…"
+            sleep 10
+          done
+          [ -n "$RUN_ID" ] || {
+            echo "::error::Release workflow was not created for $TARGET_SHA"
+            exit 1
+          }
+          echo "Release run: $RUN_ID"
+          echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+
+      - name: Wait until release finishes
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 150); do
+            STATUS=$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.status')
+            CONCLUSION=$(gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID" --jq '.conclusion // ""')
+            echo "[$attempt/150] status=$STATUS conclusion=${CONCLUSION:-pending}"
+            if [ "$STATUS" = "completed" ]; then
+              echo "RELEASE_CONCLUSION=$CONCLUSION" >> "$GITHUB_ENV"
+              break
+            fi
+            sleep 20
+          done
+          [ "${RELEASE_CONCLUSION:-}" != "" ] || {
+            echo "::error::Release did not finish in time"
+            exit 1
+          }
+
+      - name: Print job and step results
+        if: always() && env.RUN_ID != ''
+        shell: bash
+        run: |
+          gh api "/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID/jobs?per_page=100" \
+            --jq '.jobs[] | "JOB \(.name): \(.status) / \(.conclusion)\n" + ([.steps[] | "  STEP \(.number) \(.name): \(.status) / \(.conclusion)"] | join("\n"))'
+
+      - name: Print failed logs
+        if: always() && env.RELEASE_CONCLUSION != 'success' && env.RUN_ID != ''
+        shell: bash
+        run: gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed || true
+
+      - name: Require successful signed release
+        shell: bash
+        run: |
+          test "$RELEASE_CONCLUSION" = "success" || {
+            echo "::error::Signed release concluded: $RELEASE_CONCLUSION"
+            exit 1
+          }
