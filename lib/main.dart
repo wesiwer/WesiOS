@@ -26,6 +26,7 @@ import 'core/services/github_release_download.dart';
 import 'core/services/secrets_service.dart';
 import 'core/notifications/notification_watcher.dart';
 import 'core/notifications/wesi_notifications.dart';
+import 'core/feedback/wesi_haptics.dart';
 import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_engine.dart';
 import 'features/chats/models/chat_message.dart';
@@ -95,6 +96,9 @@ void main() async {
   // Уведомления: разрешение спрашивается один раз, а следить за поводами
   // начинаем сразу. Первый проход молчит намеренно — см. NotificationWatcher.
   unawaited(WesiNotifications.init());
+  // Спрашиваем возможности вибромотора один раз: ответ не меняется, а
+  // переход через границу платформы на каждое нажатие стоит дороже отклика.
+  unawaited(WesiHaptics.warmUp());
   NotificationWatcher.start();
 
   CurrencyService.loadPrivacyMode();

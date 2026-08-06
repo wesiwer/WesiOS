@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hive/hive.dart';
 
+import 'wesi_haptics.dart';
+
 /// Что именно произошло. Не «какой звук играть» — от этого зависит и звук,
 /// и вибрация, и они разные на разных платформах.
 enum FeedbackKind {
@@ -155,11 +157,22 @@ class WesiFeedback {
 
   /// Сила отдачи по смыслу события.
   ///
-  /// Берётся `HapticFeedback`, а не пакет с произвольными узорами: он не
-  /// требует разрешения `VIBRATE` в манифесте и на телефоне без мотора
-  /// молча ничего не делает. Разрешение ради узора — плохой обмен: человек
-  /// видит его при установке и справедливо спрашивает зачем.
+  /// Сначала пробуем точный отклик ([WesiHaptics]): на Android 12+ с
+  /// подходящим мотором из примитивов собирается рисунок с интенсивностью —
+  /// то, за счёт чего отклик на iPhone ощущается отчётливым, а не тупым
+  /// толчком. Не вышло — отдаём штатный `HapticFeedback`.
+  ///
+  /// Он же остаётся единственным на всём, что старше Android 10, и на iOS,
+  /// где и так обслуживается правильными генераторами. Четыре его константы
+  /// (`VIRTUAL_KEY`, `KEYBOARD_TAP`, `CONTEXT_CLICK`, `CLOCK_TICK`) не имеют
+  /// ни силы, ни длительности — но это лучше, чем ничего.
   static void _vibrate(FeedbackKind kind) {
+    unawaited(WesiHaptics.play(kind.name).then((precise) {
+      if (!precise) _fallbackVibrate(kind);
+    }));
+  }
+
+  static void _fallbackVibrate(FeedbackKind kind) {
     switch (kind) {
       case FeedbackKind.tap:
       case FeedbackKind.send:

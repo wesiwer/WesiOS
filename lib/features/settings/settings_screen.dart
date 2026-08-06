@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/feedback/wesi_feedback.dart';
+import '../../core/feedback/wesi_haptics.dart';
 import '../../core/notifications/wesi_notifications.dart';
 import '../../core/constants/app_version.dart';
 import '../../core/services/app_icon_service.dart';
@@ -115,9 +116,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _tile(
                           icon: Icons.vibration,
                           title: ru ? 'Тактильный отклик' : 'Haptics',
-                          subtitle: ru
-                              ? 'Короткая отдача на нажатие, отправку и ошибку'
-                              : 'A short buzz on taps, sends and errors',
+                          // Говорим прямо, на что способен этот аппарат.
+                          // Точный отклик — свойство мотора: на простом
+                          // эксцентрике его не будет никогда, и обещать
+                          // «как на айфоне» там нечестно.
+                          subtitle: WesiHaptics.precise
+                              ? (ru
+                                  ? 'Точный: разная сила и рисунок под каждое действие'
+                                  : 'Precise: distinct strength and pattern per action')
+                              : (ru
+                                  ? 'Простой: этот аппарат умеет только ровный толчок'
+                                  : 'Basic: this device only does a flat buzz'),
                           trailing: Switch(
                             value: WesiFeedback.haptics,
                             activeColor: AppTheme.accent,
