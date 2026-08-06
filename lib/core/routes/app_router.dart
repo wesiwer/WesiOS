@@ -23,6 +23,7 @@ import '../../features/crm/crm_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/founder/founder_story_screen.dart';
 import '../../features/sysadmin/sysadmin_screen.dart';
+import '../../features/sysadmin/console/console_screen.dart';
 import '../../features/team/contacts_screen.dart';
 import '../../features/chats/chats_screen.dart';
 
@@ -50,7 +51,7 @@ class AppRouter {
       case '/tasks':
         return _slideUpRoute(TasksScreen());
       case '/roadmap':
-        return _slideUpRoute(RoadmapScreen());
+        return _slideUpRoute(const RoadmapScreen());
       case '/analytics':
         return _slideUpRoute(AnalyticsScreen());
       case '/knowledge':
@@ -63,12 +64,13 @@ class AppRouter {
         return _slideUpRoute(KeysScreen());
       case '/sysadmin':
         return _slideUpRoute(const SysadminScreen());
+      case '/sysadmin/console':
+        return _slideUpRoute(const WesiConsoleScreen());
       case '/settings':
         return _slideUpRoute(SettingsScreen());
       case '/profile':
         return _slideUpRoute(ProfileScreen());
       case '/calculator':
-        // Калькулятор сам рисует backdrop — без BackdropFilter в роутере
         return PageRouteBuilder(
           opaque: false,
           barrierDismissible: true,
@@ -84,7 +86,7 @@ class AppRouter {
       case '/audio':
         return _slideUpRoute(AudioVaultScreen());
       case '/crm':
-        return _slideUpRoute(CrmScreen());
+        return _slideUpRoute(const CrmScreen());
       case '/calendar':
         return _slideUpRoute(CalendarScreen());
       case '/contacts':
