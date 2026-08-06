@@ -48,12 +48,6 @@ body{position:relative}
 /* SVG-линия без Gaussian Blur. Свечение запечено тремя одинаковыми путями
    разной толщины — визуально почти то же, но Safari не пересчитывает blur
    на каждом кадре прокрутки. */
-.runner-svg{position:absolute;left:0;top:0;width:100vw;z-index:8;pointer-events:none;overflow:visible;opacity:0;transition:opacity .22s ease;contain:layout style;will-change:opacity;transform:translateZ(0)}
-.runner-svg.active{opacity:1}
-.runner-aura,.runner-trail,.runner-head{fill:none;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
-.runner-aura{stroke:url(#runnerGradient);stroke-width:12;opacity:.105}
-.runner-trail{stroke:url(#runnerGradient);stroke-width:5.2;opacity:.29}
-.runner-head{stroke:#ff7a22;stroke-width:3.7;opacity:1}
 .showcase,.flow-section,.motion-rail,.auth-bottom{position:relative;z-index:4}
 #motionRail .rail-line{--runner-merge:0;overflow:visible;transition:box-shadow .22s ease;contain:layout style}
 #motionRail .rail-line:before{content:"";position:absolute;left:50%;top:-3px;width:18px;height:88px;transform:translate3d(-50%,-50%,0) scaleY(calc(.2 + var(--runner-merge)));transform-origin:50% 100%;border-radius:999px;background:linear-gradient(to bottom,rgba(255,176,92,0),rgba(255,111,27,.92) 58%,rgba(255,101,23,.18));opacity:var(--runner-merge);pointer-events:none;will-change:transform,opacity}
@@ -119,10 +113,7 @@ body{position:relative}
   .intro-orbit img{width:88px;height:88px;border-radius:25px}
   .auth-bottom{min-height:auto;padding:110px 0 70px;gap:38px}
   .auth-copy h2{font-size:40px}
-  .runner-aura{stroke-width:9.5}
-  .runner-head{stroke-width:3.1}
-  .runner-trail{stroke-width:4.2}
-  #motionRail .rail-line:before{height:70px;width:15px}
+        #motionRail .rail-line:before{height:70px;width:15px}
   .baked-float-1{animation-duration:10.8s}
   .baked-float-2{animation-duration:11.5s}
   .baked-float-3{animation-duration:11.1s}
@@ -132,9 +123,89 @@ body{position:relative}
 }
 
 @media(prefers-reduced-motion:reduce){
-  .runner-svg{display:none}
-  .module-card,.module-card:after,.orange-glow{animation:none}
+    .module-card,.module-card:after,.orange-glow{animation:none}
   .intro-orbit:before,.intro-orbit:after,.intro-orbit i{animation:none}
   .boot-logo,.boot-orbit{animation:none}
   .motion-ready [data-scroll-reveal]{opacity:1!important;transform:none!important;transition:none!important}
 }
+
+
+/* ─────────────────────────────────── полоса прокрутки страницы */
+.scroll-progress{position:fixed;inset:0 0 auto 0;height:3px;z-index:95;pointer-events:none;background:linear-gradient(90deg,rgba(255,255,255,.045),rgba(255,255,255,.02))}
+.scroll-progress i{display:block;height:100%;width:100%;transform:scaleX(0);transform-origin:0 50%;background:linear-gradient(90deg,#ff5f10,#ff8a3d 58%,#ffc27a);box-shadow:0 0 14px rgba(255,101,23,.55);will-change:transform}
+/* Светящаяся голова полосы: отдельный слой, чтобы свечение не растягивалось
+   вместе с заливкой — растянутая тень выглядит смазанной. */
+.scroll-progress b{position:absolute;top:50%;left:0;width:56px;height:3px;margin:-1.5px 0 0 -56px;border-radius:3px;opacity:0;background:linear-gradient(90deg,rgba(255,194,122,0),rgba(255,214,168,.95));box-shadow:0 0 20px rgba(255,138,61,.75);transition:opacity .3s ease;will-change:transform}
+.is-booting .scroll-progress{opacity:0}
+
+/* ─────────────────────────────────── подсветка под курсором */
+.spotlight{position:fixed;top:0;left:0;width:1px;height:1px;z-index:1;pointer-events:none;opacity:0;transition:opacity .5s ease;will-change:transform}
+.spotlight::before{content:'';position:absolute;left:-320px;top:-320px;width:640px;height:640px;border-radius:50%;background:radial-gradient(circle,rgba(255,101,23,.10),rgba(255,101,23,.035) 42%,transparent 66%)}
+.spotlight.visible{opacity:1}
+@media (hover:none),(pointer:coarse){.spotlight{display:none}}
+
+/* ─────────────────────────────────── плёночное зерно
+   БЕЗ mix-blend-mode. С ним слой выглядит богаче, но стоит непозволительно:
+   режим наложения заставляет браузер на каждый кадр вычитывать то, что под
+   слоем, и частота падала вдвое — 24 просевших кадра против 5. Измерено, а
+   не предположено. Обычная полупрозрачность даёт почти тот же вид и не
+   стоит ничего после первой отрисовки.
+   Один неподвижный слой поверх всего. После первой отрисовки не стоит
+   ничего, а изображению добавляет ту самую «дороговизну», которой не
+   бывает у идеально чистых градиентов. */
+.grain{position:fixed;inset:0;z-index:70;pointer-events:none;opacity:.05;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.55'/%3E%3C/svg%3E");background-size:160px 160px;transform:translateZ(0)}
+.is-booting .grain{opacity:0}
+
+/* ─────────────────────────────────── блик по карточкам при появлении */
+/* НИКАКОГО position здесь. Карточки модулей и узлы потока стоят
+   absolute, и правило `position:relative` в этом же наборе молча
+   отменяло их раскладку — они съезжали в левый верхний угол своего
+   контейнера. Блику достаточно того, что у элементов уже есть своя
+   система координат. */
+.module-card,.flow-node,.motion-step{overflow:hidden}
+.module-card::after,.flow-node::after,.motion-step::after,.login-panel::after{content:'';position:absolute;inset:0;pointer-events:none;opacity:0;background:linear-gradient(115deg,transparent 38%,rgba(255,255,255,.075) 50%,transparent 62%);transform:translate3d(-120%,0,0)}
+[data-scroll-reveal].visible::after{animation:sheenPass 1.35s cubic-bezier(.22,.61,.36,1) .18s both}
+@keyframes sheenPass{0%{opacity:0;transform:translate3d(-120%,0,0)}22%{opacity:1}100%{opacity:0;transform:translate3d(120%,0,0)}}
+
+/* Карточка чуть подаётся вперёд под курсором — без теней и фильтров,
+   только transform, поэтому кадр остаётся у композитора. */
+@media (hover:hover) and (pointer:fine){
+  .module-card,.flow-node,.motion-step{transition:transform .42s cubic-bezier(.22,.61,.36,1)}
+  .module-card:hover,.flow-node:hover,.motion-step:hover{transform:translate3d(0,-4px,0) scale(1.012)}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .scroll-progress i{transition:none}
+  .spotlight,.grain{display:none}
+  .module-card::after,.flow-node::after,.motion-step::after,.login-panel::after{animation:none!important;opacity:0!important}
+}
+
+/* ─────────────────────────────────── огонёк на траектории
+   Всё движение — offset-distance, то есть transform под капотом. Ни один
+   элемент не перерисовывается: меняется только его положение на пути. */
+.runner{position:absolute;left:0;top:0;width:100%;pointer-events:none;opacity:0;visibility:hidden;contain:layout style;transform:translateZ(0)}
+.runner.active{visibility:visible}
+.runner-back{z-index:2}
+.runner-front{z-index:8}
+.runner>i{position:absolute;left:0;top:0;display:block;offset-rotate:auto;offset-distance:0%;will-change:transform}
+
+/* Голова: плотное ядро с ореолом. */
+.runner-head{width:15px;height:5px;margin:-2.5px 0 0 -7.5px;border-radius:99px;background:linear-gradient(90deg,rgba(255,160,80,.25),#ffd7ae 62%,#fff2e2);box-shadow:0 0 12px rgba(255,122,34,.95),0 0 30px rgba(255,101,23,.5)}
+/* Хвост: три звена, каждое отстаёт и тускнеет — комета, а не палка. */
+.runner-tail{border-radius:99px;background:linear-gradient(90deg,rgba(255,101,23,0),rgba(255,124,40,.85))}
+.runner-tail-1{width:46px;height:3.6px;margin:-1.8px 0 0 -46px;opacity:.72}
+.runner-tail-2{width:92px;height:2.6px;margin:-1.3px 0 0 -92px;opacity:.4}
+.runner-tail-3{width:150px;height:1.8px;margin:-.9px 0 0 -150px;opacity:.2}
+/* Мягкое пятно света вокруг головы — оно и делает огонёк «горячим». */
+.runner-glow{width:190px;height:190px;margin:-95px 0 0 -95px;border-radius:50%;background:radial-gradient(circle,rgba(255,101,23,.3),rgba(255,101,23,.09) 38%,transparent 68%);offset-rotate:0deg}
+
+@media (max-width:650px){
+  .runner-head{width:12px;height:4px;margin:-2px 0 0 -6px}
+  .runner-tail-1{width:34px;height:3px;margin:-1.5px 0 0 -34px}
+  .runner-tail-2{width:66px;height:2.2px;margin:-1.1px 0 0 -66px}
+  .runner-tail-3{width:104px;height:1.5px;margin:-.75px 0 0 -104px}
+  .runner-glow{width:140px;height:140px;margin:-70px 0 0 -70px}
+}
+
+/* Браузер без offset-path не должен показывать кучку полосок в углу. */
+@supports not (offset-path: path("M 0 0 L 1 1")){.runner{display:none}}

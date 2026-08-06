@@ -10,8 +10,8 @@
   <link rel="icon" href="./app_icon.png">
   <link rel="apple-touch-icon" href="./app_icon.png">
   <link rel="preload" href="./app_icon.png" as="image" fetchpriority="high">
-  <link rel="stylesheet" href="./styles.css?v=10">
-  <link rel="stylesheet" href="./portal-v6.css?v=10">
+  <link rel="stylesheet" href="./styles.css?v=11">
+  <link rel="stylesheet" href="./portal-v6.css?v=11">
   <script>
     window.__WESI_BOOT_STARTED__ = performance.now();
     window.__WESI_BOOT_FAILSAFE__ = setTimeout(function () {
@@ -40,22 +40,38 @@
     <small id="bootPercent">0%</small>
   </div>
 
-  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="scroll-progress" id="scrollProgress" aria-hidden="true"><i id="scrollProgressFill"></i><b id="scrollProgressHead"></b></div>
+
+  <div class="grid-bg" id="gridBg" aria-hidden="true"></div>
   <div class="orange-glow glow-a" aria-hidden="true"></div>
   <div class="orange-glow glow-b" aria-hidden="true"></div>
+  <div class="spotlight" id="spotlight" aria-hidden="true"></div>
 
-  <svg class="runner-svg" id="runnerSvg" aria-hidden="true">
-    <defs>
-      <linearGradient id="runnerGradient" x1="0" x2="1">
-        <stop offset="0" stop-color="#ff6517" stop-opacity="0"/>
-        <stop offset=".46" stop-color="#ff6517"/>
-        <stop offset="1" stop-color="#ffb15c"/>
-      </linearGradient>
-    </defs>
-    <path id="runnerAura" class="runner-aura"/>
-    <path id="runnerTrail" class="runner-trail"/>
-    <path id="runnerHead" class="runner-head"/>
-  </svg>
+  <!-- Огонёк — не рисованная линия, а летящие элементы на общей траектории.
+       Прежняя версия анимировала stroke-dashoffset: это заставляет браузер
+       заново растрировать всю линию каждый кадр, и частота падала вдвое —
+       именно отсюда бралось «отстаёт при быстром скролле». Здесь движение
+       описано offset-path/offset-distance, то есть уходит в композитор и
+       кадру ничего не стоит.
+
+       Слоёв два: под содержимым и над ним. Переключать z-index одного
+       нельзя — на границе он прыгает через карточку скачком. Оба слоя
+       ведут одну траекторию, а глубина задаётся перекрёстным затуханием. -->
+  <div class="runner runner-back" id="runnerBack" aria-hidden="true">
+    <i class="runner-glow" data-runner="glow"></i>
+    <i class="runner-tail runner-tail-3" data-runner="t3"></i>
+    <i class="runner-tail runner-tail-2" data-runner="t2"></i>
+    <i class="runner-tail runner-tail-1" data-runner="t1"></i>
+    <i class="runner-head" data-runner="head"></i>
+  </div>
+
+  <div class="runner runner-front" id="runnerFront" aria-hidden="true">
+    <i class="runner-glow" data-runner="glow"></i>
+    <i class="runner-tail runner-tail-3" data-runner="t3"></i>
+    <i class="runner-tail runner-tail-2" data-runner="t2"></i>
+    <i class="runner-tail runner-tail-1" data-runner="t1"></i>
+    <i class="runner-head" data-runner="head"></i>
+  </div>
 
   <main class="app-shell" id="app">
     <header class="topbar reveal">
@@ -140,8 +156,9 @@
       <footer class="footer"><span>WESI INC · PRIVATE INFRASTRUCTURE</span><span id="footerStatus">Связь с сервером установлена</span></footer>
     </section>
   </main>
+  <div class="grain" aria-hidden="true"></div>
   <div class="toast-stack" id="toastStack"></div>
-  <script src="./app.js?v=10" defer></script>
-  <script src="./motion-v6.js?v=10" defer></script>
+  <script src="./app.js?v=11" defer></script>
+  <script src="./motion-v6.js?v=11" defer></script>
 </body>
 </html>
