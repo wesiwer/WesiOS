@@ -62,6 +62,26 @@
     }
   }
 
+  // Служебные фразы PocketBase, за которыми не стоит никакого объяснения.
+  // Свои сообщения сервер шлёт по-русски и по делу — их надо показывать
+  // как есть, а не заменять общими словами.
+  const GENERIC_FAILURES = [
+    'something went wrong',
+    'failed to authenticate',
+    'the request requires valid record authorization token',
+  ];
+
+  function describeFailure(status, message) {
+    const raw = (message || '').trim();
+    const generic = !raw ||
+      GENERIC_FAILURES.some(phrase => raw.toLowerCase().includes(phrase));
+    if (!generic) return raw;
+    if (status === 401 || status === 403) return 'Сессия истекла — войдите заново';
+    if (status === 404) return 'Сборка ещё не опубликована на сервере';
+    if (status >= 500) return 'Сервер не смог ответить — попробуйте позже';
+    return 'Не удалось получить данные с сервера';
+  }
+
   async function request(path, options = {}, timeout = TIMEOUT) {
     const response = await fetchTimeout(`${API}${path}`, {
       cache: 'no-store',
@@ -71,8 +91,13 @@
     let body = null;
     try { body = await response.json(); } catch (_) {}
     if (!response.ok) {
-      const error = new Error(body?.message || `HTTP ${response.status}`);
+      // Человеку — по-русски и про суть. Сервер отвечает служебной фразой
+      // вроде «Something went wrong while processing your request», и
+      // показывать её в подвале означает предъявлять сотруднику текст,
+      // который ничего ему не говорит и выглядит поломкой сайта.
+      const error = new Error(describeFailure(response.status, body?.message));
       error.status = response.status;
+      error.raw = body?.message || '';
       throw error;
     }
     return body;
@@ -81,6 +106,14 @@
   function showView(next, resetScroll = true) {
     $('.view.active')?.classList.remove('active');
     next?.classList.add('active');
+    // Метка на корне: по ней выключается всё, что относится к публичной
+    // странице. Огонёк, например, живёт вне `.view` и сам по себе тянул
+    // страницу вниз на две с половиной тысячи пикселей — под экраном
+    // загрузок оказывалась пустота, которую можно листать.
+    document.documentElement.classList.toggle(
+      'view-dashboard',
+      next?.id === 'dashboardView',
+    );
     if (resetScroll) scrollTo(0, 0);
   }
 

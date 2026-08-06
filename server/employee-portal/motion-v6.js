@@ -296,7 +296,16 @@
     // заканчивается ниже рейки: концы маршрута обязаны лежать за экраном,
     // а не упираться в границы содержимого.
     const top = originRect.top + scrollY - innerHeight * .55;
-    const bottom = railRect.top + scrollY + railRect.height + innerHeight * .3;
+    // Ниже содержимого маршрут не уходит. Слои стоят absolute, и заданная
+    // им высота становится высотой документа: хвост, торчащий за последнюю
+    // секцию, превращается в пустоту, которую можно листать.
+    const appBottom = app
+      ? app.getBoundingClientRect().bottom + scrollY
+      : Number.POSITIVE_INFINITY;
+    const bottom = Math.min(
+      railRect.top + scrollY + railRect.height + innerHeight * .3,
+      appBottom,
+    );
     const height = Math.max(900, bottom - top);
     const mode = width <= 650 ? 'mobile' : width <= 1000 ? 'tablet' : 'desktop';
     const key = `${mode}:${Math.round(width)}:${Math.round(top)}:${Math.round(height)}`;
