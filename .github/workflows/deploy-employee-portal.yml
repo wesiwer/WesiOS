@@ -126,6 +126,20 @@ jobs:
           grep -q 'portal-v6.css' portal.html
           grep -q 'motion-v6.js' portal.html
           grep -q 'siteBoot' portal.html
+          # Движение должно доехать целиком, а не наполовину.
+          grep -q 'runnerFront' portal.html
+          grep -q 'scrollProgress' portal.html
+          grep -q 'offset-path' portal.html
+
+          # Запрет на «тихий» кеш. Без него выкладка проходит, файлы на
+          # сервере новые, а человек продолжает видеть прежнюю страницу —
+          # и это неотличимо от «ничего не сделали».
+          CACHE=$(curl -fsSI --max-time 20 "${BASE}" | tr -d '\r' | grep -i '^cache-control:' || true)
+          echo "Заголовок: ${CACHE:-(нет)}"
+          case "$CACHE" in
+            *no-cache*|*no-store*) echo 'Кеш не даст показать старую страницу.' ;;
+            *) echo '::error::Нет Cache-Control — браузер будет держать старую версию часами'; exit 1 ;;
+          esac
           curl -fsS --max-time 30 "${BASE}motion-v6.js?v=${GITHUB_SHA}" -o motion-v6.js
           node --check motion-v6.js
           test "$(wc -c < motion-v6.js)" -gt 1000
