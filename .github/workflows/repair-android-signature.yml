@@ -45,7 +45,6 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
           echo "release=$VERSION+$BUILD" >> "$GITHUB_OUTPUT"
-          echo "Release: $VERSION+$BUILD"
 
   android:
     needs: metadata
@@ -53,22 +52,16 @@ jobs:
     timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Java
-        uses: actions/setup-java@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-
-      - name: Get dependencies
-        run: flutter pub get
+      - run: flutter pub get
 
       - name: Require real Firebase configuration
         shell: bash
@@ -91,19 +84,14 @@ jobs:
           for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
             [ -n "${!name:-}" ] || { echo "::error::$name не задан"; exit 1; }
           done
-
           B64=$(printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]')
           STORE_PASS=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n')
           KEY_PASS=$(printf '%s' "$ANDROID_KEY_PASSWORD" | tr -d '\r\n')
           ALIAS=$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '[:space:]')
           KEYSTORE="$RUNNER_TEMP/wesios-release.jks"
-
           printf '%s' "$B64" | base64 --decode > "$KEYSTORE"
-          test -s "$KEYSTORE" || { echo "::error::Keystore декодирован в пустой файл"; exit 1; }
-
-          keytool -list -v -keystore "$KEYSTORE" \
-            -storepass "$STORE_PASS" -alias "$ALIAS" >/dev/null
-
+          test -s "$KEYSTORE"
+          keytool -list -v -keystore "$KEYSTORE" -storepass "$STORE_PASS" -alias "$ALIAS" >/dev/null
           {
             echo "KEYSTORE_PATH=$KEYSTORE"
             echo "KEYSTORE_PASSWORD=$STORE_PASS"
@@ -125,7 +113,6 @@ jobs:
           set -euo pipefail
           APK=build/app/outputs/flutter-apk/app-release.apk
           test -s "$APK"
-
           SDK_ROOT="${ANDROID_SDK_ROOT:-${ANDROID_HOME:-}}"
           test -n "$SDK_ROOT"
           APKSIGNER=$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -1)
@@ -140,13 +127,16 @@ jobs:
           EXPECTED=$(keytool -exportcert \
             -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" \
             -alias "$KEY_ALIAS" | sha256sum | awk '{print $1}')
-          ACTUAL=$(awk -F': ' \
-            '/Signer #1 certificate SHA-256 digest/{print $2; exit}' \
-            apk-signature.txt | tr -d ':' | tr '[:upper:]' '[:lower:]')
+          ACTUAL=$(sed -nE \
+            's/^.*certificate SHA-256 digest: ([0-9a-fA-F]+).*$/\1/p' \
+            apk-signature.txt | head -1 | tr '[:upper:]' '[:lower:]')
 
           echo "Expected certificate: ${EXPECTED:0:16}…"
           echo "APK certificate:      ${ACTUAL:0:16}…"
-          test -n "$ACTUAL"
+          test -n "$ACTUAL" || {
+            echo "::error::Не удалось извлечь SHA-256 сертификата из вывода apksigner"
+            exit 1
+          }
           test "$EXPECTED" = "$ACTUAL" || {
             echo "::error::APK подписана не корпоративным сертификатом WesiOS"
             exit 1
@@ -156,8 +146,7 @@ jobs:
           cp "$APK" release-android/wesios-android.apk
           sha256sum release-android/wesios-android.apk
 
-      - name: Upload verified Android artifact
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: wesios-android-${{ needs.metadata.outputs.release }}-signed
           path: release-android/wesios-android.apk
@@ -170,40 +159,26 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
+      - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
-
-      - name: Get dependencies
-        run: flutter pub get
-
+      - run: flutter pub get
       - name: Build Windows release
         run: >-
           flutter build windows --release
           --build-name "${{ needs.metadata.outputs.version }}"
           --build-number "${{ needs.metadata.outputs.build }}"
-
       - name: Package Windows release
         shell: pwsh
         run: |
           $source = "build/windows/x64/runner/Release"
-          if (-not (Test-Path "$source/wesios.exe")) {
-            throw "Windows executable was not produced: $source/wesios.exe"
-          }
+          if (-not (Test-Path "$source/wesios.exe")) { throw "Windows executable missing" }
           New-Item -ItemType Directory -Force -Path release-windows | Out-Null
-          Compress-Archive -Path "$source/*" `
-            -DestinationPath "release-windows/wesios-windows-x64.zip" -Force
-          if ((Get-Item "release-windows/wesios-windows-x64.zip").Length -le 0) {
-            throw "Windows archive is empty"
-          }
-          Get-FileHash "release-windows/wesios-windows-x64.zip" -Algorithm SHA256
-
-      - name: Upload Windows artifact
-        uses: actions/upload-artifact@v4
+          Compress-Archive -Path "$source/*" -DestinationPath "release-windows/wesios-windows-x64.zip" -Force
+          if ((Get-Item "release-windows/wesios-windows-x64.zip").Length -le 0) { throw "Windows archive is empty" }
+      - uses: actions/upload-artifact@v4
         with:
           name: wesios-windows-${{ needs.metadata.outputs.release }}
           path: release-windows/wesios-windows-x64.zip
@@ -220,9 +195,7 @@ jobs:
       RELEASE: ${{ needs.metadata.outputs.release }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Download verified build artifacts
-        uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v4
         with:
           pattern: wesios-*-${{ needs.metadata.outputs.release }}*
           path: downloaded
@@ -239,7 +212,6 @@ jobs:
           test -s upload/wesios-android.apk
           test -s upload/wesios-windows-x64.zip
           chmod +x upload/deploy-artifact.sh
-          sha256sum upload/wesios-android.apk upload/wesios-windows-x64.zip
 
       - name: Prepare authenticated SSH connection
         env:
@@ -249,8 +221,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${KEY:-}" || { echo "::error::WESI_SERVER_SSH_KEY не задан"; exit 1; }
-          test -n "${HOST:-}" || { echo "::error::WESI_SERVER_HOST не задан"; exit 1; }
+          test -n "${KEY:-}"
+          test -n "${HOST:-}"
           mkdir -p ~/.ssh
           chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_deploy
@@ -270,22 +242,21 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test -n "${USER:-}" || { echo "::error::WESI_SERVER_USER не задан"; exit 1; }
+          test -n "${USER:-}"
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
           SCP="scp -i $HOME/.ssh/id_deploy -o BatchMode=yes"
           REMOTE_TMP="/tmp/wesios-release-$GITHUB_RUN_ID"
           cleanup() { $SSH "$USER@$HOST" "rm -rf '$REMOTE_TMP'" || true; }
           trap cleanup EXIT
-
           $SSH "$USER@$HOST" "mkdir -p '$REMOTE_TMP'"
           $SCP upload/* "$USER@$HOST:$REMOTE_TMP/"
           $SSH "$USER@$HOST" \
             "WESI_ARTIFACTS='${ARTIFACTS_DIR:-/opt/pocketbase/pb_public/artifacts}' \
              bash '$REMOTE_TMP/deploy-artifact.sh' \
              --version '$VERSION' --build '$BUILD' --from '$REMOTE_TMP' \
-             --notes-b64 'Q1JNICwgUm9hZG1hcCDQuCBXZXNpIENvbnNvbGUuINCf0L7QtNC/0LjRgdCw0L3QvdCw0Y8g0LDRgNGF0LjRgtC10LrRgtGD0YDQsCBBbmRyb2lkINC/0YDQvtCy0LXRgNC10L3QsC4='"
+             --notes 'CRM, Roadmap и Wesi Console. Подписанная Android-сборка.'"
 
-      - name: Verify published manifest, files, sizes, and hashes
+      - name: Verify published manifest and files
         env:
           CONFIGURED_BASE: ${{ vars.WESI_ARTIFACTS_URL }}
         shell: bash
@@ -296,56 +267,37 @@ jobs:
             "$BASE/app/app-manifest.json?run=$GITHUB_RUN_ID" -o app-manifest.json
           BASE="$BASE" python3 <<'PY'
           import hashlib, json, os, urllib.request
-
           base=os.environ['BASE'].rstrip('/')
           version=os.environ['VERSION']
           build=int(os.environ['BUILD'])
           with open('app-manifest.json', encoding='utf-8') as f:
               manifest=json.load(f)
-          assert manifest['version']==version, manifest
-          assert int(manifest['build'])==build, manifest
-
+          assert manifest['version']==version
+          assert int(manifest['build'])==build
           for platform in ('android', 'windows'):
               entry=manifest[platform]
-              assert entry['version']==version, entry
-              assert int(entry['build'])==build, entry
               url=f"{base}/{entry['path']}"
-              request=urllib.request.Request(url, method='GET')
-              digest=hashlib.sha256()
-              size=0
-              with urllib.request.urlopen(request, timeout=60) as response:
-                  while chunk := response.read(1024 * 1024):
-                      size += len(chunk)
-                      digest.update(chunk)
-              assert size==int(entry['sizeBytes']), (platform,size,entry['sizeBytes'])
-              assert digest.hexdigest()==entry['sha256'], (platform,digest.hexdigest(),entry['sha256'])
-              print(platform, url, size, digest.hexdigest()[:16])
+              digest=hashlib.sha256(); size=0
+              with urllib.request.urlopen(url, timeout=60) as response:
+                  while True:
+                      chunk=response.read(1024*1024)
+                      if not chunk: break
+                      size += len(chunk); digest.update(chunk)
+              assert size==int(entry['sizeBytes'])
+              assert digest.hexdigest()==entry['sha256']
           PY
 
-      - name: Replace assets in GitHub Release after server verification
+      - name: Replace assets in GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
-              --title "WesiOS latest" --notes "Current verified WesiOS release"
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --title "WesiOS latest" --notes "Current verified WesiOS release"
           fi
           gh release upload "$RELEASE_TAG" \
             upload/wesios-android.apk \
             upload/wesios-windows-x64.zip \
             app-manifest.json \
             --repo "$GITHUB_REPOSITORY" --clobber
-
-      - name: Release summary
-        shell: bash
-        run: |
-          {
-            echo "## WesiOS $RELEASE"
-            echo ""
-            echo "- Android: corporate certificate verified"
-            echo "- Windows: release archive rebuilt"
-            echo "- Server: both files, sizes, and SHA-256 verified"
-            echo "- GitHub Release: assets replaced after server verification"
-          } >> "$GITHUB_STEP_SUMMARY"
