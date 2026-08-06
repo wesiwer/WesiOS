@@ -209,3 +209,62 @@ body{position:relative}
 
 /* Браузер без offset-path не должен показывать кучку полосок в углу. */
 @supports not (offset-path: path("M 0 0 L 1 1")){.runner{display:none}}
+
+/* ═══════════════════════════════════ текст, который появляется словами
+   Слово едет вверх из-под маски с лёгким доворотом. Маска чуть выше
+   строки и компенсирована отрицательным отступом — без этого «у», «р» и
+   «д» обрезались бы по хвостам. Анимируются только transform и opacity. */
+.w-word{display:inline-block;overflow:hidden;vertical-align:bottom;padding-bottom:.14em;margin-bottom:-.14em}
+.w-word-in{display:inline-block;transform:translate3d(0,112%,0) rotate(3.5deg);opacity:0}
+.split-on .w-word-in{animation:wordUp .8s cubic-bezier(.19,.86,.24,1) forwards;animation-delay:calc(var(--i,0) * .042s)}
+@keyframes wordUp{to{transform:none;opacity:1}}
+
+/* Надпись-рубрика проявляется разрядкой — приём дорогой на вид и
+   бесплатный по стоимости. */
+.split-on .section-label{animation:labelSpread .9s cubic-bezier(.19,.86,.24,1) both}
+@keyframes labelSpread{from{opacity:0;letter-spacing:.42em}to{opacity:1}}
+
+/* ═══════════════════════════════════ орбита логотипа */
+.orbit-dot{position:absolute;inset:6%;animation:orbitSpin 17s linear infinite;pointer-events:none}
+.orbit-dot b{position:absolute;left:50%;top:-3px;width:7px;height:7px;margin-left:-3.5px;border-radius:50%;background:#ff8a3d;box-shadow:0 0 10px rgba(255,122,34,.95),0 0 22px rgba(255,101,23,.6)}
+.orbit-dot-2{inset:19%;animation-duration:23s;animation-direction:reverse}
+.orbit-dot-2 b{width:5px;height:5px;margin-left:-2.5px;background:#ffc27a}
+.orbit-dot-3{inset:32%;animation-duration:13s}
+.orbit-dot-3 b{width:4px;height:4px;margin-left:-2px;opacity:.75}
+@keyframes orbitSpin{to{transform:rotate(360deg)}}
+
+/* Импульс, уходящий от логотипа наружу. Два экземпляра со сдвигом фазы —
+   получается непрерывное «дыхание» без единого лишнего элемента. */
+.orbit-pulse{position:absolute;inset:30%;border-radius:50%;border:1px solid rgba(255,101,23,.5);opacity:0;animation:orbitPulse 4.6s cubic-bezier(.22,.61,.36,1) infinite;pointer-events:none}
+.orbit-pulse-2{animation-delay:2.3s}
+@keyframes orbitPulse{0%{transform:scale(.72);opacity:0}18%{opacity:.55}100%{transform:scale(1.75);opacity:0}}
+
+/* ═══════════════════════════════════ бегущая строка и подсказка */
+.hero-extras{grid-column:1/-1;display:grid;gap:22px;margin-top:34px;justify-items:center}
+.hero-ticker{position:relative;width:100%;overflow:hidden;-webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
+.hero-ticker-row{display:flex;align-items:center;gap:18px;width:max-content;animation:tickerRun 34s linear infinite;will-change:transform}
+.hero-ticker span{font-size:12.5px;letter-spacing:.26em;text-transform:uppercase;color:#8a8a94;white-space:nowrap}
+.hero-ticker em{font-style:normal;color:#ff6517;opacity:.75}
+/* Ряд продублирован в разметке, поэтому сдвиг ровно на половину даёт шов
+   без стыка — лента идёт бесконечно и никогда не «прыгает». */
+@keyframes tickerRun{to{transform:translate3d(-50%,0,0)}}
+
+.scroll-hint{display:inline-flex;align-items:center;gap:11px;padding:9px 17px;border-radius:999px;border:1px solid rgba(255,255,255,.09);background:rgba(255,255,255,.022);color:#8a8a94;font-size:12px;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;transition:color .3s ease,border-color .3s ease,transform .3s ease}
+.scroll-hint:hover{color:#ffb15c;border-color:rgba(255,101,23,.42);transform:translate3d(0,-2px,0)}
+.scroll-hint i{position:relative;width:9px;height:9px;border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;transform:rotate(45deg);animation:hintBob 1.9s cubic-bezier(.45,0,.55,1) infinite}
+@keyframes hintBob{0%,100%{transform:rotate(45deg) translate3d(0,-2px,0);opacity:.55}50%{transform:rotate(45deg) translate3d(0,3px,0);opacity:1}}
+
+@media(max-width:650px){
+  .hero-extras{margin-top:26px;gap:18px}
+  .hero-ticker span{font-size:11px;letter-spacing:.2em}
+  .orbit-dot b{width:6px;height:6px;margin-left:-3px}
+}
+
+.motion-paused .hero-ticker-row,.motion-paused .orbit-dot,.motion-paused .orbit-pulse,.motion-paused .scroll-hint i{animation-play-state:paused}
+
+@media(prefers-reduced-motion:reduce){
+  .w-word-in{transform:none!important;opacity:1!important;animation:none!important}
+  .split-on .section-label{animation:none}
+  .hero-ticker-row,.orbit-dot,.orbit-pulse,.scroll-hint i{animation:none}
+  .orbit-pulse{opacity:0}
+}

@@ -10,8 +10,8 @@
   <link rel="icon" href="./app_icon.png">
   <link rel="apple-touch-icon" href="./app_icon.png">
   <link rel="preload" href="./app_icon.png" as="image" fetchpriority="high">
-  <link rel="stylesheet" href="./styles.css?v=11">
-  <link rel="stylesheet" href="./portal-v6.css?v=11">
+  <link rel="stylesheet" href="./styles.css?v=12">
+  <link rel="stylesheet" href="./portal-v6.css?v=12">
   <script>
     window.__WESI_BOOT_STARTED__ = performance.now();
     window.__WESI_BOOT_FAILSAFE__ = setTimeout(function () {
@@ -89,7 +89,27 @@
           <div class="hero-points"><span><b>01</b> Единая учётная запись</span><span><b>02</b> Защищённые сборки</span><span><b>03</b> Windows и Android</span></div>
         </div>
         <div class="intro-visual reveal delay-2" aria-hidden="true">
-          <div class="intro-orbit"><i></i><i></i><img src="./app_icon.png" alt="" decoding="async" fetchpriority="high"></div>
+          <div class="intro-orbit">
+            <i></i><i></i>
+            <span class="orbit-pulse"></span><span class="orbit-pulse orbit-pulse-2"></span>
+            <span class="orbit-dot"><b></b></span>
+            <span class="orbit-dot orbit-dot-2"><b></b></span>
+            <span class="orbit-dot orbit-dot-3"><b></b></span>
+            <img src="./app_icon.png" alt="" decoding="async" fetchpriority="high">
+          </div>
+        </div>
+
+        <!-- Строка занимает пустоту под шапкой на телефоне и заодно
+             перечисляет то, ради чего сюда приходят. Движение — одна
+             бесконечная трансформация, поэтому оно бесплатно. -->
+        <div class="hero-extras">
+          <div class="hero-ticker" aria-hidden="true">
+            <div class="hero-ticker-row">
+              <span>Финансы</span><em>·</em><span>Задачи</span><em>·</em><span>Чаты</span><em>·</em><span>Аналитика</span><em>·</em><span>Календарь</span><em>·</em><span>База знаний</span><em>·</em><span>Wesi AI</span><em>·</em><span>Прогноз</span><em>·</em>
+              <span>Финансы</span><em>·</em><span>Задачи</span><em>·</em><span>Чаты</span><em>·</em><span>Аналитика</span><em>·</em><span>Календарь</span><em>·</em><span>База знаний</span><em>·</em><span>Wesi AI</span><em>·</em><span>Прогноз</span><em>·</em>
+            </div>
+          </div>
+          <a class="scroll-hint" href="#showcase"><span>Листайте дальше</span><i aria-hidden="true"></i></a>
         </div>
       </div>
 
@@ -158,7 +178,7 @@
   </main>
   <div class="grain" aria-hidden="true"></div>
   <div class="toast-stack" id="toastStack"></div>
-  <script src="./app.js?v=11" defer></script>
-  <script src="./motion-v6.js?v=11" defer></script>
+  <script src="./app.js?v=12" defer></script>
+  <script src="./motion-v6.js?v=12" defer></script>
 </body>
 </html>

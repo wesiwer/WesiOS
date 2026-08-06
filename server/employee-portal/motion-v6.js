@@ -331,6 +331,83 @@
     }), 110);
   }
 
+  // ─────────────────────────────────────────────── текст, идущий словами
+  //
+  // Заголовок разбирается на слова, каждое кладётся в маску и выезжает
+  // снизу с задержкой по порядку. Разбор идёт по узлам, а не по строке
+  // целиком: в заголовках живут `<span>`, `<em>` и `<br>`, и замена
+  // innerHTML снесла бы их вместе с разметкой имени WesiOS.
+  //
+  // Пробелы сохраняются отдельными текстовыми узлами — иначе слова
+  // слипаются, а перенос строки перестаёт работать.
+  function splitWords(node) {
+    if (node.dataset.split) return;
+    node.dataset.split = '1';
+
+    const walk = parent => {
+      for (const child of [...parent.childNodes]) {
+        if (child.nodeType === 3) {
+          const text = child.textContent;
+          if (!text.trim()) continue;
+          const frag = document.createDocumentFragment();
+          for (const chunk of text.split(/(\s+)/)) {
+            if (!chunk) continue;
+            if (!chunk.trim()) {
+              frag.appendChild(document.createTextNode(chunk));
+              continue;
+            }
+            const mask = document.createElement('span');
+            mask.className = 'w-word';
+            const inner = document.createElement('span');
+            inner.className = 'w-word-in';
+            inner.textContent = chunk;
+            mask.appendChild(inner);
+            frag.appendChild(mask);
+          }
+          parent.replaceChild(frag, child);
+        } else if (child.nodeType === 1 && child.tagName !== 'BR') {
+          walk(child);
+        }
+      }
+    };
+
+    walk(node);
+    node.querySelectorAll('.w-word-in').forEach((word, index) => {
+      word.style.setProperty('--i', index);
+    });
+  }
+
+  function initTextMotion() {
+    if (reduced) return;
+
+    const headings = [...document.querySelectorAll(
+      '.login-view h1, .login-view h2, .dashboard-head h1')];
+    headings.forEach(splitWords);
+
+    // Оживает то, что попало на экран. Наблюдатель свой, а не общий с
+    // появлением блоков: заголовок обязан начать движение чуть раньше
+    // своего блока, иначе слова догоняют уже приехавшую карточку.
+    const targets = [...new Set([
+      ...headings.map(h => h.closest('[data-scroll-reveal], .hero-copy, .dashboard-head') || h),
+      ...document.querySelectorAll('.section-label'),
+    ])];
+
+    if (!('IntersectionObserver' in window)) {
+      targets.forEach(node => node.classList.add('split-on'));
+      return;
+    }
+
+    const observer = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        entry.target.classList.add('split-on');
+        observer.unobserve(entry.target);
+      }
+    }, { threshold: .12, rootMargin: '0px 0px -8% 0px' });
+
+    targets.forEach(node => observer.observe(node));
+  }
+
   // ───────────────────────────────────────────────────────────── загрузка
   function decodeImages() {
     const tasks = [...document.images].map(image => {
@@ -386,6 +463,7 @@
     root.classList.remove('is-booting');
     root.classList.add('is-ready');
     window.__WESI_PORTAL_READY__ = true;
+    initTextMotion();
     wake();
     setTimeout(() => boot?.remove(), 520);
   }
