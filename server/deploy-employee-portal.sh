@@ -45,29 +45,36 @@ portal_styles = (root / "portal-v6.css").read_text(encoding="utf-8")
 app_js = (root / "app.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
 motion_js = (root / "motion-v6.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
 
-html, n1 = re.subn(
+# Замена передаётся функцией, а не строкой.
+#
+# `re.subn` разбирает строковую замену как шаблон: обратный слеш в ней —
+# начало escape-последовательности. Стоило появиться в скрипте безобидному
+# `split(/(\s+)/)`, и выкладка падала с `bad escape \s`, указывая на
+# позицию внутри вклеиваемого кода, а не на настоящую причину. Функция
+# отдаёт текст как есть, и содержимое файлов перестаёт что-либо значить
+# для регулярного выражения.
+def inline(pattern, replacement, source):
+    return re.subn(pattern, lambda _: replacement, source, count=1)
+
+html, n1 = inline(
     r'<link\s+rel="stylesheet"\s+href="\./styles\.css[^"]*"\s*/?>',
     '<style data-bundle="styles.css">\n' + styles + '\n</style>',
     html,
-    count=1,
 )
-html, n2 = re.subn(
+html, n2 = inline(
     r'<link\s+rel="stylesheet"\s+href="\./portal-v6\.css[^"]*"\s*/?>',
     '<style data-bundle="portal-v6.css">\n' + portal_styles + '\n</style>',
     html,
-    count=1,
 )
-html, n3 = re.subn(
+html, n3 = inline(
     r'<script\s+src="\./app\.js[^"]*"\s+defer></script>',
     '<script data-bundle="app.js">\n' + app_js + '\n</script>',
     html,
-    count=1,
 )
-html, n4 = re.subn(
+html, n4 = inline(
     r'<script\s+src="\./motion-v6\.js[^"]*"\s+defer></script>',
     '<script data-bundle="motion-v6.js">\n' + motion_js + '\n</script>',
     html,
-    count=1,
 )
 
 if (n1, n2, n3, n4) != (1, 1, 1, 1):
