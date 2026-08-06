@@ -126,107 +126,148 @@ class _WesiClockState extends State<WesiClock> {
       valueListenable: ThemeNotifier.instance,
       builder: (context, _, __) => LayoutBuilder(
         builder: (context, constraints) {
-          final ru = WesiLocale.isRussian;
-          final month = (ru ? _monthsRu : _monthsEn)[_now.month - 1];
-          final weekday =
-              (ru ? _weekdaysRu : _weekdaysEn)[_now.weekday - 1];
-          final date = ru
-              ? '${_now.day} $month ${_now.year}'
-              : '$month ${_now.day}, ${_now.year}';
-
           final screenWidth = MediaQuery.sizeOf(context).width;
-          final available = constraints.hasBoundedWidth
+          final screenContentWidth = math.max(160.0, screenWidth - 32);
+          final parentWidth = constraints.hasBoundedWidth
               ? constraints.maxWidth
-              : math.min(270.0, screenWidth - 32);
-          // Ширина месяца — это читаемость чисел, а не украшение: на
-          // 86 px в клетку помещалось 6 px, и «17» превращалось в точки.
-          final calendarWidth = available < 205 ? 78.0 : 96.0;
-          final gap = available < 205 ? 5.0 : 9.0;
-          final clockWidth = math.max(72.0, available - calendarWidth - gap);
-          final digitalSize = clockWidth < 104
-              ? 20.0
-              : clockWidth < 132
-                  ? 23.0
-                  : 27.0;
-          final analogSize = math.min(72.0, math.max(58.0, clockWidth * .66));
+              : screenContentWidth;
 
-          final clock = _style == ClockStyle.analog
-              ? _AnalogFace(now: _now, size: analogSize)
-              : Text(
-                  widget.showSeconds
-                      ? '${_two(_now.hour)}:${_two(_now.minute)}:${_two(_now.second)}'
-                      : '${_two(_now.hour)}:${_two(_now.minute)}',
-                  maxLines: 1,
-                  style: TextStyle(
-                    fontSize: digitalSize,
-                    fontWeight: FontWeight.w200,
-                    color: AppTheme.textPrimary,
-                    letterSpacing: .8,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                );
+          // На Home справа от родителя стоят кнопки. Виджет получает только
+          // левую колонку, хотя ниже кнопок свободна вся строка. Расширяемся
+          // туда визуально и добавляем верхний отступ, чтобы не пересекаться
+          // с панелью действий. В обычном широком контейнере OverflowBox не
+          // используется.
+          final expandToHomeWidth =
+              screenContentWidth >= 300 && parentWidth < screenContentWidth - 72;
+          final available = expandToHomeWidth
+              ? screenContentWidth
+              : math.min(parentWidth, screenContentWidth);
+          final large = available >= 300;
 
-          final info = Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              clock,
-              const SizedBox(height: 3),
-              Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Flexible(
-                    child: Text(
-                      date,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    _style == ClockStyle.digital
-                        ? Icons.schedule
-                        : Icons.watch_later_outlined,
-                    size: 12,
-                    color: AppTheme.accent,
-                  ),
-                ],
-              ),
-              Text(
-                weekday,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 9.5,
-                  color: AppTheme.textMuted.withOpacity(.82),
-                ),
-              ),
-            ],
-          );
+          final body = _buildClockBody(available, large);
+          if (!expandToHomeWidth) return body;
 
-          return SizedBox(
-            width: available,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox(
-                  width: clockWidth,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: SizedBox(width: clockWidth, child: info),
-                  ),
-                ),
-                SizedBox(width: gap),
-                _MiniMonthCalendar(now: _now, width: calendarWidth),
-              ],
+          return OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: available,
+            maxWidth: available,
+            child: Padding(
+              padding: const EdgeInsets.only(top: 30),
+              child: body,
             ),
           );
         },
+      ),
+    );
+  }
+
+  Widget _buildClockBody(double available, bool large) {
+    final ru = WesiLocale.isRussian;
+    final month = (ru ? _monthsRu : _monthsEn)[_now.month - 1];
+    final weekday = (ru ? _weekdaysRu : _weekdaysEn)[_now.weekday - 1];
+    final date = ru
+        ? '${_now.day} $month ${_now.year} г.'
+        : '$month ${_now.day}, ${_now.year}';
+
+    final calendarWidth = large
+        ? (available * .43).clamp(142.0, 176.0)
+        : (available < 205 ? 78.0 : 96.0);
+    final gap = large ? 16.0 : (available < 205 ? 5.0 : 9.0);
+    final clockWidth = math.max(
+      large ? 132.0 : 72.0,
+      available - calendarWidth - gap,
+    );
+    final digitalSize = large
+        ? (clockWidth * .23).clamp(34.0, 46.0)
+        : clockWidth < 104
+            ? 20.0
+            : clockWidth < 132
+                ? 23.0
+                : 27.0;
+    final analogSize = large
+        ? math.min(112.0, math.max(88.0, clockWidth * .62))
+        : math.min(72.0, math.max(58.0, clockWidth * .66));
+
+    final clock = _style == ClockStyle.analog
+        ? _AnalogFace(now: _now, size: analogSize)
+        : Text(
+            widget.showSeconds
+                ? '${_two(_now.hour)}:${_two(_now.minute)}:${_two(_now.second)}'
+                : '${_two(_now.hour)}:${_two(_now.minute)}',
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: digitalSize,
+              fontWeight: FontWeight.w200,
+              color: AppTheme.textPrimary,
+              letterSpacing: large ? 1.1 : .8,
+              fontFeatures: const [FontFeature.tabularFigures()],
+            ),
+          );
+
+    final info = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        clock,
+        SizedBox(height: large ? 9 : 3),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Flexible(
+              child: Text(
+                date,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: large ? 14 : 10.5,
+                  fontWeight: large ? FontWeight.w500 : FontWeight.w400,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ),
+            SizedBox(width: large ? 7 : 4),
+            Icon(
+              _style == ClockStyle.digital
+                  ? Icons.schedule
+                  : Icons.watch_later_outlined,
+              size: large ? 16 : 12,
+              color: AppTheme.accent,
+            ),
+          ],
+        ),
+        SizedBox(height: large ? 3 : 0),
+        Text(
+          weekday,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: large ? 12.5 : 9.5,
+            color: AppTheme.textMuted.withOpacity(.86),
+          ),
+        ),
+      ],
+    );
+
+    return SizedBox(
+      width: available,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: clockWidth,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: SizedBox(width: clockWidth, child: info),
+            ),
+          ),
+          SizedBox(width: gap),
+          _MiniMonthCalendar(
+            now: _now,
+            width: calendarWidth,
+            large: large,
+          ),
+        ],
       ),
     );
   }
@@ -235,8 +276,13 @@ class _WesiClockState extends State<WesiClock> {
 class _MiniMonthCalendar extends StatelessWidget {
   final DateTime now;
   final double width;
+  final bool large;
 
-  const _MiniMonthCalendar({required this.now, required this.width});
+  const _MiniMonthCalendar({
+    required this.now,
+    required this.width,
+    required this.large,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -251,19 +297,20 @@ class _MiniMonthCalendar extends StatelessWidget {
         ? const ['П', 'В', 'С', 'Ч', 'П', 'С', 'В']
         : const ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
+    final horizontal = large ? 11.0 : (width < 88 ? 5.0 : 7.0);
     return AnimatedContainer(
       duration: const Duration(milliseconds: 420),
       curve: Curves.easeInOutCubic,
       width: width,
       padding: EdgeInsets.fromLTRB(
-        width < 88 ? 5 : 7,
-        6,
-        width < 88 ? 5 : 7,
-        6,
+        horizontal,
+        large ? 11 : 6,
+        horizontal,
+        large ? 10 : 6,
       ),
       decoration: BoxDecoration(
         color: AppTheme.surface.withOpacity(.56),
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(large ? 16 : 11),
         border: Border.all(color: AppTheme.glassBorder),
       ),
       child: Column(
@@ -275,12 +322,12 @@ class _MiniMonthCalendar extends StatelessWidget {
             overflow: TextOverflow.fade,
             softWrap: false,
             style: TextStyle(
-              fontSize: width < 88 ? 7.6 : 9,
+              fontSize: large ? 12 : (width < 88 ? 7.6 : 9),
               fontWeight: FontWeight.w700,
               color: AppTheme.textSecondary,
             ),
           ),
-          const SizedBox(height: 4),
+          SizedBox(height: large ? 8 : 4),
           Row(
             children: [
               for (final day in weekdays)
@@ -289,14 +336,15 @@ class _MiniMonthCalendar extends StatelessWidget {
                     day,
                     textAlign: TextAlign.center,
                     style: TextStyle(
-                      fontSize: width < 88 ? 6 : 7,
+                      fontSize: large ? 9 : (width < 88 ? 6 : 7),
+                      fontWeight: large ? FontWeight.w600 : FontWeight.w400,
                       color: AppTheme.textMuted,
                     ),
                   ),
                 ),
             ],
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: large ? 5 : 2),
           GridView.builder(
             padding: EdgeInsets.zero,
             shrinkWrap: true,
@@ -319,7 +367,7 @@ class _MiniMonthCalendar extends StatelessWidget {
                         boxShadow: [
                           BoxShadow(
                             color: AppTheme.accent.withOpacity(.25),
-                            blurRadius: 5,
+                            blurRadius: large ? 7 : 5,
                           ),
                         ],
                       )
@@ -327,7 +375,7 @@ class _MiniMonthCalendar extends StatelessWidget {
                 child: Text(
                   '$day',
                   style: TextStyle(
-                    fontSize: width < 88 ? 7 : 8,
+                    fontSize: large ? 10.5 : (width < 88 ? 7 : 8),
                     height: 1,
                     fontWeight: today ? FontWeight.w800 : FontWeight.w500,
                     color: today ? Colors.white : AppTheme.textSecondary,
@@ -379,13 +427,11 @@ class _AnalogFace extends StatelessWidget {
   const _AnalogFace({required this.now, required this.size});
 
   @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: size,
-      height: size,
-      child: CustomPaint(painter: _AnalogPainter(now)),
-    );
-  }
+  Widget build(BuildContext context) => SizedBox(
+        width: size,
+        height: size,
+        child: CustomPaint(painter: _AnalogPainter(now)),
+      );
 }
 
 class _AnalogPainter extends CustomPainter {
