@@ -3,7 +3,7 @@ name: Apply sysadmin console activation patch
 on:
   pull_request:
     branches: [main]
-    types: [opened]
+    types: [opened, reopened]
 
 permissions:
   contents: write
@@ -25,7 +25,21 @@ jobs:
           cache: true
 
       - name: Apply targeted patch
-        run: python3 tools/patch_sysadmin_console_activation.py
+        run: |
+          python3 tools/patch_sysadmin_console_activation.py
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/features/team/contacts_screen.dart')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("? '$label\n$attemptText'", "? '$label · $attemptText'")
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('test/sysadmin_console_test.dart')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("join('\n');", "join('\\n');")
+          p.write_text(s, encoding='utf-8')
+          PY
 
       - name: Format changed Dart files
         run: |
