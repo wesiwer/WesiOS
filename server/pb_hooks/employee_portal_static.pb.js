@@ -1,32 +1,43 @@
 /// Портал WesiOS: статическая страница, надёжная выдача релизов и
 /// информационный слой.
 ///
-/// Важное отличие от старой реализации: каталог сборок не предполагается.
-/// Релизный workflow умеет публиковать либо в pb_public, либо в /srv, поэтому
-/// portal сам проверяет оба фактических места. Это устраняет ситуацию
-/// «сборка на сервере есть, а manifest говорит, что её нет».
+/// Релизный workflow и portal deploy исторически умеют работать в двух
+/// каталогах. Поэтому ни страница, ни manifest больше не зависят от того,
+/// была ли переменная WESI_ARTIFACTS_DIR задана именно процессу PocketBase.
 
-const WESI_PORTAL_BASE_ROOT =
-  $os.getenv("WESI_ARTIFACTS_DIR") || "/opt/pocketbase/pb_public/artifacts";
-const WESI_PORTAL_STATIC_ROOT = WESI_PORTAL_BASE_ROOT + "/portal";
-const WESI_RELEASE_ROOTS = [
+const WESI_STORAGE_ROOTS = [
   $os.getenv("WESI_ARTIFACTS_DIR"),
   "/opt/pocketbase/pb_public/artifacts",
   "/srv/wesi-artifacts",
 ].filter((value, index, all) => value && all.indexOf(value) === index);
 
-function wesiPortalReadText(fs, name) {
+function wesiReadText(fs, name) {
   const raw = fs.readFile(name);
   if (typeof raw === "string") return raw;
   return String.fromCharCode.apply(null, raw);
 }
 
+function wesiPortalRoot() {
+  let lastError = null;
+  for (const root of WESI_STORAGE_ROOTS) {
+    try {
+      const fs = $os.dirFS(root + "/portal");
+      const html = wesiReadText(fs, "index.html");
+      if (html.indexOf("WesiOS") >= 0) return root + "/portal";
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  console.log("employee portal static lookup error:", lastError);
+  throw new NotFoundError("Портал WesiOS ещё не опубликован");
+}
+
 function wesiRelease() {
   let lastError = null;
-  for (const root of WESI_RELEASE_ROOTS) {
+  for (const root of WESI_STORAGE_ROOTS) {
     try {
       const fs = $os.dirFS(root);
-      const manifest = JSON.parse(wesiPortalReadText(fs, "app/app-manifest.json"));
+      const manifest = JSON.parse(wesiReadText(fs, "app/app-manifest.json"));
       if (!manifest || typeof manifest !== "object") continue;
       return {root: root, manifest: manifest};
     } catch (error) {
@@ -48,13 +59,23 @@ function wesiSafeArtifactPath(value) {
   return clean;
 }
 
+function wesiSafePortalPath(value) {
+  const source = String(value || "index.html");
+  const clean = $filepath.clean(source).replace(/\\/g, "/");
+  if (clean === "." || clean === "") return "index.html";
+  if (clean.startsWith("/") || clean.startsWith("../") || clean.indexOf("/../") >= 0) {
+    throw new ForbiddenError("Недопустимый путь портала");
+  }
+  return clean;
+}
+
 function wesiArtifactName(value, fallback) {
   if (typeof value !== "string" || value === "") return fallback;
   return value.replace(/[^a-zA-Z0-9._-]/g, "_");
 }
 
-/// Отдельный manifest v2. Старый маршрут оставлен для совместимости старой
-/// страницы, новый используется усиленным клиентским слоем ниже.
+/// Manifest v2. Старый маршрут остаётся для совместимости старого app.js,
+/// а этот всегда использует фактически найденный каталог релиза.
 routerAdd("GET", "/api/wesi/portal/release-manifest", (e) => {
   const release = wesiRelease();
   const manifest = release.manifest;
@@ -113,9 +134,9 @@ routerAdd("GET", "/api/wesi/portal/release-download/{platform}", (e) => {
   return e.fileFS($os.dirFS(release.root), path);
 }, $apis.requireAuth("users"));
 
-/// Этот слой вклеивается только в HTML /portal/. Файлы CSS/JS и иконка по-
-/// прежнему отдаются стандартным static handler. Так исправление не зависит
-/// от кеша старого app.js и не требует переписывать большую страницу.
+/// Вклеивается только в HTML главной страницы. Это позволяет исправить
+/// скачивание даже у браузера, который держал старый app.js, и не требует
+/// дублировать весь большой index.html в hook.
 const WESI_PORTAL_ENHANCEMENT = `
 <style id="wesiProductStyles">
 .product-info{padding:92px 3vw 108px;border-top:1px solid rgba(var(--veil-rgb),.06)}
@@ -148,6 +169,7 @@ const WESI_PORTAL_ENHANCEMENT = `
       '<article class="req-card surface"><div class="req-platform"><b>Windows</b><span>x64</span></div><div class="req-cols"><div><small>МИНИМАЛЬНО</small><dl><dt>ОС</dt><dd>Windows 10, 64-bit</dd><dt>Процессор</dt><dd>x86-64</dd><dt>ОЗУ</dt><dd>4 ГБ</dd><dt>Диск</dt><dd>500 МБ свободно</dd><dt>Сеть</dt><dd>Для входа и синхронизации</dd></dl></div><div class="recommended"><small>РЕКОМЕНДУЕТСЯ</small><dl><dt>ОС</dt><dd>Windows 11, 64-bit</dd><dt>Процессор</dt><dd>4 ядра x86-64</dd><dt>ОЗУ</dt><dd>8 ГБ+</dd><dt>Диск</dt><dd>1 ГБ+ на SSD</dd><dt>Экран</dt><dd>1366×768+</dd></dl></div></div></article>'+
       '<article class="req-card surface"><div class="req-platform"><b>Android</b><span>API 21+</span></div><div class="req-cols"><div><small>МИНИМАЛЬНО</small><dl><dt>ОС</dt><dd>Android 5.0 (API 21)</dd><dt>Архитектура</dt><dd>ARMv7 / ARM64 / x86-64</dd><dt>ОЗУ</dt><dd>2 ГБ</dd><dt>Диск</dt><dd>300 МБ свободно</dd><dt>Сеть</dt><dd>Для входа и синхронизации</dd></dl></div><div class="recommended"><small>РЕКОМЕНДУЕТСЯ</small><dl><dt>ОС</dt><dd>Android 10+</dd><dt>Архитектура</dt><dd>ARM64</dd><dt>ОЗУ</dt><dd>4 ГБ+</dd><dt>Диск</dt><dd>500 МБ+</dd><dt>Экран</dt><dd>720p+</dd></dl></div></div></article></div><p class="requirements-proof">Жёсткие ограничения сборки: Android <code>minSdkVersion 21</code>; Windows-релиз публикуется как <code>x64</code>. Для Windows Flutter поддерживает Windows 10 и 11.</p></div>';
     showcase.parentNode.insertBefore(section,showcase);
+    var hint=document.querySelector('.scroll-hint');if(hint)hint.setAttribute('href','#productInfo');
   }
 
   var manifestPromise=null;
@@ -171,8 +193,8 @@ const WESI_PORTAL_ENHANCEMENT = `
   async function download(platform,button){
     var original=button.querySelector('span')?button.querySelector('span').textContent:'';var writable=null;
     try{
+      if(platform==='windows'&&window.showSaveFilePicker){try{var handle=await window.showSaveFilePicker({suggestedName:'wesios-windows-x64.zip',types:[{description:'WesiOS Windows',accept:{'application/zip':['.zip']}}]});writable=await handle.createWritable();}catch(e){if(e&&e.name==='AbortError')return;writable=null;}}
       var m=await getManifest(false);var item=m&&m[platform];if(!item)throw new Error('Сборка для этой платформы не опубликована');var name=item.asset||(platform==='windows'?'wesios-windows-x64.zip':'wesios-android.apk');
-      if(platform==='windows'&&window.showSaveFilePicker){try{var handle=await window.showSaveFilePicker({suggestedName:name,types:[{description:'WesiOS Windows',accept:{'application/zip':['.zip']}}]});writable=await handle.createWritable();}catch(e){if(e&&e.name==='AbortError')return;writable=null;}}
       button.disabled=true;label(button,'Скачиваем');button.dataset.progress='';
       var response=await fetch('/api/wesi/portal/release-download/'+platform,{method:'GET',cache:'no-store',headers:authHeaders()});if(!response.ok){var body=null;try{body=await response.json();}catch(_){}throw new Error((body&&body.message)||('Ошибка скачивания: HTTP '+response.status));}
       var total=Number(response.headers.get('content-length')||item.sizeBytes||0),received=0;
@@ -191,26 +213,24 @@ const WESI_PORTAL_ENHANCEMENT = `
 
 routerAdd("GET", "/portal", (e) => e.redirect(308, "/portal/"));
 
-/// HTML отдаём через маленький адаптер: исходный index.html остаётся простым,
-/// а усиление можно заменить одной серверной выкладкой без кеша старого JS.
-routerAdd("GET", "/portal/", (e) => {
-  const fs = $os.dirFS(WESI_PORTAL_STATIC_ROOT);
-  let html = wesiPortalReadText(fs, "index.html");
-  if (html.indexOf("wesiProductRuntime") < 0) {
-    html = html.replace("</body>", WESI_PORTAL_ENHANCEMENT + "\n</body>");
-  }
+/// Один wildcard обслуживает и главную, и ресурсы. Это намеренно: два
+/// пересекающихся ServeMux pattern (`/portal/` и `/portal/{path...}`) могут
+/// конфликтовать. Для index.html добавляем enhancement, прочее отдаём как файл.
+routerAdd("GET", "/portal/{path...}", (e) => {
+  const root = wesiPortalRoot();
+  const requested = e.request.pathValue("path");
+  const path = wesiSafePortalPath(requested);
   e.response.header().set("Cache-Control", "no-cache, must-revalidate");
-  e.response.header().set("Content-Type", "text/html; charset=utf-8");
-  return e.string(200, html);
-});
 
-/// Остальные статические файлы портала.
-routerAdd(
-  "GET",
-  "/portal/{path...}",
-  $apis.static(WESI_PORTAL_STATIC_ROOT, true),
-  (e) => {
-    e.response.header().set("Cache-Control", "no-cache, must-revalidate");
-    return e.next();
-  },
-);
+  if (path === "index.html") {
+    const fs = $os.dirFS(root);
+    let html = wesiReadText(fs, "index.html");
+    if (html.indexOf("wesiProductRuntime") < 0) {
+      html = html.replace("</body>", WESI_PORTAL_ENHANCEMENT + "\n</body>");
+    }
+    e.response.header().set("Content-Type", "text/html; charset=utf-8");
+    return e.string(200, html);
+  }
+
+  return e.fileFS($os.dirFS(root), path);
+});
