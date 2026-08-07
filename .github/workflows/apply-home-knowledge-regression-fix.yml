@@ -42,7 +42,7 @@ jobs:
           ! grep -q 'OverflowBox' lib/core/widgets/wesi_clock.dart
           grep -q 'width: double.infinity' lib/features/home/home_screen.dart
           grep -q '@HiveField(10, defaultValue: false)' lib/features/knowledge/models/article_model.dart
-          grep -q 'fields\[10\] as bool? ?? false' lib/features/knowledge/models/article_model.g.dart
+          grep -Fq 'fields[10] as bool? ?? false' lib/features/knowledge/models/article_model.g.dart
           grep -q 'KnowledgeService: failed to open' lib/features/knowledge/services/knowledge_service.dart
           git diff --check
 
