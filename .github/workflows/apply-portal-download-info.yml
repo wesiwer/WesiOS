@@ -1,0 +1,40 @@
+name: Apply portal download info patch
+
+on:
+  push:
+    branches: [agent/portal-download-product-info]
+    paths:
+      - '.github/workflows/apply-portal-download-info.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/portal-download-product-info
+          fetch-depth: 0
+      - name: Apply patch
+        run: python3 tools/patch_portal_download_info.py
+      - name: Validate syntax and anchors
+        run: |
+          set -euo pipefail
+          node --check server/employee-portal/app.js
+          node --check server/pb_hooks/employee_portal.pb.js
+          grep -q 'id="productInfo"' server/employee-portal/index.html
+          grep -q 'Android 5.0 (API 21)' server/employee-portal/index.html
+          grep -q 'showSaveFilePicker' server/employee-portal/app.js
+          grep -q 'PORTAL_ARTIFACTS_ROOTS' server/pb_hooks/employee_portal.pb.js
+          grep -q 'WESIOS_PRODUCT_INFO_V1' server/employee-portal/styles.css
+      - name: Commit patch
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Agent'
+          git config user.email 'actions@github.com'
+          git add server .github/workflows/deploy-employee-portal.yml
+          git commit -m 'fix(portal): repair downloads and add product requirements'
+          git push origin HEAD:agent/portal-download-product-info
