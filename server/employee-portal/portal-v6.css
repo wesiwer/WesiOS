@@ -432,3 +432,11 @@ body{position:relative}
 .download-button[data-progress]:after{content:attr(data-progress);margin-left:8px;font-variant-numeric:tabular-nums;opacity:.75}
 @media(max-width:800px){.product-info{padding:68px 0 82px}.product-facts,.requirements-grid{grid-template-columns:1fr}.requirements-title{grid-template-columns:1fr}.requirements-title .section-label{grid-column:auto}.req-cols{grid-template-columns:1fr}.req-cols .recommended{padding:18px 0 0;border-left:0;border-top:1px solid var(--soft)}}
 @media(max-width:480px){.req-card,.product-fact{padding:18px}.req-cols dl{grid-template-columns:1fr}.req-cols dd{text-align:left;margin-bottom:4px}.requirements-popover{position:fixed;left:12px;right:12px;bottom:max(18px,env(safe-area-inset-bottom));width:auto;max-height:78vh;padding:18px;transform-origin:50% 100%}.requirements-title>p{font-size:11px}}
+
+
+/* DOWNLOAD_REQUIREMENTS_STYLE_V1 */
+.download-requirements{grid-column:1/-1;margin-top:4px;padding:24px;border-radius:22px}
+.download-requirements>.requirements-grid{margin-top:20px}
+.download-requirements .req-card{background:rgba(var(--veil-rgb),.018);box-shadow:none}
+@media(max-width:800px){.download-requirements{padding:20px}}
+@media(max-width:480px){.download-requirements{padding:16px}}

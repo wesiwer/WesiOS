@@ -276,6 +276,53 @@
         <article class="release-card surface reveal delay-1"><div class="card-kicker"><span class="live-dot"></span><span>АКТУАЛЬНЫЙ РЕЛИЗ</span><time id="publishedAt">Проверяем сервер…</time></div><div class="release-title"><svg class="wesi-mark" viewBox="0 0 1024 1024" role="img" aria-label="WesiOS" focusable="false"><use href="#wesiMark"/></svg><div><h2>WesiOS</h2><p>Business Operating System</p></div></div><div class="release-meta"><div><small>Версия</small><strong id="releaseVersion">—</strong></div><div><small>Сборка</small><strong id="releaseBuild">—</strong></div><div><small>Канал</small><strong>Private</strong></div></div><div class="changelog" id="changelog"><span>Что нового</span><p>Загружаем описание обновления…</p></div></article>
         <article class="download-card surface reveal delay-2" data-platform="windows"><div class="platform-symbol windows-symbol"><i></i><i></i><i></i><i></i></div><small>DESKTOP</small><h3>Windows</h3><p>Версия для рабочего компьютера. Портативная сборка x64.</p><div class="platform-meta"><span id="windowsSize">—</span><span>ZIP · x64</span></div><button class="download-button" data-download="windows" disabled><span>Скачать для Windows</span></button></article>
         <article class="download-card surface reveal delay-3" data-platform="android"><div class="platform-symbol android-symbol"><span></span><i></i><i></i></div><small>MOBILE</small><h3>Android</h3><p>Мобильный доступ к чатам, задачам и данным компании.</p><div class="platform-meta"><span id="androidSize">—</span><span>APK · Android</span></div><button class="download-button" data-download="android" disabled><span>Скачать для Android</span></button></article>
+
+        <!-- DOWNLOAD_REQUIREMENTS_V1 -->
+        <section class="download-requirements surface reveal" aria-labelledby="downloadRequirementsTitle">
+          <div class="requirements-title">
+            <span class="section-label">СИСТЕМНЫЕ ТРЕБОВАНИЯ</span>
+            <h3 id="downloadRequirementsTitle">Перед установкой</h3>
+            <p>Минимальные и рекомендуемые параметры для текущих сборок WesiOS. Публикуем только подтверждённые ограничения.</p>
+          </div>
+          <div class="requirements-grid">
+            <article class="req-card surface">
+              <div class="req-platform"><b>Windows</b><span>x64</span></div>
+              <div class="req-cols">
+                <div><small>МИНИМАЛЬНО</small><dl>
+                  <dt>ОС</dt><dd>Windows 10, 64-bit</dd>
+                  <dt>Архитектура</dt><dd>x64</dd>
+                  <dt>ОЗУ</dt><dd>Порог WesiOS не задан</dd>
+                  <dt>Диск</dt><dd>Сборка + локальные данные</dd>
+                  <dt>Сеть</dt><dd>Для входа и синхронизации</dd>
+                </dl></div>
+                <div class="recommended"><small>РЕКОМЕНДУЕТСЯ</small><dl>
+                  <dt>ОС</dt><dd>Windows 11, 64-bit</dd>
+                  <dt>Накопитель</dt><dd>SSD</dd>
+                  <dt>Сеть</dt><dd>Стабильное подключение</dd>
+                  <dt>ОЗУ / CPU</dt><dd>Без искусственного порога</dd>
+                </dl></div>
+              </div>
+            </article>
+            <article class="req-card surface">
+              <div class="req-platform"><b>Android</b><span>API 21+</span></div>
+              <div class="req-cols">
+                <div><small>МИНИМАЛЬНО</small><dl>
+                  <dt>ОС</dt><dd>Android 5.0 (API 21)</dd>
+                  <dt>ОЗУ</dt><dd>Порог WesiOS не задан</dd>
+                  <dt>Диск</dt><dd>APK + локальные данные</dd>
+                  <dt>Сеть</dt><dd>Для входа и синхронизации</dd>
+                </dl></div>
+                <div class="recommended"><small>РЕКОМЕНДУЕТСЯ</small><dl>
+                  <dt>ОС</dt><dd>Android 10 или новее</dd>
+                  <dt>Архитектура</dt><dd>ARM64</dd>
+                  <dt>Обновления</dt><dd>Актуальные системные патчи</dd>
+                  <dt>Сеть</dt><dd>Стабильное подключение</dd>
+                </dl></div>
+              </div>
+            </article>
+          </div>
+          <p class="requirements-proof">Android minimum подтверждён <code>minSdkVersion 21</code>. Windows release собирается как <code>x64</code>. Рекомендованные параметры не являются блокировкой запуска.</p>
+        </section>
       </div>
       <footer class="footer"><span>WESI INC · PRIVATE INFRASTRUCTURE</span><span id="footerStatus">Связь с сервером установлена</span></footer>
     </section>
