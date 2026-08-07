@@ -1,0 +1,48 @@
+name: Apply console runtime hotfix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 1
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - name: Apply runtime fix
+        run: python3 tools/fix_console_runtime_regex.py
+      - name: Format
+        run: dart format lib/features/sysadmin/console/console_command_service.dart lib/features/sysadmin/console/console_templates.dart test/sysadmin_console_test.dart
+      - name: Validate runtime fix
+        run: |
+          set -euo pipefail
+          ! grep -q "(?i)" lib/features/sysadmin/console/console_command_service.dart
+          grep -q "caseSensitive: false" lib/features/sysadmin/console/console_command_service.dart
+          grep -q "обычная команда безопасно печатается" test/sysadmin_console_test.dart
+          git diff --check
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Console regression tests
+        run: flutter test test/sysadmin_console_test.dart
+      - name: Commit runtime fix
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/features/sysadmin/console/console_command_service.dart lib/features/sysadmin/console/console_templates.dart test/sysadmin_console_test.dart
+          git commit -m 'fix: restore console command output and scoped templates'
+          git push origin HEAD:${{ github.head_ref }}
