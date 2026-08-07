@@ -153,9 +153,69 @@
               <span>Финансы</span><em>·</em><span>Задачи</span><em>·</em><span>Чаты</span><em>·</em><span>Аналитика</span><em>·</em><span>Календарь</span><em>·</em><span>База знаний</span><em>·</em><span>Wesi AI</span><em>·</em><span>Прогноз</span><em>·</em>
             </div>
           </div>
-          <a class="scroll-hint" href="#showcase"><span>Листайте дальше</span><i aria-hidden="true"></i></a>
+          <button class="scroll-hint requirements-trigger" id="requirementsTrigger" type="button" aria-expanded="false" aria-controls="requirementsPopover">
+            <span>Системные требования</span><i aria-hidden="true"></i>
+          </button>
+          <div class="requirements-popover" id="requirementsPopover" aria-hidden="true">
+            <div class="requirements-title">
+              <span class="section-label">СИСТЕМНЫЕ ТРЕБОВАНИЯ</span>
+              <h3>Минимальные и рекомендуемые</h3>
+              <p>Показываем только подтверждённые ограничения. WesiOS не задаёт жёсткий минимум ОЗУ, частоты CPU или фиксированного объёма диска, поэтому таких выдуманных цифр здесь нет.</p>
+            </div>
+            <div class="requirements-grid">
+              <article class="req-card surface">
+                <div class="req-platform"><b>Windows</b><span>x64</span></div>
+                <div class="req-cols">
+                  <div><small>МИНИМАЛЬНО</small><dl>
+                    <dt>ОС</dt><dd>Windows 10, 64-bit</dd>
+                    <dt>Архитектура</dt><dd>x64</dd>
+                    <dt>ОЗУ</dt><dd>Порог WesiOS не задан</dd>
+                    <dt>Диск</dt><dd>Сборка + локальные данные</dd>
+                    <dt>Сеть</dt><dd>Для входа и синхронизации</dd>
+                  </dl></div>
+                  <div class="recommended"><small>РЕКОМЕНДУЕТСЯ</small><dl>
+                    <dt>ОС</dt><dd>Windows 11, 64-bit</dd>
+                    <dt>Накопитель</dt><dd>SSD</dd>
+                    <dt>Сеть</dt><dd>Стабильное подключение</dd>
+                    <dt>ОЗУ / CPU</dt><dd>Без искусственного порога</dd>
+                  </dl></div>
+                </div>
+              </article>
+              <article class="req-card surface">
+                <div class="req-platform"><b>Android</b><span>API 21+</span></div>
+                <div class="req-cols">
+                  <div><small>МИНИМАЛЬНО</small><dl>
+                    <dt>ОС</dt><dd>Android 5.0 (API 21)</dd>
+                    <dt>ОЗУ</dt><dd>Порог WesiOS не задан</dd>
+                    <dt>Диск</dt><dd>APK + локальные данные</dd>
+                    <dt>Сеть</dt><dd>Для входа и синхронизации</dd>
+                  </dl></div>
+                  <div class="recommended"><small>РЕКОМЕНДУЕТСЯ</small><dl>
+                    <dt>ОС</dt><dd>Android 10 или новее</dd>
+                    <dt>Архитектура</dt><dd>ARM64</dd>
+                    <dt>Обновления</dt><dd>Актуальные системные патчи</dd>
+                    <dt>Сеть</dt><dd>Стабильное подключение</dd>
+                  </dl></div>
+                </div>
+              </article>
+            </div>
+            <p class="requirements-proof">Android minimum подтверждён <code>minSdkVersion 21</code>. Windows release собирается как <code>x64</code>. Рекомендованные параметры справа не являются блокировкой запуска.</p>
+          </div>
         </div>
       </div>
+
+      <section class="product-info" id="productInfo">
+        <div class="product-info-head" data-scroll-reveal>
+          <span class="section-label">О WESIOS</span>
+          <h2>Рабочая система компании,<br>а не ещё один набор сервисов.</h2>
+          <p>WesiOS объединяет финансы, задачи, календарь, рабочие чаты, аналитику, базу знаний, CRM, Roadmap и Wesi AI. Данные работают offline-first, а авторизованные устройства синхронизируются через корпоративный сервер.</p>
+        </div>
+        <div class="product-facts" data-scroll-reveal>
+          <article class="product-fact surface"><small>ПЛАТФОРМЫ</small><strong>Windows + Android</strong><p>Windows — x64-сборка. Android — подписанный корпоративный APK.</p></article>
+          <article class="product-fact surface"><small>СИНХРОНИЗАЦИЯ</small><strong>Между устройствами</strong><p>Изменения отправляются автоматически и появляются на другом активном устройстве без перезапуска.</p></article>
+          <article class="product-fact surface"><small>РЕЖИМ</small><strong>Offline-first</strong><p>Основные рабочие данные остаются локально. Интернет нужен для входа, межустройственного обмена и сетевых функций.</p></article>
+        </div>
+      </section>
 
       <section class="showcase" id="showcase">
         <div class="showcase-copy" data-scroll-reveal>

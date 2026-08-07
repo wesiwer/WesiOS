@@ -267,20 +267,66 @@
   async function download(platformName, button) {
     const item = platform(state.manifest, platformName);
     if (!item) return;
-    setLoading(button, true, 'Подготавливаем…');
+    const fallback = platformName === 'windows' ? 'wesios-windows-x64.zip' : 'wesios-android.apk';
+    const name = item.asset || fallback;
+    let writable = null;
+    setLoading(button, true, 'Скачиваем…');
     try {
-      const response = await fetchTimeout(`${API}/api/wesi/portal/download/${platformName}`, { headers: headers() }, 30000);
-      if (!response.ok) throw new Error();
+      // Для большого Windows ZIP Chromium может сразу писать поток на диск.
+      // Это не держит весь архив в памяти и не ограничивает загрузку 30 секундами.
+      if (platformName === 'windows' && window.showSaveFilePicker) {
+        try {
+          const handle = await window.showSaveFilePicker({
+            suggestedName: name,
+            types: [{ description: 'WesiOS Windows', accept: { 'application/zip': ['.zip'] } }],
+          });
+          writable = await handle.createWritable();
+        } catch (error) {
+          if (error?.name === 'AbortError') return;
+        }
+      }
+
+      const response = await fetch(`${API}/api/wesi/portal/download/${platformName}`, {
+        method: 'GET', cache: 'no-store', headers: headers(),
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const total = Number(response.headers.get('content-length') || item.sizeBytes || 0);
+      let received = 0;
+      const progress = () => {
+        if (total) button.dataset.progress = `${Math.min(100, Math.round(received * 100 / total))}%`;
+      };
+
+      if (writable && response.body) {
+        const reader = response.body.getReader();
+        while (true) {
+          const chunk = await reader.read();
+          if (chunk.done) break;
+          received += chunk.value.byteLength;
+          await writable.write(chunk.value);
+          progress();
+        }
+        await writable.close();
+        writable = null;
+        toast('WesiOS сохранён на компьютер');
+        return;
+      }
+
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = item.asset || (platformName === 'windows' ? 'wesios-windows.zip' : 'wesios.apk');
+      anchor.download = name;
+      anchor.style.display = 'none';
+      document.body.appendChild(anchor);
       anchor.click();
-      setTimeout(() => URL.revokeObjectURL(url), 30000);
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      toast('Скачивание началось');
     } catch (_) {
+      if (writable) try { await writable.abort(); } catch (_) {}
       toast('Не удалось скачать сборку', 'error');
     } finally {
+      delete button.dataset.progress;
       setLoading(button, false);
     }
   }
@@ -360,7 +406,32 @@
     }, { passive: false });
   }
 
+  function bindRequirements() {
+    const trigger = $('#requirementsTrigger');
+    const popover = $('#requirementsPopover');
+    if (!trigger || !popover) return;
+    const setOpen = open => {
+      trigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+      popover.setAttribute('aria-hidden', open ? 'false' : 'true');
+      popover.classList.toggle('is-open', open);
+    };
+    const toggle = event => {
+      event?.preventDefault();
+      event?.stopPropagation();
+      setOpen(trigger.getAttribute('aria-expanded') !== 'true');
+    };
+    trigger.addEventListener('click', toggle);
+    trigger.addEventListener('keydown', event => {
+      if (event.key === 'Enter' || event.key === ' ') toggle(event);
+      if (event.key === 'Escape') setOpen(false);
+    });
+    popover.addEventListener('click', event => event.stopPropagation());
+    document.addEventListener('click', () => setOpen(false));
+    document.addEventListener('keydown', event => { if (event.key === 'Escape') setOpen(false); });
+  }
+
   function bind() {
+    bindRequirements();
     preventPinchZoom();
     applyTheme(currentTheme(), false);
     els.themeSwitch?.addEventListener('click', () => {
