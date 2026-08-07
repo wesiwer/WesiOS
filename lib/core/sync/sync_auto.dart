@@ -2,46 +2,43 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import 'pocketbase_transport.dart';
 import 'sync_endpoint.dart';
 import 'sync_engine.dart';
 import 'sync_journal.dart';
 
-/// Обмен сам, как только что-то изменилось.
+/// Автоматический обмен между устройствами.
 ///
-/// **Почему с задержкой, а не мгновенно.** Одно действие человека — это
-/// почти никогда не одна запись. Создание сотрудника пишет карточку, потом
-/// занимает логин; правка операции трогает и её, и счёт. Обмен на каждое
-/// такое событие означал бы пять запросов подряд там, где нужен один, — и
-/// это на сервере с одним ядром, куда смотрят все сотрудники сразу.
+/// Есть два независимых повода для синхронизации:
+/// 1. локальная правка — после короткой тишины отправляем её на сервер;
+/// 2. изменение сервера — раз в секунду читаем только лёгкую ревизию и
+///    запускаем полный обмен, только если ревизия изменилась.
 ///
-/// Поэтому: изменение сдвигает таймер, и обмен уходит через [quiet] после
-/// **последнего** из них. Человек правит форму — таймер отодвигается;
-/// закончил — через пару секунд всё уехало.
-///
-/// **Почему считаются только свои правки.** Приехавшее с сервера тоже
-/// пишется в те же боксы. Считать всё подряд значило бы: применили чужое →
-/// сработал автозапуск → снова обмен → снова применили → и так по кругу,
-/// без единой правки от человека. Отличает их [SyncJournal.localChanges].
+/// Так второй компьютер узнаёт о продаже с телефона без перезапуска, но
+/// сервер не получает семь полных запросов по всем коллекциям каждую секунду.
 class SyncAuto {
-  /// Сколько ждать тишины перед отправкой.
-  ///
-  /// Две секунды: достаточно, чтобы склеить одно действие человека в один
-  /// обмен, и незаметно на глаз.
-  static const Duration quiet = Duration(seconds: 2);
+  /// Локальные действия часто пишут несколько связанных записей подряд.
+  /// 300 мс склеивают их в один обмен и при этом почти не ощущаются.
+  static const Duration quiet = Duration(milliseconds: 300);
 
-  /// Через сколько повторить, если обмен не удался.
-  ///
-  /// Не бесконечно и не сразу: связи может не быть минутами, и долбиться в
-  /// неё каждые две секунды — верный способ посадить батарею.
-  static const Duration retryAfter = Duration(minutes: 2);
+  /// Частота лёгкой проверки серверной ревизии.
+  static const Duration remotePollEvery = Duration(seconds: 1);
+
+  /// Повтор полного обмена после ошибки. Проверка ревизии имеет собственный
+  /// экспоненциальный backoff, поэтому офлайн-устройство не долбит сеть.
+  static const Duration retryAfter = Duration(seconds: 15);
 
   static final ValueNotifier<bool> running = ValueNotifier<bool>(false);
-
-  static Timer? _timer;
-  static bool _listening = false;
-
-  /// Есть ли неотправленные правки — по ним показывается «ждёт отправки».
   static final ValueNotifier<bool> pending = ValueNotifier<bool>(false);
+
+  static Timer? _localTimer;
+  static Timer? _pollTimer;
+  static bool _listening = false;
+  static bool _probeBusy = false;
+  static String? _remoteRevision;
+  static String? _sessionFingerprint;
+  static int _probeFailures = 0;
+  static DateTime? _nextProbeAt;
 
   /// Начать следить. Повторный вызов ничего не ломает.
   static void start() {
@@ -49,14 +46,30 @@ class SyncAuto {
     _listening = true;
     SyncJournal.localChanges.addListener(_onLocalChange);
     running.value = true;
+
+    _pollTimer?.cancel();
+    _pollTimer = Timer.periodic(
+      remotePollEvery,
+      (_) => unawaited(_pollRemote()),
+    );
+    // Не ждём первую секунду: после старта сразу ставим/проверяем watermark.
+    unawaited(_pollRemote());
   }
 
   static void stop() {
-    if (!_listening) return;
-    SyncJournal.localChanges.removeListener(_onLocalChange);
+    if (_listening) {
+      SyncJournal.localChanges.removeListener(_onLocalChange);
+    }
     _listening = false;
-    _timer?.cancel();
-    _timer = null;
+    _localTimer?.cancel();
+    _pollTimer?.cancel();
+    _localTimer = null;
+    _pollTimer = null;
+    _probeBusy = false;
+    _remoteRevision = null;
+    _sessionFingerprint = null;
+    _probeFailures = 0;
+    _nextProbeAt = null;
     pending.value = false;
     running.value = false;
   }
@@ -68,19 +81,24 @@ class SyncAuto {
   }
 
   static void _schedule(Duration after) {
-    _timer?.cancel();
-    _timer = Timer(after, _run);
+    _localTimer?.cancel();
+    _localTimer = Timer(after, () => unawaited(_runAuto()));
   }
 
-  static Future<void> _run() async {
+  static Future<SyncReport> _runAuto() async {
     if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
-      pending.value = false;
-      return;
+      return SyncReport(
+        at: DateTime.now(),
+        failure: const SyncFailure('NOT_SIGNED_IN', 'Синхронизация не подключена'),
+      );
     }
-    // Проход уже идёт — не мешаем, попробуем ещё раз после тишины.
+
     if (SyncEngine.busy.value) {
       _schedule(quiet);
-      return;
+      return SyncReport(
+        at: DateTime.now(),
+        failure: const SyncFailure('BUSY', 'Синхронизация уже идёт'),
+      );
     }
 
     SyncReport report;
@@ -88,23 +106,123 @@ class SyncAuto {
       report = await SyncEngine.run();
     } catch (_) {
       _schedule(retryAfter);
-      return;
+      return SyncReport(
+        at: DateTime.now(),
+        failure: const SyncFailure('NETWORK', 'Не удалось выполнить синхронизацию'),
+      );
     }
 
     if (report.ok) {
       pending.value = false;
+      await _captureRemoteRevision();
     } else {
-      // Не получилось — правки остаются неотправленными, и это видно.
-      // Молча забыть про них было бы худшим вариантом: человек считал бы,
-      // что всё уехало.
       _schedule(retryAfter);
+    }
+    return report;
+  }
+
+  /// Лёгкая проверка: изменилось ли вообще что-нибудь на сервере.
+  static Future<void> _pollRemote() async {
+    if (_probeBusy || SyncEngine.busy.value) return;
+    if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
+      _remoteRevision = null;
+      _sessionFingerprint = null;
+      return;
+    }
+
+    final nextAllowed = _nextProbeAt;
+    if (nextAllowed != null && DateTime.now().isBefore(nextAllowed)) return;
+
+    final session = SyncEndpoint.session;
+    final fingerprint = '${session?['userId']}|${session?['token']}';
+    if (_sessionFingerprint != fingerprint) {
+      _sessionFingerprint = fingerprint;
+      _remoteRevision = null;
+      _probeFailures = 0;
+      _nextProbeAt = null;
+    }
+
+    _probeBusy = true;
+    try {
+      final result = await PocketBaseTransport.fromSettings().revision();
+      if (result.failure != null) {
+        _registerProbeFailure();
+        return;
+      }
+
+      _probeFailures = 0;
+      _nextProbeAt = null;
+      final revision = result.value!;
+
+      // runOnLaunch уже сделал полный обмен — его результат можно принять
+      // как исходную точку и не повторять тот же проход через секунду.
+      if (_remoteRevision == null) {
+        if (SyncEngine.lastReport.value?.ok == true) {
+          _remoteRevision = revision;
+          return;
+        }
+
+        final report = await _runAuto();
+        if (report.ok) _remoteRevision = revision;
+        return;
+      }
+
+      if (revision == _remoteRevision) return;
+
+      // Watermark меняем только ПОСЛЕ успешного полного обмена. Если сеть
+      // оборвалась между проверкой и загрузкой данных, следующий tick снова
+      // увидит расхождение и повторит попытку, а не забудет изменение.
+      final report = await _runAuto();
+      if (report.ok) {
+        await _captureRemoteRevision(fallback: revision);
+      }
+    } finally {
+      _probeBusy = false;
     }
   }
 
-  /// Отправить прямо сейчас, не дожидаясь тишины.
-  static Future<void> now() async {
-    _timer?.cancel();
-    await _run();
+  static void _registerProbeFailure() {
+    _probeFailures = (_probeFailures + 1).clamp(1, 6);
+    final seconds = 1 << _probeFailures; // 2, 4, 8, 16, 32, 64
+    _nextProbeAt = DateTime.now().add(Duration(seconds: seconds));
+  }
+
+  static Future<void> _captureRemoteRevision({String? fallback}) async {
+    if (!SyncEndpoint.isConnected) return;
+    final result = await PocketBaseTransport.fromSettings().revision();
+    if (result.failure == null) {
+      _remoteRevision = result.value;
+      _probeFailures = 0;
+      _nextProbeAt = null;
+    } else if (fallback != null) {
+      _remoteRevision = fallback;
+    }
+  }
+
+  /// Принудительный обмен. Работает даже если автоматический обмен временно
+  /// выключен: ручная кнопка должна означать именно «сделай сейчас».
+  static Future<SyncReport> now() async {
+    _localTimer?.cancel();
+
+    if (!SyncEndpoint.isConnected) {
+      return SyncReport(
+        at: DateTime.now(),
+        failure: const SyncFailure('NOT_SIGNED_IN', 'Сначала войдите в синхронизацию'),
+      );
+    }
+
+    // Если автоматический проход уже заканчивается, коротко ждём его вместо
+    // того, чтобы возвращать пользователю бесполезное «BUSY».
+    for (var i = 0; i < 20 && SyncEngine.busy.value; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+
+    final report = await SyncEngine.run();
+    if (report.ok) {
+      pending.value = false;
+      await _captureRemoteRevision();
+    }
+    return report;
   }
 
   /// Только для тестов.

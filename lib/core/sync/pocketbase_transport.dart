@@ -152,6 +152,37 @@ class PocketBaseTransport implements SyncTransport {
     return SyncResult.ok(out);
   }
 
+  /// Самая свежая системная ревизия серверных записей текущего пользователя.
+  ///
+  /// Возвращается только одна запись и только три маленьких поля. Этот запрос
+  /// можно делать раз в секунду: полный payload операций/статей не скачивается.
+  Future<SyncResult<String>> revision() async {
+    if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
+    final res = await _send(
+      'GET',
+      '/api/collections/$collectionName/records',
+      query: const {
+        'perPage': '1',
+        'page': '1',
+        'sort': '-updated,-id',
+        'fields': 'id,updated,stamp',
+      },
+    );
+    if (res.failure != null) return SyncResult.fail(res.failure!);
+    return SyncResult.ok(revisionFromResponse(res.value!));
+  }
+
+  /// Чистый разбор вынесен отдельно для регрессионного теста.
+  static String revisionFromResponse(Map<String, dynamic> json) {
+    final items = json['items'];
+    if (items is! List || items.isEmpty) return 'empty';
+    final first = items.first;
+    if (first is! Map) return 'empty';
+    final id = '${first['id'] ?? ''}';
+    final updated = '${first['updated'] ?? first['stamp'] ?? ''}';
+    return '$id|$updated';
+  }
+
   @override
   Future<SyncResult<int>> push(
     String collection,

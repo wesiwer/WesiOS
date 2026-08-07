@@ -21,6 +21,7 @@ class WesiClock extends StatefulWidget {
 
   static const _box = 'wesios_settings';
   static const _styleKey = 'clock_style';
+  static final ValueNotifier<int> styleRevision = ValueNotifier<int>(0);
 
   static ClockStyle get savedStyle {
     try {
@@ -36,6 +37,7 @@ class WesiClock extends StatefulWidget {
         _styleKey,
         style == ClockStyle.analog ? 'analog' : 'digital',
       );
+      styleRevision.value++;
     } catch (_) {}
   }
 
@@ -100,6 +102,7 @@ class _WesiClockState extends State<WesiClock> {
     super.initState();
     _now = DateTime.now();
     _style = widget.forceStyle ?? WesiClock.savedStyle;
+    WesiClock.styleRevision.addListener(_reloadStyle);
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
@@ -112,8 +115,22 @@ class _WesiClockState extends State<WesiClock> {
     if (next != _style) _style = next;
   }
 
+  void _reloadStyle() {
+    final next = widget.forceStyle ?? WesiClock.savedStyle;
+    if (mounted && next != _style) setState(() => _style = next);
+  }
+
+  Future<void> _toggleStyle() async {
+    if (widget.forceStyle != null) return;
+    final next = _style == ClockStyle.digital
+        ? ClockStyle.analog
+        : ClockStyle.digital;
+    await WesiClock.setStyle(next);
+  }
+
   @override
   void dispose() {
+    WesiClock.styleRevision.removeListener(_reloadStyle);
     _timer?.cancel();
     super.dispose();
   }
@@ -226,12 +243,24 @@ class _WesiClockState extends State<WesiClock> {
               ),
             ),
             SizedBox(width: large ? 7 : 4),
-            Icon(
-              _style == ClockStyle.digital
-                  ? Icons.schedule
-                  : Icons.watch_later_outlined,
-              size: large ? 16 : 12,
-              color: AppTheme.accent,
+            Tooltip(
+              message: ru
+                  ? 'Переключить цифровые / стрелочные часы'
+                  : 'Switch digital / analog clock',
+              child: InkResponse(
+                onTap: widget.forceStyle == null ? _toggleStyle : null,
+                radius: large ? 22 : 18,
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(
+                    _style == ClockStyle.digital
+                        ? Icons.schedule
+                        : Icons.watch_later_outlined,
+                    size: large ? 16 : 12,
+                    color: AppTheme.accent,
+                  ),
+                ),
+              ),
             ),
           ],
         ),
