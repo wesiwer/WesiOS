@@ -1,20 +1,12 @@
 name: Apply sysadmin console activation patch
 
 on:
-  push:
-    branches:
-      - agent/sysadmin-console-activation
-    paths:
-      - tools/patch_sysadmin_console_activation.py
-      - .github/workflows/apply-sysadmin-console-activation.yml
-  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    types: [opened]
 
 permissions:
   contents: write
-
-concurrency:
-  group: apply-sysadmin-console-activation
-  cancel-in-progress: true
 
 jobs:
   apply:
@@ -23,6 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.head_ref }}
           fetch-depth: 1
 
       - uses: subosito/flutter-action@v2
@@ -72,7 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           git config user.name 'github-actions[bot]'
-          git config user.email '4189823+github-actions[bot]@users.noreply.github.com'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
             lib/features/team/contacts_screen.dart \
             lib/features/sysadmin/sysadmin_screen.dart \
@@ -83,11 +76,5 @@ jobs:
             lib/features/sysadmin/console/console_command_service.dart \
             lib/features/sysadmin/console/console_screen.dart \
             test/sysadmin_console_test.dart
-          if git diff --cached --quiet; then
-            echo 'Nothing to commit'
-            exit 0
-          fi
           git commit -m 'fix: bind console to selected server and retry activation'
-          git push
-
-# retrigger after workflow creation
+          git push origin HEAD:${{ github.head_ref }}
