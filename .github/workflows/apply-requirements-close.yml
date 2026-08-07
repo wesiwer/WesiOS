@@ -1,0 +1,53 @@
+name: Apply requirements close controls
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/patch_requirements_close.py
+      - .github/workflows/apply-requirements-close.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-requirements-close
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Apply targeted portal patch
+        run: python3 tools/patch_requirements_close.py
+
+      - name: Validate portal close behavior
+        run: |
+          set -euo pipefail
+          grep -q 'id="requirementsClose"' server/employee-portal/index.html
+          grep -q "const close = \$('#requirementsClose'\);" server/employee-portal/app.js
+          grep -q 'touchStartY' server/employee-portal/app.js
+          grep -q 'REQUIREMENTS_CLOSE_V1' server/employee-portal/portal-v6.css
+          node --check server/employee-portal/app.js
+          node --check server/employee-portal/motion-v6.js
+          node --check server/pb_hooks/employee_portal.pb.js
+          node --check server/pb_hooks/employee_portal_static.pb.js
+          git diff --check
+
+      - name: Commit portal change
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Nothing to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server/employee-portal/index.html server/employee-portal/app.js server/employee-portal/portal-v6.css
+          git commit -m 'fix(portal): add obvious requirements close controls'
+          git push
