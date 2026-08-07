@@ -1,0 +1,91 @@
+name: Apply sysadmin console activation patch
+
+on:
+  push:
+    branches:
+      - agent/sysadmin-console-activation
+    paths:
+      - tools/patch_sysadmin_console_activation.py
+      - .github/workflows/apply-sysadmin-console-activation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-sysadmin-console-activation
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Apply targeted patch
+        run: python3 tools/patch_sysadmin_console_activation.py
+
+      - name: Format changed Dart files
+        run: |
+          dart format \
+            lib/features/team/contacts_screen.dart \
+            lib/features/sysadmin/sysadmin_screen.dart \
+            lib/features/sysadmin/target_detail_screen.dart \
+            lib/features/home/more_tab.dart \
+            lib/core/routes/app_router.dart \
+            lib/features/sysadmin/console/console_templates.dart \
+            lib/features/sysadmin/console/console_command_service.dart \
+            lib/features/sysadmin/console/console_screen.dart \
+            test/sysadmin_console_test.dart
+
+      - name: Validate patch markers
+        run: |
+          set -euo pipefail
+          grep -q 'Повторить активацию' lib/features/team/contacts_screen.dart
+          grep -q 'Duration(seconds: 45)' lib/features/team/contacts_screen.dart
+          grep -q 'WesiConsoleScreen.open(context, t.id)' lib/features/sysadmin/target_detail_screen.dart
+          ! grep -q "route: '/sysadmin/console'" lib/features/home/more_tab.dart
+          grep -q 'targetId: widget.targetId' lib/features/sysadmin/console/console_screen.dart
+          grep -q '_scopedArgs' lib/features/sysadmin/console/console_command_service.dart
+          grep -q 'resolveCommand' lib/features/sysadmin/console/console_templates.dart
+          git diff --check
+
+      - name: Flutter dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Console regression tests
+        run: flutter test test/sysadmin_console_test.dart
+
+      - name: Commit product changes
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '4189823+github-actions[bot]@users.noreply.github.com'
+          git add \
+            lib/features/team/contacts_screen.dart \
+            lib/features/sysadmin/sysadmin_screen.dart \
+            lib/features/sysadmin/target_detail_screen.dart \
+            lib/features/home/more_tab.dart \
+            lib/core/routes/app_router.dart \
+            lib/features/sysadmin/console/console_templates.dart \
+            lib/features/sysadmin/console/console_command_service.dart \
+            lib/features/sysadmin/console/console_screen.dart \
+            test/sysadmin_console_test.dart
+          if git diff --cached --quiet; then
+            echo 'Nothing to commit'
+            exit 0
+          fi
+          git commit -m 'fix: bind console to selected server and retry activation'
+          git push
