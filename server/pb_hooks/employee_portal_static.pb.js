@@ -1,16 +1,16 @@
 /// Публичная страница портала WesiOS.
 ///
 /// Статику отдаём штатным обработчиком PocketBase. Корень выбирается один
-/// раз при загрузке hook: сначала явно настроенный WESI_ARTIFACTS_DIR, затем
-/// фактическое production-хранилище /srv, затем legacy /opt. Это исключает
-/// ситуацию, когда deploy пишет новую страницу в /srv, а PocketBase продолжает
-/// раздавать старую копию из /opt.
+/// раз при загрузке hook. Основной production-каталог /srv проверяется первым,
+/// затем явно настроенный WESI_ARTIFACTS_DIR и только после этого legacy /opt.
+/// Это исключает ситуацию, когда старая переменная окружения заставляет
+/// PocketBase продолжать раздавать устаревшую копию портала.
 
 const WESI_PORTAL_STATIC_ROOT = (() => {
   const configured = $os.getenv("WESI_ARTIFACTS_DIR");
   const roots = [
-    configured,
     "/srv/wesi-artifacts",
+    configured,
     "/opt/pocketbase/pb_public/artifacts",
   ].filter((value, index, all) => value && all.indexOf(value) === index);
 
@@ -27,9 +27,9 @@ const WESI_PORTAL_STATIC_ROOT = (() => {
     }
   }
 
-  // Если портал ещё не опубликован, оставляем стандартный путь: $apis.static
-  // вернёт обычный 404 вместо падения hook при загрузке.
-  return (configured || "/opt/pocketbase/pb_public/artifacts") + "/portal";
+  // Если портал ещё не опубликован, оставляем основной production-путь:
+  // $apis.static вернёт обычный 404 вместо падения hook при загрузке.
+  return "/srv/wesi-artifacts/portal";
 })();
 
 /// Корневой адрес домена — тоже сайт, а не сырой ответ API.
