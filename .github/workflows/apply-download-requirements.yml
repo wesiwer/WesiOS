@@ -1,0 +1,54 @@
+name: Apply download requirements block
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/patch_download_requirements.py
+      - .github/workflows/apply-download-requirements.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-download-requirements
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Apply targeted portal patch
+        run: python3 tools/patch_download_requirements.py
+
+      - name: Validate portal files
+        run: |
+          set -euo pipefail
+          grep -q 'DOWNLOAD_REQUIREMENTS_V1' server/employee-portal/index.html
+          grep -q 'downloadRequirementsTitle' server/employee-portal/index.html
+          grep -q 'DOWNLOAD_REQUIREMENTS_STYLE_V1' server/employee-portal/portal-v6.css
+          grep -q 'Windows 10, 64-bit' server/employee-portal/index.html
+          grep -q 'Android 5.0 (API 21)' server/employee-portal/index.html
+          node --check server/employee-portal/app.js
+          node --check server/employee-portal/motion-v6.js
+          node --check server/pb_hooks/employee_portal.pb.js
+          node --check server/pb_hooks/employee_portal_static.pb.js
+          git diff --check
+
+      - name: Commit portal change
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Nothing to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server/employee-portal/index.html server/employee-portal/portal-v6.css
+          git commit -m 'feat(portal): show system requirements on download screen'
+          git push
