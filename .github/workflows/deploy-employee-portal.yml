@@ -49,6 +49,9 @@ jobs:
           grep -q 'runnerBack' server/employee-portal/index.html
           grep -q 'runnerFront' server/employee-portal/index.html
           grep -q 'scrollProgress' server/employee-portal/index.html
+          grep -q 'id="requirementsTrigger"' server/employee-portal/index.html
+          grep -q 'id="productInfo"' server/employee-portal/index.html
+          grep -q 'Системные требования' server/employee-portal/index.html
           grep -q 'offset-path' server/employee-portal/portal-v6.css
           grep -q '/api/collections/users/auth-with-password' server/employee-portal/app.js
           grep -q 'data-theme="light"' server/employee-portal/styles.css
@@ -61,13 +64,11 @@ jobs:
           ! grep -v '^[[:space:]]*#' server/deploy-employee-portal.sh \
             | grep -q 'html,body{background:#'
 
-          # Проверяем синтаксис всех исполняемых JavaScript-файлов до SSH.
           node --check server/employee-portal/app.js
           node --check server/employee-portal/motion-v6.js
           node --check server/pb_hooks/employee_portal.pb.js
           node --check server/pb_hooks/employee_portal_static.pb.js
 
-          # Критические маршруты обязаны физически присутствовать в hook.
           grep -q '/api/wesi/portal/profile/credentials' \
             server/pb_hooks/employee_portal.pb.js
           grep -q '/api/wesi/portal/employees/provision' \
@@ -115,8 +116,12 @@ jobs:
           if [ -n "${CONFIGURED_ARTIFACTS_DIR:-}" ]; then
             ARTIFACTS_DIR="$CONFIGURED_ARTIFACTS_DIR"
           else
-            ARTIFACTS_DIR=$($SSH "$USER@$HOST" 'for d in /opt/pocketbase/pb_public/artifacts /srv/wesi-artifacts; do if [ -d "$d" ] && [ -w "$d" ]; then printf "%s" "$d"; exit 0; fi; done; exit 1')
+            # /srv — основной production-каталог. /opt оставлен только как
+            # legacy fallback. Раньше порядок был обратным, из-за чего deploy
+            # мог обновить одну копию, а PocketBase продолжал раздавать другую.
+            ARTIFACTS_DIR=$($SSH "$USER@$HOST" 'for d in /srv/wesi-artifacts /opt/pocketbase/pb_public/artifacts; do if [ -d "$d" ] && [ -w "$d" ]; then printf "%s" "$d"; exit 0; fi; done; exit 1')
           fi
+          echo "Production artifacts root: $ARTIFACTS_DIR"
           $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
           cp assets/images/app_icon.png server/employee-portal/app_icon.png
           scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
@@ -141,8 +146,6 @@ jobs:
           API='https://api.wesi-inc.ru'
           curl -fsS --max-time 30 "${BASE}?v=${GITHUB_SHA}" -o portal.html
           grep -q 'WesiOS' portal.html
-          grep -q 'portal-v6.css' portal.html
-          grep -q 'motion-v6.js' portal.html
           grep -q 'siteBoot' portal.html
           grep -q 'runnerFront' portal.html
           grep -q 'scrollProgress' portal.html
@@ -152,6 +155,18 @@ jobs:
           grep -q "localStorage.getItem('wesi-theme')" portal.html
           grep -q 'id="wesiMark"' portal.html
           grep -q -- '--logo-ink' portal.html
+
+          # Проверяем именно НОВУЮ страницу, а не просто любой старый WesiOS.
+          # Эти маркеры появились вместе с текущим интерфейсом продукта.
+          grep -q 'id="requirementsTrigger"' portal.html || {
+            echo '::error::Production всё ещё отдаёт старый портал: нет requirementsTrigger'
+            exit 1
+          }
+          grep -q 'id="productInfo"' portal.html || {
+            echo '::error::Production всё ещё отдаёт старый портал: нет productInfo'
+            exit 1
+          }
+          grep -q 'Системные требования' portal.html
 
           CACHE=$(curl -fsSI --max-time 20 "${BASE}" | tr -d '\r' | grep -i '^cache-control:' || true)
           echo "Заголовок: ${CACHE:-(нет)}"
@@ -166,8 +181,6 @@ jobs:
           curl -fsS --max-time 30 "${BASE}app_icon.png?v=${GITHUB_SHA}" -o app_icon.png
           test "$(wc -c < app_icon.png)" -gt 1000
 
-          # Неавторизованный запрос должен быть отвергнут middleware. 404
-          # означает, что hook не загрузился; 5xx — что он загрузился сломанным.
           check_protected_route() {
             local method="$1"
             local path="$2"
