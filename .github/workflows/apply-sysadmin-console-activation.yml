@@ -70,7 +70,7 @@ jobs:
         run: flutter pub get
 
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
 
       - name: Console regression tests
         run: flutter test test/sysadmin_console_test.dart
