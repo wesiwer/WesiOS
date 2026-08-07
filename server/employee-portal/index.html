@@ -37,6 +37,13 @@
       }
     }, 2600);
   </script>
+  <style id="requirementsCloseStyle">
+    .requirements-popover{padding-top:58px!important}
+    .requirements-close{position:sticky;z-index:50;top:-42px;float:right;margin:-42px 0 8px 12px;width:42px;height:42px;padding:0;border:1px solid var(--soft);border-radius:50%;background:var(--panel);color:var(--t1);cursor:pointer;display:grid;place-items:center;box-shadow:0 10px 28px rgba(var(--shadow-rgb),.28);font:400 27px/1 system-ui,-apple-system,sans-serif;transition:transform .2s var(--ease),border-color .2s var(--ease)}
+    .requirements-close:hover{transform:scale(1.04);border-color:rgba(var(--a3),.55)}
+    .requirements-close:focus-visible{outline:2px solid rgba(var(--a3),.75);outline-offset:2px}
+    @media(max-width:480px){.requirements-close{width:44px;height:44px;font-size:29px}}
+  </style>
   <noscript><style>.boot{display:none!important}.app-shell{visibility:visible!important;opacity:1!important;transform:none!important}</style></noscript>
 </head>
 <body>
@@ -157,6 +164,7 @@
             <span>Системные требования</span><i aria-hidden="true"></i>
           </button>
           <div class="requirements-popover" id="requirementsPopover" aria-hidden="true">
+            <button class="requirements-close" id="requirementsClose" type="button" aria-label="Закрыть системные требования">×</button>
             <div class="requirements-title">
               <span class="section-label">СИСТЕМНЫЕ ТРЕБОВАНИЯ</span>
               <h3>Минимальные и рекомендуемые</h3>
@@ -329,6 +337,43 @@
   </main>
   <div class="grain" aria-hidden="true"></div>
   <div class="toast-stack" id="toastStack"></div>
+  <script id="requirementsCloseRuntime">
+    (function () {
+      var trigger = document.getElementById('requirementsTrigger');
+      var popover = document.getElementById('requirementsPopover');
+      var close = document.getElementById('requirementsClose');
+      if (!trigger || !popover || !close) return;
+
+      function hideRequirements() {
+        trigger.setAttribute('aria-expanded', 'false');
+        popover.setAttribute('aria-hidden', 'true');
+        popover.classList.remove('is-open');
+      }
+
+      close.addEventListener('click', function (event) {
+        event.preventDefault();
+        event.stopPropagation();
+        hideRequirements();
+      });
+
+      var touchStartY = null;
+      popover.addEventListener('touchstart', function (event) {
+        if (event.touches.length !== 1) return;
+        var y = event.touches[0].clientY;
+        var rect = popover.getBoundingClientRect();
+        touchStartY = y - rect.top <= 90 ? y : null;
+      }, { passive: true });
+      popover.addEventListener('touchend', function (event) {
+        if (touchStartY == null || event.changedTouches.length !== 1) {
+          touchStartY = null;
+          return;
+        }
+        var delta = event.changedTouches[0].clientY - touchStartY;
+        touchStartY = null;
+        if (delta >= 72) hideRequirements();
+      }, { passive: true });
+    })();
+  </script>
   <script src="./app.js?v=13" defer></script>
   <script src="./motion-v6.js?v=13" defer></script>
 </body>
