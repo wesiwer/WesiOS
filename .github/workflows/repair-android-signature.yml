@@ -238,7 +238,6 @@ jobs:
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
-          ARTIFACTS_DIR: ${{ vars.WESI_ARTIFACTS_DIR }}
         shell: bash
         run: |
           set -euo pipefail
@@ -246,15 +245,31 @@ jobs:
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
           SCP="scp -i $HOME/.ssh/id_deploy -o BatchMode=yes"
           REMOTE_TMP="/tmp/wesios-release-$GITHUB_RUN_ID"
+          RELEASE_ROOT="/opt/pocketbase/pb_public/artifacts"
           cleanup() { $SSH "$USER@$HOST" "rm -rf '$REMOTE_TMP'" || true; }
           trap cleanup EXIT
           $SSH "$USER@$HOST" "mkdir -p '$REMOTE_TMP'"
           $SCP upload/* "$USER@$HOST:$REMOTE_TMP/"
           $SSH "$USER@$HOST" \
-            "WESI_ARTIFACTS='${ARTIFACTS_DIR:-/opt/pocketbase/pb_public/artifacts}' \
+            "WESI_ARTIFACTS='$RELEASE_ROOT' \
              bash '$REMOTE_TMP/deploy-artifact.sh' \
              --version '$VERSION' --build '$BUILD' --from '$REMOTE_TMP' \
              --notes 'CRM, Roadmap и Wesi Console. Подписанная Android-сборка.'"
+
+          $SSH "$USER@$HOST" \
+            "python3 - '$RELEASE_ROOT/app/app-manifest.json' '$VERSION' '$BUILD'" <<'PY'
+          import json, sys
+          path, version, build = sys.argv[1], sys.argv[2], int(sys.argv[3])
+          with open(path, encoding='utf-8') as f:
+              manifest = json.load(f)
+          assert manifest['version'] == version
+          assert int(manifest['build']) == build
+          for platform in ('android', 'windows'):
+              entry = manifest[platform]
+              assert int(entry['sizeBytes']) > 0
+              assert len(entry['sha256']) == 64
+          print('server manifest OK:', version, build)
+          PY
 
       - name: Verify published manifest and files
         env:
@@ -264,7 +279,18 @@ jobs:
           set -euo pipefail
           BASE="${CONFIGURED_BASE:-https://api.wesi-inc.ru/artifacts}"
           curl --retry 4 --retry-all-errors -fsS --max-time 30 \
+            -H 'Accept: application/json' \
             "$BASE/app/app-manifest.json?run=$GITHUB_RUN_ID" -o app-manifest.json
+          test -s app-manifest.json || {
+            echo "::error::Публичный app-manifest.json пуст"
+            exit 1
+          }
+          python3 -m json.tool app-manifest.json >/dev/null || {
+            echo "::error::Публичный /artifacts отдаёт не JSON. Первые 300 байт:"
+            head -c 300 app-manifest.json || true
+            echo
+            exit 1
+          }
           BASE="$BASE" python3 <<'PY'
           import hashlib, json, os, urllib.request
           base=os.environ['BASE'].rstrip('/')
