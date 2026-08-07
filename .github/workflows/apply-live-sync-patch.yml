@@ -1,0 +1,43 @@
+name: Apply live sync patch
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [agent/live-sync-manual-refresh-clock]
+    paths:
+      - '.github/workflows/apply-live-sync-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/live-sync-manual-refresh-clock
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: python3 tools/apply_live_sync_patch.py
+
+      - name: Validate changed Dart syntax anchors
+        run: |
+          set -euo pipefail
+          grep -q 'remotePollEvery = Duration(seconds: 1)' lib/core/sync/sync_auto.dart
+          grep -q 'Future<SyncResult<String>> revision()' lib/core/sync/pocketbase_transport.dart
+          grep -q 'notifyChanged() => TreasuryService.revision.value++' lib/core/sync/sync_codec.dart
+          grep -q 'Синхронизировать сейчас' lib/features/home/home_screen.dart
+          grep -q 'Переключить цифровые / стрелочные часы' lib/core/widgets/wesi_clock.dart
+          grep -q 'version: 0.19.1+46' pubspec.yaml
+
+      - name: Commit patch
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Agent'
+          git config user.email 'actions@github.com'
+          git add lib test pubspec.yaml
+          git commit -m 'feat(sync): add live cross-device refresh and manual sync'
+          git push origin HEAD:agent/live-sync-manual-refresh-clock
