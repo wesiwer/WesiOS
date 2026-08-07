@@ -178,14 +178,4 @@ if old not in text:
 text = text.replace(old, new, 1)
 write(path, text)
 
-
-# -------------------------------------------------------------------- tests
-path = 'test/knowledge_service_test.dart'
-if Path(path).exists():
-    text = read(path)
-    marker = "void main() {"
-    addition = """\n  test('ArticleModel adapter keeps defaults for legacy optional fields', () {\n    const article = ArticleModel(\n      id: 'legacy-check',\n      title: 'Legacy',\n      body: 'Body',\n      createdAt: null,\n      updatedAt: null,\n    );\n    expect(article.builtIn, isFalse);\n    expect(article.pinned, isFalse);\n    expect(article.isFolder, isFalse);\n  });\n"""
-    # Do not inject invalid DateTime test if this test file exists; source checks below
-    # provide the regression guard without fabricating adapter bytes.
-
 print('Home layout and Knowledge Hive compatibility patch applied')
