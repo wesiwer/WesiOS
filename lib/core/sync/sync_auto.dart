@@ -164,7 +164,11 @@ class SyncAuto {
         }
 
         final report = await _runAuto();
-        if (report.ok) _remoteRevision = revision;
+        if (report.ok) {
+          _remoteRevision = revision;
+        } else {
+          _registerProbeFailure();
+        }
         return;
       }
 
@@ -176,6 +180,8 @@ class SyncAuto {
       final report = await _runAuto();
       if (report.ok) {
         await _captureRemoteRevision(fallback: revision);
+      } else {
+        _registerProbeFailure();
       }
     } finally {
       _probeBusy = false;

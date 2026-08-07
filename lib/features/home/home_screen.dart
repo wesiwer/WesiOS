@@ -9,7 +9,6 @@ import '../../core/widgets/wesi_avatar.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/sync/sync_auto.dart';
-import '../../core/sync/sync_engine.dart';
 import '../calculator/calculator_screen.dart';
 import '../treasury/treasury_screen.dart';
 import '../treasury/widgets/add_transaction_dialog.dart';
