@@ -25,6 +25,10 @@ class PocketBaseTransport implements SyncTransport {
   /// Сколько записей просить за раз. PocketBase отдаёт максимум 500.
   static const int pageSize = 500;
 
+  static final HttpClient _http = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 12)
+    ..idleTimeout = const Duration(seconds: 30);
+
   final String baseUrl;
 
   String? _token;
@@ -241,10 +245,8 @@ class PocketBaseTransport implements SyncTransport {
     }
     final uri = base.replace(path: path, queryParameters: query);
 
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 12);
     try {
-      final req = await client.openUrl(method, uri);
+      final req = await _http.openUrl(method, uri);
       if (auth && _token != null) {
         req.headers.set(HttpHeaders.authorizationHeader, _token!);
       }
@@ -291,8 +293,6 @@ class PocketBaseTransport implements SyncTransport {
           SyncFailure('NOT_WESIOS', 'Ответ сервера не разобрался'));
     } catch (_) {
       return const SyncResult.fail(SyncFailure.offline);
-    } finally {
-      client.close();
     }
   }
 

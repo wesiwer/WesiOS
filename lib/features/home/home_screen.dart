@@ -230,7 +230,7 @@ class _DashboardTabState extends State<_DashboardTab> {
   }
 
   Future<void> _syncNow() async {
-    if (_syncing || SyncEngine.busy.value) return;
+    if (_syncing) return;
     setState(() => _syncing = true);
     final report = await SyncAuto.now();
     await _loadBalance();

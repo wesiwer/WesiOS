@@ -6,6 +6,7 @@ import 'pocketbase_transport.dart';
 import 'sync_endpoint.dart';
 import 'sync_engine.dart';
 import 'sync_journal.dart';
+import 'sync_transport.dart';
 
 /// Автоматический обмен между устройствами.
 ///
@@ -182,8 +183,8 @@ class SyncAuto {
   }
 
   static void _registerProbeFailure() {
-    _probeFailures = (_probeFailures + 1).clamp(1, 6);
-    final seconds = 1 << _probeFailures; // 2, 4, 8, 16, 32, 64
+    _probeFailures = (_probeFailures + 1).clamp(1, 4).toInt();
+    final seconds = 1 << _probeFailures; // 2, 4, 8, 16
     _nextProbeAt = DateTime.now().add(Duration(seconds: seconds));
   }
 
