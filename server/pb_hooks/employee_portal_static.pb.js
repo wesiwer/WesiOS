@@ -1,10 +1,9 @@
 /// Публичная страница портала WesiOS.
 ///
-/// Статику отдаём штатным обработчиком PocketBase. Корень выбирается один
-/// раз при загрузке hook. Основной production-каталог /srv проверяется первым,
-/// затем явно настроенный WESI_ARTIFACTS_DIR и только после этого legacy /opt.
-/// Это исключает ситуацию, когда старая переменная окружения заставляет
-/// PocketBase продолжать раздавать устаревшую копию портала.
+/// Статику портала отдаём штатным обработчиком PocketBase. Корень выбирается
+/// один раз при загрузке hook. Основной production-каталог /srv проверяется
+/// первым, затем явно настроенный WESI_ARTIFACTS_DIR и только после этого
+/// legacy /opt.
 
 const WESI_PORTAL_STATIC_ROOT = (() => {
   const configured = $os.getenv("WESI_ARTIFACTS_DIR");
@@ -16,9 +15,6 @@ const WESI_PORTAL_STATIC_ROOT = (() => {
 
   for (const root of roots) {
     try {
-      // Читаем только для проверки существования. HTML не преобразуется в
-      // строку и не обрабатывается в runtime-запросе — поэтому большой
-      // встроенный bundle не может уронить /portal/.
       $os.dirFS(root + "/portal").readFile("index.html");
       console.log("WesiOS portal static root:", root + "/portal");
       return root + "/portal";
@@ -27,10 +23,15 @@ const WESI_PORTAL_STATIC_ROOT = (() => {
     }
   }
 
-  // Если портал ещё не опубликован, оставляем основной production-путь:
-  // $apis.static вернёт обычный 404 вместо падения hook при загрузке.
   return "/srv/wesi-artifacts/portal";
 })();
+
+/// Релизный workflow публикует updater-артефакты сюда. На живом сервере
+/// встроенная раздача pb_public для /artifacts сейчас возвращает пустое тело,
+/// хотя файл на диске существует и валиден. Поэтому регистрируем явный route
+/// на тот же физический каталог: manifest/APK/ZIP теперь проходят через один
+/// и тот же источник истины.
+const WESI_RELEASE_STATIC_ROOT = "/opt/pocketbase/pb_public/artifacts";
 
 /// Корневой адрес домена — тоже сайт, а не сырой ответ API.
 routerAdd("GET", "/", (e) => e.redirect(308, "/portal/"));
@@ -42,6 +43,19 @@ routerAdd(
   "GET",
   "/portal/{path...}",
   $apis.static(WESI_PORTAL_STATIC_ROOT, true),
+  (e) => {
+    e.response.header().set("Cache-Control", "no-cache, must-revalidate");
+    return e.next();
+  },
+);
+
+/// Публичный канал обновлений WesiOS. Здесь нет секретов: только подписанный
+/// APK, Windows ZIP и manifest с размером/sha256. Manifest не кешируем, чтобы
+/// устройство увидело новый build сразу после атомарной публикации.
+routerAdd(
+  "GET",
+  "/artifacts/{path...}",
+  $apis.static(WESI_RELEASE_STATIC_ROOT, false),
   (e) => {
     e.response.header().set("Cache-Control", "no-cache, must-revalidate");
     return e.next();
