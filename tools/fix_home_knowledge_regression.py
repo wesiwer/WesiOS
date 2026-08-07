@@ -41,7 +41,7 @@ header = r'''          // Шапка: верхняя строка — логот
                           purpose: WesiLocale.isRussian
                               ? 'Центральная панель управления всеми системами Wesi'
                               : 'Central dashboard for all Wesi systems',
-                          children: const [
+                          children: [
                             WesiWordmark(size: 26),
                           ],
                         ),
