@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/features/sysadmin/console/console_command_service.dart';
 import 'package:wesios/features/sysadmin/console/console_templates.dart';
+import 'package:wesios/features/sysadmin/services/monitor_service.dart';
 
 void main() {
   late Directory dir;
@@ -68,8 +69,7 @@ void main() {
 
     final token = '${segment({'alg': 'none', 'typ': 'JWT'})}.'
         '${segment({'sub': 'owner', 'exp': 4102444800})}.signature';
-    final result =
-        await ConsoleCommandService.execute('token inspect $token');
+    final result = await ConsoleCommandService.execute('token inspect $token');
     final text = result.lines.map((line) => line.text).join('\n');
 
     expect(text, contains('owner'));
@@ -108,9 +108,31 @@ void main() {
     final result = await ConsoleCommandService.execute('templates');
     final text = result.lines.map((line) => line.text).join('\n');
 
-    expect(text, contains('tls api.wesi-inc.ru 443'));
+    expect(text, contains('tls'));
     expect(text, contains('ssh-check'));
     expect(text, contains('token inspect <TOKEN>'));
+  });
+
+  test('шаблоны и команды привязываются к выбранному серверу', () async {
+    final target = MonitorService.byId('wesi-russia-server');
+    expect(target, isNotNull);
+
+    final result = await ConsoleCommandService.execute(
+      'templates',
+      targetId: target!.id,
+    );
+    final text = result.lines.map((line) => line.text).join('\n');
+
+    expect(text, contains('Отклик выбранного узла'));
+    expect(text, contains('ping'));
+    expect(text, contains('ssh-check'));
+
+    final httpTemplate = ConsoleTemplateLibrary.all
+        .firstWhere((value) => value.id == 'wesi-api-health');
+    expect(
+      ConsoleTemplateLibrary.canRunImmediatelyFor(httpTemplate, target),
+      isTrue,
+    );
   });
 
   test('clear возвращает управляющий флаг без вывода', () async {

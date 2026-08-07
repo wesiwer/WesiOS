@@ -6,7 +6,6 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
-import 'console/console_screen.dart';
 import 'models/monitor_target.dart';
 import 'models/probe_result.dart';
 import 'services/monitor_service.dart';
@@ -14,7 +13,7 @@ import 'target_detail_screen.dart';
 import 'widgets/health_dot.dart';
 import 'widgets/target_editor_sheet.dart';
 
-/// Единое рабочее место системного администратора: мониторинг и консоль.
+/// Системный администратор: сначала выбираем узел, затем работаем с ним.
 class SysadminScreen extends StatefulWidget {
   const SysadminScreen({super.key});
 
@@ -28,42 +27,11 @@ class SysadminScreen extends StatefulWidget {
 }
 
 class _SysadminScreenState extends State<SysadminScreen> {
-  int _section = 0;
-
-  bool get _ru => WesiLocale.isRussian;
-
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<AppThemeMode>(
       valueListenable: ThemeNotifier.instance,
-      builder: (context, _, __) => Scaffold(
-        backgroundColor: AppTheme.background,
-        body: IndexedStack(
-          index: _section,
-          children: const [
-            _MonitorOverview(),
-            WesiConsoleScreen(),
-          ],
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _section,
-          onDestinationSelected: (value) => setState(() => _section = value),
-          backgroundColor: AppTheme.surface,
-          indicatorColor: AppTheme.accent.withOpacity(.16),
-          destinations: [
-            NavigationDestination(
-              icon: const Icon(Icons.monitor_heart_outlined),
-              selectedIcon: Icon(Icons.monitor_heart, color: AppTheme.accent),
-              label: _ru ? 'Мониторинг' : 'Monitoring',
-            ),
-            NavigationDestination(
-              icon: const Icon(Icons.terminal_outlined),
-              selectedIcon: Icon(Icons.terminal, color: AppTheme.accent),
-              label: _ru ? 'Консоль' : 'Console',
-            ),
-          ],
-        ),
-      ),
+      builder: (context, _, __) => const _MonitorOverview(),
     );
   }
 }
@@ -143,7 +111,8 @@ class _MonitorOverviewState extends State<_MonitorOverview> {
                             color: AppTheme.accent,
                             backgroundColor: AppTheme.surface,
                             child: ListView.builder(
-                              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 8, 16, 100),
                               itemCount: targets.length,
                               itemBuilder: (_, index) => _card(targets[index]),
                             ),
@@ -220,13 +189,17 @@ class _MonitorOverviewState extends State<_MonitorOverview> {
   }
 
   Widget _healthStrip(List<MonitorTarget> targets) {
-    final grades = [for (final target in targets) MonitorService.statsOf(target.id).grade];
+    final grades = [
+      for (final target in targets) MonitorService.statsOf(target.id).grade
+    ];
     final good = grades.where((value) => value == HealthGrade.good).length;
     final bad = grades
-        .where((value) => value == HealthGrade.down || value == HealthGrade.degraded)
+        .where((value) =>
+            value == HealthGrade.down || value == HealthGrade.degraded)
         .length;
     final unknown = grades
-        .where((value) => value == HealthGrade.unknown || value == HealthGrade.offline)
+        .where((value) =>
+            value == HealthGrade.unknown || value == HealthGrade.offline)
         .length;
     return SizedBox(
       height: 72,
@@ -240,14 +213,15 @@ class _MonitorOverviewState extends State<_MonitorOverview> {
           _healthMetric(Icons.warning_amber_rounded,
               _ru ? 'Проблемы' : 'Issues', '$bad', AppTheme.accentRed),
           const SizedBox(width: 8),
-          _healthMetric(Icons.help_outline,
-              _ru ? 'Нет данных' : 'Unknown', '$unknown', AppTheme.textMuted),
+          _healthMetric(Icons.help_outline, _ru ? 'Нет данных' : 'Unknown',
+              '$unknown', AppTheme.textMuted),
         ],
       ),
     );
   }
 
-  Widget _healthMetric(IconData icon, String label, String value, Color color) =>
+  Widget _healthMetric(
+          IconData icon, String label, String value, Color color) =>
       Container(
         width: 150,
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -369,7 +343,9 @@ class _MonitorOverviewState extends State<_MonitorOverview> {
                       Expanded(
                         child: Text(
                           tls.expired(now)
-                              ? (_ru ? 'Сертификат истёк' : 'Certificate expired')
+                              ? (_ru
+                                  ? 'Сертификат истёк'
+                                  : 'Certificate expired')
                               : (_ru
                                   ? 'Сертификат истекает через ${tls.daysLeft(now)} дн.'
                                   : 'Certificate expires in ${tls.daysLeft(now)} days'),
