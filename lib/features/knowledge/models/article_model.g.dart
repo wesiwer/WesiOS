@@ -24,10 +24,10 @@ class ArticleModelAdapter extends TypeAdapter<ArticleModel> {
       tags: (fields[4] as List).cast<String>(),
       createdAt: fields[5] as DateTime,
       updatedAt: fields[6] as DateTime,
-      builtIn: fields[7] as bool,
-      pinned: fields[8] as bool,
+      builtIn: fields[7] as bool? ?? false,
+      pinned: fields[8] as bool? ?? false,
       parentId: fields[9] as String?,
-      isFolder: fields[10] as bool,
+      isFolder: fields[10] as bool? ?? false,
       orderRaw: fields[11] as int?,
     );
   }

@@ -68,10 +68,10 @@ class ArticleModel {
   /// Встроенная статья — та, что поставляется с приложением («О программе»).
   /// Её нельзя удалить: иначе справка исчезала бы навсегда после случайного
   /// свайпа, и восстановить её было бы нечем.
-  @HiveField(7)
+  @HiveField(7, defaultValue: false)
   final bool builtIn;
 
-  @HiveField(8)
+  @HiveField(8, defaultValue: false)
   final bool pinned;
 
   /// ID родительской статьи. null = корневая (верхний уровень).
@@ -80,7 +80,7 @@ class ArticleModel {
 
   /// true = папка (контейнер для дочерних статей).
   /// Папки имеют body, но основное назначение — группировка.
-  @HiveField(10)
+  @HiveField(10, defaultValue: false)
   final bool isFolder;
 
   /// Место в папке. null — «куда попадёт».
@@ -143,9 +143,8 @@ class ArticleModel {
         updatedAt: updatedAt ?? this.updatedAt,
         builtIn: builtIn,
         pinned: pinned ?? this.pinned,
-        parentId: identical(parentId, _unset)
-            ? this.parentId
-            : parentId as String?,
+        parentId:
+            identical(parentId, _unset) ? this.parentId : parentId as String?,
         isFolder: isFolder ?? this.isFolder,
         orderRaw: orderRaw ?? this.orderRaw,
       );

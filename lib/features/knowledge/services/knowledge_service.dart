@@ -24,6 +24,9 @@ class KnowledgeService {
     final future = Hive.openBox<ArticleModel>(_boxName).then((box) {
       _box = box;
       return box;
+    }).onError((Object error, StackTrace stack) {
+      debugPrint('KnowledgeService: failed to open $_boxName: $error');
+      Error.throwWithStackTrace(error, stack);
     });
     _opening = future;
     future.then<void>(
@@ -106,8 +109,7 @@ class KnowledgeService {
 
     final orphans = box.values
         .where(
-          (a) =>
-              !a.builtIn && a.parentId != null && stale.contains(a.parentId),
+          (a) => !a.builtIn && a.parentId != null && stale.contains(a.parentId),
         )
         .toList();
     for (final article in orphans) {

@@ -87,7 +87,8 @@ class _HomeScreenState extends State<HomeScreen>
   List<_TabSpec> get _tabs {
     final p = TeamService.currentPermissions;
     return [
-      const _TabSpec(id: 'home', icon: Icons.dashboard_outlined, labelKey: 'dashboard'),
+      const _TabSpec(
+          id: 'home', icon: Icons.dashboard_outlined, labelKey: 'dashboard'),
       if (p.allows(TeamModules.tasks))
         const _TabSpec(id: 'tasks', icon: Icons.task_alt, labelKey: 'tasks'),
       if (p.allows(TeamModules.treasury))
@@ -195,12 +196,14 @@ class _DashboardTabState extends State<_DashboardTab> {
   bool _syncing = false;
   double _bottomSyncOverscroll = 0;
 
-  bool get _isDesktop => !kIsWeb &&
+  bool get _isDesktop =>
+      !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.windows ||
           defaultTargetPlatform == TargetPlatform.macOS ||
           defaultTargetPlatform == TargetPlatform.linux);
 
-  bool get _isMobile => !kIsWeb &&
+  bool get _isMobile =>
+      !kIsWeb &&
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
 
@@ -270,229 +273,219 @@ class _DashboardTabState extends State<_DashboardTab> {
         onNotification: _onScrollNotification,
         child: CustomScrollView(
           physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          // Шапка: слева лого, часы и месяц, справа — иконки
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 10, 12, 12),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Левая колонка: лого сверху, часы с месяцем под ним
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+          slivers: [
+            // Шапка: верхняя строка — логотип и действия; ниже полноширинные
+            // часы с календарём. Никаких OverflowBox: ширина блока совпадает с
+            // «зарядом мыслей» и карточкой цитаты на любом телефоне.
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 10, 16, 12),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        WesiContextMenu(
-                          title: 'WesiOS',
-                          description: WesiLocale.isRussian
-                              ? 'WesiOS — Business Operating System. Управляйте бизнесом по-новому.'
-                              : 'WesiOS — Business Operating System. Manage your business in a new way.',
-                          purpose: WesiLocale.isRussian
-                              ? 'Центральная панель управления всеми системами Wesi'
-                              : 'Central dashboard for all Wesi systems',
+                        Expanded(
+                          child: WesiContextMenu(
+                            title: 'WesiOS',
+                            description: WesiLocale.isRussian
+                                ? 'WesiOS — Business Operating System. Управляйте бизнесом по-новому.'
+                                : 'WesiOS — Business Operating System. Manage your business in a new way.',
+                            purpose: WesiLocale.isRussian
+                                ? 'Центральная панель управления всеми системами Wesi'
+                                : 'Central dashboard for all Wesi systems',
+                            children: [
+                              WesiWordmark(size: 26),
+                            ],
+                          ),
+                        ),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
                           children: [
-                            WesiWordmark(size: 26),
-                          ],
-                        ),
-                        const SizedBox(height: 10),
-                        // Часы — вход в календарь; долгий тап переключает стиль
-                        Tooltip(
-                          message: WesiLocale.isRussian
-                              ? 'Открыть календарь · долгий тап — стиль часов'
-                              : 'Open calendar · long-press for clock style',
-                          child: GestureDetector(
-                            onTap: () =>
-                                Navigator.pushNamed(context, '/calendar'),
-                            onLongPress: () {
-                              final next =
-                                  WesiClock.savedStyle == ClockStyle.digital
-                                      ? ClockStyle.analog
-                                      : ClockStyle.digital;
-                              WesiClock.setStyle(next);
-                              setState(() {});
-                            },
-                            child: const WesiClock(),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // Справа только иконки, и колонка занимает ровно столько,
-                  // сколько им нужно: всё остальное отдано часам с месяцем.
-                  // Раньше здесь стоял ещё и заряд мыслей — он забирал
-                  // четыре девятых ширины, и календарю рядом с часами
-                  // доставалось 72 px, где числа уже не прочитать.
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _HoverIconButton(
-                            icon: Icons.search,
-                            onTap: () => GlobalSearchSheet.show(context),
-                          ),
-                          const SizedBox(width: 6),
-                          if (_isDesktop) ...[
-                            Tooltip(
-                              message: WesiLocale.isRussian
-                                  ? 'Синхронизировать сейчас'
-                                  : 'Sync now',
-                              child: _HoverIconButton(
-                                icon: _syncing
-                                    ? Icons.sync_disabled
-                                    : Icons.sync,
-                                onTap: _syncNow,
-                              ),
+                            _HoverIconButton(
+                              icon: Icons.search,
+                              onTap: () => GlobalSearchSheet.show(context),
                             ),
                             const SizedBox(width: 6),
+                            if (_isDesktop) ...[
+                              Tooltip(
+                                message: WesiLocale.isRussian
+                                    ? 'Синхронизировать сейчас'
+                                    : 'Sync now',
+                                child: _HoverIconButton(
+                                  icon: _syncing
+                                      ? Icons.sync_disabled
+                                      : Icons.sync,
+                                  onTap: _syncNow,
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                            ],
+                            const AlertsBell(size: 28),
+                            const SizedBox(width: 6),
+                            const _ProfileDropdown(),
                           ],
-                          const AlertsBell(size: 28),
-                          const SizedBox(width: 6),
-                          const _ProfileDropdown(),
-                        ],
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          // Заряд и цитата — одной ширины и одной колонкой: это про одно и
-          // то же, и разная ширина читалась как «блок не доехал». Развилки
-          // «широкий экран — в шапку, узкий — под неё» больше нет: на
-          // широком заряд всё равно оказывался вдвое уже соседа.
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: QuoteMindCharge(),
-            ),
-          ),
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-              child: WesiQuoteCard(),
-            ),
-          ),
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: AppUpdateBanner(),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: GlassCard(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      WesiLocale.get('balance_wesi_inc'),
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      CurrencyService.format(_balance),
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.bold,
-                        color: AppTheme.primary,
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                    Row(
-                      children: [
-                        _chip(
-                          WesiLocale.get('total_income'),
-                          CurrencyService.format(_breakdown['income'] ?? 0),
-                          AppTheme.accentGreen,
-                        ),
-                        SizedBox(width: 12),
-                        _chip(
-                          WesiLocale.get('total_expenses'),
-                          CurrencyService.format(_breakdown['expense'] ?? 0),
-                          AppTheme.accentRed,
-                        ),
-                        SizedBox(width: 12),
-                        _chip(
-                          WesiLocale.get('net'),
-                          CurrencyService.format(_breakdown['net'] ?? 0),
-                          AppTheme.textSecondary,
                         ),
                       ],
+                    ),
+                    const SizedBox(height: 14),
+                    Tooltip(
+                      message: WesiLocale.isRussian
+                          ? 'Открыть календарь · долгий тап — стиль часов'
+                          : 'Open calendar · long-press for clock style',
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => Navigator.pushNamed(context, '/calendar'),
+                        onLongPress: () {
+                          final next =
+                              WesiClock.savedStyle == ClockStyle.digital
+                                  ? ClockStyle.analog
+                                  : ClockStyle.digital;
+                          WesiClock.setStyle(next);
+                          setState(() {});
+                        },
+                        child: const SizedBox(
+                          width: double.infinity,
+                          child: WesiClock(),
+                        ),
+                      ),
                     ),
                   ],
                 ),
               ),
             ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: LayoutBuilder(
-                builder: (context, c) {
-                  final columns = c.maxWidth >= 560 ? 4 : 2;
-                  const gap = 12.0;
-                  final width =
-                      (c.maxWidth - gap * (columns - 1)) / columns;
-                  final actions = <Widget>[
-                    _Quick(
-                      icon: Icons.add_circle,
-                      label: WesiLocale.isRussian ? 'Доход' : 'Income',
-                      onTap: () =>
-                          _showAddTransaction(context, TransactionType.income),
-                    ),
-                    _Quick(
-                      icon: Icons.remove_circle,
-                      label: WesiLocale.isRussian ? 'Траты' : 'Expense',
-                      onTap: () =>
-                          _showAddTransaction(context, TransactionType.expense),
-                    ),
-                    _Quick(
-                      icon: Icons.playlist_add_check,
-                      label: WesiLocale.isRussian ? 'Задача' : 'Task',
-                      onTap: () => Navigator.pushNamed(context, '/tasks'),
-                    ),
-                    _Quick(
-                      icon: Icons.calculate,
-                      label: WesiLocale.get('wesi_calculator_title'),
-                      onTap: CalculatorOverlay.show,
-                    ),
-                  ];
-                  return Wrap(
-                    spacing: gap,
-                    runSpacing: gap,
-                    children: actions
-                        .map((a) => SizedBox(width: width, child: a))
-                        .toList(),
-                  );
-                },
+            // Заряд и цитата — одной ширины и одной колонкой: это про одно и
+            // то же, и разная ширина читалась как «блок не доехал». Развилки
+            // «широкий экран — в шапку, узкий — под неё» больше нет: на
+            // широком заряд всё равно оказывался вдвое уже соседа.
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: QuoteMindCharge(),
               ),
             ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 20)),
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: HomePulse(),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
+                child: WesiQuoteCard(),
+              ),
             ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 24)),
-          const SliverToBoxAdapter(
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16),
-              child: HomeAgenda(),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: AppUpdateBanner(),
+              ),
             ),
-          ),
-          const SliverToBoxAdapter(child: SizedBox(height: 32)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: GlassCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        WesiLocale.get('balance_wesi_inc'),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: AppTheme.textSecondary,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        CurrencyService.format(_balance),
+                        style: TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.primary,
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                      Row(
+                        children: [
+                          _chip(
+                            WesiLocale.get('total_income'),
+                            CurrencyService.format(_breakdown['income'] ?? 0),
+                            AppTheme.accentGreen,
+                          ),
+                          SizedBox(width: 12),
+                          _chip(
+                            WesiLocale.get('total_expenses'),
+                            CurrencyService.format(_breakdown['expense'] ?? 0),
+                            AppTheme.accentRed,
+                          ),
+                          SizedBox(width: 12),
+                          _chip(
+                            WesiLocale.get('net'),
+                            CurrencyService.format(_breakdown['net'] ?? 0),
+                            AppTheme.textSecondary,
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 16)),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: LayoutBuilder(
+                  builder: (context, c) {
+                    final columns = c.maxWidth >= 560 ? 4 : 2;
+                    const gap = 12.0;
+                    final width = (c.maxWidth - gap * (columns - 1)) / columns;
+                    final actions = <Widget>[
+                      _Quick(
+                        icon: Icons.add_circle,
+                        label: WesiLocale.isRussian ? 'Доход' : 'Income',
+                        onTap: () => _showAddTransaction(
+                            context, TransactionType.income),
+                      ),
+                      _Quick(
+                        icon: Icons.remove_circle,
+                        label: WesiLocale.isRussian ? 'Траты' : 'Expense',
+                        onTap: () => _showAddTransaction(
+                            context, TransactionType.expense),
+                      ),
+                      _Quick(
+                        icon: Icons.playlist_add_check,
+                        label: WesiLocale.isRussian ? 'Задача' : 'Task',
+                        onTap: () => Navigator.pushNamed(context, '/tasks'),
+                      ),
+                      _Quick(
+                        icon: Icons.calculate,
+                        label: WesiLocale.get('wesi_calculator_title'),
+                        onTap: CalculatorOverlay.show,
+                      ),
+                    ];
+                    return Wrap(
+                      spacing: gap,
+                      runSpacing: gap,
+                      children: actions
+                          .map((a) => SizedBox(width: width, child: a))
+                          .toList(),
+                    );
+                  },
+                ),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: HomePulse(),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 24)),
+            const SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.symmetric(horizontal: 16),
+                child: HomeAgenda(),
+              ),
+            ),
+            const SliverToBoxAdapter(child: SizedBox(height: 32)),
           ],
         ),
       ),
@@ -557,8 +550,7 @@ class _Quick extends StatefulWidget {
   final IconData icon;
   final String label;
   final VoidCallback onTap;
-  const _Quick(
-      {required this.icon, required this.label, required this.onTap});
+  const _Quick({required this.icon, required this.label, required this.onTap});
 
   @override
   State<_Quick> createState() => _QuickState();
@@ -609,7 +601,8 @@ class _QuickState extends State<_Quick> {
                 widget.label,
                 style: TextStyle(
                   fontSize: 12,
-                  color: _active ? AppTheme.textPrimary : AppTheme.textSecondary,
+                  color:
+                      _active ? AppTheme.textPrimary : AppTheme.textSecondary,
                 ),
               ),
             ],
@@ -731,9 +724,7 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
             color: _h ? AppTheme.surfaceLight : Colors.transparent,
             borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: _h
-                  ? AppTheme.accent.withOpacity(0.4)
-                  : Colors.transparent,
+              color: _h ? AppTheme.accent.withOpacity(0.4) : Colors.transparent,
             ),
           ),
           child: const WesiAvatar(size: 36),
@@ -742,7 +733,6 @@ class _ProfileDropdownState extends State<_ProfileDropdown> {
     );
   }
 }
-
 
 /// Одна вкладка нижней панели.
 class _TabSpec {

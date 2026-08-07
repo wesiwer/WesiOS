@@ -122,9 +122,8 @@ class _WesiClockState extends State<WesiClock> {
 
   Future<void> _toggleStyle() async {
     if (widget.forceStyle != null) return;
-    final next = _style == ClockStyle.digital
-        ? ClockStyle.analog
-        : ClockStyle.digital;
+    final next =
+        _style == ClockStyle.digital ? ClockStyle.analog : ClockStyle.digital;
     await WesiClock.setStyle(next);
   }
 
@@ -143,36 +142,13 @@ class _WesiClockState extends State<WesiClock> {
       valueListenable: ThemeNotifier.instance,
       builder: (context, _, __) => LayoutBuilder(
         builder: (context, constraints) {
-          final screenWidth = MediaQuery.sizeOf(context).width;
-          final screenContentWidth = math.max(160.0, screenWidth - 32);
-          final parentWidth = constraints.hasBoundedWidth
-              ? constraints.maxWidth
-              : screenContentWidth;
-
-          // На Home справа от родителя стоят кнопки. Виджет получает только
-          // левую колонку, хотя ниже кнопок свободна вся строка. Расширяемся
-          // туда визуально и добавляем верхний отступ, чтобы не пересекаться
-          // с панелью действий. В обычном широком контейнере OverflowBox не
-          // используется.
-          final expandToHomeWidth =
-              screenContentWidth >= 300 && parentWidth < screenContentWidth - 72;
-          final available = expandToHomeWidth
-              ? screenContentWidth
-              : math.min(parentWidth, screenContentWidth);
-          final large = available >= 300;
-
-          final body = _buildClockBody(available, large);
-          if (!expandToHomeWidth) return body;
-
-          return OverflowBox(
-            alignment: Alignment.topLeft,
-            minWidth: available,
-            maxWidth: available,
-            child: Padding(
-              padding: const EdgeInsets.only(top: 30),
-              child: body,
-            ),
-          );
+          final screenContentWidth =
+              math.max(160.0, MediaQuery.sizeOf(context).width - 32);
+          final available =
+              constraints.hasBoundedWidth && constraints.maxWidth.isFinite
+                  ? math.min(constraints.maxWidth, screenContentWidth)
+                  : screenContentWidth;
+          return _buildClockBody(math.max(160.0, available), available >= 300);
         },
       ),
     );
@@ -523,9 +499,11 @@ class _AnalogPainter extends CustomPainter {
       painter.paint(
         canvas,
         Offset(
-          center.dx + (radius - radius * .28) * math.cos(angle) -
+          center.dx +
+              (radius - radius * .28) * math.cos(angle) -
               painter.width / 2,
-          center.dy + (radius - radius * .28) * math.sin(angle) -
+          center.dy +
+              (radius - radius * .28) * math.sin(angle) -
               painter.height / 2,
         ),
       );
