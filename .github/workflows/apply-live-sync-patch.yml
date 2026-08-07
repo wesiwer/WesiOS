@@ -20,24 +20,25 @@ jobs:
           ref: agent/live-sync-manual-refresh-clock
           fetch-depth: 0
 
-      - name: Apply patch
-        run: python3 tools/apply_live_sync_patch.py
+      - name: Apply follow-up fixes
+        run: python3 tools/fix_live_sync_patch.py
 
-      - name: Validate changed Dart syntax anchors
+      - name: Validate changed Dart anchors
         run: |
           set -euo pipefail
+          grep -q "import 'sync_transport.dart';" lib/core/sync/sync_auto.dart
+          grep -q 'clamp(1, 4).toInt()' lib/core/sync/sync_auto.dart
+          grep -q 'static final HttpClient _http' lib/core/sync/pocketbase_transport.dart
           grep -q 'remotePollEvery = Duration(seconds: 1)' lib/core/sync/sync_auto.dart
-          grep -q 'Future<SyncResult<String>> revision()' lib/core/sync/pocketbase_transport.dart
-          grep -q 'notifyChanged() => TreasuryService.revision.value++' lib/core/sync/sync_codec.dart
           grep -q 'Синхронизировать сейчас' lib/features/home/home_screen.dart
           grep -q 'Переключить цифровые / стрелочные часы' lib/core/widgets/wesi_clock.dart
           grep -q 'version: 0.19.1+46' pubspec.yaml
 
-      - name: Commit patch
+      - name: Commit fixes
         run: |
           set -euo pipefail
           git config user.name 'WesiOS Agent'
           git config user.email 'actions@github.com'
           git add lib test pubspec.yaml
-          git commit -m 'feat(sync): add live cross-device refresh and manual sync'
+          git commit -m 'fix(sync): harden live polling and manual refresh'
           git push origin HEAD:agent/live-sync-manual-refresh-clock
