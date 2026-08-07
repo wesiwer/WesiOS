@@ -90,11 +90,14 @@ class ConsoleCommandService {
     }
     return raw
         .replaceAll(
-          RegExp(r'(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+'),
+          RegExp(r'(bearer\s+)[A-Za-z0-9._~+/=-]+', caseSensitive: false),
           r'$1••••••••',
         )
         .replaceAll(
-          RegExp(r'(?i)((?:api[_-]?key|access[_-]?token)=)[^\s&]+'),
+          RegExp(
+            r'((?:api[_-]?key|access[_-]?token)=)[^\s&]+',
+            caseSensitive: false,
+          ),
           r'$1••••••••',
         );
   }

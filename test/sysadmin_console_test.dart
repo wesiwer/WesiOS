@@ -37,6 +37,15 @@ void main() {
     expect(text, contains('Ctrl+A/C/X/V'));
   });
 
+  test('обычная команда безопасно печатается в prompt', () {
+    expect(ConsoleCommandService.displayCommand('status'), 'status');
+    expect(
+      ConsoleCommandService.displayCommand(
+          'http https://example.com?api_key=secret'),
+      contains('••••••••'),
+    );
+  });
+
   test('echo учитывает кавычки и сохраняет историю', () async {
     final result = await ConsoleCommandService.execute('echo "hello wesi"');
 
