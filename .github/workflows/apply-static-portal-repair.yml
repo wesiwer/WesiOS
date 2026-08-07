@@ -1,0 +1,52 @@
+name: Apply static portal content repair
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/patch_portal_static_content.py
+      - .github/workflows/apply-static-portal-repair.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-static-portal-repair
+  cancel-in-progress: true
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Apply static portal patch
+        run: python3 tools/patch_portal_static_content.py
+
+      - name: Validate portal JavaScript and expected content
+        run: |
+          set -euo pipefail
+          node --check server/employee-portal/app.js
+          grep -q 'id="requirementsTrigger"' server/employee-portal/index.html
+          grep -q 'id="requirementsPopover"' server/employee-portal/index.html
+          grep -q 'id="productInfo"' server/employee-portal/index.html
+          grep -q 'WESIOS_STATIC_PRODUCT_INFO_V1' server/employee-portal/portal-v6.css
+          grep -q 'showSaveFilePicker' server/employee-portal/app.js
+          ! grep -q 'Листайте дальше' server/employee-portal/index.html
+          git diff --check
+
+      - name: Commit repaired static portal
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo 'Nothing to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server/employee-portal/index.html server/employee-portal/portal-v6.css server/employee-portal/app.js
+          git commit -m 'fix(portal): move product UI into static assets'
+          git push
