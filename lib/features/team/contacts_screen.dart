@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -26,6 +28,7 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   String _search = '';
   final Set<String> _activationBusy = <String>{};
+  Timer? _activationTicker;
 
   bool get _ru => WesiLocale.isRussian;
   bool get _canManage => TeamService.currentPermissions.canManageTeam;
@@ -37,10 +40,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
     super.initState();
     TeamService.revision.addListener(_refresh);
     TeamService.ensureOwner();
+    _activationTicker = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) setState(() {});
+    });
   }
 
   @override
   void dispose() {
+    _activationTicker?.cancel();
     TeamService.revision.removeListener(_refresh);
     super.dispose();
   }
@@ -156,9 +163,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
               reset.portal.ok
                   ? Icons.check_circle_outline
                   : Icons.error_outline,
-              color: reset.portal.ok
-                  ? AppTheme.accentGreen
-                  : AppTheme.accentRed,
+              color:
+                  reset.portal.ok ? AppTheme.accentGreen : AppTheme.accentRed,
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -184,15 +190,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
               style: TextStyle(
                 fontSize: 12.5,
                 height: 1.45,
-                color: reset.portal.ok
-                    ? AppTheme.accentGreen
-                    : AppTheme.accentRed,
+                color:
+                    reset.portal.ok ? AppTheme.accentGreen : AppTheme.accentRed,
               ),
             ),
             const SizedBox(height: 16),
             _credentialLine(_ru ? 'Логин' : 'Login', employee.login),
             const SizedBox(height: 10),
-            _credentialLine(_ru ? 'Новый пароль' : 'New password', reset.password),
+            _credentialLine(
+                _ru ? 'Новый пароль' : 'New password', reset.password),
             const SizedBox(height: 12),
             Text(
               _ru
@@ -411,8 +417,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ),
             IconButton(
               tooltip: _ru ? 'Показатели' : 'Performance',
-              icon:
-                  Icon(Icons.insights_outlined, color: AppTheme.textPrimary),
+              icon: Icon(Icons.insights_outlined, color: AppTheme.textPrimary),
               onPressed: () => TeamStatsScreen.open(context),
             ),
           ],
@@ -449,8 +454,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.people_outline,
-                  size: 40, color: AppTheme.textMuted),
+              Icon(Icons.people_outline, size: 40, color: AppTheme.textMuted),
               const SizedBox(height: 12),
               Text(
                 _search.isNotEmpty
@@ -599,10 +603,17 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget _activationTag(EmployeeModel employee) {
     final active = EmployeeAdminService.isActivated(employee.id);
     final error = EmployeeAdminService.activationError(employee.id);
+    final attempted = EmployeeAdminService.lastActivationAttempt(employee.id);
     final busy = _activationBusy.contains(employee.id);
+    final age = attempted == null ? null : DateTime.now().difference(attempted);
+    final stalled = !active &&
+        attempted != null &&
+        age != null &&
+        age >= const Duration(seconds: 45);
+
     final color = active
         ? AppTheme.accentGreen
-        : error.isNotEmpty
+        : error.isNotEmpty || stalled
             ? AppTheme.accentRed
             : AppTheme.accent;
     final label = busy
@@ -610,8 +621,14 @@ class _ContactsScreenState extends State<ContactsScreen> {
         : active
             ? (_ru ? 'Активирован' : 'Activated')
             : error.isNotEmpty
-                ? (_ru ? 'Ошибка активации — повторить' : 'Activation failed — retry')
-                : (_ru ? 'Активировать' : 'Activate');
+                ? (_ru ? 'Ошибка активации' : 'Activation failed')
+                : stalled
+                    ? (_ru
+                        ? 'Активация задержалась'
+                        : 'Activation is taking too long')
+                    : attempted != null
+                        ? (_ru ? 'Активация…' : 'Activating…')
+                        : (_ru ? 'Не активирован' : 'Not activated');
 
     final tag = Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -623,7 +640,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (busy) ...[
+          if (busy ||
+              (!active && attempted != null && !stalled && error.isEmpty)) ...[
             SizedBox(
               width: 10,
               height: 10,
@@ -646,20 +664,51 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
     );
 
+    final canRetry = !active && !busy && (error.isNotEmpty || stalled);
+    final canActivate = !active && !busy && attempted == null;
+    final attemptText = attempted == null
+        ? ''
+        : '${_ru ? 'Последняя попытка' : 'Last attempt'}: '
+            '${attempted.toLocal().toString().split('.').first}';
+
     return Align(
       alignment: Alignment.centerLeft,
-      child: Tooltip(
-        message: error.isNotEmpty ? error : label,
-        child: active || busy
-            ? tag
-            : Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => _retryActivation(employee),
-                  child: tag,
-                ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Tooltip(
+            message: error.isNotEmpty
+                ? error
+                : attemptText.isNotEmpty
+                    ? '$label · $attemptText'
+                    : label,
+            child: tag,
+          ),
+          if (canRetry || canActivate) ...[
+            const SizedBox(height: 6),
+            TextButton.icon(
+              style: TextButton.styleFrom(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+                minimumSize: Size.zero,
+                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                foregroundColor:
+                    canRetry ? AppTheme.accentRed : AppTheme.accent,
               ),
+              onPressed: () => _retryActivation(employee),
+              icon: Icon(
+                canRetry ? Icons.refresh_rounded : Icons.person_add_alt_1,
+                size: 14,
+              ),
+              label: Text(
+                canRetry
+                    ? (_ru ? 'Повторить активацию' : 'Retry activation')
+                    : (_ru ? 'Активировать вручную' : 'Activate manually'),
+                style: const TextStyle(
+                    fontSize: 10.5, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -717,7 +766,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
     required String label,
     required VoidCallback onTap,
     required double maxWidth,
-  }) => ConstrainedBox(
+  }) =>
+      ConstrainedBox(
         constraints: BoxConstraints(maxWidth: maxWidth),
         child: HoverButton(
           onTap: onTap,
@@ -748,8 +798,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final result = await ContactActions.phone(phone);
     if (!mounted) return;
     final text = switch (result) {
-      PhoneActionResult.copied =>
-        _ru ? 'Номер скопирован' : 'Number copied',
+      PhoneActionResult.copied => _ru ? 'Номер скопирован' : 'Number copied',
       PhoneActionResult.invalid =>
         _ru ? 'В номере нет цифр' : 'No digits in the number',
       PhoneActionResult.dialed => null,

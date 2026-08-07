@@ -10,12 +10,24 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/wesi_wordmark.dart';
 import '../../../core/widgets/window_controls.dart';
 import '../../team/services/team_service.dart';
+import '../models/monitor_target.dart';
+import '../services/monitor_service.dart';
 import '../target_detail_screen.dart';
 import 'console_command_service.dart';
 import 'console_templates.dart';
 
 class WesiConsoleScreen extends StatefulWidget {
-  const WesiConsoleScreen({super.key});
+  final String targetId;
+
+  const WesiConsoleScreen({super.key, required this.targetId});
+
+  static Future<void> open(BuildContext context, String targetId) =>
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => WesiConsoleScreen(targetId: targetId),
+        ),
+      );
 
   @override
   State<WesiConsoleScreen> createState() => _WesiConsoleScreenState();
@@ -34,6 +46,8 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
   bool _alt = false;
   bool _shift = false;
   List<String> _suggestions = const [];
+
+  MonitorTarget? get _target => MonitorService.byId(widget.targetId);
 
   bool get _ru => WesiLocale.isRussian;
   bool get _android =>
@@ -59,6 +73,13 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
         ConsoleLineKind.warning,
       ),
     ]);
+    final target = _target;
+    if (target != null) {
+      _lines.add(ConsoleLine(
+        '${_ru ? 'Выбранный сервер' : 'Selected server'}: ${target.name} · ${target.host}:${target.port}',
+        ConsoleLineKind.system,
+      ));
+    }
     _input.addListener(_updateSuggestions);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _inputFocus.requestFocus();
@@ -75,7 +96,10 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
   }
 
   void _updateSuggestions() {
-    final next = ConsoleCommandService.completions(_input.text).take(5).toList();
+    final next = ConsoleCommandService.completions(
+      _input.text,
+      targetId: widget.targetId,
+    ).take(5).toList();
     if (listEquals(next, _suggestions) || !mounted) return;
     setState(() => _suggestions = next);
   }
@@ -87,7 +111,7 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
     setState(() {
       _busy = true;
       _lines.add(ConsoleLine(
-        'wesi@sysadmin › ${ConsoleCommandService.displayCommand(value)}',
+        'wesi@${_target?.host ?? 'sysadmin'} › ${ConsoleCommandService.displayCommand(value)}',
         ConsoleLineKind.prompt,
       ));
       _input.clear();
@@ -96,11 +120,30 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
     });
     _scrollBottom();
 
-    final result = await ConsoleCommandService.execute(value, russian: _ru);
+    ConsoleExecution result;
+    try {
+      result = await ConsoleCommandService.execute(
+        value,
+        russian: _ru,
+        targetId: widget.targetId,
+      );
+    } catch (error) {
+      result = ConsoleExecution(lines: [
+        ConsoleLine(
+          _ru ? 'Ошибка выполнения: $error' : 'Execution error: $error',
+          ConsoleLineKind.error,
+        ),
+      ]);
+    }
     if (!mounted) return;
     setState(() {
       if (result.clear) {
         _lines.clear();
+      } else if (result.lines.isEmpty && result.openTargetId == null) {
+        _lines.add(ConsoleLine(
+          _ru ? 'Команда выполнена.' : 'Command completed.',
+          ConsoleLineKind.success,
+        ));
       } else {
         _lines.addAll(result.lines);
       }
@@ -183,8 +226,7 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
 
   void _historyMove(int delta) {
     if (_history.isEmpty) return;
-    _historyIndex =
-        (_historyIndex + delta).clamp(0, _history.length).toInt();
+    _historyIndex = (_historyIndex + delta).clamp(0, _history.length).toInt();
     _setInput(
       _historyIndex == _history.length ? '' : _history[_historyIndex],
     );
@@ -211,13 +253,18 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
   }
 
   void _applyTemplate(ConsoleTemplate template, {bool run = false}) {
-    _setTemplateInput(template.command);
-    if (run && template.canRunImmediately) {
-      unawaited(_run(template.command));
+    final target = _target;
+    if (target == null) return;
+    final command = ConsoleTemplateLibrary.resolveCommand(template, target);
+    _setTemplateInput(command);
+    if (run && ConsoleTemplateLibrary.canRunImmediatelyFor(template, target)) {
+      unawaited(_run(command));
     }
   }
 
   Future<void> _showTemplates() async {
+    final target = _target;
+    if (target == null) return;
     await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
@@ -225,6 +272,7 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
       backgroundColor: Colors.transparent,
       builder: (sheetContext) => _TemplateSheet(
         russian: _ru,
+        target: target,
         onInsert: (template) {
           Navigator.pop(sheetContext);
           _applyTemplate(template);
@@ -239,7 +287,10 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
   }
 
   void _complete() {
-    final matches = ConsoleCommandService.completions(_input.text);
+    final matches = ConsoleCommandService.completions(
+      _input.text,
+      targetId: widget.targetId,
+    );
     if (matches.isEmpty) return;
     if (matches.length == 1) {
       _setInput(matches.first);
@@ -484,12 +535,12 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
         cursor--;
       }
     } else {
-      while (cursor < _input.text.length &&
-          !_input.text[cursor].trim().isEmpty) {
+      while (
+          cursor < _input.text.length && !_input.text[cursor].trim().isEmpty) {
         cursor++;
       }
-      while (cursor < _input.text.length &&
-          _input.text[cursor].trim().isEmpty) {
+      while (
+          cursor < _input.text.length && _input.text[cursor].trim().isEmpty) {
         cursor++;
       }
     }
@@ -525,9 +576,9 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
 
   void _page(int direction) {
     if (!_scroll.hasClients) return;
-    final next = (_scroll.offset +
-            direction * _scroll.position.viewportDimension * .82)
-        .clamp(0.0, _scroll.position.maxScrollExtent);
+    final next =
+        (_scroll.offset + direction * _scroll.position.viewportDimension * .82)
+            .clamp(0.0, _scroll.position.maxScrollExtent);
     _scroll.animateTo(
       next,
       duration: const Duration(milliseconds: 180),
@@ -538,6 +589,7 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
   @override
   Widget build(BuildContext context) {
     if (!TeamService.isOwnerSession) return _locked();
+    if (_target == null) return _missingTarget();
     return ValueListenableBuilder<AppThemeMode>(
       valueListenable: ThemeNotifier.instance,
       builder: (context, _, __) => Scaffold(
@@ -559,7 +611,9 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
                 child: Icon(Icons.terminal, size: 17, color: AppTheme.accent),
               ),
               const SizedBox(width: 10),
-              const Expanded(child: WesiTitle('Wesi Console', size: 17)),
+              Expanded(
+                child: WesiTitle('Wesi Console · ${_target!.name}', size: 17),
+              ),
             ],
           ),
           actions: [
@@ -601,6 +655,23 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
       ),
     );
   }
+
+  Widget _missingTarget() => Scaffold(
+        backgroundColor: AppTheme.background,
+        appBar: AppBar(title: const WesiTitle('Wesi Console', size: 18)),
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(32),
+            child: Text(
+              _ru
+                  ? 'Сервер больше не найден. Вернитесь в «Системный администратор» и выберите узел заново.'
+                  : 'The server no longer exists. Return to System administrator and select it again.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: AppTheme.textMuted),
+            ),
+          ),
+        ),
+      );
 
   Widget _locked() => Scaffold(
         backgroundColor: AppTheme.background,
@@ -666,7 +737,7 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
               ),
             ),
             const Spacer(),
-            _statusChip('OWNER', Icons.verified_user_outlined),
+            _statusChip(_target!.host.toUpperCase(), Icons.dns_outlined),
             const SizedBox(width: 7),
             _statusChip(
               _android ? 'ANDROID' : 'DESKTOP',
@@ -735,7 +806,10 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
               label: Text(template.title(_ru)),
               onPressed: () => _applyTemplate(
                 template,
-                run: template.canRunImmediately,
+                run: ConsoleTemplateLibrary.canRunImmediatelyFor(
+                  template,
+                  _target!,
+                ),
               ),
               backgroundColor: const Color(0xFF14181C),
               side: const BorderSide(color: Color(0xFF292F35)),
@@ -881,7 +955,7 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
           child: Row(
             children: [
               Text(
-                'wesi@sysadmin',
+                'wesi@${_target!.host}',
                 style: TextStyle(
                   fontFamily: 'monospace',
                   fontSize: 11,
@@ -1059,11 +1133,13 @@ class _WesiConsoleScreenState extends State<WesiConsoleScreen> {
 
 class _TemplateSheet extends StatelessWidget {
   final bool russian;
+  final MonitorTarget target;
   final ValueChanged<ConsoleTemplate> onInsert;
   final ValueChanged<ConsoleTemplate> onRun;
 
   const _TemplateSheet({
     required this.russian,
+    required this.target,
     required this.onInsert,
     required this.onRun,
   });
@@ -1246,7 +1322,8 @@ class _TemplateSheet extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          template.command,
+                          ConsoleTemplateLibrary.resolveCommand(
+                              template, target),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -1258,7 +1335,10 @@ class _TemplateSheet extends StatelessWidget {
                       ],
                     ),
                   ),
-                  if (template.canRunImmediately)
+                  if (ConsoleTemplateLibrary.canRunImmediatelyFor(
+                    template,
+                    target,
+                  ))
                     IconButton(
                       tooltip: russian ? 'Выполнить' : 'Run',
                       onPressed: () => onRun(template),

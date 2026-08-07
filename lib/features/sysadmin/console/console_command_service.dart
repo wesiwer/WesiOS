@@ -82,16 +82,22 @@ class ConsoleCommandService {
     if (parts.isEmpty) return raw;
     if (parts.first.toLowerCase() == 'token') {
       final action = parts.length > 1 ? parts[1] : '';
-      return ['token', if (action.isNotEmpty) action, if (parts.length > 2) '••••••••']
-          .join(' ');
+      return [
+        'token',
+        if (action.isNotEmpty) action,
+        if (parts.length > 2) '••••••••'
+      ].join(' ');
     }
     return raw
         .replaceAll(
-          RegExp(r'(?i)(bearer\s+)[A-Za-z0-9._~+/=-]+'),
+          RegExp(r'(bearer\s+)[A-Za-z0-9._~+/=-]+', caseSensitive: false),
           r'$1••••••••',
         )
         .replaceAll(
-          RegExp(r'(?i)((?:api[_-]?key|access[_-]?token)=)[^\s&]+'),
+          RegExp(
+            r'((?:api[_-]?key|access[_-]?token)=)[^\s&]+',
+            caseSensitive: false,
+          ),
           r'$1••••••••',
         );
   }
@@ -111,7 +117,7 @@ class ConsoleCommandService {
     } catch (_) {}
   }
 
-  static List<String> completions(String prefix) {
+  static List<String> completions(String prefix, {String? targetId}) {
     final value = prefix.trimLeft().toLowerCase();
     const commands = [
       'help',
@@ -153,6 +159,7 @@ class ConsoleCommandService {
   static Future<ConsoleExecution> execute(
     String input, {
     bool russian = true,
+    String? targetId,
   }) async {
     final raw = input.trim();
     if (raw.isEmpty) return const ConsoleExecution();
@@ -161,24 +168,26 @@ class ConsoleCommandService {
     final parts = _split(raw);
     final command = parts.first.toLowerCase();
     final args = parts.skip(1).toList();
+    final selected = targetId == null ? null : MonitorService.byId(targetId);
+    final scopedArgs = _scopedArgs(command, args, selected);
 
     try {
       return switch (command) {
         'help' || '?' => ConsoleExecution(lines: _help(russian)),
         'clear' || 'cls' => const ConsoleExecution(clear: true),
-        'status' => await _status(russian),
+        'status' => await _status(russian, selected),
         'targets' || 'ls' => _targets(russian),
-        'templates' => _templates(russian),
-        'probe' => await _probe(args, russian),
-        'ping' => await _ping(args, russian),
-        'dns' => await _dns(args, russian),
-        'http' || 'curl' => await _http(args, russian),
-        'tls' || 'cert' => await _tls(args, russian),
-        'ssh-check' || 'sshcheck' => await _sshCheck(args, russian),
+        'templates' => _templates(russian, selected),
+        'probe' => await _probe(scopedArgs, russian),
+        'ping' => await _ping(scopedArgs, russian),
+        'dns' => await _dns(scopedArgs, russian),
+        'http' || 'curl' => await _http(scopedArgs, russian),
+        'tls' || 'cert' => await _tls(scopedArgs, russian),
+        'ssh-check' || 'sshcheck' => await _sshCheck(scopedArgs, russian),
         'ssh-help' => _sshHelp(russian),
         'token' => _token(args, russian),
-        'load' => _load(args, russian),
-        'open' => _open(args, russian),
+        'load' => _load(scopedArgs, russian),
+        'open' => _open(scopedArgs, russian),
         'history' => _history(russian),
         'date' || 'time' => ConsoleExecution(lines: [
             ConsoleLine(
@@ -206,6 +215,42 @@ class ConsoleCommandService {
           ConsoleLineKind.error,
         ),
       ]);
+    }
+  }
+
+  static List<String> _scopedArgs(
+    String command,
+    List<String> args,
+    MonitorTarget? target,
+  ) {
+    if (args.isNotEmpty || target == null) return args;
+    switch (command) {
+      case 'probe':
+        return [target.id];
+      case 'ping':
+        return [target.host, '${target.port}'];
+      case 'dns':
+        return [target.host];
+      case 'http':
+      case 'curl':
+        final url = target.url?.trim();
+        return [
+          if (url != null && url.isNotEmpty)
+            url
+          else
+            'https://${target.host}${target.port == 443 ? '' : ':${target.port}'}',
+        ];
+      case 'tls':
+      case 'cert':
+        return [target.host, '${target.checkTls ? target.port : 443}'];
+      case 'ssh-check':
+      case 'sshcheck':
+        return [target.host, '22'];
+      case 'load':
+      case 'open':
+        return [target.id];
+      default:
+        return args;
     }
   }
 
@@ -311,7 +356,7 @@ class ConsoleCommandService {
         ),
       ];
 
-  static ConsoleExecution _templates(bool ru) {
+  static ConsoleExecution _templates(bool ru, MonitorTarget? selected) {
     return ConsoleExecution(lines: [
       ConsoleLine(
         ru ? 'WESI CONSOLE · ШАБЛОНЫ' : 'WESI CONSOLE · TEMPLATES',
@@ -324,14 +369,41 @@ class ConsoleCommandService {
         ),
         for (final template in ConsoleTemplateLibrary.inCategory(category))
           ConsoleLine(
-            '${template.title(ru)} · ${template.command}',
+            '${template.title(ru)} · ${selected == null ? template.command : ConsoleTemplateLibrary.resolveCommand(template, selected)}',
             ConsoleLineKind.output,
           ),
       ],
     ]);
   }
 
-  static Future<ConsoleExecution> _status(bool ru) async {
+  static Future<ConsoleExecution> _status(
+    bool ru, [
+    MonitorTarget? selected,
+  ]) async {
+    if (selected != null) {
+      final sample = await MonitorService.probe(selected);
+      await MonitorService.refreshSlow(selected);
+      final load = MonitorService.loadOf(selected.id);
+      final tls = MonitorService.tlsOf(selected.id);
+      return ConsoleExecution(lines: [
+        ConsoleLine(
+          '${selected.name} · ${selected.host}:${selected.port}',
+          ConsoleLineKind.system,
+        ),
+        _sampleLine(selected.name, sample, ru),
+        if (tls != null)
+          ConsoleLine(
+            '${ru ? 'TLS до' : 'TLS until'} ${tls.validUntil.toLocal()}',
+            ConsoleLineKind.success,
+          ),
+        if (load != null)
+          ConsoleLine(
+            'CPU ${(load.cpuFraction * 100).round()}% · RAM ${(load.memFraction * 100).round()}% · DISK ${(load.diskFraction * 100).round()}%',
+            ConsoleLineKind.output,
+          ),
+      ]);
+    }
+
     final targets = MonitorService.targets;
     if (targets.isEmpty) {
       return ConsoleExecution(lines: [
@@ -363,9 +435,7 @@ class ConsoleCommandService {
       ru
           ? 'Итог: $up/${targets.length} отвечают.'
           : 'Summary: $up/${targets.length} responding.',
-      up == targets.length
-          ? ConsoleLineKind.success
-          : ConsoleLineKind.warning,
+      up == targets.length ? ConsoleLineKind.success : ConsoleLineKind.warning,
     ));
     return ConsoleExecution(lines: lines);
   }
@@ -790,9 +860,8 @@ class ConsoleCommandService {
       ]);
 
   static ConsoleLine _sampleLine(String name, ProbeSample sample, bool ru) {
-    final ms = sample.ms == null
-        ? ''
-        : ' · ${sample.ms!.toStringAsFixed(1)} ms';
+    final ms =
+        sample.ms == null ? '' : ' · ${sample.ms!.toStringAsFixed(1)} ms';
     final detail = sample.detail == null ? '' : ' · ${sample.detail}';
     return ConsoleLine(
       '$name: ${sample.describe(russian: ru)}$ms$detail',

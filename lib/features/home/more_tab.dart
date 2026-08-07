@@ -23,7 +23,9 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.tasks,
             icon: Icons.task_alt,
             title: ru ? 'Задачи' : 'Tasks',
-            subtitle: ru ? 'Канбан, сроки, исполнители' : 'Kanban, deadlines, assignees',
+            subtitle: ru
+                ? 'Канбан, сроки, исполнители'
+                : 'Kanban, deadlines, assignees',
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
@@ -41,7 +43,9 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.calendar,
             icon: Icons.calendar_month,
             title: ru ? 'Календарь' : 'Calendar',
-            subtitle: ru ? 'Сетка месяца работает, события — впереди' : 'Month grid works, events are next',
+            subtitle: ru
+                ? 'Сетка месяца работает, события — впереди'
+                : 'Month grid works, events are next',
             stage: ModuleStage.partial,
           ),
         ],
@@ -64,7 +68,9 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.contacts,
             icon: Icons.contacts,
             title: ru ? 'Контакты' : 'Contacts',
-            subtitle: ru ? 'Сотрудники, связь, доступы' : 'Employees, contacts, access',
+            subtitle: ru
+                ? 'Сотрудники, связь, доступы'
+                : 'Employees, contacts, access',
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
@@ -92,7 +98,9 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.ai,
             icon: Icons.auto_awesome,
             title: 'Wesi AI',
-            subtitle: ru ? 'Ассистент по вашим данным' : 'Assistant over your own data',
+            subtitle: ru
+                ? 'Ассистент по вашим данным'
+                : 'Assistant over your own data',
             stage: ModuleStage.planned,
           ),
         ],
@@ -105,7 +113,8 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.treasury,
             icon: Icons.account_balance_wallet,
             title: 'Wesi Treasury',
-            subtitle: ru ? 'Доходы, траты, операции' : 'Income, expenses, operations',
+            subtitle:
+                ru ? 'Доходы, траты, операции' : 'Income, expenses, operations',
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
@@ -113,7 +122,9 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.forecast,
             icon: Icons.query_stats,
             title: ru ? 'Прогноз' : 'Forecast',
-            subtitle: ru ? 'Monte-Carlo, Cash Gap, «Что если?»' : 'Monte-Carlo, Cash Gap, What-If',
+            subtitle: ru
+                ? 'Monte-Carlo, Cash Gap, «Что если?»'
+                : 'Monte-Carlo, Cash Gap, What-If',
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
@@ -129,7 +140,9 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.analytics,
             icon: Icons.analytics,
             title: ru ? 'Аналитика' : 'Analytics',
-            subtitle: ru ? 'KPI, динамика, здоровье бизнеса' : 'KPIs, trends, business health',
+            subtitle: ru
+                ? 'KPI, динамика, здоровье бизнеса'
+                : 'KPIs, trends, business health',
             stage: ModuleStage.ready,
           ),
         ],
@@ -166,21 +179,10 @@ class MoreTab extends StatelessWidget {
             icon: Icons.dns_outlined,
             title: ru ? 'Системный администратор' : 'System administrator',
             subtitle: ru
-                ? 'Серверы, домены, TLS, нагрузка и Wesi Console'
-                : 'Servers, domains, TLS, load, and Wesi Console',
+                ? 'Выберите сервер: мониторинг, TLS, нагрузка и консоль'
+                : 'Choose a server: monitoring, TLS, load, and console',
             stage: ModuleStage.ready,
           ),
-          if (TeamService.isOwnerSession)
-            _ModuleItem(
-              route: '/sysadmin/console',
-              module: TeamModules.sysadmin,
-              icon: Icons.terminal,
-              title: 'Wesi Console',
-              subtitle: ru
-                  ? 'Диагностика сети и серверов с Android-панелью клавиш'
-                  : 'Network and server diagnostics with Android key bar',
-              stage: ModuleStage.ready,
-            ),
           _ModuleItem(
             route: '/keys',
             module: TeamModules.keys,
@@ -195,14 +197,17 @@ class MoreTab extends StatelessWidget {
             route: '/settings',
             icon: Icons.settings,
             title: ru ? 'Настройки' : 'Settings',
-            subtitle: ru ? 'Язык, модели прогноза, данные' : 'Language, forecast models, data',
+            subtitle: ru
+                ? 'Язык, модели прогноза, данные'
+                : 'Language, forecast models, data',
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
             route: '/profile',
             icon: Icons.person,
             title: ru ? 'Профиль' : 'Profile',
-            subtitle: ru ? 'Аватар и ключи Firebase' : 'Avatar and Firebase keys',
+            subtitle:
+                ru ? 'Аватар и ключи Firebase' : 'Avatar and Firebase keys',
             stage: ModuleStage.ready,
           ),
           _ModuleItem(
@@ -312,12 +317,14 @@ class MoreTab extends StatelessWidget {
                       const SizedBox(height: 2),
                       Text(
                         item.subtitle,
-                        style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                        style:
+                            TextStyle(fontSize: 12, color: AppTheme.textMuted),
                       ),
                     ],
                   ),
                 ),
-                Icon(Icons.arrow_forward_ios, size: 13, color: AppTheme.textMuted),
+                Icon(Icons.arrow_forward_ios,
+                    size: 13, color: AppTheme.textMuted),
               ],
             ),
           ),

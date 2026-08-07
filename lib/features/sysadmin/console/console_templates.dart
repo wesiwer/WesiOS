@@ -1,3 +1,5 @@
+import '../models/monitor_target.dart';
+
 enum ConsoleTemplateCategory {
   wesi,
   network,
@@ -45,8 +47,8 @@ class ConsoleTemplateLibrary {
       category: ConsoleTemplateCategory.wesi,
       titleRu: 'Состояние WesiOS',
       titleEn: 'WesiOS status',
-      descriptionRu: 'Проверить все серверы, API и портал сотрудников.',
-      descriptionEn: 'Probe every server, API endpoint, and employee portal.',
+      descriptionRu: 'Проверить состояние ранее выбранного сервера.',
+      descriptionEn: 'Probe the previously selected server.',
       command: 'status',
       runImmediately: true,
       pinned: true,
@@ -54,22 +56,22 @@ class ConsoleTemplateLibrary {
     ConsoleTemplate(
       id: 'wesi-api-health',
       category: ConsoleTemplateCategory.wesi,
-      titleRu: 'PocketBase API',
-      titleEn: 'PocketBase API',
-      descriptionRu: 'Проверить основной health endpoint WesiOS.',
-      descriptionEn: 'Check the primary WesiOS health endpoint.',
-      command: 'http https://api.wesi-inc.ru/api/health',
+      titleRu: 'HTTP выбранного узла',
+      titleEn: 'Selected target HTTP',
+      descriptionRu: 'Проверить HTTP-ответ ранее выбранного узла.',
+      descriptionEn: 'Check the HTTP response of the selected target.',
+      command: 'http',
       runImmediately: true,
       pinned: true,
     ),
     ConsoleTemplate(
       id: 'wesi-portal',
       category: ConsoleTemplateCategory.wesi,
-      titleRu: 'Портал сотрудников',
-      titleEn: 'Employee portal',
-      descriptionRu: 'Проверить полный HTTP-ответ портала сотрудников.',
-      descriptionEn: 'Check the complete employee portal HTTP response.',
-      command: 'http https://api.wesi-inc.ru/portal/',
+      titleRu: 'URL выбранного узла',
+      titleEn: 'Selected target URL',
+      descriptionRu: 'Проверить URL выбранного сервера или сайта.',
+      descriptionEn: 'Check the URL of the selected server or site.',
+      command: 'http',
       runImmediately: true,
     ),
     ConsoleTemplate(
@@ -78,29 +80,31 @@ class ConsoleTemplateLibrary {
       titleRu: 'Нагрузка сервера',
       titleEn: 'Server load',
       descriptionRu: 'Показать CPU, память и диск по данным серверного агента.',
-      descriptionEn: 'Show CPU, memory, and disk data reported by the server agent.',
-      command: 'load wesi-russia-server',
+      descriptionEn:
+          'Show CPU, memory, and disk data reported by the server agent.',
+      command: 'load',
       runImmediately: true,
       pinned: true,
     ),
     ConsoleTemplate(
       id: 'network-dns-wesi',
       category: ConsoleTemplateCategory.network,
-      titleRu: 'DNS WesiOS',
-      titleEn: 'WesiOS DNS',
-      descriptionRu: 'Разрешить api.wesi-inc.ru в IP-адреса и измерить время.',
-      descriptionEn: 'Resolve api.wesi-inc.ru to IP addresses and measure time.',
-      command: 'dns api.wesi-inc.ru',
+      titleRu: 'DNS выбранного узла',
+      titleEn: 'Selected target DNS',
+      descriptionRu: 'Разрешить имя выбранного узла в IP и измерить время.',
+      descriptionEn:
+          'Resolve the selected target to IP addresses and measure time.',
+      command: 'dns',
       runImmediately: true,
     ),
     ConsoleTemplate(
       id: 'network-ping-wesi',
       category: ConsoleTemplateCategory.network,
-      titleRu: 'Отклик HTTPS',
+      titleRu: 'Отклик выбранного узла',
       titleEn: 'HTTPS latency',
-      descriptionRu: 'Измерить TCP-отклик основного сервера на порту 443.',
-      descriptionEn: 'Measure TCP latency to the primary server on port 443.',
-      command: 'ping api.wesi-inc.ru 443',
+      descriptionRu: 'Измерить TCP-отклик ранее выбранного узла.',
+      descriptionEn: 'Measure TCP latency to the selected target.',
+      command: 'ping',
       runImmediately: true,
       pinned: true,
     ),
@@ -125,11 +129,11 @@ class ConsoleTemplateLibrary {
     ConsoleTemplate(
       id: 'cert-wesi',
       category: ConsoleTemplateCategory.certificates,
-      titleRu: 'Сертификат WesiOS',
-      titleEn: 'WesiOS certificate',
-      descriptionRu: 'Показать субъект, издателя и оставшийся срок TLS.',
+      titleRu: 'TLS выбранного узла',
+      titleEn: 'Selected target TLS',
+      descriptionRu: 'Показать TLS-сертификат ранее выбранного узла.',
       descriptionEn: 'Show TLS subject, issuer, and remaining validity.',
-      command: 'tls api.wesi-inc.ru 443',
+      command: 'tls',
       runImmediately: true,
       pinned: true,
     ),
@@ -155,11 +159,13 @@ class ConsoleTemplateLibrary {
     ConsoleTemplate(
       id: 'ssh-wesi',
       category: ConsoleTemplateCategory.ssh,
-      titleRu: 'SSH-порт WesiOS',
-      titleEn: 'WesiOS SSH port',
-      descriptionRu: 'Без авторизации проверить, доступен ли SSH-порт сервера.',
-      descriptionEn: 'Check whether the server SSH port is reachable without authenticating.',
-      command: 'ssh-check api.wesi-inc.ru 22',
+      titleRu: 'SSH выбранного сервера',
+      titleEn: 'Selected server SSH',
+      descriptionRu:
+          'Проверить SSH-порт ранее выбранного сервера без авторизации.',
+      descriptionEn:
+          'Check the selected server SSH port without authenticating.',
+      command: 'ssh-check',
       runImmediately: true,
     ),
     ConsoleTemplate(
@@ -168,7 +174,8 @@ class ConsoleTemplateLibrary {
       titleRu: 'Проверить SSH',
       titleEn: 'Check SSH',
       descriptionRu: 'Подставить хост и порт. Ключи и пароль не сохраняются.',
-      descriptionEn: 'Insert host and port. Keys and passwords are never stored.',
+      descriptionEn:
+          'Insert host and port. Keys and passwords are never stored.',
       command: 'ssh-check <host> 22',
     ),
     ConsoleTemplate(
@@ -186,8 +193,10 @@ class ConsoleTemplateLibrary {
       category: ConsoleTemplateCategory.tokens,
       titleRu: 'Проверить JWT',
       titleEn: 'Inspect JWT',
-      descriptionRu: 'Локально прочитать заголовок и срок токена, не отправляя его в сеть.',
-      descriptionEn: 'Read token header and expiry locally without sending it over the network.',
+      descriptionRu:
+          'Локально прочитать заголовок и срок токена, не отправляя его в сеть.',
+      descriptionEn:
+          'Read token header and expiry locally without sending it over the network.',
       command: 'token inspect <TOKEN>',
       sensitive: true,
     ),
@@ -196,7 +205,8 @@ class ConsoleTemplateLibrary {
       category: ConsoleTemplateCategory.tokens,
       titleRu: 'Отпечаток токена',
       titleEn: 'Token fingerprint',
-      descriptionRu: 'Локально вычислить SHA-256 для безопасного сравнения токенов.',
+      descriptionRu:
+          'Локально вычислить SHA-256 для безопасного сравнения токенов.',
       descriptionEn: 'Compute SHA-256 locally for safe token comparison.',
       command: 'token hash <TOKEN>',
       sensitive: true,
@@ -206,8 +216,10 @@ class ConsoleTemplateLibrary {
       category: ConsoleTemplateCategory.tokens,
       titleRu: 'Скрыть токен',
       titleEn: 'Redact token',
-      descriptionRu: 'Показать маскированный вид без раскрытия полного секрета.',
-      descriptionEn: 'Display a masked representation without exposing the full secret.',
+      descriptionRu:
+          'Показать маскированный вид без раскрытия полного секрета.',
+      descriptionEn:
+          'Display a masked representation without exposing the full secret.',
       command: 'token redact <TOKEN>',
       sensitive: true,
     ),
@@ -217,13 +229,41 @@ class ConsoleTemplateLibrary {
       all.where((template) => template.pinned).toList(growable: false);
 
   static List<ConsoleTemplate> inCategory(ConsoleTemplateCategory category) =>
-      all.where((template) => template.category == category).toList(growable: false);
+      all
+          .where((template) => template.category == category)
+          .toList(growable: false);
+
+  static String resolveCommand(
+    ConsoleTemplate template,
+    MonitorTarget target,
+  ) {
+    final explicitUrl = target.url?.trim();
+    final schemeUrl = explicitUrl != null && explicitUrl.isNotEmpty
+        ? explicitUrl
+        : 'https://${target.host}${target.port == 443 ? '' : ':${target.port}'}';
+    return template.command
+        .replaceAll('<target-id>', target.id)
+        .replaceAll('<target-host>', target.host)
+        .replaceAll('<target-port>', '${target.port}')
+        .replaceAll('<target-url>', schemeUrl);
+  }
+
+  static bool canRunImmediatelyFor(
+    ConsoleTemplate template,
+    MonitorTarget target,
+  ) {
+    final command = resolveCommand(template, target);
+    final unresolved = command.contains('<') && command.contains('>');
+    return template.runImmediately && !template.sensitive && !unresolved;
+  }
 
   static String categoryTitle(ConsoleTemplateCategory category, bool russian) {
     return switch (category) {
       ConsoleTemplateCategory.wesi => russian ? 'WesiOS' : 'WesiOS',
-      ConsoleTemplateCategory.network => russian ? 'Сеть и HTTP' : 'Network and HTTP',
-      ConsoleTemplateCategory.certificates => russian ? 'Сертификаты' : 'Certificates',
+      ConsoleTemplateCategory.network =>
+        russian ? 'Сеть и HTTP' : 'Network and HTTP',
+      ConsoleTemplateCategory.certificates =>
+        russian ? 'Сертификаты' : 'Certificates',
       ConsoleTemplateCategory.ssh => russian ? 'SSH' : 'SSH',
       ConsoleTemplateCategory.tokens => russian ? 'Токены' : 'Tokens',
     };

@@ -23,7 +23,6 @@ import '../../features/crm/crm_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/founder/founder_story_screen.dart';
 import '../../features/sysadmin/sysadmin_screen.dart';
-import '../../features/sysadmin/console/console_screen.dart';
 import '../../features/team/contacts_screen.dart';
 import '../../features/chats/chats_screen.dart';
 
@@ -65,7 +64,8 @@ class AppRouter {
       case '/sysadmin':
         return _slideUpRoute(const SysadminScreen());
       case '/sysadmin/console':
-        return _slideUpRoute(const WesiConsoleScreen());
+        // Старые ссылки ведём в выбор сервера: консоль теперь контекстная.
+        return _slideUpRoute(const SysadminScreen());
       case '/settings':
         return _slideUpRoute(SettingsScreen());
       case '/profile':

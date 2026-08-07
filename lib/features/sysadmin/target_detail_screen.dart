@@ -6,6 +6,8 @@ import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
 import 'models/monitor_target.dart';
 import 'models/probe_result.dart';
+import '../team/services/team_service.dart';
+import 'console/console_screen.dart';
 import 'services/monitor_service.dart';
 import 'services/network_probe.dart';
 import 'widgets/health_dot.dart';
@@ -64,6 +66,10 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
       _dnsTook = result.took;
       _dnsOk = result.ok;
     });
+  }
+
+  Future<void> _openConsole(MonitorTarget t) async {
+    await WesiConsoleScreen.open(context, t.id);
   }
 
   Future<void> _edit(MonitorTarget t) async {
@@ -147,11 +153,19 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
                 children: [
                   WesiTitle(t.name, size: 18),
                   Text('${t.host}:${t.port}',
-                      style: TextStyle(
-                          fontSize: 11, color: AppTheme.textMuted)),
+                      style:
+                          TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                 ],
               ),
             ),
+            if (TeamService.isOwnerSession && t.kind == TargetKind.server)
+              IconButton(
+                tooltip: _ru
+                    ? 'Открыть консоль этого сервера'
+                    : 'Open this server console',
+                icon: Icon(Icons.terminal, size: 20, color: AppTheme.accent),
+                onPressed: () => _openConsole(t),
+              ),
             IconButton(
               tooltip: _ru ? 'Изменить' : 'Edit',
               icon: Icon(Icons.tune, size: 19, color: AppTheme.textMuted),
@@ -188,8 +202,7 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color:
-                        last.ok ? AppTheme.textPrimary : AppTheme.accentRed,
+                    color: last.ok ? AppTheme.textPrimary : AppTheme.accentRed,
                   ),
                 ),
             ],
@@ -269,8 +282,7 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
                 Text(
                   '${_ru ? 'заняло' : 'took'} ${_dnsTook!.inMilliseconds} '
                   '${_ru ? 'мс' : 'ms'}',
-                  style:
-                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
             ],
           ],
@@ -356,8 +368,7 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
                   _ru
                       ? 'Цифры устарели — агент перестал их обновлять.'
                       : 'Numbers are stale — the agent stopped updating.',
-                  style:
-                      TextStyle(fontSize: 11.5, color: AppTheme.accentRed),
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.accentRed),
                 ),
               ),
             _bar(_ru ? 'Процессор' : 'CPU', load.cpuFraction,
@@ -413,13 +424,12 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
             SizedBox(
               width: 96,
               child: Text(label,
-                  style:
-                      TextStyle(fontSize: 11.5, color: AppTheme.textMuted)),
+                  style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted)),
             ),
             Expanded(
               child: Text(value,
-                  style: TextStyle(
-                      fontSize: 11.5, color: AppTheme.textPrimary)),
+                  style:
+                      TextStyle(fontSize: 11.5, color: AppTheme.textPrimary)),
             ),
           ],
         ),
@@ -438,8 +448,7 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
               Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style:
-                      TextStyle(fontSize: 9.5, color: AppTheme.textMuted)),
+                  style: TextStyle(fontSize: 9.5, color: AppTheme.textMuted)),
               const SizedBox(height: 3),
               Text(
                 value,
@@ -448,8 +457,7 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
-                  color:
-                      alarming ? AppTheme.accentRed : AppTheme.textPrimary,
+                  color: alarming ? AppTheme.accentRed : AppTheme.textPrimary,
                 ),
               ),
             ],
@@ -475,9 +483,7 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
                     TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
             Text('$detail · ${(v * 100).round()}%',
                 style: TextStyle(
-                    fontSize: 10.5,
-                    fontWeight: FontWeight.w600,
-                    color: color)),
+                    fontSize: 10.5, fontWeight: FontWeight.w600, color: color)),
           ],
         ),
         const SizedBox(height: 4),
