@@ -6,6 +6,13 @@ import 'package:hive/hive.dart';
 import '../../features/chats/models/chat_message.dart';
 import '../../features/chats/models/chat_policy.dart';
 import '../../features/chats/models/chat_thread.dart';
+import '../../features/chats/services/chat_service.dart';
+import '../../features/chats/services/message_store.dart';
+import '../../features/knowledge/services/knowledge_service.dart';
+import '../../features/tasks/services/task_service.dart';
+import '../../features/team/services/team_service.dart';
+import '../../features/treasury/services/account_service.dart';
+import '../../features/treasury/services/treasury_service.dart';
 import '../../features/knowledge/models/article_model.dart';
 import '../../features/tasks/models/task_model.dart';
 import '../../features/team/models/employee_model.dart';
@@ -98,6 +105,10 @@ abstract class SyncCollection<T> {
   /// «дошло ли» — у сообщений. Движок про такие состояния знать не должен,
   /// поэтому крючок здесь, а не в нём.
   Future<void> afterUpload(Iterable<String> ids) async {}
+
+  /// Сообщить открытому интерфейсу, что чужие данные уже применены.
+  /// Вызывается один раз на коллекцию за проход, а не на каждую запись.
+  void notifyChanged() {}
 }
 
 // ------------------------------------------------------------------ помощники
@@ -153,6 +164,9 @@ Uint8List? _decodePhoto(String raw) {
 
 class TransactionsSync extends SyncCollection<TransactionModel> {
   @override
+  void notifyChanged() => TreasuryService.revision.value++;
+
+  @override
   String get name => 'transactions';
 
   @override
@@ -195,6 +209,9 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
 
 class AccountsSync extends SyncCollection<AccountModel> {
   @override
+  void notifyChanged() => AccountService.revision.value++;
+
+  @override
   String get name => 'accounts';
 
   @override
@@ -234,6 +251,9 @@ class AccountsSync extends SyncCollection<AccountModel> {
 }
 
 class TasksSync extends SyncCollection<TaskModel> {
+  @override
+  void notifyChanged() => TaskService.revision.value++;
+
   @override
   String get name => 'tasks';
 
@@ -290,6 +310,9 @@ class TasksSync extends SyncCollection<TaskModel> {
 }
 
 class ArticlesSync extends SyncCollection<ArticleModel> {
+  @override
+  void notifyChanged() => KnowledgeService.revision.value++;
+
   @override
   String get name => 'articles';
 
@@ -356,6 +379,9 @@ class ArticlesSync extends SyncCollection<ArticleModel> {
 /// [EmployeeModel.toPublicJson] здесь не годится по той же причине: он
 /// сделан для показа карточки, а не для переноса учётной записи.
 class EmployeesSync extends SyncCollection<EmployeeModel> {
+  @override
+  void notifyChanged() => TeamService.revision.value++;
+
   @override
   String get name => 'employees';
 
@@ -437,6 +463,9 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
 /// чтобы это изменилось.
 class ChatsSync extends SyncCollection<ChatThread> {
   @override
+  void notifyChanged() => ChatService.revision.value++;
+
+  @override
   String get name => 'chats';
 
   @override
@@ -495,6 +524,12 @@ class ChatsSync extends SyncCollection<ChatThread> {
 /// **Личная переписка не уезжает вовсе**, пока нет конвертного шифрования, —
 /// по той же причине, что и сами личные чаты.
 class MessagesSync extends SyncCollection<ChatMessage> {
+  @override
+  void notifyChanged() {
+    MessageStore.revision.value++;
+    ChatService.revision.value++;
+  }
+
   @override
   String get name => 'messages';
 

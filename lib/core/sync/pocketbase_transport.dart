@@ -25,6 +25,10 @@ class PocketBaseTransport implements SyncTransport {
   /// Сколько записей просить за раз. PocketBase отдаёт максимум 500.
   static const int pageSize = 500;
 
+  static final HttpClient _http = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 12)
+    ..idleTimeout = const Duration(seconds: 30);
+
   final String baseUrl;
 
   String? _token;
@@ -152,6 +156,37 @@ class PocketBaseTransport implements SyncTransport {
     return SyncResult.ok(out);
   }
 
+  /// Самая свежая системная ревизия серверных записей текущего пользователя.
+  ///
+  /// Возвращается только одна запись и только три маленьких поля. Этот запрос
+  /// можно делать раз в секунду: полный payload операций/статей не скачивается.
+  Future<SyncResult<String>> revision() async {
+    if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
+    final res = await _send(
+      'GET',
+      '/api/collections/$collectionName/records',
+      query: const {
+        'perPage': '1',
+        'page': '1',
+        'sort': '-updated,-id',
+        'fields': 'id,updated,stamp',
+      },
+    );
+    if (res.failure != null) return SyncResult.fail(res.failure!);
+    return SyncResult.ok(revisionFromResponse(res.value!));
+  }
+
+  /// Чистый разбор вынесен отдельно для регрессионного теста.
+  static String revisionFromResponse(Map<String, dynamic> json) {
+    final items = json['items'];
+    if (items is! List || items.isEmpty) return 'empty';
+    final first = items.first;
+    if (first is! Map) return 'empty';
+    final id = '${first['id'] ?? ''}';
+    final updated = '${first['updated'] ?? first['stamp'] ?? ''}';
+    return '$id|$updated';
+  }
+
   @override
   Future<SyncResult<int>> push(
     String collection,
@@ -210,10 +245,8 @@ class PocketBaseTransport implements SyncTransport {
     }
     final uri = base.replace(path: path, queryParameters: query);
 
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 12);
     try {
-      final req = await client.openUrl(method, uri);
+      final req = await _http.openUrl(method, uri);
       if (auth && _token != null) {
         req.headers.set(HttpHeaders.authorizationHeader, _token!);
       }
@@ -260,8 +293,6 @@ class PocketBaseTransport implements SyncTransport {
           SyncFailure('NOT_WESIOS', 'Ответ сервера не разобрался'));
     } catch (_) {
       return const SyncResult.fail(SyncFailure.offline);
-    } finally {
-      client.close();
     }
   }
 

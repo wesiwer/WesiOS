@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../../core/feedback/wesi_feedback.dart';
 import '../../core/theme/app_theme.dart';
@@ -7,6 +8,7 @@ import '../../core/widgets/wesi_context_menu.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
+import '../../core/sync/sync_auto.dart';
 import '../calculator/calculator_screen.dart';
 import '../treasury/treasury_screen.dart';
 import '../treasury/widgets/add_transaction_dialog.dart';
@@ -190,6 +192,17 @@ class _DashboardTabState extends State<_DashboardTab> {
   final TreasuryService _service = TreasuryService();
   double _balance = 0;
   Map<String, double> _breakdown = const {};
+  bool _syncing = false;
+  double _bottomSyncOverscroll = 0;
+
+  bool get _isDesktop => !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.windows ||
+          defaultTargetPlatform == TargetPlatform.macOS ||
+          defaultTargetPlatform == TargetPlatform.linux);
+
+  bool get _isMobile => !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
 
   @override
   void initState() {
@@ -215,10 +228,48 @@ class _DashboardTabState extends State<_DashboardTab> {
     }
   }
 
+  Future<void> _syncNow() async {
+    if (_syncing) return;
+    setState(() => _syncing = true);
+    final report = await SyncAuto.now();
+    await _loadBalance();
+    if (!mounted) return;
+    setState(() => _syncing = false);
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(report.describe(russian: WesiLocale.isRussian)),
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+  }
+
+  bool _onScrollNotification(ScrollNotification notification) {
+    if (!_isMobile || _syncing) return false;
+    if (notification is OverscrollNotification &&
+        notification.metrics.extentAfter <= 0.5 &&
+        notification.overscroll > 0) {
+      _bottomSyncOverscroll += notification.overscroll;
+      if (_bottomSyncOverscroll >= 72) {
+        _bottomSyncOverscroll = 0;
+        WesiFeedback.select();
+        _syncNow();
+      }
+    } else if (notification is ScrollEndNotification) {
+      _bottomSyncOverscroll = 0;
+    }
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
-      child: CustomScrollView(
+      child: NotificationListener<ScrollNotification>(
+        onNotification: _onScrollNotification,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
           // Шапка: слева лого, часы и месяц, справа — иконки
           SliverToBoxAdapter(
@@ -285,6 +336,20 @@ class _DashboardTabState extends State<_DashboardTab> {
                             onTap: () => GlobalSearchSheet.show(context),
                           ),
                           const SizedBox(width: 6),
+                          if (_isDesktop) ...[
+                            Tooltip(
+                              message: WesiLocale.isRussian
+                                  ? 'Синхронизировать сейчас'
+                                  : 'Sync now',
+                              child: _HoverIconButton(
+                                icon: _syncing
+                                    ? Icons.sync_disabled
+                                    : Icons.sync,
+                                onTap: _syncNow,
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                          ],
                           const AlertsBell(size: 28),
                           const SizedBox(width: 6),
                           const _ProfileDropdown(),
@@ -428,7 +493,8 @@ class _DashboardTabState extends State<_DashboardTab> {
             ),
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 32)),
-        ],
+          ],
+        ),
       ),
     );
   }

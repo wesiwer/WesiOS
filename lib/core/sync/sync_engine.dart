@@ -314,6 +314,8 @@ class SyncEngine {
       }
     }
 
+    if (applied > 0) c.notifyChanged();
+
     if (plan.toUpload.isEmpty) {
       return SyncCollectionReport(collection: c.name, applied: applied);
     }
