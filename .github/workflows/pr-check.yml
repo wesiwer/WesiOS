@@ -19,6 +19,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate server JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in server/pb_hooks/*.js server/employee-portal/*.js; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+          done
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
