@@ -51,3 +51,5 @@ jobs:
           git add server/employee-portal/index.html server/employee-portal/app.js server/employee-portal/portal-v6.css
           git commit -m 'fix(portal): add obvious requirements close controls'
           git push
+
+# retrigger: workflow existed before this push
