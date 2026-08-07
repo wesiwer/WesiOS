@@ -4,8 +4,14 @@
 /// WesiOS создаёт или обновляет запись на сервере, а сайт только проверяет
 /// введённые логин и пароль стандартным auth-with-password.
 
-const PORTAL_ARTIFACTS_ROOT = $os.getenv("WESI_ARTIFACTS_DIR") ||
-  "/opt/pocketbase/pb_public/artifacts";
+/// Релизный workflow исторически умеет публиковать в два каталога. Процесс
+/// PocketBase не обязан иметь ту же переменную окружения, что SSH-сессия
+/// GitHub Actions, поэтому нельзя предполагать одно место хранения.
+const PORTAL_ARTIFACTS_ROOTS = [
+  $os.getenv("WESI_ARTIFACTS_DIR"),
+  "/opt/pocketbase/pb_public/artifacts",
+  "/srv/wesi-artifacts",
+].filter((value, index, all) => value && all.indexOf(value) === index);
 const OWNER_MARKER_COLL = "system";
 const OWNER_MARKER_RID = "portal-owner";
 
@@ -15,14 +21,27 @@ function portalReadText(fs, name) {
   return String.fromCharCode.apply(null, raw);
 }
 
-function portalManifest() {
-  try {
-    const fs = $os.dirFS(PORTAL_ARTIFACTS_ROOT);
-    return JSON.parse(portalReadText(fs, "app/app-manifest.json"));
-  } catch (error) {
-    console.log("employee portal manifest error:", error);
-    throw new NotFoundError("Актуальная сборка WesiOS ещё не опубликована");
+/// Возвращает manifest вместе с корнем, в котором он реально найден. Корень
+/// затем используется и для скачивания того же файла — manifest и артефакт
+/// не могут случайно оказаться взяты из разных каталогов.
+function portalRelease() {
+  let lastError = null;
+  for (const root of PORTAL_ARTIFACTS_ROOTS) {
+    try {
+      const fs = $os.dirFS(root);
+      const manifest = JSON.parse(portalReadText(fs, "app/app-manifest.json"));
+      if (!manifest || typeof manifest !== "object") continue;
+      return {"root": root, "manifest": manifest};
+    } catch (error) {
+      lastError = error;
+    }
   }
+  console.log("employee portal manifest error:", lastError);
+  throw new NotFoundError("Актуальная сборка WesiOS ещё не опубликована");
+}
+
+function portalManifest() {
+  return portalRelease().manifest;
 }
 
 function portalSafePath(value) {
@@ -240,7 +259,8 @@ routerAdd("GET", "/api/wesi/portal/download/{platform}", (e) => {
     throw new NotFoundError("Неизвестная платформа");
   }
 
-  const manifest = portalManifest();
+  const release = portalRelease();
+  const manifest = release.manifest;
   const entry = manifest[platform];
   if (!entry || typeof entry !== "object") {
     throw new NotFoundError("Сборка для платформы не опубликована");
@@ -254,7 +274,11 @@ routerAdd("GET", "/api/wesi/portal/download/{platform}", (e) => {
 
   e.response.header().set("Cache-Control", "private, no-store");
   e.response.header().set("Content-Disposition", `attachment; filename="${name}"`);
+  e.response.header().set("Content-Type", platform === "windows"
+    ? "application/zip"
+    : "application/vnd.android.package-archive");
+  e.response.header().set("X-Content-Type-Options", "nosniff");
   e.response.header().set("X-WesiOS-Version", String(entry.version || manifest.version || ""));
   e.response.header().set("X-WesiOS-Build", String(entry.build || manifest.build || ""));
-  return e.fileFS($os.dirFS(PORTAL_ARTIFACTS_ROOT), path);
+  return e.fileFS($os.dirFS(release.root), path);
 }, $apis.requireAuth("users"));
