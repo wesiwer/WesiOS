@@ -17,6 +17,12 @@ class AudioMiniPlayer extends StatefulWidget {
 class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
   Offset _offset = const Offset(16, 90);
 
+  @override
+  void initState() {
+    super.initState();
+    SpotifyConnectService.initialize();
+  }
+
   String _time(Duration d) {
     final m = d.inMinutes;
     final s = d.inSeconds.remainder(60).toString().padLeft(2, '0');
@@ -47,12 +53,8 @@ class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
                   final maxY = math.max(8.0, size.height - 130.0);
                   setState(() {
                     _offset = Offset(
-                      (_offset.dx - details.delta.dx)
-                          .clamp(8.0, maxX)
-                          .toDouble(),
-                      (_offset.dy - details.delta.dy)
-                          .clamp(8.0, maxY)
-                          .toDouble(),
+                      (_offset.dx - details.delta.dx).clamp(8.0, maxX).toDouble(),
+                      (_offset.dy - details.delta.dy).clamp(8.0, maxY).toDouble(),
                     );
                   });
                 },
@@ -102,14 +104,8 @@ class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
               borderRadius: BorderRadius.circular(10),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
-                child: beat.coverPath != null &&
-                        File(beat.coverPath!).existsSync()
-                    ? Image.file(
-                        File(beat.coverPath!),
-                        width: 46,
-                        height: 46,
-                        fit: BoxFit.cover,
-                      )
+                child: beat.coverPath != null && File(beat.coverPath!).existsSync()
+                    ? Image.file(File(beat.coverPath!), width: 46, height: 46, fit: BoxFit.cover)
                     : Container(
                         width: 46,
                         height: 46,
@@ -151,9 +147,7 @@ class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
             IconButton(
               onPressed: AudioPlayerService.toggle,
               icon: Icon(
-                state.playing
-                    ? Icons.pause_circle_filled_rounded
-                    : Icons.play_circle_fill_rounded,
+                state.playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
                 color: AppTheme.accent,
                 size: 34,
               ),
@@ -171,30 +165,25 @@ class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
             child: Slider(
               value: state.duration.inMilliseconds <= 0
                   ? 0.0
-                  : (state.position.inMilliseconds /
-                          state.duration.inMilliseconds)
+                  : (state.position.inMilliseconds / state.duration.inMilliseconds)
                       .clamp(0.0, 1.0)
                       .toDouble(),
               onChanged: state.duration.inMilliseconds <= 0
                   ? null
-                  : (v) => AudioPlayerService.seek(Duration(
-                      milliseconds:
-                          (state.duration.inMilliseconds * v).round())),
+                  : (v) => AudioPlayerService.seek(
+                        Duration(milliseconds: (state.duration.inMilliseconds * v).round()),
+                      ),
             ),
           ),
           Row(children: [
-            Icon(Icons.volume_down_rounded,
-                size: 16, color: AppTheme.textMuted),
+            Icon(Icons.volume_down_rounded, size: 16, color: AppTheme.textMuted),
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 2,
-                  thumbShape:
-                      const RoundSliderThumbShape(enabledThumbRadius: 4),
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
                 ),
-                child: Slider(
-                    value: state.volume,
-                    onChanged: AudioPlayerService.setVolume),
+                child: Slider(value: state.volume, onChanged: AudioPlayerService.setVolume),
               ),
             ),
             IconButton(
@@ -280,9 +269,7 @@ class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
             IconButton(
               onPressed: SpotifyConnectService.toggle,
               icon: Icon(
-                state.playing
-                    ? Icons.pause_circle_filled_rounded
-                    : Icons.play_circle_fill_rounded,
+                state.playing ? Icons.pause_circle_filled_rounded : Icons.play_circle_fill_rounded,
                 color: const Color(0xFF1DB954),
                 size: 34,
               ),
@@ -300,29 +287,24 @@ class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
             child: Slider(
               value: state.durationMs <= 0
                   ? 0.0
-                  : (state.progressMs / state.durationMs)
-                      .clamp(0.0, 1.0)
-                      .toDouble(),
+                  : (state.progressMs / state.durationMs).clamp(0.0, 1.0).toDouble(),
               onChanged: state.durationMs <= 0
                   ? null
-                  : (v) => SpotifyConnectService.seek(
-                      (state.durationMs * v).round()),
+                  : (v) => SpotifyConnectService.seek((state.durationMs * v).round()),
             ),
           ),
           Row(children: [
-            Icon(Icons.volume_down_rounded,
-                size: 16, color: AppTheme.textMuted),
+            Icon(Icons.volume_down_rounded, size: 16, color: AppTheme.textMuted),
             Expanded(
               child: SliderTheme(
                 data: SliderTheme.of(context).copyWith(
                   trackHeight: 2,
-                  thumbShape:
-                      const RoundSliderThumbShape(enabledThumbRadius: 4),
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 4),
                 ),
                 child: Slider(
                   min: 0,
                   max: 100,
-                  value: state.volumePercent.toDouble().clamp(0.0, 100.0),
+                  value: state.volumePercent.toDouble().clamp(0.0, 100.0).toDouble(),
                   onChanged: (v) => SpotifyConnectService.setVolume(v.round()),
                 ),
               ),
@@ -331,8 +313,11 @@ class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
               message: state.deviceName ?? 'Spotify Connect',
               child: const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 8),
-                child: Icon(Icons.speaker_group_outlined,
-                    size: 17, color: Color(0xFF1DB954)),
+                child: Icon(
+                  Icons.speaker_group_outlined,
+                  size: 17,
+                  color: Color(0xFF1DB954),
+                ),
               ),
             ),
           ]),
