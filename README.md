@@ -13,7 +13,8 @@
 
 - Flutter 3.19+ / Dart
 - Firebase Core (production-конфигурация поставляется со сборкой; ручного ввода ключей нет)
-- Hive (offline-first)
+- Hive (offline-first; auth token/session ID в Hive не хранятся)
+- flutter_secure_storage (remembered WesiOS session)
 - window_manager (кастомный title bar)
 - fl_chart, math_expressions, http
 
@@ -35,9 +36,11 @@
 - Profile auto-save, custom avatar, защищённый вход и управление активными сеансами
 - Обязательная почта сотрудника и двухэтапный вход: пароль → 6-значный код по email
 - Отзывные WesiOS-сеансы: удалённое завершение и автоматический выход при удалении сотрудника
+- Remembered auth token + WesiOS session ID хранятся в platform secure storage; legacy plaintext Hive session мигрируется и удаляется
+- Android launcher icon привязан к реальному WesiOS resource на всех поддерживаемых API
+- Windows release поддерживает установщик вместо ручной распаковки ZIP
 - Settings locale live (пересобирает все вкладки)
 - Live avatars (Hive listenable)
-- WesiOS 0.19.6+54: signed Android + Windows release полностью опубликован
 
 ### Внешний production-блокер
 - Логика email OTP и server hooks опубликованы, но на production пока нет рабочего SMTP/sendmail/mail API credential. Авторизация намеренно fail-closed до подключения реального почтового провайдера. Подробности → `SECURITY_STATUS.md`.
@@ -60,4 +63,4 @@ CI: push в `main` → GitHub Actions (Windows + Android).
 
 ## Версия
 
-v0.19.6 α — Private, Wesi Inc.
+v0.19.8 α — Private, Wesi Inc.
