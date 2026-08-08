@@ -3,7 +3,7 @@ name: Diagnose release upload 0.19.3+51
 on:
   pull_request:
     branches: [main]
-    types: [synchronize]
+    types: [opened, synchronize]
 
 permissions:
   contents: read
