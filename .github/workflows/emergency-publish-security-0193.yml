@@ -1,0 +1,225 @@
+name: Emergency publish WesiOS 0.19.3+51
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/emergency-publish-security-0193.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: emergency-publish-security-0193
+  cancel-in-progress: true
+
+env:
+  VERSION: '0.19.3'
+  BUILD: '51'
+  RELEASE: '0.19.3+51'
+  SOURCE_RUN_ID: '31242160215'
+  RELEASE_TAG: app-latest
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download already verified release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          repository: ${{ github.repository }}
+          run-id: ${{ env.SOURCE_RUN_ID }}
+          github-token: ${{ github.token }}
+          pattern: wesios-*-${{ env.RELEASE }}*
+          path: downloaded
+          merge-multiple: true
+
+      - name: Validate source payload
+        id: payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          cp downloaded/wesios-android.apk upload/
+          cp downloaded/wesios-windows-x64.zip upload/
+          cp server/deploy-artifact.sh upload/
+          test -s upload/wesios-android.apk
+          test -s upload/wesios-windows-x64.zip
+          APK_SHA=$(sha256sum upload/wesios-android.apk | cut -d' ' -f1)
+          WIN_SHA=$(sha256sum upload/wesios-windows-x64.zip | cut -d' ' -f1)
+          APK_SIZE=$(stat -c%s upload/wesios-android.apk)
+          WIN_SIZE=$(stat -c%s upload/wesios-windows-x64.zip)
+          echo "apk_sha=$APK_SHA" >> "$GITHUB_OUTPUT"
+          echo "win_sha=$WIN_SHA" >> "$GITHUB_OUTPUT"
+          echo "apk_size=$APK_SIZE" >> "$GITHUB_OUTPUT"
+          echo "win_size=$WIN_SIZE" >> "$GITHUB_OUTPUT"
+          echo "Android payload: $APK_SIZE bytes ${APK_SHA:0:16}…"
+          echo "Windows payload: $WIN_SIZE bytes ${WIN_SHA:0:16}…"
+
+      - name: Stage binaries on GitHub CDN
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGE_TAG="wesi-stage-$GITHUB_RUN_ID"
+          echo "STAGE_TAG=$STAGE_TAG" >> "$GITHUB_ENV"
+          gh release create "$STAGE_TAG" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "Temporary WesiOS $RELEASE staging" \
+            --notes "Temporary CDN staging for verified WesiOS $RELEASE artifacts." \
+            --prerelease
+          gh release upload "$STAGE_TAG" \
+            upload/wesios-android.apk \
+            upload/wesios-windows-x64.zip \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: Prepare authenticated SSH connection
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${KEY:-}"
+          test -n "${HOST:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Download from CDN and atomically publish on WesiOS server
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          APK_SHA: ${{ steps.payload.outputs.apk_sha }}
+          WIN_SHA: ${{ steps.payload.outputs.win_sha }}
+          APK_SIZE: ${{ steps.payload.outputs.apk_size }}
+          WIN_SIZE: ${{ steps.payload.outputs.win_size }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${USER:-}"
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          SCP="scp -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          REMOTE_TMP="/tmp/wesios-emergency-$GITHUB_RUN_ID"
+          RELEASE_ROOT="/opt/pocketbase/pb_public/artifacts"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP'"
+          # Через SSH идёт только 9 KB скрипта; APK/ZIP сервер забирает сам с CDN.
+          $SCP upload/deploy-artifact.sh "$USER@$HOST:$REMOTE_TMP/deploy-artifact.sh"
+
+          $SSH "$USER@$HOST" 'bash -s' -- \
+            "$REMOTE_TMP" "$GITHUB_REPOSITORY" "$STAGE_TAG" \
+            "$APK_SHA" "$APK_SIZE" "$WIN_SHA" "$WIN_SIZE" <<'REMOTE'
+          set -euo pipefail
+          TMP="$1"; REPO="$2"; TAG="$3"
+          APK_SHA="$4"; APK_SIZE="$5"; WIN_SHA="$6"; WIN_SIZE="$7"
+
+          fetch_verified() {
+            local asset="$1" expected_sha="$2" expected_size="$3" target="$4"
+            local attempt actual_sha actual_size
+            for attempt in 1 2 3 4 5 6 7 8; do
+              rm -f "$target"
+              url="https://github.com/$REPO/releases/download/$TAG/$asset?attempt=$attempt"
+              echo "CDN download $asset attempt $attempt"
+              if curl -fL --retry 4 --retry-all-errors --retry-delay 2 \
+                  --connect-timeout 15 --max-time 600 \
+                  "$url" -o "$target"; then
+                actual_size=$(stat -c%s "$target" 2>/dev/null || printf 0)
+                actual_sha=$(sha256sum "$target" 2>/dev/null | cut -d' ' -f1 || true)
+                if [ "$actual_size" = "$expected_size" ] && [ "$actual_sha" = "$expected_sha" ]; then
+                  echo "$asset verified: $actual_size bytes ${actual_sha:0:16}…"
+                  return 0
+                fi
+                echo "$asset mismatch: size=$actual_size sha=${actual_sha:0:16}…"
+              fi
+              sleep 3
+            done
+            echo "Failed to download verified $asset from GitHub CDN" >&2
+            return 1
+          }
+
+          fetch_verified wesios-android.apk "$APK_SHA" "$APK_SIZE" "$TMP/wesios-android.apk"
+          fetch_verified wesios-windows-x64.zip "$WIN_SHA" "$WIN_SIZE" "$TMP/wesios-windows-x64.zip"
+          REMOTE
+
+          $SSH "$USER@$HOST" \
+            "WESI_ARTIFACTS='$RELEASE_ROOT' bash '$REMOTE_TMP/deploy-artifact.sh' \
+             --version '$VERSION' --build '$BUILD' --from '$REMOTE_TMP' \
+             --notes 'Security hotfix: обязательный вход, серверные права доступа и автоматическая конфигурация.'"
+
+          $SSH "$USER@$HOST" \
+            "python3 - '$RELEASE_ROOT/app/app-manifest.json' '$VERSION' '$BUILD' '$APK_SHA' '$WIN_SHA'" <<'PY'
+          import json, sys
+          path, version, build, apk_sha, win_sha = sys.argv[1], sys.argv[2], int(sys.argv[3]), sys.argv[4], sys.argv[5]
+          with open(path, encoding='utf-8') as f: manifest = json.load(f)
+          assert manifest['version'] == version
+          assert int(manifest['build']) == build
+          assert manifest['android']['sha256'] == apk_sha
+          assert manifest['windows']['sha256'] == win_sha
+          print('server manifest OK:', version, build)
+          PY
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE_TMP'"
+
+      - name: Verify public manifest and both downloads
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE='https://api.wesi-inc.ru/artifacts'
+          curl --retry 5 --retry-all-errors -fsS --max-time 30 \
+            "$BASE/app/app-manifest.json?run=$GITHUB_RUN_ID" -o app-manifest.json
+          BASE="$BASE" python3 <<'PY'
+          import hashlib, json, os, urllib.request
+          base=os.environ['BASE'].rstrip('/')
+          with open('app-manifest.json', encoding='utf-8') as f: m=json.load(f)
+          assert m['version']=='0.19.3' and int(m['build'])==51
+          for platform in ('android','windows'):
+              e=m[platform]
+              h=hashlib.sha256(); size=0
+              with urllib.request.urlopen(f"{base}/{e['path']}?verify=security", timeout=90) as r:
+                  while True:
+                      chunk=r.read(1024*1024)
+                      if not chunk: break
+                      size += len(chunk); h.update(chunk)
+              assert size==int(e['sizeBytes'])
+              assert h.hexdigest()==e['sha256']
+              print(platform, size, h.hexdigest()[:16]+'…')
+          print('PUBLIC RELEASE VERIFIED: 0.19.3+51')
+          PY
+
+      - name: Replace final app-latest assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+              --title "WesiOS latest" --notes "Current verified WesiOS release"
+          fi
+          gh release upload "$RELEASE_TAG" \
+            upload/wesios-android.apk \
+            upload/wesios-windows-x64.zip \
+            app-manifest.json \
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+      - name: Cleanup temporary CDN release
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          if [ -n "${STAGE_TAG:-}" ]; then
+            gh release delete "$STAGE_TAG" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          fi
