@@ -1,10 +1,9 @@
 name: One-time owner email fix
 
-# Trigger revision 2
 on:
   push:
     paths:
-      - '.github/workflows/one-time-owner-email-fix.yml'
+      - '.github/owner-email-fix.trigger'
 
 permissions:
   contents: write
