@@ -2,7 +2,7 @@
 
 Статус: **ready**.
 
-Audio Vault — рабочий архив музыкальных проектов Wesi Inc. Это не просто список файлов: карточка бита связывает мастер-файлы, исходный Ableton Live project, автора, сделку/аренду, документы, комментарии, календарное напоминание и локальный технический анализ.
+Audio Vault — рабочий архив музыкальных проектов Wesi Inc. Карточка бита связывает мастер-файлы, исходный Ableton Live project, автора, сделку/аренду, документы, комментарии, календарное напоминание, локальный плеер и специализированную локальную ветвь Wesi AI Audio.
 
 ## Архив битов
 
@@ -20,7 +20,9 @@ Audio Vault — рабочий архив музыкальных проекто�
 - документы и договоры;
 - история комментариев;
 - избранное;
-- аренда/сделка.
+- аренда/сделка;
+- путь к исходному Ableton Live `.als`;
+- последний актуальный отчёт Wesi AI Audio.
 
 Поиск охватывает название, автора, арендатора, ссылку на соцсеть, жанр, настроение, тональность, теги и заметки.
 
@@ -32,7 +34,12 @@ MP3/WAV/Track Out можно отправить/достать из карточ
 
 ## Ableton Live
 
-У бита можно сохранить путь к исходному `.als`.
+У каждого бита можно сохранить путь к исходному `.als` двумя способами:
+
+- выбрать файл через системный file picker;
+- вставить полный путь вручную.
+
+При ручном вводе WesiOS убирает внешние кавычки, проверяет расширение `.als`, существование файла и сохраняет абсолютный путь.
 
 WesiOS не копирует Ableton project в собственное хранилище: ссылка остаётся на оригинальный проект, чтобы Ableton продолжал работать с привычным расположением samples/packs.
 
@@ -41,6 +48,8 @@ WesiOS не копирует Ableton project в собственное хран�
 - Windows — `start`;
 - macOS — `open`;
 - Linux — `xdg-open`.
+
+Если проект был перемещён, карточка показывает, что файл больше не найден, и позволяет сразу указать новый путь.
 
 Удаление записи Audio Vault **не удаляет исходный `.als`**.
 
@@ -110,46 +119,101 @@ Water Tank реагирует на реальный сигнал: bass упра�
 
 Playback-control Web API требует подходящего Spotify аккаунта и активного Spotify Connect устройства; ошибки API не маскируются под локальное воспроизведение.
 
-## Wesi AI Audio — Quick Analysis
+## Wesi AI Audio — Quick Analysis v2
 
-Это первая полностью локальная специализированная ветвь Wesi AI. Аудиофайл не отправляется на сервер.
+Это специализированная полностью локальная ветвь Wesi AI. Аудиофайл не отправляется на сервер.
 
-Для анализа используется прикреплённый WAV master. Сейчас поддерживается mono/stereo WAV PCM/IEEE Float 16/24/32 bit.
+Тяжёлая часть анализа выполняется в отдельном isolate через `compute`, поэтому большой WAV не должен блокировать основной UI isolate.
 
-Проверяется:
+Для анализа используется прикреплённый WAV master. Поддерживаются:
+
+- mono/stereo;
+- PCM 16/24/32-bit;
+- IEEE Float 32-bit;
+- `WAVE_FORMAT_EXTENSIBLE` с PCM/Float sub-format.
+
+### Метрики
+
+Quick Analysis v2 считает:
 
 - Sample Peak;
-- быстрый True Peak estimate с интерполяцией;
+- быстрый True Peak estimate с inter-sample interpolation;
 - RMS;
-- быстрый Integrated LUFS estimate;
+- Integrated LUFS estimate;
 - Crest Factor;
+- PLR — Peak-to-Loudness Ratio;
+- приблизительный LRA;
+- Max Momentary loudness estimate (~400 ms);
+- Max Short-term loudness estimate (~3 s);
 - digital clipping;
+- число clipped samples на миллион samples;
 - DC offset;
 - stereo correlation / риск mono phase cancellation;
-- тишина в начале и конце файла;
+- средний L/R balance в dB;
+- Mid/Side energy ratio;
+- тишину в начале и конце;
+- долю edge silence;
 - sample rate / bit depth / channels / duration;
-- спектральный баланс по Sub, Bass, Low-mid, Mid, Presence, High, Air;
-- возможный excess sub;
+- спектральный баланс по Sub, Bass, Low-mid, Mid, Presence, High, Air.
+
+### Wesi AI Audio — диагностика
+
+На основании метрик локальная логика формирует score 0–100 и конкретные замечания/действия, в том числе:
+
+- digital clipping;
+- нехватка true-peak headroom;
+- чрезмерная integrated loudness;
+- low PLR / возможный over-limiting;
+- слишком узкий loudness range;
+- потеря punch/transients;
+- дисбаланс L/R;
+- высокая Side-энергия;
+- отрицательная/низкая stereo correlation;
+- риск mono phase cancellation;
+- DC offset;
+- неподходящий sample rate / bit depth для выбранного delivery;
+- слишком длинная тишина в начале/конце;
+- excess sub;
 - low-mid mud;
 - harsh presence/highs;
-- over-limiting / потеря punch;
-- streaming true-peak headroom.
+- слишком громкие краткие участки.
 
-Результат хранится вместе с extended metadata бита: score 0–100, метрики, проверки и список конкретных действий.
+Спектральные выводы являются эвристиками и всегда формулируются как повод проверить диапазон на слух/референсе, а не как автоматическая команда эквализации.
 
-### Platform checks
+### Проверки площадок / delivery
 
-Жёсткий target показывается только там, где есть публикуемый ориентир. Нельзя выдавать интернет-мифы о «стандартах каждой площадки» за официальный mastering spec.
+Каждая карточка показывает основание проверки, чтобы внутренний Wesi QC нельзя было перепутать с официальным требованием площадки.
 
-- Spotify Normal: сравнение с опубликованным ориентиром normalization и true-peak recommendation.
-- Wesi Streaming Safe: внутренний универсальный QC по clipping/headroom; это не заявляется как официальный норматив конкретной площадки.
-- EBU R128: показывается как broadcast reference, а не как обязательная цель музыкального streaming master.
+- **Spotify · Normal** — `Official guidance`: сравнение с опубликованным ориентиром loudness normalization и true-peak mastering tips.
+- **Apple Digital Masters · source profile** — `Official source profile`: проверяется та часть source profile, которую можно установить по самому WAV — bit depth, допустимый sample rate и отсутствие digital clipping. WesiOS не выдаёт эту проверку за доказательство происхождения исходника или замену Apple AAC encode audition.
+- **EBU R128 · broadcast reference** — `Broadcast reference`: сравнение с broadcast loudness reference, а не с обязательным streaming target.
+- **YouTube · technical playback QC** — `Wesi QC · not an official LUFS target`: WesiOS не выдумывает фиксированный upload LUFS target, если его нет в используемой официальной документации; проверяется clipping/headroom перед транскодированием.
+- **Wesi Streaming Safe** — внутренний универсальный QC по clipping/headroom и mono/stereo delivery.
 
-### Ограничение Quick Analysis
+### Защита от устаревшего анализа
 
-Текущие LUFS/True Peak помечены `est.`. Это быстрый локальный QC, а не сертифицированная реализация BS.1770/R128 meter. Для юридически/технически обязательного delivery QC нужен точный standards-compliant meter с K-weighting, gating и true-peak oversampling по стандарту.
+Каждый отчёт сохраняет:
+
+- путь к WAV;
+- размер файла;
+- modified time.
+
+Если WAV был заменён или изменён после анализа, старый отчёт автоматически скрывается. Пользователь видит предупреждение и должен запустить анализ заново. Старые отчёты v1 без fingerprint также считаются устаревшими, чтобы WesiOS не показывал старые цифры как актуальные.
+
+### Ограничения Quick Analysis
+
+LUFS/LRA/Momentary/Short-term и True Peak помечены `est.`. Quick Analysis — быстрый локальный технический QC, а не сертифицированная реализация BS.1770/R128 meter.
+
+Для обязательного delivery compliance нужен standards-compliant meter с требуемым weighting/gating/true-peak oversampling. Для Apple Digital Masters отдельно требуется предусмотренная Apple проверка AAC encode.
 
 Это ограничение показывается пользователю прямо в UI; WesiOS не выдаёт приближение за сертифицированное измерение.
+
+## Тесты Quick Analysis v2
+
+Добавлены два уровня автоматической проверки:
+
+- JSON round-trip/backward compatibility новой модели анализа;
+- runtime-тест, который создаёт настоящий синтетический PCM WAV, запускает его через локальный analyzer/isolate и проверяет метрики и delivery checks.
 
 ## Хранение
 
