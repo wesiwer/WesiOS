@@ -1,0 +1,59 @@
+name: Patch mail readiness once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-mail-readiness-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Make portal verification transport-agnostic
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('.github/workflows/deploy-employee-portal.yml')
+          text = p.read_text(encoding='utf-8')
+          start = text.index("          curl -fsS --max-time 20 \"$API/api/wesi/auth/mail-ready\"")
+          end = text.index("\n          CODE=$(curl", start)
+          replacement = '''          curl -fsS --max-time 20 "$API/api/wesi/auth/mail-ready" -o mail-ready.json || {
+            echo '::error::WesiOS mail readiness endpoint is not healthy'; exit 1;
+          }
+          python3 - <<'PY'
+          import json
+          with open('mail-ready.json', encoding='utf-8') as f:
+              data=json.load(f)
+          assert data.get('ready') is True, data
+          assert data.get('smtpReady') is True or data.get('httpsProviderConfigured') is True, data
+          transport = 'smtp' if data.get('smtpReady') else 'https:' + str(data.get('httpsProvider') or 'configured')
+          print('OTP mail transport ready:', transport)
+          PY
+'''
+          text = text[:start] + replacement + text[end:]
+          if "grep -q 'httpsProviderConfigured' server/pb_hooks/wesi_mail_health.pb.js" not in text:
+              anchor = "          grep -q 'smtpEnabled' server/pb_hooks/wesi_mail_health.pb.js\n"
+              text = text.replace(anchor, anchor + "          grep -q 'httpsProviderConfigured' server/pb_hooks/wesi_mail_health.pb.js\n", 1)
+          p.write_text(text, encoding='utf-8')
+      - name: Validate and commit
+        run: |
+          set -euo pipefail
+          grep -q 'httpsProviderConfigured' .github/workflows/deploy-employee-portal.yml
+          ! grep -q 'SMTP выключен и sendmail' .github/workflows/deploy-employee-portal.yml
+          rm -f .github/workflows/patch-mail-readiness-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix(ci): accept configured HTTPS OTP mail transport'
+          git push origin HEAD:main
