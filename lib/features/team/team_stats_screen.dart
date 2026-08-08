@@ -1,27 +1,17 @@
 import 'package:flutter/material.dart';
 
 import '../../core/localization/wesi_locale.dart';
-import '../../core/services/currency_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
+import '../tasks/models/task_model.dart';
+import '../tasks/services/task_service.dart';
 import 'models/employee_model.dart';
 import 'services/team_service.dart';
 
-/// Показатели людей.
-///
-/// Кто что видит:
-/// - без права `canSeeOthersStats` — только свои цифры;
-/// - с правом — цифры всех.
-///
-/// Проверка стоит на входе, а не рисует чужие строки серым: строка, которую
-/// видно, но нельзя прочитать, всё равно выдаёт и число сотрудников, и их
-/// имена.
-///
-/// Цифры пока проверочные — они создаются вместе с сотрудником и помечены на
-/// экране. Настоящие появятся с сервером; форма экрана от этого не изменится,
-/// поменяется источник.
+/// Реальные показатели людей, рассчитанные только по существующим задачам.
+/// Никаких случайных/demo финансовых цифр здесь больше нет.
 class TeamStatsScreen extends StatefulWidget {
   const TeamStatsScreen({super.key});
 
@@ -36,12 +26,35 @@ class TeamStatsScreen extends StatefulWidget {
 
 class _TeamStatsScreenState extends State<TeamStatsScreen> {
   bool get _ru => WesiLocale.isRussian;
+  List<TaskModel> _tasks = const [];
 
   List<EmployeeModel> get _people {
     final p = TeamService.currentPermissions;
     if (p.canSeeOthersStats) return TeamService.all;
     final me = TeamService.current;
-    return me == null ? TeamService.all : [me];
+    return me == null ? const [] : [me];
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    TeamService.revision.addListener(_changed);
+    TaskService.revision.addListener(_changed);
+    _load();
+  }
+
+  @override
+  void dispose() {
+    TeamService.revision.removeListener(_changed);
+    TaskService.revision.removeListener(_changed);
+    super.dispose();
+  }
+
+  void _changed() => _load();
+
+  Future<void> _load() async {
+    final tasks = await TaskService().getAll();
+    if (mounted) setState(() => _tasks = tasks);
   }
 
   @override
@@ -68,15 +81,13 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        WesiTitle(
-                            _ru ? 'Показатели' : 'Performance', size: 22),
+                        WesiTitle(_ru ? 'Показатели' : 'Performance', size: 22),
                         const SizedBox(height: 2),
                         Text(
                           everyone
-                              ? (_ru ? 'По всем людям' : 'Everyone')
-                              : (_ru ? 'Только ваши' : 'Yours only'),
-                          style: TextStyle(
-                              fontSize: 12, color: AppTheme.textMuted),
+                              ? (_ru ? 'Реальные данные по задачам' : 'Real task data')
+                              : (_ru ? 'Только ваши реальные данные' : 'Your real data only'),
+                          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                         ),
                       ],
                     ),
@@ -96,18 +107,14 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Icon(Icons.science_outlined,
-                        size: 16, color: AppTheme.textMuted),
+                    Icon(Icons.verified_outlined,
+                        size: 16, color: AppTheme.accentGreen),
                     const SizedBox(width: 10),
                     Expanded(
                       child: Text(
                         _ru
-                            ? 'Цифры проверочные — они выдаются при создании '
-                                'человека, чтобы можно было пройти путь '
-                                'целиком. Настоящие приедут с сервером.'
-                            : 'The numbers are placeholders issued when a '
-                                'person is created. Real ones arrive with the '
-                                'server.',
+                            ? 'Показатели считаются из реально созданных задач. Если данных нет, WesiOS ничего не генерирует и показывает «данных пока нет».'
+                            : 'Metrics are calculated from actual tasks. WesiOS no longer generates placeholder numbers.',
                         style: TextStyle(
                             fontSize: 11.5,
                             height: 1.45,
@@ -131,9 +138,12 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
     );
   }
 
-  Widget _card(EmployeeModel e) {
-    final s = e.demoStats;
-    final efficiency = s['efficiency'] ?? 0;
+  Widget _card(EmployeeModel employee) {
+    final assigned = _tasks.where((task) => task.assignee == employee.id).toList();
+    final done = assigned.where((task) => task.status == TaskStatus.done).length;
+    final open = assigned.length - done;
+    final overdue = assigned.where((task) => task.isOverdue).length;
+    final completion = assigned.isEmpty ? 0.0 : done / assigned.length;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -149,74 +159,68 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
           children: [
             Row(
               children: [
-                WesiAvatar(size: 36, index: e.avatarIndex, photo: e.photo),
+                WesiAvatar(size: 36, index: employee.avatarIndex, photo: employee.photo),
                 const SizedBox(width: 11),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(e.displayName,
+                      Text(employee.displayName,
                           style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w700,
                               color: AppTheme.textPrimary)),
-                      if (e.position.isNotEmpty)
-                        Text(e.position,
-                            style: TextStyle(
-                                fontSize: 11, color: AppTheme.textMuted)),
+                      if (employee.position.isNotEmpty)
+                        Text(employee.position,
+                            style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                     ],
                   ),
                 ),
               ],
             ),
-            if (s.isEmpty) ...[
+            if (assigned.isEmpty) ...[
               const SizedBox(height: 10),
               Text(
-                _ru ? 'Данных пока нет' : 'No data yet',
+                _ru ? 'Данных пока нет — сотруднику ещё не назначены задачи.' : 'No data yet — no tasks are assigned.',
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
             ] else ...[
               const SizedBox(height: 12),
               Row(
                 children: [
-                  _metric(_ru ? 'Баланс' : 'Balance',
-                      CurrencyService.format(s['balance'] ?? 0)),
+                  _metric(_ru ? 'Назначено' : 'Assigned', '${assigned.length}'),
                   const SizedBox(width: 8),
-                  _metric(_ru ? 'Доход/мес' : 'Income',
-                      CurrencyService.format(s['incomeMonth'] ?? 0)),
+                  _metric(_ru ? 'Завершено' : 'Done', '$done'),
                   const SizedBox(width: 8),
-                  _metric(_ru ? 'Расход/мес' : 'Expense',
-                      CurrencyService.format(s['expenseMonth'] ?? 0)),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  _metric(_ru ? 'Задач готово' : 'Done',
-                      '${(s['tasksDone'] ?? 0).toInt()}'),
+                  _metric(_ru ? 'В работе' : 'Open', '$open'),
                   const SizedBox(width: 8),
-                  _metric(_ru ? 'В работе' : 'Open',
-                      '${(s['tasksOpen'] ?? 0).toInt()}'),
-                  const SizedBox(width: 8),
-                  _metric(_ru ? 'Эффективность' : 'Efficiency',
-                      '${(efficiency * 100).toStringAsFixed(0)}%'),
+                  _metric(_ru ? 'Просрочено' : 'Overdue', '$overdue'),
                 ],
               ),
               const SizedBox(height: 10),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: efficiency.clamp(0.0, 1.0),
-                  minHeight: 5,
-                  backgroundColor: AppTheme.surfaceLight,
-                  valueColor: AlwaysStoppedAnimation(
-                    efficiency >= 0.75
-                        ? AppTheme.accentGreen
-                        : efficiency >= 0.5
-                            ? AppTheme.accent
-                            : AppTheme.accentRed,
+              Row(
+                children: [
+                  Expanded(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(4),
+                      child: LinearProgressIndicator(
+                        value: completion.clamp(0.0, 1.0),
+                        minHeight: 5,
+                        backgroundColor: AppTheme.surfaceLight,
+                        valueColor: AlwaysStoppedAnimation(AppTheme.accentGreen),
+                      ),
+                    ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Text(
+                    '${(completion * 100).toStringAsFixed(0)}%',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                ],
               ),
             ],
           ],
@@ -227,7 +231,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
 
   Widget _metric(String label, String value) => Expanded(
         child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
           decoration: BoxDecoration(
             color: AppTheme.surfaceLight.withOpacity(0.5),
             borderRadius: BorderRadius.circular(9),
@@ -238,11 +242,9 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
               Text(label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 10, color: AppTheme.textMuted)),
+                  style: TextStyle(fontSize: 9.5, color: AppTheme.textMuted)),
               const SizedBox(height: 3),
               Text(value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
