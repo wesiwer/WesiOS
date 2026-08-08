@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 
 def replace_once(path: str, old: str, new: str) -> None:
@@ -27,6 +28,107 @@ replace_once(
             ),
           );""",
 )
+
+# The real blank-Home trigger: WesiAvatar used Hive.box() directly during
+# build. If the settings box was not open yet, Flutter replaced the avatar with
+# an ErrorWidget. In the Home header Row that ErrorWidget exploded the layout
+# to ~100k px, pushing every following sliver off-screen. Rendering an avatar
+# must never depend on storage being ready.
+avatar_path = Path('lib/core/widgets/wesi_avatar.dart')
+avatar = avatar_path.read_text(encoding='utf-8')
+pattern = re.compile(
+    r"  @override\n  Widget build\(BuildContext context\) \{.*?\n  \}\n\n  /// Набор пресетов\.",
+    re.S,
+)
+replacement = r'''  @override
+  Widget build(BuildContext context) {
+    Box<dynamic>? box;
+    try {
+      if (Hive.isBoxOpen(_box)) box = Hive.box<dynamic>(_box);
+    } catch (_) {
+      box = null;
+    }
+
+    // Настройки могут открываться позже первого кадра. Аватар в таком случае
+    // обязан показать безопасный пресет, а не уронить всю шапку Home.
+    if (box == null) return _buildAvatar(null);
+
+    return ValueListenableBuilder<Box<dynamic>>(
+      valueListenable: box.listenable(keys: const [_key, _customKey]),
+      builder: (context, liveBox, _) => _buildAvatar(liveBox),
+    );
+  }
+
+  Widget _buildAvatar(Box<dynamic>? box) {
+    final border = showBorder
+        ? Border.all(
+            color: AppTheme.accent.withOpacity(0.55),
+            width: size > 40 ? 2.2 : 1.5,
+          )
+        : null;
+    final shadow = [
+      BoxShadow(
+        color: AppTheme.accent.withOpacity(0.12),
+        blurRadius: size * 0.25,
+        spreadRadius: 1,
+      ),
+    ];
+
+    final custom = photo ?? (index == null ? customBytes : null);
+    final Widget avatar;
+
+    if (custom != null) {
+      avatar = Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: border,
+          boxShadow: shadow,
+          image: DecorationImage(
+            image: MemoryImage(custom),
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    } else {
+      var storedIndex = 0;
+      if (box != null) {
+        final raw = box.get(_key, defaultValue: 0);
+        if (raw is int) storedIndex = raw;
+      }
+      final resolved = (index ?? storedIndex).clamp(0, avatarPresets.length - 1);
+      final preset = avatarPresets[resolved];
+
+      avatar = Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: preset.gradient,
+          border: border,
+          boxShadow: shadow,
+        ),
+        child: Center(
+          child: IconTheme(
+            data: IconThemeData(size: size * 0.45),
+            child: preset.icon,
+          ),
+        ),
+      );
+    }
+
+    if (onTap != null) {
+      return GestureDetector(onTap: onTap, child: avatar);
+    }
+    return avatar;
+  }
+
+  /// Набор пресетов.'''
+avatar, count = pattern.subn(replacement, avatar, count=1)
+if count != 1:
+    raise SystemExit(f'wesi_avatar.dart: build replacement count={count}')
+avatar_path.write_text(avatar, encoding='utf-8')
 
 # Mark the critical Home blocks and keep them as independent, ordered slivers.
 replace_once(
@@ -64,9 +166,8 @@ replace_once(
                   child: Column(""",
 )
 
-# Full-screen regression test. This is deliberately not another isolated clock
-# test: it pumps the actual HomeScreen on a 360x800 phone and verifies that the
-# rest of the feed exists, is ordered below the clock, and remains reachable.
+# Full-screen regression test. Crucially, wesios_settings is intentionally NOT
+# opened: this reproduces the startup race that made WesiAvatar destroy Home.
 test = r'''import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -111,6 +212,10 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    // wesios_settings специально не открываем. Раньше WesiAvatar падал здесь
+    // с HiveError, раздувал верхний Row до ~100000 px и скрывал всю ленту.
+    expect(Hive.isBoxOpen('wesios_settings'), isFalse);
+
     await tester.pumpWidget(const MaterialApp(home: HomeScreen()));
     await tester.pump(const Duration(milliseconds: 450));
 
@@ -124,20 +229,17 @@ void main() {
     final charge = tester.getRect(find.byKey(const ValueKey('home_mind_charge')));
     final quote = tester.getRect(find.byKey(const ValueKey('home_quote_card')));
 
-    // 360 - 16 - 16 = 328. Часы должны занимать реальную ширину контента,
-    // а не старую узкую колонку ~190 px.
     expect(clock.width, greaterThanOrEqualTo(327));
     expect(clock.height, greaterThanOrEqualTo(160));
 
-    // Главное условие регресса с фотографии: после часов действительно идут
-    // остальные блоки, а не белое поле.
+    // После часов реально идут остальные блоки, а не белое поле.
     expect(charge.top, greaterThanOrEqualTo(clock.bottom));
     expect(quote.top, greaterThanOrEqualTo(charge.bottom));
     expect(charge.top, lessThan(800));
     expect(quote.top, lessThan(800));
     expect(tester.takeException(), isNull);
 
-    // И нижняя часть главной тоже существует и доступна прокруткой.
+    // Нижняя часть главной тоже существует и доступна прокруткой.
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -420));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byKey(const ValueKey('home_balance_card')), findsOneWidget);
@@ -147,7 +249,6 @@ void main() {
     );
     expect(tester.takeException(), isNull);
 
-    // Снимаем экран, чтобы секундный Timer WesiClock не оставался в тесте.
     await tester.pumpWidget(const SizedBox.shrink());
   });
 }
