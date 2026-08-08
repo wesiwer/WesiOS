@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -34,10 +35,12 @@ class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
           child: GestureDetector(
             onPanUpdate: (details) {
               final size = MediaQuery.sizeOf(context);
+              final maxX = math.max(8.0, size.width - 320.0);
+              final maxY = math.max(8.0, size.height - 130.0);
               setState(() {
                 _offset = Offset(
-                  (_offset.dx - details.delta.dx).clamp(8, size.width - 320),
-                  (_offset.dy - details.delta.dy).clamp(8, size.height - 130),
+                  (_offset.dx - details.delta.dx).clamp(8.0, maxX).toDouble(),
+                  (_offset.dy - details.delta.dy).clamp(8.0, maxY).toDouble(),
                 );
               });
             },
@@ -126,8 +129,8 @@ class _AudioMiniPlayerState extends State<AudioMiniPlayer> {
                       data: SliderTheme.of(context).copyWith(trackHeight: 2, thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 5)),
                       child: Slider(
                         value: state.duration.inMilliseconds <= 0
-                            ? 0
-                            : (state.position.inMilliseconds / state.duration.inMilliseconds).clamp(0.0, 1.0),
+                            ? 0.0
+                            : (state.position.inMilliseconds / state.duration.inMilliseconds).clamp(0.0, 1.0).toDouble(),
                         onChanged: state.duration.inMilliseconds <= 0
                             ? null
                             : (v) => AudioPlayerService.seek(Duration(milliseconds: (state.duration.inMilliseconds * v).round())),
