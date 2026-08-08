@@ -166,6 +166,137 @@ replace_once(
                   child: Column(""",
 )
 
+# Three financial chips were forced into one Row. Inside the 360px phone's
+# GlassCard that leaves ~88px per chip, which overflows Russian labels/amounts.
+# Use 2 columns on phones and 3 only when there is genuinely enough width.
+replace_once(
+    'lib/features/home/home_screen.dart',
+    """                      SizedBox(height: 16),
+                      Row(
+                        children: [
+                          _chip(
+                            WesiLocale.get('total_income'),
+                            CurrencyService.format(_breakdown['income'] ?? 0),
+                            AppTheme.accentGreen,
+                          ),
+                          SizedBox(width: 12),
+                          _chip(
+                            WesiLocale.get('total_expenses'),
+                            CurrencyService.format(_breakdown['expense'] ?? 0),
+                            AppTheme.accentRed,
+                          ),
+                          SizedBox(width: 12),
+                          _chip(
+                            WesiLocale.get('net'),
+                            CurrencyService.format(_breakdown['net'] ?? 0),
+                            AppTheme.textSecondary,
+                          ),
+                        ],
+                      ),""",
+    """                      const SizedBox(height: 16),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          const gap = 8.0;
+                          final columns = constraints.maxWidth >= 420 ? 3 : 2;
+                          final chipWidth =
+                              (constraints.maxWidth - gap * (columns - 1)) /
+                                  columns;
+                          return Wrap(
+                            spacing: gap,
+                            runSpacing: gap,
+                            children: [
+                              SizedBox(
+                                width: chipWidth,
+                                child: _chip(
+                                  WesiLocale.get('total_income'),
+                                  CurrencyService.format(
+                                      _breakdown['income'] ?? 0),
+                                  AppTheme.accentGreen,
+                                ),
+                              ),
+                              SizedBox(
+                                width: chipWidth,
+                                child: _chip(
+                                  WesiLocale.get('total_expenses'),
+                                  CurrencyService.format(
+                                      _breakdown['expense'] ?? 0),
+                                  AppTheme.accentRed,
+                                ),
+                              ),
+                              SizedBox(
+                                width: chipWidth,
+                                child: _chip(
+                                  WesiLocale.get('net'),
+                                  CurrencyService.format(
+                                      _breakdown['net'] ?? 0),
+                                  AppTheme.textSecondary,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      ),""",
+)
+
+replace_once(
+    'lib/features/home/home_screen.dart',
+    """  Widget _chip(String label, String amount, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: TextStyle(fontSize: 11, color: color)),
+            SizedBox(height: 4),
+            Text(amount,
+                style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: AppTheme.textPrimary)),
+          ],
+        ),
+      ),
+    );
+  }""",
+    """  Widget _chip(String label, String amount, Color color) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: color),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            amount,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+        ],
+      ),
+    );
+  }""",
+)
+
 # Full-screen regression test. Crucially, wesios_settings is intentionally NOT
 # opened: this reproduces the startup race that made WesiAvatar destroy Home.
 test = r'''import 'dart:io';
