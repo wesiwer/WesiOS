@@ -34,88 +34,87 @@ class AppRouter {
       case '/':
         return MaterialPageRoute(builder: (_) => const SplashScreen());
       case '/welcome':
-        // Старый onboarding больше не является обходом обязательного входа.
         return _slideUpRoute(const LoginScreen());
       case '/login':
         return _slideUpRoute(const LoginScreen());
       case '/home':
-        return _fadeRoute(const _AccessGate(child: HomeScreen()));
+        return _fadeRoute(_AccessGate(child: HomeScreen()));
       case '/treasury':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.treasury,
           child: TreasuryScreen(),
         ));
       case '/treasury/forecast':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.forecast,
           child: TreasuryForecastScreen(),
         ));
       case '/treasury/dashboard':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.treasury,
           child: TreasuryDashboardScreen(),
         ));
       case '/treasury/sandbox':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.sandbox,
           child: SandboxScreen(),
         ));
       case '/treasury/operations':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.treasury,
           child: OperationsScreen(),
         ));
       case '/tasks':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.tasks,
           child: TasksScreen(),
         ));
       case '/roadmap':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.roadmap,
-          child: RoadmapScreen(),
+          child: const RoadmapScreen(),
         ));
       case '/analytics':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.analytics,
           child: AnalyticsScreen(),
         ));
       case '/knowledge':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.knowledge,
           child: KnowledgeBaseScreen(),
         ));
       case '/ai':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.ai,
           child: AiAssistantScreen(),
         ));
       case '/shield':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.shield,
           child: ShieldScreen(),
         ));
       case '/keys':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.keys,
           child: KeysScreen(),
         ));
       case '/sysadmin':
       case '/sysadmin/console':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.sysadmin,
-          child: SysadminScreen(),
+          child: const SysadminScreen(),
         ));
       case '/settings':
-        return _slideUpRoute(const _AccessGate(child: SettingsScreen()));
+        return _slideUpRoute(_AccessGate(child: SettingsScreen()));
       case '/profile':
-        return _slideUpRoute(const _AccessGate(child: ProfileScreen()));
+        return _slideUpRoute(_AccessGate(child: ProfileScreen()));
       case '/calculator':
         return PageRouteBuilder(
           opaque: false,
           barrierDismissible: true,
           pageBuilder: (_, __, ___) =>
-              const _AccessGate(child: CalculatorScreen()),
+              _AccessGate(child: CalculatorScreen()),
           transitionsBuilder: (_, anim, __, child) {
             return FadeTransition(
               opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
@@ -125,35 +124,35 @@ class AppRouter {
           transitionDuration: const Duration(milliseconds: 220),
         );
       case '/audio':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.audio,
           child: AudioVaultScreen(),
         ));
       case '/crm':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.crm,
-          child: CrmScreen(),
+          child: const CrmScreen(),
         ));
       case '/calendar':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.calendar,
           child: CalendarScreen(),
         ));
       case '/contacts':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.contacts,
-          child: ContactsScreen(),
+          child: const ContactsScreen(),
         ));
       case '/chats':
-        return _slideUpRoute(const _AccessGate(
+        return _slideUpRoute(_AccessGate(
           module: TeamModules.chats,
-          child: ChatsScreen(),
+          child: const ChatsScreen(),
         ));
       case '/founder':
-        return _fadeRoute(const _AccessGate(child: FounderStoryScreen()));
+        return _fadeRoute(_AccessGate(child: FounderStoryScreen()));
       default:
         return MaterialPageRoute(
-          builder: (_) => const _AccessGate(child: HomeScreen()),
+          builder: (_) => _AccessGate(child: HomeScreen()),
         );
     }
   }
@@ -192,9 +191,6 @@ class AppRouter {
 }
 
 /// Центральный fail-closed guard для всех внутренних экранов.
-///
-/// UI-фильтры в Home/More остаются для удобства, но безопасность не зависит
-/// от того, не забыли ли разработчики скрыть конкретную кнопку.
 class _AccessGate extends StatelessWidget {
   final Widget child;
   final String? module;
