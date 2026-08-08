@@ -33,6 +33,9 @@
   прогресс-баром/скоростью/этапами, плавающий индикатор поверх всех экранов
 - Operations screen (поиск/фильтр/сортировка/edit)
 - Calculator: global overlay, pin/ESC/Delete/blur/resize
+- Audio Vault — архив битов, локальный player/FFT, аренды и календарные сроки,
+  Ableton `.als` links, Music Hub/Spotify Connect и локальная ветвь
+  Wesi AI Audio Quick Analysis v2
 - Profile auto-save, custom avatar, защищённый вход и управление активными сеансами
 - Обязательная почта сотрудника и двухэтапный вход: пароль → 6-значный код по email
 - Отзывные WesiOS-сеансы: удалённое завершение и автоматический выход при удалении сотрудника
@@ -63,4 +66,4 @@ CI: push в `main` → GitHub Actions (Windows + Android).
 
 ## Версия
 
-v0.19.8 α — Private, Wesi Inc.
+v0.19.11 α — Private, Wesi Inc.
