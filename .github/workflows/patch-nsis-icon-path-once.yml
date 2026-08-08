@@ -21,21 +21,26 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
+
           p = Path('.github/workflows/repair-android-signature.yml')
           text = p.read_text(encoding='utf-8')
-          old = '''          $makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
-          if (-not $makensis) { $makensis = "${env:ProgramFiles(x86)}\\NSIS\\makensis.exe" }
-          & $makensis "/DVERSION=${{ needs.metadata.outputs.version }}" "/DBUILD_DIR=$source" "/DOUTPUT_FILE=$out" "windows/installer/wesios.nsi"
-'''
-          new = '''          $makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
-          if (-not $makensis) { $makensis = "${env:ProgramFiles(x86)}\\NSIS\\makensis.exe" }
-          $icon = (Resolve-Path "windows/runner/resources/app_icon.ico").Path
-          if (-not (Test-Path $icon)) { throw "Windows installer icon missing" }
-          & $makensis "/DVERSION=${{ needs.metadata.outputs.version }}" "/DBUILD_DIR=$source" "/DOUTPUT_FILE=$out" "/DICON_FILE=$icon" "windows/installer/wesios.nsi"
-'''
-          if old not in text:
-              raise SystemExit('NSIS workflow anchor not found')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          if '"/DICON_FILE=$icon"' not in text:
+              pattern = re.compile(
+                  r'(?m)^(\s*)& \$makensis (.*) "windows/installer/wesios\.nsi"\s*$'
+              )
+              match = pattern.search(text)
+              if not match:
+                  raise SystemExit('makensis invocation not found')
+              indent = match.group(1)
+              args = match.group(2)
+              replacement = (
+                  indent + '$icon = (Resolve-Path "windows/runner/resources/app_icon.ico").Path\n' +
+                  indent + 'if (-not (Test-Path $icon)) { throw "Windows installer icon missing" }\n' +
+                  indent + '& $makensis ' + args + ' "/DICON_FILE=$icon" "windows/installer/wesios.nsi"'
+              )
+              text = text[:match.start()] + replacement + text[match.end():]
+          p.write_text(text, encoding='utf-8')
       - name: Commit and remove one-off patch
         run: |
           set -euo pipefail
