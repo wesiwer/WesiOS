@@ -38,12 +38,14 @@ jobs:
           set -euo pipefail
           ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          echo '--- staging ---'
-          if [ -d /tmp/wesios-release-31242160215 ]; then
-            find /tmp/wesios-release-31242160215 -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
-          else
-            echo 'staging directory absent'
-          fi
+          for d in /tmp/wesios-release-31242160215 /tmp/wesios-emergency-31242965525; do
+            echo "--- $d ---"
+            if [ -d "$d" ]; then
+              find "$d" -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+            else
+              echo 'directory absent'
+            fi
+          done
           echo '--- published disk manifest ---'
           python3 - <<'PY'
           import json, os
@@ -58,13 +60,16 @@ jobs:
                   print(k, e.get('asset'), e.get('sizeBytes'))
           PY
           echo '--- related processes ---'
-          ps -eo pid,etime,comm,args | grep -E '[s]cp|[s]sh|deploy-artifact' | tail -20 || true
+          ps -eo pid,etime,comm,args | grep -E '[c]url|[s]ftp|[s]cp|deploy-artifact' | tail -30 || true
           REMOTE
 
-      - name: Read release run status
+      - name: Read both release run statuses
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          gh api "repos/$GITHUB_REPOSITORY/actions/runs/31242160215/jobs" \
-            --jq '.jobs[] | [.name,.status,(.conclusion // "-"),(.steps[]? | select(.status=="in_progress") | .name)] | @tsv'
+          for run in 31242160215 31242965525; do
+            echo "--- run $run ---"
+            gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run/jobs" \
+              --jq '.jobs[] | [.name,.status,(.conclusion // "-"),(.steps[]? | select(.status=="in_progress") | .name)] | @tsv'
+          done
