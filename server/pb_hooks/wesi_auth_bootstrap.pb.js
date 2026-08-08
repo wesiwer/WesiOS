@@ -3,20 +3,73 @@
 /// challenge. The email is not committed until a code sent to that address
 /// has been verified and a real WesiOS session exists.
 
+const wesiReadMailConfig = () => {
+  try {
+    const raw = $os.readFile(__hooks + "/.wesi-mail.json");
+    const text = typeof raw === "string"
+      ? raw
+      : String.fromCharCode.apply(null, raw || []);
+    const parsed = JSON.parse(text || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+};
+
 const wesiDeliverMail = (app, email, displayName, subject, html, text) => {
   const settings = app.settings();
-  const message = new MailerMessage({
-    "from": {
-      "address": settings.meta.senderAddress,
-      "name": settings.meta.senderName || "WesiOS",
+  const smtpReady = Boolean(
+    settings && settings.smtp && settings.smtp.enabled === true &&
+    String(settings.smtp.host || "").trim(),
+  );
+
+  if (smtpReady) {
+    const message = new MailerMessage({
+      "from": {
+        "address": settings.meta.senderAddress,
+        "name": settings.meta.senderName || "WesiOS",
+      },
+      "to": [{"address": email, "name": displayName}],
+      "subject": subject,
+      "html": html,
+      "text": text,
+    });
+    try {
+      app.newMailClient().send(message);
+      return "smtp";
+    } catch (error) {
+      console.log("WesiOS SMTP delivery failed, trying HTTPS provider:", error);
+    }
+  }
+
+  const config = wesiReadMailConfig();
+  const provider = String(config.provider || "").trim().toLowerCase();
+  const apiKey = String(config.apiKey || "").trim();
+  const from = String(config.from || "").trim();
+  if (provider !== "resend" || !apiKey || !from) {
+    throw new Error("No working WesiOS mail transport configured");
+  }
+
+  const response = $http.send({
+    "url": "https://api.resend.com/emails",
+    "method": "POST",
+    "headers": {
+      "Authorization": "Bearer " + apiKey,
+      "Content-Type": "application/json",
     },
-    "to": [{"address": email, "name": displayName}],
-    "subject": subject,
-    "html": html,
-    "text": text,
+    "body": JSON.stringify({
+      "from": from,
+      "to": [email],
+      "subject": subject,
+      "html": html,
+      "text": text,
+    }),
+    "timeout": 20,
   });
-  app.newMailClient().send(message);
-  return settings && settings.smtp && settings.smtp.enabled === true ? "smtp" : "sendmail";
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error("HTTPS mail provider returned HTTP " + response.statusCode);
+  }
+  return "https";
 };
 
 routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
