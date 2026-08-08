@@ -67,6 +67,7 @@ routerUse((e) => {
     path === "/api/wesi/app/bootstrap" ||
     path === "/api/wesi/portal/session" ||
     path === "/api/wesi/portal/manifest" ||
+    path === "/api/wesi/portal/profile/credentials" ||
     path.startsWith("/api/wesi/portal/download/") ||
     path.startsWith("/api/wesi/portal/employees/") ||
     path.startsWith("/api/wesi/security/");

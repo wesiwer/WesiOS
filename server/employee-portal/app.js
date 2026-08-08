@@ -315,7 +315,7 @@
 
   function startHeartbeat() {
     stopHeartbeat();
-    state.heartbeat = setInterval(() => { pingSession(); }, 5000);
+    state.heartbeat = setInterval(() => { pingSession(); }, 2000);
   }
 
   function stopHeartbeat() {

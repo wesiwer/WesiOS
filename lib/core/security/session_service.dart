@@ -62,7 +62,7 @@ class WesiSessionInfo {
 class SessionService {
   SessionService._();
 
-  static const heartbeatEvery = Duration(seconds: 5);
+  static const heartbeatEvery = Duration(seconds: 2);
   static Timer? _heartbeat;
   static bool _pingBusy = false;
 

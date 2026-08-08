@@ -38,7 +38,6 @@ class _LoginScreenState extends State<LoginScreen> {
   String? _maskedEmail;
 
   bool get _ru => WesiLocale.isRussian;
-  bool get _waitingCode => _challengeId != null && !_needsEmailSetup;
   bool get _passwordStep => _challengeId == null;
 
   @override
