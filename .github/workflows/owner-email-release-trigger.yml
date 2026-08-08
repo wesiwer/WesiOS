@@ -1,0 +1,27 @@
+name: One-time Owner Email Fix Release
+
+on:
+  push:
+    paths:
+      - '.github/owner-email-release.trigger'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch normal WesiOS release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Исправлена первичная настройка защищённого входа владельца: почту теперь можно ввести вместе с новым логином и паролем.' \
+            -f deploy_to_server=false
+          echo 'Publish WesiOS Release dispatched.'
