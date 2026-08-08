@@ -1,0 +1,98 @@
+name: Verify security release 0.19.3+51
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show real main workflow status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo '--- deploy workflow ---'
+          gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/deploy-employee-portal.yml/runs" \
+            -f branch=main -f event=push -f per_page=3 \
+            --jq '.workflow_runs[] | [.id,.status,(.conclusion // "-"),.head_sha,.created_at] | @tsv' | head -3
+          echo '--- signed release workflow ---'
+          gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/repair-android-signature.yml/runs" \
+            -f branch=main -f event=push -f per_page=3 \
+            --jq '.workflow_runs[] | [.id,.status,(.conclusion // "-"),.head_sha,.created_at] | @tsv' | head -3
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Verify production hook equals merged main
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          LOCAL=$(sha256sum server/pb_hooks/employee_portal.pb.js | cut -d' ' -f1)
+          REMOTE=$(ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" \
+            "sha256sum /opt/pocketbase/pb_hooks/employee_portal.pb.js | cut -d' ' -f1")
+          echo "main hook:       $LOCAL"
+          echo "production hook: $REMOTE"
+          test "$LOCAL" = "$REMOTE"
+          ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" \
+            "grep -q '/api/wesi/app/bootstrap' /opt/pocketbase/pb_hooks/employee_portal.pb.js && \
+             grep -q '/api/wesi/portal/employees/access' /opt/pocketbase/pb_hooks/employee_portal.pb.js && \
+             grep -q '/api/wesi/portal/employees/revoke' /opt/pocketbase/pb_hooks/employee_portal.pb.js"
+
+      - name: Verify production routes and published version
+        run: |
+          set -euo pipefail
+          API='https://api.wesi-inc.ru'
+          check() {
+            local method="$1" path="$2" code
+            if [ "$method" = GET ]; then
+              code=$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 20 -X GET "$API$path" || true)
+            else
+              code=$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 20 -X POST \
+                -H 'Content-Type: application/json' -d '{}' "$API$path" || true)
+            fi
+            case "$code" in
+              401|403) echo "$method $path => $code (loaded + protected)" ;;
+              *) echo "Unexpected $method $path => $code"; cat /tmp/body || true; exit 1 ;;
+            esac
+          }
+          check GET  '/api/wesi/app/bootstrap'
+          check POST '/api/wesi/portal/employees/access'
+          check POST '/api/wesi/portal/employees/revoke'
+
+          curl -fsS --max-time 30 "$API/artifacts/app/app-manifest.json?verify=$GITHUB_RUN_ID" -o /tmp/manifest.json
+          python3 - <<'PY'
+          import json
+          with open('/tmp/manifest.json', encoding='utf-8') as f:
+              m=json.load(f)
+          print('published manifest:', m.get('version'), m.get('build'))
+          for p in ('android','windows'):
+              e=m.get(p,{})
+              print(p, e.get('asset'), e.get('sizeBytes'), str(e.get('sha256',''))[:16])
+          PY
