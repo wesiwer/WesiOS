@@ -12,6 +12,9 @@ Unicode true
 !ifndef OUTPUT_FILE
   !define OUTPUT_FILE "WesiOS-Setup.exe"
 !endif
+!ifndef ICON_FILE
+  !error "ICON_FILE define is required"
+!endif
 
 !define PRODUCT_NAME "WesiOS"
 !define PRODUCT_PUBLISHER "Wesi Inc."
@@ -27,8 +30,8 @@ RequestExecutionLevel admin
 SetCompressor /SOLID lzma
 SetCompressorDictSize 64
 BrandingText "WesiOS"
-Icon "windows\runner\resources\app_icon.ico"
-UninstallIcon "windows\runner\resources\app_icon.ico"
+Icon "${ICON_FILE}"
+UninstallIcon "${ICON_FILE}"
 VIProductVersion "${VERSION}.0"
 VIAddVersionKey /LANG=1049 "ProductName" "${PRODUCT_NAME}"
 VIAddVersionKey /LANG=1049 "CompanyName" "${PRODUCT_PUBLISHER}"
@@ -38,8 +41,8 @@ VIAddVersionKey /LANG=1049 "ProductVersion" "${VERSION}"
 VIAddVersionKey /LANG=1049 "LegalCopyright" "Wesi Inc."
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "windows\runner\resources\app_icon.ico"
-!define MUI_UNICON "windows\runner\resources\app_icon.ico"
+!define MUI_ICON "${ICON_FILE}"
+!define MUI_UNICON "${ICON_FILE}"
 !define MUI_WELCOMEPAGE_TITLE "Установка WesiOS"
 !define MUI_WELCOMEPAGE_TEXT "Мастер установит WesiOS ${VERSION} на этот компьютер.$\r$\n$\r$\nПеред продолжением рекомендуется закрыть запущенный WesiOS."
 !define MUI_FINISHPAGE_RUN "$INSTDIR\${PRODUCT_EXE}"
