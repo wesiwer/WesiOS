@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:window_manager/window_manager.dart';
-import 'core/services/firebase_config_service.dart';
 import 'core/services/exchange_rate_service.dart';
 import 'features/treasury/models/transaction_model.dart';
 import 'features/tasks/models/task_model.dart';
@@ -28,6 +27,7 @@ import 'core/notifications/notification_watcher.dart';
 import 'core/notifications/wesi_notifications.dart';
 import 'core/feedback/wesi_haptics.dart';
 import 'core/sync/sync_auto.dart';
+import 'core/sync/sync_endpoint.dart';
 import 'core/sync/sync_engine.dart';
 import 'features/chats/models/chat_message.dart';
 import 'features/chats/models/chat_thread.dart';
@@ -90,14 +90,22 @@ void main() async {
   await ChatService.open();
 
   await TeamService.forgetUnrememberedSession();
-  unawaited(SyncEngine.runOnLaunch());
-  SyncAuto.start();
 
-  // Уведомления: разрешение спрашивается один раз, а следить за поводами
-  // начинаем сразу. Первый проход молчит намеренно — см. NotificationWatcher.
+  // Автосинхронизация стартует только у уже подтверждённой серверной сессии.
+  // Раньше она запускалась до входа, одновременно с UI, который считал null
+  // владельцем. Теперь отсутствие auth не запускает ни обмен, ни привилегии.
+  if (TeamService.current != null && SyncEndpoint.isConnected) {
+    if (TeamService.isOwnerSession) {
+      unawaited(SyncEngine.runOnLaunch());
+      SyncAuto.start();
+    } else {
+      SyncAuto.stop();
+    }
+  } else {
+    SyncAuto.stop();
+  }
+
   unawaited(WesiNotifications.init());
-  // Спрашиваем возможности вибромотора один раз: ответ не меняется, а
-  // переход через границу платформы на каждое нажатие стоит дороже отклика.
   unawaited(WesiHaptics.warmUp());
   NotificationWatcher.start();
 
@@ -122,38 +130,16 @@ void main() async {
   AppUpdateService.check();
   KnowledgeService.seed();
 
-  final configService = FirebaseConfigService();
-  final isConfigured = await configService.isConfigured();
-
-  if (isConfigured) {
-    try {
-      final config = await configService.getConfig();
-      if (config['apiKey'] != null &&
-          config['appId'] != null &&
-          config['projectId'] != null &&
-          config['messagingSenderId'] != null) {
-        await Firebase.initializeApp(
-          options: FirebaseOptions(
-            apiKey: config['apiKey']!,
-            appId: config['appId']!,
-            messagingSenderId: config['messagingSenderId']!,
-            projectId: config['projectId']!,
-            authDomain: config['authDomain'],
-            storageBucket: config['storageBucket'],
-            measurementId: config['measurementId'],
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('Firebase init from saved config failed: $e');
-    }
-  } else {
-    try {
-      await Firebase.initializeApp();
-    } catch (e) {
-      debugPrint('Firebase default init skipped/failed: $e');
-    }
+  // Firebase конфигурация приложения поставляется вместе со сборкой.
+  // Пользователь никогда не должен вводить apiKey/appId/projectId вручную.
+  // Android получает параметры из google-services.json; на платформах, где
+  // нативный Firebase не инициализируется, REST-слой продолжает использовать
+  // встроенные параметры проекта и приложение не показывает setup-форму.
+  try {
+    await Firebase.initializeApp();
+  } catch (e) {
+    debugPrint('Firebase native init skipped/failed: $e');
   }
 
-  runApp(WesiOSApp(isFirstRun: !isConfigured));
+  runApp(const WesiOSApp());
 }
