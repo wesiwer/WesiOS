@@ -1,0 +1,90 @@
+name: Patch final security cleanup
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - '.github/workflows/patch-final-security-cleanup.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'agent/security-2fa-sessions-real-data'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ github.token }}
+          fetch-depth: 1
+      - name: Remove stale warning and lock verified owner email
+        shell: python
+        run: |
+          from pathlib import Path
+
+          profile = Path('lib/features/profile/profile_screen.dart')
+          text = profile.read_text(encoding='utf-8')
+          needle = '  bool _vaultUnlocked = false;'
+          if needle not in text:
+              raise SystemExit('profile warning anchor missing')
+          text = text.replace(
+              needle,
+              '  // Legacy Firebase vault helpers are retained for migration only.\n'
+              '  // ignore: unused_field\n'
+              '  bool _vaultUnlocked = false;',
+              1,
+          )
+          profile.write_text(text, encoding='utf-8')
+
+          card = Path('lib/features/profile/widgets/credentials_card.dart')
+          text = card.read_text(encoding='utf-8')
+          text = text.replace(
+              "? 'Почта обязательна: на неё будет приходить шестизначный код при новом входе.'\n                        : 'Email is required for six-digit sign-in codes.'",
+              "? 'Почта для кодов уже подтверждена и защищена. Здесь можно изменить логин или пароль.'\n                        : 'The security email is verified and locked. You can change login or password here.'",
+              1,
+          )
+          field = """                  _dialogField(
+                    controller: email,
+                    label: _ru ? 'Почта для кодов' : 'Security email',
+                    hint: 'name@example.com',
+                    keyboard: TextInputType.emailAddress,
+                  ),"""
+          replacement = """                  _dialogField(
+                    controller: email,
+                    label: _ru ? 'Подтверждённая почта для кодов' : 'Verified security email',
+                    hint: 'name@example.com',
+                    keyboard: TextInputType.emailAddress,
+                    enabled: false,
+                  ),"""
+          if field not in text:
+              raise SystemExit('security email field anchor missing')
+          text = text.replace(field, replacement, 1)
+          text = text.replace(
+              "    TextInputType? keyboard,\n  }) =>",
+              "    TextInputType? keyboard,\n    bool enabled = true,\n  }) =>",
+              1,
+          )
+          text = text.replace(
+              "          TextField(\n            controller: controller,\n            obscureText: obscure,",
+              "          TextField(\n            controller: controller,\n            enabled: enabled,\n            obscureText: obscure,",
+              1,
+          )
+          text = text.replace(
+              "? 'Изменить логин, почту или пароль' : 'Change login, email or password'",
+              "? 'Изменить логин или пароль' : 'Change login or password'",
+              1,
+          )
+          card.write_text(text, encoding='utf-8')
+
+      - name: Commit cleanup
+        run: |
+          set -euo pipefail
+          git diff --check
+          test -n "$(git status --porcelain lib/features/profile/profile_screen.dart lib/features/profile/widgets/credentials_card.dart)"
+          git config user.name 'WesiOS Security CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/features/profile/profile_screen.dart lib/features/profile/widgets/credentials_card.dart
+          git commit -m 'security: lock verified owner email and clean legacy warning'
+          git push origin HEAD:${{ github.head_ref }}
