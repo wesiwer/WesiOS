@@ -130,7 +130,7 @@ class AudioPlayerService {
       await _stopCurrent();
       _source = await _soloud.loadFile(path, mode: LoadMode.disk);
       final duration = _soloud.getLength(_source!);
-      _handle = _soloud.play(_source!, volume: state.value.volume);
+      _handle = await _soloud.play(_source!, volume: state.value.volume);
       state.value = AudioPlayerState(
         beat: beat,
         playing: true,
@@ -233,7 +233,10 @@ class AudioPlayerService {
     try {
       if (!_soloud.getIsValidVoiceHandle(handle)) {
         if (state.value.playing) {
-          state.value = state.value.copyWith(playing: false, position: state.value.duration);
+          state.value = state.value.copyWith(
+            playing: false,
+            position: state.value.duration,
+          );
           unawaited(next());
         }
         return;
