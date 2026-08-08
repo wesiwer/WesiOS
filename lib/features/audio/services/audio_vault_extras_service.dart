@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/audio_vault_extended_models.dart';
 import '../models/audio_vault_models.dart';
 import 'audio_analysis_service.dart';
+import 'audio_analysis_v2_service.dart';
 import 'audio_vault_service.dart';
 
 class AudioVaultExtrasService {
@@ -62,10 +63,21 @@ class AudioVaultExtrasService {
       allowedExtensions: const ['als'],
       withData: false,
     );
-    final path = result?.files.single.path;
-    if (path == null || path.isEmpty) return null;
-    if (!await File(path).exists()) return null;
-    return path;
+    return validateAbletonProjectPath(result?.files.single.path);
+  }
+
+  static Future<String?> validateAbletonProjectPath(String? rawPath) async {
+    if (rawPath == null) return null;
+    var path = rawPath.trim();
+    if (path.length >= 2 &&
+        ((path.startsWith('"') && path.endsWith('"')) ||
+            (path.startsWith("'") && path.endsWith("'")))) {
+      path = path.substring(1, path.length - 1).trim();
+    }
+    if (path.isEmpty || !path.toLowerCase().endsWith('.als')) return null;
+    final file = File(path);
+    if (!await file.exists()) return null;
+    return file.absolute.path;
   }
 
   static Future<void> setAbletonProject(String beatId, String? path) async {
@@ -79,9 +91,13 @@ class AudioVaultExtrasService {
   }
 
   static Future<String?> openAbletonProject(String? projectPath) async {
-    if (projectPath == null || projectPath.isEmpty) return 'Путь к Ableton Project не указан.';
+    if (projectPath == null || projectPath.isEmpty) {
+      return 'Путь к Ableton Project не указан.';
+    }
     final file = File(projectPath);
-    if (!await file.exists()) return 'Файл Ableton Project больше не найден по сохранённому пути.';
+    if (!await file.exists()) {
+      return 'Файл Ableton Project больше не найден по сохранённому пути.';
+    }
     try {
       if (Platform.isWindows) {
         await Process.start(
@@ -93,17 +109,45 @@ class AudioVaultExtrasService {
         return null;
       }
       if (Platform.isMacOS) {
-        await Process.start('open', [projectPath], mode: ProcessStartMode.detached);
+        await Process.start(
+          'open',
+          [projectPath],
+          mode: ProcessStartMode.detached,
+        );
         return null;
       }
       if (Platform.isLinux) {
-        await Process.start('xdg-open', [projectPath], mode: ProcessStartMode.detached);
+        await Process.start(
+          'xdg-open',
+          [projectPath],
+          mode: ProcessStartMode.detached,
+        );
         return null;
       }
       return 'Открытие Ableton Project доступно в desktop-версии WesiOS.';
     } catch (e) {
       return 'Не удалось открыть Ableton Project: $e';
     }
+  }
+
+  /// Возвращает только актуальный отчёт. Если WAV заменён, изменился размер
+  /// или mtime, старый анализ больше не показывается как действующий.
+  static Future<AudioAnalysisReport?> analysisForBeat(BeatEntry beat) async {
+    final wav = beat.wavPath;
+    if (wav == null || wav.isEmpty) return null;
+    final meta = await metaFor(beat.id);
+    final report = meta.analysis;
+    if (report == null) return null;
+    final file = File(wav);
+    if (!await file.exists()) return null;
+    final stat = await file.stat();
+    if (report.sourcePath != wav) return null;
+    if (report.sourceBytes <= 0 || report.sourceModifiedAtMs <= 0) return null;
+    if (report.sourceBytes != stat.size) return null;
+    if (report.sourceModifiedAtMs != stat.modified.millisecondsSinceEpoch) {
+      return null;
+    }
+    return report;
   }
 
   static Future<AudioAnalysisReport> analyzeBeat(BeatEntry beat) async {
@@ -113,7 +157,7 @@ class AudioVaultExtrasService {
         'Для локального Quick Analysis прикрепи WAV master. Он даёт корректный PCM-доступ без декодирования lossy MP3.',
       );
     }
-    final report = await AudioAnalysisService.analyzeWav(wav);
+    final report = await AudioAnalysisV2Service.analyzeWav(wav);
     final meta = await metaFor(beat.id);
     await saveMeta(beat.id, meta.copyWith(analysis: report));
     return report;
@@ -157,7 +201,9 @@ class AudioVaultExtrasService {
       if (!await source.exists()) continue;
       final now = DateTime.now();
       final id = now.microsecondsSinceEpoch.toString();
-      final safe = p.basename(sourcePath).replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9._ -]'), '_');
+      final safe = p
+          .basename(sourcePath)
+          .replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9._ -]'), '_');
       final target = File(p.join(root.path, '${id}_$safe'));
       await source.copy(target.path);
       added.add(MusicLibraryTrack(
