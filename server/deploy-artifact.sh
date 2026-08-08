@@ -15,7 +15,11 @@
 
 set -euo pipefail
 
-ROOT="${WESI_ARTIFACTS:-/srv/wesi-artifacts}"
+# Production WesiOS уже работает из /opt/pocketbase, а PocketBase раздаёт
+# pb_public напрямую. Поэтому это безопасный и реально используемый default.
+# При отдельном nginx-хранилище путь по-прежнему можно переопределить через
+# WESI_ARTIFACTS или --root.
+ROOT="${WESI_ARTIFACTS:-/opt/pocketbase/pb_public/artifacts}"
 APP_DIR="$ROOT/app"
 
 VERSION=""; BUILD=""; FROM=""; NOTES=""; KEEP=2
@@ -25,9 +29,9 @@ while [[ $# -gt 0 ]]; do
     --version) VERSION="$2"; shift 2 ;;
     --build)   BUILD="$2";   shift 2 ;;
     --from)    FROM="$2";    shift 2 ;;
-    --notes)   NOTES="$2";   shift 2 ;;
+    --notes)   NOTES="$2"; shift 2 ;;
     --notes-b64) NOTES="$(printf '%s' "$2" | base64 -d)"; shift 2 ;;
-    --keep)    KEEP="$2";    shift 2 ;;
+    --keep)    KEEP="$2"; shift 2 ;;
     --root)    ROOT="$2"; APP_DIR="$ROOT/app"; shift 2 ;;
     *) echo "Неизвестный ключ: $1" >&2; exit 1 ;;
   esac
@@ -41,8 +45,18 @@ say() { printf '\n==> %s\n' "$1"; }
 
 RELEASE="$VERSION+$BUILD"
 TARGET="$APP_DIR/$RELEASE"
-WIN="wesios-windows-x64-setup.exe"
 APK="wesios-android.apk"
+
+# Windows release исторически существовал в двух видах. Старый server deploy
+# ожидал setup.exe, а текущий release-app публикует portable ZIP. Принимаем
+# оба, но в манифест пишем именно тот файл, который реально пришёл.
+if [[ -s "$FROM/wesios-windows-x64-setup.exe" ]]; then
+  WIN="wesios-windows-x64-setup.exe"
+elif [[ -s "$FROM/wesios-windows-x64.zip" ]]; then
+  WIN="wesios-windows-x64.zip"
+else
+  WIN="wesios-windows-x64.zip"
+fi
 
 say "Проверяю присланное"
 MISSING=0
