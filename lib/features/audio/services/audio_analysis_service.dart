@@ -33,7 +33,7 @@ class AudioAnalysisService {
         );
       }
       if (header.channels < 1 || header.channels > 2) {
-        throw AudioAnalysisException(
+        throw const AudioAnalysisException(
           'Быстрый анализ рассчитан на mono/stereo master.',
         );
       }
@@ -82,7 +82,7 @@ class AudioAnalysisService {
             final av = value.abs();
             if (av > peak) peak = av;
             if (av >= .9999) clipped++;
-            if (av >= .001) audible = true; // -60 dBFS
+            if (av >= .001) audible = true;
             sumSq += value * value;
             sum += value;
             sampleCount++;
@@ -102,7 +102,8 @@ class AudioAnalysisService {
             }
           }
           if (audible) {
-            firstAudibleFrame = firstAudibleFrame < 0 ? frameIndex + f : firstAudibleFrame;
+            firstAudibleFrame =
+                firstAudibleFrame < 0 ? frameIndex + f : firstAudibleFrame;
             lastAudibleFrame = frameIndex + f;
           }
           if (header.channels == 2) {
@@ -120,14 +121,15 @@ class AudioAnalysisService {
       final meanSq = sumSq / math.max(1, sampleCount);
       final rms = math.sqrt(meanSq);
       final rmsDb = _db(rms);
-      // Быстрый локальный estimator: energy-based LUFS approximation. Для
-      // юридического/broadcast QC нужен полноценный BS.1770 K-weighting+gating.
-      final estimatedLufs = meanSq <= 0 ? -120.0 : -0.691 + 10 * _log10(meanSq);
+      final estimatedLufs =
+          meanSq <= 0 ? -120.0 : -0.691 + 10 * _log10(meanSq);
       final peakDb = _db(peak);
       final truePeakDb = _db(truePeak);
       final crest = peakDb - rmsDb;
       final correlation = header.channels == 2
-          ? (sumLR / math.sqrt(math.max(1e-18, sumL2 * sumR2))).clamp(-1.0, 1.0).toDouble()
+          ? (sumLR / math.sqrt(math.max(1e-18, sumL2 * sumR2)))
+              .clamp(-1.0, 1.0)
+              .toDouble()
           : 1.0;
       final dc = sampleCount == 0 ? 0.0 : sum / sampleCount;
       final duration = totalFrames / header.sampleRate;
@@ -136,7 +138,8 @@ class AudioAnalysisService {
           : firstAudibleFrame / header.sampleRate;
       final tailSilence = lastAudibleFrame < 0
           ? duration
-          : math.max(0, totalFrames - 1 - lastAudibleFrame) / header.sampleRate;
+          : math.max(0, totalFrames - 1 - lastAudibleFrame) /
+              header.sampleRate;
 
       final spectrum = await _spectralBalance(raf, header, totalFrames);
       final insights = _insights(
@@ -153,7 +156,8 @@ class AudioAnalysisService {
         tailSilence: tailSilence,
         spectrum: spectrum,
       );
-      final platformChecks = _platformChecks(estimatedLufs, truePeakDb, clipped);
+      final platformChecks =
+          _platformChecks(estimatedLufs, truePeakDb, clipped);
       final score = _score(insights);
 
       return AudioAnalysisReport(
@@ -189,7 +193,9 @@ class AudioAnalysisService {
   static Future<_WavHeader> _readHeader(RandomAccessFile raf) async {
     await raf.setPosition(0);
     final riff = await raf.read(12);
-    if (riff.length < 12 || _ascii(riff, 0, 4) != 'RIFF' || _ascii(riff, 8, 4) != 'WAVE') {
+    if (riff.length < 12 ||
+        _ascii(riff, 0, 4) != 'RIFF' ||
+        _ascii(riff, 8, 4) != 'WAVE') {
       throw const AudioAnalysisException('Файл не является RIFF/WAVE.');
     }
     int? audioFormat;
@@ -206,7 +212,9 @@ class AudioAnalysisService {
           .getUint32(4, Endian.little);
       if (id == 'fmt ') {
         final fmt = await raf.read(size);
-        if (fmt.length < 16) throw const AudioAnalysisException('Повреждён fmt chunk WAV.');
+        if (fmt.length < 16) {
+          throw const AudioAnalysisException('Повреждён fmt chunk WAV.');
+        }
         final bd = ByteData.sublistView(Uint8List.fromList(fmt));
         audioFormat = bd.getUint16(0, Endian.little);
         channels = bd.getUint16(2, Endian.little);
@@ -217,10 +225,17 @@ class AudioAnalysisService {
         dataSize = size;
         break;
       } else {
-        await raf.setPosition((await raf.position()) + size + (size.isOdd ? 1 : 0));
+        await raf.setPosition(
+          (await raf.position()) + size + (size.isOdd ? 1 : 0),
+        );
       }
     }
-    if (audioFormat == null || channels == null || sampleRate == null || bitsPerSample == null || dataOffset == null || dataSize == null) {
+    if (audioFormat == null ||
+        channels == null ||
+        sampleRate == null ||
+        bitsPerSample == null ||
+        dataOffset == null ||
+        dataSize == null) {
       throw const AudioAnalysisException('Не удалось прочитать структуру WAV.');
     }
     return _WavHeader(
@@ -254,7 +269,9 @@ class AudioAnalysisService {
     const windows = 9;
     for (var wi = 0; wi < windows; wi++) {
       final center = ((wi + .5) / windows * totalFrames).floor();
-      final start = (center - window ~/ 2).clamp(0, math.max(0, totalFrames - window));
+      final start = (center - window ~/ 2)
+          .clamp(0, math.max(0, totalFrames - window))
+          .toInt();
       await raf.setPosition(h.dataOffset + start * frameBytes);
       final raw = await raf.read(window * frameBytes);
       final frames = raw.length ~/ frameBytes;
@@ -264,14 +281,20 @@ class AudioAnalysisService {
       for (var i = 0; i < frames; i++) {
         double v = 0;
         for (var ch = 0; ch < h.channels; ch++) {
-          v += _sample(bd, i * frameBytes + ch * bytesPerSample, h.bitsPerSample, h.audioFormat);
+          v += _sample(
+            bd,
+            i * frameBytes + ch * bytesPerSample,
+            h.bitsPerSample,
+            h.audioFormat,
+          );
         }
         mono[i] = v / h.channels;
       }
       for (final entry in labels.entries) {
         for (final freq in entry.value) {
           if (freq >= h.sampleRate / 2) continue;
-          energy[entry.key] = energy[entry.key]! + _goertzel(mono, h.sampleRate, freq);
+          energy[entry.key] =
+              energy[entry.key]! + _goertzel(mono, h.sampleRate, freq);
         }
       }
     }
@@ -280,12 +303,17 @@ class AudioAnalysisService {
     return {for (final e in energy.entries) e.key: e.value / total};
   }
 
-  static double _goertzel(List<double> samples, int sampleRate, double freq) {
+  static double _goertzel(
+      List<double> samples, int sampleRate, double freq) {
     final omega = 2 * math.pi * freq / sampleRate;
     final coeff = 2 * math.cos(omega);
     double s0 = 0, s1 = 0, s2 = 0;
     for (var i = 0; i < samples.length; i++) {
-      final hann = .5 - .5 * math.cos(2 * math.pi * i / math.max(1, samples.length - 1));
+      final hann = .5 -
+          .5 *
+              math.cos(
+                2 * math.pi * i / math.max(1, samples.length - 1),
+              );
       s0 = samples[i] * hann + coeff * s1 - s2;
       s2 = s1;
       s1 = s0;
@@ -313,37 +341,45 @@ class AudioAnalysisService {
         severity: AudioIssueSeverity.critical,
         title: 'Обнаружен clipping',
         detail: '$clipped сэмплов достигли цифрового потолка.',
-        action: 'Снизь уровень перед лимитером/клиппером и проверь gain staging.',
+        action:
+            'Снизь уровень перед лимитером/клиппером и проверь gain staging.',
       ));
     }
     if (truePeakDb > -1) {
       out.add(AudioAiInsight(
-        severity: truePeakDb > -.2 ? AudioIssueSeverity.critical : AudioIssueSeverity.warning,
+        severity: truePeakDb > -.2
+            ? AudioIssueSeverity.critical
+            : AudioIssueSeverity.warning,
         title: 'Мало true-peak headroom',
         detail: 'Оценка True Peak: ${truePeakDb.toStringAsFixed(2)} dBTP.',
-        action: 'Для streaming-safe master опусти ceiling примерно до -1 dBTP; для очень громкого master Spotify рекомендует ниже -2 dBTP.',
+        action:
+            'Для streaming-safe master опусти ceiling примерно до -1 dBTP; для очень громкого master Spotify рекомендует ниже -2 dBTP.',
       ));
     }
     if (lufs > -8) {
       out.add(AudioAiInsight(
         severity: AudioIssueSeverity.warning,
         title: 'Очень плотный master',
-        detail: 'Оценка loudness ${lufs.toStringAsFixed(1)} LUFS — высок риск потери punch и транзиентов.',
-        action: 'Сравни с референсом после loudness matching; попробуй меньше limiter gain reduction.',
+        detail:
+            'Оценка loudness ${lufs.toStringAsFixed(1)} LUFS — высок риск потери punch и транзиентов.',
+        action:
+            'Сравни с референсом после loudness matching; попробуй меньше limiter gain reduction.',
       ));
     } else if (lufs < -19) {
       out.add(AudioAiInsight(
         severity: AudioIssueSeverity.info,
         title: 'Низкая средняя громкость',
         detail: 'Оценка loudness ${lufs.toStringAsFixed(1)} LUFS.',
-        action: 'Если это финальный master, проверь, намеренно ли оставлен такой запас.',
+        action:
+            'Если это финальный master, проверь, намеренно ли оставлен такой запас.',
       ));
     }
     if (crest < 4.5) {
       out.add(const AudioAiInsight(
         severity: AudioIssueSeverity.warning,
         title: 'Низкий crest factor',
-        detail: 'Пики почти не отделяются от среднего уровня — возможен over-limiting.',
+        detail:
+            'Пики почти не отделяются от среднего уровня — возможен over-limiting.',
         action: 'Проверь kick/snare transients и release лимитера.',
       ));
     }
@@ -358,7 +394,8 @@ class AudioAnalysisService {
       out.add(AudioAiInsight(
         severity: AudioIssueSeverity.warning,
         title: 'Очень широкая стереобаза',
-        detail: 'Stereo correlation ${correlation.toStringAsFixed(2)} — mono compatibility стоит проверить вручную.',
+        detail:
+            'Stereo correlation ${correlation.toStringAsFixed(2)} — mono compatibility стоит проверить вручную.',
         action: 'Сузь sub/bass и проверь side-компонент.',
       ));
     }
@@ -382,20 +419,24 @@ class AudioAnalysisService {
       out.add(AudioAiInsight(
         severity: AudioIssueSeverity.info,
         title: 'Длинный хвост тишины',
-        detail: '${tailSilence.toStringAsFixed(1)} сек после последнего сигнала.',
+        detail:
+            '${tailSilence.toStringAsFixed(1)} сек после последнего сигнала.',
         action: 'Проверь fade/reverb tail и экспортный диапазон.',
       ));
     }
     final sub = spectrum['Sub 20–60'] ?? 0;
     final lowMid = spectrum['Low-mid 120–500'] ?? 0;
     final presence = spectrum['Presence 2–5k'] ?? 0;
-    final high = (spectrum['High 5–10k'] ?? 0) + (spectrum['Air 10–20k'] ?? 0);
+    final high =
+        (spectrum['High 5–10k'] ?? 0) + (spectrum['Air 10–20k'] ?? 0);
     if (sub > .24) {
       out.add(const AudioAiInsight(
         severity: AudioIssueSeverity.warning,
         title: 'Саб доминирует',
-        detail: 'В выбранных спектральных окнах слишком большая доля энергии ниже 60 Hz.',
-        action: 'Проверь 808/kick конфликт, rumble и переводимость на маленькие системы.',
+        detail:
+            'В выбранных спектральных окнах слишком большая доля энергии ниже 60 Hz.',
+        action:
+            'Проверь 808/kick конфликт, rumble и переводимость на маленькие системы.',
       ));
     }
     if (lowMid > .34) {
@@ -403,15 +444,18 @@ class AudioAnalysisService {
         severity: AudioIssueSeverity.warning,
         title: 'Возможная мутность low-mid',
         detail: 'Диапазон 120–500 Hz заметно доминирует.',
-        action: 'Проверь masking баса, пэдов, пиано и тела snare на референсе.',
+        action:
+            'Проверь masking баса, пэдов, пиано и тела snare на референсе.',
       ));
     }
     if (presence > .30 || high > .38) {
       out.add(const AudioAiInsight(
         severity: AudioIssueSeverity.warning,
         title: 'Риск резкости/усталости',
-        detail: 'Верхняя середина/верх выражены сильнее типичного сбалансированного профиля.',
-        action: 'Проверь hats, distortion и 2–10 kHz на тихой громкости.',
+        detail:
+            'Верхняя середина/верх выражены сильнее типичного сбалансированного профиля.',
+        action:
+            'Проверь hats, distortion и 2–10 kHz на тихой громкости.',
       ));
     }
     if (sampleRate < 44100 || bitDepth < 16) {
@@ -419,21 +463,25 @@ class AudioAnalysisService {
         severity: AudioIssueSeverity.warning,
         title: 'Низкие параметры master-файла',
         detail: '$sampleRate Hz / $bitDepth bit.',
-        action: 'Для архива храни lossless master минимум 44.1 kHz / 16 bit, лучше исходную render-разрядность.',
+        action:
+            'Для архива храни lossless master минимум 44.1 kHz / 16 bit, лучше исходную render-разрядность.',
       ));
     }
     if (out.isEmpty) {
       out.add(const AudioAiInsight(
         severity: AudioIssueSeverity.info,
         title: 'Критичных технических проблем не найдено',
-        detail: 'Быстрые проверки уровня, клиппинга, стерео и спектра прошли без явных красных флагов.',
-        action: 'Сделай финальную проверку на референсах и нескольких системах воспроизведения.',
+        detail:
+            'Быстрые проверки уровня, клиппинга, стерео и спектра прошли без явных красных флагов.',
+        action:
+            'Сделай финальную проверку на референсах и нескольких системах воспроизведения.',
       ));
     }
     return out;
   }
 
-  static List<AudioPlatformCheck> _platformChecks(double lufs, double truePeak, int clipped) {
+  static List<AudioPlatformCheck> _platformChecks(
+      double lufs, double truePeak, int clipped) {
     final spotifyLimit = lufs > -14 ? -2.0 : -1.0;
     final spotifyGain = -14 - lufs;
     return [
@@ -450,9 +498,7 @@ class AudioAnalysisService {
       AudioPlatformCheck(
         platform: 'Wesi Streaming Safe',
         ok: truePeak <= -1 && clipped == 0,
-        targetLufs: null,
         maxTruePeakDbtp: -1,
-        normalizationGainDb: null,
         summary: truePeak <= -1 && clipped == 0
             ? 'Есть минимум 1 dB true-peak headroom и нет цифрового clipping.'
             : 'Для универсального streaming-safe master оставь ≥1 dB true-peak headroom и убери clipping.',
@@ -463,7 +509,8 @@ class AudioAnalysisService {
         targetLufs: -23,
         maxTruePeakDbtp: -1,
         normalizationGainDb: -23 - lufs,
-        summary: 'Broadcast reference; музыкальный streaming-master не обязан соответствовать -23 LUFS.',
+        summary:
+            'Broadcast reference; музыкальный streaming-master не обязан соответствовать -23 LUFS.',
       ),
     ];
   }
@@ -477,12 +524,15 @@ class AudioAnalysisService {
         AudioIssueSeverity.info => 0,
       };
     }
-    return score.clamp(0, 100);
+    return score.clamp(0, 100).toInt();
   }
 
   static double _sample(ByteData d, int offset, int bits, int format) {
     if (format == 3 && bits == 32) {
-      return d.getFloat32(offset, Endian.little).clamp(-1.5, 1.5).toDouble();
+      return d
+          .getFloat32(offset, Endian.little)
+          .clamp(-1.5, 1.5)
+          .toDouble();
     }
     switch (bits) {
       case 16:
@@ -500,12 +550,15 @@ class AudioAnalysisService {
     }
   }
 
-  static double _catmullRom(double p0, double p1, double p2, double p3, double t) {
+  static double _catmullRom(
+      double p0, double p1, double p2, double p3, double t) {
     final t2 = t * t;
     final t3 = t2 * t;
-    return .5 * ((2 * p1) + (-p0 + p2) * t +
-        (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
-        (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+    return .5 *
+        ((2 * p1) +
+            (-p0 + p2) * t +
+            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 +
+            (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
   }
 
   static double _db(double v) => v <= 1e-12 ? -120 : 20 * _log10(v);
