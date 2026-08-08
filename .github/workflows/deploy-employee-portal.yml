@@ -109,12 +109,14 @@ jobs:
             '/api/wesi/auth/setup-email' \
             '/api/wesi/security/confirm-owner-email' \
             'newMailClient' \
+            'api.resend.com' \
             'emailSetupRequired'; do
             grep -q "$marker" server/pb_hooks/wesi_auth_bootstrap.pb.js
           done
           grep -q '/api/wesi/auth/mail-ready' server/pb_hooks/wesi_mail_health.pb.js
           grep -q 'senderConfigured' server/pb_hooks/wesi_mail_health.pb.js
-          grep -q 'smtpEnabled' server/pb_hooks/wesi_mail_health.pb.js
+          grep -q 'smtpReady' server/pb_hooks/wesi_mail_health.pb.js
+          grep -q 'httpsProviderConfigured' server/pb_hooks/wesi_mail_health.pb.js
 
       - name: Check server secrets
         env:
@@ -182,14 +184,10 @@ jobs:
           $SSH "$USER@$HOST" "rm -rf '$REMOTE'"
 
       - name: Verify deployed portal, OTP mail, and security routes
-        env:
-          HOST: ${{ secrets.WESI_SERVER_HOST }}
-          USER: ${{ secrets.WESI_SERVER_USER }}
         run: |
           set -euo pipefail
           BASE='https://api.wesi-inc.ru/portal/'
           API='https://api.wesi-inc.ru'
-          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
 
           curl -fsS --max-time 30 "${BASE}?v=${GITHUB_SHA}" -o portal.html
           for marker in WesiOS siteBoot runnerFront scrollProgress requirementsTrigger productInfo otpCode rememberLogin; do
@@ -217,20 +215,11 @@ jobs:
           import json
           with open('mail-ready.json', encoding='utf-8') as f:
               data=json.load(f)
-          assert data.get('senderConfigured') is True, data
-          print('OTP sender configured; SMTP enabled:', bool(data.get('smtpEnabled')))
+          assert data.get('ready') is True, data
+          assert data.get('smtpReady') is True or data.get('httpsProviderConfigured') is True, data
+          transport = 'smtp' if data.get('smtpReady') else 'https:' + str(data.get('httpsProvider') or 'configured')
+          print('OTP mail transport ready:', transport)
           PY
-          SMTP=$(python3 - <<'PY'
-          import json
-          with open('mail-ready.json', encoding='utf-8') as f:
-              print('1' if json.load(f).get('smtpEnabled') else '0')
-          PY
-          )
-          if [ "$SMTP" != 1 ]; then
-            $SSH "$USER@$HOST" 'command -v sendmail >/dev/null' || {
-              echo '::error::SMTP выключен и sendmail на сервере не найден — email OTP не сможет отправляться'; exit 1; }
-            echo 'SMTP выключен, используется доступный server sendmail.'
-          fi
 
           CODE=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 \
             -X POST -H 'Content-Type: application/json' -d '{}' "$API/api/wesi/auth/start-v2" || true)
