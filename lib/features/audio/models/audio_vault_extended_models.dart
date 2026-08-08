@@ -39,6 +39,15 @@ class AudioPlatformCheck {
   final double? maxTruePeakDbtp;
   final double? normalizationGainDb;
 
+  /// Короткая маркировка основания проверки. Например:
+  /// `Official`, `Broadcast reference`, `Wesi QC`.
+  /// Нужна, чтобы WesiOS не выдавал внутреннюю эвристику за официальный
+  /// mastering/delivery стандарт площадки.
+  final String basis;
+
+  /// Человеко-читаемый источник/оговорка, показываемый в UI при необходимости.
+  final String? sourceLabel;
+
   const AudioPlatformCheck({
     required this.platform,
     required this.ok,
@@ -46,6 +55,8 @@ class AudioPlatformCheck {
     this.targetLufs,
     this.maxTruePeakDbtp,
     this.normalizationGainDb,
+    this.basis = 'Wesi QC',
+    this.sourceLabel,
   });
 
   Map<String, dynamic> toJson() => {
@@ -55,6 +66,8 @@ class AudioPlatformCheck {
         'targetLufs': targetLufs,
         'maxTruePeakDbtp': maxTruePeakDbtp,
         'normalizationGainDb': normalizationGainDb,
+        'basis': basis,
+        'sourceLabel': sourceLabel,
       };
 
   factory AudioPlatformCheck.fromJson(Map<String, dynamic> json) =>
@@ -66,6 +79,8 @@ class AudioPlatformCheck {
         maxTruePeakDbtp: (json['maxTruePeakDbtp'] as num?)?.toDouble(),
         normalizationGainDb:
             (json['normalizationGainDb'] as num?)?.toDouble(),
+        basis: '${json['basis'] ?? 'Wesi QC'}',
+        sourceLabel: json['sourceLabel'] as String?,
       );
 }
 
@@ -93,6 +108,21 @@ class AudioAnalysisReport {
   final int score;
   final String disclaimer;
 
+  /// Снимок исходника нужен для автоматического сброса устаревшего отчёта,
+  /// если WAV был заменён/изменён после анализа.
+  final int sourceBytes;
+  final int sourceModifiedAtMs;
+
+  /// Дополнительные быстрые mastering/QC метрики.
+  final double peakToLoudnessRatioDb;
+  final double estimatedLoudnessRangeLu;
+  final double estimatedMaxMomentaryLufs;
+  final double estimatedMaxShortTermLufs;
+  final double channelBalanceDb;
+  final double midSideRatioDb;
+  final double edgeSilencePercent;
+  final double clippedSamplesPerMillion;
+
   const AudioAnalysisReport({
     required this.analyzedAt,
     required this.sourcePath,
@@ -116,6 +146,16 @@ class AudioAnalysisReport {
     required this.platformChecks,
     required this.score,
     required this.disclaimer,
+    this.sourceBytes = 0,
+    this.sourceModifiedAtMs = 0,
+    this.peakToLoudnessRatioDb = 0,
+    this.estimatedLoudnessRangeLu = 0,
+    this.estimatedMaxMomentaryLufs = -120,
+    this.estimatedMaxShortTermLufs = -120,
+    this.channelBalanceDb = 0,
+    this.midSideRatioDb = -120,
+    this.edgeSilencePercent = 0,
+    this.clippedSamplesPerMillion = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -141,6 +181,16 @@ class AudioAnalysisReport {
         'platformChecks': platformChecks.map((e) => e.toJson()).toList(),
         'score': score,
         'disclaimer': disclaimer,
+        'sourceBytes': sourceBytes,
+        'sourceModifiedAtMs': sourceModifiedAtMs,
+        'peakToLoudnessRatioDb': peakToLoudnessRatioDb,
+        'estimatedLoudnessRangeLu': estimatedLoudnessRangeLu,
+        'estimatedMaxMomentaryLufs': estimatedMaxMomentaryLufs,
+        'estimatedMaxShortTermLufs': estimatedMaxShortTermLufs,
+        'channelBalanceDb': channelBalanceDb,
+        'midSideRatioDb': midSideRatioDb,
+        'edgeSilencePercent': edgeSilencePercent,
+        'clippedSamplesPerMillion': clippedSamplesPerMillion,
       };
 
   factory AudioAnalysisReport.fromJson(Map<String, dynamic> json) =>
@@ -181,6 +231,25 @@ class AudioAnalysisReport {
             .toList(),
         score: (json['score'] as num?)?.toInt() ?? 0,
         disclaimer: '${json['disclaimer'] ?? ''}',
+        sourceBytes: (json['sourceBytes'] as num?)?.toInt() ?? 0,
+        sourceModifiedAtMs:
+            (json['sourceModifiedAtMs'] as num?)?.toInt() ?? 0,
+        peakToLoudnessRatioDb:
+            (json['peakToLoudnessRatioDb'] as num?)?.toDouble() ?? 0,
+        estimatedLoudnessRangeLu:
+            (json['estimatedLoudnessRangeLu'] as num?)?.toDouble() ?? 0,
+        estimatedMaxMomentaryLufs:
+            (json['estimatedMaxMomentaryLufs'] as num?)?.toDouble() ?? -120,
+        estimatedMaxShortTermLufs:
+            (json['estimatedMaxShortTermLufs'] as num?)?.toDouble() ?? -120,
+        channelBalanceDb:
+            (json['channelBalanceDb'] as num?)?.toDouble() ?? 0,
+        midSideRatioDb:
+            (json['midSideRatioDb'] as num?)?.toDouble() ?? -120,
+        edgeSilencePercent:
+            (json['edgeSilencePercent'] as num?)?.toDouble() ?? 0,
+        clippedSamplesPerMillion:
+            (json['clippedSamplesPerMillion'] as num?)?.toDouble() ?? 0,
       );
 }
 
@@ -194,12 +263,13 @@ class BeatExtendedMeta {
     String? abletonProjectPath,
     bool clearAbletonProject = false,
     AudioAnalysisReport? analysis,
+    bool clearAnalysis = false,
   }) =>
       BeatExtendedMeta(
         abletonProjectPath: clearAbletonProject
             ? null
             : (abletonProjectPath ?? this.abletonProjectPath),
-        analysis: analysis ?? this.analysis,
+        analysis: clearAnalysis ? null : (analysis ?? this.analysis),
       );
 
   Map<String, dynamic> toJson() => {
