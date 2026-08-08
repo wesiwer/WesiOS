@@ -1,0 +1,70 @@
+name: Diagnose release upload 0.19.3+51
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read release staging state
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '--- staging ---'
+          if [ -d /tmp/wesios-release-31242160215 ]; then
+            find /tmp/wesios-release-31242160215 -maxdepth 1 -type f -printf '%f %s bytes\n' | sort
+          else
+            echo 'staging directory absent'
+          fi
+          echo '--- published disk manifest ---'
+          python3 - <<'PY'
+          import json, os
+          p='/opt/pocketbase/pb_public/artifacts/app/app-manifest.json'
+          if not os.path.exists(p):
+              print('manifest absent')
+          else:
+              with open(p, encoding='utf-8') as f: m=json.load(f)
+              print(m.get('version'), m.get('build'))
+              for k in ('android','windows'):
+                  e=m.get(k,{})
+                  print(k, e.get('asset'), e.get('sizeBytes'))
+          PY
+          echo '--- related processes ---'
+          ps -eo pid,etime,comm,args | grep -E '[s]cp|[s]sh|deploy-artifact' | tail -20 || true
+          REMOTE
+
+      - name: Read release run status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/31242160215/jobs" \
+            --jq '.jobs[] | [.name,.status,(.conclusion // "-"),(.steps[]? | select(.status=="in_progress") | .name)] | @tsv'
