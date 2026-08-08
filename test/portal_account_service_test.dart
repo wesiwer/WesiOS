@@ -20,7 +20,7 @@ void main() {
         fallback: 'Сервер не принял данные.',
       );
 
-      expect(message, contains('модуль входа не установлен'));
+      expect(message, contains('модуль безопасности не установлен'));
     });
 
     test('keeps useful Russian server message', () {
