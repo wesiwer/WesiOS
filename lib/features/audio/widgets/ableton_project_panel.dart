@@ -24,6 +24,12 @@ class _AbletonProjectPanelState extends State<AbletonProjectPanel> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant AbletonProjectPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.beatId != widget.beatId) _load();
+  }
+
   Future<void> _load() async {
     _meta = await AudioVaultExtrasService.metaFor(widget.beatId);
     if (mounted) setState(() {});
@@ -56,8 +62,9 @@ class _AbletonProjectPanelState extends State<AbletonProjectPanel> {
           const SizedBox(height: 12),
           if (path == null)
             Text(
-              'Привяжи исходный .als. WesiOS сохранит путь, а сам проект останется на своём месте вместе с samples/packs.',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 11.5, height: 1.4),
+              'Привяжи исходный .als. WesiOS сохранит только путь, а сам проект останется на своём месте вместе с samples/packs.',
+              style: TextStyle(
+                  color: AppTheme.textMuted, fontSize: 11.5, height: 1.4),
             )
           else
             Container(
@@ -73,11 +80,11 @@ class _AbletonProjectPanelState extends State<AbletonProjectPanel> {
                     size: 18),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
+                  child: SelectableText(
                     path,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: AppTheme.textSecondary, fontSize: 10.5),
+                    maxLines: 3,
+                    style: TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 10.5),
                   ),
                 ),
               ]),
@@ -86,8 +93,13 @@ class _AbletonProjectPanelState extends State<AbletonProjectPanel> {
           Wrap(spacing: 8, runSpacing: 8, children: [
             FilledButton.icon(
               onPressed: _busy ? null : _choose,
-              icon: const Icon(Icons.link),
-              label: Text(path == null ? 'Привязать .als' : 'Изменить путь'),
+              icon: const Icon(Icons.folder_open),
+              label: Text(path == null ? 'Выбрать .als' : 'Выбрать другой'),
+            ),
+            OutlinedButton.icon(
+              onPressed: _busy ? null : _pastePath,
+              icon: const Icon(Icons.edit_location_alt_outlined),
+              label: const Text('Вставить путь'),
             ),
             if (path != null)
               OutlinedButton.icon(
@@ -102,6 +114,14 @@ class _AbletonProjectPanelState extends State<AbletonProjectPanel> {
                 label: const Text('Убрать связь'),
               ),
           ]),
+          if (path != null && !exists) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Файл по сохранённому пути не найден. Если проект перенесён — укажи новый путь; WesiOS не удаляет и не перемещает исходный .als.',
+              style: TextStyle(
+                  color: AppTheme.accentRed, fontSize: 10, height: 1.35),
+            ),
+          ],
         ],
       ),
     );
@@ -112,6 +132,71 @@ class _AbletonProjectPanelState extends State<AbletonProjectPanel> {
     try {
       final path = await AudioVaultExtrasService.chooseAbletonProject();
       if (path == null) return;
+      await AudioVaultExtrasService.setAbletonProject(widget.beatId, path);
+      await _load();
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _pastePath() async {
+    final controller = TextEditingController(
+      text: _meta?.abletonProjectPath ?? '',
+    );
+    final raw = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Путь к Ableton Project'),
+        content: SizedBox(
+          width: 560,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Вставь полный путь к .als. Можно вставлять путь в кавычках — WesiOS их уберёт.',
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: 'Например C:\\Music\\Beats\\Night Drive.als',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: const Text('Сохранить'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (raw == null) return;
+
+    setState(() => _busy = true);
+    try {
+      final path = await AudioVaultExtrasService.validateAbletonProjectPath(raw);
+      if (path == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Не найден существующий файл Ableton .als по этому пути.'),
+            ),
+          );
+        }
+        return;
+      }
       await AudioVaultExtrasService.setAbletonProject(widget.beatId, path);
       await _load();
     } finally {
