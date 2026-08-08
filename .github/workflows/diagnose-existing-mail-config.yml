@@ -1,0 +1,74 @@
+name: Diagnose existing mail relay config
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-existing-mail-config.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Inspect names only
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'bash -s' > raw.txt <<'REMOTE'
+          set +e
+          echo 'port465='$(timeout 7 bash -c '</dev/tcp/smtp.gmail.com/465' >/dev/null 2>&1 && echo true || echo false)
+          echo 'https='$(timeout 7 curl -fsS -o /dev/null https://www.google.com && echo true || echo false)
+          echo 'envNames='
+          (env; tr '\0' '\n' < /proc/$(pgrep -o pocketbase 2>/dev/null)/environ 2>/dev/null) \
+            | sed -n 's/^\([A-Za-z_][A-Za-z0-9_]*\)=.*/\1/p' \
+            | grep -Ei 'smtp|mail|resend|sendgrid|postmark|brevo|mailgun' \
+            | sort -u || true
+          echo 'fileNames='
+          find /opt/pocketbase /srv -maxdepth 3 -type f \( -name '*.env' -o -name '.env' -o -name '*.conf' \) -readable 2>/dev/null \
+            | head -100 \
+            | while read -r f; do
+                grep -Eio '^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*(SMTP|MAIL|RESEND|SENDGRID|POSTMARK|BREVO|MAILGUN)[A-Za-z0-9_]*[[:space:]]*=' "$f" 2>/dev/null \
+                  | sed 's/[[:space:]=]//g' || true
+              done | sort -u
+          REMOTE
+          python3 - <<'PY'
+          import json
+          lines=open('raw.txt',encoding='utf-8',errors='replace').read().splitlines()
+          out={'port465':False,'https':False,'envNames':[],'fileNames':[]}
+          section=None
+          for line in lines:
+              if line.startswith('port465='): out['port465']=line.split('=',1)[1]=='true'
+              elif line.startswith('https='): out['https']=line.split('=',1)[1]=='true'
+              elif line=='envNames=': section='envNames'
+              elif line=='fileNames=': section='fileNames'
+              elif section and line.strip(): out[section].append(line.strip())
+          open('.mail-existing-config.json','w',encoding='utf-8').write(json.dumps(out,ensure_ascii=False,indent=2)+'\n')
+          print(json.dumps(out,ensure_ascii=False))
+          PY
+      - name: Publish sanitized result
+        run: |
+          git config user.name 'WesiOS Mail Diagnostic'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .mail-existing-config.json
+          git commit -m 'chore: record existing mail relay capability names'
+          git push origin HEAD:main
