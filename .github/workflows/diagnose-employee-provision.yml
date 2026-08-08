@@ -1,0 +1,66 @@
+name: Diagnose employee provision
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Inspect PocketBase runtime safely
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== pocketbase process ==='
+          ps -eo pid,args | grep -E '[p]ocketbase( |$)' | sed -E 's#(--encryptionEnv=[^ ]+|--encryptionEnv [^ ]+)#--encryptionEnv=***#g' || true
+          echo '=== hook sha ==='
+          sha256sum /opt/pocketbase/pb_hooks/employee_portal.pb.js 2>/dev/null || true
+          echo '=== recent provision/auth errors ==='
+          if command -v journalctl >/dev/null 2>&1; then
+            journalctl --since '6 hours ago' --no-pager 2>/dev/null \
+              | grep -Ei 'pocketbase|employee|provision|portal|panic|error|exception|ReferenceError|TypeError' \
+              | tail -n 160 \
+              | sed -E 's/(Authorization:|token=|"token"[ :]+)[A-Za-z0-9._-]+/\1***/Ig' || true
+          fi
+          echo '=== users collection schema excerpt ==='
+          DB=''
+          for d in /opt/pocketbase/pb_data/data.db /srv/pocketbase/pb_data/data.db; do
+            if [ -f "$d" ]; then DB="$d"; break; fi
+          done
+          if [ -n "$DB" ] && command -v sqlite3 >/dev/null 2>&1; then
+            sqlite3 "$DB" "select name,type,system,substr(fields,1,1800) from _collections where name='users';" 2>/dev/null || true
+            echo '=== owner marker count ==='
+            sqlite3 "$DB" "select count(*) from wesios_records where coll='system' and rid='portal-owner' and deleted=0;" 2>/dev/null || true
+          fi
+          REMOTE
