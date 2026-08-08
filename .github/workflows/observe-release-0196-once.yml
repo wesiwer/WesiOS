@@ -18,23 +18,15 @@ jobs:
         with:
           ref: main
           fetch-depth: 1
-      - name: Wait for exact release run
+      - name: Snapshot exact release run
         env:
           GH_TOKEN: ${{ github.token }}
           TARGET_SHA: b78025406a97a0b50287cec693e84e20c9df3485
         run: |
           set -euo pipefail
           API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100"
-          found=''
-          for i in $(seq 1 80); do
-            json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$API")
-            found=$(printf '%s' "$json" | jq -c '[.workflow_runs[] | select(.name=="Build signed WesiOS release")][0] // empty')
-            if [ -n "$found" ]; then
-              status=$(printf '%s' "$found" | jq -r '.status')
-              if [ "$status" = completed ]; then break; fi
-            fi
-            sleep 15
-          done
+          json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$API")
+          found=$(printf '%s' "$json" | jq -c '[.workflow_runs[] | select(.name=="Build signed WesiOS release")][0] // empty')
           if [ -z "$found" ]; then
             printf '{"targetSha":"%s","found":false}\n' "$TARGET_SHA" > .release-0.19.6-status.json
           else
