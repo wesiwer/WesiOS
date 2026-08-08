@@ -70,10 +70,6 @@ void main() {
     });
 
     test('старая карточка без этого поля читается, а не падает', () {
-      // Поле добавлено позже остальных: в уже записанных на диск карточках
-      // его нет, и Hive отдаёт за него null. Если бы оно было объявлено
-      // как `bool`, генератор написал бы `fields[6] as bool` — и весь
-      // состав перестал бы читаться после обновления.
       const old = TeamPermissions(moduleList: ['tasks']);
       expect(old.canAssignTasksRaw, isNull);
       expect(old.canAssignTasks, isFalse);
@@ -133,13 +129,15 @@ void main() {
               'синхронизации, минуя диалог');
     });
 
-    test('владелец без входа в состав ставит кому угодно', () async {
+    test('без входа локальный владелец не даёт административных прав', () async {
       await TeamService.save(person('own', owner: true));
       await TeamService.save(person('e2'));
       await TeamService.signOut();
 
-      expect(TaskAssignment.canAssignToOthers, isTrue);
-      expect(TaskAssignment.coerce('e2'), 'e2');
+      expect(TaskAssignment.canAssignToOthers, isFalse);
+      expect(TaskAssignment.currentId, isNull);
+      expect(TaskAssignment.coerce('e2'), isNull);
+      expect(TaskAssignment.candidates(), isEmpty);
     });
 
     test('имя исполнителя берётся из состава', () async {
@@ -148,8 +146,6 @@ void main() {
     });
 
     test('старая задача с именем строкой продолжает читаться', () {
-      // В задачах, заведённых до состава, там лежит набранное руками имя.
-      // Оно должно остаться видимым, а не превратиться в пустоту.
       expect(TaskAssignment.displayName('Вася из типографии'),
           'Вася из типографии');
       expect(TaskAssignment.displayName(null), '');
