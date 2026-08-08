@@ -234,8 +234,8 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                 children: [
                   Text(
                     _ru
-                        ? 'Почта обязательна: на неё будет приходить шестизначный код при новом входе.'
-                        : 'Email is required for six-digit sign-in codes.',
+                        ? 'Почта для кодов уже подтверждена и защищена. Здесь можно изменить логин или пароль.'
+                        : 'The security email is verified and locked. You can change login or password here.',
                     style: TextStyle(fontSize: 12, height: 1.45, color: AppTheme.textMuted),
                   ),
                   const SizedBox(height: 16),
@@ -243,9 +243,10 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                   const SizedBox(height: 12),
                   _dialogField(
                     controller: email,
-                    label: _ru ? 'Почта для кодов' : 'Security email',
+                    label: _ru ? 'Подтверждённая почта для кодов' : 'Verified security email',
                     hint: 'name@example.com',
                     keyboard: TextInputType.emailAddress,
+                  enabled: false,
                   ),
                   const SizedBox(height: 12),
                   _dialogField(
@@ -311,6 +312,7 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
     bool obscure = false,
     Widget? suffix,
     TextInputType? keyboard,
+  bool enabled = true,
   }) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -319,6 +321,7 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
           const SizedBox(height: 5),
           TextField(
             controller: controller,
+            enabled: enabled,
             obscureText: obscure,
             keyboardType: keyboard,
             autocorrect: false,
@@ -433,7 +436,7 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                       child: Text(
                         _sending
                             ? (_ru ? 'Сохраняю…' : 'Saving…')
-                            : (_ru ? 'Изменить логин, почту или пароль' : 'Change login, email or password'),
+                            : (_ru ? 'Изменить логин или пароль' : 'Change login or password'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 12.5,

@@ -44,6 +44,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Доступ к секции ключей Firebase подтверждён в этом сеансе экрана.
   /// Намеренно не сохраняется между открытиями: закрыл профиль — снова
   /// нужен пароль.
+  // Legacy Firebase vault helpers are retained for migration only.
+  // ignore: unused_field
   bool _vaultUnlocked = false;
   bool _bioAvailable = false;
 
