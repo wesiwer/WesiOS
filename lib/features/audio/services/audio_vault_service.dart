@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:cross_file/cross_file.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -20,8 +19,10 @@ class AudioVaultService {
   static const String _beatsKey = 'beats_v1';
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
-  static Future<Box<dynamic>> get _box async =>
-      Hive.isBoxOpen(boxName) ? Hive.box(boxName) : Hive.openBox(boxName);
+  static Future<Box<dynamic>> get _box async {
+    if (Hive.isBoxOpen(boxName)) return Hive.box<dynamic>(boxName);
+    return Hive.openBox<dynamic>(boxName);
+  }
 
   static Future<List<BeatEntry>> all() async {
     final box = await _box;
@@ -58,7 +59,8 @@ class AudioVaultService {
 
   static Future<void> delete(BeatEntry beat) async {
     final box = await _box;
-    final list = await all()..removeWhere((e) => e.id == beat.id);
+    final list = await all();
+    list.removeWhere((e) => e.id == beat.id);
     await box.put(_beatsKey, list.map((e) => e.toJson()).toList());
     try {
       final dir = await _beatDirectory(beat.id, create: false);
@@ -107,7 +109,9 @@ class AudioVaultService {
     final source = File(sourcePath);
     if (!await source.exists()) return null;
     final dir = await _beatDirectory(beatId);
-    final safeName = p.basename(source.path).replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9._ -]'), '_');
+    final safeName = p
+        .basename(source.path)
+        .replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9._ -]'), '_');
     final target = File(p.join(dir.path, '${kind.name}_${_id()}_$safeName'));
     await source.copy(target.path);
     return target.path;
@@ -128,7 +132,8 @@ class AudioVaultService {
     if (!await source.exists()) return null;
     final dir = await _beatDirectory(beatId);
     final name = p.basename(source.path);
-    final target = File(p.join(dir.path, '${kind.name}_${_id()}_${name.replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9._ -]'), '_')}'));
+    final safeName = name.replaceAll(RegExp(r'[^A-Za-zА-Яа-я0-9._ -]'), '_');
+    final target = File(p.join(dir.path, '${kind.name}_${_id()}_$safeName'));
     await source.copy(target.path);
     return BeatFileRef(
       id: _id(),
