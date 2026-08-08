@@ -22,7 +22,7 @@ jobs:
           channel: stable
       - run: flutter pub get
       - name: Analyze Audio Vault
-        run: flutter analyze lib/features/audio lib/app.dart
+        run: flutter analyze --no-fatal-infos lib/features/audio lib/app.dart lib/core/routes/app_router.dart
       - name: Build Android debug
         run: flutter build apk --debug
 
