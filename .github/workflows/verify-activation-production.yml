@@ -39,9 +39,9 @@ jobs:
           USER: ${{ secrets.WESI_SERVER_USER }}
         run: |
           set -euo pipefail
-          LOCAL=$(sha256sum server/pb_hooks/employee_portal.pb.js | awk '{print $1}')
+          LOCAL=$(sha256sum server/pb_hooks/employee_portal.pb.js | cut -d' ' -f1)
           REMOTE=$(ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" \
-            "sha256sum /opt/pocketbase/pb_hooks/employee_portal.pb.js | awk '{print \\$1}'")
+            "sha256sum /opt/pocketbase/pb_hooks/employee_portal.pb.js | cut -d' ' -f1")
           echo "main hook:       $LOCAL"
           echo "production hook: $REMOTE"
           [ "$LOCAL" = "$REMOTE" ] || {
