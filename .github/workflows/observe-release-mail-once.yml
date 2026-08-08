@@ -1,0 +1,50 @@
+name: Observe release and mail once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-release-mail-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Snapshot nonsecret action status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_SHA: b62a08b38d079af4e325c4a6605dc2ece8bbed3b
+          MAIL_SHA: 0a3718134cacb05131276fab634c935adc685adc
+        run: |
+          set -euo pipefail
+          lookup() {
+            local sha="$1" name="$2"
+            curl -fsS \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${sha}&per_page=100" \
+              | jq -c --arg name "$name" '[.workflow_runs[] | select(.name==$name)][0] // null'
+          }
+          release=$(lookup "$RELEASE_SHA" 'Build signed WesiOS release')
+          mail=$(lookup "$MAIL_SHA" 'Configure WesiOS mail transport')
+          jq -n \
+            --arg releaseSha "$RELEASE_SHA" --arg mailSha "$MAIL_SHA" \
+            --argjson release "$release" --argjson mail "$mail" \
+            '{releaseSha:$releaseSha,mailSha:$mailSha,release:($release|if .==null then null else {id,name,status,conclusion,run_number,created_at,updated_at} end),mail:($mail|if .==null then null else {id,name,status,conclusion,run_number,created_at,updated_at} end)}' \
+            > .ops-status.json
+      - name: Commit snapshot
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .ops-status.json
+          git commit -m 'chore: snapshot release and mail action status'
+          git push origin HEAD:main
