@@ -9,6 +9,7 @@ on:
       - 'server/pb_hooks/employee_portal.pb.js'
       - 'server/pb_hooks/employee_portal_static.pb.js'
       - 'server/pb_hooks/wesi_security.pb.js'
+      - 'server/pb_hooks/wesi_auth_bootstrap.pb.js'
       - 'server/deploy-employee-portal.sh'
       - 'assets/images/app_icon.png'
       - '.github/workflows/deploy-employee-portal.yml'
@@ -44,6 +45,7 @@ jobs:
             server/pb_hooks/employee_portal.pb.js \
             server/pb_hooks/employee_portal_static.pb.js \
             server/pb_hooks/wesi_security.pb.js \
+            server/pb_hooks/wesi_auth_bootstrap.pb.js \
             assets/images/app_icon.png; do
             test -s "$file"
           done
@@ -57,7 +59,8 @@ jobs:
           grep -q 'id="productInfo"' server/employee-portal/index.html
           grep -q 'Системные требования' server/employee-portal/index.html
           grep -q 'offset-path' server/employee-portal/portal-v6.css
-          grep -q '/api/wesi/auth/start' server/employee-portal/app.js
+          grep -q '/api/wesi/auth/start-v2' server/employee-portal/app.js
+          grep -q '/api/wesi/auth/setup-email' server/employee-portal/app.js
           grep -q '/api/wesi/auth/verify' server/employee-portal/app.js
           grep -q '/api/wesi/security/session/ping' server/employee-portal/app.js
           grep -q 'rememberLogin' server/employee-portal/app.js
@@ -75,6 +78,7 @@ jobs:
           node --check server/pb_hooks/employee_portal.pb.js
           node --check server/pb_hooks/employee_portal_static.pb.js
           node --check server/pb_hooks/wesi_security.pb.js
+          node --check server/pb_hooks/wesi_auth_bootstrap.pb.js
 
           for marker in \
             '/api/wesi/app/bootstrap' \
@@ -86,7 +90,6 @@ jobs:
           done
 
           for marker in \
-            '/api/wesi/auth/start' \
             '/api/wesi/auth/verify' \
             '/api/wesi/security/session/ping' \
             '/api/wesi/security/sessions' \
@@ -97,6 +100,15 @@ jobs:
             grep -q "$marker" server/pb_hooks/wesi_security.pb.js
           done
           grep -q 'onRecordAfterDeleteSuccess' server/pb_hooks/wesi_security.pb.js
+
+          for marker in \
+            '/api/wesi/auth/start-v2' \
+            '/api/wesi/auth/setup-email' \
+            '/api/wesi/security/confirm-owner-email' \
+            'newMailClient' \
+            'emailSetupRequired'; do
+            grep -q "$marker" server/pb_hooks/wesi_auth_bootstrap.pb.js
+          done
 
       - name: Check server secrets
         env:
@@ -155,6 +167,7 @@ jobs:
             server/pb_hooks/employee_portal.pb.js \
             server/pb_hooks/employee_portal_static.pb.js \
             server/pb_hooks/wesi_security.pb.js \
+            server/pb_hooks/wesi_auth_bootstrap.pb.js \
             server/deploy-employee-portal.sh \
             "$USER@$HOST:$REMOTE/"
           $SSH "$USER@$HOST" \
@@ -173,7 +186,8 @@ jobs:
           done
           grep -q 'Системные требования' portal.html
           ! grep -q '/api/collections/users/auth-with-password' portal.html
-          grep -q '/api/wesi/auth/start' portal.html
+          grep -q '/api/wesi/auth/start-v2' portal.html
+          grep -q '/api/wesi/auth/setup-email' portal.html
           grep -q '/api/wesi/auth/verify' portal.html
 
           CACHE=$(curl -fsSI --max-time 20 "$BASE" | tr -d '\r' | grep -i '^cache-control:' || true)
@@ -186,10 +200,10 @@ jobs:
           test "$(wc -c < app_icon.png)" -gt 1000
 
           CODE=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 \
-            -X POST -H 'Content-Type: application/json' -d '{}' "$API/api/wesi/auth/start" || true)
+            -X POST -H 'Content-Type: application/json' -d '{}' "$API/api/wesi/auth/start-v2" || true)
           case "$CODE" in
-            400|401) echo "OTP start route loaded: HTTP $CODE" ;;
-            *) echo "::error::OTP start route returned HTTP $CODE"; cat route-response.txt; exit 1 ;;
+            400|401) echo "OTP v2 start route loaded: HTTP $CODE" ;;
+            *) echo "::error::OTP v2 start route returned HTTP $CODE"; cat route-response.txt; exit 1 ;;
           esac
 
           CODE=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 \
@@ -202,7 +216,8 @@ jobs:
           for path in \
             /api/wesi/app/bootstrap \
             /api/wesi/security/session/ping \
-            /api/wesi/security/sessions; do
+            /api/wesi/security/sessions \
+            /api/wesi/security/confirm-owner-email; do
             CODE=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 "$API$path" || true)
             case "$CODE" in
               401|403) echo "Protected route loaded: $path ($CODE)" ;;
