@@ -1,0 +1,28 @@
+name: One-time Audio Vault Release Trigger
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/audio-vault-release.trigger'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch normal WesiOS release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Audio Vault: Ableton .als links, Wesi AI Audio Quick Analysis v2, PLR/LRA/Momentary/Short-term, stereo/L-R/M-S QC, delivery checks, stale-report protection, Music Hub and Spotify improvements.' \
+            -f deploy_to_server=true
+          echo 'Publish WesiOS Release dispatched.'
