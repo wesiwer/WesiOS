@@ -13,7 +13,8 @@ Unicode true
   !define OUTPUT_FILE "WesiOS-Setup.exe"
 !endif
 !ifndef ICON_FILE
-  !error "ICON_FILE define is required"
+  ; makensis resolves resource paths from the script directory.
+  !define ICON_FILE "..\runner\resources\app_icon.ico"
 !endif
 
 !define PRODUCT_NAME "WesiOS"
