@@ -1,0 +1,73 @@
+name: Run and inspect signed release
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/release-controller.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  release-controller:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Dispatch isolated signed release workflow on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          echo "STARTED_AT=$STARTED_AT" >> "$GITHUB_ENV"
+          gh workflow run repair-android-signature.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main
+
+      - name: Locate dispatched run
+        id: locate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          RUN_ID=""
+          for attempt in $(seq 1 30); do
+            RUN_ID=$(gh run list \
+              --repo "$GITHUB_REPOSITORY" \
+              --workflow repair-android-signature.yml \
+              --branch main \
+              --event workflow_dispatch \
+              --limit 10 \
+              --json databaseId,createdAt \
+              --jq ".[] | select(.createdAt >= \"$STARTED_AT\") | .databaseId" \
+              | head -1)
+            if [ -n "$RUN_ID" ]; then break; fi
+            sleep 4
+          done
+          test -n "$RUN_ID" || { echo "::error::Запуск не появился"; exit 1; }
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Signed release run: $RUN_ID"
+
+      - name: Wait for signed release and print failure logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+        run: |
+          set +e
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status --interval 10
+          RESULT=$?
+          if [ "$RESULT" -ne 0 ]; then
+            echo "========== FAILED RELEASE LOGS =========="
+            gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed || true
+            exit "$RESULT"
+          fi
+
+      - name: Confirm release result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ steps.locate.outputs.run_id }}
+        run: |
+          gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+            --json conclusion,status,url,displayTitle --jq '.'
