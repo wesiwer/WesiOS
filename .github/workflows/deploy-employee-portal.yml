@@ -69,13 +69,15 @@ jobs:
           node --check server/pb_hooks/employee_portal.pb.js
           node --check server/pb_hooks/employee_portal_static.pb.js
 
-          grep -q '/api/wesi/portal/profile/credentials' \
-            server/pb_hooks/employee_portal.pb.js
-          grep -q '/api/wesi/portal/employees/provision' \
-            server/pb_hooks/employee_portal.pb.js
-          # PocketBase route handlers изолированы. Запрещаем возврат к
-          # top-level helper functions, из-за которых production падал с
-          # ReferenceError до выполнения активации.
+          for marker in \
+            '/api/wesi/app/bootstrap' \
+            '/api/wesi/portal/profile/credentials' \
+            '/api/wesi/portal/employees/provision' \
+            '/api/wesi/portal/employees/access' \
+            '/api/wesi/portal/employees/revoke'; do
+            grep -q "$marker" server/pb_hooks/employee_portal.pb.js
+          done
+          grep -q 'portal-account:' server/pb_hooks/employee_portal.pb.js
           ! grep -q '^function portal' server/pb_hooks/employee_portal.pb.js
           ! grep -q 'portalOwnerOnly' server/pb_hooks/employee_portal.pb.js
 
@@ -177,16 +179,24 @@ jobs:
 
           check_protected_route() {
             local method="$1" path="$2" code
-            code=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 \
-              -X "$method" -H 'Content-Type: application/json' -d '{}' "$API$path" || true)
+            if [ "$method" = GET ]; then
+              code=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 \
+                -X GET "$API$path" || true)
+            else
+              code=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 \
+                -X "$method" -H 'Content-Type: application/json' -d '{}' "$API$path" || true)
+            fi
             case "$code" in
               401|403) echo "Маршрут защищён и загружен: $path ($code)" ;;
               *) echo "::error::Маршрут $path вернул HTTP $code"; cat route-response.txt || true; exit 1 ;;
             esac
           }
 
+          check_protected_route GET  '/api/wesi/app/bootstrap'
           check_protected_route POST '/api/wesi/portal/profile/credentials'
           check_protected_route POST '/api/wesi/portal/employees/provision'
+          check_protected_route POST '/api/wesi/portal/employees/access'
+          check_protected_route POST '/api/wesi/portal/employees/revoke'
 
           CODE=$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 \
             "$API/api/wesi/portal/manifest" || true)

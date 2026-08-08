@@ -6,6 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../../../core/security/shield_service.dart';
+import '../../../core/services/firebase_rest_service.dart';
+import '../../../core/sync/sync_auto.dart';
+import '../../../core/sync/sync_endpoint.dart';
 import '../models/employee_model.dart';
 import '../models/team_permissions.dart';
 import 'credentials_generator.dart';
@@ -101,10 +104,15 @@ class TeamService {
     return byId(id);
   }
 
+  /// Без подтверждённого пользователя нет никаких выдаваемых прав.
+  ///
+  /// Раньше null означал владельца. На чистой установке это превращало
+  /// отсутствие входа в полный административный доступ. Безопасное правило
+  /// обратное: нет сессии — нет привилегий.
   static TeamPermissions get currentPermissions =>
-      current?.permissions ?? TeamPermissions.owner;
+      current?.permissions ?? const TeamPermissions();
 
-  static bool get isOwnerSession => current == null || current!.isOwner;
+  static bool get isOwnerSession => current?.isOwner == true;
 
   static const String _rememberKey = 'team_remember_session';
 
@@ -121,18 +129,70 @@ class TeamService {
     revision.value++;
   }
 
+  /// Применяет роль и права, которые вернул защищённый серверный bootstrap.
+  /// Клиент сам себе владельца или дополнительные модули здесь не назначает.
+  static Future<EmployeeModel?> applyServerIdentity(
+    PortalAppIdentity identity, {
+    bool remember = true,
+  }) async {
+    final box = _open();
+    if (box == null) return null;
+
+    final existing = box.get(identity.employeeId);
+    final employee = existing != null && existing.isOwner == identity.isOwner
+        ? existing.copyWith(
+            login: identity.login,
+            fullName: identity.fullName,
+            nickname: identity.nickname,
+            position: identity.position,
+            email: identity.email,
+            permissions: identity.permissions,
+            avatarIndex: identity.avatarIndex,
+          )
+        : EmployeeModel(
+            id: identity.employeeId,
+            login: identity.login,
+            fullName: identity.fullName,
+            nickname: identity.nickname,
+            position: identity.position,
+            email: identity.email,
+            permissions: identity.permissions,
+            avatarIndex: identity.avatarIndex,
+            createdAt: identity.createdAt,
+            isOwner: identity.isOwner,
+          );
+
+    await box.put(employee.id, employee);
+    await signIn(employee, remember: remember);
+    revision.value++;
+    return employee;
+  }
+
   static Future<void> forgetUnrememberedSession() async {
     final box = _settings();
     if (box == null) return;
     if (box.get(_rememberKey) == false) {
+      SyncAuto.stop();
       await box.delete(_currentKey);
       await box.delete(_rememberKey);
+      await SyncEndpoint.clearSession();
+      await FirebaseRestService.signOut();
       revision.value++;
     }
   }
 
+  /// Полный выход из WesiOS.
+  ///
+  /// Локальная роль, PocketBase-токен и старый Firebase-токен стираются
+  /// вместе. Оставлять хотя бы один из них означало бы, что экран входа можно
+  /// обойти после logout через другой сервис.
   static Future<void> signOut() async {
-    await _settings()?.delete(_currentKey);
+    SyncAuto.stop();
+    final box = _settings();
+    await box?.delete(_currentKey);
+    await box?.delete(_rememberKey);
+    await SyncEndpoint.clearSession();
+    await FirebaseRestService.signOut();
     revision.value++;
   }
 
@@ -256,6 +316,12 @@ class TeamService {
   static Future<void> save(EmployeeModel employee) async {
     await _open()?.put(employee.id, employee);
     revision.value++;
+
+    // Изменение прав владельцем немедленно фиксируется и в серверной связке
+    // аккаунта. Bootstrap сотрудника не должен ждать следующего полного sync.
+    if (isOwnerSession && !employee.isOwner && SyncEndpoint.isConnected) {
+      await PortalAccountService.updateAccess(employee);
+    }
   }
 
   /// Убирает сотрудника из рабочего состава, но сохраняет закрытый архивный
@@ -265,6 +331,14 @@ class TeamService {
     final employee = box?.get(id);
     if (box == null || employee == null) return false;
     if (employee.isOwner) return false;
+
+    // На рабочем устройстве владельца сначала закрываем серверный вход.
+    // Иначе удалённый из интерфейса человек продолжал бы иметь действующую
+    // учётную запись на сайте и в приложении.
+    if (isOwnerSession && SyncEndpoint.isConnected) {
+      final revoked = await PortalAccountService.revoke(employee);
+      if (!revoked.ok) return false;
+    }
 
     await EmployeeAdminService.archive(employee, reason: reason);
     await box.delete(id);

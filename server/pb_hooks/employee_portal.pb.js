@@ -14,6 +14,177 @@ routerAdd("GET", "/api/wesi/portal/session", (e) => {
   });
 }, $apis.requireAuth("users"));
 
+/// Серверный источник истины для входа в приложение.
+///
+/// Клиент не решает сам, владелец перед ним или сотрудник. Он сначала
+/// получает обычный PocketBase auth token, затем этим token вызывает bootstrap
+/// и получает только подтверждённую сервером роль и права.
+routerAdd("GET", "/api/wesi/app/bootstrap", (e) => {
+  const ownerMarker = (ownerId) => {
+    try {
+      return e.app.findFirstRecordByFilter(
+        "wesios_records",
+        "owner='" + ownerId + "' && coll='system' && rid='portal-owner' && deleted=false",
+      );
+    } catch (_) {
+      return null;
+    }
+  };
+  const valueObject = (record, field) => {
+    if (!record) return {};
+    try {
+      const value = record.get(field);
+      return value && typeof value === "object" ? value : {};
+    } catch (_) {
+      return {};
+    }
+  };
+  const employeePermissions = (value) => {
+    return value && typeof value === "object"
+      ? value
+      : {
+          "modules": ["tasks"],
+          "knowledgeIds": [],
+          "knowledgeAll": false,
+          "canManageTeam": false,
+          "canSeeOthersStats": false,
+          "canSeeNotes": false,
+          "canAssignTasks": false,
+        };
+  };
+  const ownerPermissions = () => ({
+    "modules": [
+      "treasury", "forecast", "sandbox", "analytics", "tasks", "calendar",
+      "knowledge", "contacts", "chats", "shield", "keys", "crm", "ai",
+      "audio", "roadmap", "sysadmin",
+    ],
+    "knowledgeIds": [],
+    "knowledgeAll": true,
+    "canManageTeam": true,
+    "canSeeOthersStats": true,
+    "canSeeNotes": true,
+    "canAssignTasks": true,
+  });
+  const email = e.auth.getString("email").trim().toLowerCase();
+  const emailLogin = email.endsWith("@wesi.local")
+    ? email.substring(0, email.length - "@wesi.local".length)
+    : email;
+
+  if (ownerMarker(e.auth.id)) {
+    return e.json(200, {
+      "employeeId": "owner",
+      "login": emailLogin || "owner",
+      "fullName": e.auth.getString("name") || "Владелец",
+      "nickname": "",
+      "position": "CEO",
+      "email": email.endsWith("@wesi.local") ? "" : email,
+      "avatarIndex": 0,
+      "createdAt": new Date().toISOString(),
+      "owner": true,
+      "permissions": ownerPermissions(),
+    });
+  }
+
+  const linkRid = "portal-account:" + e.auth.id;
+  let link = null;
+  try {
+    link = e.app.findFirstRecordByFilter(
+      "wesios_records",
+      "coll='system' && rid='" + linkRid + "' && deleted=false",
+    );
+  } catch (_) {
+    link = null;
+  }
+
+  // Совместимость с уже созданными до этого security hotfix аккаунтами:
+  // у них ещё нет portal-account marker. Один раз находим карточку по логину
+  // в серверной коллекции employees и тут же создаём постоянную связку.
+  if (!link && email.endsWith("@wesi.local")) {
+    let records = [];
+    try {
+      records = e.app.findRecordsByFilter(
+        "wesios_records",
+        "coll='employees' && deleted=false",
+        "-stamp",
+        500,
+        0,
+      );
+    } catch (_) {
+      records = [];
+    }
+
+    for (const employeeRecord of records) {
+      const payload = valueObject(employeeRecord, "payload");
+      if (String(payload.login || "").trim().toLowerCase() !== emailLogin) {
+        continue;
+      }
+      const employeeId = String(payload.id || employeeRecord.getString("rid") || "");
+      if (!employeeId) continue;
+
+      const collection = e.app.findCollectionByNameOrId("wesios_records");
+      link = new Record(collection);
+      link.set("owner", employeeRecord.getString("owner"));
+      link.set("org", employeeRecord.getString("org") || "wesi-inc");
+      link.set("coll", "system");
+      link.set("rid", linkRid);
+      link.set("payload", {
+        "kind": "portal-account",
+        "employeeId": employeeId,
+        "login": emailLogin,
+        "snapshot": payload,
+      });
+      link.set("stamp", new Date().toISOString());
+      link.set("deleted", false);
+      e.app.save(link);
+      break;
+    }
+  }
+
+  if (!link) {
+    throw new ForbiddenError(
+      "Учётная запись не привязана к сотруднику WesiOS. Владелец должен повторить активацию.",
+    );
+  }
+
+  const linkPayload = valueObject(link, "payload");
+  const employeeId = String(linkPayload.employeeId || "");
+  const ownerId = link.getString("owner");
+  if (!employeeId || !ownerId) {
+    throw new ForbiddenError("Серверная привязка сотрудника повреждена");
+  }
+
+  let employeeRecord = null;
+  try {
+    employeeRecord = e.app.findFirstRecordByFilter(
+      "wesios_records",
+      "owner='" + ownerId + "' && coll='employees' && rid='" +
+        employeeId + "' && deleted=false",
+    );
+  } catch (_) {
+    employeeRecord = null;
+  }
+
+  const snapshot = employeeRecord
+    ? valueObject(employeeRecord, "payload")
+    : (linkPayload.snapshot && typeof linkPayload.snapshot === "object"
+        ? linkPayload.snapshot
+        : linkPayload);
+  const login = String(snapshot.login || linkPayload.login || emailLogin).trim().toLowerCase();
+
+  return e.json(200, {
+    "employeeId": employeeId,
+    "login": login,
+    "fullName": String(snapshot.fullName || snapshot.name || e.auth.getString("name") || login),
+    "nickname": String(snapshot.nickname || ""),
+    "position": String(snapshot.position || ""),
+    "email": String(snapshot.email || ""),
+    "avatarIndex": Number(snapshot.avatarIndex || 0),
+    "createdAt": String(snapshot.createdAt || new Date().toISOString()),
+    "owner": false,
+    "permissions": employeePermissions(snapshot.permissions || linkPayload.permissions),
+  });
+}, $apis.requireAuth("users"));
+
 routerAdd("POST", "/api/wesi/portal/profile/credentials", (e) => {
   const normalizeLogin = (value) => {
     const normalized = String(value || "").trim().toLowerCase();
@@ -159,10 +330,29 @@ routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
     marker.set("deleted", false);
     e.app.save(marker);
   };
+  const snapshotFrom = (body, login) => ({
+    "kind": "portal-account",
+    "employeeId": String(body.employeeId || login),
+    "login": login,
+    "fullName": String(body.fullName || body.name || login),
+    "nickname": String(body.nickname || ""),
+    "position": String(body.position || ""),
+    "email": String(body.email || ""),
+    "avatarIndex": Number(body.avatarIndex || 0),
+    "createdAt": String(body.createdAt || new Date().toISOString()),
+    "permissions": body.permissions && typeof body.permissions === "object"
+      ? body.permissions
+      : {
+          "modules": ["tasks"],
+          "knowledgeIds": [],
+          "knowledgeAll": false,
+          "canManageTeam": false,
+          "canSeeOthersStats": false,
+          "canSeeNotes": false,
+          "canAssignTasks": false,
+        },
+  });
 
-  // На production marker отсутствует, потому что прежний handler падал раньше
-  // его создания. Первая подтверждённая основная учётка закрепляет владельца
-  // прямо здесь; после этого provisioning доступен только ей.
   claimOwner();
   if (!e.hasSuperuserAuth() && (!e.auth || !ownerMarker(e.auth.id))) {
     throw new ForbiddenError("Создавать учётные записи сотрудников может только владелец");
@@ -202,13 +392,164 @@ routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
   record.setIfFieldExists("name", name || login);
   e.app.save(record);
 
+  const linkRid = "portal-account:" + record.id;
+  let link = null;
+  try {
+    link = e.app.findFirstRecordByFilter(
+      "wesios_records",
+      "coll='system' && rid='" + linkRid + "' && deleted=false",
+    );
+  } catch (_) {
+    link = null;
+  }
+  if (link && link.getString("owner") !== e.auth.id) {
+    throw new ForbiddenError("Учётная запись уже привязана к другому владельцу");
+  }
+  if (!link) {
+    const collection = e.app.findCollectionByNameOrId("wesios_records");
+    link = new Record(collection);
+  }
+  link.set("owner", e.auth.id);
+  link.set("org", "wesi-inc");
+  link.set("coll", "system");
+  link.set("rid", linkRid);
+  link.set("payload", snapshotFrom(body, login));
+  link.set("stamp", new Date().toISOString());
+  link.set("deleted", false);
+  e.app.save(link);
+
   return e.json(created ? 201 : 200, {
     "id": record.id,
     "email": record.getString("email"),
     "name": record.getString("name"),
     "login": login,
     "created": created,
+    "linked": true,
   });
+}, $apis.requireAuth("users"));
+
+/// Обновление прав без смены пароля.
+routerAdd("POST", "/api/wesi/portal/employees/access", (e) => {
+  const ownerMarker = (ownerId) => {
+    try {
+      return e.app.findFirstRecordByFilter(
+        "wesios_records",
+        "owner='" + ownerId + "' && coll='system' && rid='portal-owner' && deleted=false",
+      );
+    } catch (_) {
+      return null;
+    }
+  };
+  if (!e.hasSuperuserAuth() && (!e.auth || !ownerMarker(e.auth.id))) {
+    throw new ForbiddenError("Изменять права сотрудников может только владелец");
+  }
+
+  const body = e.requestInfo().body || {};
+  const login = String(body.login || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(login)) {
+    throw new BadRequestError("Некорректный логин сотрудника");
+  }
+
+  let user = null;
+  try {
+    user = e.app.findAuthRecordByEmail("users", login + "@wesi.local");
+  } catch (_) {
+    user = null;
+  }
+  if (!user) throw new NotFoundError("Учётная запись сотрудника не найдена");
+  if (ownerMarker(user.id)) {
+    throw new BadRequestError("Права владельца этим маршрутом не изменяются");
+  }
+
+  const linkRid = "portal-account:" + user.id;
+  let link = null;
+  try {
+    link = e.app.findFirstRecordByFilter(
+      "wesios_records",
+      "coll='system' && rid='" + linkRid + "' && deleted=false",
+    );
+  } catch (_) {
+    link = null;
+  }
+  if (link && link.getString("owner") !== e.auth.id) {
+    throw new ForbiddenError("Учётная запись привязана к другому владельцу");
+  }
+  if (!link) {
+    const collection = e.app.findCollectionByNameOrId("wesios_records");
+    link = new Record(collection);
+  }
+  link.set("owner", e.auth.id);
+  link.set("org", "wesi-inc");
+  link.set("coll", "system");
+  link.set("rid", linkRid);
+  link.set("payload", {
+    "kind": "portal-account",
+    "employeeId": String(body.employeeId || login),
+    "login": login,
+    "fullName": String(body.fullName || body.name || login),
+    "nickname": String(body.nickname || ""),
+    "position": String(body.position || ""),
+    "email": String(body.email || ""),
+    "avatarIndex": Number(body.avatarIndex || 0),
+    "createdAt": String(body.createdAt || new Date().toISOString()),
+    "permissions": body.permissions && typeof body.permissions === "object"
+      ? body.permissions
+      : {},
+  });
+  link.set("stamp", new Date().toISOString());
+  link.set("deleted", false);
+  e.app.save(link);
+  return e.json(200, {"ok": true});
+}, $apis.requireAuth("users"));
+
+/// Удаление сотрудника из WesiOS должно закрывать и его серверный вход.
+routerAdd("POST", "/api/wesi/portal/employees/revoke", (e) => {
+  const ownerMarker = (ownerId) => {
+    try {
+      return e.app.findFirstRecordByFilter(
+        "wesios_records",
+        "owner='" + ownerId + "' && coll='system' && rid='portal-owner' && deleted=false",
+      );
+    } catch (_) {
+      return null;
+    }
+  };
+  if (!e.hasSuperuserAuth() && (!e.auth || !ownerMarker(e.auth.id))) {
+    throw new ForbiddenError("Закрывать аккаунты сотрудников может только владелец");
+  }
+
+  const body = e.requestInfo().body || {};
+  const login = String(body.login || "").trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9._-]{2,31}$/.test(login)) {
+    throw new BadRequestError("Некорректный логин сотрудника");
+  }
+
+  let user = null;
+  try {
+    user = e.app.findAuthRecordByEmail("users", login + "@wesi.local");
+  } catch (_) {
+    user = null;
+  }
+  if (!user) return e.json(200, {"ok": true, "alreadyGone": true});
+  if (ownerMarker(user.id)) {
+    throw new ForbiddenError("Аккаунт владельца нельзя удалить этим маршрутом");
+  }
+
+  const linkRid = "portal-account:" + user.id;
+  try {
+    const link = e.app.findFirstRecordByFilter(
+      "wesios_records",
+      "owner='" + e.auth.id + "' && coll='system' && rid='" + linkRid + "' && deleted=false",
+    );
+    link.set("deleted", true);
+    link.set("stamp", new Date().toISOString());
+    e.app.save(link);
+  } catch (_) {
+    // Старые аккаунты могли не иметь link marker.
+  }
+
+  e.app.delete(user);
+  return e.json(200, {"ok": true});
 }, $apis.requireAuth("users"));
 
 routerAdd("GET", "/api/wesi/portal/manifest", (e) => {

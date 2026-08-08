@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:math' as math;
 import '../../core/constants/app_version.dart';
+import '../../core/sync/sync_endpoint.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
+import '../team/services/team_service.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -80,11 +82,13 @@ class _SplashScreenState extends State<SplashScreen>
     _fadeController.forward();
     _startTextRotation();
 
-    // Сразу на главную — экран «Начать работу» убран.
     Future.delayed(const Duration(seconds: 8), () {
-      if (mounted) {
-        Navigator.of(context).pushReplacementNamed('/home');
-      }
+      if (!mounted) return;
+      final authenticated =
+          TeamService.current != null && SyncEndpoint.isConnected;
+      Navigator.of(context).pushReplacementNamed(
+        authenticated ? '/home' : '/login',
+      );
     });
   }
 
