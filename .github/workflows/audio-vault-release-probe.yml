@@ -1,0 +1,41 @@
+name: Probe Audio Vault Release Run
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/audio-vault-release-probe.trigger'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Read latest normal release run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?per_page=100" \
+            --jq '[.workflow_runs[] | select(.name == "Publish WesiOS Release")] | sort_by(.created_at) | last')
+          if [ -z "$run" ] || [ "$run" = "null" ]; then
+            printf 'status=missing\n' > .github/audio-vault-release.probe
+          else
+            printf '%s' "$run" | jq -r '"run_id=\(.id)\nstatus=\(.status)\nconclusion=\(.conclusion // \"\")\nhead_sha=\(.head_sha)\nevent=\(.event)\ncreated_at=\(.created_at)\nurl=\(.html_url)"' \
+              > .github/audio-vault-release.probe
+          fi
+          cat .github/audio-vault-release.probe
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/audio-vault-release.probe
+          git commit -m 'ci(release): probe Audio Vault release run' || exit 0
+          git push origin HEAD:main
