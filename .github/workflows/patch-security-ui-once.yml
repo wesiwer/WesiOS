@@ -25,8 +25,6 @@ jobs:
         run: |
           from pathlib import Path
 
-          # Portal: use v2 password step, one-time owner email enrollment, and
-          # commit the verified owner email after the OTP session is issued.
           portal = Path('server/employee-portal/app.js')
           text = portal.read_text(encoding='utf-8')
           needle = "const body = await request('/api/wesi/auth/start', {"
@@ -70,8 +68,6 @@ jobs:
               raise SystemExit('portal verified-session anchor not found')
           portal.write_text(text.replace(confirm_anchor, confirm, 1), encoding='utf-8')
 
-          # Employee editor: email is mandatory, valid and unique before any
-          # local/server write. The visible label also marks it as required.
           editor = Path('lib/features/team/employee_editor_screen.dart')
           text = editor.read_text(encoding='utf-8')
           anchor = """if (name.isEmpty && _nickCtrl.text.trim().isEmpty) {
@@ -115,13 +111,9 @@ jobs:
           )
           editor.write_text(text, encoding='utf-8')
 
-          # First owner migration: bootstrap still sees the legacy @wesi.local
-          # auth email during the same request. Use the email that was just
-          # proven by the OTP response when constructing local identity.
           service = Path('lib/features/team/services/portal_account_service.dart')
           text = service.read_text(encoding='utf-8')
-          anchor = """final bootstrapJson = _map(bootstrapText);
-              final identity = bootstrapJson == null ? null : PortalAppIdentity.tryParse(bootstrapJson);"""
+          anchor = "final bootstrapJson = _map(bootstrapText);\n      final identity = bootstrapJson == null ? null : PortalAppIdentity.tryParse(bootstrapJson);"
           replacement = """final bootstrapJson = _map(bootstrapText);
               final verifiedRecord = verifyJson?['record'];
               if (bootstrapJson != null &&
