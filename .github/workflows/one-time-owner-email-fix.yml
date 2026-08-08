@@ -1,9 +1,7 @@
 name: One-time owner email fix
 
 on:
-  push:
-    paths:
-      - '.github/owner-email-fix.trigger'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -12,6 +10,7 @@ permissions:
 jobs:
   patch-and-release:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
@@ -19,6 +18,7 @@ jobs:
 
       - name: Patch owner security email field
         run: |
+          set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
 
@@ -114,7 +114,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
             --ref main \
             -f notes='Исправлена первичная настройка почты владельца после recovery-входа.' \
             -f deploy_to_server=false
+          echo 'Publish WesiOS Release dispatched.'
