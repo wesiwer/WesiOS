@@ -1,0 +1,37 @@
+name: Observe Audio Vault WesiOS release
+
+on:
+  workflow_run:
+    workflows: ['Publish WesiOS Release']
+    types: [completed]
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Record release result
+        env:
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+        run: |
+          set -euo pipefail
+          printf 'run_id=%s\nconclusion=%s\nhead_sha=%s\nurl=%s\n' \
+            "$RUN_ID" "$CONCLUSION" "$HEAD_SHA" "$RUN_URL" \
+            > .github/audio-vault-release.status
+          git config user.name github-actions
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add .github/audio-vault-release.status
+          git commit -m 'ci(release): record Audio Vault WesiOS release result' || exit 0
+          git push origin HEAD:main
