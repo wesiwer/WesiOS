@@ -10,6 +10,10 @@
 /// consumed on start-v2. It remains valid only until its root-created expiry.
 /// This prevents a duplicate/retried start-v2 request from falling through to
 /// normal mail auth and producing a different OTP before verify completes.
+///
+/// The optional recovery `email` is copied only into the verified recovery
+/// challenge. This lets an owner whose legacy profile has no local email finish
+/// the one-time credential migration without hardcoding personal data here.
 
 routerUse((e) => {
   const path = String(e.request.url.path || "");
@@ -37,10 +41,13 @@ routerUse((e) => {
 
   const userId = String(recovery.userId || "").trim();
   const code = String(recovery.code || "").trim();
+  const recoveryEmail = String(recovery.email || "").trim().toLowerCase();
   const recoveryExpiresIso = String(recovery.expiresAt || "").trim();
   const expiresAt = Date.parse(recoveryExpiresIso);
   if (!/^[A-Za-z0-9_-]{10,40}$/.test(userId) ||
       !/^\d{6}$/.test(code) ||
+      (recoveryEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail)) ||
+      recoveryEmail.endsWith("@wesi.local") ||
       !Number.isFinite(expiresAt) ||
       expiresAt <= Date.now() ||
       expiresAt - Date.now() > 15 * 60 * 1000) {
@@ -86,7 +93,7 @@ routerUse((e) => {
     "userId": user.id,
     "employeeId": "owner",
     "login": "wesioff",
-    "email": "",
+    "email": recoveryEmail,
     "purpose": body.purpose === "portal" ? "portal" : "app",
     "hash": $security.sha256(challengeId + ":" + salt + ":" + code),
     "salt": salt,
@@ -101,7 +108,7 @@ routerUse((e) => {
 
   return e.json(200, {
     "challengeId": challengeId,
-    "maskedEmail": "временный recovery-код",
+    "maskedEmail": recoveryEmail || "временный recovery-код",
     "emailSetupRequired": false,
     "expiresInSeconds": Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)),
     "recovery": true,
