@@ -664,14 +664,14 @@ routerAdd("GET", "/api/wesi/portal/download/{platform}", (e) => {
 
   const path = safePath(entry.path);
   const fallback = platform === "windows"
-    ? "wesios-windows-x64.zip"
+    ? "wesios-windows-x64-setup.exe"
     : "wesios-android.apk";
   const name = fileName(entry.asset, fallback);
 
   e.response.header().set("Cache-Control", "private, no-store");
   e.response.header().set("Content-Disposition", `attachment; filename="${name}"`);
   e.response.header().set("Content-Type", platform === "windows"
-    ? "application/zip"
+    ? "application/vnd.microsoft.portable-executable"
     : "application/vnd.android.package-archive");
   e.response.header().set("X-Content-Type-Options", "nosniff");
   e.response.header().set("X-WesiOS-Version", String(entry.version || manifest.version || ""));
