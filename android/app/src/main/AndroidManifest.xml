@@ -5,25 +5,17 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.VIBRATE"/>
-    <!-- С Android 13 уведомления требуют явного разрешения; отказ
-         не ломает приложение, их просто не будет. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
-    <!-- Обновление приложения: скачанный APK запускается системным
-         установщиком. Без этого разрешения на Android 8+ намерение просто
-         молча не открывается. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
 
     <application
         android:label="WesiOS"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher_dark"
-        android:roundIcon="@mipmap/ic_launcher_dark">
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher">
 
-        <!-- Основная activity без LAUNCHER: ярлык на рабочем столе
-             создаётся activity-alias'ами ниже, чтобы можно было
-             переключать иконку (тёмная / светлая) без переустановки. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -38,17 +30,20 @@
               />
         </activity>
 
-        <!-- Тёмная иконка (по умолчанию включена).
-             @mipmap/* → на API 26+ берётся adaptive-icon из anydpi-v26
-             (launcher применяет скруглённую маску: круг / squircle / и т.д.).
-             На старых API (<26) нужен fallback PNG; при отсутствии —
-             система может показать дефолтную. -->
+        <!--
+          Activity aliases are retained so existing installs and the native
+          icon channel keep the same component names. Both aliases point to
+          the launcher PNG generated in every mipmap density. The previous
+          dark/light names only existed as API-26 adaptive resources and had
+          no PNG fallback, which produced a missing/default icon on some
+          launchers and Android versions.
+        -->
         <activity-alias
             android:name=".IconDark"
             android:enabled="true"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_dark"
-            android:roundIcon="@mipmap/ic_launcher_dark"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher"
             android:label="WesiOS"
             android:targetActivity=".MainActivity">
             <intent-filter>
@@ -57,13 +52,12 @@
             </intent-filter>
         </activity-alias>
 
-        <!-- Светлая иконка (выключена, пока пользователь / auto-тема не включит). -->
         <activity-alias
             android:name=".IconLight"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher_light"
-            android:roundIcon="@mipmap/ic_launcher_light"
+            android:icon="@mipmap/ic_launcher"
+            android:roundIcon="@mipmap/ic_launcher"
             android:label="WesiOS"
             android:targetActivity=".MainActivity">
             <intent-filter>
@@ -76,9 +70,6 @@
             android:name="flutterEmbedding"
             android:value="2" />
 
-        <!-- Передать установщику путь вида file:// нельзя начиная с Android 7
-             (FileUriExposedException), поэтому APK отдаётся через content://.
-             authority обязан совпадать со строкой в MainActivity.kt. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
