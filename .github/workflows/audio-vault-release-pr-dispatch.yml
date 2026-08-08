@@ -1,0 +1,67 @@
+name: Dispatch Audio Vault WesiOS Release
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-and-wait:
+    if: github.head_ref == 'ci/audio-vault-release-dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Dispatch normal release and wait for result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          started=$(date -u +%s)
+
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Audio Vault: Ableton .als links, Wesi AI Audio Quick Analysis v2, PLR/LRA/Momentary/Short-term, stereo/L-R/M-S QC, platform delivery checks and stale-report protection.' \
+            -f deploy_to_server=true
+
+          echo 'Publish WesiOS Release dispatched. Waiting for the new workflow run...'
+          run_id=''
+
+          for attempt in $(seq 1 60); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=50")
+            run_id=$(printf '%s' "$runs" | jq -r \
+              --argjson started "$started" \
+              '[.workflow_runs[] | select(.name == "Publish WesiOS Release") | select((.created_at | fromdateiso8601) >= ($started - 5))] | sort_by(.created_at) | last | .id // empty')
+            if [ -n "$run_id" ]; then
+              echo "release_run_id=$run_id"
+              break
+            fi
+            sleep 5
+          done
+
+          if [ -z "$run_id" ]; then
+            echo '::error::Не найден новый Publish WesiOS Release run после dispatch.'
+            exit 1
+          fi
+
+          for attempt in $(seq 1 160); do
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")
+            status=$(printf '%s' "$run" | jq -r '.status')
+            conclusion=$(printf '%s' "$run" | jq -r '.conclusion // ""')
+            echo "attempt=$attempt run_id=$run_id status=$status conclusion=$conclusion"
+            if [ "$status" = completed ]; then
+              if [ "$conclusion" = success ]; then
+                echo "WesiOS release run $run_id completed successfully."
+                exit 0
+              fi
+              echo "::error::WesiOS release run $run_id completed with $conclusion"
+              exit 1
+            fi
+            sleep 15
+          done
+
+          echo '::error::Timed out waiting for WesiOS release.'
+          exit 1
