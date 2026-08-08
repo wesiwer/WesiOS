@@ -11,6 +11,21 @@ import 'package:wesios/features/team/services/team_service.dart';
 
 void main() {
   late Directory dir;
+  var emailCounter = 0;
+
+  Future<CreatedEmployee?> create(
+    String fullName, {
+    String? password,
+    String notes = '',
+  }) {
+    emailCounter++;
+    return TeamService.create(
+      fullName: fullName,
+      email: 'employee$emailCounter@example.com',
+      password: password,
+      notes: notes,
+    );
+  }
 
   setUpAll(() async {
     dir = Directory.systemTemp.createTempSync('wesios_team_test');
@@ -27,6 +42,7 @@ void main() {
   });
 
   setUp(() async {
+    emailCounter = 0;
     await Hive.box<EmployeeModel>(TeamService.boxName).clear();
     await Hive.box('wesios_settings').clear();
   });
@@ -84,15 +100,44 @@ void main() {
 
   group('создание сотрудника', () {
     test('логин занимается, пароль возвращается один раз', () async {
-      final created = await TeamService.create(fullName: 'Иван Петров');
+      final created = await create('Иван Петров');
       expect(created, isNotNull);
       expect(created!.password.length,
           CredentialsGenerator.defaultPasswordLength);
       expect(LoginPoolService.isTaken(created.employee.login), isTrue);
     });
 
+    test('электронная почта обязательна', () async {
+      final created = await TeamService.create(
+        fullName: 'Без почты',
+        email: '',
+      );
+      expect(created, isNull);
+    });
+
+    test('невалидная почта не принимается', () async {
+      final created = await TeamService.create(
+        fullName: 'Ошибка',
+        email: 'это-не-почта',
+      );
+      expect(created, isNull);
+    });
+
+    test('одну почту нельзя выдать двум сотрудникам', () async {
+      final first = await TeamService.create(
+        fullName: 'Первый',
+        email: 'same@example.com',
+      );
+      final second = await TeamService.create(
+        fullName: 'Второй',
+        email: 'SAME@example.com',
+      );
+      expect(first, isNotNull);
+      expect(second, isNull);
+    });
+
     test('пароль в базе не хранится — только хеш', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+      final created = await create('Иван');
       final stored = TeamService.byId(created!.employee.id)!;
       expect(stored.passwordHash, isNotEmpty);
       expect(stored.passwordSalt, isNotEmpty);
@@ -102,19 +147,19 @@ void main() {
     });
 
     test('у двух сотрудников разные логины', () async {
-      final a = await TeamService.create(fullName: 'А');
-      final b = await TeamService.create(fullName: 'Б');
+      final a = await create('А');
+      final b = await create('Б');
       expect(a!.employee.login, isNot(b!.employee.login));
     });
 
     test('одинаковый пароль даёт разные хеши — соль своя у каждого', () async {
-      final a = await TeamService.create(fullName: 'А', password: 'один-и-тот-же');
-      final b = await TeamService.create(fullName: 'Б', password: 'один-и-тот-же');
+      final a = await create('А', password: 'один-и-тот-же');
+      final b = await create('Б', password: 'один-и-тот-же');
       expect(a!.employee.passwordHash, isNot(b!.employee.passwordHash));
     });
 
     test('по умолчанию открыты только задачи', () async {
-      final created = await TeamService.create(fullName: 'Новичок');
+      final created = await create('Новичок');
       final p = created!.employee.permissions;
       expect(p.allows(TeamModules.tasks), isTrue);
       expect(p.allows(TeamModules.treasury), isFalse);
@@ -122,89 +167,73 @@ void main() {
       expect(p.canManageTeam, isFalse);
     });
 
-    test('создаются проверочные показатели', () async {
-      final created = await TeamService.create(fullName: 'Новичок');
-      final stats = created!.employee.demoStats;
-      expect(stats['balance'], isNotNull);
-      expect(stats['tasksDone'], isNotNull);
-      expect(stats['efficiency']!, inInclusiveRange(0, 1));
+    test('новый профиль не содержит случайных/demo показателей', () async {
+      final created = await create('Новичок');
+      expect(created!.employee.demoStats, isEmpty);
+      expect(TeamService.generateDemoStats(random: Random(1)), isEmpty);
     });
 
-    test('когда логины кончились — сотрудник не создаётся', () async {
+    test('когда словарь логинов кончился — используется уникальный вариант', () async {
       await LoginPoolService.reconcile(CredentialsGenerator.words);
-      final created = await TeamService.create(fullName: 'Ещё один');
+      final created = await create('Ещё один');
       expect(created, isNotNull);
       expect(LoginPoolService.isTaken(created!.employee.login), isTrue);
     });
   });
 
-  group('вход по логину и паролю', () {
-    test('верная пара пускает', () async {
-      final created = await TeamService.create(fullName: 'Иван');
-      final ok = TeamService.verify(
-          created!.employee.login, created.password);
+  group('локальный хеш пароля — только совместимость', () {
+    test('верная пара сверяется локально', () async {
+      final created = await create('Иван');
+      final ok = TeamService.verify(created!.employee.login, created.password);
       expect(ok, isNotNull);
       expect(ok!.id, created.employee.id);
     });
 
-    test('неверный пароль не пускает', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+    test('неверный пароль не проходит', () async {
+      final created = await create('Иван');
       expect(TeamService.verify(created!.employee.login, 'не-тот'), isNull);
     });
 
-    test('несуществующий логин не пускает', () {
+    test('несуществующий логин не проходит', () {
       expect(TeamService.verify('никого-нет', 'пароль'), isNull);
     });
 
-    test('регистр логина не мешает войти', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+    test('регистр логина не мешает сверке', () async {
+      final created = await create('Иван');
       final upper = created!.employee.login.toUpperCase();
       expect(TeamService.verify(upper, created.password), isNotNull);
     });
 
-    test('пустой пароль не подходит к записи без пароля', () async {
+    test('пустой пароль не подходит к владельцу без локального пароля', () async {
       await TeamService.ensureOwner();
       expect(TeamService.verify('owner', ''), isNull);
     });
   });
 
-  group('смена пароля', () {
+  group('локальная смена пароля', () {
     test('старый перестаёт подходить, новый подходит', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+      final created = await create('Иван');
       final id = created!.employee.id;
-      await TeamService.setPassword(id, 'новый-пароль-123');
-
-      expect(TeamService.verify(created.employee.login, created.password),
-          isNull);
-      expect(
-          TeamService.verify(created.employee.login, 'новый-пароль-123'),
+      await TeamService.setPasswordLocally(id, 'новый-пароль-123');
+      expect(TeamService.verify(created.employee.login, created.password), isNull);
+      expect(TeamService.verify(created.employee.login, 'новый-пароль-123'),
           isNotNull);
-    });
-
-    test('сброс выдаёт новый пароль и он работает', () async {
-      final created = await TeamService.create(fullName: 'Иван');
-      final fresh = await TeamService.resetPassword(created!.employee.id);
-      expect(fresh, isNotNull);
-      expect(TeamService.verify(created.employee.login, fresh!), isNotNull);
-      expect(TeamService.verify(created.employee.login, created.password),
-          isNull);
     });
   });
 
   group('удаление', () {
-    test('логин возвращается в свободные', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+    test('логин возвращается в свободные в локальном режиме', () async {
+      final created = await create('Иван');
       final login = created!.employee.login;
       await TeamService.remove(created.employee.id);
       expect(LoginPoolService.isTaken(login), isFalse);
       expect(LoginPoolService.free.contains(login), isTrue);
     });
 
-    test('войти под удалённым больше нельзя', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+    test('удалённый локальный профиль больше не сверяется', () async {
+      final created = await create('Иван');
       await TeamService.remove(created!.employee.id);
-      expect(TeamService.verify(created.employee.login, created.password),
-          isNull);
+      expect(TeamService.verify(created.employee.login, created.password), isNull);
     });
 
     test('владельца удалить нельзя', () async {
@@ -213,8 +242,8 @@ void main() {
       expect(TeamService.owner, isNotNull);
     });
 
-    test('удаление того, кто вошёл, выкидывает его из профиля', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+    test('удаление текущего сотрудника очищает локальную роль', () async {
+      final created = await create('Иван');
       await TeamService.signIn(created!.employee);
       expect(TeamService.current, isNotNull);
       await TeamService.remove(created.employee.id);
@@ -231,8 +260,8 @@ void main() {
       expect(TeamService.isOwnerSession, isFalse);
     });
 
-    test('после входа сотрудника права его', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+    test('после локальной установки сотрудника права его', () async {
+      final created = await create('Иван');
       await TeamService.signIn(created!.employee);
       final p = TeamService.currentPermissions;
       expect(p.allows(TeamModules.tasks), isTrue);
@@ -241,7 +270,7 @@ void main() {
     });
 
     test('выход возвращает в состояние без привилегий', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+      final created = await create('Иван');
       await TeamService.signIn(created!.employee);
       await TeamService.signOut();
       expect(TeamService.current, isNull);
@@ -250,8 +279,8 @@ void main() {
       expect(TeamService.isOwnerSession, isFalse);
     });
 
-    test('правка прав действует на вошедшего сразу', () async {
-      final created = await TeamService.create(fullName: 'Иван');
+    test('правка прав действует на текущего сразу', () async {
+      final created = await create('Иван');
       await TeamService.signIn(created!.employee);
       await TeamService.save(created.employee.copyWith(
         permissions: created.employee.permissions
@@ -264,14 +293,14 @@ void main() {
 
   group('список состава', () {
     test('владелец идёт первым', () async {
-      await TeamService.create(fullName: 'Аня');
+      await create('Аня');
       await TeamService.ensureOwner(name: 'Яков');
       expect(TeamService.all.first.isOwner, isTrue);
     });
 
     test('остальные по алфавиту', () async {
-      await TeamService.create(fullName: 'Яна');
-      await TeamService.create(fullName: 'Анна');
+      await create('Яна');
+      await create('Анна');
       final names = TeamService.all
           .where((e) => !e.isOwner)
           .map((e) => e.displayName)
@@ -305,25 +334,22 @@ void main() {
     });
 
     test('в открытую карточку не попадают заметки и хеш', () async {
-      final created = await TeamService.create(
-        fullName: 'Иван',
+      final created = await create(
+        'Иван',
         notes: 'ставка 200к, не любит созвоны',
       );
       final json = created!.employee.toPublicJson().toString();
       expect(json.contains('ставка'), isFalse);
       expect(json.contains(created.employee.passwordHash), isFalse);
     });
-  });
 
-  group('проверочные показатели', () {
-    test('значения в разумных пределах', () {
-      final rng = Random(1);
-      for (var i = 0; i < 100; i++) {
-        final s = TeamService.generateDemoStats(random: rng);
-        expect(s['balance']!, inInclusiveRange(20000, 400000));
-        expect(s['efficiency']!, inInclusiveRange(0, 1));
-        expect(s['tasksDone']!, greaterThanOrEqualTo(0));
-      }
+    test('почта сохраняется в карточке', () async {
+      final created = await TeamService.create(
+        fullName: 'Почтовый сотрудник',
+        email: 'person@example.com',
+      );
+      expect(created!.employee.email, 'person@example.com');
+      expect(TeamService.byId(created.employee.id)!.email, 'person@example.com');
     });
   });
 }
