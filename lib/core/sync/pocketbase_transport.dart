@@ -17,6 +17,7 @@ class PocketBaseTransport implements SyncTransport {
   final String baseUrl;
   String? _token;
   String? _userId;
+  String? _sessionId;
   final Map<String, String> _serverIds = {};
 
   PocketBaseTransport(this.baseUrl);
@@ -25,50 +26,42 @@ class PocketBaseTransport implements SyncTransport {
     final t = PocketBaseTransport(SyncEndpoint.url);
     final session = SyncEndpoint.session;
     final expires = DateTime.tryParse('${session?['expiresAt']}');
-    if (session != null && expires != null && expires.isAfter(DateTime.now())) {
+    final sid = session?['sessionId'];
+    if (session != null &&
+        expires != null &&
+        expires.isAfter(DateTime.now()) &&
+        sid is String &&
+        sid.isNotEmpty) {
       t._token = '${session['token']}';
       t._userId = '${session['userId']}';
+      t._sessionId = sid;
     }
     return t;
   }
 
   @override
-  bool get isSignedIn => _token != null && _userId != null;
+  bool get isSignedIn =>
+      _token != null && _userId != null && _sessionId != null;
 
   @override
   void signOut() {
     _token = null;
     _userId = null;
+    _sessionId = null;
     _serverIds.clear();
   }
 
+  /// Прямой password-auth больше не используется: он обходил бы почтовый
+  /// второй фактор. Вход выполняет защищённый экран WesiOS, после чего этот
+  /// транспорт получает готовый server token + revocable session id.
   @override
   Future<SyncResult<String>> signIn(String login, String password) async {
-    final res = await _send(
-      'POST',
-      '/api/collections/users/auth-with-password',
-      body: {'identity': login, 'password': password},
-      auth: false,
+    return const SyncResult.fail(
+      SyncFailure(
+        'MFA_REQUIRED',
+        'Войдите через защищённый экран WesiOS и подтвердите код из почты',
+      ),
     );
-    if (res.failure != null) return SyncResult.fail(res.failure!);
-
-    final json = res.value!;
-    final token = json['token'];
-    final record = json['record'];
-    if (token is! String || record is! Map || record['id'] is! String) {
-      return const SyncResult.fail(
-        SyncFailure('NOT_WESIOS', 'Сервер ответил не тем, чего мы ждём'),
-      );
-    }
-    _token = token;
-    _userId = '${record['id']}';
-
-    await SyncEndpoint.saveSession(
-      token: token,
-      userId: _userId!,
-      expiresAt: DateTime.now().add(const Duration(days: 13)),
-    );
-    return SyncResult.ok(_userId!);
   }
 
   @override
@@ -122,12 +115,6 @@ class PocketBaseTransport implements SyncTransport {
     return SyncResult.ok(out);
   }
 
-  /// Самая свежая ревизия серверных записей текущего пользователя.
-  ///
-  /// `wesios_records` — base collection без системного autodate `updated`.
-  /// Раньше polling запрашивал `sort=-updated` и каждые ~17 секунд получал
-  /// HTTP 400. Источником времени у синхронизации всегда был наш `stamp`,
-  /// поэтому revision должен использовать то же реальное поле.
   Future<SyncResult<String>> revision() async {
     if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
     final res = await _send(
@@ -217,6 +204,9 @@ class PocketBaseTransport implements SyncTransport {
       final req = await _http.openUrl(method, uri);
       if (auth && _token != null) {
         req.headers.set(HttpHeaders.authorizationHeader, _token!);
+        if (_sessionId != null) {
+          req.headers.set('X-WesiOS-Session', _sessionId!);
+        }
       }
       if (body != null) {
         req.headers.contentType = ContentType.json;
@@ -228,16 +218,13 @@ class PocketBaseTransport implements SyncTransport {
       if (res.statusCode == 401 || res.statusCode == 403) {
         return SyncResult.fail(
           auth
-              ? const SyncFailure('NOT_SIGNED_IN', 'Пропуск недействителен')
-              : const SyncFailure(
-                  'BAD_CREDENTIALS',
-                  'Неверный логин или пароль',
-                ),
+              ? const SyncFailure('NOT_SIGNED_IN', 'Сеанс завершён')
+              : const SyncFailure('BAD_CREDENTIALS', 'Неверные данные входа'),
         );
       }
       if (res.statusCode == 400 && !auth) {
         return const SyncResult.fail(
-          SyncFailure('BAD_CREDENTIALS', 'Неверный логин или пароль'),
+          SyncFailure('BAD_CREDENTIALS', 'Неверные данные входа'),
         );
       }
       if (res.statusCode == 404) {
