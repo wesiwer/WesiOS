@@ -1,19 +1,37 @@
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/core/services/access_profile.dart';
-import 'package:wesios/core/services/firebase_rest_service.dart';
+import 'package:wesios/features/team/models/employee_model.dart';
+import 'package:wesios/features/team/models/team_permissions.dart';
+import 'package:wesios/features/team/services/team_service.dart';
 
 void main() {
   late Directory tempDir;
-  late Box<dynamic> box;
+  late Box<dynamic> settings;
+
+  EmployeeModel person({
+    required String id,
+    required TeamPermissions permissions,
+    bool owner = false,
+  }) =>
+      EmployeeModel(
+        id: id,
+        login: id,
+        fullName: id,
+        permissions: permissions,
+        createdAt: DateTime.utc(2026, 8, 8),
+        isOwner: owner,
+      );
 
   setUpAll(() async {
     tempDir = Directory.systemTemp.createTempSync('wesios_access_test');
     Hive.init(tempDir.path);
-    box = await Hive.openBox<dynamic>('wesios_settings');
+    Hive.registerAdapter(TeamPermissionsAdapter());
+    Hive.registerAdapter(EmployeeModelAdapter());
+    settings = await Hive.openBox<dynamic>('wesios_settings');
+    await Hive.openBox<EmployeeModel>(TeamService.boxName);
   });
 
   tearDownAll(() async {
@@ -22,112 +40,82 @@ void main() {
   });
 
   setUp(() async {
-    await box.clear();
-    await FirebaseRestService.signOut();
+    await settings.clear();
+    await Hive.box<EmployeeModel>(TeamService.boxName).clear();
     await AccessProfile.clear();
   });
 
-  Future<void> signInAs(String uid) async {
-    await box.put(
-      'firebase_session',
-      jsonEncode({
-        'idToken': 'token',
-        'refreshToken': 'refresh',
-        'uid': uid,
-        'email': '$uid@wesi.local',
-        'expiresAt': DateTime.now().add(const Duration(hours: 1)).toIso8601String(),
-      }),
+  test('без входа все модули запрещены', () {
+    expect(TeamService.current, isNull);
+    expect(AccessProfile.current, AccessProfile.defaults);
+    for (final module in AccessProfile.modules) {
+      expect(AccessProfile.allows(module), isFalse, reason: module);
+    }
+  });
+
+  test('права берутся из текущего подтверждённого сотрудника', () async {
+    final employee = person(
+      id: 'employee',
+      permissions: const TeamPermissions(moduleList: ['tasks', 'calendar']),
     );
-  }
+    await TeamService.save(employee);
+    await TeamService.signIn(employee);
 
-  group('без входа', () {
-    test('открыто всё — ограничивать некого', () {
-      expect(AccessProfile.current, AccessProfile.defaults);
-      for (final m in AccessProfile.modules) {
-        expect(AccessProfile.allows(m), isTrue, reason: m);
-      }
-    });
+    expect(AccessProfile.allows('tasks'), isTrue);
+    expect(AccessProfile.allows('calendar'), isTrue);
+    expect(AccessProfile.allows('treasury'), isFalse);
+    expect(AccessProfile.allows('analytics'), isFalse);
   });
 
-  group('умолчания', () {
-    test('в наборе по умолчанию перечислены все модули', () {
-      // Забытый в defaults модуль стал бы недоступен всем и сразу, причём
-      // молча: он просто исчез бы с экрана.
-      for (final m in AccessProfile.modules) {
-        expect(AccessProfile.defaults.containsKey(m), isTrue, reason: m);
-      }
-    });
+  test('владелец получает полный набор только после входа', () async {
+    final owner = person(
+      id: 'owner',
+      permissions: TeamPermissions.owner,
+      owner: true,
+    );
+    await TeamService.save(owner);
 
-    test('умолчания не пустые', () {
-      // Пустой набор означал бы, что человек вошёл и не увидел ничего —
-      // это выглядит как поломка, а не как политика.
-      expect(AccessProfile.defaults.values.any((v) => v), isTrue);
-    });
+    expect(AccessProfile.allows('treasury'), isFalse,
+        reason: 'наличие локальной карточки владельца не является входом');
+
+    await TeamService.signIn(owner);
+    for (final module in AccessProfile.modules) {
+      expect(AccessProfile.allows(module), isTrue, reason: module);
+    }
   });
 
-  group('кеш', () {
-    test('читается, когда он от того же аккаунта', () async {
-      await signInAs('uid-1');
-      await box.put('access_profile_uid', 'uid-1');
-      await box.put('access_profile', {
-        for (final m in AccessProfile.modules) m: m == 'tasks',
-      });
-
-      expect(AccessProfile.allows('tasks'), isTrue);
-      expect(AccessProfile.allows('treasury'), isFalse);
-    });
-
-    test('кеш чужого аккаунта не применяется', () async {
-      // Сменили аккаунт — набор прав должен смениться вместе с ним, а не
-      // остаться от предыдущего человека.
-      await box.put('access_profile_uid', 'uid-1');
-      await box.put('access_profile', {
-        for (final m in AccessProfile.modules) m: false,
-      });
-      await signInAs('uid-2');
-
-      expect(AccessProfile.current, AccessProfile.defaults,
-          reason: 'должны быть умолчания, а не чужой урезанный набор');
-    });
-
-    test('выход стирает кеш', () async {
-      await signInAs('uid-1');
-      await box.put('access_profile_uid', 'uid-1');
-      await box.put('access_profile', {'tasks': true});
-
-      await AccessProfile.clear();
-      expect(box.get('access_profile'), isNull);
-      expect(box.get('access_profile_uid'), isNull);
-    });
-
-    test('битый кеш не роняет чтение', () async {
-      await signInAs('uid-1');
-      await box.put('access_profile_uid', 'uid-1');
-      await box.put('access_profile', 'не-карта');
-      expect(AccessProfile.current, AccessProfile.defaults);
-    });
+  test('неизвестный модуль всегда запрещён', () {
+    expect(AccessProfile.allows('несуществующий_раздел'), isFalse);
   });
 
-  group('разбор значений из Firestore', () {
-    test('неизвестное значение читается как запрет', () async {
-      // Firestore отдаёт значения строками через наш REST-слой. Истиной
-      // считается только явное 'true': неизвестное безопаснее прочитать как
-      // «не открыто», чем как «открыто».
-      await signInAs('uid-1');
-      await box.put('access_profile_uid', 'uid-1');
-      await box.put('access_profile', {
-        'treasury': true,
-        'tasks': false,
-      });
+  test('refresh не обращается к Firebase и возвращает текущие права', () async {
+    final employee = person(
+      id: 'employee',
+      permissions: const TeamPermissions(moduleList: ['tasks']),
+    );
+    await TeamService.save(employee);
+    await TeamService.signIn(employee);
 
-      expect(AccessProfile.allows('treasury'), isTrue);
-      expect(AccessProfile.allows('tasks'), isFalse);
-      // Модуля нет в кеше вовсе — тоже запрет.
-      expect(AccessProfile.allows('analytics'), isFalse);
-    });
+    final refreshed = await AccessProfile.refresh();
+    expect(refreshed['tasks'], isTrue);
+    expect(refreshed['treasury'], isFalse);
+  });
 
-    test('неизвестный модуль всегда запрещён', () {
-      expect(AccessProfile.allows('несуществующий_раздел'), isFalse);
-    });
+  test('clear удаляет legacy cache, но не подменяет текущую роль', () async {
+    final employee = person(
+      id: 'employee',
+      permissions: const TeamPermissions(moduleList: ['tasks']),
+    );
+    await TeamService.save(employee);
+    await TeamService.signIn(employee);
+    await settings.put('access_profile', {'treasury': true});
+    await settings.put('access_profile_uid', 'old-firebase-user');
+
+    await AccessProfile.clear();
+
+    expect(settings.get('access_profile'), isNull);
+    expect(settings.get('access_profile_uid'), isNull);
+    expect(AccessProfile.allows('tasks'), isTrue);
+    expect(AccessProfile.allows('treasury'), isFalse);
   });
 }
