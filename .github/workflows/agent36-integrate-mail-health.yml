@@ -1,0 +1,92 @@
+name: Agent 36 integrate mail health
+
+on:
+  push:
+    branches: [agent/security-2fa-sessions-real-data]
+    paths:
+      - '.github/workflows/agent36-integrate-mail-health.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/security-2fa-sessions-real-data
+          fetch-depth: 0
+
+      - name: Patch deploy files
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('server/deploy-employee-portal.sh')
+          t = p.read_text(encoding='utf-8')
+          t = t.replace(
+              'employee_portal.pb.js employee_portal_static.pb.js wesi_security.pb.js \\\n  wesi_auth_bootstrap.pb.js; do',
+              'employee_portal.pb.js employee_portal_static.pb.js wesi_security.pb.js \\\n  wesi_auth_bootstrap.pb.js wesi_mail_health.pb.js; do',
+          )
+          t = t.replace(
+              '  "$FROM/wesi_auth_bootstrap.pb.js"\n)',
+              '  "$FROM/wesi_auth_bootstrap.pb.js"\n  "$FROM/wesi_mail_health.pb.js"\n)',
+          )
+          p.write_text(t, encoding='utf-8')
+
+          p = Path('.github/workflows/deploy-employee-portal.yml')
+          t = p.read_text(encoding='utf-8')
+          if "server/pb_hooks/wesi_mail_health.pb.js" not in t:
+              t = t.replace(
+                  "      - 'server/pb_hooks/wesi_auth_bootstrap.pb.js'\n",
+                  "      - 'server/pb_hooks/wesi_auth_bootstrap.pb.js'\n      - 'server/pb_hooks/wesi_mail_health.pb.js'\n",
+                  1,
+              )
+              t = t.replace(
+                  '            server/pb_hooks/wesi_auth_bootstrap.pb.js \\\n            assets/images/app_icon.png; do',
+                  '            server/pb_hooks/wesi_auth_bootstrap.pb.js \\\n            server/pb_hooks/wesi_mail_health.pb.js \\\n            assets/images/app_icon.png; do',
+                  1,
+              )
+              t = t.replace(
+                  '          node --check server/pb_hooks/wesi_auth_bootstrap.pb.js\n',
+                  '          node --check server/pb_hooks/wesi_auth_bootstrap.pb.js\n          node --check server/pb_hooks/wesi_mail_health.pb.js\n',
+                  1,
+              )
+              t = t.replace(
+                  '            server/pb_hooks/wesi_auth_bootstrap.pb.js \\\n            server/deploy-employee-portal.sh \\\n',
+                  '            server/pb_hooks/wesi_auth_bootstrap.pb.js \\\n            server/pb_hooks/wesi_mail_health.pb.js \\\n            server/deploy-employee-portal.sh \\\n',
+                  1,
+              )
+              marker = "          grep -q 'Системные требования' portal.html\n"
+              check = """          grep -q 'Системные требования' portal.html
+
+          MAIL_CODE=$(curl -sS -o mail-ready.json -w '%{http_code}' --max-time 20 \
+            "$API/api/wesi/auth/mail-ready" || true)
+          [ "$MAIL_CODE" = 200 ] || {
+            echo "::error::Email OTP transport is not ready (HTTP $MAIL_CODE)"; cat mail-ready.json || true; exit 1; }
+          grep -q '"senderConfigured":true' mail-ready.json || {
+            echo '::error::PocketBase sender address is not configured'; cat mail-ready.json; exit 1; }
+          grep -q '"smtpEnabled":true' mail-ready.json || {
+            echo '::error::PocketBase SMTP is not enabled'; cat mail-ready.json; exit 1; }
+"""
+              if marker not in t:
+                  raise SystemExit('portal verification marker missing')
+              t = t.replace(marker, check, 1)
+          p.write_text(t, encoding='utf-8')
+          PY
+
+      - name: Validate and commit
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_mail_health.pb.js
+          grep -q 'wesi_mail_health.pb.js' server/deploy-employee-portal.sh
+          grep -q 'wesi_mail_health.pb.js' .github/workflows/deploy-employee-portal.yml
+          grep -q 'mail-ready' .github/workflows/deploy-employee-portal.yml
+          rm -f .github/workflows/agent36-integrate-mail-health.yml
+          git config user.name 'WesiOS Security CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'ci(security): verify OTP mail transport in production'
+          git push origin HEAD:agent/security-2fa-sessions-real-data
