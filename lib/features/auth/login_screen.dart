@@ -23,19 +23,23 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _login = TextEditingController();
   final _password = TextEditingController();
+  final _setupEmail = TextEditingController();
   final _code = TextEditingController();
   final _passwordFocus = FocusNode();
+  final _setupEmailFocus = FocusNode();
   final _codeFocus = FocusNode();
 
   bool _remember = true;
   bool _busy = false;
   bool _obscure = true;
+  bool _needsEmailSetup = false;
   String? _error;
   String? _challengeId;
   String? _maskedEmail;
 
   bool get _ru => WesiLocale.isRussian;
-  bool get _waitingCode => _challengeId != null;
+  bool get _waitingCode => _challengeId != null && !_needsEmailSetup;
+  bool get _passwordStep => _challengeId == null;
 
   @override
   void initState() {
@@ -59,8 +63,10 @@ class _LoginScreenState extends State<LoginScreen> {
   void dispose() {
     _login.dispose();
     _password.dispose();
+    _setupEmail.dispose();
     _code.dispose();
     _passwordFocus.dispose();
+    _setupEmailFocus.dispose();
     _codeFocus.dispose();
     super.dispose();
   }
@@ -75,9 +81,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final entered = _login.text.trim();
     final password = _password.text;
     if (entered.isEmpty || password.isEmpty) {
-      setState(() => _error = _ru
-          ? 'Введите логин и пароль'
-          : 'Enter your login and password');
+      setState(() => _error = _ru ? 'Введите логин и пароль' : 'Enter your login and password');
       return;
     }
     setState(() {
@@ -94,14 +98,55 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!result.ok || result.challengeId == null) {
       setState(() {
         _busy = false;
-        _error = result.error ??
-            (_ru ? 'Не удалось отправить код' : 'Unable to send the code');
+        _error = result.error ?? (_ru ? 'Не удалось отправить код' : 'Unable to send the code');
       });
       return;
     }
 
     setState(() {
       _busy = false;
+      _challengeId = result.challengeId;
+      _needsEmailSetup = result.emailSetupRequired;
+      _maskedEmail = result.maskedEmail;
+      _code.clear();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_needsEmailSetup) {
+        _setupEmailFocus.requestFocus();
+      } else {
+        _codeFocus.requestFocus();
+      }
+    });
+  }
+
+  Future<void> _submitOwnerEmail() async {
+    final challenge = _challengeId;
+    if (challenge == null) return;
+    final email = _setupEmail.text.trim();
+    if (!PortalAccountService.validSecurityEmail(email)) {
+      setState(() => _error = _ru ? 'Укажите действующую электронную почту' : 'Enter a valid email address');
+      return;
+    }
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final result = await PortalAccountService.setupOwnerEmail(
+      challengeId: challenge,
+      email: email,
+    );
+    if (!mounted) return;
+    if (!result.ok || result.challengeId == null) {
+      setState(() {
+        _busy = false;
+        _error = result.error ?? (_ru ? 'Не удалось отправить код на эту почту' : 'Unable to send the code');
+      });
+      return;
+    }
+    setState(() {
+      _busy = false;
+      _needsEmailSetup = false;
       _challengeId = result.challengeId;
       _maskedEmail = result.maskedEmail;
       _code.clear();
@@ -115,9 +160,7 @@ class _LoginScreenState extends State<LoginScreen> {
     final challengeId = _challengeId;
     if (challengeId == null) return;
     if (!RegExp(r'^\d{6}$').hasMatch(_code.text.trim())) {
-      setState(() => _error = _ru
-          ? 'Введите 6 цифр из письма'
-          : 'Enter the 6 digits from the email');
+      setState(() => _error = _ru ? 'Введите 6 цифр из письма' : 'Enter the 6 digits from the email');
       return;
     }
 
@@ -131,12 +174,10 @@ class _LoginScreenState extends State<LoginScreen> {
       remember: _remember,
     );
     if (!mounted) return;
-
     if (!result.ok || result.identity == null) {
       setState(() {
         _busy = false;
-        _error = result.error ??
-            (_ru ? 'Не удалось подтвердить вход' : 'Unable to verify sign-in');
+        _error = result.error ?? (_ru ? 'Не удалось подтвердить вход' : 'Unable to verify sign-in');
       });
       return;
     }
@@ -161,14 +202,12 @@ class _LoginScreenState extends State<LoginScreen> {
     _password.clear();
     _code.clear();
     SessionService.startHeartbeat();
-
     if (employee.isOwner) {
       await SyncEngine.runOnLaunch();
       SyncAuto.start();
     } else {
       SyncAuto.stop();
     }
-
     if (!mounted) return;
     _goHome();
   }
@@ -178,6 +217,7 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() {
       _challengeId = null;
       _maskedEmail = null;
+      _needsEmailSetup = false;
       _code.clear();
       _error = null;
     });
@@ -185,6 +225,23 @@ class _LoginScreenState extends State<LoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final title = _passwordStep
+        ? (_ru ? 'Вход в WesiOS' : 'Sign in to WesiOS')
+        : _needsEmailSetup
+            ? (_ru ? 'Защитите профиль почтой' : 'Add a security email')
+            : (_ru ? 'Подтверждение входа' : 'Verify sign-in');
+    final description = _passwordStep
+        ? (_ru
+            ? 'Сначала подтвердите логин и пароль. После этого WesiOS пришлёт одноразовый код на почту профиля.'
+            : 'First confirm your login and password. WesiOS will then send a one-time code to your profile email.')
+        : _needsEmailSetup
+            ? (_ru
+                ? 'Это разовая миграция старого профиля владельца. Укажите почту: WesiOS отправит код и закрепит адрес только после правильного подтверждения.'
+                : 'One-time owner migration: the email is saved only after a code sent to it is verified.')
+            : (_ru
+                ? 'Мы отправили шестизначный код на ${_maskedEmail ?? 'вашу почту'}. Код действует 10 минут.'
+                : 'A six-digit code was sent to ${_maskedEmail ?? 'your email'}. It is valid for 10 minutes.');
+
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
@@ -200,34 +257,21 @@ class _LoginScreenState extends State<LoginScreen> {
                   Center(child: WesiWordmark(size: 34)),
                   const SizedBox(height: 10),
                   Center(
-                    child: Text(
-                      _waitingCode
-                          ? (_ru ? 'Подтверждение входа' : 'Verify sign-in')
-                          : (_ru ? 'Вход в WesiOS' : 'Sign in to WesiOS'),
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: AppTheme.textSecondary,
-                      ),
-                    ),
+                    child: Text(title, style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    _waitingCode
-                        ? (_ru
-                            ? 'Мы отправили шестизначный код на ${_maskedEmail ?? 'вашу почту'}. Код действует 10 минут.'
-                            : 'A six-digit code was sent to ${_maskedEmail ?? 'your email'}. It is valid for 10 minutes.')
-                        : (_ru
-                            ? 'Сначала подтвердите логин и пароль. После этого WesiOS пришлёт одноразовый код на почту профиля.'
-                            : 'First confirm your login and password. WesiOS will then send a one-time code to your profile email.'),
+                    description,
                     textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 11,
-                      height: 1.4,
-                      color: AppTheme.textMuted,
-                    ),
+                    style: TextStyle(fontSize: 11, height: 1.4, color: AppTheme.textMuted),
                   ),
                   const SizedBox(height: 28),
-                  if (!_waitingCode) ..._passwordStep() else ..._codeStep(),
+                  if (_passwordStep)
+                    ..._passwordWidgets()
+                  else if (_needsEmailSetup)
+                    ..._emailSetupWidgets()
+                  else
+                    ..._codeWidgets(),
                 ],
               ),
             ),
@@ -237,7 +281,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  List<Widget> _passwordStep() => [
+  List<Widget> _passwordWidgets() => [
         TextField(
           controller: _login,
           enabled: !_busy,
@@ -247,8 +291,7 @@ class _LoginScreenState extends State<LoginScreen> {
           style: TextStyle(color: AppTheme.textPrimary),
           decoration: InputDecoration(
             labelText: _ru ? 'Логин' : 'Login',
-            prefixIcon: Icon(Icons.person_outline,
-                size: 18, color: AppTheme.textMuted),
+            prefixIcon: Icon(Icons.person_outline, size: 18, color: AppTheme.textMuted),
           ),
         ),
         const SizedBox(height: 14),
@@ -263,11 +306,8 @@ class _LoginScreenState extends State<LoginScreen> {
             labelText: _ru ? 'Пароль' : 'Password',
             prefixIcon: Icon(Icons.key, size: 18, color: AppTheme.textMuted),
             suffixIcon: IconButton(
-              icon: Icon(
-                _obscure ? Icons.visibility_off : Icons.visibility,
-                size: 18,
-                color: AppTheme.textMuted,
-              ),
+              icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
+                  size: 18, color: AppTheme.textMuted),
               onPressed: () => setState(() => _obscure = !_obscure),
             ),
           ),
@@ -283,30 +323,47 @@ class _LoginScreenState extends State<LoginScreen> {
                 Checkbox(
                   value: _remember,
                   activeColor: AppTheme.accent,
-                  onChanged: _busy
-                      ? null
-                      : (v) => setState(() => _remember = v ?? true),
+                  onChanged: _busy ? null : (v) => setState(() => _remember = v ?? true),
                 ),
                 Expanded(
-                  child: Text(
-                    _ru ? 'Запомнить меня' : 'Remember me',
-                    style: TextStyle(
-                        fontSize: 13, color: AppTheme.textSecondary),
-                  ),
+                  child: Text(_ru ? 'Запомнить меня' : 'Remember me',
+                      style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
                 ),
               ],
             ),
           ),
         ),
         const SizedBox(height: 14),
-        _button(
-          onTap: _sendCode,
-          label: _ru ? 'Получить код' : 'Send code',
-          busyLabel: _ru ? 'Проверяю…' : 'Checking…',
-        ),
+        _button(onTap: _sendCode, label: _ru ? 'Получить код' : 'Send code', busyLabel: _ru ? 'Проверяю…' : 'Checking…'),
       ];
 
-  List<Widget> _codeStep() => [
+  List<Widget> _emailSetupWidgets() => [
+        TextField(
+          controller: _setupEmail,
+          focusNode: _setupEmailFocus,
+          enabled: !_busy,
+          keyboardType: TextInputType.emailAddress,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => _submitOwnerEmail(),
+          style: TextStyle(color: AppTheme.textPrimary),
+          decoration: InputDecoration(
+            labelText: _ru ? 'Электронная почта' : 'Email address',
+            hintText: 'name@example.com',
+            prefixIcon: Icon(Icons.alternate_email, size: 18, color: AppTheme.textMuted),
+          ),
+        ),
+        _errorWidget(),
+        const SizedBox(height: 18),
+        _button(
+          onTap: _submitOwnerEmail,
+          label: _ru ? 'Отправить код на эту почту' : 'Send code to this email',
+          busyLabel: _ru ? 'Отправляю…' : 'Sending…',
+        ),
+        const SizedBox(height: 8),
+        TextButton(onPressed: _busy ? null : _backToPassword, child: Text(_ru ? 'Назад' : 'Back')),
+      ];
+
+  List<Widget> _codeWidgets() => [
         TextField(
           controller: _code,
           focusNode: _codeFocus,
@@ -326,8 +383,7 @@ class _LoginScreenState extends State<LoginScreen> {
           decoration: InputDecoration(
             counterText: '',
             labelText: _ru ? 'Код из письма' : 'Email code',
-            prefixIcon:
-                Icon(Icons.shield_outlined, size: 18, color: AppTheme.textMuted),
+            prefixIcon: Icon(Icons.shield_outlined, size: 18, color: AppTheme.textMuted),
           ),
         ),
         _errorWidget(),
@@ -338,14 +394,7 @@ class _LoginScreenState extends State<LoginScreen> {
           busyLabel: _ru ? 'Подтверждаю…' : 'Verifying…',
         ),
         const SizedBox(height: 8),
-        TextButton(
-          onPressed: _busy ? null : _sendCode,
-          child: Text(_ru ? 'Отправить новый код' : 'Send a new code'),
-        ),
-        TextButton(
-          onPressed: _busy ? null : _backToPassword,
-          child: Text(_ru ? 'Назад к логину и паролю' : 'Back to password'),
-        ),
+        TextButton(onPressed: _busy ? null : _backToPassword, child: Text(_ru ? 'Запросить код заново' : 'Request a new code')),
       ];
 
   Widget _errorWidget() => _error == null
@@ -363,8 +412,7 @@ class _LoginScreenState extends State<LoginScreen> {
     required Future<void> Function() onTap,
     required String label,
     required String busyLabel,
-  }) =>
-      HoverButton(
+  }) => HoverButton(
         onTap: _busy ? () {} : onTap,
         padding: const EdgeInsets.symmetric(vertical: 15),
         backgroundColor: _busy ? AppTheme.surface : AppTheme.accent,
@@ -376,24 +424,18 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     ),
                     const SizedBox(width: 10),
-                    Text(busyLabel,
-                        style: const TextStyle(color: Colors.white)),
+                    Text(busyLabel, style: const TextStyle(color: Colors.white)),
                   ],
                 )
-              : Text(
-                  label,
+              : Text(label,
                   style: const TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                     color: Colors.white,
-                  ),
-                ),
+                  )),
         ),
       );
 }
