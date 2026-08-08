@@ -1,0 +1,40 @@
+name: Observe current portal deploy once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-portal-deploy-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Find exact portal deployment run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: b9ceeccdeecac34608cda2a07d979bc674b4d54a
+        run: |
+          set -euo pipefail
+          json=$(curl -fsS \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100")
+          found=$(printf '%s' "$json" | jq -c '[.workflow_runs[] | select(.name=="Deploy employee portal")][0] // null')
+          printf '%s' "$found" | jq '{id,name,status,conclusion,run_number,created_at,updated_at}' > .portal-deploy-status.json
+      - name: Record nonsecret run id
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .portal-deploy-status.json
+          git commit -m 'chore: snapshot current portal deployment run id'
+          git push origin HEAD:main
