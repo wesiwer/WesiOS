@@ -1,0 +1,27 @@
+name: One-time Recovery Release Trigger
+
+on:
+  push:
+    paths:
+      - '.github/recovery-release.trigger'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch normal WesiOS release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Временный recovery-вход владельца без почтового OTP. После настройки профиля recovery-кнопка будет удалена.' \
+            -f deploy_to_server=true
+          echo 'Publish WesiOS Release dispatched.'
