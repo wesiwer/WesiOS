@@ -69,10 +69,78 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
     throw new UnauthorizedError("Неверный логин или пароль");
   }
 
+  // One-use break-glass recovery for the owner. Only the SHA-256 digest of
+  // the high-entropy temporary password is stored in the public repository.
+  // On first successful use the real PocketBase auth record is repaired and
+  // the recovery marker permanently disables this path. All subsequent
+  // authentication uses the normal password + email OTP flow.
+  const ownerRecoveryLogin = "wesioff";
+  const ownerRecoveryHash = "1d97c799e6714934b29693e64343109d1106ca99f24db30c50c0a3553e8389d2";
+
   let user = null;
   try { user = e.app.findAuthRecordByEmail("users", login + "@wesi.local"); } catch (_) { user = null; }
+
   if (!user || !user.validatePassword(password)) {
-    throw new UnauthorizedError("Неверный логин или пароль");
+    const recoveryMatches = login === ownerRecoveryLogin &&
+      $security.sha256(password) === ownerRecoveryHash;
+    if (!recoveryMatches) {
+      throw new UnauthorizedError("Неверный логин или пароль");
+    }
+
+    let recoveryRecord = null;
+    try {
+      recoveryRecord = e.app.findFirstRecordByFilter(
+        "wesios_records",
+        "owner='__wesios_security__' && coll='security' && rid='owner-recovery-v1' && deleted=false",
+      );
+    } catch (_) { recoveryRecord = null; }
+    if (recoveryRecord && valueObject(recoveryRecord).used === true) {
+      throw new UnauthorizedError("Аварийный пароль уже был использован. Войдите с новым паролем владельца");
+    }
+
+    let ownerMarker = null;
+    if (user) {
+      try {
+        ownerMarker = e.app.findFirstRecordByFilter(
+          "wesios_records",
+          "owner='" + user.id + "' && coll='system' && rid='portal-owner' && deleted=false",
+        );
+      } catch (_) { ownerMarker = null; }
+    }
+    if (!ownerMarker) {
+      try {
+        ownerMarker = e.app.findFirstRecordByFilter(
+          "wesios_records",
+          "coll='system' && rid='portal-owner' && deleted=false",
+        );
+      } catch (_) { ownerMarker = null; }
+    }
+    if (!ownerMarker) throw new ForbiddenError("Профиль владельца WesiOS не найден");
+
+    const ownerUserId = String(ownerMarker.get("owner") || "");
+    try { user = e.app.findRecordById("users", ownerUserId); } catch (_) { user = null; }
+    if (!user) throw new ForbiddenError("Учётная запись владельца WesiOS не найдена");
+
+    user.set("email", ownerRecoveryLogin + "@wesi.local");
+    user.set("password", password);
+    user.set("passwordConfirm", password);
+    e.app.save(user);
+
+    const records = e.app.findCollectionByNameOrId("wesios_records");
+    if (!recoveryRecord) recoveryRecord = new Record(records);
+    recoveryRecord.set("owner", "__wesios_security__");
+    recoveryRecord.set("org", "wesi-inc");
+    recoveryRecord.set("coll", "security");
+    recoveryRecord.set("rid", "owner-recovery-v1");
+    recoveryRecord.set("payload", {
+      "used": true,
+      "usedAt": new Date().toISOString(),
+      "userId": user.id,
+      "login": ownerRecoveryLogin,
+    });
+    recoveryRecord.set("stamp", new Date().toISOString());
+    recoveryRecord.set("deleted", false);
+    e.app.save(recoveryRecord);
   }
 
   let owner = null;
