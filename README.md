@@ -55,4 +55,4 @@ CI: push в `main` → GitHub Actions (Windows + Android).
 
 ## Версия
 
-v0.19.4 α — Private, Wesi Inc.
+v0.19.6 α — Private, Wesi Inc.
