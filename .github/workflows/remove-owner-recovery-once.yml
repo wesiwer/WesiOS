@@ -1,0 +1,55 @@
+name: Remove owner recovery once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/remove-owner-recovery-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Remove break-glass password path
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path('server/pb_hooks/wesi_auth_bootstrap.pb.js')
+          text = path.read_text(encoding='utf-8')
+          pattern = re.compile(
+              r"  // One-use break-glass recovery for the owner\..*?\n  let owner = null;",
+              re.S,
+          )
+          replacement = """  let user = null;
+          try { user = e.app.findAuthRecordByEmail(\"users\", login + \"@wesi.local\"); } catch (_) { user = null; }
+          if (!user || !user.validatePassword(password)) {
+            throw new UnauthorizedError(\"Неверный логин или пароль\");
+          }
+
+          let owner = null;"""
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'expected exactly one recovery block, got {count}')
+          path.write_text(text, encoding='utf-8')
+      - name: Validate and commit
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_auth_bootstrap.pb.js
+          ! grep -q 'ownerRecovery' server/pb_hooks/wesi_auth_bootstrap.pb.js
+          ! grep -q 'owner-recovery-v1' server/pb_hooks/wesi_auth_bootstrap.pb.js
+          rm -f .github/workflows/remove-owner-recovery-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'security: remove owner recovery password path'
+          git push origin HEAD:main
