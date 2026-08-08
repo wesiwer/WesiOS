@@ -1,0 +1,47 @@
+name: Observe WesiOS 0.19.8 release once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-release-0198-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+      - name: Find exact release run
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TARGET_SHA: a029609d93f0c2050b3680333a8118252f53b55a
+        run: |
+          set -euo pipefail
+          API="https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/runs?head_sha=${TARGET_SHA}&per_page=100"
+          found=''
+          for i in $(seq 1 20); do
+            json=$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "$API")
+            found=$(printf '%s' "$json" | jq -c '[.workflow_runs[] | select(.name=="Build signed WesiOS release")][0] // empty')
+            [ -n "$found" ] && break
+            sleep 5
+          done
+          if [ -z "$found" ]; then
+            printf '{"targetSha":"%s","found":false}\n' "$TARGET_SHA" > .release-0.19.8-status.json
+          else
+            printf '%s' "$found" | jq '{targetSha:"'"$TARGET_SHA"'",found:true,id,name,event,status,conclusion,html_url,run_number,created_at,updated_at}' > .release-0.19.8-status.json
+          fi
+      - name: Record nonsecret run id
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .release-0.19.8-status.json
+          git commit -m 'chore: snapshot WesiOS 0.19.8 release run id'
+          git push origin HEAD:main
