@@ -44,6 +44,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
   /// Доступ к секции ключей Firebase подтверждён в этом сеансе экрана.
   /// Намеренно не сохраняется между открытиями: закрыл профиль — снова
   /// нужен пароль.
+  // Legacy Firebase vault helpers are retained for migration only.
+  // ignore: unused_field
   bool _vaultUnlocked = false;
   bool _bioAvailable = false;
 
@@ -266,63 +268,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               _scheduleSave();
             }),
           ),
-          SizedBox(height: 24),
-          _section('Ключи Firebase (автосохранение)'),
-          // Ключи Firebase — это доступ к бэкенду проекта, поэтому секция
-          // закрыта: значения не рисуются, пока не подтвердили пароль
-          // (или отпечаток/Face ID на телефоне).
-          if (!_vaultUnlocked) _lockedVault(),
-          if (_vaultUnlocked) ...[
-          Text(
-            'Наведи на поле — подсказка где взять значение. Сохраняется само.',
-            style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
-          ),
-          const SizedBox(height: 12),
-          _fieldTip(
-              _apiKeyCtrl,
-              'API Key *',
-              'Firebase Console → Project settings → Your apps → apiKey'),
-          _fieldTip(
-              _appIdCtrl,
-              'App ID *',
-              'Firebase Console → Project settings → Your apps → appId'),
-          _fieldTip(
-              _projectIdCtrl,
-              'Project ID *',
-              'Firebase Console → Project settings → Project ID'),
-          _fieldTip(
-              _messagingSenderIdCtrl,
-              'Messaging Sender ID *',
-              'Firebase Console → Project settings → Cloud Messaging'),
-          _fieldTip(_authDomainCtrl, 'Auth Domain',
-              'Обычно project-id.firebaseapp.com'),
-          _fieldTip(_storageBucketCtrl, 'Storage Bucket',
-              'Обычно project-id.appspot.com'),
-          _fieldTip(_measurementIdCtrl, 'Measurement ID',
-              'Analytics → Measurement ID (G-...)'),
-          const SizedBox(height: 16),
-          HoverButton(
-            onTap: () async {
-              final service = FirebaseConfigService();
-              await service.clearConfig();
-              _apiKeyCtrl.clear();
-              _appIdCtrl.clear();
-              _projectIdCtrl.clear();
-              _messagingSenderIdCtrl.clear();
-              _authDomainCtrl.clear();
-              _storageBucketCtrl.clear();
-              _measurementIdCtrl.clear();
-            },
-            padding: EdgeInsets.symmetric(vertical: 14),
-            backgroundColor: AppTheme.surface,
-            child: Center(
-              child: Text('Очистить Firebase-ключи',
-                  style: TextStyle(color: AppTheme.accentRed)),
-            ),
-          ),
-          const SizedBox(height: 12),
-          _vaultOptions(),
-          ],
         ],
       ),
     );

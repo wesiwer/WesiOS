@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import '../../../core/security/session_service.dart';
 import '../../../core/sync/sync_endpoint.dart';
 import '../models/employee_model.dart';
 import '../models/team_permissions.dart';
@@ -11,25 +12,12 @@ class PortalCredentialResult {
   final String message;
   final int? statusCode;
 
-  const PortalCredentialResult._(
-    this.ok,
-    this.message, {
-    this.statusCode,
-  });
-
-  const PortalCredentialResult.success([String message = ''])
-      : this._(true, message);
-
-  const PortalCredentialResult.failure(
-    String message, {
-    int? statusCode,
-  }) : this._(false, message, statusCode: statusCode);
+  const PortalCredentialResult._(this.ok, this.message, {this.statusCode});
+  const PortalCredentialResult.success([String message = '']) : this._(true, message);
+  const PortalCredentialResult.failure(String message, {int? statusCode})
+      : this._(false, message, statusCode: statusCode);
 }
 
-/// Подтверждённая сервером личность для текущей установки WesiOS.
-///
-/// Эти поля нельзя строить из локального Hive: на чистой установке Hive пуст,
-/// а подмена локальной карточки не должна давать дополнительных прав.
 class PortalAppIdentity {
   final String employeeId;
   final String login;
@@ -59,13 +47,8 @@ class PortalAppIdentity {
     final employeeId = json['employeeId'];
     final login = json['login'];
     final permissions = json['permissions'];
-    if (employeeId is! String ||
-        employeeId.isEmpty ||
-        login is! String ||
-        login.isEmpty ||
-        permissions is! Map) {
-      return null;
-    }
+    if (employeeId is! String || employeeId.isEmpty ||
+        login is! String || login.isEmpty || permissions is! Map) return null;
     return PortalAppIdentity(
       employeeId: employeeId,
       login: login,
@@ -78,11 +61,34 @@ class PortalAppIdentity {
           : int.tryParse('${json['avatarIndex']}') ?? 0,
       createdAt: DateTime.tryParse('${json['createdAt']}') ?? DateTime.now(),
       isOwner: json['owner'] == true,
-      permissions: TeamPermissions.fromJson(
-        Map<String, dynamic>.from(permissions),
-      ),
+      permissions: TeamPermissions.fromJson(Map<String, dynamic>.from(permissions)),
     );
   }
+}
+
+class PortalChallengeResult {
+  final String? challengeId;
+  final String? maskedEmail;
+  final bool emailSetupRequired;
+  final int expiresInSeconds;
+  final String? error;
+  final int? statusCode;
+
+  const PortalChallengeResult.success({
+    required this.challengeId,
+    this.maskedEmail,
+    this.emailSetupRequired = false,
+    required this.expiresInSeconds,
+  })  : error = null,
+        statusCode = null;
+
+  const PortalChallengeResult.failure(this.error, {this.statusCode})
+      : challengeId = null,
+        maskedEmail = null,
+        emailSetupRequired = false,
+        expiresInSeconds = 0;
+
+  bool get ok => challengeId != null && error == null;
 }
 
 class PortalLoginResult {
@@ -90,427 +96,331 @@ class PortalLoginResult {
   final String? error;
   final int? statusCode;
 
-  const PortalLoginResult.success(this.identity)
-      : error = null,
-        statusCode = null;
-
-  const PortalLoginResult.failure(this.error, {this.statusCode})
-      : identity = null;
-
+  const PortalLoginResult.success(this.identity) : error = null, statusCode = null;
+  const PortalLoginResult.failure(this.error, {this.statusCode}) : identity = null;
   bool get ok => identity != null && error == null;
 }
 
-/// Связывает профили WesiOS с auth-записями PocketBase.
-///
-/// Источник истины для входа теперь один: тот же PocketBase аккаунт работает
-/// на сайте и в приложении. Firebase и локальный PBKDF2 больше не решают,
-/// кому можно открыть интерфейс.
 class PortalAccountService {
   const PortalAccountService._();
 
   static String get _base => SyncEndpoint.url;
 
-  static String _identityForLogin(String value) {
-    final entered = value.trim().toLowerCase();
-    return entered.contains('@') ? entered : '$entered@wesi.local';
-  }
+  static bool validSecurityEmail(String value) =>
+      RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
+          .hasMatch(value.trim().toLowerCase()) &&
+      !value.trim().toLowerCase().endsWith('@wesi.local');
 
-  /// Вход в само приложение: auth PocketBase -> защищённый bootstrap прав.
-  static Future<PortalLoginResult> signIn({
+  static Future<PortalChallengeResult> beginSignIn({
     required String login,
     required String password,
+    String purpose = 'app',
   }) async {
     final entered = login.trim().toLowerCase();
     if (entered.isEmpty || password.isEmpty) {
-      return const PortalLoginResult.failure('Введите логин и пароль.');
+      return const PortalChallengeResult.failure('Введите логин и пароль.');
     }
-
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final auth = await client.postUrl(
-        Uri.parse('$_base/api/collections/users/auth-with-password'),
+      final request = await client.postUrl(Uri.parse('$_base/api/wesi/auth/start-v2'));
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({'login': entered, 'password': password, 'purpose': purpose}));
+      final response = await request.close().timeout(const Duration(seconds: 20));
+      final text = await utf8.decoder.bind(response).join();
+      final decoded = _map(text);
+      if (response.statusCode != 200) {
+        return PortalChallengeResult.failure(
+          messageForResponse(response.statusCode, text,
+              fallback: response.statusCode == 401
+                  ? 'Неверный логин или пароль.'
+                  : 'Не удалось отправить код безопасности.'),
+          statusCode: response.statusCode,
+        );
+      }
+      final challengeId = decoded?['challengeId'];
+      if (challengeId is! String || challengeId.isEmpty) {
+        return const PortalChallengeResult.failure('Сервер не создал проверку входа.');
+      }
+      final setupRequired = decoded?['emailSetupRequired'] == true;
+      final masked = decoded?['maskedEmail'];
+      if (!setupRequired && (masked is! String || masked.isEmpty)) {
+        return const PortalChallengeResult.failure('Сервер не вернул адрес для кода.');
+      }
+      return PortalChallengeResult.success(
+        challengeId: challengeId,
+        maskedEmail: masked is String ? masked : null,
+        emailSetupRequired: setupRequired,
+        expiresInSeconds: (decoded?['expiresInSeconds'] as num?)?.toInt() ?? 600,
       );
-      auth.headers.contentType = ContentType.json;
-      auth.write(jsonEncode({
-        'identity': _identityForLogin(entered),
-        'password': password,
+    } on TimeoutException {
+      return const PortalChallengeResult.failure('Сервер WesiOS не ответил вовремя. Повторите попытку.');
+    } on SocketException {
+      return const PortalChallengeResult.failure('Нет связи с сервером WesiOS.');
+    } on HandshakeException {
+      return const PortalChallengeResult.failure('Не удалось проверить сертификат сервера WesiOS.');
+    } catch (_) {
+      return const PortalChallengeResult.failure('Не удалось начать вход.');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  /// First-time owner migration. The password was already validated when the
+  /// setup challenge was created. This call sends a code to the proposed
+  /// address; the address is committed only after the code succeeds.
+  static Future<PortalChallengeResult> setupOwnerEmail({
+    required String challengeId,
+    required String email,
+  }) async {
+    final normalized = email.trim().toLowerCase();
+    if (!validSecurityEmail(normalized)) {
+      return const PortalChallengeResult.failure('Укажите действующую электронную почту.');
+    }
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final request = await client.postUrl(Uri.parse('$_base/api/wesi/auth/setup-email'));
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode({'challengeId': challengeId, 'email': normalized}));
+      final response = await request.close().timeout(const Duration(seconds: 20));
+      final text = await utf8.decoder.bind(response).join();
+      final decoded = _map(text);
+      if (response.statusCode != 200) {
+        return PortalChallengeResult.failure(
+          messageForResponse(response.statusCode, text,
+              fallback: 'Не удалось подтвердить эту почту.'),
+          statusCode: response.statusCode,
+        );
+      }
+      final id = decoded?['challengeId'];
+      final masked = decoded?['maskedEmail'];
+      if (id is! String || masked is! String || id.isEmpty || masked.isEmpty) {
+        return const PortalChallengeResult.failure('Сервер не вернул данные отправленного кода.');
+      }
+      return PortalChallengeResult.success(
+        challengeId: id,
+        maskedEmail: masked,
+        expiresInSeconds: (decoded?['expiresInSeconds'] as num?)?.toInt() ?? 600,
+      );
+    } on TimeoutException {
+      return const PortalChallengeResult.failure('Сервер не ответил вовремя.');
+    } on SocketException {
+      return const PortalChallengeResult.failure('Нет связи с сервером WesiOS.');
+    } catch (_) {
+      return const PortalChallengeResult.failure('Не удалось отправить код на эту почту.');
+    } finally {
+      client.close(force: true);
+    }
+  }
+
+  static Future<PortalLoginResult> verifySignIn({
+    required String challengeId,
+    required String code,
+    required bool remember,
+  }) async {
+    if (!RegExp(r'^\d{6}$').hasMatch(code.trim())) {
+      return const PortalLoginResult.failure('Введите шестизначный код.');
+    }
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
+    try {
+      final device = await SessionService.deviceMetadata();
+      final verify = await client.postUrl(Uri.parse('$_base/api/wesi/auth/verify'));
+      verify.headers.contentType = ContentType.json;
+      verify.write(jsonEncode({
+        'challengeId': challengeId,
+        'code': code.trim(),
+        'remember': remember,
+        'device': device,
       }));
-      final authResponse = await auth.close().timeout(const Duration(seconds: 18));
-      final authText = await utf8.decoder.bind(authResponse).join();
-      if (authResponse.statusCode != 200) {
-        return const PortalLoginResult.failure(
-          'Неверный логин или пароль.',
-          statusCode: 401,
+      final verifyResponse = await verify.close().timeout(const Duration(seconds: 20));
+      final verifyText = await utf8.decoder.bind(verifyResponse).join();
+      final verifyJson = _map(verifyText);
+      if (verifyResponse.statusCode != 200) {
+        return PortalLoginResult.failure(
+          messageForResponse(verifyResponse.statusCode, verifyText,
+              fallback: 'Неверный или просроченный код.'),
+          statusCode: verifyResponse.statusCode,
         );
       }
 
-      final decoded = jsonDecode(authText);
-      if (decoded is! Map ||
-          decoded['token'] is! String ||
-          decoded['record'] is! Map ||
-          (decoded['record'] as Map)['id'] is! String) {
-        return const PortalLoginResult.failure(
-          'Сервер вернул неполный ответ авторизации.',
-        );
+      final token = verifyJson?['token'];
+      final userId = verifyJson?['userId'];
+      final sessionId = verifyJson?['sessionId'];
+      final expiresAt = DateTime.tryParse('${verifyJson?['expiresAt'] ?? ''}');
+      if (token is! String || token.isEmpty || userId is! String || userId.isEmpty ||
+          sessionId is! String || sessionId.isEmpty || expiresAt == null) {
+        return const PortalLoginResult.failure('Сервер вернул неполный подтверждённый сеанс.');
       }
 
-      final token = decoded['token'] as String;
-      final userId = (decoded['record'] as Map)['id'] as String;
-
-      final bootstrap = await client.getUrl(
-        Uri.parse('$_base/api/wesi/app/bootstrap'),
-      );
+      final bootstrap = await client.getUrl(Uri.parse('$_base/api/wesi/app/bootstrap'));
       bootstrap.headers.set(HttpHeaders.authorizationHeader, token);
-      final bootstrapResponse =
-          await bootstrap.close().timeout(const Duration(seconds: 18));
+      bootstrap.headers.set('X-WesiOS-Session', sessionId);
+      final bootstrapResponse = await bootstrap.close().timeout(const Duration(seconds: 18));
       final bootstrapText = await utf8.decoder.bind(bootstrapResponse).join();
       if (bootstrapResponse.statusCode != 200) {
         return PortalLoginResult.failure(
-          messageForResponse(
-            bootstrapResponse.statusCode,
-            bootstrapText,
-            fallback:
-                'Учётная запись существует, но не привязана к сотруднику WesiOS.',
-          ),
+          messageForResponse(bootstrapResponse.statusCode, bootstrapText,
+              fallback: 'Учётная запись не привязана к активному профилю WesiOS.'),
           statusCode: bootstrapResponse.statusCode,
         );
       }
-
-      final bootstrapJson = jsonDecode(bootstrapText);
-      if (bootstrapJson is! Map) {
-        return const PortalLoginResult.failure(
-          'Сервер вернул непонятные данные профиля.',
-        );
+      final bootstrapJson = _map(bootstrapText);
+    final verifiedRecord = verifyJson?['record'];
+    if (bootstrapJson != null &&
+        bootstrapJson['owner'] == true &&
+        verifiedRecord is Map) {
+      final verifiedEmail = '${verifiedRecord['email'] ?? ''}'.trim().toLowerCase();
+      if (validSecurityEmail(verifiedEmail)) {
+        bootstrapJson['email'] = verifiedEmail;
       }
-      final identity = PortalAppIdentity.tryParse(
-        Map<String, dynamic>.from(bootstrapJson),
-      );
+    }
+    final identity = bootstrapJson == null
+        ? null
+        : PortalAppIdentity.tryParse(bootstrapJson);
       if (identity == null) {
-        return const PortalLoginResult.failure(
-          'Сервер не вернул роль и права пользователя.',
-        );
+        return const PortalLoginResult.failure('Сервер не вернул роль и права пользователя.');
       }
 
       await SyncEndpoint.configure(login: identity.login);
       await SyncEndpoint.saveSession(
         token: token,
         userId: userId,
-        expiresAt: DateTime.now().add(const Duration(days: 13)),
+        sessionId: sessionId,
+        expiresAt: expiresAt,
       );
       await SyncEndpoint.setEnabled(true);
+
+      // Idempotent for an already configured owner. In the migration case it
+      // commits the email only after the code delivered to it was verified.
+      if (identity.isOwner) {
+        try {
+          final confirm = await client.postUrl(
+              Uri.parse('$_base/api/wesi/security/confirm-owner-email'));
+          confirm.headers.set(HttpHeaders.authorizationHeader, token);
+          confirm.headers.set('X-WesiOS-Session', sessionId);
+          final response = await confirm.close().timeout(const Duration(seconds: 10));
+          await response.drain<void>();
+        } catch (_) {}
+      }
       return PortalLoginResult.success(identity);
     } on TimeoutException {
-      return const PortalLoginResult.failure(
-        'Сервер WesiOS не ответил вовремя. Повторите попытку.',
-      );
+      return const PortalLoginResult.failure('Сервер WesiOS не ответил вовремя. Повторите попытку.');
     } on SocketException {
       return const PortalLoginResult.failure('Нет связи с сервером WesiOS.');
     } on HandshakeException {
-      return const PortalLoginResult.failure(
-        'Не удалось проверить сертификат сервера WesiOS.',
-      );
-    } on FormatException {
-      return const PortalLoginResult.failure('Сервер вернул непонятный ответ.');
+      return const PortalLoginResult.failure('Не удалось проверить сертификат сервера WesiOS.');
     } catch (_) {
-      return const PortalLoginResult.failure('Не удалось выполнить вход.');
+      return const PortalLoginResult.failure('Не удалось подтвердить вход.');
     } finally {
       client.close(force: true);
     }
   }
 
-  /// Установить владельцу короткий логин и пароль для сайта и WesiOS.
   static Future<PortalCredentialResult> configureCurrentProfile({
     required EmployeeModel employee,
     required String login,
     required String password,
   }) async {
-    final session = SyncEndpoint.session;
-    final token = session?['token'];
-    if (token is! String || token.isEmpty) {
-      return const PortalCredentialResult.failure(
-        'Сначала войдите в WesiOS под текущей серверной учётной записью.',
-        statusCode: 401,
-      );
+    final token = SyncEndpoint.session?['token'];
+    final sid = SyncEndpoint.sessionId;
+    if (token is! String || token.isEmpty || sid == null) {
+      return const PortalCredentialResult.failure('Сначала войдите в WesiOS.', statusCode: 401);
     }
-
+    if (!validSecurityEmail(employee.email)) {
+      return const PortalCredentialResult.failure('Сначала укажите действующую электронную почту профиля.');
+    }
     final normalized = login.trim().toLowerCase();
     if (!RegExp(r'^[a-z0-9][a-z0-9._-]{2,31}$').hasMatch(normalized)) {
-      return const PortalCredentialResult.failure(
-        'Логин: 3–32 латинских символа, цифры, точка, дефис или подчёркивание.',
-      );
+      return const PortalCredentialResult.failure('Логин: 3–32 латинских символа, цифры, точка, дефис или подчёркивание.');
     }
     if (password.length < 8 || password.length > 128) {
-      return const PortalCredentialResult.failure(
-        'Пароль должен содержать от 8 до 128 символов.',
-      );
+      return const PortalCredentialResult.failure('Пароль должен содержать от 8 до 128 символов.');
     }
-
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-    try {
-      final request = await client.postUrl(
-        Uri.parse('$_base/api/wesi/portal/profile/credentials'),
-      );
-      request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, token);
-      request.write(jsonEncode({
+    return _postOwner(
+      '/api/wesi/portal/profile/credentials',
+      {
         'login': normalized,
         'password': password,
         'name': employee.displayName,
-      }));
-
-      final response = await request.close().timeout(const Duration(seconds: 18));
-      final responseText = await utf8.decoder.bind(response).join();
-      if (response.statusCode != 200) {
-        return PortalCredentialResult.failure(
-          messageForResponse(
-            response.statusCode,
-            responseText,
-            fallback: 'Сервер не принял новые данные.',
-          ),
-          statusCode: response.statusCode,
-        );
-      }
-
-      final auth = await client.postUrl(
-        Uri.parse('$_base/api/collections/users/auth-with-password'),
-      );
-      auth.headers.contentType = ContentType.json;
-      auth.write(jsonEncode({
-        'identity': '$normalized@wesi.local',
-        'password': password,
-      }));
-      final authResponse = await auth.close().timeout(const Duration(seconds: 18));
-      final authText = await utf8.decoder.bind(authResponse).join();
-      if (authResponse.statusCode != 200) {
-        return PortalCredentialResult.failure(
-          messageForResponse(
-            authResponse.statusCode,
-            authText,
-            fallback:
-                'Данные сохранены, но контрольный вход не прошёл. Повторите отправку.',
-          ),
-          statusCode: authResponse.statusCode,
-        );
-      }
-
-      final decoded = jsonDecode(authText);
-      if (decoded is! Map ||
-          decoded['token'] is! String ||
-          decoded['record'] is! Map ||
-          (decoded['record'] as Map)['id'] is! String) {
-        return const PortalCredentialResult.failure(
-          'Сервер вернул неполный ответ авторизации.',
-        );
-      }
-
-      await SyncEndpoint.configure(login: normalized);
-      await SyncEndpoint.saveSession(
-        token: decoded['token'] as String,
-        userId: (decoded['record'] as Map)['id'] as String,
-        expiresAt: DateTime.now().add(const Duration(days: 13)),
-      );
-      await SyncEndpoint.setEnabled(true);
-      return const PortalCredentialResult.success(
-        'Профиль отправлен на сервер и проверен контрольным входом.',
-      );
-    } on TimeoutException {
-      return const PortalCredentialResult.failure(
-        'Сервер WesiOS не ответил вовремя. Повторите попытку.',
-      );
-    } on SocketException {
-      return const PortalCredentialResult.failure('Нет связи с сервером WesiOS.');
-    } on HandshakeException {
-      return const PortalCredentialResult.failure(
-        'Не удалось проверить сертификат сервера.',
-      );
-    } on FormatException {
-      return const PortalCredentialResult.failure('Сервер вернул непонятный ответ.');
-    } catch (_) {
-      return const PortalCredentialResult.failure(
-        'Не удалось отправить профиль на сервер.',
-      );
-    } finally {
-      client.close(force: true);
-    }
+        'email': employee.email.trim().toLowerCase(),
+      },
+      success: 'Данные входа сохранены. При следующем входе потребуется код из почты.',
+      fallback: 'Сервер не принял новые данные.',
+    );
   }
 
-  /// Создать или обновить серверный аккаунт сотрудника одновременно с его
-  /// локальной карточкой и вернуть понятную причину результата.
   static Future<PortalCredentialResult> provisionDetailed({
     required EmployeeModel employee,
     required String password,
   }) async {
+    if (!validSecurityEmail(employee.email)) {
+      return const PortalCredentialResult.failure('Для сотрудника обязательна действующая электронная почта.');
+    }
     if (employee.isOwner) {
-      return configureCurrentProfile(
-        employee: employee,
-        login: employee.login,
-        password: password,
-      );
+      return configureCurrentProfile(employee: employee, login: employee.login, password: password);
     }
+    return _postOwner(
+      '/api/wesi/portal/employees/provision',
+      _employeeAccessBody(employee)..['password'] = password,
+      success: 'Учётная запись сотрудника создана. Вход защищён кодом из почты.',
+      fallback: 'Сервер не создал учётную запись сотрудника.',
+      acceptCreated: true,
+    );
+  }
 
-    final session = SyncEndpoint.session;
-    final ownerToken = session?['token'];
-    if (ownerToken is! String || ownerToken.isEmpty) {
-      return const PortalCredentialResult.failure(
-        'Сначала войдите в WesiOS под учётной записью владельца.',
-        statusCode: 401,
-      );
+  static Future<PortalCredentialResult> updateAccess(EmployeeModel employee) {
+    if (!employee.isOwner && !validSecurityEmail(employee.email)) {
+      return Future.value(const PortalCredentialResult.failure('Для сотрудника обязательна действующая электронная почта.'));
     }
+    return _postOwner(
+      '/api/wesi/portal/employees/access',
+      _employeeAccessBody(employee),
+      fallback: 'Не удалось обновить данные и права сотрудника на сервере.',
+    );
+  }
 
+  static Future<PortalCredentialResult> revoke(EmployeeModel employee) => _postOwner(
+        '/api/wesi/portal/employees/revoke',
+        {'login': employee.login.toLowerCase()},
+        fallback: 'Не удалось закрыть серверный вход сотрудника.',
+      );
+
+  static Future<PortalCredentialResult> _postOwner(
+    String path,
+    Map<String, dynamic> body, {
+    String success = '',
+    required String fallback,
+    bool acceptCreated = false,
+  }) async {
+    final token = SyncEndpoint.session?['token'];
+    final sid = SyncEndpoint.sessionId;
+    if (token is! String || token.isEmpty || sid == null) {
+      return const PortalCredentialResult.failure('Нет подтверждённой серверной сессии владельца.', statusCode: 401);
+    }
     final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
     try {
-      final request = await client.postUrl(
-        Uri.parse('$_base/api/wesi/portal/employees/provision'),
-      );
+      final request = await client.postUrl(Uri.parse('$_base$path'));
       request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, ownerToken);
-      request.write(jsonEncode(_employeeAccessBody(employee)
-        ..['password'] = password));
-
+      request.headers.set(HttpHeaders.authorizationHeader, token);
+      request.headers.set('X-WesiOS-Session', sid);
+      request.write(jsonEncode(body));
       final response = await request.close().timeout(const Duration(seconds: 18));
-      final responseText = await utf8.decoder.bind(response).join();
-      if (response.statusCode != 200 && response.statusCode != 201) {
+      final text = await utf8.decoder.bind(response).join();
+      final ok = response.statusCode == 200 || (acceptCreated && response.statusCode == 201);
+      if (!ok) {
         return PortalCredentialResult.failure(
-          messageForResponse(
-            response.statusCode,
-            responseText,
-            fallback: 'Сервер не создал учётную запись сотрудника.',
-          ),
+          messageForResponse(response.statusCode, text, fallback: fallback),
           statusCode: response.statusCode,
         );
       }
-
-      final auth = await client.postUrl(
-        Uri.parse('$_base/api/collections/users/auth-with-password'),
-      );
-      auth.headers.contentType = ContentType.json;
-      auth.write(jsonEncode({
-        'identity': '${employee.login.toLowerCase()}@wesi.local',
-        'password': password,
-      }));
-      final authResponse = await auth.close().timeout(const Duration(seconds: 18));
-      final authText = await utf8.decoder.bind(authResponse).join();
-      if (authResponse.statusCode != 200) {
-        return PortalCredentialResult.failure(
-          messageForResponse(
-            authResponse.statusCode,
-            authText,
-            fallback:
-                'Учётная запись создана, но контрольный вход сотрудника не прошёл.',
-          ),
-          statusCode: authResponse.statusCode,
-        );
-      }
-
-      return const PortalCredentialResult.success(
-        'Учётная запись сотрудника создана и проверена.',
-      );
+      return PortalCredentialResult.success(success);
     } on TimeoutException {
-      return const PortalCredentialResult.failure(
-        'Сервер WesiOS не ответил вовремя. Активацию можно повторить.',
-      );
+      return const PortalCredentialResult.failure('Сервер не ответил вовремя.');
     } on SocketException {
-      return const PortalCredentialResult.failure(
-        'Нет связи с сервером WesiOS. Активацию можно повторить.',
-      );
+      return const PortalCredentialResult.failure('Нет связи с сервером WesiOS.');
     } on HandshakeException {
-      return const PortalCredentialResult.failure(
-        'Не удалось проверить сертификат сервера.',
-      );
-    } on FormatException {
-      return const PortalCredentialResult.failure('Сервер вернул непонятный ответ.');
+      return const PortalCredentialResult.failure('Не удалось проверить сертификат сервера.');
     } catch (_) {
-      return const PortalCredentialResult.failure(
-        'Не удалось активировать сотрудника на сервере.',
-      );
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  /// Немедленно обновляет серверный снимок прав без смены пароля.
-  static Future<PortalCredentialResult> updateAccess(
-    EmployeeModel employee,
-  ) async {
-    final token = SyncEndpoint.session?['token'];
-    if (token is! String || token.isEmpty) {
-      return const PortalCredentialResult.failure(
-        'Нет серверной сессии владельца.',
-        statusCode: 401,
-      );
-    }
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-    try {
-      final request = await client.postUrl(
-        Uri.parse('$_base/api/wesi/portal/employees/access'),
-      );
-      request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, token);
-      request.write(jsonEncode(_employeeAccessBody(employee)));
-      final response = await request.close().timeout(const Duration(seconds: 18));
-      final text = await utf8.decoder.bind(response).join();
-      if (response.statusCode != 200) {
-        return PortalCredentialResult.failure(
-          messageForResponse(
-            response.statusCode,
-            text,
-            fallback: 'Не удалось обновить права сотрудника на сервере.',
-          ),
-          statusCode: response.statusCode,
-        );
-      }
-      return const PortalCredentialResult.success();
-    } on TimeoutException {
-      return const PortalCredentialResult.failure('Сервер не ответил вовремя.');
-    } on SocketException {
-      return const PortalCredentialResult.failure('Нет связи с сервером WesiOS.');
-    } catch (_) {
-      return const PortalCredentialResult.failure(
-        'Не удалось обновить права сотрудника на сервере.',
-      );
-    } finally {
-      client.close(force: true);
-    }
-  }
-
-  /// Закрывает серверный вход сотруднику при удалении из команды.
-  static Future<PortalCredentialResult> revoke(EmployeeModel employee) async {
-    final token = SyncEndpoint.session?['token'];
-    if (token is! String || token.isEmpty) {
-      return const PortalCredentialResult.failure(
-        'Нет серверной сессии владельца.',
-        statusCode: 401,
-      );
-    }
-    final client = HttpClient()..connectionTimeout = const Duration(seconds: 8);
-    try {
-      final request = await client.postUrl(
-        Uri.parse('$_base/api/wesi/portal/employees/revoke'),
-      );
-      request.headers.contentType = ContentType.json;
-      request.headers.set(HttpHeaders.authorizationHeader, token);
-      request.write(jsonEncode({'login': employee.login.toLowerCase()}));
-      final response = await request.close().timeout(const Duration(seconds: 18));
-      final text = await utf8.decoder.bind(response).join();
-      if (response.statusCode != 200) {
-        return PortalCredentialResult.failure(
-          messageForResponse(
-            response.statusCode,
-            text,
-            fallback: 'Не удалось закрыть серверный вход сотрудника.',
-          ),
-          statusCode: response.statusCode,
-        );
-      }
-      return const PortalCredentialResult.success();
-    } on TimeoutException {
-      return const PortalCredentialResult.failure('Сервер не ответил вовремя.');
-    } on SocketException {
-      return const PortalCredentialResult.failure('Нет связи с сервером WesiOS.');
-    } catch (_) {
-      return const PortalCredentialResult.failure(
-        'Не удалось закрыть серверный вход сотрудника.',
-      );
+      return PortalCredentialResult.failure(fallback);
     } finally {
       client.close(force: true);
     }
@@ -523,44 +433,34 @@ class PortalAccountService {
         'fullName': employee.fullName,
         'nickname': employee.nickname,
         'position': employee.position,
-        'email': employee.email,
+        'email': employee.email.trim().toLowerCase(),
         'avatarIndex': employee.avatarIndex,
         'createdAt': employee.createdAt.toUtc().toIso8601String(),
         'permissions': employee.permissions.toJson(),
       };
 
-  /// Совместимость со старым кодом, которому достаточно только результата.
-  static Future<bool> provision({
-    required EmployeeModel employee,
-    required String password,
-  }) async {
-    final result = await provisionDetailed(
-      employee: employee,
-      password: password,
-    );
-    return result.ok;
-  }
+  static Future<bool> provision({required EmployeeModel employee, required String password}) async =>
+      (await provisionDetailed(employee: employee, password: password)).ok;
 
-  /// Переводит служебные ответы PocketBase в сообщение, полезное человеку.
-  static String messageForResponse(
-    int statusCode,
-    String raw, {
-    required String fallback,
-  }) {
+  static String messageForResponse(int statusCode, String raw, {required String fallback}) {
     final extracted = _messageFrom(raw);
-    if (extracted != null && !_isGenericServerMessage(extracted)) {
-      return extracted;
-    }
-
+    if (extracted != null && !_isGenericServerMessage(extracted)) return extracted;
     return switch (statusCode) {
       400 => fallback,
-      401 => 'Серверная сессия истекла. Войдите заново.',
-      403 => 'Сервер не подтвердил права для этой операции.',
-      404 =>
-        'Серверный модуль входа не установлен или не обновлён. Повторите после обновления сервера.',
+      401 => 'Сеанс или данные входа недействительны.',
+      403 => 'Сервер не подтвердил доступ для этой операции.',
+      404 => 'Серверный модуль безопасности не установлен или не обновлён.',
+      429 => 'Слишком много попыток. Подождите и повторите.',
       >= 500 => 'Серверный модуль входа временно недоступен.',
       _ => fallback,
     };
+  }
+
+  static Map<String, dynamic>? _map(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } catch (_) { return null; }
   }
 
   static String? _messageFrom(String raw) {
@@ -568,9 +468,7 @@ class PortalAccountService {
       final decoded = jsonDecode(raw);
       if (decoded is Map) {
         final direct = decoded['message'];
-        if (direct is String && direct.trim().isNotEmpty) {
-          return direct.trim();
-        }
+        if (direct is String && direct.trim().isNotEmpty) return direct.trim();
         final data = decoded['data'];
         if (data is Map) {
           for (final value in data.values) {

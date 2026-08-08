@@ -4,16 +4,32 @@
   const API = location.origin;
   const TOKEN_KEY = 'wesi_portal_token';
   const USER_KEY = 'wesi_portal_user';
-  const TIMEOUT = 8000;
+  const SESSION_KEY = 'wesi_portal_session';
+  const TIMEOUT = 10000;
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+
+  function json(value) {
+    try { return value ? JSON.parse(value) : null; } catch (_) { return null; }
+  }
+
+  function stored(key) {
+    try { return localStorage.getItem(key) || sessionStorage.getItem(key) || ''; }
+    catch (_) { return ''; }
+  }
+
   const state = {
-    token: sessionStorage.getItem(TOKEN_KEY) || '',
-    user: json(sessionStorage.getItem(USER_KEY)),
+    token: stored(TOKEN_KEY),
+    sessionId: stored(SESSION_KEY),
+    user: json(stored(USER_KEY)),
     manifest: null,
+    challengeId: '',
+    maskedEmail: '',
+    remember: false,
+    heartbeat: 0,
   };
+
   const els = {
-    app: $('#app'),
     loginView: $('#loginView'),
     dashboardView: $('#dashboardView'),
     loginForm: $('#loginForm'),
@@ -41,9 +57,6 @@
   const THEME_KEY = 'wesi-theme';
   const THEME_BAR = { dark: '#08080b', light: '#f4f6fb' };
 
-  /** Текущая тема. Источник истины — атрибут на <html>: его же ставит
-   *  встроенный скрипт в <head> до первой отрисовки, и расходиться им
-   *  негде. */
   function currentTheme() {
     return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
   }
@@ -51,56 +64,64 @@
   function applyTheme(theme, animate) {
     const root = document.documentElement;
     if (animate) {
-      // Плавный переход включается только на время самой смены. Оставить
-      // его насовсем нельзя: тогда любое наведение на карточку потянет за
-      // собой пол-секунды анимации фона, и страница начнёт «тормозить»
-      // ровно там, где до этого была мгновенной.
       root.classList.add('theme-shifting');
       clearTimeout(applyTheme.timer);
       applyTheme.timer = setTimeout(() => root.classList.remove('theme-shifting'), 460);
     }
     if (theme === 'light') root.setAttribute('data-theme', 'light');
     else root.removeAttribute('data-theme');
-
-    // Цвет системной панели браузера на телефоне. Без него шапка Chrome
-    // остаётся чёрной над белой страницей.
     els.themeColor?.setAttribute('content', THEME_BAR[theme] || THEME_BAR.dark);
     if (els.themeSwitch) {
       els.themeSwitch.setAttribute('aria-checked', theme === 'light' ? 'true' : 'false');
       els.themeSwitch.setAttribute('aria-label', theme === 'light' ? 'Тёмная тема' : 'Светлая тема');
     }
-    try { localStorage.setItem(THEME_KEY, theme); } catch (_) { /* приватный режим */ }
-  }
-
-  function json(value) {
-    try { return value ? JSON.parse(value) : null; } catch (_) { return null; }
+    try { localStorage.setItem(THEME_KEY, theme); } catch (_) {}
   }
 
   function clearSession() {
+    stopHeartbeat();
     state.token = '';
+    state.sessionId = '';
     state.user = null;
     state.manifest = null;
-    sessionStorage.removeItem(TOKEN_KEY);
-    sessionStorage.removeItem(USER_KEY);
+    for (const storage of [localStorage, sessionStorage]) {
+      try {
+        storage.removeItem(TOKEN_KEY);
+        storage.removeItem(USER_KEY);
+        storage.removeItem(SESSION_KEY);
+      } catch (_) {}
+    }
+  }
+
+  function persistSession(remember) {
+    const target = remember ? localStorage : sessionStorage;
+    const other = remember ? sessionStorage : localStorage;
+    try {
+      other.removeItem(TOKEN_KEY);
+      other.removeItem(USER_KEY);
+      other.removeItem(SESSION_KEY);
+      target.setItem(TOKEN_KEY, state.token);
+      target.setItem(SESSION_KEY, state.sessionId);
+      target.setItem(USER_KEY, JSON.stringify(state.user || {}));
+    } catch (_) {}
   }
 
   function headers(extra = {}) {
-    return state.token ? { ...extra, Authorization: state.token } : extra;
+    if (!state.token || !state.sessionId) return extra;
+    return {
+      ...extra,
+      Authorization: state.token,
+      'X-WesiOS-Session': state.sessionId,
+    };
   }
 
   async function fetchTimeout(url, options = {}, timeout = TIMEOUT) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
-    try {
-      return await fetch(url, { ...options, signal: controller.signal });
-    } finally {
-      clearTimeout(timer);
-    }
+    try { return await fetch(url, { ...options, signal: controller.signal }); }
+    finally { clearTimeout(timer); }
   }
 
-  // Служебные фразы PocketBase, за которыми не стоит никакого объяснения.
-  // Свои сообщения сервер шлёт по-русски и по делу — их надо показывать
-  // как есть, а не заменять общими словами.
   const GENERIC_FAILURES = [
     'something went wrong',
     'failed to authenticate',
@@ -109,28 +130,25 @@
 
   function describeFailure(status, message) {
     const raw = (message || '').trim();
-    const generic = !raw ||
-      GENERIC_FAILURES.some(phrase => raw.toLowerCase().includes(phrase));
+    const generic = !raw || GENERIC_FAILURES.some(p => raw.toLowerCase().includes(p));
     if (!generic) return raw;
-    if (status === 401 || status === 403) return 'Сессия истекла — войдите заново';
+    if (status === 401) return 'Неверные данные или сеанс завершён';
+    if (status === 403) return 'Доступ к профилю закрыт';
+    if (status === 429) return 'Слишком много попыток — повторите позже';
     if (status === 404) return 'Сборка ещё не опубликована на сервере';
     if (status >= 500) return 'Сервер не смог ответить — попробуйте позже';
     return 'Не удалось получить данные с сервера';
   }
 
-  async function request(path, options = {}, timeout = TIMEOUT) {
+  async function request(path, options = {}, timeout = TIMEOUT, authenticated = true) {
     const response = await fetchTimeout(`${API}${path}`, {
       cache: 'no-store',
       ...options,
-      headers: headers(options.headers || {}),
+      headers: authenticated ? headers(options.headers || {}) : (options.headers || {}),
     }, timeout);
     let body = null;
     try { body = await response.json(); } catch (_) {}
     if (!response.ok) {
-      // Человеку — по-русски и про суть. Сервер отвечает служебной фразой
-      // вроде «Something went wrong while processing your request», и
-      // показывать её в подвале означает предъявлять сотруднику текст,
-      // который ничего ему не говорит и выглядит поломкой сайта.
       const error = new Error(describeFailure(response.status, body?.message));
       error.status = response.status;
       error.raw = body?.message || '';
@@ -142,19 +160,13 @@
   function showView(next, resetScroll = true) {
     $('.view.active')?.classList.remove('active');
     next?.classList.add('active');
-    // Метка на корне: по ней выключается всё, что относится к публичной
-    // странице. Огонёк, например, живёт вне `.view` и сам по себе тянул
-    // страницу вниз на две с половиной тысячи пикселей — под экраном
-    // загрузок оказывалась пустота, которую можно листать.
-    document.documentElement.classList.toggle(
-      'view-dashboard',
-      next?.id === 'dashboardView',
-    );
+    document.documentElement.classList.toggle('view-dashboard', next?.id === 'dashboardView');
     if (resetScroll) scrollTo(0, 0);
   }
 
   function showLogin(resetScroll = false) {
     els.logoutButton?.classList.add('hidden');
+    showPasswordStep();
     showView(els.loginView, resetScroll);
   }
 
@@ -167,52 +179,167 @@
   }
 
   function nameOf(record) {
-    return (record?.name || record?.username || record?.email || 'сотрудник').replace(/@wesi\.local$/i, '');
+    return (record?.name || record?.login || record?.email || 'сотрудник').replace(/@wesi\.local$/i, '');
   }
 
-  async function authCandidate(identity, password) {
-    const response = await fetchTimeout(`${API}/api/collections/users/auth-with-password`, {
+  function ensureSecurityUi() {
+    if ($('#otpForm')) return;
+    const style = document.createElement('style');
+    style.textContent = `
+      .remember-row{display:flex;align-items:center;gap:10px;margin:12px 0 4px;color:var(--t2);font-size:13px;cursor:pointer}
+      .remember-row input{width:18px;height:18px;accent-color:rgb(var(--a3))}
+      .otp-form{display:none}.otp-form.active{display:block}.login-form-hidden{display:none!important}
+      .otp-destination{font-size:12px;line-height:1.5;color:var(--t2);margin:0 0 14px}
+      .otp-code{text-align:center!important;font-size:25px!important;font-weight:750!important;letter-spacing:9px!important;font-variant-numeric:tabular-nums}
+      .otp-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap;margin-top:8px}
+      .otp-actions button{border:0;background:transparent;color:var(--t2);padding:8px 10px;cursor:pointer;font:inherit}
+      .otp-actions button:hover{color:var(--t1)}
+    `;
+    document.head.appendChild(style);
+
+    const message = els.loginMessage;
+    const remember = document.createElement('label');
+    remember.className = 'remember-row';
+    remember.innerHTML = '<input id="rememberLogin" type="checkbox" checked><span>Запомнить меня на этом устройстве</span>';
+    message?.parentNode?.insertBefore(remember, message);
+
+    const form = document.createElement('form');
+    form.id = 'otpForm';
+    form.className = 'otp-form';
+    form.noValidate = true;
+    form.innerHTML = `
+      <p class="otp-destination" id="otpDestination">Код отправлен на вашу почту.</p>
+      <label class="field"><span>6-значный код</span><span class="input-wrap"><svg viewBox="0 0 24 24"><path d="M7 10V8a5 5 0 0 1 10 0v2M6 10h12a2 2 0 0 1 2 2v7H4v-7a2 2 0 0 1 2-2Z"/></svg><input class="otp-code" id="otpCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="000000" required></span></label>
+      <div class="form-message" id="otpMessage" role="alert"></div>
+      <button class="primary-button" id="otpButton" type="submit"><span>Подтвердить и продолжить</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+      <div class="otp-actions"><button id="otpResend" type="button">Отправить новый код</button><button id="otpBack" type="button">Назад</button></div>
+    `;
+    els.loginForm?.parentNode?.insertBefore(form, els.loginForm.nextSibling);
+  }
+
+  function showOtpStep(maskedEmail) {
+    els.loginForm?.classList.add('login-form-hidden');
+    $('#otpForm')?.classList.add('active');
+    const destination = $('#otpDestination');
+    if (destination) destination.textContent = `Код отправлен на ${maskedEmail || 'почту профиля'}. Он действует 10 минут.`;
+    const code = $('#otpCode');
+    if (code) { code.value = ''; setTimeout(() => code.focus(), 60); }
+    if (els.loginMessage) els.loginMessage.textContent = '';
+    const otpMessage = $('#otpMessage');
+    if (otpMessage) otpMessage.textContent = '';
+  }
+
+  function showPasswordStep() {
+    state.challengeId = '';
+    state.maskedEmail = '';
+    els.loginForm?.classList.remove('login-form-hidden');
+    $('#otpForm')?.classList.remove('active');
+    const otpMessage = $('#otpMessage');
+    if (otpMessage) otpMessage.textContent = '';
+  }
+
+  async function beginSignIn() {
+    const login = els.identity.value.trim().toLowerCase();
+    const password = els.password.value;
+    if (!login || !password) throw new Error('Введите логин и пароль');
+    let body = await request('/api/wesi/auth/start-v2', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identity, password }),
-      cache: 'no-store',
-    });
-    const body = await response.json().catch(() => null);
-    return { response, body };
+      body: JSON.stringify({ login, password, purpose: 'portal' }),
+    }, 20000, false);
+    if (!body?.challengeId) throw new Error('Сервер не создал проверку входа');
+    if (body.emailSetupRequired) {
+      const proposed = window.prompt(
+        'Для старого профиля владельца нужно один раз привязать почту для кодов безопасности. Введите действующую электронную почту:',
+        '',
+      );
+      const email = (proposed || '').trim().toLowerCase();
+      if (!email) throw new Error('Почта обязательна для защищённого входа');
+      body = await request('/api/wesi/auth/setup-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: body.challengeId, email }),
+      }, 20000, false);
+      if (!body?.challengeId) throw new Error('Не удалось отправить код на эту почту');
+    }
+    state.challengeId = body.challengeId;
+    state.maskedEmail = body.maskedEmail || '';
+    state.remember = $('#rememberLogin')?.checked !== false;
+    showOtpStep(state.maskedEmail);
   }
 
-  async function signIn(identity, password) {
-    const raw = identity.trim();
-    const candidates = [raw];
-    if (raw && !raw.includes('@')) candidates.push(`${raw.toLowerCase()}@wesi.local`);
-    for (const candidate of [...new Set(candidates)]) {
-      const { response, body } = await authCandidate(candidate, password);
-      if (response.ok && body?.token) {
-        state.token = body.token;
-        state.user = body.record || {};
-        sessionStorage.setItem(TOKEN_KEY, state.token);
-        sessionStorage.setItem(USER_KEY, JSON.stringify(state.user));
-        return;
+  async function verifyCode() {
+    const code = ($('#otpCode')?.value || '').trim();
+    if (!/^\d{6}$/.test(code)) throw new Error('Введите 6 цифр из письма');
+    const body = await request('/api/wesi/auth/verify', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        challengeId: state.challengeId,
+        code,
+        remember: state.remember,
+        device: {
+          platform: navigator.platform || 'browser',
+          deviceName: navigator.userAgentData?.platform || navigator.platform || 'Браузер',
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || '',
+        },
+      }),
+    }, 20000, false);
+    if (!body?.token || !body?.sessionId) throw new Error('Сервер не вернул подтверждённый сеанс');
+    state.token = body.token;
+    state.sessionId = body.sessionId;
+    state.user = body.record || {};
+    persistSession(state.remember);
+    try {
+      await request('/api/wesi/security/confirm-owner-email', {
+        method: 'POST',
+      }, 5000);
+    } catch (_) {}
+    els.password.value = '';
+  }
+
+  async function pingSession() {
+    if (!state.token || !state.sessionId) return false;
+    try {
+      await request('/api/wesi/security/session/ping', { method: 'GET' }, 5000);
+      return true;
+    } catch (error) {
+      if (error?.status === 401 || error?.status === 403) {
+        clearSession();
+        showLogin(true);
+        toast('Сеанс завершён. Войдите заново.', 'error');
       }
+      return false;
     }
-    const error = new Error('Неверный логин или пароль');
-    error.status = 401;
-    throw error;
+  }
+
+  function startHeartbeat() {
+    stopHeartbeat();
+    state.heartbeat = setInterval(() => { pingSession(); }, 2000);
+  }
+
+  function stopHeartbeat() {
+    if (state.heartbeat) clearInterval(state.heartbeat);
+    state.heartbeat = 0;
   }
 
   async function verifySession() {
-    if (!state.token) return false;
-    try {
-      const body = await request('/api/collections/users/auth-refresh', { method: 'POST' }, 2400);
-      state.token = body.token || state.token;
-      state.user = body.record || state.user;
-      sessionStorage.setItem(TOKEN_KEY, state.token);
-      sessionStorage.setItem(USER_KEY, JSON.stringify(state.user));
-      return true;
-    } catch (_) {
-      clearSession();
-      return false;
+    if (!state.token || !state.sessionId) return false;
+    return pingSession();
+  }
+
+  async function remoteLogout() {
+    if (state.token && state.sessionId) {
+      try {
+        await request('/api/wesi/security/sessions/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId: state.sessionId }),
+        }, 5000);
+      } catch (_) {}
     }
+    clearSession();
+    showLogin(true);
   }
 
   function platform(manifest, name) {
@@ -255,6 +382,7 @@
     els.employeeName.textContent = nameOf(state.user);
     els.logoutButton?.classList.remove('hidden');
     showView(els.dashboardView);
+    startHeartbeat();
     try {
       state.manifest = await request('/api/wesi/portal/manifest');
       renderManifest(state.manifest);
@@ -272,8 +400,6 @@
     let writable = null;
     setLoading(button, true, 'Скачиваем…');
     try {
-      // Для большого Windows ZIP Chromium может сразу писать поток на диск.
-      // Это не держит весь архив в памяти и не ограничивает загрузку 30 секундами.
       if (platformName === 'windows' && window.showSaveFilePicker) {
         try {
           const handle = await window.showSaveFilePicker({
@@ -285,17 +411,20 @@
           if (error?.name === 'AbortError') return;
         }
       }
-
       const response = await fetch(`${API}/api/wesi/portal/download/${platformName}`, {
         method: 'GET', cache: 'no-store', headers: headers(),
       });
-      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          clearSession(); showLogin(true);
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
       const total = Number(response.headers.get('content-length') || item.sizeBytes || 0);
       let received = 0;
       const progress = () => {
         if (total) button.dataset.progress = `${Math.min(100, Math.round(received * 100 / total))}%`;
       };
-
       if (writable && response.body) {
         const reader = response.body.getReader();
         while (true) {
@@ -310,7 +439,6 @@
         toast('WesiOS сохранён на компьютер');
         return;
       }
-
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
@@ -343,20 +471,14 @@
     const root = document.documentElement;
     const revealNodes = $$('[data-scroll-reveal]');
     const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
-
     root.classList.add('motion-ready');
-
     const reveal = node => {
       if (!node || node.classList.contains('visible')) return;
       node.classList.add('visible');
       setTimeout(() => node.classList.add('settled'), 820);
     };
-
-    if (reduced || !('IntersectionObserver' in window)) {
-      revealNodes.forEach(reveal);
-    } else {
-      // Почти два экрана запаса. На быстром свайпе слой уже создан и его
-      // transition успевает начаться до попадания элемента в viewport.
+    if (reduced || !('IntersectionObserver' in window)) revealNodes.forEach(reveal);
+    else {
       const observer = new IntersectionObserver(entries => {
         entries.forEach(entry => {
           if (!entry.isIntersecting) return;
@@ -366,37 +488,9 @@
       }, { threshold: .001, rootMargin: '90% 0px 90% 0px' });
       revealNodes.forEach(node => observer.observe(node));
     }
-
     const syncVisibility = () => root.classList.toggle('motion-paused', document.hidden);
     document.addEventListener('visibilitychange', syncVisibility, { passive: true });
     syncVisibility();
-
-    if (reduced) return;
-
-    $$('[data-tilt-card]').forEach(card => {
-      let frame = 0;
-      let nextX = 0;
-      let nextY = 0;
-
-      const renderTilt = () => {
-        frame = 0;
-        card.style.transform = `perspective(900px) rotateX(${nextY.toFixed(2)}deg) rotateY(${nextX.toFixed(2)}deg) translate3d(0,-2px,0)`;
-      };
-
-      card.addEventListener('pointermove', event => {
-        if (innerWidth < 900 || event.pointerType === 'touch') return;
-        const rect = card.getBoundingClientRect();
-        nextX = ((event.clientX - rect.left) / rect.width - .5) * 4;
-        nextY = -((event.clientY - rect.top) / rect.height - .5) * 3;
-        if (!frame) frame = requestAnimationFrame(renderTilt);
-      }, { passive: true });
-
-      card.addEventListener('pointerleave', () => {
-        if (frame) cancelAnimationFrame(frame);
-        frame = 0;
-        card.style.transform = '';
-      }, { passive: true });
-    });
   }
 
   function preventPinchZoom() {
@@ -415,15 +509,9 @@
       popover.setAttribute('aria-hidden', open ? 'false' : 'true');
       popover.classList.toggle('is-open', open);
     };
-    const toggle = event => {
-      event?.preventDefault();
-      event?.stopPropagation();
+    trigger.addEventListener('click', event => {
+      event.preventDefault(); event.stopPropagation();
       setOpen(trigger.getAttribute('aria-expanded') !== 'true');
-    };
-    trigger.addEventListener('click', toggle);
-    trigger.addEventListener('keydown', event => {
-      if (event.key === 'Enter' || event.key === ' ') toggle(event);
-      if (event.key === 'Escape') setOpen(false);
     });
     popover.addEventListener('click', event => event.stopPropagation());
     document.addEventListener('click', () => setOpen(false));
@@ -431,6 +519,7 @@
   }
 
   function bind() {
+    ensureSecurityUi();
     bindRequirements();
     preventPinchZoom();
     applyTheme(currentTheme(), false);
@@ -443,25 +532,38 @@
     els.loginForm?.addEventListener('submit', async event => {
       event.preventDefault();
       els.loginMessage.textContent = '';
-      if (!els.identity.value.trim() || !els.password.value) {
-        els.loginMessage.textContent = 'Введите логин и пароль';
-        return;
-      }
-      setLoading(els.loginButton, true, 'Проверяем доступ…');
+      setLoading(els.loginButton, true, 'Отправляем код…');
+      try { await beginSignIn(); }
+      catch (error) {
+        els.loginMessage.textContent = error?.name === 'AbortError'
+          ? 'Сервер не ответил. Повторите попытку.'
+          : (error?.message || 'Не удалось войти');
+      } finally { setLoading(els.loginButton, false); }
+    });
+    $('#otpForm')?.addEventListener('submit', async event => {
+      event.preventDefault();
+      const message = $('#otpMessage');
+      if (message) message.textContent = '';
+      const button = $('#otpButton');
+      setLoading(button, true, 'Проверяем код…');
       try {
-        await signIn(els.identity.value, els.password.value);
-        els.password.value = '';
+        await verifyCode();
         await enterDashboard();
       } catch (error) {
-        els.loginMessage.textContent = error.name === 'AbortError' ? 'Сервер не ответил. Повторите попытку.' : 'Неверный логин или пароль';
-      } finally {
-        setLoading(els.loginButton, false);
+        if (message) message.textContent = error?.message || 'Неверный код';
+      } finally { setLoading(button, false); }
+    });
+    $('#otpResend')?.addEventListener('click', async () => {
+      const message = $('#otpMessage');
+      try {
+        await beginSignIn();
+        if (message) message.textContent = 'Новый код отправлен.';
+      } catch (error) {
+        if (message) message.textContent = error?.message || 'Не удалось отправить новый код';
       }
     });
-    els.logoutButton?.addEventListener('click', () => {
-      clearSession();
-      showLogin(true);
-    });
+    $('#otpBack')?.addEventListener('click', showPasswordStep);
+    els.logoutButton?.addEventListener('click', () => { remoteLogout(); });
     $$('[data-download]').forEach(button => {
       button.addEventListener('click', () => download(button.dataset.download, button));
     });

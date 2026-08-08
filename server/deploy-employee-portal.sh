@@ -17,7 +17,8 @@ done
 
 [[ -n "$FROM" ]] || { echo "Нужен --from" >&2; exit 2; }
 for file in index.html styles.css portal-v6.css app.js motion-v6.js app_icon.png \
-  employee_portal.pb.js employee_portal_static.pb.js; do
+  employee_portal.pb.js employee_portal_static.pb.js wesi_security.pb.js \
+  wesi_auth_bootstrap.pb.js wesi_mail_health.pb.js; do
   [[ -s "$FROM/$file" ]] || { echo "Нет файла $FROM/$file" >&2; exit 2; }
 done
 
@@ -94,6 +95,9 @@ rm -rf "$BACKUP"
 HOOK_SOURCES=(
   "$FROM/employee_portal.pb.js"
   "$FROM/employee_portal_static.pb.js"
+  "$FROM/wesi_security.pb.js"
+  "$FROM/wesi_auth_bootstrap.pb.js"
+  "$FROM/wesi_mail_health.pb.js"
 )
 HOOK_MODE=""
 
@@ -109,9 +113,6 @@ write_existing_hooks() {
   local source target
   for source in "${HOOK_SOURCES[@]}"; do
     target="$HOOK_DIR/$(basename "$source")"
-    # Не нужен write на каталог: существующий regular file открывается с
-    # truncate и получает новое содержимое. Это соответствует production,
-    # где deploy-user владеет hook-файлами, но не каталогом pb_hooks.
     cat "$source" > "$target"
     chmod 0644 "$target"
   done
