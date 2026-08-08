@@ -5,6 +5,9 @@ on:
   push:
     paths:
       - '.github/audio-vault-ci.trigger'
+  pull_request:
+    paths:
+      - '.github/audio-vault-pr-check'
 
 permissions:
   contents: write
@@ -52,7 +55,7 @@ jobs:
         run: flutter build windows --release
 
   status:
-    if: always()
+    if: always() && github.event_name != 'pull_request'
     needs: [android, windows]
     runs-on: ubuntu-latest
     steps:
