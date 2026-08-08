@@ -13,8 +13,8 @@
     <application
         android:label="WesiOS"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher"
-        android:roundIcon="@mipmap/ic_launcher">
+        android:icon="@mipmap/launcher_icon"
+        android:roundIcon="@mipmap/launcher_icon">
 
         <activity
             android:name=".MainActivity"
@@ -30,20 +30,14 @@
               />
         </activity>
 
-        <!--
-          Activity aliases are retained so existing installs and the native
-          icon channel keep the same component names. Both aliases point to
-          the launcher PNG generated in every mipmap density. The previous
-          dark/light names only existed as API-26 adaptive resources and had
-          no PNG fallback, which produced a missing/default icon on some
-          launchers and Android versions.
-        -->
+        <!-- Keep stable component names for existing installations, but make
+             every launcher entry use the current generated WesiOS mark. -->
         <activity-alias
             android:name=".IconDark"
             android:enabled="true"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:roundIcon="@mipmap/ic_launcher"
+            android:icon="@mipmap/launcher_icon"
+            android:roundIcon="@mipmap/launcher_icon"
             android:label="WesiOS"
             android:targetActivity=".MainActivity">
             <intent-filter>
@@ -56,8 +50,8 @@
             android:name=".IconLight"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/ic_launcher"
-            android:roundIcon="@mipmap/ic_launcher"
+            android:icon="@mipmap/launcher_icon"
+            android:roundIcon="@mipmap/launcher_icon"
             android:label="WesiOS"
             android:targetActivity=".MainActivity">
             <intent-filter>
