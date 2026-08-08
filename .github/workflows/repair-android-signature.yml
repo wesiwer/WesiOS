@@ -6,9 +6,12 @@ on:
     branches: [main]
     paths:
       - android/app/build.gradle
+      - android/app/src/main/**
+      - assets/images/app_icon.png
       - pubspec.yaml
       - .github/workflows/repair-android-signature.yml
       - windows/**
+      - server/deploy-artifact.sh
 
 permissions:
   contents: write
@@ -62,6 +65,19 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+
+      - name: Regenerate launcher icon from current WesiOS mark
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart run flutter_launcher_icons
+          for density in mdpi hdpi xhdpi xxhdpi xxxhdpi; do
+            test -s "android/app/src/main/res/mipmap-$density/launcher_icon.png" || {
+              echo "::error::launcher_icon.png не создан для $density"
+              exit 1
+            }
+          done
+          grep -q '@mipmap/launcher_icon' android/app/src/main/AndroidManifest.xml
 
       - name: Require real Firebase configuration
         shell: bash
@@ -117,31 +133,19 @@ jobs:
           test -n "$SDK_ROOT"
           APKSIGNER=$(find "$SDK_ROOT/build-tools" -type f -name apksigner | sort -V | tail -1)
           test -x "$APKSIGNER" || { echo "::error::apksigner не найден"; exit 1; }
-
           "$APKSIGNER" verify --verbose --print-certs "$APK" | tee apk-signature.txt
           grep -q 'Verified using v2 scheme.*true' apk-signature.txt || {
             echo "::error::APK не имеет действительной APK Signature Scheme v2"
             exit 1
           }
-
           EXPECTED=$(keytool -exportcert \
             -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" \
             -alias "$KEY_ALIAS" | sha256sum | awk '{print $1}')
           ACTUAL=$(sed -nE \
             's/^.*certificate SHA-256 digest: ([0-9a-fA-F]+).*$/\1/p' \
             apk-signature.txt | head -1 | tr '[:upper:]' '[:lower:]')
-
-          echo "Expected certificate: ${EXPECTED:0:16}…"
-          echo "APK certificate:      ${ACTUAL:0:16}…"
-          test -n "$ACTUAL" || {
-            echo "::error::Не удалось извлечь SHA-256 сертификата из вывода apksigner"
-            exit 1
-          }
-          test "$EXPECTED" = "$ACTUAL" || {
-            echo "::error::APK подписана не корпоративным сертификатом WesiOS"
-            exit 1
-          }
-
+          test -n "$ACTUAL" || { echo "::error::Не удалось извлечь SHA-256 сертификата"; exit 1; }
+          test "$EXPECTED" = "$ACTUAL" || { echo "::error::APK подписана не корпоративным сертификатом WesiOS"; exit 1; }
           mkdir -p release-android
           cp "$APK" release-android/wesios-android.apk
           sha256sum release-android/wesios-android.apk
@@ -156,7 +160,7 @@ jobs:
   windows:
     needs: metadata
     runs-on: windows-2022
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -165,23 +169,48 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
+
+      - name: Regenerate Windows icon from current WesiOS mark
+        shell: pwsh
+        run: |
+          dart run flutter_launcher_icons
+          if (-not (Test-Path "windows/runner/resources/app_icon.ico")) { throw "Current Windows icon was not generated" }
+
       - name: Build Windows release
         run: >-
           flutter build windows --release
           --build-name "${{ needs.metadata.outputs.version }}"
           --build-number "${{ needs.metadata.outputs.build }}"
-      - name: Package Windows release
+
+      - name: Install NSIS
         shell: pwsh
         run: |
-          $source = "build/windows/x64/runner/Release"
+          choco install nsis -y --no-progress
+          $makensis = Get-Command makensis.exe -ErrorAction SilentlyContinue
+          if (-not $makensis) {
+            $candidate = "${env:ProgramFiles(x86)}\NSIS\makensis.exe"
+            if (-not (Test-Path $candidate)) { throw "makensis.exe not found after NSIS installation" }
+          }
+
+      - name: Build WesiOS Setup executable
+        shell: pwsh
+        run: |
+          $source = (Resolve-Path "build/windows/x64/runner/Release").Path
           if (-not (Test-Path "$source/wesios.exe")) { throw "Windows executable missing" }
           New-Item -ItemType Directory -Force -Path release-windows | Out-Null
-          Compress-Archive -Path "$source/*" -DestinationPath "release-windows/wesios-windows-x64.zip" -Force
-          if ((Get-Item "release-windows/wesios-windows-x64.zip").Length -le 0) { throw "Windows archive is empty" }
+          $out = (Join-Path (Resolve-Path "release-windows").Path "wesios-windows-x64-setup.exe")
+          $makensis = (Get-Command makensis.exe -ErrorAction SilentlyContinue).Source
+          if (-not $makensis) { $makensis = "${env:ProgramFiles(x86)}\NSIS\makensis.exe" }
+          & $makensis "/DVERSION=${{ needs.metadata.outputs.version }}" "/DBUILD_DIR=$source" "/DOUTPUT_FILE=$out" "windows/installer/wesios.nsi"
+          if ($LASTEXITCODE -ne 0) { throw "NSIS failed with exit code $LASTEXITCODE" }
+          if (-not (Test-Path $out)) { throw "Windows installer missing" }
+          if ((Get-Item $out).Length -le 0) { throw "Windows installer is empty" }
+          Get-FileHash $out -Algorithm SHA256
+
       - uses: actions/upload-artifact@v4
         with:
           name: wesios-windows-${{ needs.metadata.outputs.release }}
-          path: release-windows/wesios-windows-x64.zip
+          path: release-windows/wesios-windows-x64-setup.exe
           retention-days: 14
           if-no-files-found: error
 
@@ -208,22 +237,21 @@ jobs:
           set -euo pipefail
           mkdir -p upload
           cp downloaded/wesios-android.apk upload/
-          cp downloaded/wesios-windows-x64.zip upload/
+          cp downloaded/wesios-windows-x64-setup.exe upload/
           cp server/deploy-artifact.sh upload/
           test -s upload/wesios-android.apk
-          test -s upload/wesios-windows-x64.zip
+          test -s upload/wesios-windows-x64-setup.exe
           chmod +x upload/deploy-artifact.sh
-
           APK_SHA=$(sha256sum upload/wesios-android.apk | cut -d' ' -f1)
-          WIN_SHA=$(sha256sum upload/wesios-windows-x64.zip | cut -d' ' -f1)
+          WIN_SHA=$(sha256sum upload/wesios-windows-x64-setup.exe | cut -d' ' -f1)
           APK_SIZE=$(stat -c%s upload/wesios-android.apk)
-          WIN_SIZE=$(stat -c%s upload/wesios-windows-x64.zip)
+          WIN_SIZE=$(stat -c%s upload/wesios-windows-x64-setup.exe)
           echo "apk_sha=$APK_SHA" >> "$GITHUB_OUTPUT"
           echo "win_sha=$WIN_SHA" >> "$GITHUB_OUTPUT"
           echo "apk_size=$APK_SIZE" >> "$GITHUB_OUTPUT"
           echo "win_size=$WIN_SIZE" >> "$GITHUB_OUTPUT"
           echo "Android payload: $APK_SIZE bytes ${APK_SHA:0:16}…"
-          echo "Windows payload: $WIN_SIZE bytes ${WIN_SHA:0:16}…"
+          echo "Windows installer: $WIN_SIZE bytes ${WIN_SHA:0:16}…"
 
       - name: Stage verified binaries on GitHub CDN
         env:
@@ -240,7 +268,7 @@ jobs:
             --prerelease
           gh release upload "$STAGE_TAG" \
             upload/wesios-android.apk \
-            upload/wesios-windows-x64.zip \
+            upload/wesios-windows-x64-setup.exe \
             --repo "$GITHUB_REPOSITORY"
 
       - name: Prepare authenticated SSH connection
@@ -282,21 +310,14 @@ jobs:
           RELEASE_ROOT="/opt/pocketbase/pb_public/artifacts"
           cleanup() { $SSH "$USER@$HOST" "rm -rf '$REMOTE_TMP'" || true; }
           trap cleanup EXIT
-
           $SSH "$USER@$HOST" "rm -rf '$REMOTE_TMP' && mkdir -p '$REMOTE_TMP'"
-          # Большие APK/ZIP не передаём через SFTP: на production этот канал
-          # может идти десятки килобайт/с и срывать релиз по timeout. По SSH
-          # отправляется только маленький deploy-скрипт; бинарники сервер
-          # забирает параллельно из временного GitHub Release/CDN.
           $SCP upload/deploy-artifact.sh "$USER@$HOST:$REMOTE_TMP/deploy-artifact.sh"
-
           $SSH "$USER@$HOST" 'bash -s' -- \
             "$REMOTE_TMP" "$GITHUB_REPOSITORY" "$STAGE_TAG" \
             "$APK_SHA" "$APK_SIZE" "$WIN_SHA" "$WIN_SIZE" <<'REMOTE'
           set -euo pipefail
           TMP="$1"; REPO="$2"; TAG="$3"
           APK_SHA="$4"; APK_SIZE="$5"; WIN_SHA="$6"; WIN_SIZE="$7"
-
           fetch_verified() {
             local asset="$1" expected_sha="$2" expected_size="$3" target="$4"
             local attempt actual_sha actual_size
@@ -305,38 +326,31 @@ jobs:
               url="https://github.com/$REPO/releases/download/$TAG/$asset?attempt=$attempt"
               echo "CDN download $asset attempt $attempt"
               if curl -fL --retry 4 --retry-all-errors --retry-delay 2 \
-                  --connect-timeout 15 --max-time 600 \
-                  "$url" -o "$target"; then
+                  --connect-timeout 15 --max-time 600 "$url" -o "$target"; then
                 actual_size=$(stat -c%s "$target" 2>/dev/null || printf 0)
                 actual_sha=$(sha256sum "$target" 2>/dev/null | cut -d' ' -f1 || true)
                 if [ "$actual_size" = "$expected_size" ] && [ "$actual_sha" = "$expected_sha" ]; then
                   echo "$asset verified: $actual_size bytes ${actual_sha:0:16}…"
                   return 0
                 fi
-                echo "$asset mismatch: size=$actual_size sha=${actual_sha:0:16}…"
               fi
               sleep 3
             done
-            echo "Failed to download verified $asset from GitHub CDN" >&2
             return 1
           }
-
           fetch_verified wesios-android.apk "$APK_SHA" "$APK_SIZE" "$TMP/wesios-android.apk" &
           APK_PID=$!
-          fetch_verified wesios-windows-x64.zip "$WIN_SHA" "$WIN_SIZE" "$TMP/wesios-windows-x64.zip" &
+          fetch_verified wesios-windows-x64-setup.exe "$WIN_SHA" "$WIN_SIZE" "$TMP/wesios-windows-x64-setup.exe" &
           WIN_PID=$!
           failed=0
           wait "$APK_PID" || failed=1
           wait "$WIN_PID" || failed=1
           test "$failed" -eq 0
           REMOTE
-
           $SSH "$USER@$HOST" \
-            "WESI_ARTIFACTS='$RELEASE_ROOT' \
-             bash '$REMOTE_TMP/deploy-artifact.sh' \
+            "WESI_ARTIFACTS='$RELEASE_ROOT' bash '$REMOTE_TMP/deploy-artifact.sh' \
              --version '$VERSION' --build '$BUILD' --from '$REMOTE_TMP' \
-             --notes 'CRM, Roadmap и Wesi Console. Подписанная Android-сборка.'"
-
+             --notes 'Исправлена Android-иконка. Windows теперь поставляется полноценным WesiOS Setup.'"
           $SSH "$USER@$HOST" \
             "python3 - '$RELEASE_ROOT/app/app-manifest.json' '$VERSION' '$BUILD' '$APK_SHA' '$WIN_SHA'" <<'PY'
           import json, sys
@@ -347,6 +361,7 @@ jobs:
           assert int(manifest['build']) == build
           assert manifest['android']['sha256'] == apk_sha
           assert manifest['windows']['sha256'] == win_sha
+          assert manifest['windows']['asset'].endswith('.exe')
           for platform in ('android', 'windows'):
               entry = manifest[platform]
               assert int(entry['sizeBytes']) > 0
@@ -364,16 +379,8 @@ jobs:
           curl --retry 4 --retry-all-errors -fsS --max-time 30 \
             -H 'Accept: application/json' \
             "$BASE/app/app-manifest.json?run=$GITHUB_RUN_ID" -o app-manifest.json
-          test -s app-manifest.json || {
-            echo "::error::Публичный app-manifest.json пуст"
-            exit 1
-          }
-          python3 -m json.tool app-manifest.json >/dev/null || {
-            echo "::error::Публичный /artifacts отдаёт не JSON. Первые 300 байт:"
-            head -c 300 app-manifest.json || true
-            echo
-            exit 1
-          }
+          test -s app-manifest.json
+          python3 -m json.tool app-manifest.json >/dev/null
           BASE="$BASE" python3 <<'PY'
           import hashlib, json, os, urllib.request
           base=os.environ['BASE'].rstrip('/')
@@ -383,6 +390,7 @@ jobs:
               manifest=json.load(f)
           assert manifest['version']==version
           assert int(manifest['build'])==build
+          assert manifest['windows']['asset'].endswith('.exe')
           for platform in ('android', 'windows'):
               entry=manifest[platform]
               url=f"{base}/{entry['path']}?verify={os.environ.get('GITHUB_RUN_ID','release')}"
@@ -395,7 +403,6 @@ jobs:
               assert size==int(entry['sizeBytes'])
               assert digest.hexdigest()==entry['sha256']
               print(platform, size, digest.hexdigest()[:16]+'…')
-          print('public release verified:', version, build)
           PY
 
       - name: Replace assets in GitHub Release
@@ -409,7 +416,7 @@ jobs:
           fi
           gh release upload "$RELEASE_TAG" \
             upload/wesios-android.apk \
-            upload/wesios-windows-x64.zip \
+            upload/wesios-windows-x64-setup.exe \
             app-manifest.json \
             --repo "$GITHUB_REPOSITORY" --clobber
 
