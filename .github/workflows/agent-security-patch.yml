@@ -1,0 +1,159 @@
+name: Agent security branch patch
+
+on:
+  push:
+    branches: [agent/security-2fa-sessions-real-data]
+    paths:
+      - '.github/workflows/agent-security-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/security-2fa-sessions-real-data
+          fetch-depth: 0
+
+      - name: Apply security follow-up patches
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, text):
+              Path(path).write_text(text, encoding='utf-8')
+
+          # Keep production saveSession strict; only old tests get explicit
+          # synthetic session IDs.
+          for path in ['test/chat_service_test.dart', 'test/sync_engine_test.dart']:
+              text = read(path)
+              pattern = re.compile(
+                  r"(SyncEndpoint\.saveSession\(\n(?P<i>[ \t]*)token: [^\n]+\n(?P=i)userId: [^\n]+\n)(?![ \t]*sessionId:)",
+                  re.MULTILINE,
+              )
+              def add_sid(m):
+                  return m.group(1) + m.group('i') + "sessionId: 'test-session-000000000000000000000001',\n"
+              text, count = pattern.subn(add_sid, text)
+              print(path, 'sessionId patches:', count)
+              write(path, text)
+
+          # Remove one new analyzer-only unused getter.
+          path = 'lib/features/auth/login_screen.dart'
+          text = read(path)
+          text = text.replace("  bool get _waitingCode => _challengeId != null && !_needsEmailSetup;\n", '')
+          write(path, text)
+
+          # Mandatory email validation in both create and edit flows.
+          path = 'lib/features/team/employee_editor_screen.dart'
+          text = read(path)
+          anchor = """    if (name.isEmpty && _nickCtrl.text.trim().isEmpty) {
+      _error(_ru ? 'Введите имя или ник' : 'Enter a name or nickname');
+      return;
+    }
+"""
+          replacement = anchor + """    final email = _emailCtrl.text.trim().toLowerCase();
+    if (!TeamService.validEmployeeEmail(email)) {
+      _error(_ru
+          ? 'Укажите действующую электронную почту — на неё будут приходить коды входа.'
+          : 'Enter a valid email address for sign-in codes.');
+      return;
+    }
+    final sameEmail = TeamService.byEmail(email);
+    if (sameEmail != null && sameEmail.id != widget.initial?.id) {
+      _error(_ru
+          ? 'Эта почта уже привязана к другому сотруднику.'
+          : 'This email is already assigned to another employee.');
+      return;
+    }
+"""
+          if replacement not in text:
+              if anchor not in text:
+                  raise SystemExit('employee editor validation anchor missing')
+              text = text.replace(anchor, replacement, 1)
+          text = text.replace('          email: _emailCtrl.text,\n', '          email: email,\n', 1)
+          text = text.replace('          email: _emailCtrl.text.trim(),\n', '          email: email,\n', 1)
+          write(path, text)
+
+          # Portal: use the migration-safe auth start route. If the old owner
+          # has no security email yet, ask once, send a code to that address,
+          # and continue to the exact same 6-digit screen.
+          path = 'server/employee-portal/app.js'
+          text = read(path)
+          text = text.replace("request('/api/wesi/auth/start', {", "request('/api/wesi/auth/start-v2', {", 1)
+          old = """    if (!body?.challengeId) throw new Error('Сервер не создал проверку входа');
+    state.challengeId = body.challengeId;
+    state.maskedEmail = body.maskedEmail || '';
+    state.remember = $('#rememberLogin')?.checked !== false;
+    showOtpStep(state.maskedEmail);
+"""
+          new = """    if (!body?.challengeId) throw new Error('Сервер не создал проверку входа');
+    let challenge = body;
+    if (body.emailSetupRequired === true) {
+      const proposed = window.prompt(
+        'Для старого профиля владельца ещё не задана почта безопасности. Укажите адрес, на который отправить 6-значный код:',
+        '',
+      );
+      if (!proposed) throw new Error('Для защищённого входа владельца требуется электронная почта');
+      challenge = await request('/api/wesi/auth/setup-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: body.challengeId, email: proposed.trim() }),
+      }, 20000, false);
+    }
+    state.challengeId = challenge.challengeId || body.challengeId;
+    state.maskedEmail = challenge.maskedEmail || body.maskedEmail || '';
+    state.remember = $('#rememberLogin')?.checked !== false;
+    showOtpStep(state.maskedEmail);
+"""
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('portal beginSignIn anchor missing')
+              text = text.replace(old, new, 1)
+          text = text.replace('setInterval(() => { pingSession(); }, 5000)', 'setInterval(() => { pingSession(); }, 2000)')
+          write(path, text)
+
+          # Existing one-factor owner tokens must not call credential-changing
+          # routes after the hook is deployed.
+          path = 'server/pb_hooks/wesi_security.pb.js'
+          text = read(path)
+          old = """    path === \"/api/wesi/portal/manifest\" ||
+    path.startsWith(\"/api/wesi/portal/download/\") ||
+    path.startsWith(\"/api/wesi/portal/employees/\") ||
+"""
+          new = """    path === \"/api/wesi/portal/manifest\" ||
+    path === \"/api/wesi/portal/profile/credentials\" ||
+    path.startsWith(\"/api/wesi/portal/download/\") ||
+    path.startsWith(\"/api/wesi/portal/employees/\") ||
+"""
+          if new not in text:
+              if old not in text:
+                  raise SystemExit('security route anchor missing')
+              text = text.replace(old, new, 1)
+          write(path, text)
+
+          # Faster remote revoke detection while keeping network cost tiny.
+          path = 'lib/core/security/session_service.dart'
+          text = read(path).replace(
+              'static const heartbeatEvery = Duration(seconds: 5);',
+              'static const heartbeatEvery = Duration(seconds: 2);',
+          )
+          write(path, text)
+          PY
+
+      - name: Commit branch fixes and remove patch workflow
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/agent-security-patch.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix(security): finish MFA migration and CI compatibility'
+          git push origin HEAD:agent/security-2fa-sessions-real-data
