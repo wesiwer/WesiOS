@@ -29,10 +29,6 @@ mkdir -p "$PARENT"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 
-# Safari и другие мобильные браузеры не должны зависеть от нескольких
-# блокирующих запросов к CSS/JS. На сервер публикуется самодостаточный HTML:
-# оба CSS и оба JS встраиваются прямо в index.html. Исходные файлы остаются
-# рядом только для диагностики и обратной совместимости.
 python3 - "$FROM" "$STAGE/index.html" <<'PY'
 from pathlib import Path
 import re
@@ -46,37 +42,25 @@ portal_styles = (root / "portal-v6.css").read_text(encoding="utf-8")
 app_js = (root / "app.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
 motion_js = (root / "motion-v6.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
 
-# re.subn разбирает строковую замену как шаблон, поэтому отдаём содержимое
-# через функцию: регулярные выражения внутри клиентского JS остаются данными.
 def inline(pattern, replacement, source):
     return re.subn(pattern, lambda _: replacement, source, count=1)
 
 html, n1 = inline(
     r'<link\s+rel="stylesheet"\s+href="\./styles\.css[^"]*"\s*/?>',
-    '<style data-bundle="styles.css">\n' + styles + '\n</style>',
-    html,
-)
+    '<style data-bundle="styles.css">\n' + styles + '\n</style>', html)
 html, n2 = inline(
     r'<link\s+rel="stylesheet"\s+href="\./portal-v6\.css[^"]*"\s*/?>',
-    '<style data-bundle="portal-v6.css">\n' + portal_styles + '\n</style>',
-    html,
-)
+    '<style data-bundle="portal-v6.css">\n' + portal_styles + '\n</style>', html)
 html, n3 = inline(
     r'<script\s+src="\./app\.js[^"]*"\s+defer></script>',
-    '<script data-bundle="app.js">\n' + app_js + '\n</script>',
-    html,
-)
+    '<script data-bundle="app.js">\n' + app_js + '\n</script>', html)
 html, n4 = inline(
     r'<script\s+src="\./motion-v6\.js[^"]*"\s+defer></script>',
-    '<script data-bundle="motion-v6.js">\n' + motion_js + '\n</script>',
-    html,
-)
+    '<script data-bundle="motion-v6.js">\n' + motion_js + '\n</script>', html)
 
 if (n1, n2, n3, n4) != (1, 1, 1, 1):
     raise SystemExit(f"Не удалось собрать портал: replacements={(n1, n2, n3, n4)}")
 
-# Аварийное состояние: даже при ошибке одного из скриптов страница не может
-# навсегда остаться скрытой загрузочным экраном.
 html = html.replace(
     '</head>',
     '<style>html,body{background:var(--bg,#08080b);color:var(--text,#f7f7f8)}'
@@ -84,9 +68,7 @@ html = html.replace(
     '<script>(function(){setTimeout(function(){var r=document.documentElement;'
     'if(r.classList.contains("is-booting")){r.classList.remove("is-booting");'
     'r.classList.add("is-ready","boot-failsafe")}},3200)})();</script>'
-    '</head>',
-    1,
-)
+    '</head>', 1)
 
 out.write_text(html, encoding="utf-8")
 print(f"Bundled portal size: {out.stat().st_size} bytes")
@@ -104,8 +86,6 @@ grep -q 'data-bundle="app.js"' "$STAGE/index.html"
   exit 2
 }
 
-# Не публикуем половину новой версии: сначала собирается полный staging,
-# затем каталог переключается одним rename.
 rm -rf "$BACKUP"
 if [[ -d "$PORTAL_DIR" ]]; then mv "$PORTAL_DIR" "$BACKUP"; fi
 mv "$STAGE" "$PORTAL_DIR"
@@ -117,17 +97,39 @@ HOOK_SOURCES=(
 )
 HOOK_MODE=""
 
+all_existing_hooks_writable() {
+  local source target
+  for source in "${HOOK_SOURCES[@]}"; do
+    target="$HOOK_DIR/$(basename "$source")"
+    [[ -f "$target" && -w "$target" ]] || return 1
+  done
+}
+
+write_existing_hooks() {
+  local source target
+  for source in "${HOOK_SOURCES[@]}"; do
+    target="$HOOK_DIR/$(basename "$source")"
+    # Не нужен write на каталог: существующий regular file открывается с
+    # truncate и получает новое содержимое. Это соответствует production,
+    # где deploy-user владеет hook-файлами, но не каталогом pb_hooks.
+    cat "$source" > "$target"
+    chmod 0644 "$target"
+  done
+}
+
 install_hooks() {
   local prefix=("$@")
   "${prefix[@]}" mkdir -p "$HOOK_DIR"
   local source
   for source in "${HOOK_SOURCES[@]}"; do
-    "${prefix[@]}" install -m 0644 \
-      "$source" "$HOOK_DIR/$(basename "$source")"
+    "${prefix[@]}" install -m 0644 "$source" "$HOOK_DIR/$(basename "$source")"
   done
 }
 
-if [[ -w "$HOOK_DIR" ]] || {
+if all_existing_hooks_writable; then
+  write_existing_hooks
+  HOOK_MODE="existing-files"
+elif [[ -w "$HOOK_DIR" ]] || {
   [[ ! -e "$HOOK_DIR" ]] && [[ -w "$(dirname "$HOOK_DIR")" ]]
 }; then
   install_hooks
@@ -137,14 +139,10 @@ elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
   HOOK_MODE="sudo"
 else
   echo "ОШИБКА: нет прав обновить PocketBase hooks в $HOOK_DIR." >&2
-  echo "Выкладка остановлена: без новых hooks вход и активация сотрудников не работают." >&2
-  echo "Разрешите deploy-пользователю запись в каталог или passwordless sudo для install." >&2
+  echo "Нужна запись либо в существующие hook-файлы, либо в каталог pb_hooks." >&2
   exit 3
 fi
 
-# Раньше отсутствие прав было только предупреждением, workflow становился
-# зелёным, а сервер продолжал выполнять старый код. Теперь каждый файл
-# сверяется с источником и несовпадение останавливает выкладку.
 for source in "${HOOK_SOURCES[@]}"; do
   target="$HOOK_DIR/$(basename "$source")"
   if [[ "$HOOK_MODE" == "sudo" ]]; then
@@ -158,11 +156,9 @@ for source in "${HOOK_SOURCES[@]}"; do
       exit 3
     }
   fi
-  printf 'PocketBase hook подтверждён: %s\n' "$target"
+  printf 'PocketBase hook подтверждён: %s (%s)\n' "$target" "$HOOK_MODE"
 done
 
-# PocketBase на Unix автоматически перечитывает изменённые *.pb.js. Даём
-# файловому наблюдателю короткое окно до внешней проверки маршрутов в CI.
 sleep 2
 
 test -s "$PORTAL_DIR/index.html"

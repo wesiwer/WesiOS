@@ -73,6 +73,11 @@ jobs:
             server/pb_hooks/employee_portal.pb.js
           grep -q '/api/wesi/portal/employees/provision' \
             server/pb_hooks/employee_portal.pb.js
+          # PocketBase route handlers изолированы. Запрещаем возврат к
+          # top-level helper functions, из-за которых production падал с
+          # ReferenceError до выполнения активации.
+          ! grep -q '^function portal' server/pb_hooks/employee_portal.pb.js
+          ! grep -q 'portalOwnerOnly' server/pb_hooks/employee_portal.pb.js
 
       - name: Check server secrets
         env:
@@ -116,9 +121,6 @@ jobs:
           if [ -n "${CONFIGURED_ARTIFACTS_DIR:-}" ]; then
             ARTIFACTS_DIR="$CONFIGURED_ARTIFACTS_DIR"
           else
-            # /srv — основной production-каталог. /opt оставлен только как
-            # legacy fallback. Раньше порядок был обратным, из-за чего deploy
-            # мог обновить одну копию, а PocketBase продолжал раздавать другую.
             ARTIFACTS_DIR=$($SSH "$USER@$HOST" 'for d in /srv/wesi-artifacts /opt/pocketbase/pb_public/artifacts; do if [ -d "$d" ] && [ -w "$d" ]; then printf "%s" "$d"; exit 0; fi; done; exit 1')
           fi
           echo "Production artifacts root: $ARTIFACTS_DIR"
@@ -155,21 +157,13 @@ jobs:
           grep -q "localStorage.getItem('wesi-theme')" portal.html
           grep -q 'id="wesiMark"' portal.html
           grep -q -- '--logo-ink' portal.html
-
-          # Проверяем именно НОВУЮ страницу, а не просто любой старый WesiOS.
-          # Эти маркеры появились вместе с текущим интерфейсом продукта.
           grep -q 'id="requirementsTrigger"' portal.html || {
-            echo '::error::Production всё ещё отдаёт старый портал: нет requirementsTrigger'
-            exit 1
-          }
+            echo '::error::Production всё ещё отдаёт старый портал: нет requirementsTrigger'; exit 1; }
           grep -q 'id="productInfo"' portal.html || {
-            echo '::error::Production всё ещё отдаёт старый портал: нет productInfo'
-            exit 1
-          }
+            echo '::error::Production всё ещё отдаёт старый портал: нет productInfo'; exit 1; }
           grep -q 'Системные требования' portal.html
 
           CACHE=$(curl -fsSI --max-time 20 "${BASE}" | tr -d '\r' | grep -i '^cache-control:' || true)
-          echo "Заголовок: ${CACHE:-(нет)}"
           case "$CACHE" in
             *no-cache*|*no-store*) echo 'Кеш не даст показать старую страницу.' ;;
             *) echo '::error::Нет Cache-Control — браузер будет держать старую версию часами'; exit 1 ;;
@@ -182,22 +176,12 @@ jobs:
           test "$(wc -c < app_icon.png)" -gt 1000
 
           check_protected_route() {
-            local method="$1"
-            local path="$2"
-            local code
-            code=$(curl -sS -o route-response.txt -w '%{http_code}' \
-              --max-time 20 -X "$method" \
-              -H 'Content-Type: application/json' -d '{}' \
-              "$API$path" || true)
+            local method="$1" path="$2" code
+            code=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 \
+              -X "$method" -H 'Content-Type: application/json' -d '{}' "$API$path" || true)
             case "$code" in
-              401|403)
-                echo "Маршрут защищён и загружен: $path ($code)"
-                ;;
-              *)
-                echo "::error::Маршрут $path вернул HTTP $code"
-                cat route-response.txt || true
-                exit 1
-                ;;
+              401|403) echo "Маршрут защищён и загружен: $path ($code)" ;;
+              *) echo "::error::Маршрут $path вернул HTTP $code"; cat route-response.txt || true; exit 1 ;;
             esac
           }
 
