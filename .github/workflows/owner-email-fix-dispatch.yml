@@ -1,0 +1,25 @@
+name: One-time owner email fix dispatcher
+
+on:
+  push:
+    paths:
+      - '.github/owner-email-fix-dispatch.trigger'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch owner email fix workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run one-time-owner-email-fix.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main
+          echo 'Owner email fix workflow dispatched.'
