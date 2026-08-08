@@ -1,5 +1,5 @@
-/// Non-secret readiness check for WesiOS OTP delivery.
-/// Never exposes SMTP credentials, API keys or sender values.
+/// Non-secret readiness check for WesiOS email OTP delivery.
+/// PocketBase uses configured SMTP or the local Unix sendmail command.
 routerAdd("GET", "/api/wesi/auth/mail-ready", (e) => {
   const settings = e.app.settings();
   const senderConfigured = Boolean(
@@ -11,38 +11,16 @@ routerAdd("GET", "/api/wesi/auth/mail-ready", (e) => {
   const smtpHostConfigured = Boolean(
     settings && settings.smtp && String(settings.smtp.host || "").trim(),
   );
-
-  let httpsProviderConfigured = false;
-  let httpsProvider = "";
-  try {
-    const raw = $os.readFile(__hooks + "/.wesi-mail.json");
-    const text = typeof raw === "string"
-      ? raw
-      : String.fromCharCode.apply(null, raw || []);
-    const cfg = JSON.parse(text || "{}");
-    httpsProvider = String(cfg.provider || "").trim().toLowerCase();
-    httpsProviderConfigured =
-      httpsProvider === "resend" &&
-      Boolean(String(cfg.apiKey || "").trim()) &&
-      Boolean(String(cfg.from || "").trim());
-  } catch (_) {}
-
   const smtpReady = senderConfigured && smtpEnabled && smtpHostConfigured;
-  const ready = smtpReady || httpsProviderConfigured;
-  return e.json(ready ? 200 : 503, {
-    "ready": ready,
+  // With SMTP disabled PocketBase intentionally falls back to the local
+  // Unix sendmail command. CI verifies that binary on production over SSH.
+  return e.json(senderConfigured ? 200 : 503, {
+    "ready": senderConfigured,
     "senderConfigured": senderConfigured,
     "smtpEnabled": smtpEnabled,
     "smtpHostConfigured": smtpHostConfigured,
     "smtpReady": smtpReady,
-    "httpsProviderConfigured": httpsProviderConfigured,
-    "httpsProvider": httpsProviderConfigured ? httpsProvider : "",
-    "reason": ready
-      ? "ok"
-      : (!senderConfigured
-          ? "sender_not_configured"
-          : (smtpEnabled && !smtpHostConfigured
-              ? "smtp_host_not_configured"
-              : "no_working_mail_transport")),
+    "transport": smtpReady ? "smtp" : "sendmail",
+    "reason": senderConfigured ? "ok" : "sender_not_configured",
   });
 });
