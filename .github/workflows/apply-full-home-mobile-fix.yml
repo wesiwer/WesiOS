@@ -3,7 +3,7 @@ name: Apply full Home mobile regression fix
 on:
   pull_request:
     branches: [main]
-    types: [opened]
+    types: [opened, synchronize]
 
 permissions:
   contents: write
@@ -45,6 +45,7 @@ jobs:
           grep -q "home_mind_charge" lib/features/home/home_screen.dart
           grep -q "home_quote_card" lib/features/home/home_screen.dart
           grep -q "home_balance_card" lib/features/home/home_screen.dart
+          grep -q "final columns = constraints.maxWidth >= 420 ? 3 : 2" lib/features/home/home_screen.dart
           grep -q "Size(360, 800)" test/home_mobile_layout_test.dart
           grep -q "Hive.isBoxOpen('wesios_settings'), isFalse" test/home_mobile_layout_test.dart
           git diff --check
