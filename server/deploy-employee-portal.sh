@@ -17,7 +17,7 @@ done
 
 [[ -n "$FROM" ]] || { echo "Нужен --from" >&2; exit 2; }
 for file in index.html styles.css portal-v6.css app.js motion-v6.js app_icon.png \
-  employee_portal.pb.js employee_portal_utils.js employee_portal_static.pb.js; do
+  employee_portal.pb.js employee_portal_static.pb.js; do
   [[ -s "$FROM/$file" ]] || { echo "Нет файла $FROM/$file" >&2; exit 2; }
 done
 
@@ -47,16 +47,24 @@ def inline(pattern, replacement, source):
 
 html, n1 = inline(
     r'<link\s+rel="stylesheet"\s+href="\./styles\.css[^"]*"\s*/?>',
-    '<style data-bundle="styles.css">\n' + styles + '\n</style>', html)
+    '<style data-bundle="styles.css">\n' + styles + '\n</style>',
+    html,
+)
 html, n2 = inline(
     r'<link\s+rel="stylesheet"\s+href="\./portal-v6\.css[^"]*"\s*/?>',
-    '<style data-bundle="portal-v6.css">\n' + portal_styles + '\n</style>', html)
+    '<style data-bundle="portal-v6.css">\n' + portal_styles + '\n</style>',
+    html,
+)
 html, n3 = inline(
     r'<script\s+src="\./app\.js[^"]*"\s+defer></script>',
-    '<script data-bundle="app.js">\n' + app_js + '\n</script>', html)
+    '<script data-bundle="app.js">\n' + app_js + '\n</script>',
+    html,
+)
 html, n4 = inline(
     r'<script\s+src="\./motion-v6\.js[^"]*"\s+defer></script>',
-    '<script data-bundle="motion-v6.js">\n' + motion_js + '\n</script>', html)
+    '<script data-bundle="motion-v6.js">\n' + motion_js + '\n</script>',
+    html,
+)
 
 if (n1, n2, n3, n4) != (1, 1, 1, 1):
     raise SystemExit(f"Не удалось собрать портал: replacements={(n1, n2, n3, n4)}")
@@ -68,7 +76,9 @@ html = html.replace(
     '<script>(function(){setTimeout(function(){var r=document.documentElement;'
     'if(r.classList.contains("is-booting")){r.classList.remove("is-booting");'
     'r.classList.add("is-ready","boot-failsafe")}},3200)})();</script>'
-    '</head>', 1)
+    '</head>',
+    1,
+)
 
 out.write_text(html, encoding="utf-8")
 print(f"Bundled portal size: {out.stat().st_size} bytes")
@@ -93,7 +103,6 @@ rm -rf "$BACKUP"
 
 HOOK_SOURCES=(
   "$FROM/employee_portal.pb.js"
-  "$FROM/employee_portal_utils.js"
   "$FROM/employee_portal_static.pb.js"
 )
 HOOK_MODE=""
@@ -103,7 +112,8 @@ install_hooks() {
   "${prefix[@]}" mkdir -p "$HOOK_DIR"
   local source
   for source in "${HOOK_SOURCES[@]}"; do
-    "${prefix[@]}" install -m 0644 "$source" "$HOOK_DIR/$(basename "$source")"
+    "${prefix[@]}" install -m 0644 \
+      "$source" "$HOOK_DIR/$(basename "$source")"
   done
 }
 
@@ -118,6 +128,7 @@ elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
 else
   echo "ОШИБКА: нет прав обновить PocketBase hooks в $HOOK_DIR." >&2
   echo "Выкладка остановлена: без новых hooks вход и активация сотрудников не работают." >&2
+  echo "Разрешите deploy-пользователю запись в каталог или passwordless sudo для install." >&2
   exit 3
 fi
 
@@ -137,9 +148,6 @@ for source in "${HOOK_SOURCES[@]}"; do
   printf 'PocketBase hook подтверждён: %s\n' "$target"
 done
 
-# PocketBase автоматически reload-ит изменённый *.pb.js; helper module сам
-# по себе watcher не обязан замечать, поэтому основной *.pb.js тоже всегда
-# публикуется в том же атомарном проходе.
 sleep 2
 
 test -s "$PORTAL_DIR/index.html"
