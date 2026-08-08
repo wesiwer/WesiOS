@@ -3,6 +3,75 @@
 /// challenge. The email is not committed until a code sent to that address
 /// has been verified and a real WesiOS session exists.
 
+const wesiReadMailConfig = () => {
+  try {
+    const raw = $os.readFile(__hooks + "/.wesi-mail.json");
+    const text = typeof raw === "string"
+      ? raw
+      : String.fromCharCode.apply(null, raw || []);
+    const parsed = JSON.parse(text || "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (_) {
+    return {};
+  }
+};
+
+const wesiDeliverMail = (app, email, displayName, subject, html, text) => {
+  const settings = app.settings();
+  const smtpReady = Boolean(
+    settings && settings.smtp && settings.smtp.enabled === true &&
+    String(settings.smtp.host || "").trim(),
+  );
+
+  if (smtpReady) {
+    const message = new MailerMessage({
+      "from": {
+        "address": settings.meta.senderAddress,
+        "name": settings.meta.senderName || "WesiOS",
+      },
+      "to": [{"address": email, "name": displayName}],
+      "subject": subject,
+      "html": html,
+      "text": text,
+    });
+    try {
+      app.newMailClient().send(message);
+      return "smtp";
+    } catch (error) {
+      console.log("WesiOS SMTP delivery failed, trying HTTPS provider:", error);
+    }
+  }
+
+  const config = wesiReadMailConfig();
+  const provider = String(config.provider || "").trim().toLowerCase();
+  const apiKey = String(config.apiKey || "").trim();
+  const from = String(config.from || "").trim();
+  if (provider !== "resend" || !apiKey || !from) {
+    throw new Error("No working WesiOS mail transport configured");
+  }
+
+  const response = $http.send({
+    "url": "https://api.resend.com/emails",
+    "method": "POST",
+    "headers": {
+      "Authorization": "Bearer " + apiKey,
+      "Content-Type": "application/json",
+    },
+    "body": JSON.stringify({
+      "from": from,
+      "to": [email],
+      "subject": subject,
+      "html": html,
+      "text": text,
+    }),
+    "timeout": 20,
+  });
+  if (response.statusCode < 200 || response.statusCode >= 300) {
+    throw new Error("HTTPS mail provider returned HTTP " + response.statusCode);
+  }
+  return "https";
+};
+
 routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
   const valueObject = (record) => {
     try {
@@ -37,21 +106,16 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
     challenge.set("stamp", payload.sentAt);
     e.app.save(challenge);
 
-    const message = new MailerMessage({
-      "from": {
-        "address": e.app.settings().meta.senderAddress,
-        "name": e.app.settings().meta.senderName || "WesiOS",
-      },
-      "to": [{"address": email, "name": displayName}],
-      "subject": purpose === "portal" ? "Код входа на портал WesiOS" : "Код входа в WesiOS",
-      "html": "<div style=\"font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px\">" +
-        "<h2>WesiOS</h2><p>Код подтверждения входа:</p>" +
-        "<div style=\"font-size:34px;font-weight:700;letter-spacing:8px;margin:22px 0\">" + code + "</div>" +
-        "<p>Код действует 10 минут. Если вход выполняете не вы — никому не сообщайте этот код.</p></div>",
-      "text": "Код подтверждения WesiOS: " + code + ". Код действует 10 минут.",
-    });
+    const subject = purpose === "portal" ? "Код входа на портал WesiOS" : "Код входа в WesiOS";
+    const html = "<div style=\"font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px\">" +
+      "<h2>WesiOS</h2><p>Код подтверждения входа:</p>" +
+      "<div style=\"font-size:34px;font-weight:700;letter-spacing:8px;margin:22px 0\">" + code + "</div>" +
+      "<p>Код действует 10 минут. Если вход выполняете не вы — никому не сообщайте этот код.</p></div>";
+    const text = "Код подтверждения WesiOS: " + code + ". Код действует 10 минут.";
     try {
-      e.app.newMailClient().send(message);
+      payload.delivery = wesiDeliverMail(e.app, email, displayName, subject, html, text);
+      challenge.set("payload", payload);
+      e.app.save(challenge);
     } catch (error) {
       challenge.set("deleted", true);
       challenge.set("stamp", new Date().toISOString());
@@ -70,12 +134,12 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
   }
 
   let user = null;
-try { user = e.app.findAuthRecordByEmail("users", login + "@wesi.local"); } catch (_) { user = null; }
-if (!user || !user.validatePassword(password)) {
-  throw new UnauthorizedError("Неверный логин или пароль");
-}
+  try { user = e.app.findAuthRecordByEmail("users", login + "@wesi.local"); } catch (_) { user = null; }
+  if (!user || !user.validatePassword(password)) {
+    throw new UnauthorizedError("Неверный логин или пароль");
+  }
 
-let owner = null;
+  let owner = null;
   try {
     owner = e.app.findFirstRecordByFilter(
       "wesios_records",
@@ -196,8 +260,6 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
     throw new UnauthorizedError("Проверка входа истекла. Начните заново");
   }
 
-  // The code proves ownership of the new address. The address itself is not
-  // committed to the owner marker until a verified session calls confirm.
   const code = $security.randomStringWithAlphabet(6, "0123456789");
   const salt = $security.randomStringWithAlphabet(32, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
   payload.kind = "otp";
@@ -215,18 +277,20 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   try { user = e.app.findRecordById("users", String(payload.userId || "")); } catch (_) { user = null; }
   if (!user) throw new ForbiddenError("Профиль владельца закрыт");
 
-  const message = new MailerMessage({
-    "from": {
-      "address": e.app.settings().meta.senderAddress,
-      "name": e.app.settings().meta.senderName || "WesiOS",
-    },
-    "to": [{"address": email, "name": user.getString("name") || String(payload.login || "WesiOS")}],
-    "subject": "Подтверждение почты WesiOS",
-    "html": "<div style=\"font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px\"><h2>WesiOS</h2><p>Код подтверждения почты и входа:</p><div style=\"font-size:34px;font-weight:700;letter-spacing:8px;margin:22px 0\">" + code + "</div><p>Код действует 10 минут.</p></div>",
-    "text": "Код подтверждения WesiOS: " + code + ". Код действует 10 минут.",
-  });
+  const subject = "Подтверждение почты WesiOS";
+  const html = "<div style=\"font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px\"><h2>WesiOS</h2><p>Код подтверждения почты и входа:</p><div style=\"font-size:34px;font-weight:700;letter-spacing:8px;margin:22px 0\">" + code + "</div><p>Код действует 10 минут.</p></div>";
+  const text = "Код подтверждения WesiOS: " + code + ". Код действует 10 минут.";
   try {
-    e.app.newMailClient().send(message);
+    payload.delivery = wesiDeliverMail(
+      e.app,
+      email,
+      user.getString("name") || String(payload.login || "WesiOS"),
+      subject,
+      html,
+      text,
+    );
+    challenge.set("payload", payload);
+    e.app.save(challenge);
   } catch (error) {
     console.log("WesiOS owner email setup delivery failed:", error);
     throw new InternalServerError("Не удалось отправить код на эту почту");
