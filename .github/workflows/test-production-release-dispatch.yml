@@ -1,0 +1,53 @@
+name: Verify Publish WesiOS Production
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-and-wait:
+    if: github.head_ref == 'ci/test-production-release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - name: Dispatch canonical production release and wait
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          started=$(date -u +%s)
+          gh workflow run publish-wesios-production.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Audio Vault: Ableton .als links, Wesi AI Audio Quick Analysis v2, advanced local mastering QC and verified PocketBase delivery.'
+
+          run_id=''
+          for attempt in $(seq 1 60); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=50")
+            run_id=$(printf '%s' "$runs" | jq -r \
+              --argjson started "$started" \
+              '[.workflow_runs[] | select(.name == "Publish WesiOS Production") | select((.created_at | fromdateiso8601) >= ($started - 5))] | sort_by(.created_at) | last | .id // empty')
+            [ -n "$run_id" ] && break
+            sleep 5
+          done
+          [ -n "$run_id" ] || { echo '::error::Production workflow run not found'; exit 1; }
+          echo "production_run_id=$run_id"
+
+          for attempt in $(seq 1 220); do
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id")
+            status=$(printf '%s' "$run" | jq -r '.status')
+            conclusion=$(printf '%s' "$run" | jq -r '.conclusion // ""')
+            echo "attempt=$attempt status=$status conclusion=$conclusion"
+            if [ "$status" = completed ]; then
+              [ "$conclusion" = success ] && exit 0
+              echo "::error::Production workflow completed with $conclusion"
+              exit 1
+            fi
+            sleep 15
+          done
+          echo '::error::Timed out waiting for production workflow'
+          exit 1
