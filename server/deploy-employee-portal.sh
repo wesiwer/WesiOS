@@ -18,7 +18,7 @@ done
 [[ -n "$FROM" ]] || { echo "Нужен --from" >&2; exit 2; }
 for file in index.html styles.css portal-v6.css app.js motion-v6.js app_icon.png \
   employee_portal.pb.js employee_portal_static.pb.js wesi_security.pb.js \
-  wesi_auth_bootstrap.pb.js; do
+  wesi_auth_bootstrap.pb.js wesi_mail_health.pb.js; do
   [[ -s "$FROM/$file" ]] || { echo "Нет файла $FROM/$file" >&2; exit 2; }
 done
 
@@ -97,6 +97,7 @@ HOOK_SOURCES=(
   "$FROM/employee_portal_static.pb.js"
   "$FROM/wesi_security.pb.js"
   "$FROM/wesi_auth_bootstrap.pb.js"
+  "$FROM/wesi_mail_health.pb.js"
 )
 HOOK_MODE=""
 
