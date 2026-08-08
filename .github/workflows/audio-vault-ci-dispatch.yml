@@ -1,0 +1,22 @@
+name: Audio Vault CI Dispatcher
+
+on:
+  push:
+    paths:
+      - '.github/audio-vault-ci-dispatch.trigger'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch Audio Vault CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run audio-vault-ci.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo 'Audio Vault CI dispatched.'
