@@ -1,25 +1,24 @@
 import 'package:flutter/material.dart';
 
 import '../../core/localization/wesi_locale.dart';
-import '../../core/services/firebase_rest_service.dart';
-import '../team/services/team_service.dart';
+import '../../core/sync/sync_auto.dart';
+import '../../core/sync/sync_endpoint.dart';
+import '../../core/sync/sync_engine.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_wordmark.dart';
+import '../team/services/portal_account_service.dart';
+import '../team/services/team_service.dart';
 
-/// Вход в профиль.
+/// Единственный вход в WesiOS.
 ///
-/// Учётные записи заводит владелец в консоли Firebase и выдаёт людям почту и
-/// пароль. Регистрации отсюда нет намеренно: иначе любой, у кого есть
-/// сборка, завёл бы себе профиль в чужом проекте.
+/// Те же логин и пароль работают на employee portal и в приложении. Доступ
+/// считается подтверждённым только после двух серверных проверок:
+/// 1. PocketBase проверил пароль;
+/// 2. защищённый bootstrap вернул роль и разрешения этого аккаунта.
 ///
-/// **Пароли нигде в проекте не хранятся.** Их проверяет Firebase Auth, и
-/// наружу он отдаёт только токен. Сверять логин с записью в базе было бы
-/// ошибкой: чтобы сверить, приложение должно эту запись прочитать — то есть
-/// любой вошедший смог бы вычитать чужие пароли.
-///
-/// Вход не обязателен. Без него приложение работает целиком локально — как
-/// и работало; аккаунт нужен только для синхронизации между устройствами.
+/// Режима «продолжить без аккаунта» больше нет. Для корпоративного приложения
+/// отсутствие сессии не может означать полный локальный доступ.
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
 
@@ -28,7 +27,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final _email = TextEditingController();
+  final _login = TextEditingController();
   final _password = TextEditingController();
   final _passwordFocus = FocusNode();
 
@@ -42,37 +41,45 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   void initState() {
     super.initState();
-    // Уже вошли и просили запомнить — спрашивать заново незачем.
-    //
-    // Сотрудник проверяется тоже, а не только Firebase. Раньше здесь стояло
-    // одно условие про Firebase, и человек, входящий логином, видел экран
-    // входа при каждом запуске — при том, что его сессия сохранялась и
-    // работала. Спрашивать пароль у того, кто уже вошёл, — это не
-    // безопасность, а забывчивость.
-    if (FirebaseRestService.isSignedIn || TeamService.current != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _goHome());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _restoreIfValid());
+  }
+
+  Future<void> _restoreIfValid() async {
+    if (!mounted) return;
+    if (TeamService.current != null && SyncEndpoint.isConnected) {
+      _goHome();
+      return;
+    }
+
+    // Частичная старая сессия не должна оставлять приложение в неопределённом
+    // состоянии: либо подтверждены и пользователь, и серверный токен, либо
+    // считаем, что входа нет.
+    if (TeamService.current != null || SyncEndpoint.session != null) {
+      await TeamService.signOut();
     }
   }
 
   @override
   void dispose() {
-    _email.dispose();
+    _login.dispose();
     _password.dispose();
     _passwordFocus.dispose();
     super.dispose();
   }
 
   void _goHome() {
-    if (mounted) Navigator.pushReplacementNamed(context, '/home');
+    if (mounted) {
+      Navigator.of(context).pushNamedAndRemoveUntil('/home', (_) => false);
+    }
   }
 
   Future<void> _signIn() async {
-    final entered = _email.text.trim();
+    final entered = _login.text.trim();
     final password = _password.text;
     if (entered.isEmpty || password.isEmpty) {
       setState(() => _error = _ru
-          ? 'Введите логин или почту и пароль'
-          : 'Enter login or email and password');
+          ? 'Введите логин и пароль'
+          : 'Enter your login and password');
       return;
     }
 
@@ -81,41 +88,51 @@ class _LoginScreenState extends State<LoginScreen> {
       _error = null;
     });
 
-    // Сперва — сотрудник, заведённый владельцем. Его логин короткий и почты
-    // может не иметь вовсе, поэтому проверять его через Firebase бессмысленно.
-    final employee = TeamService.verify(entered, password);
-    if (employee != null) {
-      // Галочка теперь распространяется и на сотрудника: снятая — сессия
-      // живёт до закрытия программы и не переживает перезапуск.
-      await TeamService.signIn(employee, remember: _remember);
-      if (!mounted) return;
-      _goHome();
-      return;
-    }
-
-    // Не сотрудник — значит вход владельца по почте в Firebase.
-    if (!entered.contains('@')) {
-      setState(() {
-        _busy = false;
-        _error = _ru ? 'Неверный логин или пароль' : 'Wrong login or password';
-      });
-      return;
-    }
-
-    final failure = await FirebaseRestService.signIn(entered, password);
+    final result = await PortalAccountService.signIn(
+      login: entered,
+      password: password,
+    );
     if (!mounted) return;
 
-    if (failure != null) {
+    if (!result.ok || result.identity == null) {
+      await TeamService.signOut();
+      if (!mounted) return;
       setState(() {
         _busy = false;
-        _error = failure.describe(russian: _ru);
+        _error = result.error ??
+            (_ru ? 'Не удалось выполнить вход' : 'Unable to sign in');
       });
       return;
     }
 
-    // «Запомнить» решает только одно: переживёт ли сессия перезапуск. Сам
-    // вход уже состоялся и до закрытия программы работает в любом случае.
-    if (!_remember) await FirebaseRestService.forgetOnExit();
+    final employee = await TeamService.applyServerIdentity(
+      result.identity!,
+      remember: _remember,
+    );
+    if (!mounted) return;
+    if (employee == null) {
+      await TeamService.signOut();
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _error = _ru
+            ? 'Не удалось сохранить подтверждённый профиль на устройстве.'
+            : 'Unable to save the verified profile on this device.';
+      });
+      return;
+    }
+
+    if (employee.isOwner) {
+      // Полный обмен пока остаётся владельцу: текущая коллекция сервера
+      // изолирована по owner id. Сотруднику не подменяем безопасность
+      // отдельным личным набором данных под его token.
+      await SyncEngine.runOnLaunch();
+      SyncAuto.start();
+    } else {
+      SyncAuto.stop();
+    }
+
+    if (!mounted) return;
     _goHome();
   }
 
@@ -137,24 +154,42 @@ class _LoginScreenState extends State<LoginScreen> {
                   const SizedBox(height: 10),
                   Center(
                     child: Text(
-                      _ru ? 'Вход в профиль' : 'Sign in',
+                      _ru ? 'Вход в WesiOS' : 'Sign in to WesiOS',
                       style: TextStyle(
-                          fontSize: 13, color: AppTheme.textSecondary),
+                        fontSize: 13,
+                        color: AppTheme.textSecondary,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 30),
+                  const SizedBox(height: 8),
+                  Text(
+                    _ru
+                        ? 'Используйте логин и пароль, выданные владельцем. '
+                            'Доступ будет открыт строго по вашим разрешениям.'
+                        : 'Use the login and password issued by the owner. '
+                            'Only your assigned permissions will be opened.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.4,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                  const SizedBox(height: 28),
                   TextField(
-                    controller: _email,
+                    controller: _login,
                     enabled: !_busy,
                     autofocus: true,
-                    keyboardType: TextInputType.emailAddress,
                     textInputAction: TextInputAction.next,
                     onSubmitted: (_) => _passwordFocus.requestFocus(),
                     style: TextStyle(color: AppTheme.textPrimary),
                     decoration: InputDecoration(
-                      labelText: _ru ? 'Логин или почта' : 'Login or email',
-                      prefixIcon: Icon(Icons.alternate_email,
-                          size: 18, color: AppTheme.textMuted),
+                      labelText: _ru ? 'Логин' : 'Login',
+                      prefixIcon: Icon(
+                        Icons.person_outline,
+                        size: 18,
+                        color: AppTheme.textMuted,
+                      ),
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -167,15 +202,17 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(color: AppTheme.textPrimary),
                     decoration: InputDecoration(
                       labelText: _ru ? 'Пароль' : 'Password',
-                      prefixIcon: Icon(Icons.key,
-                          size: 18, color: AppTheme.textMuted),
+                      prefixIcon: Icon(
+                        Icons.key,
+                        size: 18,
+                        color: AppTheme.textMuted,
+                      ),
                       suffixIcon: IconButton(
                         icon: Icon(
-                            _obscure
-                                ? Icons.visibility_off
-                                : Icons.visibility,
-                            size: 18,
-                            color: AppTheme.textMuted),
+                          _obscure ? Icons.visibility_off : Icons.visibility,
+                          size: 18,
+                          color: AppTheme.textMuted,
+                        ),
                         onPressed: () => setState(() => _obscure = !_obscure),
                       ),
                     ),
@@ -185,13 +222,16 @@ class _LoginScreenState extends State<LoginScreen> {
                     Text(
                       _error!,
                       style: const TextStyle(
-                          fontSize: 12, color: AppTheme.accentRed),
+                        fontSize: 12,
+                        color: AppTheme.accentRed,
+                      ),
                     ),
                   ],
                   const SizedBox(height: 6),
                   InkWell(
-                    onTap:
-                        _busy ? null : () => setState(() => _remember = !_remember),
+                    onTap: _busy
+                        ? null
+                        : () => setState(() => _remember = !_remember),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Row(
@@ -207,7 +247,9 @@ class _LoginScreenState extends State<LoginScreen> {
                             child: Text(
                               _ru ? 'Запомнить меня' : 'Remember me',
                               style: TextStyle(
-                                  fontSize: 13, color: AppTheme.textSecondary),
+                                fontSize: 13,
+                                color: AppTheme.textSecondary,
+                              ),
                             ),
                           ),
                         ],
@@ -226,40 +268,19 @@ class _LoginScreenState extends State<LoginScreen> {
                               width: 18,
                               height: 18,
                               child: CircularProgressIndicator(
-                                  strokeWidth: 2, color: Colors.white),
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
                             )
                           : Text(
                               _ru ? 'Войти' : 'Sign in',
                               style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w600,
-                                  color: Colors.white),
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.white,
+                              ),
                             ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextButton(
-                    onPressed: _busy ? null : _goHome,
-                    child: Text(
-                      _ru
-                          ? 'Продолжить без аккаунта'
-                          : 'Continue without an account',
-                      style: TextStyle(
-                          fontSize: 13, color: AppTheme.textMuted),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _ru
-                        ? 'Без аккаунта всё работает и хранится только на этом '
-                            'устройстве. Аккаунт нужен, чтобы цифры совпадали '
-                            'на телефоне и на компьютере.'
-                        : 'Without an account everything works and stays on '
-                            'this device only. An account is what keeps the '
-                            'numbers in step across devices.',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                        fontSize: 11, height: 1.4, color: AppTheme.textMuted),
                   ),
                 ],
               ),
