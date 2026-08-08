@@ -17,6 +17,7 @@ class AudioVaultService {
 
   static const String boxName = 'wesios_audio_vault';
   static const String _beatsKey = 'beats_v1';
+  static const String _extendedMetaKey = 'extended_meta_v1';
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static Future<Box<dynamic>> get _box async {
@@ -59,9 +60,25 @@ class AudioVaultService {
 
   static Future<void> delete(BeatEntry beat) async {
     final box = await _box;
+
+    final reminderTaskId = beat.lease?.reminderTaskId;
+    if (reminderTaskId != null && reminderTaskId.isNotEmpty) {
+      try {
+        await TaskService().delete(reminderTaskId);
+      } catch (_) {}
+    }
+
     final list = await all();
     list.removeWhere((e) => e.id == beat.id);
     await box.put(_beatsKey, list.map((e) => e.toJson()).toList());
+
+    final rawMeta = box.get(_extendedMetaKey);
+    if (rawMeta is Map && rawMeta.containsKey(beat.id)) {
+      final meta = Map<dynamic, dynamic>.from(rawMeta);
+      meta.remove(beat.id);
+      await box.put(_extendedMetaKey, meta);
+    }
+
     try {
       final dir = await _beatDirectory(beat.id, create: false);
       if (await dir.exists()) await dir.delete(recursive: true);
