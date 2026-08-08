@@ -7,7 +7,6 @@ on:
     paths:
       - 'server/employee-portal/**'
       - 'server/pb_hooks/employee_portal.pb.js'
-      - 'server/pb_hooks/employee_portal_utils.js'
       - 'server/pb_hooks/employee_portal_static.pb.js'
       - 'server/deploy-employee-portal.sh'
       - 'assets/images/app_icon.png'
@@ -41,7 +40,6 @@ jobs:
           test -s server/employee-portal/app.js
           test -s server/employee-portal/motion-v6.js
           test -s server/pb_hooks/employee_portal.pb.js
-          test -s server/pb_hooks/employee_portal_utils.js
           test -s server/pb_hooks/employee_portal_static.pb.js
           test -s assets/images/app_icon.png
           grep -q './app_icon.png' server/employee-portal/index.html
@@ -69,19 +67,17 @@ jobs:
           node --check server/employee-portal/app.js
           node --check server/employee-portal/motion-v6.js
           node --check server/pb_hooks/employee_portal.pb.js
-          node --check server/pb_hooks/employee_portal_utils.js
           node --check server/pb_hooks/employee_portal_static.pb.js
 
           grep -q '/api/wesi/portal/profile/credentials' \
             server/pb_hooks/employee_portal.pb.js
           grep -q '/api/wesi/portal/employees/provision' \
             server/pb_hooks/employee_portal.pb.js
-          # PocketBase handlers isolated: shared functions must be loaded from
-          # a module inside the handler, never referenced as outer globals.
-          test "$(grep -c 'require(`${__hooks}/employee_portal_utils.js`)' \
-            server/pb_hooks/employee_portal.pb.js)" -ge 4
-          grep -q 'module.exports' server/pb_hooks/employee_portal_utils.js
-          grep -q 'claimOwner' server/pb_hooks/employee_portal_utils.js
+          # PocketBase route handlers изолированы. Запрещаем возврат к
+          # top-level helper functions, из-за которых production падал с
+          # ReferenceError до выполнения активации.
+          ! grep -q '^function portal' server/pb_hooks/employee_portal.pb.js
+          ! grep -q 'portalOwnerOnly' server/pb_hooks/employee_portal.pb.js
 
       - name: Check server secrets
         env:
@@ -138,7 +134,6 @@ jobs:
             server/employee-portal/motion-v6.js \
             server/employee-portal/app_icon.png \
             server/pb_hooks/employee_portal.pb.js \
-            server/pb_hooks/employee_portal_utils.js \
             server/pb_hooks/employee_portal_static.pb.js \
             server/deploy-employee-portal.sh \
             "$USER@$HOST:$REMOTE/"
