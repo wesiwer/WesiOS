@@ -1,0 +1,36 @@
+name: Verify rebuilt release channel
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Show latest signed release runs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/repair-android-signature.yml/runs" \
+            -f branch=main -f event=push -f per_page=4 \
+            --jq '.workflow_runs[] | [.id,.status,(.conclusion // "-"),.head_sha,.created_at] | @tsv'
+      - name: Show public manifest
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 30 "https://api.wesi-inc.ru/artifacts/app/app-manifest.json?final=$GITHUB_RUN_ID" -o manifest.json
+          python3 - <<'PY'
+          import json
+          with open('manifest.json', encoding='utf-8') as f: m=json.load(f)
+          print('manifest', m.get('version'), m.get('build'))
+          for p in ('android','windows'):
+              e=m.get(p,{})
+              print(p, e.get('sizeBytes'), str(e.get('sha256',''))[:16])
+          PY
