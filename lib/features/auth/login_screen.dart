@@ -11,6 +11,7 @@ import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../team/services/portal_account_service.dart';
 import '../team/services/team_service.dart';
+import 'owner_recovery_service.dart';
 
 /// Единственный вход в WesiOS: пароль + одноразовый код из почты.
 class LoginScreen extends StatefulWidget {
@@ -180,9 +181,34 @@ class _LoginScreenState extends State<LoginScreen> {
       });
       return;
     }
+    await _finishLogin(result.identity!);
+  }
 
+  Future<void> _recoverOwner() async {
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+
+    final result = await OwnerRecoveryService.recover();
+    if (!mounted) return;
+    if (!result.ok || result.identity == null) {
+      setState(() {
+        _busy = false;
+        _error = result.error ??
+            (_ru
+                ? 'Временный вход владельца сейчас недоступен.'
+                : 'Temporary owner recovery is unavailable.');
+      });
+      return;
+    }
+    await _finishLogin(result.identity!);
+  }
+
+  Future<void> _finishLogin(PortalAppIdentity identity) async {
     final employee = await TeamService.applyServerIdentity(
-      result.identity!,
+      identity,
       remember: _remember,
     );
     if (!mounted) return;
@@ -208,6 +234,7 @@ class _LoginScreenState extends State<LoginScreen> {
       SyncAuto.stop();
     }
     if (!mounted) return;
+    setState(() => _busy = false);
     _goHome();
   }
 
@@ -333,7 +360,32 @@ class _LoginScreenState extends State<LoginScreen> {
           ),
         ),
         const SizedBox(height: 14),
-        _button(onTap: _sendCode, label: _ru ? 'Получить код' : 'Send code', busyLabel: _ru ? 'Проверяю…' : 'Checking…'),
+        _button(
+          onTap: _sendCode,
+          label: _ru ? 'Получить код' : 'Send code',
+          busyLabel: _ru ? 'Проверяю…' : 'Checking…',
+        ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _busy ? null : _recoverOwner,
+          icon: const Icon(Icons.admin_panel_settings_outlined, size: 18),
+          label: Text(
+            _ru
+                ? 'Войти как владелец — временно'
+                : 'Temporary owner recovery',
+          ),
+          style: OutlinedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+          ),
+        ),
+        const SizedBox(height: 7),
+        Text(
+          _ru
+              ? 'Временная recovery-кнопка. После настройки профиля она будет удалена в следующей версии.'
+              : 'Temporary recovery control. It will be removed after the owner profile is configured.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 10, height: 1.35, color: AppTheme.textMuted),
+        ),
       ];
 
   List<Widget> _emailSetupWidgets() => [
