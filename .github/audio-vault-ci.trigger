@@ -1,1 +1,1 @@
-Audio Vault validation 2026-08-08 pass 1
+Audio Vault validation 2026-08-08 final v2 current main
