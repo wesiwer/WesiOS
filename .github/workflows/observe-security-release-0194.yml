@@ -1,0 +1,75 @@
+name: Observe WesiOS 0.19.4+52 production runs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/observe-security-release-0194.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      TARGET_SHA: 250c1a94e771c98792c4936a9f4e4da7e9f4a9ec
+      STATUS_FILE: .release-status-0.19.4+52.json
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Wait for portal deploy and signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          PORTAL_NAME='Deploy employee portal'
+          RELEASE_NAME='Build signed WesiOS release'
+          portal=''
+          release=''
+
+          for attempt in $(seq 1 100); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?head_sha=$TARGET_SHA&per_page=100")
+            portal=$(printf '%s' "$runs" | jq -c --arg n "$PORTAL_NAME" '.workflow_runs | map(select(.name == $n)) | sort_by(.created_at) | last // empty')
+            release=$(printf '%s' "$runs" | jq -c --arg n "$RELEASE_NAME" '.workflow_runs | map(select(.name == $n)) | sort_by(.created_at) | last // empty')
+
+            ps=$(printf '%s' "$portal" | jq -r '.status // "missing"' 2>/dev/null || echo missing)
+            rs=$(printf '%s' "$release" | jq -r '.status // "missing"' 2>/dev/null || echo missing)
+            echo "attempt=$attempt portal=$ps release=$rs"
+
+            if [ "$ps" = completed ] && [ "$rs" = completed ]; then
+              break
+            fi
+            sleep 15
+          done
+
+          if [ -z "$portal" ]; then
+            portal='{"name":"Deploy employee portal","status":"missing","conclusion":"missing"}'
+          fi
+          if [ -z "$release" ]; then
+            release='{"name":"Build signed WesiOS release","status":"missing","conclusion":"missing"}'
+          fi
+
+          jq -n \
+            --arg version '0.19.4+52' \
+            --arg target "$TARGET_SHA" \
+            --arg observed "$(date -u +%FT%TZ)" \
+            --argjson portal "$portal" \
+            --argjson release "$release" \
+            '{version:$version,targetSha:$target,observedAt:$observed,portal:{id:$portal.id,name:$portal.name,status:$portal.status,conclusion:$portal.conclusion,url:$portal.html_url,createdAt:$portal.created_at,updatedAt:$portal.updated_at},release:{id:$release.id,name:$release.name,status:$release.status,conclusion:$release.conclusion,url:$release.html_url,createdAt:$release.created_at,updatedAt:$release.updated_at}}' \
+            > "$STATUS_FILE"
+          cat "$STATUS_FILE"
+
+      - name: Publish sanitized observation
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Release Observer'
+          git config user.email 'actions@users.noreply.github.com'
+          git add "$STATUS_FILE"
+          git commit -m 'chore: record WesiOS 0.19.4+52 production run status'
+          git push origin HEAD:main
