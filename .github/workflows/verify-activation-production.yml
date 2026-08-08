@@ -1,0 +1,66 @@
+name: Verify employee activation production
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Verify production hook equals main
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          LOCAL=$(sha256sum server/pb_hooks/employee_portal.pb.js | awk '{print $1}')
+          REMOTE=$(ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" \
+            "sha256sum /opt/pocketbase/pb_hooks/employee_portal.pb.js | awk '{print \\$1}'")
+          echo "main hook:       $LOCAL"
+          echo "production hook: $REMOTE"
+          [ "$LOCAL" = "$REMOTE" ] || {
+            echo '::error::Production hook does not match merged main'; exit 1; }
+
+          ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" \
+            "! grep -q 'portalOwnerOnly' /opt/pocketbase/pb_hooks/employee_portal.pb.js"
+
+      - name: Verify protected routes are loaded
+        run: |
+          set -euo pipefail
+          API='https://api.wesi-inc.ru'
+          for path in \
+            /api/wesi/portal/profile/credentials \
+            /api/wesi/portal/employees/provision; do
+            code=$(curl -sS -o /tmp/body -w '%{http_code}' --max-time 20 \
+              -X POST -H 'Content-Type: application/json' -d '{}' "$API$path" || true)
+            case "$code" in
+              401|403) echo "$path is loaded and protected ($code)" ;;
+              *) echo "::error::$path returned HTTP $code"; cat /tmp/body; exit 1 ;;
+            esac
+          done
