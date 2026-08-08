@@ -33,6 +33,31 @@ curl -fL \
 chmod +x /root/patch-wesi-security-payload-parser.sh
 bash /root/patch-wesi-security-payload-parser.sh "$SECURITY"
 
+# PocketBase JSVM newStaticAuthToken() expects Go time.Duration, i.e.
+# nanoseconds, not seconds. Passing durationSeconds directly produced a token
+# valid for only a fraction of a second, so /verify succeeded but the very next
+# authenticated /bootstrap request rejected the already-expired token.
+python3 - "$SECURITY" <<'PY'
+from pathlib import Path
+import sys
+
+p = Path(sys.argv[1])
+s = p.read_text()
+old = '"token": user.newStaticAuthToken(durationSeconds),'
+new = '"token": user.newStaticAuthToken(durationSeconds * 1000000000),'
+if new in s:
+    print('AUTH TOKEN DURATION PATCH: already installed')
+elif old in s:
+    s = s.replace(old, new, 1)
+    p.write_text(s)
+    print('AUTH TOKEN DURATION PATCH: installed')
+else:
+    print('AUTH TOKEN DURATION PATCH: target not found')
+    sys.exit(1)
+PY
+
+grep -n 'newStaticAuthToken' "$SECURITY" | head -10
+
 echo '=== 2. Start PocketBase ==='
 systemctl start pocketbase.service
 for i in $(seq 1 30); do
@@ -93,7 +118,7 @@ RID="otp:$CHALLENGE"
 RAW_PAYLOAD="$(sqlite3 "$ROOT/pb_data/data.db" "SELECT payload FROM wesios_records WHERE owner='__wesios_security__' AND coll='security' AND rid='$RID' AND deleted=0 LIMIT 1;")"
 export RAW_PAYLOAD
 python3 - <<'PY'
-import json, os, sys, datetime
+import json, os, sys
 raw=os.environ.get('RAW_PAYLOAD','')
 try:
     d=json.loads(raw)
@@ -124,28 +149,86 @@ VERIFY="$(curl -sS -X POST \
   --data "$VERIFY_BODY")"
 export VERIFY
 
-python3 - <<'PY'
+readarray -t AUTH_DATA < <(python3 - <<'PY'
 import json, os, sys
 raw=os.environ['VERIFY']
 try:
     d=json.loads(raw)
 except Exception:
-    print('VERIFY NON-JSON:', raw)
-    sys.exit(1)
+    print('')
+    print('')
+    print('')
+    raise SystemExit
 if not (d.get('token') and d.get('sessionId') and d.get('userId')):
-    print('VERIFY FAILED:', json.dumps(d, ensure_ascii=False))
+    print('')
+    print('')
+    print('')
+    raise SystemExit
+print(d['token'])
+print(d['sessionId'])
+print(d['userId'])
+PY
+)
+
+TOKEN="${AUTH_DATA[0]:-}"
+SESSION_ID="${AUTH_DATA[1]:-}"
+VERIFIED_USER_ID="${AUTH_DATA[2]:-}"
+
+if [ -z "$TOKEN" ] || [ -z "$SESSION_ID" ] || [ -z "$VERIFIED_USER_ID" ]; then
+  echo 'VERIFY FAILED:'
+  echo "$VERIFY"
+  exit 1
+fi
+
+echo 'VERIFY OK'
+echo "userId: $VERIFIED_USER_ID"
+echo "sessionId length: ${#SESSION_ID}"
+
+echo '=== 4. Validate issued PocketBase auth token with bootstrap ==='
+BOOTSTRAP="$(curl -sS -w '\nHTTP_CODE:%{http_code}' \
+  http://127.0.0.1:8090/api/wesi/app/bootstrap \
+  -H "Authorization: $TOKEN" \
+  -H "X-WesiOS-Session: $SESSION_ID")"
+export BOOTSTRAP
+
+python3 - <<'PY'
+import json, os, sys
+raw=os.environ['BOOTSTRAP']
+body, sep, status = raw.rpartition('\nHTTP_CODE:')
+if not sep:
+    print('BOOTSTRAP FAILED: missing HTTP status')
+    print(raw)
     sys.exit(1)
-print('VERIFY OK')
-print('userId:', d.get('userId'))
-print('sessionId length:', len(d.get('sessionId','')))
+try:
+    code=int(status.strip())
+except Exception:
+    print('BOOTSTRAP FAILED: invalid HTTP status', repr(status))
+    sys.exit(1)
+if code != 200:
+    print('BOOTSTRAP FAILED HTTP', code)
+    print(body)
+    sys.exit(1)
+try:
+    d=json.loads(body)
+except Exception:
+    print('BOOTSTRAP FAILED: non-JSON response')
+    print(body)
+    sys.exit(1)
+if d.get('owner') is not True:
+    print('BOOTSTRAP FAILED: response is not owner profile')
+    print(json.dumps(d, ensure_ascii=False))
+    sys.exit(1)
+print('BOOTSTRAP AUTH TOKEN: OK')
+print('BOOTSTRAP OWNER: OK')
+print('login:', d.get('login'))
 PY
 
-echo '=== 4. Fresh phone recovery ==='
+echo '=== 5. Fresh phone recovery ==='
 make_flag
 
 echo
 echo '=================================================='
-echo 'FULL SERVER RECOVERY TEST: OK'
+echo 'FULL SERVER RECOVERY + AUTH TEST: OK'
 echo "PHONE RECOVERY READY до $EXPIRES"
 echo 'Нажми в приложении: Войти как владелец — временно'
 echo '=================================================='
