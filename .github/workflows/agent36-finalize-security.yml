@@ -1,0 +1,103 @@
+name: Agent 36 finalize security
+
+on:
+  push:
+    branches: [agent/security-2fa-sessions-real-data]
+    paths:
+      - '.github/workflows/agent36-finalize-security.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/security-2fa-sessions-real-data
+          fetch-depth: 0
+
+      - name: Apply final security invariants
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def rw(path, fn):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              out = fn(text)
+              if out == text:
+                  print(f'{path}: already current or no-op')
+              else:
+                  p.write_text(out, encoding='utf-8')
+                  print(f'{path}: updated')
+
+          # Remote session revoke should be noticed quickly on an online device.
+          rw('lib/core/security/session_service.dart', lambda t: t.replace(
+              'static const heartbeatEvery = Duration(seconds: 5);',
+              'static const heartbeatEvery = Duration(seconds: 2);',
+          ))
+          rw('server/employee-portal/app.js', lambda t: t.replace(
+              'setInterval(() => { pingSession(); }, 5000)',
+              'setInterval(() => { pingSession(); }, 2000)',
+          ))
+
+          # Remove one new analyzer-only unused getter.
+          rw('lib/features/auth/login_screen.dart', lambda t: t.replace(
+              '  bool get _waitingCode => _challengeId != null && !_needsEmailSetup;\n',
+              '',
+          ))
+
+          # A stale one-factor owner token must not change credentials after
+          # the security hook is installed.
+          def secure_profile_credentials(t):
+              old = '''    path === "/api/wesi/portal/manifest" ||\n    path.startsWith("/api/wesi/portal/download/") ||'''
+              new = '''    path === "/api/wesi/portal/manifest" ||\n    path === "/api/wesi/portal/profile/credentials" ||\n    path.startsWith("/api/wesi/portal/download/") ||'''
+              if new in t:
+                  return t
+              if old not in t:
+                  raise SystemExit('wesi_security needsSession anchor missing')
+              return t.replace(old, new, 1)
+          rw('server/pb_hooks/wesi_security.pb.js', secure_profile_credentials)
+
+          # Login field is a WesiOS login; real email is a second-factor
+          # destination and is not the PocketBase auth identity.
+          rw('server/employee-portal/index.html', lambda t: t.replace(
+              '<label class="field"><span>Логин или почта</span>',
+              '<label class="field"><span>Логин</span>',
+              1,
+          ))
+
+          # Firebase settings ship with the app. Remove the manual key editor
+          # from the profile for both owner and employees. Internal loading is
+          # retained for backward compatibility, but there is no UI to paste,
+          # edit, clear, or reveal project credentials.
+          def hide_firebase_editor(t):
+              start = "          SizedBox(height: 24),\n          _section('Ключи Firebase (автосохранение)'),\n"
+              end = "          _vaultOptions(),\n          ],\n"
+              if start not in t:
+                  return t
+              a = t.index(start)
+              b = t.index(end, a) + len(end)
+              return t[:a] + t[b:]
+          rw('lib/features/profile/profile_screen.dart', hide_firebase_editor)
+          PY
+
+      - name: Validate and commit
+        run: |
+          set -euo pipefail
+          node --check server/employee-portal/app.js
+          node --check server/pb_hooks/wesi_security.pb.js
+          grep -q "heartbeatEvery = Duration(seconds: 2)" lib/core/security/session_service.dart
+          grep -q "pingSession(); }, 2000" server/employee-portal/app.js
+          grep -q '/api/wesi/portal/profile/credentials' server/pb_hooks/wesi_security.pb.js
+          ! grep -q '<span>Логин или почта</span>' server/employee-portal/index.html
+          ! sed -n '/Widget build(BuildContext context)/,/Widget _lockedVault/p' lib/features/profile/profile_screen.dart | grep -q 'Ключи Firebase'
+          rm -f .github/workflows/agent36-finalize-security.yml
+          git config user.name 'WesiOS Security CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --check
+          git commit -m 'fix(security): finalize MFA session enforcement'
+          git push origin HEAD:agent/security-2fa-sessions-real-data
