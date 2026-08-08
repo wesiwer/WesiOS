@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../features/splash/splash_screen.dart';
-import '../../features/auth/welcome_screen.dart';
 import '../../features/auth/login_screen.dart';
 import '../../features/home/home_screen.dart';
 import '../../features/treasury/treasury_screen.dart';
@@ -25,6 +24,9 @@ import '../../features/founder/founder_story_screen.dart';
 import '../../features/sysadmin/sysadmin_screen.dart';
 import '../../features/team/contacts_screen.dart';
 import '../../features/chats/chats_screen.dart';
+import '../../features/team/models/team_permissions.dart';
+import '../../features/team/services/team_service.dart';
+import '../sync/sync_endpoint.dart';
 
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
@@ -32,49 +34,88 @@ class AppRouter {
       case '/':
         return MaterialPageRoute(builder: (_) => const SplashScreen());
       case '/welcome':
-        return _slideUpRoute(WelcomeScreen());
+        // Старый onboarding больше не является обходом обязательного входа.
+        return _slideUpRoute(const LoginScreen());
       case '/login':
-        return _slideUpRoute(LoginScreen());
+        return _slideUpRoute(const LoginScreen());
       case '/home':
-        return _fadeRoute(HomeScreen());
+        return _fadeRoute(const _AccessGate(child: HomeScreen()));
       case '/treasury':
-        return _slideUpRoute(TreasuryScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.treasury,
+          child: TreasuryScreen(),
+        ));
       case '/treasury/forecast':
-        return _slideUpRoute(TreasuryForecastScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.forecast,
+          child: TreasuryForecastScreen(),
+        ));
       case '/treasury/dashboard':
-        return _slideUpRoute(TreasuryDashboardScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.treasury,
+          child: TreasuryDashboardScreen(),
+        ));
       case '/treasury/sandbox':
-        return _slideUpRoute(SandboxScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.sandbox,
+          child: SandboxScreen(),
+        ));
       case '/treasury/operations':
-        return _slideUpRoute(OperationsScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.treasury,
+          child: OperationsScreen(),
+        ));
       case '/tasks':
-        return _slideUpRoute(TasksScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.tasks,
+          child: TasksScreen(),
+        ));
       case '/roadmap':
-        return _slideUpRoute(const RoadmapScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.roadmap,
+          child: RoadmapScreen(),
+        ));
       case '/analytics':
-        return _slideUpRoute(AnalyticsScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.analytics,
+          child: AnalyticsScreen(),
+        ));
       case '/knowledge':
-        return _slideUpRoute(KnowledgeBaseScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.knowledge,
+          child: KnowledgeBaseScreen(),
+        ));
       case '/ai':
-        return _slideUpRoute(AiAssistantScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.ai,
+          child: AiAssistantScreen(),
+        ));
       case '/shield':
-        return _slideUpRoute(ShieldScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.shield,
+          child: ShieldScreen(),
+        ));
       case '/keys':
-        return _slideUpRoute(KeysScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.keys,
+          child: KeysScreen(),
+        ));
       case '/sysadmin':
-        return _slideUpRoute(const SysadminScreen());
       case '/sysadmin/console':
-        // Старые ссылки ведём в выбор сервера: консоль теперь контекстная.
-        return _slideUpRoute(const SysadminScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.sysadmin,
+          child: SysadminScreen(),
+        ));
       case '/settings':
-        return _slideUpRoute(SettingsScreen());
+        return _slideUpRoute(const _AccessGate(child: SettingsScreen()));
       case '/profile':
-        return _slideUpRoute(ProfileScreen());
+        return _slideUpRoute(const _AccessGate(child: ProfileScreen()));
       case '/calculator':
         return PageRouteBuilder(
           opaque: false,
           barrierDismissible: true,
-          pageBuilder: (_, __, ___) => CalculatorScreen(),
+          pageBuilder: (_, __, ___) =>
+              const _AccessGate(child: CalculatorScreen()),
           transitionsBuilder: (_, anim, __, child) {
             return FadeTransition(
               opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
@@ -84,22 +125,35 @@ class AppRouter {
           transitionDuration: const Duration(milliseconds: 220),
         );
       case '/audio':
-        return _slideUpRoute(AudioVaultScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.audio,
+          child: AudioVaultScreen(),
+        ));
       case '/crm':
-        return _slideUpRoute(const CrmScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.crm,
+          child: CrmScreen(),
+        ));
       case '/calendar':
-        return _slideUpRoute(CalendarScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.calendar,
+          child: CalendarScreen(),
+        ));
       case '/contacts':
-        return _slideUpRoute(const ContactsScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.contacts,
+          child: ContactsScreen(),
+        ));
       case '/chats':
-        return _slideUpRoute(const ChatsScreen());
+        return _slideUpRoute(const _AccessGate(
+          module: TeamModules.chats,
+          child: ChatsScreen(),
+        ));
       case '/founder':
-        return _fadeRoute(FounderStoryScreen());
+        return _fadeRoute(const _AccessGate(child: FounderStoryScreen()));
       default:
         return MaterialPageRoute(
-          builder: (_) => Scaffold(
-            body: Center(child: Text('Route not found: ${settings.name}')),
-          ),
+          builder: (_) => const _AccessGate(child: HomeScreen()),
         );
     }
   }
@@ -133,6 +187,42 @@ class AppRouter {
         );
       },
       transitionDuration: const Duration(milliseconds: 400),
+    );
+  }
+}
+
+/// Центральный fail-closed guard для всех внутренних экранов.
+///
+/// UI-фильтры в Home/More остаются для удобства, но безопасность не зависит
+/// от того, не забыли ли разработчики скрыть конкретную кнопку.
+class _AccessGate extends StatelessWidget {
+  final Widget child;
+  final String? module;
+
+  const _AccessGate({required this.child, this.module});
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: TeamService.revision,
+      builder: (context, _, __) {
+        return ValueListenableBuilder<int>(
+          valueListenable: SyncEndpoint.revision,
+          builder: (context, _, __) {
+            final employee = TeamService.current;
+            if (employee == null || !SyncEndpoint.isConnected) {
+              return const LoginScreen();
+            }
+
+            final requiredModule = module;
+            if (requiredModule != null &&
+                !employee.permissions.allows(requiredModule)) {
+              return const HomeScreen();
+            }
+            return child;
+          },
+        );
+      },
     );
   }
 }
