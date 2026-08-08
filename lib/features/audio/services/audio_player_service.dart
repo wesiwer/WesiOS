@@ -13,8 +13,8 @@ class AudioSpectrumFrame {
   final double mid;
   final double high;
   final double kick;
-  final Float32List fft;
-  final Float32List wave;
+  final List<double> fft;
+  final List<double> wave;
 
   const AudioSpectrumFrame({
     this.bass = 0,
@@ -22,8 +22,8 @@ class AudioSpectrumFrame {
     this.mid = 0,
     this.high = 0,
     this.kick = 0,
-    this.fft = Float32List.empty,
-    this.wave = Float32List.empty,
+    this.fft = const [],
+    this.wave = const [],
   });
 }
 
@@ -158,7 +158,9 @@ class AudioPlayerService {
   static Future<void> seek(Duration position) async {
     final handle = _handle;
     if (handle == null) return;
-    final safeMs = position.inMilliseconds.clamp(0, state.value.duration.inMilliseconds);
+    final safeMs = position.inMilliseconds
+        .clamp(0, state.value.duration.inMilliseconds)
+        .toInt();
     try {
       _soloud.seek(handle, Duration(milliseconds: safeMs));
       state.value = state.value.copyWith(position: Duration(milliseconds: safeMs));
@@ -166,7 +168,7 @@ class AudioPlayerService {
   }
 
   static Future<void> setVolume(double value) async {
-    final v = value.clamp(0.0, 1.0);
+    final v = value.clamp(0.0, 1.0).toDouble();
     final handle = _handle;
     if (handle != null) {
       try {
@@ -218,13 +220,13 @@ class AudioPlayerService {
 
   static double _avg(Float32List values, int from, int to) {
     if (values.isEmpty) return 0;
-    final a = from.clamp(0, values.length - 1);
-    final b = to.clamp(a + 1, values.length);
+    final a = from.clamp(0, values.length - 1).toInt();
+    final b = to.clamp(a + 1, values.length).toInt();
     double sum = 0;
     for (var i = a; i < b; i++) {
       sum += values[i].abs();
     }
-    return (sum / math.max(1, b - a)).clamp(0.0, 1.0);
+    return (sum / math.max(1, b - a)).clamp(0.0, 1.0).toDouble();
   }
 
   static void _tick() {
@@ -250,13 +252,13 @@ class AudioPlayerService {
       data.updateSamples();
       final samples = data.getAudioData();
       if (samples.length < 512) return;
-      final fft = Float32List.fromList(samples.sublist(0, 256));
-      final wave = Float32List.fromList(samples.sublist(256, 512));
-      final bass = (_avg(fft, 1, 12) * 2.8).clamp(0.0, 1.0);
-      final lowMid = (_avg(fft, 12, 42) * 2.4).clamp(0.0, 1.0);
-      final mid = (_avg(fft, 42, 112) * 2.1).clamp(0.0, 1.0);
-      final high = (_avg(fft, 112, 256) * 2.5).clamp(0.0, 1.0);
-      final kick = math.max(0.0, bass - _lastBass * 0.78).clamp(0.0, 1.0);
+      final fftRaw = Float32List.fromList(samples.sublist(0, 256));
+      final waveRaw = Float32List.fromList(samples.sublist(256, 512));
+      final bass = (_avg(fftRaw, 1, 12) * 2.8).clamp(0.0, 1.0).toDouble();
+      final lowMid = (_avg(fftRaw, 12, 42) * 2.4).clamp(0.0, 1.0).toDouble();
+      final mid = (_avg(fftRaw, 42, 112) * 2.1).clamp(0.0, 1.0).toDouble();
+      final high = (_avg(fftRaw, 112, 256) * 2.5).clamp(0.0, 1.0).toDouble();
+      final kick = math.max(0.0, bass - _lastBass * 0.78).clamp(0.0, 1.0).toDouble();
       _lastBass = _lastBass * 0.72 + bass * 0.28;
       spectrum.value = AudioSpectrumFrame(
         bass: bass,
@@ -264,8 +266,8 @@ class AudioPlayerService {
         mid: mid,
         high: high,
         kick: kick,
-        fft: fft,
-        wave: wave,
+        fft: List<double>.from(fftRaw),
+        wave: List<double>.from(waveRaw),
       );
     } catch (_) {}
   }
