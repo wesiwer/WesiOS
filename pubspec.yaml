@@ -1,7 +1,7 @@
 name: wesios
 description: WesiOS - Business Operating System for Wesi Inc.
 publish_to: 'none'
-version: 0.19.6+54
+version: 0.19.7+55
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
@@ -81,7 +81,7 @@ flutter:
     - assets/animations/
 
 flutter_launcher_icons:
-  android: true
+  android: "launcher_icon"
   ios: false
   image_path: "assets/images/app_icon.png"
   min_sdk_android: 21
