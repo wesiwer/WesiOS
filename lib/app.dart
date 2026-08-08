@@ -14,6 +14,7 @@ import 'core/sync/sync_endpoint.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/update_error_dialog.dart';
 import 'core/widgets/window_controls.dart';
+import 'features/audio/widgets/audio_mini_player.dart';
 import 'features/calculator/calculator_screen.dart';
 import 'features/splash/splash_screen.dart';
 import 'features/team/services/team_service.dart';
@@ -81,6 +82,7 @@ class WesiOSApp extends StatelessWidget {
                                       : const SizedBox.shrink(),
                                 ),
                               ),
+                              OverlayEntry(builder: (_) => const AudioMiniPlayer()),
                               if (isDesktop)
                                 OverlayEntry(
                                     builder: (_) => const EngineDownloadOverlay()),
