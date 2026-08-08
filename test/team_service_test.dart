@@ -73,9 +73,6 @@ void main() {
     });
 
     test('сверка приводит список занятых к реальному составу', () async {
-      // Список занятых и список людей могли разъехаться после восстановления
-      // из копии: тогда логин либо нельзя выдать, хотя он ничей, либо он
-      // выдаётся дважды.
       await LoginPoolService.reserve('amber');
       await LoginPoolService.reserve('cedar');
       await LoginPoolService.reconcile(['cedar', 'delta']);
@@ -99,7 +96,6 @@ void main() {
       final stored = TeamService.byId(created!.employee.id)!;
       expect(stored.passwordHash, isNotEmpty);
       expect(stored.passwordSalt, isNotEmpty);
-      // Ни одно поле не содержит пароль в открытом виде.
       expect(stored.passwordHash, isNot(contains(created.password)));
       expect(stored.toPublicJson().toString(),
           isNot(contains(created.password)));
@@ -136,8 +132,6 @@ void main() {
 
     test('когда логины кончились — сотрудник не создаётся', () async {
       await LoginPoolService.reconcile(CredentialsGenerator.words);
-      // Свободных слов нет; pick умеет слово+число, поэтому создание всё же
-      // проходит — важно, что оно не падает и логин остаётся уникальным.
       final created = await TeamService.create(fullName: 'Ещё один');
       expect(created, isNotNull);
       expect(LoginPoolService.isTaken(created!.employee.login), isTrue);
@@ -170,7 +164,6 @@ void main() {
 
     test('пустой пароль не подходит к записи без пароля', () async {
       await TeamService.ensureOwner();
-      // У владельца пароль не задан — вход по пустому не должен открываться.
       expect(TeamService.verify('owner', ''), isNull);
     });
   });
@@ -230,10 +223,12 @@ void main() {
   });
 
   group('кто вошёл и что ему открыто', () {
-    test('без входа права владельца — это его устройство', () {
+    test('без входа нет ни роли владельца, ни административных прав', () {
       expect(TeamService.current, isNull);
-      expect(TeamService.currentPermissions.canManageTeam, isTrue);
-      expect(TeamService.isOwnerSession, isTrue);
+      expect(TeamService.currentPermissions.canManageTeam, isFalse);
+      expect(TeamService.currentPermissions.canAssignTasks, isFalse);
+      expect(TeamService.currentPermissions.modules, isEmpty);
+      expect(TeamService.isOwnerSession, isFalse);
     });
 
     test('после входа сотрудника права его', () async {
@@ -245,12 +240,14 @@ void main() {
       expect(TeamService.isOwnerSession, isFalse);
     });
 
-    test('выход возвращает режим владельца', () async {
+    test('выход возвращает в состояние без привилегий', () async {
       final created = await TeamService.create(fullName: 'Иван');
       await TeamService.signIn(created!.employee);
       await TeamService.signOut();
       expect(TeamService.current, isNull);
-      expect(TeamService.currentPermissions.canManageTeam, isTrue);
+      expect(TeamService.currentPermissions.canManageTeam, isFalse);
+      expect(TeamService.currentPermissions.modules, isEmpty);
+      expect(TeamService.isOwnerSession, isFalse);
     });
 
     test('правка прав действует на вошедшего сразу', () async {
