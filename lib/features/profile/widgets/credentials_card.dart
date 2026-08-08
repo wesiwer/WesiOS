@@ -205,6 +205,8 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
     final email = TextEditingController(text: initialEmail);
     final password = TextEditingController();
     final confirmation = TextEditingController();
+    final securityEmailLocked =
+        PortalAccountService.validSecurityEmail(initialEmail);
     var visible = false;
 
     return showDialog<_CredentialDraft>(
@@ -233,20 +235,30 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    _ru
-                        ? 'Почта для кодов уже подтверждена и защищена. Здесь можно изменить логин или пароль.'
-                        : 'The security email is verified and locked. You can change login or password here.',
+                    securityEmailLocked
+                        ? (_ru
+                            ? 'Почта для кодов уже подтверждена и защищена. Здесь можно изменить логин или пароль.'
+                            : 'The security email is verified and locked. You can change login or password here.')
+                        : (_ru
+                            ? 'Укажите почту для кодов, новый логин и пароль. После успешной настройки почта будет защищена от обычного изменения.'
+                            : 'Enter a security email, new login and password. After setup the email will be locked against normal changes.'),
                     style: TextStyle(fontSize: 12, height: 1.45, color: AppTheme.textMuted),
                   ),
                   const SizedBox(height: 16),
-                  _dialogField(controller: login, label: _ru ? 'Логин' : 'Login', hint: 'WesiOff'),
+                  _dialogField(
+                    controller: login,
+                    label: _ru ? 'Логин' : 'Login',
+                    hint: 'WesiOff',
+                  ),
                   const SizedBox(height: 12),
                   _dialogField(
                     controller: email,
-                    label: _ru ? 'Подтверждённая почта для кодов' : 'Verified security email',
+                    label: securityEmailLocked
+                        ? (_ru ? 'Подтверждённая почта для кодов' : 'Verified security email')
+                        : (_ru ? 'Почта для кодов' : 'Security email'),
                     hint: 'name@example.com',
                     keyboard: TextInputType.emailAddress,
-                  enabled: false,
+                    enabled: !securityEmailLocked,
                   ),
                   const SizedBox(height: 12),
                   _dialogField(
@@ -257,7 +269,9 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                     suffix: IconButton(
                       onPressed: () => setDialogState(() => visible = !visible),
                       icon: Icon(
-                        visible ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                        visible
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
                         size: 19,
                         color: AppTheme.textMuted,
                       ),
@@ -291,7 +305,10 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
               ),
               child: Text(
                 _ru ? 'Сохранить' : 'Save',
-                style: TextStyle(color: AppTheme.accent, fontWeight: FontWeight.w700),
+                style: TextStyle(
+                  color: AppTheme.accent,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ],
@@ -312,12 +329,15 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
     bool obscure = false,
     Widget? suffix,
     TextInputType? keyboard,
-  bool enabled = true,
+    bool enabled = true,
   }) =>
       Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(label, style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+          Text(
+            label,
+            style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+          ),
           const SizedBox(height: 5),
           TextField(
             controller: controller,
@@ -378,7 +398,11 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
           children: [
             Row(
               children: [
-                Icon(Icons.verified_user_outlined, size: 20, color: AppTheme.accent),
+                Icon(
+                  Icons.verified_user_outlined,
+                  size: 20,
+                  color: AppTheme.accent,
+                ),
                 const SizedBox(width: 11),
                 Expanded(
                   child: Column(
@@ -397,7 +421,10 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                         me == null
                             ? (_ru ? 'Нет активного профиля' : 'No active profile')
                             : '${_ru ? 'Логин' : 'Login'}: ${me.login} · ${me.email.isEmpty ? (_ru ? 'почта не указана' : 'no email') : me.email}',
-                        style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: AppTheme.textMuted,
+                        ),
                       ),
                     ],
                   ),
@@ -407,7 +434,9 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                   height: 9,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: SyncEndpoint.isConnected ? AppTheme.accentGreen : AppTheme.textMuted,
+                    color: SyncEndpoint.isConnected
+                        ? AppTheme.accentGreen
+                        : AppTheme.textMuted,
                   ),
                 ),
               ],
@@ -418,14 +447,17 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                 _status!,
                 style: TextStyle(
                   fontSize: 11.5,
-                  color: _statusError ? AppTheme.accentRed : AppTheme.accentGreen,
+                  color:
+                      _statusError ? AppTheme.accentRed : AppTheme.accentGreen,
                 ),
               ),
             ],
             if (me?.isOwner == true) ...[
               const SizedBox(height: 12),
               Material(
-                color: _sending ? AppTheme.surfaceLight.withOpacity(0.3) : AppTheme.accent,
+                color: _sending
+                    ? AppTheme.surfaceLight.withOpacity(0.3)
+                    : AppTheme.accent,
                 borderRadius: BorderRadius.circular(10),
                 child: InkWell(
                   borderRadius: BorderRadius.circular(10),
@@ -436,7 +468,9 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                       child: Text(
                         _sending
                             ? (_ru ? 'Сохраняю…' : 'Saving…')
-                            : (_ru ? 'Изменить логин или пароль' : 'Change login or password'),
+                            : (_ru
+                                ? 'Изменить логин или пароль'
+                                : 'Change login or password'),
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 12.5,
@@ -465,7 +499,11 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
           children: [
             Row(
               children: [
-                Icon(Icons.devices_outlined, size: 20, color: AppTheme.accent),
+                Icon(
+                  Icons.devices_outlined,
+                  size: 20,
+                  color: AppTheme.accent,
+                ),
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
@@ -484,9 +522,16 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                       ? SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: AppTheme.accent),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: AppTheme.accent,
+                          ),
                         )
-                      : Icon(Icons.refresh, size: 18, color: AppTheme.textMuted),
+                      : Icon(
+                          Icons.refresh,
+                          size: 18,
+                          color: AppTheme.textMuted,
+                        ),
                 ),
               ],
             ),
@@ -495,7 +540,11 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
               _ru
                   ? 'Здесь видны устройства, с которых входили в этот профиль. Любой чужой сеанс можно завершить удалённо.'
                   : 'Devices signed into this profile are listed here. Any remote session can be revoked.',
-              style: TextStyle(fontSize: 10.8, height: 1.4, color: AppTheme.textMuted),
+              style: TextStyle(
+                fontSize: 10.8,
+                height: 1.4,
+                color: AppTheme.textMuted,
+              ),
             ),
             const SizedBox(height: 12),
             if (!_loadingSessions && _sessions.isEmpty)
@@ -538,7 +587,9 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            session.purpose == 'portal' ? Icons.language : Icons.devices_other,
+            session.purpose == 'portal'
+                ? Icons.language
+                : Icons.devices_other,
             size: 19,
             color: session.current ? AppTheme.accent : AppTheme.textMuted,
           ),
@@ -575,10 +626,23 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                 ),
                 if (details.isNotEmpty) ...[
                   const SizedBox(height: 3),
-                  Text(details, style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
+                  Text(
+                    details,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
                 ],
                 const SizedBox(height: 3),
-                Text(times, style: TextStyle(fontSize: 10.2, height: 1.35, color: AppTheme.textMuted)),
+                Text(
+                  times,
+                  style: TextStyle(
+                    fontSize: 10.2,
+                    height: 1.35,
+                    color: AppTheme.textMuted,
+                  ),
+                ),
               ],
             ),
           ),
@@ -588,7 +652,11 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
                 ? (_ru ? 'Выйти' : 'Sign out')
                 : (_ru ? 'Завершить удалённо' : 'End remotely'),
             onPressed: () => _endSession(session),
-            icon: Icon(Icons.logout, size: 18, color: AppTheme.accentRed),
+            icon: Icon(
+              Icons.logout,
+              size: 18,
+              color: AppTheme.accentRed,
+            ),
           ),
         ],
       ),
