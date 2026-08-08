@@ -155,8 +155,10 @@ class MoreTab extends StatelessWidget {
             module: TeamModules.audio,
             icon: Icons.graphic_eq,
             title: 'Audio Vault',
-            subtitle: ru ? 'Биты, демо, лицензии' : 'Beats, demos, licences',
-            stage: ModuleStage.planned,
+            subtitle: ru
+                ? 'Архив битов, плеер, аренды, Ableton, Wesi AI Audio и Music Hub'
+                : 'Beat archive, player, leases, Ableton, Wesi AI Audio and Music Hub',
+            stage: ModuleStage.ready,
           ),
         ],
       ),
