@@ -11,7 +11,7 @@
 ## Стек
 
 - Flutter 3.19+ / Dart
-- Firebase Core (config из профиля)
+- Firebase Core (production-конфигурация поставляется со сборкой; ручного ввода ключей нет)
 - Hive (offline-first)
 - window_manager (кастомный title bar)
 - fl_chart, math_expressions, http
@@ -31,7 +31,9 @@
   прогресс-баром/скоростью/этапами, плавающий индикатор поверх всех экранов
 - Operations screen (поиск/фильтр/сортировка/edit)
 - Calculator: global overlay, pin/ESC/Delete/blur/resize
-- Profile auto-save + Firebase tips, upload custom avatar
+- Profile auto-save, custom avatar, защищённый вход и управление активными сеансами
+- Обязательная почта сотрудника и двухэтапный вход: пароль → 6-значный код по email
+- Отзывные WesiOS-сеансы: удалённое завершение и автоматический выход при удалении сотрудника
 - Settings locale live (пересобирает все вкладки)
 - Live avatars (Hive listenable)
 
@@ -53,4 +55,4 @@ CI: push в `main` → GitHub Actions (Windows + Android).
 
 ## Версия
 
-v0.19.1 α — Private, Wesi Inc.
+v0.19.4 α — Private, Wesi Inc.
