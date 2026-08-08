@@ -242,12 +242,26 @@
     const login = els.identity.value.trim().toLowerCase();
     const password = els.password.value;
     if (!login || !password) throw new Error('Введите логин и пароль');
-    const body = await request('/api/wesi/auth/start', {
+    let body = await request('/api/wesi/auth/start-v2', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ login, password, purpose: 'portal' }),
     }, 20000, false);
     if (!body?.challengeId) throw new Error('Сервер не создал проверку входа');
+    if (body.emailSetupRequired) {
+      const proposed = window.prompt(
+        'Для старого профиля владельца нужно один раз привязать почту для кодов безопасности. Введите действующую электронную почту:',
+        '',
+      );
+      const email = (proposed || '').trim().toLowerCase();
+      if (!email) throw new Error('Почта обязательна для защищённого входа');
+      body = await request('/api/wesi/auth/setup-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId: body.challengeId, email }),
+      }, 20000, false);
+      if (!body?.challengeId) throw new Error('Не удалось отправить код на эту почту');
+    }
     state.challengeId = body.challengeId;
     state.maskedEmail = body.maskedEmail || '';
     state.remember = $('#rememberLogin')?.checked !== false;
@@ -276,6 +290,11 @@
     state.sessionId = body.sessionId;
     state.user = body.record || {};
     persistSession(state.remember);
+    try {
+      await request('/api/wesi/security/confirm-owner-email', {
+        method: 'POST',
+      }, 5000);
+    } catch (_) {}
     els.password.value = '';
   }
 

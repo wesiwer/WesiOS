@@ -264,7 +264,18 @@ class PortalAccountService {
         );
       }
       final bootstrapJson = _map(bootstrapText);
-      final identity = bootstrapJson == null ? null : PortalAppIdentity.tryParse(bootstrapJson);
+    final verifiedRecord = verifyJson?['record'];
+    if (bootstrapJson != null &&
+        bootstrapJson['owner'] == true &&
+        verifiedRecord is Map) {
+      final verifiedEmail = '${verifiedRecord['email'] ?? ''}'.trim().toLowerCase();
+      if (validSecurityEmail(verifiedEmail)) {
+        bootstrapJson['email'] = verifiedEmail;
+      }
+    }
+    final identity = bootstrapJson == null
+        ? null
+        : PortalAppIdentity.tryParse(bootstrapJson);
       if (identity == null) {
         return const PortalLoginResult.failure('Сервер не вернул роль и права пользователя.');
       }

@@ -120,6 +120,20 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
       _error(_ru ? 'Введите имя или ник' : 'Enter a name or nickname');
       return;
     }
+    final email = _emailCtrl.text.trim().toLowerCase();
+    if (!TeamService.validEmployeeEmail(email)) {
+      _error(_ru
+          ? 'Укажите действующую электронную почту — на неё будут приходить коды входа'
+          : 'Enter a valid email address for sign-in codes');
+      return;
+    }
+    final duplicateEmail = TeamService.byEmail(email);
+    if (duplicateEmail != null && duplicateEmail.id != widget.initial?.id) {
+      _error(_ru
+          ? 'Эта электронная почта уже используется другим сотрудником'
+          : 'This email is already used by another employee');
+      return;
+    }
     setState(() => _saving = true);
     try {
       if (_isNew) {
@@ -128,7 +142,7 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
           nickname: _nickCtrl.text,
           position: _positionCtrl.text,
           phone: _phoneCtrl.text,
-          email: _emailCtrl.text,
+          email: email,
           socials: _socials,
           notes: _notesCtrl.text,
           permissions: _permissions,
@@ -137,8 +151,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
         );
         if (created == null) {
           _error(_ru
-              ? 'Не осталось свободных логинов'
-              : 'No free logins left');
+              ? 'Не удалось создать сотрудника. Проверьте почту и данные профиля'
+              : 'Unable to create the employee. Check the email and profile data');
           return;
         }
         if (!mounted) return;
@@ -154,7 +168,7 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
           nickname: _nickCtrl.text.trim(),
           position: _positionCtrl.text.trim(),
           phone: _phoneCtrl.text.trim(),
-          email: _emailCtrl.text.trim(),
+          email: email,
           socials: _socials,
           notes: _notesCtrl.text,
           permissions: _permissions,
@@ -333,7 +347,7 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
                   _section(_ru ? 'Связь — видно всем' : 'Contacts — public'),
                   _field(_phoneCtrl, _ru ? 'Телефон' : 'Phone',
                       keyboard: TextInputType.phone),
-                  _field(_emailCtrl, _ru ? 'Почта' : 'Email',
+                  _field(_emailCtrl, _ru ? 'Почта *' : 'Email *',
                       keyboard: TextInputType.emailAddress),
                   const SizedBox(height: 6),
                   for (final network in ContactActions.knownNetworks)
