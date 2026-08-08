@@ -1,0 +1,69 @@
+name: Apply full Home mobile regression fix
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Apply Home fix
+        run: python3 tools/fix_full_home_mobile.py
+
+      - name: Format changed Dart files
+        run: |
+          dart format \
+            lib/core/widgets/wesi_clock.dart \
+            lib/features/home/home_screen.dart \
+            test/home_mobile_layout_test.dart
+
+      - name: Static regression guards
+        run: |
+          set -euo pipefail
+          grep -q "height: large ? 168 : 116" lib/core/widgets/wesi_clock.dart
+          grep -q "home_clock_panel" lib/features/home/home_screen.dart
+          grep -q "home_mind_charge" lib/features/home/home_screen.dart
+          grep -q "home_quote_card" lib/features/home/home_screen.dart
+          grep -q "home_balance_card" lib/features/home/home_screen.dart
+          grep -q "Size(360, 800)" test/home_mobile_layout_test.dart
+          git diff --check
+
+      - run: flutter pub get
+
+      - name: Phone Home regression test
+        run: flutter test test/home_mobile_layout_test.dart
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Full test suite
+        run: flutter test
+
+      - name: Commit product changes
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            lib/core/widgets/wesi_clock.dart \
+            lib/features/home/home_screen.dart \
+            test/home_mobile_layout_test.dart
+          git commit -m 'fix: keep full Home visible on mobile'
+          git push origin HEAD:${{ github.head_ref }}
