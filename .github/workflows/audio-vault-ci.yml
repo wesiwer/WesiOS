@@ -1,9 +1,7 @@
 name: Audio Vault CI
 
 on:
-  push:
-    paths:
-      - '.github/audio-vault-ci.trigger'
+  workflow_dispatch:
 
 permissions:
   contents: write
