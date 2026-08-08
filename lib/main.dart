@@ -92,6 +92,9 @@ void main() async {
   await MessageStore.open();
   await ChatService.open();
 
+  // Auth token + revocable session id live in OS-protected storage, not Hive.
+  // This also performs a one-time migration from old plaintext `sync_session`.
+  await SyncEndpoint.initializeSession();
   await TeamService.forgetUnrememberedSession();
 
   // A remembered login is accepted locally only when it contains the new
