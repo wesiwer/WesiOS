@@ -5,6 +5,11 @@
 /// root-created /opt/pocketbase/.wesi-owner-recovery.json exists.
 /// The recovery flag is deliberately outside pb_hooks so creating/removing it
 /// cannot trigger PocketBase hook autoreload between start-v2 and verify.
+///
+/// IMPORTANT: while this temporary recovery build exists, the flag is NOT
+/// consumed on start-v2. It remains valid only until its root-created expiry.
+/// This prevents a duplicate/retried start-v2 request from falling through to
+/// normal mail auth and producing a different OTP before verify completes.
 
 routerUse((e) => {
   const path = String(e.request.url.path || "");
@@ -93,13 +98,6 @@ routerUse((e) => {
   challenge.set("stamp", now.toISOString());
   challenge.set("deleted", false);
   e.app.save(challenge);
-
-  // Consume before returning. Since the flag is outside pb_hooks, removing it
-  // does not restart PocketBase.
-  try { $os.remove(recoveryPath); } catch (_) {
-    // Decimal 384 == 0600; strict-mode JS rejects legacy octal literals.
-    try { $os.writeFile(recoveryPath, "{}", 384); } catch (_) {}
-  }
 
   return e.json(200, {
     "challengeId": challengeId,
