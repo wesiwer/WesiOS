@@ -1,0 +1,22 @@
+{
+  "releaseSha": "b62a08b38d079af4e325c4a6605dc2ece8bbed3b",
+  "mailSha": "0a3718134cacb05131276fab634c935adc685adc",
+  "release": {
+    "id": 31247762231,
+    "name": "Build signed WesiOS release",
+    "status": "in_progress",
+    "conclusion": null,
+    "run_number": 29,
+    "created_at": "2026-08-08T08:08:56Z",
+    "updated_at": "2026-08-08T08:09:31Z"
+  },
+  "mail": {
+    "id": 31247479366,
+    "name": "Configure WesiOS mail transport",
+    "status": "completed",
+    "conclusion": "success",
+    "run_number": 1,
+    "created_at": "2026-08-08T08:01:20Z",
+    "updated_at": "2026-08-08T08:01:27Z"
+  }
+}
