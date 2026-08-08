@@ -16,17 +16,82 @@ import sys
 path = Path(sys.argv[1])
 text = path.read_text()
 
-replacements = []
+# PocketBase JSON fields may reach JSVM as JSONRaw byte arrays (typeof ===
+# "object"), as JSONMap-like objects, or as JSON strings depending on the
+# schema/runtime path. Normalize all of those into a plain JS object.
+keys = [
+    "kind", "challengeId", "userId", "employeeId", "login", "email",
+    "purpose", "hash", "salt", "attempts", "sentAt", "expiresAt",
+    "usedAt", "delivery", "sessionId", "revokedAt", "createdAt",
+    "lastSeenAt", "platform", "deviceName", "timezone", "country",
+    "userAgent", "fullName", "name", "ownerId",
+]
+keys_js = ", ".join('"%s"' % k for k in keys)
 
-replacements.append((
-'''  const valueObject = (record, field) => {
+normalizer = f'''  const normalizeJsonValue = (raw) => {{
+    if (!raw) return {{}};
+
+    const parseText = (text) => {{
+      try {{
+        let parsed = JSON.parse(String(text || ""));
+        if (typeof parsed === "string" && parsed.trim()) {{
+          try {{ parsed = JSON.parse(parsed); }} catch (_) {{}}
+        }}
+        return parsed && typeof parsed === "object" ? parsed : {{}};
+      }} catch (_) {{ return {{}}; }}
+    }};
+
+    if (typeof raw === "string") return parseText(raw);
+
+    if (typeof raw === "object") {{
+      // PocketBase JSONMap-like value.
+      if (typeof raw.get === "function") {{
+        const out = {{}};
+        const keys = [{keys_js}];
+        let found = false;
+        for (const key of keys) {{
+          try {{
+            const value = raw.get(key);
+            if (value !== undefined && value !== null) {{
+              out[key] = value;
+              found = true;
+            }}
+          }} catch (_) {{}}
+        }}
+        if (found) return out;
+      }}
+
+      // PocketBase JSONRaw ([]byte) value. JSON fields are documented as raw
+      // byte arrays in JSVM exports; decode them before property access.
+      if (typeof raw.length === "number" && raw.length >= 0) {{
+        try {{
+          let text = "";
+          for (let i = 0; i < raw.length; i++) {{
+            text += String.fromCharCode(Number(raw[i]) & 255);
+          }}
+          const parsed = parseText(text);
+          if (parsed && typeof parsed === "object" && Object.keys(parsed).length) {{
+            return parsed;
+          }}
+        }} catch (_) {{}}
+      }}
+
+      // Already a normal plain object.
+      if (!Array.isArray(raw)) return raw;
+    }}
+
+    return {{}};
+  }};'''
+
+old_simple_field = '''  const valueObject = (record, field) => {
     if (!record) return {};
     try {
       const raw = record.get(field);
       return raw && typeof raw === "object" ? raw : {};
     } catch (_) { return {}; }
-  };''',
-'''  const valueObject = (record, field) => {
+  };'''
+
+old_patched_field = '''  const valueObject = (record, field) => {
     if (!record) return {};
     try {
       const raw = record.get(field);
@@ -40,16 +105,21 @@ replacements.append((
       return {};
     } catch (_) { return {}; }
   };'''
-))
 
-replacements.append((
-'''  const valueObject = (record) => {
+new_field = normalizer + '''\n  const valueObject = (record, field) => {
+    if (!record) return {};
+    try { return normalizeJsonValue(record.get(field)); }
+    catch (_) { return {}; }
+  };'''
+
+old_simple_single = '''  const valueObject = (record) => {
     try {
       const raw = record.get("payload");
       return raw && typeof raw === "object" ? raw : {};
     } catch (_) { return {}; }
-  };''',
-'''  const valueObject = (record) => {
+  };'''
+
+old_patched_single = '''  const valueObject = (record) => {
     try {
       const raw = record.get("payload");
       if (raw && typeof raw === "object") return raw;
@@ -62,19 +132,21 @@ replacements.append((
       return {};
     } catch (_) { return {}; }
   };'''
-))
 
-# Middleware session parser: without this, OTP verification can succeed but
-# the very next /bootstrap request is rejected as an invalid WesiOS session.
-replacements.append((
-'''    let payload = {};
+new_single = normalizer + '''\n  const valueObject = (record) => {
+    try { return normalizeJsonValue(record.get("payload")); }
+    catch (_) { return {}; }
+  };'''
+
+old_session_simple = '''    let payload = {};
     try {
       const raw = record.get("payload");
       payload = raw && typeof raw === "object" ? raw : {};
     } catch (_) {
       payload = {};
-    }''',
-'''    let payload = {};
+    }'''
+
+old_session_patched = '''    let payload = {};
     try {
       const raw = record.get("payload");
       if (raw && typeof raw === "object") {
@@ -90,13 +162,14 @@ replacements.append((
     } catch (_) {
       payload = {};
     }'''
-))
 
-# A few handlers read the payload directly instead of going through
-# valueObject(). Make those tolerant of PocketBase returning a JSON string too.
-replacements.append((
-'''  const payload = record.get("payload") || {};''',
-'''  let payload = {};
+session_normalizer = normalizer.replace("  const normalizeJsonValue", "    const normalizeJsonValue")
+new_session = session_normalizer + '''\n    let payload = {};
+    try { payload = normalizeJsonValue(record.get("payload")); }
+    catch (_) { payload = {}; }'''
+
+old_direct_simple = '''  const payload = record.get("payload") || {};'''
+old_direct_patched = '''  let payload = {};
   try {
     const rawPayload = record.get("payload");
     if (rawPayload && typeof rawPayload === "object") {
@@ -108,7 +181,20 @@ replacements.append((
   } catch (_) {
     payload = {};
   }'''
-))
+new_direct = normalizer + '''\n  let payload = {};
+  try { payload = normalizeJsonValue(record.get("payload")); }
+  catch (_) { payload = {}; }'''
+
+replacements = [
+    (old_patched_field, new_field),
+    (old_simple_field, new_field),
+    (old_patched_single, new_single),
+    (old_simple_single, new_single),
+    (old_session_patched, new_session),
+    (old_session_simple, new_session),
+    (old_direct_patched, new_direct),
+    (old_direct_simple, new_direct),
+]
 
 patched = 0
 for old, new in replacements:
@@ -119,7 +205,7 @@ for old, new in replacements:
         print(f"Patched {count} matching block(s)")
 
 path.write_text(text)
-print(f"Payload parser patch complete: {patched} block(s) changed in {path}")
+print(f"JSONRaw payload parser patch complete: {patched} block(s) changed in {path}")
 PY
 
-grep -n "JSON.parse(raw)\|JSON.parse(rawPayload)" "$HOOK" | head -20 || true
+grep -n "JSONRaw\|normalizeJsonValue" "$HOOK" | head -40 || true
