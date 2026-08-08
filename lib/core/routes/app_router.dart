@@ -17,7 +17,7 @@ import '../../features/ai/ai_assistant_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/calculator/calculator_screen.dart';
-import '../../features/audio/audio_vault_screen.dart';
+import '../../features/audio/audio_vault_v2_screen.dart';
 import '../../features/crm/crm_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
 import '../../features/founder/founder_story_screen.dart';
@@ -126,7 +126,7 @@ class AppRouter {
       case '/audio':
         return _slideUpRoute(_AccessGate(
           module: TeamModules.audio,
-          child: AudioVaultScreen(),
+          child: const AudioVaultV2Screen(),
         ));
       case '/crm':
         return _slideUpRoute(_AccessGate(
