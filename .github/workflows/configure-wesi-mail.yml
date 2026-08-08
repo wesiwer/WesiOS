@@ -1,0 +1,132 @@
+name: Configure WesiOS HTTPS mail transport
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    environment:
+      name: employee-portal
+    steps:
+      - name: Require server and Resend secrets
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          RESEND_KEY: ${{ secrets.WESI_RESEND_API_KEY }}
+          MAIL_FROM: ${{ secrets.WESI_MAIL_FROM }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in HOST USER KEY RESEND_KEY MAIL_FROM; do
+            [ -n "${!name:-}" ] || {
+              echo "::error::Required employee-portal secret is missing: $name"
+              exit 1
+            }
+          done
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Install private Resend configuration for PocketBase
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          RESEND_KEY: ${{ secrets.WESI_RESEND_API_KEY }}
+          MAIL_FROM: ${{ secrets.WESI_MAIL_FROM }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOCAL="$RUNNER_TEMP/wesi-mail.json"
+          python3 - <<'PY' > "$LOCAL"
+          import json, os
+          print(json.dumps({
+              'provider': 'resend',
+              'apiKey': os.environ['RESEND_KEY'],
+              'from': os.environ['MAIL_FROM'],
+          }, ensure_ascii=False))
+          PY
+          chmod 600 "$LOCAL"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            "$LOCAL" "$USER@$HOST:/tmp/.wesi-mail.json"
+          rm -f "$LOCAL"
+
+          ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          TARGET="$HOOK_DIR/.wesi-mail.json"
+          SOURCE=/tmp/.wesi-mail.json
+          trap 'rm -f "$SOURCE"' EXIT
+          test -s "$SOURCE"
+          test -f "$HOOK_DIR/wesi_auth_bootstrap.pb.js"
+
+          PB_USER=$(ps -eo user=,comm= | awk '$2 ~ /^pocketbase$/ {print $1; exit}')
+          if [ -z "${PB_USER:-}" ]; then
+            PB_USER=$(stat -c '%U' "$HOOK_DIR/wesi_auth_bootstrap.pb.js")
+          fi
+          PB_GROUP=$(id -gn "$PB_USER" 2>/dev/null || stat -c '%G' "$HOOK_DIR/wesi_auth_bootstrap.pb.js")
+          CURRENT=$(id -un)
+
+          if [ "$CURRENT" = "$PB_USER" ] && [ -w "$HOOK_DIR" ]; then
+            install -m 600 "$SOURCE" "$TARGET"
+          elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            sudo -n install -o "$PB_USER" -g "$PB_GROUP" -m 600 "$SOURCE" "$TARGET"
+          else
+            echo 'Cannot install private mail config for PocketBase without exposing it.' >&2
+            exit 1
+          fi
+
+          if [ "$CURRENT" = "$PB_USER" ]; then
+            test -r "$TARGET"
+          else
+            sudo -n -u "$PB_USER" test -r "$TARGET"
+          fi
+          MODE=$(stat -c '%a' "$TARGET")
+          [ "$MODE" = 600 ] || { echo "Unsafe mail config mode: $MODE" >&2; exit 1; }
+          echo 'Private WesiOS mail configuration installed for PocketBase (mode 600).'
+          REMOTE
+
+      - name: Verify production HTTPS mail readiness
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3 4 5; do
+            CODE=$(curl -sS -o mail-ready.json -w '%{http_code}' --max-time 20 \
+              https://api.wesi-inc.ru/api/wesi/auth/mail-ready || true)
+            if [ "$CODE" = 200 ]; then
+              python3 - <<'PY'
+          import json
+          with open('mail-ready.json', encoding='utf-8') as f:
+              data = json.load(f)
+          assert data.get('ready') is True, data
+          assert data.get('httpsProviderConfigured') is True, data
+          assert data.get('httpsProvider') == 'resend', data
+          print('WesiOS HTTPS OTP provider is configured and readable by PocketBase.')
+          PY
+              exit 0
+            fi
+            sleep 2
+          done
+          echo '::error::Production HTTPS OTP provider is not ready after configuration.'
+          cat mail-ready.json 2>/dev/null || true
+          exit 1
