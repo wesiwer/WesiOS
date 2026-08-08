@@ -7,7 +7,7 @@ on:
 
 permissions:
   actions: write
-  contents: read
+  contents: write
 
 jobs:
   dispatch-release:
@@ -25,3 +25,18 @@ jobs:
             -f notes='Временный recovery-вход владельца без почтового OTP. После настройки профиля recovery-кнопка будет удалена.' \
             -f deploy_to_server=true
           echo 'Publish WesiOS Release dispatched.'
+
+      - name: Mark successful dispatch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          STAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          BODY="WesiOS 0.19.9+57 recovery release dispatched at $STAMP"
+          CONTENT="$(printf '%s\n' "$BODY" | base64 -w0)"
+          gh api --method PUT \
+            -H 'Accept: application/vnd.github+json' \
+            "/repos/$GITHUB_REPOSITORY/contents/.github/recovery-release-dispatched-57.txt" \
+            -f message='Mark recovery release dispatch' \
+            -f content="$CONTENT" \
+            -f branch='main'
