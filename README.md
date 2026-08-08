@@ -2,7 +2,8 @@
 
 **WesiOS** — Business Operating System для Wesi Inc.
 
-> Актуальный прогресс для людей и AI: см. **[STATUS.md](STATUS.md)**
+> Актуальный прогресс для людей и AI: см. **[STATUS.md](STATUS.md)**  
+> Авторизация, email OTP, сеансы и production-блокеры: **[SECURITY_STATUS.md](SECURITY_STATUS.md)**
 
 ## Основатель
 
@@ -36,6 +37,10 @@
 - Отзывные WesiOS-сеансы: удалённое завершение и автоматический выход при удалении сотрудника
 - Settings locale live (пересобирает все вкладки)
 - Live avatars (Hive listenable)
+- WesiOS 0.19.6+54: signed Android + Windows release полностью опубликован
+
+### Внешний production-блокер
+- Логика email OTP и server hooks опубликованы, но на production пока нет рабочего SMTP/sendmail/mail API credential. Авторизация намеренно fail-closed до подключения реального почтового провайдера. Подробности → `SECURITY_STATUS.md`.
 
 ### Очередь
 - Tasks/Analytics/CRM deep features
