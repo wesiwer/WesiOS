@@ -30,6 +30,7 @@ jobs:
       - name: Format changed Dart files
         run: |
           dart format \
+            lib/core/widgets/wesi_avatar.dart \
             lib/core/widgets/wesi_clock.dart \
             lib/features/home/home_screen.dart \
             test/home_mobile_layout_test.dart
@@ -37,12 +38,15 @@ jobs:
       - name: Static regression guards
         run: |
           set -euo pipefail
+          grep -q "Hive.isBoxOpen(_box)" lib/core/widgets/wesi_avatar.dart
+          ! grep -q "valueListenable: Hive.box(_box).listenable" lib/core/widgets/wesi_avatar.dart
           grep -q "height: large ? 168 : 116" lib/core/widgets/wesi_clock.dart
           grep -q "home_clock_panel" lib/features/home/home_screen.dart
           grep -q "home_mind_charge" lib/features/home/home_screen.dart
           grep -q "home_quote_card" lib/features/home/home_screen.dart
           grep -q "home_balance_card" lib/features/home/home_screen.dart
           grep -q "Size(360, 800)" test/home_mobile_layout_test.dart
+          grep -q "Hive.isBoxOpen('wesios_settings'), isFalse" test/home_mobile_layout_test.dart
           git diff --check
 
       - run: flutter pub get
@@ -62,6 +66,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
+            lib/core/widgets/wesi_avatar.dart \
             lib/core/widgets/wesi_clock.dart \
             lib/features/home/home_screen.dart \
             test/home_mobile_layout_test.dart
