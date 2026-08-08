@@ -591,6 +591,7 @@ void main() {
     Future<void> signIn() => SyncEndpoint.saveSession(
           token: 't',
           userId: 'u',
+          sessionId: 'test-session',
           expiresAt: DateTime.now().add(const Duration(days: 1)),
         );
 
@@ -611,6 +612,7 @@ void main() {
       await SyncEndpoint.saveSession(
         token: 't',
         userId: 'u',
+        sessionId: 'test-session',
         expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
       );
       final chat =

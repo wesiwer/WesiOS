@@ -468,6 +468,7 @@ void main() {
       await SyncEndpoint.saveSession(
         token: 'старый',
         userId: 'u1',
+        sessionId: 'test-session',
         expiresAt: base.add(const Duration(days: 13)),
       );
       expect(SyncEndpoint.session, isNotNull);
@@ -638,6 +639,7 @@ void main() {
       await SyncEndpoint.saveSession(
         token: 't',
         userId: 'u',
+        sessionId: 'test-session',
         expiresAt: DateTime.now().add(const Duration(days: 1)),
       );
       expect(SyncEndpoint.isConnected, isTrue);
@@ -650,6 +652,7 @@ void main() {
       await SyncEndpoint.saveSession(
         token: 't',
         userId: 'u',
+        sessionId: 'test-session',
         expiresAt: DateTime.now().subtract(const Duration(minutes: 1)),
       );
       expect(SyncEndpoint.isConnected, isFalse);
