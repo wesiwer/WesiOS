@@ -23,6 +23,7 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
+          import re
 
           profile = Path('lib/features/profile/profile_screen.dart')
           text = profile.read_text(encoding='utf-8')
@@ -43,44 +44,45 @@ jobs:
               "'Почта обязательна: на неё будет приходить шестизначный код при новом входе.'",
               "'Почта для кодов уже подтверждена и защищена. Здесь можно изменить логин или пароль.'",
               1,
-          )
-          text = text.replace(
+          ).replace(
               "'Email is required for six-digit sign-in codes.'",
               "'The security email is verified and locked. You can change login or password here.'",
               1,
           )
-          field = """_dialogField(
-                    controller: email,
-                    label: _ru ? 'Почта для кодов' : 'Security email',
-                    hint: 'name@example.com',
-                    keyboard: TextInputType.emailAddress,
-                  ),"""
-          replacement = """_dialogField(
-                    controller: email,
-                    label: _ru ? 'Подтверждённая почта для кодов' : 'Verified security email',
-                    hint: 'name@example.com',
-                    keyboard: TextInputType.emailAddress,
-                    enabled: false,
-                  ),"""
-          if field not in text:
-              raise SystemExit('security email field anchor missing')
-          text = text.replace(field, replacement, 1)
-          signature = "    TextInputType? keyboard,\n  }) =>"
-          if signature not in text:
-              raise SystemExit('dialog field signature anchor missing')
-          text = text.replace(
-              signature,
-              "    TextInputType? keyboard,\n    bool enabled = true,\n  }) =>",
-              1,
+
+          pattern = re.compile(
+              r"(_dialogField\(\s*controller:\s*email,\s*)"
+              r"label:\s*_ru\s*\?\s*'Почта для кодов'\s*:\s*'Security email',"
+              r"(\s*hint:\s*'name@example\.com',\s*keyboard:\s*TextInputType\.emailAddress,\s*)\)",
+              re.S,
           )
-          widget = "          TextField(\n            controller: controller,\n            obscureText: obscure,"
-          if widget not in text:
-              raise SystemExit('dialog text field anchor missing')
-          text = text.replace(
-              widget,
-              "          TextField(\n            controller: controller,\n            enabled: enabled,\n            obscureText: obscure,",
-              1,
+          text, count = pattern.subn(
+              r"\1label: _ru ? 'Подтверждённая почта для кодов' : 'Verified security email',"
+              r"\2enabled: false,\n                  )",
+              text,
+              count=1,
           )
+          if count != 1:
+              raise SystemExit('security email regex did not match exactly once')
+
+          text, count = re.subn(
+              r"(Widget _dialogField\(\{[\s\S]*?TextInputType\? keyboard,\s*)(\}\) =>)",
+              r"\1bool enabled = true,\n  \2",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit('dialog signature regex did not match')
+
+          text, count = re.subn(
+              r"(TextField\(\s*controller:\s*controller,\s*)(obscureText:\s*obscure,)",
+              r"\1enabled: enabled,\n            \2",
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit('dialog TextField regex did not match')
+
           text = text.replace(
               "? 'Изменить логин, почту или пароль' : 'Change login, email or password'",
               "? 'Изменить логин или пароль' : 'Change login or password'",
@@ -91,6 +93,7 @@ jobs:
       - name: Commit cleanup
         run: |
           set -euo pipefail
+          dart format lib/features/profile/profile_screen.dart lib/features/profile/widgets/credentials_card.dart || true
           git diff --check
           test -n "$(git status --porcelain lib/features/profile/profile_screen.dart lib/features/profile/widgets/credentials_card.dart)"
           git config user.name 'WesiOS Security CI'
