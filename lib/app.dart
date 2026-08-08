@@ -13,7 +13,6 @@ import 'core/widgets/update_error_dialog.dart';
 import 'core/widgets/window_controls.dart';
 import 'features/calculator/calculator_screen.dart';
 import 'features/splash/splash_screen.dart';
-import 'features/first_run/first_run_screen.dart';
 import 'features/treasury/widgets/engine_download_overlay.dart';
 
 bool get isDesktop {
@@ -22,8 +21,7 @@ bool get isDesktop {
 }
 
 class WesiOSApp extends StatelessWidget {
-  final bool isFirstRun;
-  const WesiOSApp({super.key, this.isFirstRun = false});
+  const WesiOSApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -50,14 +48,8 @@ class WesiOSApp extends StatelessWidget {
           supportedLocales: const [Locale('ru'), Locale('en')],
           locale: WesiLocale.isRussian ? const Locale('ru') : const Locale('en'),
           onGenerateRoute: AppRouter.onGenerateRoute,
-          home: isFirstRun ? const FirstRunScreen() : const SplashScreen(),
+          home: const SplashScreen(),
           builder: (context, child) {
-            // Здесь стоял TweenAnimationBuilder, у которого begin и end были
-            // ОДНИМ И ТЕМ ЖЕ значением — то есть анимации не происходило
-            // вовсе, а перестроение всего дерева на 600 мс происходило.
-            // Плавность всё равно недостижима, пока виджеты читают цвета
-            // статическими геттерами AppTheme.*, а не отсюда: провайдер ниже
-            // не читает никто, кроме этой строки.
             return AnimatedThemeProvider(
               theme: AnimatedAppTheme.lerp(
                   ThemeNotifier.instance.isDark ? 0.0 : 1.0),
@@ -85,7 +77,6 @@ class WesiOSApp extends StatelessWidget {
                               OverlayEntry(
                                   builder: (_) => const EngineDownloadOverlay()),
                             OverlayEntry(builder: (_) => const ShieldOverlay()),
-                            // Ошибки OTA — поверх всего, кроме title bar.
                             OverlayEntry(builder: (_) => const UpdateErrorHost()),
                             if (isDesktop)
                               OverlayEntry(
