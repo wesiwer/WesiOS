@@ -17,6 +17,7 @@ class AudioAnalysisPanel extends StatefulWidget {
 class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
   AudioAnalysisReport? _report;
   bool _busy = false;
+  bool _stale = false;
   String? _error;
 
   @override
@@ -36,7 +37,9 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
 
   Future<void> _load() async {
     final meta = await AudioVaultExtrasService.metaFor(widget.beat.id);
-    _report = meta.analysis;
+    final actual = await AudioVaultExtrasService.analysisForBeat(widget.beat);
+    _report = actual;
+    _stale = meta.analysis != null && actual == null;
     if (mounted) setState(() {});
   }
 
@@ -61,20 +64,21 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
                 color: AppTheme.accent.withOpacity(.12),
                 borderRadius: BorderRadius.circular(11),
               ),
-              child: Icon(Icons.psychology_alt_outlined, color: AppTheme.accent),
+              child:
+                  Icon(Icons.psychology_alt_outlined, color: AppTheme.accent),
             ),
             const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Wesi AI Audio · Quick Analysis',
+                  Text('Wesi AI Audio · Quick Analysis v2',
                       style: TextStyle(
                           color: AppTheme.textPrimary,
                           fontWeight: FontWeight.w900,
                           fontSize: 15)),
                   Text(
-                    'Полностью локально: файл не покидает устройство.',
+                    'Полностью локально и в отдельном isolate: аудио не покидает устройство, UI не должен зависать на большом WAV.',
                     style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
                   ),
                 ],
@@ -94,15 +98,33 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
           ]),
           if (_error != null) ...[
             const SizedBox(height: 10),
-            Text(_error!, style: TextStyle(color: AppTheme.accentRed, fontSize: 11.5)),
+            Text(_error!,
+                style: TextStyle(color: AppTheme.accentRed, fontSize: 11.5)),
+          ],
+          if (_stale && !_busy) ...[
+            const SizedBox(height: 10),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(.07),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: Colors.orange.withOpacity(.25)),
+              ),
+              child: const Text(
+                'WAV изменился после прошлого анализа. Старый отчёт скрыт, чтобы не показывать устаревшие цифры — запусти анализ заново.',
+                style: TextStyle(fontSize: 10.5, height: 1.35),
+              ),
+            ),
           ],
           if (report == null && !_busy) ...[
             const SizedBox(height: 12),
             Text(
               widget.beat.wavPath == null
                   ? 'Прикрепи WAV master — после этого анализ станет доступен.'
-                  : 'Нажми «Анализировать»: проверю уровень, динамику, clipping, stereo/phase, спектр и streaming headroom.',
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 11.5, height: 1.4),
+                  : 'Проверю loudness/dynamics, clipping, true-peak headroom, L/R и M/S баланс, stereo/phase, edge silence, спектр и delivery-профили.',
+              style: TextStyle(
+                  color: AppTheme.textMuted, fontSize: 11.5, height: 1.4),
             ),
           ],
           if (report != null) ...[
@@ -118,7 +140,8 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
             _insights(report),
             const SizedBox(height: 10),
             Text(report.disclaimer,
-                style: TextStyle(color: AppTheme.textMuted, fontSize: 9.5, height: 1.35)),
+                style: TextStyle(
+                    color: AppTheme.textMuted, fontSize: 9.5, height: 1.35)),
           ],
         ],
       ),
@@ -142,7 +165,8 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
           color: color.withOpacity(.08),
         ),
         child: Text('${r.score}',
-            style: TextStyle(color: color, fontSize: 21, fontWeight: FontWeight.w900)),
+            style: TextStyle(
+                color: color, fontSize: 21, fontWeight: FontWeight.w900)),
       ),
       const SizedBox(width: 12),
       Expanded(
@@ -153,12 +177,18 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
                 : r.score >= 65
                     ? 'Есть что поправить'
                     : 'Нужна проверка master chain',
-            style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w900),
+            style: TextStyle(
+                color: AppTheme.textPrimary, fontWeight: FontWeight.w900),
           ),
           const SizedBox(height: 3),
           Text(
             '${r.format} · ${r.sampleRate} Hz · ${r.bitDepth} bit · ${r.channels == 2 ? 'Stereo' : 'Mono'} · ${_duration(r.durationSeconds)}',
             style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            'Анализ: ${_dateTime(r.analyzedAt)}',
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 9.5),
           ),
         ]),
       ),
@@ -167,17 +197,42 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
 
   Widget _metrics(AudioAnalysisReport r) {
     final metrics = <(String, String, String)>[
-      ('LUFS est.', '${r.estimatedIntegratedLufs.toStringAsFixed(1)} LUFS', 'Средняя воспринимаемая громкость'),
-      ('True Peak est.', '${r.estimatedTruePeakDbtp.toStringAsFixed(2)} dBTP', 'Риск inter-sample peaks'),
-      ('Sample Peak', '${r.peakDbfs.toStringAsFixed(2)} dBFS', 'Максимальный цифровой пик'),
+      ('LUFS est.', '${r.estimatedIntegratedLufs.toStringAsFixed(1)} LUFS',
+        'Integrated loudness estimate'),
+      ('True Peak est.', '${r.estimatedTruePeakDbtp.toStringAsFixed(2)} dBTP',
+        'Inter-sample peak estimate'),
+      ('PLR', '${r.peakToLoudnessRatioDb.toStringAsFixed(1)} dB',
+        'Peak-to-Loudness Ratio'),
+      ('LRA est.', '${r.estimatedLoudnessRangeLu.toStringAsFixed(1)} LU',
+        'Approx. loudness range'),
+      ('Max M est.', '${r.estimatedMaxMomentaryLufs.toStringAsFixed(1)} LUFS',
+        'Самые громкие ~400 ms'),
+      ('Max S est.', '${r.estimatedMaxShortTermLufs.toStringAsFixed(1)} LUFS',
+        'Самые громкие ~3 s'),
+      ('Sample Peak', '${r.peakDbfs.toStringAsFixed(2)} dBFS',
+        'Максимальный цифровой пик'),
       ('RMS', '${r.rmsDbfs.toStringAsFixed(1)} dBFS', 'Средняя энергия'),
-      ('Crest', '${r.crestFactorDb.toStringAsFixed(1)} dB', 'Punch / динамический запас'),
-      ('Stereo corr.', r.stereoCorrelation.toStringAsFixed(2), 'Mono compatibility'),
-      ('Clipped', '${r.clippedSamples}', 'Сэмплы у цифрового потолка'),
-      ('DC offset', '${(r.dcOffset * 100).toStringAsFixed(3)}%', 'Смещение waveform относительно нуля'),
+      ('Crest', '${r.crestFactorDb.toStringAsFixed(1)} dB',
+        'Punch / динамический запас'),
+      ('Stereo corr.', r.stereoCorrelation.toStringAsFixed(2),
+        'Mono compatibility'),
+      ('L/R balance', '${r.channelBalanceDb.toStringAsFixed(2)} dB',
+        '+ = левый громче'),
+      ('M/S energy', '${r.midSideRatioDb.toStringAsFixed(1)} dB',
+        'Side относительно Mid'),
+      ('Clipped', '${r.clippedSamples}',
+        '${r.clippedSamplesPerMillion.toStringAsFixed(1)} / 1M samples'),
+      ('DC offset', '${(r.dcOffset * 100).toStringAsFixed(3)}%',
+        'Смещение waveform относительно нуля'),
+      ('Edge silence', '${r.edgeSilencePercent.toStringAsFixed(1)}%',
+        '${r.headSilenceSeconds.toStringAsFixed(2)}s start · ${r.tailSilenceSeconds.toStringAsFixed(2)}s end'),
     ];
     return LayoutBuilder(builder: (context, c) {
-      final columns = c.maxWidth > 720 ? 4 : c.maxWidth > 420 ? 2 : 1;
+      final columns = c.maxWidth > 720
+          ? 4
+          : c.maxWidth > 420
+              ? 2
+              : 1;
       return GridView.builder(
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
@@ -186,7 +241,7 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
           crossAxisCount: columns,
           crossAxisSpacing: 8,
           mainAxisSpacing: 8,
-          childAspectRatio: columns == 1 ? 4.4 : 2.35,
+          childAspectRatio: columns == 1 ? 4.4 : 2.25,
         ),
         itemBuilder: (_, i) {
           final m = metrics[i];
@@ -196,13 +251,20 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
               color: AppTheme.background.withOpacity(.3),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(m.$1, style: TextStyle(color: AppTheme.textMuted, fontSize: 9.5)),
+            child:
+                Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(m.$1,
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 9.5)),
               const Spacer(),
               Text(m.$2,
-                  style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w900, fontSize: 13)),
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 13)),
               const SizedBox(height: 2),
-              Text(m.$3, maxLines: 1, overflow: TextOverflow.ellipsis,
+              Text(m.$3,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: AppTheme.textMuted, fontSize: 8.5)),
             ]),
           );
@@ -212,16 +274,24 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
   }
 
   Widget _spectrum(AudioAnalysisReport r) {
-    final maxValue = r.spectralBalance.values.fold<double>(.0001, (a, b) => b > a ? b : a);
+    final maxValue = r.spectralBalance.values
+        .fold<double>(.0001, (a, b) => b > a ? b : a);
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text('Спектральный баланс',
-          style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12)),
+          style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontWeight: FontWeight.w800,
+              fontSize: 12)),
       const SizedBox(height: 8),
       for (final e in r.spectralBalance.entries)
         Padding(
           padding: const EdgeInsets.only(bottom: 6),
           child: Row(children: [
-            SizedBox(width: 108, child: Text(e.key, style: TextStyle(color: AppTheme.textMuted, fontSize: 9.5))),
+            SizedBox(
+                width: 108,
+                child: Text(e.key,
+                    style: TextStyle(
+                        color: AppTheme.textMuted, fontSize: 9.5))),
             Expanded(
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(999),
@@ -233,7 +303,12 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
                 ),
               ),
             ),
-            SizedBox(width: 42, child: Text('${(e.value * 100).toStringAsFixed(0)}%', textAlign: TextAlign.right, style: TextStyle(color: AppTheme.textSecondary, fontSize: 9.5))),
+            SizedBox(
+                width: 42,
+                child: Text('${(e.value * 100).toStringAsFixed(0)}%',
+                    textAlign: TextAlign.right,
+                    style: TextStyle(
+                        color: AppTheme.textSecondary, fontSize: 9.5))),
           ]),
         ),
     ]);
@@ -243,7 +318,10 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Площадки / delivery',
-              style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12)),
+              style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12)),
           const SizedBox(height: 7),
           for (final p in r.platformChecks)
             Container(
@@ -251,19 +329,66 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
               margin: const EdgeInsets.only(bottom: 7),
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: (p.ok ? AppTheme.accentGreen : Colors.orange).withOpacity(.07),
+                color: (p.ok ? AppTheme.accentGreen : Colors.orange)
+                    .withOpacity(.07),
                 borderRadius: BorderRadius.circular(11),
-                border: Border.all(color: (p.ok ? AppTheme.accentGreen : Colors.orange).withOpacity(.22)),
+                border: Border.all(
+                    color: (p.ok ? AppTheme.accentGreen : Colors.orange)
+                        .withOpacity(.22)),
               ),
               child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Icon(p.ok ? Icons.check_circle_outline : Icons.warning_amber_rounded,
-                    size: 18, color: p.ok ? AppTheme.accentGreen : Colors.orange),
+                Icon(
+                    p.ok
+                        ? Icons.check_circle_outline
+                        : Icons.warning_amber_rounded,
+                    size: 18,
+                    color: p.ok ? AppTheme.accentGreen : Colors.orange),
                 const SizedBox(width: 8),
-                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                  Text(p.platform, style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 11.5)),
-                  const SizedBox(height: 2),
-                  Text(p.summary, style: TextStyle(color: AppTheme.textMuted, fontSize: 9.7, height: 1.35)),
-                ])),
+                Expanded(
+                    child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                      Row(children: [
+                        Expanded(
+                          child: Text(p.platform,
+                              style: TextStyle(
+                                  color: AppTheme.textPrimary,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11.5)),
+                        ),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: AppTheme.accent.withOpacity(.09),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                                color: AppTheme.accent.withOpacity(.2)),
+                          ),
+                          child: Text(p.basis,
+                              style: TextStyle(
+                                  color: AppTheme.textSecondary,
+                                  fontSize: 8.2,
+                                  fontWeight: FontWeight.w700)),
+                        ),
+                      ]),
+                      const SizedBox(height: 3),
+                      Text(p.summary,
+                          style: TextStyle(
+                              color: AppTheme.textMuted,
+                              fontSize: 9.7,
+                              height: 1.35)),
+                      if (p.sourceLabel != null &&
+                          p.sourceLabel!.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Text('Основание: ${p.sourceLabel!}',
+                            style: TextStyle(
+                                color: AppTheme.textMuted,
+                                fontSize: 8.5,
+                                fontStyle: FontStyle.italic)),
+                      ],
+                    ])),
               ]),
             ),
         ],
@@ -273,10 +398,12 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('Wesi AI Audio — замечания',
-              style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 12)),
+              style: TextStyle(
+                  color: AppTheme.textPrimary,
+                  fontWeight: FontWeight.w800,
+                  fontSize: 12)),
           const SizedBox(height: 7),
-          for (final item in r.insights)
-            _insight(item),
+          for (final item in r.insights) _insight(item),
         ],
       );
 
@@ -299,13 +426,24 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
         Row(children: [
           Icon(Icons.circle, size: 7, color: color),
           const SizedBox(width: 7),
-          Expanded(child: Text(item.title, style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w800, fontSize: 11))),
+          Expanded(
+              child: Text(item.title,
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 11))),
         ]),
         const SizedBox(height: 4),
-        Text(item.detail, style: TextStyle(color: AppTheme.textMuted, fontSize: 9.8, height: 1.35)),
+        Text(item.detail,
+            style: TextStyle(
+                color: AppTheme.textMuted, fontSize: 9.8, height: 1.35)),
         if (item.action != null && item.action!.isNotEmpty) ...[
           const SizedBox(height: 4),
-          Text('Что сделать: ${item.action!}', style: TextStyle(color: AppTheme.textSecondary, fontSize: 9.8, height: 1.35)),
+          Text('Что сделать: ${item.action!}',
+              style: TextStyle(
+                  color: AppTheme.textSecondary,
+                  fontSize: 9.8,
+                  height: 1.35)),
         ],
       ]),
     );
@@ -318,6 +456,7 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
     });
     try {
       _report = await AudioVaultExtrasService.analyzeBeat(widget.beat);
+      _stale = false;
     } on AudioAnalysisException catch (e) {
       _error = e.message;
     } catch (e) {
@@ -332,5 +471,11 @@ class _AudioAnalysisPanelState extends State<AudioAnalysisPanel> {
     final m = total ~/ 60;
     final s = total.remainder(60).toString().padLeft(2, '0');
     return '$m:$s';
+  }
+
+  String _dateTime(DateTime value) {
+    final d = value.toLocal();
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${two(d.day)}.${two(d.month)}.${d.year} ${two(d.hour)}:${two(d.minute)}';
   }
 }
