@@ -50,6 +50,10 @@ jobs:
           python3 /tmp/finish_audio_quick_actions.py
           python3 /tmp/fix_audio_quick_actions_null.py
 
+      - name: Normalize generated mobile test imports
+        run: |
+          sed -i "/quote_mind_charge.dart/d;/wesi_quote_card.dart/d" test/home_mobile_layout_test.dart
+
       - name: Format changed Dart files
         run: |
           dart format \
@@ -75,7 +79,9 @@ jobs:
           grep -q '_quickAudioActions(BeatEntry beat)' lib/features/audio/audio_vault_v2_screen.dart
           grep -q '_analyzePendingBeats' lib/features/audio/audio_vault_v2_screen.dart
           grep -q '_openAbletonQuick' lib/features/audio/audio_vault_v2_screen.dart
-          grep -q 'File(abletonPath!).existsSync()' lib/features/audio/audio_vault_v2_screen.dart
+          grep -q 'File(abletonPath).existsSync()' lib/features/audio/audio_vault_v2_screen.dart
+          ! grep -q 'quote_mind_charge.dart' test/home_mobile_layout_test.dart
+          ! grep -q 'wesi_quote_card.dart' test/home_mobile_layout_test.dart
           git diff --check
 
       - run: flutter pub get
