@@ -41,14 +41,16 @@ jobs:
           python3 /tmp/finish_home_mobile_header.py
           python3 /tmp/fix_home_glasscard_rows.py
 
-      - name: Apply Audio Vault quick actions
+      - name: Apply Audio Vault quick actions and mobile layout
         run: |
           set -euo pipefail
           git fetch origin main --depth=1
           git show origin/main:tools/finish_audio_quick_actions.py > /tmp/finish_audio_quick_actions.py
           git show origin/main:tools/fix_audio_quick_actions_null.py > /tmp/fix_audio_quick_actions_null.py
+          git show origin/main:tools/fix_audio_vault_mobile_grid.py > /tmp/fix_audio_vault_mobile_grid.py
           python3 /tmp/finish_audio_quick_actions.py
           python3 /tmp/fix_audio_quick_actions_null.py
+          python3 /tmp/fix_audio_vault_mobile_grid.py
 
       - name: Normalize generated mobile test imports
         run: |
@@ -80,6 +82,8 @@ jobs:
           grep -q '_analyzePendingBeats' lib/features/audio/audio_vault_v2_screen.dart
           grep -q '_openAbletonQuick' lib/features/audio/audio_vault_v2_screen.dart
           grep -q 'File(abletonPath).existsSync()' lib/features/audio/audio_vault_v2_screen.dart
+          grep -q 'audioVaultSingleColumnMobile' lib/features/audio/audio_vault_v2_screen.dart
+          grep -q 'audioVaultFooterWrap' lib/features/audio/audio_vault_v2_screen.dart
           ! grep -q 'quote_mind_charge.dart' test/home_mobile_layout_test.dart
           ! grep -q 'wesi_quote_card.dart' test/home_mobile_layout_test.dart
           git diff --check
