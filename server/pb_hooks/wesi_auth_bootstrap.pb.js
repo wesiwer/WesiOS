@@ -15,7 +15,7 @@ routerAdd("GET", "/api/wesi/auth/version", (e) => {
     }
   } catch (_) {}
   return e.json(jsonReadable ? 200 : 503, {
-    "version": "2026-08-09.owner-email-v4",
+    "version": "2026-08-09.owner-email-v5",
     "jsonReadable": jsonReadable,
   });
 });
@@ -40,28 +40,29 @@ const wesiReadMailConfig = () => {
 
 const wesiDeliverMail = (app, email, displayName, subject, html, text) => {
   const settings = app.settings();
-  const smtpReady = Boolean(
+  const smtpSelected = Boolean(
     settings && settings.smtp && settings.smtp.enabled === true &&
     String(settings.smtp.host || "").trim(),
   );
 
-  if (smtpReady) {
-    const message = new MailerMessage({
-      "from": {
-        "address": settings.meta.senderAddress,
-        "name": settings.meta.senderName || "WesiOS",
-      },
-      "to": [{"address": email, "name": displayName}],
-      "subject": subject,
-      "html": html,
-      "text": text,
-    });
-    try {
-      app.newMailClient().send(message);
-      return "smtp";
-    } catch (error) {
-      console.log("WesiOS SMTP delivery failed, trying HTTPS provider:", error);
-    }
+  // PocketBase selects the configured SMTP client when SMTP is enabled and
+  // the local sendmail command otherwise. Always let PocketBase choose first;
+  // the old smtpReady guard accidentally disabled the safe sendmail fallback.
+  const message = new MailerMessage({
+    "from": {
+      "address": settings.meta.senderAddress,
+      "name": settings.meta.senderName || "WesiOS",
+    },
+    "to": [{"address": email, "name": displayName}],
+    "subject": subject,
+    "html": html,
+    "text": text,
+  });
+  try {
+    app.newMailClient().send(message);
+    return smtpSelected ? "smtp" : "sendmail";
+  } catch (error) {
+    console.log("WesiOS PocketBase mail client failed, trying HTTPS provider:", error);
   }
 
   const config = wesiReadMailConfig();
@@ -319,7 +320,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   if (!challenge) throw new UnauthorizedError("Проверка входа истекла");
   const payload = valueObject(challenge);
   if (payload.kind !== "email-setup" || String(payload.employeeId || "") !== "owner") {
-    throw new ForbiddenError("Проверка привязки не соответствует профилю владельца [owner-email-v3]");
+    throw new ForbiddenError("Проверка привязки не соответствует профилю владельца [owner-email-v5]");
   }
   let ownerMarker = null;
   try {
@@ -329,7 +330,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
     );
   } catch (_) { ownerMarker = null; }
   if (!ownerMarker) {
-    throw new ForbiddenError("Профиль владельца не закреплён [owner-email-v3]");
+    throw new ForbiddenError("Профиль владельца не закреплён [owner-email-v5]");
   }
   const expires = Date.parse(String(payload.expiresAt || ""));
   if (!Number.isFinite(expires) || expires <= Date.now()) {
@@ -377,7 +378,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   return e.json(200, {
     "challengeId": challengeId,
     "maskedEmail": maskEmail(email),
-    "authVersion": "2026-08-09.owner-email-v4",
+    "authVersion": "2026-08-09.owner-email-v5",
     "expiresInSeconds": 600,
   });
 });

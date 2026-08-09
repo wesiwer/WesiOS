@@ -28,13 +28,22 @@ routerAdd("GET", "/api/wesi/auth/mail-ready", (e) => {
   } catch (_) {}
 
   const smtpReady = senderConfigured && smtpEnabled && smtpHostConfigured;
-  const ready = smtpReady || httpsProviderConfigured;
+  // When SMTP is disabled PocketBase intentionally uses the local sendmail
+  // command. The production workflow verifies that command and Postfix before
+  // selecting this mode; this endpoint only reports the active selection.
+  const sendmailSelected = senderConfigured && !smtpEnabled;
+  const ready = smtpReady || sendmailSelected || httpsProviderConfigured;
+  const mailClientMode = smtpReady
+    ? "smtp"
+    : (sendmailSelected ? "sendmail" : (httpsProviderConfigured ? "https" : ""));
   return e.json(ready ? 200 : 503, {
     "ready": ready,
     "senderConfigured": senderConfigured,
     "smtpEnabled": smtpEnabled,
     "smtpHostConfigured": smtpHostConfigured,
     "smtpReady": smtpReady,
+    "sendmailSelected": sendmailSelected,
+    "mailClientMode": mailClientMode,
     "httpsProviderConfigured": httpsProviderConfigured,
     "httpsProvider": httpsProviderConfigured ? httpsProvider : "",
     "reason": ready
