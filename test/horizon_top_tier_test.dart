@@ -94,11 +94,19 @@ void main() {
           lastMonthSlope.abs(), lessThan(firstMonthSlope.abs() * 0.75 + 150));
 
       // Explicit guard against absurd compounding/extrapolation from the lucky
-      // month: a year cannot simply repeat the current recent daily pace.
-      final naiveLuckyYear = 100000 + result.recentNetPerDay * 365;
-      if (naiveLuckyYear > 100000) {
-        expect(result.p50.last, lessThan(naiveLuckyYear * 0.80));
-      }
+      // month. Use the actually observed last-30-day net pace: `recentNetPerDay`
+      // deliberately excludes shock days and now represents ordinary cash.
+      final recentCutoff = now.subtract(const Duration(days: 30));
+      final observedRecentNet = history
+          .where((tx) => tx.date.isAfter(recentCutoff))
+          .fold<double>(
+            0,
+            (sum, tx) =>
+                sum +
+                (tx.type == TransactionType.income ? tx.amount : -tx.amount),
+          );
+      final naiveLuckyYear = 100000 + (observedRecentNet / 30) * 365;
+      expect(result.p50.last, lessThan(naiveLuckyYear * 0.80));
     });
 
     test('low-data mode admits uncertainty instead of a razor-thin truth', () {

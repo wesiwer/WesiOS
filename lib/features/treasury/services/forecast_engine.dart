@@ -427,8 +427,10 @@ class _StreamStats {
     var totalOccurrenceWeight = 0.0;
     var weightedAmount = 0.0;
     var amountWeight = 0.0;
+    var recentUsableDays = 0;
     for (var i = dense.length - 1; i >= recentStart; i--) {
       if (!excludedDays.contains(i)) {
+        recentUsableDays++;
         totalOccurrenceWeight += recentWeight;
         if (dense[i] > 0) {
           weightedOccurrence += recentWeight;
@@ -438,11 +440,13 @@ class _StreamStats {
       }
       recentWeight *= 0.88;
     }
-    final recentFrequency = totalOccurrenceWeight == 0
+    final recentEvidenceIsThin = recentUsableDays < 7;
+    final recentFrequency = recentEvidenceIsThin || totalOccurrenceWeight == 0
         ? baselineFrequency
         : weightedOccurrence / totalOccurrenceWeight;
-    final recentAmount =
-        amountWeight == 0 ? baselineAmount : weightedAmount / amountWeight;
+    final recentAmount = recentEvidenceIsThin || amountWeight == 0
+        ? baselineAmount
+        : weightedAmount / amountWeight;
 
     final weekdayFactor = List<double>.filled(7, 0);
     final dailyBaseline = baselineFrequency * baselineAmount;
@@ -1010,7 +1014,6 @@ class ForecastEngine {
             break;
         }
 
-        if (whatIf.mainIncomeLossDays >= day) expectedIncome *= 0.15;
         if (whatIf.incomeMultiplierDays <= 0 ||
             day <= whatIf.incomeMultiplierDays) {
           expectedIncome *= whatIf.incomeMultiplier;
@@ -1053,24 +1056,38 @@ class ForecastEngine {
         } else if (confidence == ForecastConfidence.medium) {
           uncertainty *= 1.18;
         }
-        residualIncome *= uncertainty;
-        residualExpense *= uncertainty;
 
-        var uncertainIncome = max(0, expectedIncome + residualIncome);
-        var uncertainExpense = max(0, expectedExpense + residualExpense);
+        // Widen uncertainty around the NET cash center, not each non-negative
+        // stream before clipping. Scaling income/expense residuals first and
+        // then applying max(0) creates a truncation bias: simply admitting
+        // more uncertainty makes distant P50 richer.
+        if (whatIf.incomeMultiplierDays <= 0 ||
+            day <= whatIf.incomeMultiplierDays) {
+          residualIncome *= whatIf.incomeMultiplier;
+        }
+        if (whatIf.expenseMultiplierDays <= 0 ||
+            day <= whatIf.expenseMultiplierDays) {
+          residualExpense *= whatIf.expenseMultiplier;
+        }
+
+        var sampledIncome = max(0.0, expectedIncome + residualIncome);
+        final sampledExpense = max(0.0, expectedExpense + residualExpense);
+        if (whatIf.incomeDelayDays > 0 && day <= whatIf.incomeDelayDays) {
+          sampledIncome = 0.0;
+          expectedIncome = 0.0;
+        }
+        final expectedNetCenter = expectedIncome - expectedExpense;
+        final sampledNet = sampledIncome - sampledExpense;
+        var uncertainNet =
+            expectedNetCenter + (sampledNet - expectedNetCenter) * uncertainty;
 
         if (shocks.income.isNotEmpty &&
             rng.nextDouble() < shocks.incomeProbability) {
-          uncertainIncome += shocks.income[rng.nextInt(shocks.income.length)];
+          uncertainNet += shocks.income[rng.nextInt(shocks.income.length)];
         }
         if (shocks.expense.isNotEmpty &&
             rng.nextDouble() < shocks.expenseProbability) {
-          uncertainExpense +=
-              shocks.expense[rng.nextInt(shocks.expense.length)];
-        }
-
-        if (whatIf.incomeDelayDays > 0 && day <= whatIf.incomeDelayDays) {
-          uncertainIncome = 0;
+          uncertainNet -= shocks.expense[rng.nextInt(shocks.expense.length)];
         }
 
         var knownNet = 0.0;
@@ -1087,7 +1104,6 @@ class ForecastEngine {
           scenarioNet -= whatIf.oneOffExpenseShock;
         }
 
-        final uncertainNet = uncertainIncome - uncertainExpense;
         balance += uncertainNet + knownNet + scenarioNet;
         balances[i][path] = balance;
         if (balance < minBalances[path]) minBalances[path] = balance;
@@ -1236,7 +1252,7 @@ class ForecastEngine {
                   ? 1.18
                   : 1.0),
       committedNearTerm: committedNearTerm,
-      recommendedReserve: max(recommendedReserve, committedNearTerm),
+      recommendedReserve: recommendedReserve,
       safetyBuffer: safetyBuffer,
       risk10Day: risk10,
       risk25Day: risk25,
