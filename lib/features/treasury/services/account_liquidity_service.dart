@@ -17,12 +17,19 @@ class AccountLiquidityMeta {
   final bool allowNetting;
   final double fxHaircut;
 
+  /// Operational time needed before money on this account can rescue another
+  /// account. Cross-currency transfers get an additional conversion day in the
+  /// risk engine. This prevents “money exists somewhere” from meaning “cash is
+  /// available right now”.
+  final int transferDelayDays;
+
   const AccountLiquidityMeta({
     required this.accountId,
     this.currency = 'rub',
     this.minimumBalanceRub = 0,
     this.allowNetting = true,
     this.fxHaircut = 0.03,
+    this.transferDelayDays = 0,
   });
 
   Map<String, dynamic> toJson() => {
@@ -31,6 +38,7 @@ class AccountLiquidityMeta {
         'minimumBalanceRub': minimumBalanceRub,
         'allowNetting': allowNetting,
         'fxHaircut': fxHaircut,
+        'transferDelayDays': transferDelayDays,
       };
 
   factory AccountLiquidityMeta.fromJson(Map<String, dynamic> json) {
@@ -45,6 +53,8 @@ class AccountLiquidityMeta {
       fxHaircut: ((json['fxHaircut'] as num?)?.toDouble() ?? 0.03)
           .clamp(0, 0.25)
           .toDouble(),
+      transferDelayDays:
+          ((json['transferDelayDays'] as num?)?.toInt() ?? 0).clamp(0, 14),
     );
   }
 }
@@ -126,13 +136,15 @@ class AccountLiquidityService {
           fxHaircut: (meta[summary.account.id] ??
                   AccountLiquidityMeta(accountId: summary.account.id))
               .fxHaircut,
+          transferDelayDays: (meta[summary.account.id] ??
+                  AccountLiquidityMeta(accountId: summary.account.id))
+              .transferDelayDays,
         ),
     ];
   }
 
-  /// Conservative amount of RUB-equivalent cash transferable from [from] to
-  /// cover [to]. FX conversion is haircut when currencies differ, so a USD
-  /// balance is not treated as instantly identical to RUB liquidity.
+  /// Conservative RUB-equivalent transferable amount. This helper is used by
+  /// settings/tests; day-specific availability is enforced in ForecastEngine.
   static Future<double> nettableRub({
     required AccountLiquiditySnapshot from,
     required AccountLiquiditySnapshot to,
@@ -145,7 +157,7 @@ class AccountLiquidityService {
         .clamp(0, double.infinity)
         .toDouble();
     if (free == 0) return 0;
-    if (from.currency == to.currency) return free;
+    if (from.currency.toLowerCase() == to.currency.toLowerCase()) return free;
     return free * (1 - own.fxHaircut);
   }
 
