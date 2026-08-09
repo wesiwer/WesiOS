@@ -61,7 +61,7 @@ jobs:
           token = sys.argv[2]
           source = path.read_text()
           needle = '  const body = e.requestInfo().body || {};\n'
-          probe = '''  if (e.request.url.query().get("wesiProbe") === "__TOKEN__") {
+          probe = '''  if (String((e.requestInfo().query || {}).wesi_probe || "") === "__TOKEN__") {
             const mail = wesiBuildOtpMail("123456", "app");
             const html = String(mail && mail.html || "");
             const text = String(mail && mail.text || "");
@@ -106,7 +106,7 @@ jobs:
 
           CODE=''
           for attempt in $(seq 1 20); do
-            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}'               --max-time 20 -X POST               "http://127.0.0.1:8090/api/wesi/auth/start-v2?wesiProbe=$TOKEN" || true)
+            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}'               --max-time 20 -X POST               "http://127.0.0.1:8090/api/wesi/auth/start-v2?wesi_probe=$TOKEN" || true)
             [ "$CODE" != 404 ] && [ -n "$CODE" ] && break
             sleep 1
           done
