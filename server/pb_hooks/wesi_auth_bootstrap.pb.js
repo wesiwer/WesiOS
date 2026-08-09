@@ -250,7 +250,14 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   } catch (_) { challenge = null; }
   if (!challenge) throw new UnauthorizedError("Проверка входа истекла");
   const payload = challenge.get("payload") || {};
-  if (payload.kind !== "email-setup" || payload.ownerEmailSetup !== true || String(payload.employeeId || "") !== "owner") {
+  let ownerMarker = null;
+  try {
+    ownerMarker = e.app.findFirstRecordByFilter(
+      "wesios_records",
+      "owner='" + String(payload.userId || "") + "' && coll='system' && rid='portal-owner' && deleted=false",
+    );
+  } catch (_) { ownerMarker = null; }
+  if (payload.kind !== "email-setup" || String(payload.employeeId || "") !== "owner" || !ownerMarker) {
     throw new ForbiddenError("Для этого профиля первичная привязка почты недоступна");
   }
   const expires = Date.parse(String(payload.expiresAt || ""));
