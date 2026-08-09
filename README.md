@@ -2,7 +2,8 @@
 
 **WesiOS** — Business Operating System для Wesi Inc.
 
-> Актуальный прогресс для людей и AI: см. **[STATUS.md](STATUS.md)**  
+> Актуальное ТЗ и требования: **[TZ.md](TZ.md)**  
+> Исторический прогресс для людей и AI: **[STATUS.md](STATUS.md)**  
 > Авторизация, email OTP, сеансы и production-блокеры: **[SECURITY_STATUS.md](SECURITY_STATUS.md)**
 
 ## Основатель
@@ -35,7 +36,7 @@
   (среднее по посчитавшимся движкам). Windows-only, устанавливаются по
   требованию (баннер на Forecast + раздел в Settings) — скачивание с
   прогресс-баром/скоростью/этапами, плавающий индикатор поверх всех экранов
-- Operations screen (поиск/фильтр/сортировка/edit)
+- Operations screen (поиск/фильтр/сортировка/edit), точная дата+время и визуальная группировка по дням
 - Calculator: global overlay, pin/ESC/Delete/blur/resize
 - Audio Vault — архив битов, локальный player/FFT, аренды и календарные сроки,
   Ableton `.als` links, Music Hub/Spotify Connect и локальная ветвь
@@ -48,13 +49,19 @@
 - Calendar — Month/Week/Year, собственные события CRUD, all-day/длительность,
   daily/weekly/monthly/yearly repeat, системные напоминания, реальные дедлайны
   Tasks и recurring Treasury; собственные события синхронизируются между
-  WesiOS-устройствами
+  WesiOS-устройствами; модуль помечен как полностью готовый
 - Time Center по нажатию на часы Home — device-local будильники, напоминания,
   persistent timer и секундомер с кругами; расписания восстанавливаются на
   launch/resume. Android scheduled notifications переживают process death/reboot;
   Windows регистрирует будущие срабатывания в Task Scheduler и запускает WesiOS
   в notification-only режиме, поэтому будильник/напоминание работают и при
   закрытом обычном окне приложения
+- Home mobile UX 0.19.18 — полное имя WesiOS не скрывается на узком экране,
+  баланс показывается точно без `k/M`; часы открывают Time Center, мини-календарь — Calendar
+- Tasks/Roadmap/CRM — выбор ответственного из реального состава сотрудников + ручной вариант;
+  Audio Vault использует список сотрудников для ответственного
+- Roadmap — масштаб временной шкалы; Forecast — растянутые короткие горизонты;
+  Sandbox What-If — разовые и регулярные виртуальные доходы/траты
 - Knowledge Base linked charts — `forecast`/`analytics`/`treasury` получают
   реальные данные WesiOS вместо захардкоженных demo-серий
 - Home mobile — безопасный avatar/Hive bootstrap, компактная шапка и адаптивные
@@ -63,7 +70,7 @@
 - Обязательная почта сотрудника и двухэтапный вход: пароль → 6-значный код по email
 - Отзывные WesiOS-сеансы: удалённое завершение и автоматический выход при удалении сотрудника
 - Remembered auth token + WesiOS session ID хранятся в platform secure storage; legacy plaintext Hive session мигрируется и удаляется
-- Android launcher icon привязан к реальному WesiOS resource на всех поддерживаемых API
+- Android launcher icon переключается вслед за темой; светлая и тёмная темы используют разные resources
 - Windows fresh install: Inno Setup `wesios-windows-x64-setup.exe`, smoke-tested install/uninstall
 - Windows auto-update: portable ZIP остаётся отдельным совместимым каналом для встроенного updater
 - Production release pipeline: signed Android + Windows ZIP → GitHub `app-latest` → PocketBase `pb_public/artifacts` → публичная проверка → Windows installer
@@ -76,7 +83,7 @@
 ### Очередь
 - Tasks/Analytics/CRM deep features
 
-Полный чеклист и правила для AI → **STATUS.md**
+Актуальные требования → **TZ.md**. История решений и сессий → **STATUS.md**.
 
 ## Сборка
 
@@ -111,4 +118,4 @@ flutter build apk --release
 
 ## Версия
 
-v0.19.14 α — Private, Wesi Inc.
+v0.19.18 α (+66) — Private, Wesi Inc.
