@@ -12,15 +12,10 @@ permissions:
 jobs:
   diagnose:
     runs-on: ubuntu-latest
-    timeout-minutes: 6
+    timeout-minutes: 5
     environment:
       name: employee-portal
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 1
-
       - name: Prepare SSH
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -41,7 +36,7 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Probe owner challenge persistence safely
+      - name: Read only sanitized start-v2 request errors
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -49,99 +44,84 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${HOST:-}" && test -n "${USER:-}"
-          TOKEN=$(openssl rand -hex 24)
-          REMOTE="/tmp/wesi-auth-persist-probe-$GITHUB_RUN_ID"
-          PATCHED="$RUNNER_TEMP/wesi_auth_persist_probe.pb.js"
-          cp server/pb_hooks/wesi_auth_bootstrap.pb.js "$PATCHED"
-          cat >> "$PATCHED" <<'JS'
-
-          routerAdd("POST", "/api/wesi/internal/auth-persist-probe-__WESI_PROBE_TOKEN__", (e) => {
-            let probe = null;
-            try {
-              const marker = e.app.findFirstRecordByFilter(
-                "wesios_records",
-                "coll='system' && rid='portal-owner' && deleted=false",
-              );
-              const userId = marker.getString("owner");
-              const user = e.app.findRecordById("users", userId);
-              const challengeId = $security.randomStringWithAlphabet(
-                40,
-                "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
-              );
-              const collection = e.app.findCollectionByNameOrId("wesios_records");
-              probe = new Record(collection);
-              const createdAt = new Date().toISOString();
-              probe.set("owner", "__wesios_security__");
-              probe.set("org", "wesi-inc");
-              probe.set("coll", "security");
-              probe.set("rid", "probe-otp:" + challengeId);
-              probe.set("payload", {
-                "kind": "otp",
-                "challengeId": challengeId,
-                "userId": user.id,
-                "employeeId": "owner",
-                "login": "redacted",
-                "email": "",
-                "purpose": "app",
-                "ownerEmailSetup": false,
-                "createdAt": createdAt,
-                "expiresAt": new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-              });
-              probe.set("stamp", createdAt);
-              probe.set("deleted", false);
-              e.app.save(probe);
-              e.app.delete(probe);
-              return e.json(200, {"ok": true, "stage": "challenge_save_ok"});
-            } catch (error) {
-              try { if (probe && probe.id) e.app.delete(probe); } catch (_) {}
-              const raw = String((error && error.message) || error || "unknown");
-              const safe = raw
-                .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/g, "<redacted-email>")
-                .replace(/[A-Za-z0-9+\\/_-]{32,}/g, "<redacted-value>")
-                .substring(0, 500);
-              return e.json(422, {
-                "ok": false,
-                "stage": "challenge_save_failed",
-                "errorType": String((error && error.name) || "Error").substring(0, 80),
-                "reason": safe,
-              });
-            }
-          });
-          JS
-          sed -i "s/__WESI_PROBE_TOKEN__/$TOKEN/g" "$PATCHED"
-          node --check "$PATCHED"
-
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
-          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
-          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes             "$PATCHED" server/pb_hooks/wesi_auth_bootstrap.pb.js             "$USER@$HOST:$REMOTE/"
+          $SSH "$USER@$HOST" 'python3 -' <<'PY'
+          import json
+          import re
+          import sqlite3
 
-          $SSH "$USER@$HOST" "TOKEN='$TOKEN' REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
-          set -euo pipefail
-          HOOK=/opt/pocketbase/pb_hooks/wesi_auth_bootstrap.pb.js
-          ORIGINAL="$REMOTE/wesi_auth_bootstrap.pb.js"
-          PATCHED="$REMOTE/wesi_auth_persist_probe.pb.js"
-          test -s "$ORIGINAL" && test -s "$PATCHED"
-          restore() {
-            cat "$ORIGINAL" > "$HOOK" || true
-            chmod 0644 "$HOOK" || true
-            rm -rf "$REMOTE" || true
-          }
-          trap restore EXIT
-          cat "$PATCHED" > "$HOOK"
-          chmod 0644 "$HOOK"
+          path = "file:/opt/pocketbase/pb_data/logs.db?mode=ro"
+          con = sqlite3.connect(path, uri=True)
+          con.row_factory = sqlite3.Row
+          tables = [
+              row["name"] for row in con.execute(
+                  "select name from sqlite_master where type='table' order by name"
+              )
+          ]
+          candidates = []
+          for table in tables:
+              safe_table = table.replace('"', '""')
+              columns = {
+                  row["name"] for row in con.execute(
+                      f'pragma table_info("{safe_table}")'
+                  )
+              }
+              if {"message", "data", "created"}.issubset(columns):
+                  candidates.append(table)
 
-          CODE=''
-          for attempt in $(seq 1 20); do
-            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}'               --max-time 20 -X POST               "http://127.0.0.1:8090/api/wesi/internal/auth-persist-probe-$TOKEN" || true)
-            [ "$CODE" != 404 ] && [ -n "$CODE" ] && break
-            sleep 1
-          done
-          echo "probe_http=$CODE"
-          cat "$REMOTE/result.json" 2>/dev/null || true
-          echo
-          cat "$ORIGINAL" > "$HOOK"
-          chmod 0644 "$HOOK"
-          sleep 2
-          cmp -s "$ORIGINAL" "$HOOK"
-          echo 'temporary_probe_removed=true'
-          REMOTE_SCRIPT
+          allowed = {"status", "message", "error", "details", "method", "url", "type", "reason"}
+          email_re = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+          token_re = re.compile(r"[A-Za-z0-9+/_-]{32,}")
+          ip_re = re.compile(r"(?:\d{1,3}\.){3}\d{1,3}")
+
+          def clean(value):
+              text = str(value)
+              text = email_re.sub("<redacted-email>", text)
+              text = ip_re.sub("<redacted-ip>", text)
+              text = token_re.sub("<redacted-value>", text)
+              return text[:700]
+
+          def permitted(obj):
+              if not isinstance(obj, dict):
+                  return {}
+              result = {}
+              for key, value in obj.items():
+                  if str(key).lower() not in allowed:
+                      continue
+                  if isinstance(value, dict):
+                      result[str(key)] = permitted(value)
+                  elif isinstance(value, (str, int, float, bool)) or value is None:
+                      result[str(key)] = clean(value)
+              return result
+
+          found = []
+          for table in candidates:
+              safe_table = table.replace('"', '""')
+              rows = con.execute(
+                  f'select created, message, data from "{safe_table}" order by created desc limit 1000'
+              ).fetchall()
+              for row in rows:
+                  try:
+                      data = json.loads(row["data"] or "{}")
+                  except Exception:
+                      data = {}
+                  serialized = json.dumps(permitted(data), ensure_ascii=False)
+                  message = clean(row["message"] or "")
+                  if "/api/wesi/auth/start-v2" not in serialized and "/api/wesi/auth/start-v2" not in message:
+                      continue
+                  found.append({
+                      "created": clean(row["created"]),
+                      "message": message,
+                      "data": permitted(data),
+                  })
+                  if len(found) >= 12:
+                      break
+              if len(found) >= 12:
+                  break
+
+          print(json.dumps({
+              "log_tables_found": len(candidates),
+              "matching_entries": found,
+          }, ensure_ascii=False))
+          con.close()
+          PY
