@@ -45,13 +45,18 @@ jobs:
           set -euo pipefail
           test -n "${HOST:-}" && test -n "${USER:-}"
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
-          $SSH "$USER@$HOST" 'python3 -' <<'PY'
+          $SSH "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          DB=$(sudo -n find /opt/pocketbase -maxdepth 4 -type f -name logs.db -print -quit)
+          test -n "$DB"
+          sudo -n env WESI_LOG_DB="$DB" python3 - <<'PY'
           import json
           import re
           import sqlite3
+          import os
 
-          path = "file:/opt/pocketbase/pb_data/logs.db?mode=ro"
-          con = sqlite3.connect(path, uri=True)
+          db = os.environ["WESI_LOG_DB"]
+          con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
           con.row_factory = sqlite3.Row
           tables = [
               row["name"] for row in con.execute(
@@ -125,3 +130,4 @@ jobs:
           }, ensure_ascii=False))
           con.close()
           PY
+          REMOTE
