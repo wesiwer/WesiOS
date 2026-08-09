@@ -43,8 +43,9 @@ jobs:
           flutter pub get
           flutter analyze --no-fatal-infos
           flutter test test/horizon_top_tier_test.dart test/treasury_engines_test.dart
-          grep -q 'Data-adaptive regime' lib/features/treasury/services/forecast_engine.dart
-          grep -q '_semanticStream' lib/features/treasury/services/forecast_engine.dart
+          grep -Fq 'static const Map<CashRegime, Map<CashRegime, double>> _prior' lib/features/treasury/services/forecast_engine.dart
+          grep -Fq '_semanticStream' lib/features/treasury/services/forecast_engine.dart
+          grep -Fq 'regimeModel.transition' lib/features/treasury/services/forecast_engine.dart
 
       - name: Commit core patch when changed
         run: |
