@@ -41,7 +41,7 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Verify branded mail builder after hot reload
+      - name: Verify real start-v2 route-local mail helpers
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -50,35 +50,37 @@ jobs:
           set -euo pipefail
           test -n "${HOST:-}" && test -n "${USER:-}"
           TOKEN=$(openssl rand -hex 24)
-          REMOTE="/tmp/wesi-mail-builder-probe-$GITHUB_RUN_ID"
-          PATCHED="$RUNNER_TEMP/wesi_mail_builder_probe.pb.js"
+          REMOTE="/tmp/wesi-route-mail-probe-$GITHUB_RUN_ID"
+          PATCHED="$RUNNER_TEMP/wesi_route_mail_probe.pb.js"
           cp server/pb_hooks/wesi_auth_bootstrap.pb.js "$PATCHED"
-          cat >> "$PATCHED" <<'JS'
+          python3 - "$PATCHED" "$TOKEN" <<'PY'
+          import pathlib
+          import sys
 
-          routerAdd("POST", "/api/wesi/internal/mail-builder-probe-__WESI_PROBE_TOKEN__", (e) => {
-            try {
-              const mail = globalThis.wesiBuildOtpMail("123456", "app");
-              const html = String(mail && mail.html || "");
-              const text = String(mail && mail.text || "");
-              const count = (html.match(/123456/g) || []).length;
-              return e.json(200, {
-                "ok": true,
-                "globalBuilder": typeof globalThis.wesiBuildOtpMail === "function",
-                "template": html.indexOf("2026-08-09.mail-design-v1") >= 0,
-                "logo": html.indexOf("https://api.wesi-inc.ru/portal/app_icon.png") >= 0,
-                "codeCount": count,
-                "textFallback": text.indexOf("123456") >= 0,
-              });
-            } catch (error) {
-              return e.json(500, {
-                "ok": false,
-                "errorType": String(error && error.name || "Error").substring(0, 80),
-                "reason": String(error && error.message || error || "unknown").substring(0, 300),
-              });
-            }
-          });
-          JS
-          sed -i "s/__WESI_PROBE_TOKEN__/$TOKEN/g" "$PATCHED"
+          path = pathlib.Path(sys.argv[1])
+          token = sys.argv[2]
+          source = path.read_text()
+          needle = '  const body = e.requestInfo().body || {};\n'
+          probe = '''  if (e.request.header.get("X-Wesi-Builder-Probe") === "__TOKEN__") {
+            const mail = wesiBuildOtpMail("123456", "app");
+            const html = String(mail && mail.html || "");
+            const text = String(mail && mail.text || "");
+            return e.json(200, {
+              "ok": true,
+              "localBuilder": typeof wesiBuildOtpMail === "function",
+              "localDelivery": typeof wesiDeliverMail === "function",
+              "template": html.indexOf("2026-08-09.mail-design-v1") >= 0,
+              "logo": html.indexOf("https://api.wesi-inc.ru/portal/app_icon.png") >= 0,
+              "codeCount": (html.match(/123456/g) || []).length,
+              "textFallback": text.indexOf("123456") >= 0,
+            });
+          }
+
+          '''.replace("__TOKEN__", token)
+          if source.count(needle) != 1:
+              raise SystemExit("unexpected start-v2 source shape")
+          path.write_text(source.replace(needle, probe + needle))
+          PY
           node --check "$PATCHED"
 
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
@@ -89,7 +91,7 @@ jobs:
           set -euo pipefail
           HOOK=/opt/pocketbase/pb_hooks/wesi_auth_bootstrap.pb.js
           ORIGINAL="$REMOTE/wesi_auth_bootstrap.pb.js"
-          PATCHED="$REMOTE/wesi_mail_builder_probe.pb.js"
+          PATCHED="$REMOTE/wesi_route_mail_probe.pb.js"
           test -s "$ORIGINAL" && test -s "$PATCHED"
           restore() {
             cat "$ORIGINAL" > "$HOOK" || true
@@ -102,7 +104,7 @@ jobs:
 
           CODE=''
           for attempt in $(seq 1 20); do
-            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}'               --max-time 20 -X POST               "http://127.0.0.1:8090/api/wesi/internal/mail-builder-probe-$TOKEN" || true)
+            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}'               --max-time 20 -X POST               -H "X-Wesi-Builder-Probe: $TOKEN"               "http://127.0.0.1:8090/api/wesi/auth/start-v2" || true)
             [ "$CODE" != 404 ] && [ -n "$CODE" ] && break
             sleep 1
           done
@@ -110,7 +112,8 @@ jobs:
           echo
           test "$CODE" = 200
           grep -q '"ok":true' "$REMOTE/result.json"
-          grep -q '"globalBuilder":true' "$REMOTE/result.json"
+          grep -q '"localBuilder":true' "$REMOTE/result.json"
+          grep -q '"localDelivery":true' "$REMOTE/result.json"
           grep -q '"template":true' "$REMOTE/result.json"
           grep -q '"logo":true' "$REMOTE/result.json"
           grep -q '"codeCount":1' "$REMOTE/result.json"
