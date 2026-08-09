@@ -71,7 +71,7 @@ void main() {
 
     // Нижняя часть главной тоже существует и доступна прокруткой. Этот шаг
     // отдельно защищает узкие GlassCard-заголовки/действия от RenderFlex
-    // overflow на реальной ширине Android 360 px.
+    // overflow на реальной Android-ширине 360 px после асинхронной подгрузки.
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -420));
     await tester.pump(const Duration(milliseconds: 100));
     expect(find.byKey(const ValueKey('home_balance_card')), findsOneWidget);
