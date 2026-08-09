@@ -327,6 +327,7 @@ class ForecastResult {
     bool clearWhatIfRiskDelta = false,
     List<AccountLiquidityRisk>? accountLiquidityRisks,
     List<ForecastActionPrompt>? actionPrompts,
+    List<ForecastExplanation>? explanations,
   }) =>
       ForecastResult(
         p10: p10,
@@ -360,7 +361,7 @@ class ForecastResult {
         streamContribution: streamContribution,
         committedNetByDay: committedNetByDay,
         uncertainMedianByDay: uncertainMedianByDay,
-        explanations: explanations,
+        explanations: explanations ?? this.explanations,
         actionPrompts: actionPrompts ?? this.actionPrompts,
         scenarioSummaries: scenarioSummaries ?? this.scenarioSummaries,
         whatIfRiskDelta: clearWhatIfRiskDelta
@@ -493,11 +494,31 @@ class _StreamStats {
   }
 
   double expectedForDay(int day, int weekday, HorizonTuning tuning) {
-    final recentWeight = exp(-day / tuning.meanReversionDays);
+    // Explicit horizon contract:
+    //  1..14  — recent rhythm/facts dominate;
+    // 15..60  — recent pace mean-reverts materially;
+    // 61+     — long-run baseline dominates and recent luck dies quickly.
+    final double recentWeight;
+    if (day <= 14) {
+      recentWeight = 1.0 - 0.15 * (day / 14.0);
+    } else if (day <= 60) {
+      recentWeight =
+          0.85 * exp(-(day - 14) / (tuning.meanReversionDays * 0.90));
+    } else {
+      final at60 = 0.85 * exp(-46 / (tuning.meanReversionDays * 0.90));
+      recentWeight =
+          at60 * exp(-(day - 60) / (tuning.meanReversionDays * 0.55));
+    }
     final base = dailyBaseline + (dailyRecent - dailyBaseline) * recentWeight;
     final slopeCap = max(dailyBaseline.abs() * 0.02, volatility * 0.025);
     final cappedSlope = recentSlope.clamp(-slopeCap, slopeCap);
-    final drift = cappedSlope * day * exp(-day / tuning.trendDecayDays);
+    final horizonTrendDecay = day <= 14
+        ? 1.0
+        : day <= 60
+            ? exp(-(day - 14) / tuning.trendDecayDays)
+            : exp(-46 / tuning.trendDecayDays) *
+                exp(-(day - 60) / (tuning.trendDecayDays * 0.55));
+    final drift = cappedSlope * min(day, 60) * horizonTrendDecay;
     final seasonalityWeight =
         day <= 14 ? 1.0 : exp(-(day - 14) / tuning.seasonalityDecayDays);
     return max(0, base + drift + weekdayFactor[weekday] * seasonalityWeight);
@@ -548,22 +569,84 @@ class _StreamStats {
 class _RegimeModel {
   final CashRegime current;
   final Map<CashRegime, double> probabilities;
+  final Map<CashRegime, Map<CashRegime, double>> transitions;
 
-  const _RegimeModel(this.current, this.probabilities);
+  const _RegimeModel(this.current, this.probabilities, this.transitions);
+
+  static const Map<CashRegime, Map<CashRegime, double>> _prior = {
+    CashRegime.downturn: {
+      CashRegime.downturn: 0.64,
+      CashRegime.stable: 0.30,
+      CashRegime.growth: 0.06,
+    },
+    CashRegime.stable: {
+      CashRegime.downturn: 0.10,
+      CashRegime.stable: 0.80,
+      CashRegime.growth: 0.10,
+    },
+    CashRegime.growth: {
+      CashRegime.downturn: 0.06,
+      CashRegime.stable: 0.32,
+      CashRegime.growth: 0.62,
+    },
+  };
 
   static _RegimeModel detect(List<double> denseNet) {
     if (denseNet.length < 14) {
-      return const _RegimeModel(CashRegime.stable, {CashRegime.stable: 1});
+      return const _RegimeModel(
+        CashRegime.stable,
+        {CashRegime.stable: 1},
+        _prior,
+      );
     }
-    final baselineWindow = denseNet.length > 90
-        ? denseNet.sublist(denseNet.length - 90)
+
+    final baselineWindow = denseNet.length > 120
+        ? denseNet.sublist(denseNet.length - 120)
         : denseNet;
-    final recent = denseNet.sublist(max(0, denseNet.length - 14));
     final baseline =
         baselineWindow.reduce((a, b) => a + b) / baselineWindow.length;
+    final vol = max(1.0, _StreamStats._stdDev(baselineWindow));
+
+    CashRegime classify(List<double> values) {
+      if (values.isEmpty) return CashRegime.stable;
+      final mean = values.reduce((a, b) => a + b) / values.length;
+      final z = (mean - baseline) / vol;
+      if (z >= 0.45) return CashRegime.growth;
+      if (z <= -0.45) return CashRegime.downturn;
+      return CashRegime.stable;
+    }
+
+    // Learn transitions from non-overlapping weekly states. A Bayesian prior
+    // prevents a short history from inventing 0%/100% transition certainty.
+    final weekly = <CashRegime>[];
+    for (var end = 7; end <= denseNet.length; end += 7) {
+      weekly.add(classify(denseNet.sublist(max(0, end - 7), end)));
+    }
+    if (weekly.isEmpty) weekly.add(CashRegime.stable);
+
+    final counts = <CashRegime, Map<CashRegime, double>>{
+      for (final from in CashRegime.values)
+        from: {
+          for (final to in CashRegime.values)
+            to: (_prior[from]?[to] ?? 0) * 8.0,
+        },
+    };
+    for (var i = 1; i < weekly.length; i++) {
+      counts[weekly[i - 1]]![weekly[i]] =
+          (counts[weekly[i - 1]]![weekly[i]] ?? 0) + 1;
+    }
+    final learned = <CashRegime, Map<CashRegime, double>>{};
+    for (final from in CashRegime.values) {
+      final row = counts[from]!;
+      final total = row.values.fold<double>(0, (a, b) => a + b);
+      learned[from] = {
+        for (final to in CashRegime.values) to: row[to]! / total,
+      };
+    }
+
+    final recent = denseNet.sublist(max(0, denseNet.length - 14));
     final recentMean = recent.reduce((a, b) => a + b) / recent.length;
-    final vol = _StreamStats._stdDev(baselineWindow);
-    final z = vol <= 1e-9 ? 0.0 : (recentMean - baseline) / vol;
+    final z = (recentMean - baseline) / vol;
     final growthRaw = _sigmoid(z - 0.25);
     final downturnRaw = _sigmoid(-z - 0.25);
     final stableRaw = exp(-z.abs() * 0.8);
@@ -575,7 +658,7 @@ class _RegimeModel {
     };
     final current =
         probs.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
-    return _RegimeModel(current, probs);
+    return _RegimeModel(current, probs, learned);
   }
 
   static double _sigmoid(double x) => 1 / (1 + exp(-x));
@@ -583,26 +666,8 @@ class _RegimeModel {
   static CashRegime sampleInitial(Random rng, Map<CashRegime, double> p) =>
       _sample(rng, p);
 
-  static CashRegime transition(Random rng, CashRegime from) {
-    final probs = switch (from) {
-      CashRegime.downturn => const {
-          CashRegime.downturn: 0.72,
-          CashRegime.stable: 0.24,
-          CashRegime.growth: 0.04,
-        },
-      CashRegime.stable => const {
-          CashRegime.downturn: 0.08,
-          CashRegime.stable: 0.84,
-          CashRegime.growth: 0.08,
-        },
-      CashRegime.growth => const {
-          CashRegime.downturn: 0.04,
-          CashRegime.stable: 0.26,
-          CashRegime.growth: 0.70,
-        },
-    };
-    return _sample(rng, probs);
-  }
+  CashRegime transition(Random rng, CashRegime from) =>
+      _sample(rng, transitions[from] ?? _prior[from]!);
 
   static CashRegime _sample(Random rng, Map<CashRegime, double> p) {
     final value = rng.nextDouble();
@@ -983,7 +1048,7 @@ class ForecastEngine {
         final day = i + 1;
         final futureDay = todayOnly.add(Duration(days: day));
         final weekday = futureDay.weekday - 1;
-        if (i > 0 && i % 7 == 0) regime = _RegimeModel.transition(rng, regime);
+        if (i > 0 && i % 7 == 0) regime = regimeModel.transition(rng, regime);
 
         var expectedIncome = 0.0;
         var expectedExpense = 0.0;
@@ -1304,22 +1369,69 @@ class ForecastEngine {
     return ForecastConfidence.high;
   }
 
+  static String _semanticStream(TransactionModel tx) {
+    final rawCategory = (tx.category ?? '').trim().toLowerCase();
+    final text = '${tx.category ?? ''} ${tx.title} ${tx.description ?? ''}'
+        .toLowerCase();
+    bool any(List<String> words) => words.any(text.contains);
+    if (any(const [
+      'beat',
+      'бит',
+      'music',
+      'музык',
+      'royalty',
+      'роял',
+      'lease',
+      'аренд'
+    ])) return 'music';
+    if (any(const [
+      'service',
+      'услуг',
+      'freelance',
+      'фриланс',
+      'consult',
+      'сведен',
+      'mix',
+      'master',
+      'таргет',
+      'design',
+      'дизайн'
+    ])) return 'services';
+    if (any(const ['salary', 'payroll', 'зарплат', 'оклад'])) return 'payroll';
+    if (any(const ['tax', 'налог', 'ндс', 'взнос'])) return 'taxes';
+    if (any(const ['marketing', 'реклам', 'promotion', 'продвиж'])) {
+      return 'marketing';
+    }
+    if (any(const [
+      'server',
+      'сервер',
+      'hosting',
+      'хостинг',
+      'software',
+      'софт',
+      'infrastructure',
+      'инфраструктур'
+    ])) return 'infrastructure';
+    if (any(const ['personal', 'личн', 'еда', 'food', 'rent', 'квартир'])) {
+      return 'personal';
+    }
+    return rawCategory.isEmpty ? 'other' : rawCategory;
+  }
+
   static List<String> _topStreamKeys(List<TransactionModel> txs) {
     final totals = <String, double>{};
     for (final tx in txs) {
-      final raw = (tx.category ?? '').trim();
-      final key = raw.isEmpty ? 'other' : raw;
+      final key = _semanticStream(tx);
       totals[key] = (totals[key] ?? 0) + tx.amount.abs();
     }
     final sorted = totals.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
-    if (sorted.length <= 6) return sorted.map((e) => e.key).toList();
-    return [...sorted.take(5).map((e) => e.key), 'other'];
+    if (sorted.length <= 8) return sorted.map((e) => e.key).toList();
+    return [...sorted.take(7).map((e) => e.key), 'other'];
   }
 
   static String _streamKey(TransactionModel tx, List<String> topKeys) {
-    final raw = (tx.category ?? '').trim();
-    final key = raw.isEmpty ? 'other' : raw;
+    final key = _semanticStream(tx);
     return topKeys.contains(key) ? key : 'other';
   }
 
@@ -1366,53 +1478,75 @@ class ForecastEngine {
     final period = recurring.recurringPeriod;
     if (period == null) return 1;
 
-    var earliest = today;
-    for (final tx in all) {
-      final d = DateTime(tx.date.year, tx.date.month, tx.date.day);
-      if (!d.isAfter(today) && d.isBefore(earliest)) earliest = d;
-    }
-    final observedSpan = today.difference(earliest).inDays + 1;
-    final minimumObservation = switch (period) {
-      RecurringPeriod.daily => 7,
-      RecurringPeriod.weekly => 21,
-      RecurringPeriod.monthly => 90,
-      RecurringPeriod.yearly => 365,
+    final lookback = switch (period) {
+      RecurringPeriod.daily => 45,
+      RecurringPeriod.weekly => 140,
+      RecurringPeriod.monthly => 540,
+      RecurringPeriod.yearly => 365 * 4,
     };
-    if (observedSpan < minimumObservation) return 1.0;
+    final graceDays = switch (period) {
+      RecurringPeriod.daily => 1,
+      RecurringPeriod.weekly => 2,
+      RecurringPeriod.monthly => 5,
+      RecurringPeriod.yearly => 14,
+    };
+    final start = today.subtract(Duration(days: lookback));
 
-    final children = all.where((tx) {
+    var occurrence = recurring.date;
+    var guard = 0;
+    while (occurrence.isBefore(start) && guard++ < 10000) {
+      occurrence = RecurringEngine.advance(occurrence, period);
+    }
+    final expectedDates = <DateTime>[];
+    while (!occurrence.isAfter(today) && guard++ < 10000) {
+      if (!occurrence.isBefore(start)) {
+        expectedDates
+            .add(DateTime(occurrence.year, occurrence.month, occurrence.day));
+      }
+      occurrence = RecurringEngine.advance(occurrence, period);
+    }
+    if (expectedDates.length < 2) return 1.0;
+
+    final candidates = all.where((tx) {
+      if (tx.isRecurring || tx.type != recurring.type) return false;
       if (tx.id.startsWith('${recurring.id}_')) {
-        // Auto-materialized income proves only that WesiOS generated a row,
-        // not that money actually arrived. Expenses remain committed cash.
+        // Auto-materialized expenses represent obligations paid by WesiOS's
+        // ledger convention. Auto income is not proof that cash arrived.
         return recurring.type == TransactionType.expense;
       }
-      if (tx.isRecurring) return false;
-      return tx.title == recurring.title &&
-          tx.type == recurring.type &&
-          (tx.amount - recurring.amount).abs() <=
-              max(1, recurring.amount * 0.01);
+      final sameAmount = (tx.amount - recurring.amount).abs() <=
+          max(2.0, recurring.amount.abs() * 0.05);
+      final sameTitle =
+          tx.title.trim().toLowerCase() == recurring.title.trim().toLowerCase();
+      return sameAmount && sameTitle;
     }).toList();
 
-    final lookback = switch (period) {
-      RecurringPeriod.daily => 30,
-      RecurringPeriod.weekly => 84,
-      RecurringPeriod.monthly => 365,
-      RecurringPeriod.yearly => 365 * 3,
-    };
-    final observedWindow = min(lookback, observedSpan);
-    final recentChildren = children
-        .where((e) =>
-            e.date.isAfter(today.subtract(Duration(days: observedWindow))))
-        .length;
-    final expected = switch (period) {
-      RecurringPeriod.daily => observedWindow,
-      RecurringPeriod.weekly => max(1, (observedWindow / 7).floor()),
-      RecurringPeriod.monthly => max(1, (observedWindow / 30.44).floor()),
-      RecurringPeriod.yearly => max(1, (observedWindow / 365).floor()),
-    };
-    return ((recentChildren + 3.0) / (expected + 4.0))
-        .clamp(0.15, 1.0)
-        .toDouble();
+    var successes = 0;
+    final used = <String>{};
+    for (final due in expectedDates) {
+      TransactionModel? match;
+      var bestDistance = graceDays + 1;
+      for (final tx in candidates) {
+        if (used.contains(tx.id)) continue;
+        final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
+        final distance = day.difference(due).inDays.abs();
+        if (distance <= graceDays && distance < bestDistance) {
+          match = tx;
+          bestDistance = distance;
+        }
+      }
+      if (match != null) {
+        used.add(match.id);
+        successes++;
+      }
+    }
+
+    // Beta prior: small samples stay near 75% instead of becoming fake 0/100.
+    final reliability = (successes + 3.0) / (expectedDates.length + 4.0);
+    if (recurring.type == TransactionType.expense) {
+      return max(0.95, reliability).clamp(0.95, 1.0).toDouble();
+    }
+    return reliability.clamp(0.15, 1.0).toDouble();
   }
 
   static List<double> _netWeekdayFactor(
