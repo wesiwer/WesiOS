@@ -1,0 +1,80 @@
+name: Check WesiOS production mail
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    if: github.head_ref == 'ci/check-production-mail'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${USER:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Diagnose self-hosted mail transport
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set +e
+          echo "=== SERVICES ==="
+          printf 'postfix='; systemctl is-active postfix 2>/dev/null || true
+          printf 'opendkim='; systemctl is-active opendkim 2>/dev/null || true
+          printf 'pocketbase='; systemctl is-active pocketbase.service 2>/dev/null || true
+          printf 'sendmail='; command -v sendmail || true
+          printf 'postfix_check='; postfix check >/tmp/wesi-postfix-check.out 2>&1; rc=$?; echo "$rc"; cat /tmp/wesi-postfix-check.out; rm -f /tmp/wesi-postfix-check.out
+
+          echo "=== POSTFIX ==="
+          postconf -h myhostname 2>/dev/null | sed 's/^/myhostname=/' || true
+          postconf -h inet_interfaces 2>/dev/null | sed 's/^/inet_interfaces=/' || true
+          postconf -h relayhost 2>/dev/null | sed 's/^/relayhost=/' || true
+          postconf -h non_smtpd_milters 2>/dev/null | sed 's/^/milters=/' || true
+
+          echo "=== NETWORK ==="
+          if timeout 10 bash -c 'cat < /dev/null > /dev/tcp/gmail-smtp-in.l.google.com/25' 2>/dev/null; then
+            echo 'OUTBOUND_TCP25=OPEN'
+          else
+            echo 'OUTBOUND_TCP25=BLOCKED'
+          fi
+
+          echo "=== DNS ==="
+          printf 'A_mail='; dig +short A mail.wesi-inc.ru 2>/dev/null | paste -sd, - || true
+          printf 'PTR='; dig +short -x 185.221.199.19 2>/dev/null | paste -sd, - || true
+          printf 'SPF='; dig +short TXT wesi-inc.ru 2>/dev/null | grep -i 'v=spf1' | paste -sd' ' - || true
+          printf 'DKIM='; dig +short TXT wesios._domainkey.wesi-inc.ru 2>/dev/null | head -c 180 || true; echo
+          printf 'DMARC='; dig +short TXT _dmarc.wesi-inc.ru 2>/dev/null | head -c 180 || true; echo
+
+          echo "=== QUEUE ==="
+          mailq 2>/dev/null | tail -n 12 || true
+          REMOTE
+
+      - name: Check WesiOS mail readiness endpoint
+        run: |
+          set -euo pipefail
+          code=$(curl -sS -o mail-ready.json -w '%{http_code}' --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/mail-ready || true)
+          echo "HTTP=$code"
+          cat mail-ready.json 2>/dev/null || true
