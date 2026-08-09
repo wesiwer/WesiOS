@@ -16,14 +16,14 @@ jobs:
   apply-calibration-truth-ui:
     if: github.head_ref == 'agent/horizon-top-tier'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 22
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/horizon-top-tier
           fetch-depth: 1
 
-      - name: Apply truth-first calibration evidence UI
+      - name: Apply final truth-first patches
         run: |
           set -euo pipefail
           python3 -m py_compile tooling/horizon_truth_ui_patch.py
@@ -41,6 +41,8 @@ jobs:
           set -euo pipefail
           dart format \
             lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/services/treasury_service.dart \
+            lib/features/treasury/services/horizon_behavior_monitor.dart \
             lib/features/treasury/widgets/horizon_decision_panel.dart
           flutter pub get
           flutter analyze --no-fatal-infos
@@ -49,17 +51,22 @@ jobs:
             test/horizon_completion_test.dart \
             test/horizon_explainability_probability_test.dart
           grep -Fq 'calibrationSamples' lib/features/treasury/services/forecast_engine.dart
+          grep -Fq 'autoMaterializedIncome' lib/features/treasury/services/forecast_engine.dart
+          grep -Fq 'Income is NOT auto-posted as actual cash' lib/features/treasury/services/treasury_service.dart
+          grep -Fq 'legacyAutoIncome' lib/features/treasury/services/horizon_behavior_monitor.dart
           grep -Fq 'нет оценки · цель 80%' lib/features/treasury/widgets/horizon_decision_panel.dart
           git add \
             lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/services/treasury_service.dart \
+            lib/features/treasury/services/horizon_behavior_monitor.dart \
             lib/features/treasury/widgets/horizon_decision_panel.dart
           if git diff --cached --quiet; then
-            echo 'Truth UI already committed.'
+            echo 'Final truth patches already committed.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(horizon): distinguish calibration target from measured evidence'
+          git commit -m 'fix(horizon): make recurring income execution evidence-only'
           git push origin HEAD:agent/horizon-top-tier
 
   analyze-and-test:
