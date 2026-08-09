@@ -39,6 +39,7 @@ import 'features/team/services/team_service.dart';
 import 'features/treasury/models/account_model.dart';
 import 'features/treasury/models/transaction_model.dart';
 import 'features/treasury/services/recurring_payment_automation.dart';
+import 'features/time_center/services/time_schedule_automation.dart';
 
 bool get isDesktop {
   if (kIsWeb) return false;
@@ -97,6 +98,9 @@ void main() async {
   // and when WesiOS returns from background. The automation is single-flight
   // and throttled; Sandbox remains intentionally isolated.
   RecurringPaymentAutomation.shared.start();
+
+  // Restore Calendar/Time Center schedules after Hive is ready.
+  TimeScheduleAutomation.shared.start();
 
   // Auth token + revocable session id live in OS-protected storage, not Hive.
   // This also performs a one-time migration from old plaintext `sync_session`.

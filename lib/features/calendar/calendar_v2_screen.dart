@@ -839,6 +839,7 @@ class _CalendarScreenState extends State<CalendarScreen> {
                   TextField(
                     controller: title,
                     autofocus: event == null,
+                    onChanged: (_) => setDialogState(() {}),
                     decoration:
                         InputDecoration(labelText: _ru ? 'Название' : 'Title'),
                   ),

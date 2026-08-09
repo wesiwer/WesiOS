@@ -346,11 +346,11 @@ class _DashboardTabState extends State<_DashboardTab> {
                     const SizedBox(height: 14),
                     Tooltip(
                       message: WesiLocale.isRussian
-                          ? 'Открыть календарь · долгий тап — стиль часов'
-                          : 'Open calendar · long-press for clock style',
+                          ? 'Открыть центр времени · долгий тап — стиль часов'
+                          : 'Open Time Center · long-press for clock style',
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
-                        onTap: () => Navigator.pushNamed(context, '/calendar'),
+                        onTap: () => Navigator.pushNamed(context, '/time'),
                         onLongPress: () {
                           final next =
                               WesiClock.savedStyle == ClockStyle.digital

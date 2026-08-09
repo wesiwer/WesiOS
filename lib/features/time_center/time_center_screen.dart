@@ -736,6 +736,7 @@ class _TimeCenterScreenState extends State<TimeCenterScreen> {
                   TextField(
                     controller: title,
                     autofocus: original == null,
+                    onChanged: (_) => setDialogState(() {}),
                     decoration: InputDecoration(
                         labelText: _ru ? 'Что напомнить' : 'Title'),
                   ),
