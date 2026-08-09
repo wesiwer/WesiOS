@@ -40,6 +40,27 @@ replace(
     'ForecastEngine returns evidence metadata',
 )
 
+# Auto-materialized recurring income is a schedule artifact, not evidence that
+# money actually arrived. Keep the parent recurring contract, but exclude its
+# generated income children from statistical baseline/shock learning.
+replace(
+    engine,
+    '''    final recurringIds = recurringTxs.map((e) => e.id).toSet();\n    final nonRecurring =\n        history.where((e) => !recurringIds.contains(e.id)).toList();''',
+    '''    final recurringIds = recurringTxs.map((e) => e.id).toSet();\n    final recurringIncomeIds = recurringTxs\n        .where((e) => e.type == TransactionType.income)\n        .map((e) => e.id)\n        .toList();\n    bool autoMaterializedIncome(TransactionModel tx) =>\n        !tx.isRecurring &&\n        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));\n    final nonRecurring = history\n        .where((e) =>\n            !recurringIds.contains(e.id) && !autoMaterializedIncome(e))\n        .toList();''',
+    'exclude auto-materialized recurring income from statistical history',
+)
+
+# A recurring parent can be advanced to its latest processed occurrence by
+# TreasuryService. Reconstruct past expected due dates backwards from the
+# latest occurrence <= today instead of assuming recurring.date is the
+# original historical anchor.
+replace(
+    engine,
+    '''    final start = today.subtract(Duration(days: lookback));\n\n    var occurrence = recurring.date;\n    var guard = 0;\n    while (occurrence.isBefore(start) && guard++ < 10000) {\n      occurrence = RecurringEngine.advance(occurrence, period);\n    }\n    final expectedDates = <DateTime>[];\n    while (!occurrence.isAfter(today) && guard++ < 10000) {\n      if (!occurrence.isBefore(start)) {\n        expectedDates\n            .add(DateTime(occurrence.year, occurrence.month, occurrence.day));\n      }\n      occurrence = RecurringEngine.advance(occurrence, period);\n    }\n    if (expectedDates.length < 2) return 1.0;''',
+    '''    final start = today.subtract(Duration(days: lookback));\n    final anchor =\n        DateTime(recurring.date.year, recurring.date.month, recurring.date.day);\n    if (anchor.isAfter(today)) return 1.0;\n\n    // Bring an old original anchor forward to the latest expected occurrence\n    // not after today. If TreasuryService has already advanced the parent,\n    // this loop is naturally a no-op or only a few iterations.\n    var latest = anchor;\n    var guard = 0;\n    while (guard++ < 10000) {\n      final next = RecurringEngine.advance(latest, period);\n      if (next.isAfter(today)) break;\n      latest = next;\n    }\n\n    DateTime previousOccurrence(DateTime date) {\n      switch (period) {\n        case RecurringPeriod.daily:\n          return date.subtract(const Duration(days: 1));\n        case RecurringPeriod.weekly:\n          return date.subtract(const Duration(days: 7));\n        case RecurringPeriod.monthly:\n          var year = date.year;\n          var month = date.month - 1;\n          if (month < 1) {\n            year--;\n            month = 12;\n          }\n          final lastDay = DateTime(year, month + 1, 0).day;\n          return DateTime(year, month, min(date.day, lastDay));\n        case RecurringPeriod.yearly:\n          final year = date.year - 1;\n          final lastDay = DateTime(year, date.month + 1, 0).day;\n          return DateTime(year, date.month, min(date.day, lastDay));\n      }\n    }\n\n    final expectedDates = <DateTime>[];\n    var occurrence = latest;\n    guard = 0;\n    while (!occurrence.isBefore(start) && guard++ < 10000) {\n      expectedDates.add(occurrence);\n      occurrence = previousOccurrence(occurrence);\n    }\n    expectedDates.sort();\n    if (expectedDates.length < 2) return 1.0;''',
+    'reconstruct recurring execution schedule backwards from advanced anchor',
+)
+
 replace(
     panel,
     '''              Expanded(\n                child: _progress(\n                  _ru ? 'Калибровка P10–P90' : 'P10–P90 coverage',\n                  forecast.calibrationCoverage,\n                  target: .8,\n                ),\n              ),''',
