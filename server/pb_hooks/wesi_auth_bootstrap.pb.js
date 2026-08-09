@@ -15,7 +15,7 @@ routerAdd("GET", "/api/wesi/auth/version", (e) => {
     }
   } catch (_) {}
   return e.json(jsonReadable ? 200 : 503, {
-    "version": "2026-08-09.owner-email-v9",
+    "version": "2026-08-09.owner-email-v10",
     "jsonReadable": jsonReadable,
   });
 });
@@ -191,9 +191,15 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
   const valueObject = (record) => {
     if (!record) return {};
     try {
-      const model = new DynamicModel({"email": "", "fullName": "", "name": ""});
+      const model = new DynamicModel({
+        "employeeId": "",
+        "email": "",
+        "fullName": "",
+        "name": "",
+      });
       record.unmarshalJSONField("payload", model);
       return {
+        "employeeId": String(model.employeeId || ""),
         "email": String(model.email || ""),
         "fullName": String(model.fullName || ""),
         "name": String(model.name || ""),
@@ -624,7 +630,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   return e.json(200, {
     "challengeId": challengeId,
     "maskedEmail": maskEmail(email),
-    "authVersion": "2026-08-09.owner-email-v9",
+    "authVersion": "2026-08-09.owner-email-v10",
     "expiresInSeconds": 600,
   });
 });

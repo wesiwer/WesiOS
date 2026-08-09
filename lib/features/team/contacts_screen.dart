@@ -89,6 +89,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       return;
     }
 
+    final alreadyActive = EmployeeAdminService.isActivated(employee.id);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -97,7 +98,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
           borderRadius: BorderRadius.circular(18),
         ),
         title: Text(
-          _ru ? 'Повторить активацию?' : 'Retry activation?',
+          alreadyActive
+              ? (_ru ? 'Переактивировать сотрудника?' : 'Reactivate employee?')
+              : (_ru ? 'Повторить активацию?' : 'Retry activation?'),
           style: TextStyle(
             fontSize: 17,
             fontWeight: FontWeight.w700,
@@ -666,6 +669,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     final canRetry = !active && !busy && (error.isNotEmpty || stalled);
     final canActivate = !active && !busy && attempted == null;
+    final canReactivate = active && !busy;
     final attemptText = attempted == null
         ? ''
         : '${_ru ? 'Последняя попытка' : 'Last attempt'}: '
@@ -684,7 +688,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     : label,
             child: tag,
           ),
-          if (canRetry || canActivate) ...[
+          if (canReactivate || canRetry || canActivate) ...[
             const SizedBox(height: 6),
             TextButton.icon(
               style: TextButton.styleFrom(
@@ -696,13 +700,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
               ),
               onPressed: () => _retryActivation(employee),
               icon: Icon(
-                canRetry ? Icons.refresh_rounded : Icons.person_add_alt_1,
+                canActivate ? Icons.person_add_alt_1 : Icons.refresh_rounded,
                 size: 14,
               ),
               label: Text(
-                canRetry
-                    ? (_ru ? 'Повторить активацию' : 'Retry activation')
-                    : (_ru ? 'Активировать вручную' : 'Activate manually'),
+                canReactivate
+                    ? (_ru ? 'Переактивировать' : 'Reactivate')
+                    : canRetry
+                        ? (_ru ? 'Повторить активацию' : 'Retry activation')
+                        : (_ru ? 'Активировать вручную' : 'Activate manually'),
                 style: const TextStyle(
                     fontSize: 10.5, fontWeight: FontWeight.w700),
               ),

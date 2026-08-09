@@ -451,13 +451,50 @@ routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
   link.set("deleted", false);
   e.app.save(link);
 
+  let verifiedUser = null;
+  try {
+    verifiedUser = e.app.findAuthRecordByEmail("users", email);
+  } catch (_) {
+    verifiedUser = null;
+  }
+  if (!verifiedUser || verifiedUser.id !== record.id || !verifiedUser.validatePassword(password)) {
+    throw new InternalServerError("Сервер не подтвердил созданные данные входа сотрудника");
+  }
+
+  let verifiedLink = null;
+  try {
+    verifiedLink = e.app.findFirstRecordByFilter(
+      "wesios_records",
+      "coll='system' && rid='" + linkRid + "' && deleted=false",
+    );
+  } catch (_) {
+    verifiedLink = null;
+  }
+  if (!verifiedLink || verifiedLink.getString("owner") !== e.auth.id) {
+    throw new InternalServerError("Сервер не подтвердил привязку профиля сотрудника");
+  }
+
+  let verifiedEmployeeId = "";
+  try {
+    const verifyModel = new DynamicModel({"employeeId": ""});
+    verifiedLink.unmarshalJSONField("payload", verifyModel);
+    verifiedEmployeeId = String(verifyModel.employeeId || "");
+  } catch (_) {
+    verifiedEmployeeId = "";
+  }
+  if (!verifiedEmployeeId || verifiedEmployeeId !== String(body.employeeId || login)) {
+    throw new InternalServerError("Серверная привязка сотрудника не прошла проверку");
+  }
+
   return e.json(created ? 201 : 200, {
-    "id": record.id,
-    "email": record.getString("email"),
-    "name": record.getString("name"),
+    "id": verifiedUser.id,
+    "email": verifiedUser.getString("email"),
+    "name": verifiedUser.getString("name"),
     "login": login,
+    "employeeId": verifiedEmployeeId,
     "created": created,
     "linked": true,
+    "verified": true,
   });
 }, $apis.requireAuth("users"));
 
