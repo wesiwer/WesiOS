@@ -23,7 +23,8 @@ class HorizonTuning {
   HorizonTuning clamped() => HorizonTuning(
         meanReversionDays: meanReversionDays.clamp(21.0, 120.0).toDouble(),
         trendDecayDays: trendDecayDays.clamp(14.0, 90.0).toDouble(),
-        seasonalityDecayDays: seasonalityDecayDays.clamp(30.0, 180.0).toDouble(),
+        seasonalityDecayDays:
+            seasonalityDecayDays.clamp(30.0, 180.0).toDouble(),
         regimeStrength: regimeStrength.clamp(0.35, 1.5).toDouble(),
         lowDataUncertainty: lowDataUncertainty.clamp(1.2, 3.0).toDouble(),
       );
@@ -42,8 +43,7 @@ class HorizonTuning {
         trendDecayDays: (json['trendDecayDays'] as num?)?.toDouble() ?? 28,
         seasonalityDecayDays:
             (json['seasonalityDecayDays'] as num?)?.toDouble() ?? 75,
-        regimeStrength:
-            (json['regimeStrength'] as num?)?.toDouble() ?? 1,
+        regimeStrength: (json['regimeStrength'] as num?)?.toDouble() ?? 1,
         lowDataUncertainty:
             (json['lowDataUncertainty'] as num?)?.toDouble() ?? 1.65,
       ).clamped();
@@ -63,6 +63,7 @@ class RiskCalibrationBin {
   });
 
   bool contains(double p) => p >= lower && (p < upper || upper >= 1);
+  double get midpoint => ((lower + min(upper, 1.0)) / 2).clamp(0.0, 1.0);
 
   Map<String, dynamic> toJson() => {
         'lower': lower,
@@ -105,16 +106,56 @@ class HorizonCalibrationBucket {
     this.samples = 0,
   });
 
+  /// Monotone empirical probability calibration.
+  ///
+  /// Sparse bins are Bayesian-shrunk toward their predicted midpoint. The
+  /// resulting calibration curve is forced to be non-decreasing and then
+  /// linearly interpolated. This avoids impossible behavior such as a raw 30%
+  /// gap risk being calibrated below a raw 10% risk merely because adjacent
+  /// bins were noisy.
   double calibrateRisk(double probability) {
     final p = probability.clamp(0.0, 1.0).toDouble();
     if (riskBins.isEmpty) return p;
-    for (final bin in riskBins) {
-      if (!bin.contains(p)) continue;
-      // Shrink sparse empirical bins back toward the model probability. This
-      // avoids turning two historical events into a fake 0%/100% certainty.
-      const prior = 12.0;
-      return ((bin.observedRate * bin.samples) + (p * prior)) /
+
+    final ordered = [...riskBins]..sort((a, b) => a.midpoint.compareTo(b.midpoint));
+    const prior = 12.0;
+    final x = <double>[];
+    final y = <double>[];
+    var floor = 0.0;
+    for (final bin in ordered) {
+      if (bin.samples <= 0) continue;
+      final center = bin.midpoint;
+      final shrunk = ((bin.observedRate.clamp(0.0, 1.0) * bin.samples) +
+              (center * prior)) /
           (bin.samples + prior);
+      final monotone = max(floor, shrunk).clamp(0.0, 1.0).toDouble();
+      x.add(center);
+      y.add(monotone);
+      floor = monotone;
+    }
+    if (x.isEmpty) return p;
+    if (x.length == 1) {
+      final evidence = min(1.0, ordered.first.samples / 40.0);
+      return (p * (1 - evidence) + y.first * evidence)
+          .clamp(0.0, 1.0)
+          .toDouble();
+    }
+    if (p <= x.first) {
+      final slope = (y[1] - y[0]) / max(1e-9, x[1] - x[0]);
+      return (y.first + slope * (p - x.first)).clamp(0.0, 1.0).toDouble();
+    }
+    if (p >= x.last) {
+      final n = x.length;
+      final slope = (y[n - 1] - y[n - 2]) /
+          max(1e-9, x[n - 1] - x[n - 2]);
+      return (y.last + slope * (p - x.last)).clamp(0.0, 1.0).toDouble();
+    }
+    for (var i = 1; i < x.length; i++) {
+      if (p > x[i]) continue;
+      final t = (p - x[i - 1]) / max(1e-9, x[i] - x[i - 1]);
+      return (y[i - 1] + (y[i] - y[i - 1]) * t)
+          .clamp(0.0, 1.0)
+          .toDouble();
     }
     return p;
   }
@@ -133,8 +174,11 @@ class HorizonCalibrationBucket {
   factory HorizonCalibrationBucket.fromJson(Map<String, dynamic> json) =>
       HorizonCalibrationBucket(
         horizonDays: (json['horizonDays'] as num?)?.toInt() ?? 30,
-        intervalScale:
-            (json['intervalScale'] as num?)?.toDouble().clamp(0.55, 3.0).toDouble() ?? 1,
+        intervalScale: (json['intervalScale'] as num?)
+                ?.toDouble()
+                .clamp(0.55, 3.0)
+                .toDouble() ??
+            1,
         biasCorrection:
             (json['biasCorrection'] as num?)?.toDouble() ?? 0,
         coverage: (json['coverage'] as num?)?.toDouble() ?? 0.8,
@@ -234,13 +278,20 @@ class HorizonTuningCandidates {
 /// Coverage target of a P10..P90 interval.
 const double horizonTargetCoverage = 0.80;
 
-/// Width calibration: under-coverage expands aggressively; persistent 100%
-/// coverage is allowed to narrow. The output is bounded so a noisy backtest
-/// cannot explode or collapse the forecast in one month.
-double intervalScaleFromCoverage(double coverage) {
-  if (!coverage.isFinite || coverage <= 0) return 1.8;
-  final raw = horizonTargetCoverage / coverage;
-  return raw.clamp(0.65, 2.5).toDouble();
+/// Width calibration with explicit error-awareness.
+///
+/// Severe under-coverage expands faster than the naive 0.8/coverage ratio.
+/// Conversely, a near-100% interval that still has huge MAPE is recognized as
+/// an uninformatively wide band and is narrowed more aggressively. Bounds
+/// prevent one bad month from exploding or collapsing future uncertainty.
+double intervalScaleFromCoverage(double coverage, {double? mape}) {
+  if (!coverage.isFinite || coverage <= 0) return 1.9;
+  var raw = horizonTargetCoverage / coverage;
+  if (coverage < 0.65) raw *= 1.10;
+  if (coverage >= 0.95 && mape != null && mape.isFinite && mape > 40) {
+    raw *= 0.85;
+  }
+  return raw.clamp(0.55, 2.75).toDouble();
 }
 
 double pinballLoss(double actual, double predicted, double quantile) {
