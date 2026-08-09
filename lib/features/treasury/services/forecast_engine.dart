@@ -1,11 +1,11 @@
 import 'dart:math';
+
 import '../models/transaction_model.dart';
-import 'anomaly_engine.dart';
+import 'horizon_calibration.dart';
 import 'recurring_engine.dart';
 
-/// Один гипотетический будущий доход/расход для сценария «Что если?».
-/// Не пишется в базу — существует только на время одного вызова
-/// [ForecastEngine.generate].
+/// One hypothetical future income/expense for What-If. It never touches the
+/// real Treasury ledger.
 class WhatIfEvent {
   final String title;
   final double amount;
@@ -24,73 +24,232 @@ class WhatIfEvent {
   bool get isRecurring => recurringPeriod != null;
 }
 
-/// Виртуальный сценарий «Что если?»: одноразовые события + процентная
-/// корректировка будущих доходов/расходов. Ничего из этого не трогает
-/// реальные транзакции — параметр передаётся в один конкретный вызов
-/// [ForecastEngine.generate] и не сохраняется.
+/// Virtual scenario. New stress fields are optional so old saved presets keep
+/// their exact semantics.
 class WhatIfScenario {
   final List<WhatIfEvent> events;
-
-  /// 1.0 — без изменений, 0.8 — доходы на 20% меньше, 1.2 — на 20% больше.
   final double incomeMultiplier;
-
-  /// 1.0 — без изменений, 1.3 — расходы на 30% больше.
   final double expenseMultiplier;
+
+  /// Delay all uncertain incoming cash by this many days. Used by the stress
+  /// library; zero preserves the old behaviour.
+  final int incomeDelayDays;
+
+  /// For the first N days the main uncertain income stream is mostly absent.
+  /// This represents losing the main source without pretending it lasts
+  /// forever.
+  final int mainIncomeLossDays;
+
+  /// Immediate unexpected expense on day 1.
+  final double oneOffExpenseShock;
 
   const WhatIfScenario({
     this.events = const [],
     this.incomeMultiplier = 1.0,
     this.expenseMultiplier = 1.0,
+    this.incomeDelayDays = 0,
+    this.mainIncomeLossDays = 0,
+    this.oneOffExpenseShock = 0,
   });
 
   bool get isEmpty =>
-      events.isEmpty && incomeMultiplier == 1.0 && expenseMultiplier == 1.0;
+      events.isEmpty &&
+      incomeMultiplier == 1.0 &&
+      expenseMultiplier == 1.0 &&
+      incomeDelayDays == 0 &&
+      mainIncomeLossDays == 0 &&
+      oneOffExpenseShock == 0;
+
+  WhatIfScenario merge(WhatIfScenario other) => WhatIfScenario(
+        events: [...events, ...other.events],
+        incomeMultiplier: incomeMultiplier * other.incomeMultiplier,
+        expenseMultiplier: expenseMultiplier * other.expenseMultiplier,
+        incomeDelayDays: max(incomeDelayDays, other.incomeDelayDays),
+        mainIncomeLossDays:
+            max(mainIncomeLossDays, other.mainIncomeLossDays),
+        oneOffExpenseShock: oneOffExpenseShock + other.oneOffExpenseShock,
+      );
 
   static const WhatIfScenario none = WhatIfScenario();
 }
 
-/// Результат прогноза с диагностикой — не просто три ряда чисел, а понятная
-/// оценка того, насколько прогнозу можно доверять, плюс оценка риска
-/// кассового разрыва.
+enum ForecastConfidence { insufficient, low, medium, high }
+
+enum CashRegime { downturn, stable, growth }
+
+enum ForecastPromptSeverity { info, warning, critical }
+
+class HorizonCashEvent {
+  final String title;
+
+  /// Signed amount: income positive, expense negative.
+  final double amount;
+  final DateTime date;
+  final double probability;
+  final bool committed;
+  final String source;
+  final String? accountId;
+
+  const HorizonCashEvent({
+    required this.title,
+    required this.amount,
+    required this.date,
+    this.probability = 1,
+    this.committed = false,
+    this.source = 'external',
+    this.accountId,
+  });
+}
+
+class AccountLiquiditySnapshot {
+  final String accountId;
+  final String name;
+  final String currency;
+  final double balance;
+  final double minimumBalance;
+  final bool allowNetting;
+
+  const AccountLiquiditySnapshot({
+    required this.accountId,
+    required this.name,
+    required this.balance,
+    this.currency = 'RUB',
+    this.minimumBalance = 0,
+    this.allowNetting = true,
+  });
+}
+
+class AccountLiquidityRisk {
+  final String accountId;
+  final String name;
+  final String currency;
+  final double currentBalance;
+  final double projectedP10;
+  final int? riskDay;
+  final bool canBeCoveredByNetting;
+
+  const AccountLiquidityRisk({
+    required this.accountId,
+    required this.name,
+    required this.currency,
+    required this.currentBalance,
+    required this.projectedP10,
+    required this.riskDay,
+    required this.canBeCoveredByNetting,
+  });
+}
+
+class ForecastExplanation {
+  final int day;
+  final String source;
+  final String titleRu;
+  final String titleEn;
+  final double impact;
+
+  const ForecastExplanation({
+    required this.day,
+    required this.source,
+    required this.titleRu,
+    required this.titleEn,
+    required this.impact,
+  });
+}
+
+class ForecastActionPrompt {
+  final String code;
+  final ForecastPromptSeverity severity;
+  final String textRu;
+  final String textEn;
+  final double? amount;
+  final int? day;
+
+  const ForecastActionPrompt({
+    required this.code,
+    required this.severity,
+    required this.textRu,
+    required this.textEn,
+    this.amount,
+    this.day,
+  });
+}
+
+class ForecastScenarioSummary {
+  final String key;
+  final String labelRu;
+  final String labelEn;
+  final double endingP50;
+  final double minimumP10;
+  final double maximumGapRisk;
+  final int? runwayDays;
+
+  const ForecastScenarioSummary({
+    required this.key,
+    required this.labelRu,
+    required this.labelEn,
+    required this.endingP50,
+    required this.minimumP10,
+    required this.maximumGapRisk,
+    this.runwayDays,
+  });
+}
+
+class WhatIfRiskDelta {
+  final double baseMaximumRisk;
+  final double scenarioMaximumRisk;
+  final int? baseRunwayDays;
+  final int? scenarioRunwayDays;
+
+  const WhatIfRiskDelta({
+    required this.baseMaximumRisk,
+    required this.scenarioMaximumRisk,
+    this.baseRunwayDays,
+    this.scenarioRunwayDays,
+  });
+
+  double get riskDelta => scenarioMaximumRisk - baseMaximumRisk;
+}
+
+/// Result of Wesi Horizon. The original public fields remain intact so old UI
+/// and external engines keep compiling; top-tier diagnostics are additive.
 class ForecastResult {
   final List<double> p10;
   final List<double> p50;
   final List<double> p90;
-
-  /// Текущая скорость изменения баланса (EWMA, ₽/день, доход минус расход),
-  /// без учёта сезонности по дню недели и регулярных платежей.
   final double trendPerDay;
-
-  /// Стандартное отклонение дневного нетто (шум вокруг тренда).
   final double dailyVolatility;
-
-  /// Сколько календарных дней истории использовано для оценки.
   final int historyDaysSpan;
-
-  /// Сколько траекторий было симулировано (Monte-Carlo paths).
   final int simulatedPaths;
-
-  /// true — данных меньше 3 транзакций, прогноз не строился.
   final bool insufficientData;
-
-  /// true — истории хватило (≥3 недель), чтобы учитывать день недели.
   final bool seasonalityApplied;
-
-  /// Отклонение среднего нетто от общего среднего по каждому дню недели,
-  /// индекс 0=Пн..6=Вс. Пусто, если [seasonalityApplied] == false.
   final List<double> weekdayFactor;
-
-  /// Cash Gap Risk Score: для каждого дня прогноза — доля симулированных
-  /// траекторий, где баланс в этот день ушёл ниже нуля (0..1).
   final List<double> belowZeroProbability;
-
-  /// Runway: первый день (1-based), на который медианный (P50) баланс
-  /// уходит в минус. null — в пределах горизонта прогноза не уходит.
   final int? runwayDays;
-
-  /// Первый день, на который вероятность кассового разрыва (баланс < 0)
-  /// превышает 5% симулированных траекторий. null — риск не выявлен.
   final int? riskAlertDay;
+
+  final ForecastConfidence confidence;
+  final double longRunBaselinePerDay;
+  final double recentNetPerDay;
+  final double driftCapPerDay;
+  final double uncertaintyScale;
+  final double committedNearTerm;
+  final double recommendedReserve;
+  final double safetyBuffer;
+  final int? risk10Day;
+  final int? risk25Day;
+  final double intervalCalibrationScale;
+  final double biasCorrection;
+  final double calibrationCoverage;
+  final CashRegime regime;
+  final Map<CashRegime, double> regimeProbabilities;
+  final Map<String, double> streamContribution;
+  final List<double> committedNetByDay;
+  final List<double> uncertainMedianByDay;
+  final List<ForecastExplanation> explanations;
+  final List<ForecastActionPrompt> actionPrompts;
+  final List<ForecastScenarioSummary> scenarioSummaries;
+  final WhatIfRiskDelta? whatIfRiskDelta;
+  final List<AccountLiquidityRisk> accountLiquidityRisks;
+  final double knownCashShare;
 
   const ForecastResult({
     required this.p10,
@@ -106,6 +265,30 @@ class ForecastResult {
     this.belowZeroProbability = const [],
     this.runwayDays,
     this.riskAlertDay,
+    this.confidence = ForecastConfidence.medium,
+    this.longRunBaselinePerDay = 0,
+    this.recentNetPerDay = 0,
+    this.driftCapPerDay = 0,
+    this.uncertaintyScale = 1,
+    this.committedNearTerm = 0,
+    this.recommendedReserve = 0,
+    this.safetyBuffer = 0,
+    this.risk10Day,
+    this.risk25Day,
+    this.intervalCalibrationScale = 1,
+    this.biasCorrection = 0,
+    this.calibrationCoverage = 0,
+    this.regime = CashRegime.stable,
+    this.regimeProbabilities = const {CashRegime.stable: 1},
+    this.streamContribution = const {},
+    this.committedNetByDay = const [],
+    this.uncertainMedianByDay = const [],
+    this.explanations = const [],
+    this.actionPrompts = const [],
+    this.scenarioSummaries = const [],
+    this.whatIfRiskDelta,
+    this.accountLiquidityRisks = const [],
+    this.knownCashShare = 0,
   });
 
   factory ForecastResult.empty() => const ForecastResult(
@@ -118,181 +301,385 @@ class ForecastResult {
         simulatedPaths: 0,
         insufficientData: true,
         seasonalityApplied: false,
+        confidence: ForecastConfidence.insufficient,
+      );
+
+  double get maximumGapRisk => belowZeroProbability.isEmpty
+      ? 0
+      : belowZeroProbability.reduce(max);
+
+  ForecastResult copyWith({
+    List<ForecastScenarioSummary>? scenarioSummaries,
+    WhatIfRiskDelta? whatIfRiskDelta,
+    bool clearWhatIfRiskDelta = false,
+    List<AccountLiquidityRisk>? accountLiquidityRisks,
+    List<ForecastActionPrompt>? actionPrompts,
+  }) =>
+      ForecastResult(
+        p10: p10,
+        p50: p50,
+        p90: p90,
+        trendPerDay: trendPerDay,
+        dailyVolatility: dailyVolatility,
+        historyDaysSpan: historyDaysSpan,
+        simulatedPaths: simulatedPaths,
+        insufficientData: insufficientData,
+        seasonalityApplied: seasonalityApplied,
+        weekdayFactor: weekdayFactor,
+        belowZeroProbability: belowZeroProbability,
+        runwayDays: runwayDays,
+        riskAlertDay: riskAlertDay,
+        confidence: confidence,
+        longRunBaselinePerDay: longRunBaselinePerDay,
+        recentNetPerDay: recentNetPerDay,
+        driftCapPerDay: driftCapPerDay,
+        uncertaintyScale: uncertaintyScale,
+        committedNearTerm: committedNearTerm,
+        recommendedReserve: recommendedReserve,
+        safetyBuffer: safetyBuffer,
+        risk10Day: risk10Day,
+        risk25Day: risk25Day,
+        intervalCalibrationScale: intervalCalibrationScale,
+        biasCorrection: biasCorrection,
+        calibrationCoverage: calibrationCoverage,
+        regime: regime,
+        regimeProbabilities: regimeProbabilities,
+        streamContribution: streamContribution,
+        committedNetByDay: committedNetByDay,
+        uncertainMedianByDay: uncertainMedianByDay,
+        explanations: explanations,
+        actionPrompts: actionPrompts ?? this.actionPrompts,
+        scenarioSummaries: scenarioSummaries ?? this.scenarioSummaries,
+        whatIfRiskDelta: clearWhatIfRiskDelta
+            ? null
+            : (whatIfRiskDelta ?? this.whatIfRiskDelta),
+        accountLiquidityRisks:
+            accountLiquidityRisks ?? this.accountLiquidityRisks,
+        knownCashShare: knownCashShare,
       );
 
   Map<String, List<double>> toMap() => {'p10': p10, 'p50': p50, 'p90': p90};
 }
 
-/// Статистика одного денежного потока (доходы или расходы отдельно):
-/// сезонность по дню недели, тренд (EWMA), пул для bootstrap-шума.
-/// Разделение потоков даёт две вещи: точность (у доходов и расходов разные
-/// недельные паттерны — расходы растут на выходных, доходы обычно в будни)
-/// и возможность независимо крутить множители в сценарии «Что если?».
 class _StreamStats {
+  final String key;
+  final TransactionType type;
   final List<double> weekdayFactor;
-  final double trendPerDay;
-  final List<double> residualPool;
-  final bool hasBootstrapPool;
+  final double baselineFrequency;
+  final double recentFrequency;
+  final double baselineAmount;
+  final double recentAmount;
+  final double recentSlope;
   final double volatility;
+  final double dailyBaseline;
+  final double dailyRecent;
 
   const _StreamStats({
+    required this.key,
+    required this.type,
     required this.weekdayFactor,
-    required this.trendPerDay,
-    required this.residualPool,
-    required this.hasBootstrapPool,
+    required this.baselineFrequency,
+    required this.recentFrequency,
+    required this.baselineAmount,
+    required this.recentAmount,
+    required this.recentSlope,
     required this.volatility,
+    required this.dailyBaseline,
+    required this.dailyRecent,
   });
 
   static _StreamStats compute({
+    required String key,
+    required TransactionType type,
     required List<double> dense,
-    required Set<int> anomalyDayIndex,
     required DateTime minDay,
-    required int spanDays,
+    required Set<int> excludedDays,
     required bool seasonalityApplied,
-    required int minResidualsForBootstrap,
-    required double halfLifeDays,
   }) {
-    final weekdayFactor = List<double>.filled(7, 0);
-    if (seasonalityApplied) {
-      final weekdaySum = List<double>.filled(7, 0);
-      final weekdayCount = List<int>.filled(7, 0);
-      double overallSum = 0;
-      int overallCount = 0;
-      for (int i = 0; i < spanDays; i++) {
-        if (anomalyDayIndex.contains(i)) continue;
-        final wd = minDay.add(Duration(days: i)).weekday - 1; // 0=Пн..6=Вс
-        weekdaySum[wd] += dense[i];
-        weekdayCount[wd]++;
-        overallSum += dense[i];
-        overallCount++;
-      }
-      final overallMean = overallCount > 0 ? overallSum / overallCount : 0.0;
-      for (int wd = 0; wd < 7; wd++) {
-        if (weekdayCount[wd] > 0) {
-          weekdayFactor[wd] = weekdaySum[wd] / weekdayCount[wd] - overallMean;
+    final usable = <double>[];
+    final positive = <double>[];
+    for (var i = 0; i < dense.length; i++) {
+      if (excludedDays.contains(i)) continue;
+      usable.add(dense[i]);
+      if (dense[i] > 0) positive.add(dense[i]);
+    }
+    final baselineFrequency = usable.isEmpty
+        ? 0.0
+        : usable.where((v) => v > 0).length / usable.length;
+    final baselineAmount = positive.isEmpty ? 0.0 : _winsorMean(positive);
+
+    final recentStart = max(0, dense.length - 21);
+    var recentWeight = 1.0;
+    var weightedOccurrence = 0.0;
+    var totalOccurrenceWeight = 0.0;
+    var weightedAmount = 0.0;
+    var amountWeight = 0.0;
+    for (var i = dense.length - 1; i >= recentStart; i--) {
+      if (!excludedDays.contains(i)) {
+        totalOccurrenceWeight += recentWeight;
+        if (dense[i] > 0) {
+          weightedOccurrence += recentWeight;
+          weightedAmount += dense[i] * recentWeight;
+          amountWeight += recentWeight;
         }
       }
+      recentWeight *= 0.88;
+    }
+    final recentFrequency = totalOccurrenceWeight == 0
+        ? baselineFrequency
+        : weightedOccurrence / totalOccurrenceWeight;
+    final recentAmount =
+        amountWeight == 0 ? baselineAmount : weightedAmount / amountWeight;
+
+    final weekdayFactor = List<double>.filled(7, 0);
+    final dailyBaseline = baselineFrequency * baselineAmount;
+    if (seasonalityApplied && dense.isNotEmpty) {
+      final sum = List<double>.filled(7, 0);
+      final count = List<int>.filled(7, 0);
+      for (var i = 0; i < dense.length; i++) {
+        if (excludedDays.contains(i)) continue;
+        final wd = minDay.add(Duration(days: i)).weekday - 1;
+        sum[wd] += dense[i];
+        count[wd]++;
+      }
+      for (var wd = 0; wd < 7; wd++) {
+        if (count[wd] > 0) weekdayFactor[wd] = sum[wd] / count[wd] - dailyBaseline;
+      }
     }
 
-    final deseasonalized = List<double>.generate(spanDays, (i) {
+    final slopeValues = <double>[];
+    for (var i = max(0, dense.length - 21); i < dense.length; i++) {
+      slopeValues.add(dense[i]);
+    }
+    final recentSlope = _linearSlope(slopeValues);
+    final residuals = <double>[];
+    for (var i = 0; i < dense.length; i++) {
+      if (excludedDays.contains(i)) continue;
       final wd = minDay.add(Duration(days: i)).weekday - 1;
-      return dense[i] - weekdayFactor[wd];
-    });
-
-    final decay = pow(0.5, 1 / halfLifeDays).toDouble();
-    double ewma = deseasonalized.isNotEmpty ? deseasonalized.first : 0;
-    for (int i = 1; i < spanDays; i++) {
-      ewma = decay * ewma + (1 - decay) * deseasonalized[i];
+      residuals.add(dense[i] - dailyBaseline - weekdayFactor[wd]);
     }
-
-    double resSum = 0;
-    for (int i = 0; i < spanDays; i++) {
-      if (anomalyDayIndex.contains(i)) continue;
-      resSum += deseasonalized[i];
-    }
-    final nonAnomalyCount = spanDays - anomalyDayIndex.length;
-    final longRunMean = nonAnomalyCount > 0 ? resSum / nonAnomalyCount : 0.0;
-    final residualPool = <double>[];
-    for (int i = 0; i < spanDays; i++) {
-      if (anomalyDayIndex.contains(i)) continue;
-      residualPool.add(deseasonalized[i] - longRunMean);
-    }
-
-    final hasBootstrapPool = residualPool.length >= minResidualsForBootstrap;
-    final volatility = _stdDev(hasBootstrapPool ? residualPool : dense);
 
     return _StreamStats(
+      key: key,
+      type: type,
       weekdayFactor: weekdayFactor,
-      trendPerDay: ewma,
-      residualPool: residualPool,
-      hasBootstrapPool: hasBootstrapPool,
-      volatility: volatility,
+      baselineFrequency: baselineFrequency,
+      recentFrequency: recentFrequency,
+      baselineAmount: baselineAmount,
+      recentAmount: recentAmount,
+      recentSlope: recentSlope,
+      volatility: _stdDev(residuals),
+      dailyBaseline: dailyBaseline,
+      dailyRecent: recentFrequency * recentAmount,
     );
   }
 
-  static double _stdDev(List<double> v) {
-    if (v.length < 2) return 0;
-    final mean = v.reduce((a, b) => a + b) / v.length;
-    final sumSq = v.map((x) => (x - mean) * (x - mean)).reduce((a, b) => a + b);
-    return sqrt(sumSq / (v.length - 1));
+  double expectedForDay(int day, int weekday, HorizonTuning tuning) {
+    final recentWeight = exp(-day / tuning.meanReversionDays);
+    final base = dailyBaseline + (dailyRecent - dailyBaseline) * recentWeight;
+    final slopeCap = max(dailyBaseline.abs() * 0.02, volatility * 0.025);
+    final cappedSlope = recentSlope.clamp(-slopeCap, slopeCap);
+    final drift = cappedSlope * day * exp(-day / tuning.trendDecayDays);
+    final seasonalityWeight = day <= 14
+        ? 1.0
+        : exp(-(day - 14) / tuning.seasonalityDecayDays);
+    return max(0, base + drift + weekdayFactor[weekday] * seasonalityWeight);
+  }
+
+  double get driftCap => max(dailyBaseline.abs() * 0.02, volatility * 0.025);
+
+  static double _winsorMean(List<double> values) {
+    if (values.isEmpty) return 0;
+    final sorted = List<double>.of(values)..sort();
+    final lo = sorted[(sorted.length * 0.05).floor().clamp(0, sorted.length - 1)];
+    final hi = sorted[(sorted.length * 0.95).floor().clamp(0, sorted.length - 1)];
+    var sum = 0.0;
+    for (final value in values) {
+      sum += value.clamp(lo, hi).toDouble();
+    }
+    return sum / values.length;
+  }
+
+  static double _linearSlope(List<double> values) {
+    if (values.length < 3) return 0;
+    final xMean = (values.length - 1) / 2.0;
+    final yMean = values.reduce((a, b) => a + b) / values.length;
+    var num = 0.0;
+    var den = 0.0;
+    for (var i = 0; i < values.length; i++) {
+      final dx = i - xMean;
+      num += dx * (values[i] - yMean);
+      den += dx * dx;
+    }
+    return den == 0 ? 0 : num / den;
+  }
+
+  static double _stdDev(List<double> values) {
+    if (values.length < 2) return 0;
+    final mean = values.reduce((a, b) => a + b) / values.length;
+    var sum = 0.0;
+    for (final value in values) {
+      final d = value - mean;
+      sum += d * d;
+    }
+    return sqrt(sum / (values.length - 1));
   }
 }
 
-/// Продвинутый движок финансового прогноза — общий для Treasury и Sandbox.
-///
-/// В отличие от простого случайного блуждания с аналитической (нормальной)
-/// шириной доверительного интервала, это настоящий bootstrap Monte-Carlo:
-///
-/// - известные регулярные платежи проецируются детерминированно по датам
-///   ([RecurringEngine]), а не смешиваются со стохастическим шумом;
-/// - доходы и расходы моделируются РАЗДЕЛЬНО (разная сезонность, разный
-///   тренд, разный шум), а не только их нетто — это и точнее, и даёт
-///   осмысленный рычаг для сценария «Что если?» (можно уменьшить только
-///   доход или увеличить только расход);
-/// - сезонность по дню недели считается отдельно от тренда и шума;
-/// - тренд — экспоненциально взвешенное среднее (EWMA, полураспад 10 дней):
-///   недавние дни весят больше, устойчивее к разовым всплескам, чем плоское
-///   окно «последние N дней»;
-/// - шум берётся эмпирическим bootstrap'ом из истории (а не из нормального
-///   распределения) — сохраняет реальную форму и асимметрию расходов;
-/// - обнаруженные аномалии ([AnomalyEngine]) исключаются из «фонового шума»
-///   (иначе редкий скачок навсегда раздувает волатильность), но участвуют как
-///   риск редкого «шока» — с исторической частотой и амплитудой;
-/// - P10/P50/P90 считаются эмпирически по итогам симуляции путей, а не по
-///   формуле — корректно отражают асимметрию, а не только нормальную форму;
-/// - на каждый день считается доля траекторий с отрицательным балансом
-///   (Cash Gap Risk Score) и «runway» — когда P50 уходит в минус;
-/// - опционально — дисконтирование (DCF) для длинных горизонтов: будущий
-///   баланс приводится к сегодняшним деньгам по годовой ставке.
+class _RegimeModel {
+  final CashRegime current;
+  final Map<CashRegime, double> probabilities;
+
+  const _RegimeModel(this.current, this.probabilities);
+
+  static _RegimeModel detect(List<double> denseNet) {
+    if (denseNet.length < 14) {
+      return const _RegimeModel(CashRegime.stable, {CashRegime.stable: 1});
+    }
+    final baselineWindow = denseNet.length > 90
+        ? denseNet.sublist(denseNet.length - 90)
+        : denseNet;
+    final recent = denseNet.sublist(max(0, denseNet.length - 14));
+    final baseline = baselineWindow.reduce((a, b) => a + b) / baselineWindow.length;
+    final recentMean = recent.reduce((a, b) => a + b) / recent.length;
+    final vol = _StreamStats._stdDev(baselineWindow);
+    final z = vol <= 1e-9 ? 0.0 : (recentMean - baseline) / vol;
+    final growthRaw = _sigmoid(z - 0.25);
+    final downturnRaw = _sigmoid(-z - 0.25);
+    final stableRaw = exp(-z.abs() * 0.8);
+    final total = growthRaw + downturnRaw + stableRaw;
+    final probs = <CashRegime, double>{
+      CashRegime.growth: growthRaw / total,
+      CashRegime.downturn: downturnRaw / total,
+      CashRegime.stable: stableRaw / total,
+    };
+    final current = probs.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+    return _RegimeModel(current, probs);
+  }
+
+  static double _sigmoid(double x) => 1 / (1 + exp(-x));
+
+  static CashRegime sampleInitial(Random rng, Map<CashRegime, double> p) =>
+      _sample(rng, p);
+
+  static CashRegime transition(Random rng, CashRegime from) {
+    final probs = switch (from) {
+      CashRegime.downturn => const {
+          CashRegime.downturn: 0.72,
+          CashRegime.stable: 0.24,
+          CashRegime.growth: 0.04,
+        },
+      CashRegime.stable => const {
+          CashRegime.downturn: 0.08,
+          CashRegime.stable: 0.84,
+          CashRegime.growth: 0.08,
+        },
+      CashRegime.growth => const {
+          CashRegime.downturn: 0.04,
+          CashRegime.stable: 0.26,
+          CashRegime.growth: 0.70,
+        },
+    };
+    return _sample(rng, probs);
+  }
+
+  static CashRegime _sample(Random rng, Map<CashRegime, double> p) {
+    final value = rng.nextDouble();
+    var cursor = 0.0;
+    for (final regime in CashRegime.values) {
+      cursor += p[regime] ?? 0;
+      if (value <= cursor) return regime;
+    }
+    return CashRegime.stable;
+  }
+}
+
+class _ShockPool {
+  final List<double> income;
+  final List<double> expense;
+  final double incomeProbability;
+  final double expenseProbability;
+  final Set<int> incomeDays;
+  final Set<int> expenseDays;
+
+  const _ShockPool({
+    required this.income,
+    required this.expense,
+    required this.incomeProbability,
+    required this.expenseProbability,
+    required this.incomeDays,
+    required this.expenseDays,
+  });
+
+  static _ShockPool detect(
+    List<TransactionModel> txs,
+    DateTime minDay,
+    int spanDays,
+  ) {
+    List<TransactionModel> outliers(TransactionType type) {
+      final typed = txs.where((t) => t.type == type).toList();
+      if (typed.length < 5) return const [];
+      final values = typed.map((e) => e.amount).toList()..sort();
+      final median = _median(values);
+      final deviations = values.map((e) => (e - median).abs()).toList()..sort();
+      final mad = _median(deviations);
+      if (mad <= 0) {
+        final mean = values.reduce((a, b) => a + b) / values.length;
+        final sd = _StreamStats._stdDev(values);
+        if (sd == 0) return const [];
+        return typed.where((t) => (t.amount - mean).abs() / sd > 2.5).toList();
+      }
+      return typed
+          .where((t) => (0.6745 * (t.amount - median) / mad).abs() > 3.5)
+          .toList();
+    }
+
+    final incomeTx = outliers(TransactionType.income);
+    final expenseTx = outliers(TransactionType.expense);
+    Set<int> daySet(List<TransactionModel> list) => {
+          for (final tx in list)
+            DateTime(tx.date.year, tx.date.month, tx.date.day)
+                .difference(minDay)
+                .inDays,
+        }..removeWhere((i) => i < 0 || i >= spanDays);
+
+    return _ShockPool(
+      income: incomeTx.map((e) => e.amount).toList(),
+      expense: expenseTx.map((e) => e.amount).toList(),
+      incomeProbability:
+          spanDays == 0 ? 0 : (incomeTx.length / spanDays).clamp(0.0, 0.12),
+      expenseProbability:
+          spanDays == 0 ? 0 : (expenseTx.length / spanDays).clamp(0.0, 0.12),
+      incomeDays: daySet(incomeTx),
+      expenseDays: daySet(expenseTx),
+    );
+  }
+
+  static double _median(List<double> sorted) {
+    if (sorted.isEmpty) return 0;
+    final middle = sorted.length ~/ 2;
+    return sorted.length.isOdd
+        ? sorted[middle]
+        : (sorted[middle - 1] + sorted[middle]) / 2;
+  }
+}
+
 class ForecastEngine {
-  // ТЗ просит 5 000–10 000 прогонов; 5 000 — нижняя граница диапазона.
-  // Профиль на синтетических тестах: ~450k итераций на 90-дневный горизонт,
-  // не заметно на десктопе. Поднять до 10 000 — тривиально, если этого мало.
   static const int defaultPaths = 5000;
   static const int _minPaths = 100;
   static const int _defaultSeed = 42;
   static const int _seasonalityMinSpanDays = 21;
-  static const int _minResidualsForBootstrap = 5;
-  static const double _halfLifeDays = 10.0;
-
-  /// Минимальный охват истории в днях, при котором вообще имеет смысл
-  /// строить статистический прогноз.
-  ///
-  /// Без этого порога одного дня истории хватало, чтобы движок «сработал»:
-  /// пул остатков пуст, волатильность равна нулю (стандартное отклонение по
-  /// одной точке не определено), и все 5000 траекторий получались
-  /// ОДИНАКОВЫМИ. На графике это выглядело как уверенная прямая линия с
-  /// совпадающими P10/P50/P90 — то есть модель показывала максимальную
-  /// уверенность именно там, где данных меньше всего. Честнее сказать
-  /// «мало истории», чем нарисовать ровную прямую.
   static const int minHistorySpanDays = 7;
+  static const double _legacyRiskAlertThreshold = 0.05;
+  static const int _fullPathsHorizonDays = 120;
+  static const int _longHorizonMinPaths = 800;
 
-  /// Порог тревоги «кассового разрыва»: если вероятность ухода в минус
-  /// в какой-то день превышает это значение — riskAlertDay указывает на него.
-  static const double _riskAlertThreshold = 0.05;
-
-  /// Сколько траекторий реально симулировать на данном горизонте.
-  ///
-  /// Стоимость расчёта — `paths × days`, и на пятилетнем горизонте 5000
-  /// путей дают 9 миллионов шагов: на телефоне это заметное подвисание.
-  /// Держим объём работы примерно постоянным, снижая число путей на длинных
-  /// горизонтах, но не ниже [_longHorizonMinPaths] — иначе перцентили
-  /// начинают заметно скакать от одного пересчёта к другому.
-  ///
-  /// Точность от этого страдает мало: на годы вперёд разброс определяется
-  /// накопленной неопределённостью, а не числом выборок.
   static int pathsForHorizon(int days, [int requested = defaultPaths]) {
     final base = requested < _minPaths ? _minPaths : requested;
     if (days <= _fullPathsHorizonDays) return base;
     final scaled = (base * _fullPathsHorizonDays / days).round();
     return scaled < _longHorizonMinPaths ? _longHorizonMinPaths : scaled;
   }
-
-  /// До этого горизонта считаем полным числом путей.
-  static const int _fullPathsHorizonDays = 120;
-
-  /// Ниже этого числа траекторий перцентили становятся шумными.
-  static const int _longHorizonMinPaths = 800;
 
   static ForecastResult generate({
     required List<TransactionModel> transactions,
@@ -301,248 +688,372 @@ class ForecastEngine {
     int paths = defaultPaths,
     int seed = _defaultSeed,
     WhatIfScenario whatIf = WhatIfScenario.none,
-
-    /// Годовая ставка дисконтирования (инфляция/стоимость денег), 0 —
-    /// без дисконтирования. Применяется к итоговым P10/P50/P90 (DCF),
-    /// не к вероятностной части — риск кассового разрыва считается в
-    /// номинальных деньгах, это вопрос "хватит ли денег", а не "сколько они
-    /// стоят сегодня".
-    double annualDiscountRate = 0.0,
-
-    /// Какой день считать «сегодня».
-    ///
-    /// По умолчанию — настоящее сегодня. Параметр нужен ретро-проверке
-    /// (см. ForecastBacktest): чтобы спросить «а что бы прогноз сказал месяц
-    /// назад», движок должен уметь встать на ту дату. Заодно это делает
-    /// расчёт проверяемым: без него любой тест зависел бы от системных часов.
+    double annualDiscountRate = 0,
     DateTime? asOf,
+    HorizonCalibrationProfile calibration = HorizonCalibrationProfile.identity,
+    HorizonTuning? tuning,
+    List<HorizonCashEvent> businessEvents = const [],
+    Map<String, double> recurringReliability = const {},
+    List<AccountLiquiditySnapshot> accounts = const [],
   }) {
-    if (days <= 0 || transactions.length < 3) return ForecastResult.empty();
-
+    if (days <= 0) return ForecastResult.empty();
     final today = asOf ?? DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
+    final activeTuning = (tuning ?? calibration.tuning).clamped();
+
+    final history = transactions.where((tx) {
+      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
+      return !day.isAfter(todayOnly);
+    }).toList();
+    final scheduledOneOff = transactions.where((tx) {
+      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
+      return day.isAfter(todayOnly) && !tx.isRecurring;
+    }).toList();
+    final recurringTxs = history
+        .where((t) => t.isRecurring && t.recurringPeriod != null)
+        .toList();
+
+    if (history.isEmpty && recurringTxs.isEmpty && businessEvents.isEmpty && scheduledOneOff.isEmpty) {
+      return ForecastResult.empty();
+    }
 
     DateTime minDay = todayOnly;
-    for (final tx in transactions) {
+    for (final tx in history) {
       final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
       if (day.isBefore(minDay)) minDay = day;
     }
     final spanDays = todayOnly.difference(minDay).inDays + 1;
-
-    final recurringTxs = transactions
-        .where((t) => t.isRecurring && t.recurringPeriod != null)
-        .toList();
-    final recurringIds = recurringTxs.map((t) => t.id).toSet();
-
-    // Хватает ли истории, чтобы вообще оценивать тренд и разброс.
-    //
-    // Разделяем два случая, потому что «прямая линия» бывает и правильной:
-    // — есть регулярные платежи → будущее известно по датам, прямая линия
-    //   это корректный детерминированный результат, история не нужна;
-    // — нет ни истории, ни регулярных платежей → экстраполировать нечего,
-    //   и попытка растянуть нетто одного дня на месяц даёт ту самую
-    //   уверенную прямую с P10 == P50 == P90. Честнее вернуть «мало данных».
-    final hasEnoughHistory = spanDays >= minHistorySpanDays;
-    if (!hasEnoughHistory && recurringTxs.isEmpty) {
-      return ForecastResult.empty();
-    }
-
-    // Плотные (без пропусков) дневные ряды НЕ-регулярного дохода/расхода,
-    // раздельно. Регулярные платежи полностью известны наперёд, поэтому не
-    // смешиваем их со случайным шумом — иначе их вклад учтётся дважды.
-    final denseIncome = List<double>.filled(spanDays, 0);
-    final denseExpense = List<double>.filled(spanDays, 0);
-    for (final tx in transactions) {
-      if (recurringIds.contains(tx.id)) continue;
-      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
-      final idx = day.difference(minDay).inDays;
-      if (idx < 0 || idx >= spanDays) continue;
-      if (tx.type == TransactionType.income) {
-        denseIncome[idx] += tx.amount;
-      } else {
-        denseExpense[idx] += tx.amount;
-      }
-    }
-
-    // Аномалии — по не-регулярным расходам: редкий разовый шок не должен
-    // портить оценку «обычной» волатильности расходов.
-    final anomalies = AnomalyEngine.detect(
-      transactions.where((t) => !recurringIds.contains(t.id)).toList(),
-    );
-    final anomalyDayIndex = <int>{};
-    final shockMagnitudes = <double>[]; // всегда >0 — суммы расходов-шоков
-    for (final a in anomalies) {
-      final day = DateTime(a.date.year, a.date.month, a.date.day);
-      final idx = day.difference(minDay).inDays;
-      if (idx >= 0 && idx < spanDays) anomalyDayIndex.add(idx);
-      shockMagnitudes.add(a.amount);
-    }
-    final shockProbabilityPerDay =
-        spanDays > 0 ? (anomalies.length / spanDays).clamp(0.0, 0.5) : 0.0;
-
-    // Сезонность по дню недели: нужно хотя бы 3 полных недели истории —
-    // иначе «средний понедельник» это по сути один случайный день.
+    final confidence = _confidence(spanDays, history.length);
+    final hasStatisticalHistory = spanDays >= minHistorySpanDays && history.length >= 3;
     final seasonalityApplied = spanDays >= _seasonalityMinSpanDays;
 
-    final incomeStats = _StreamStats.compute(
-      dense: denseIncome,
-      anomalyDayIndex: anomalyDayIndex,
-      minDay: minDay,
-      spanDays: spanDays,
-      seasonalityApplied: seasonalityApplied,
-      minResidualsForBootstrap: _minResidualsForBootstrap,
-      halfLifeDays: _halfLifeDays,
-    );
-    final expenseStats = _StreamStats.compute(
-      dense: denseExpense,
-      anomalyDayIndex: anomalyDayIndex,
-      minDay: minDay,
-      spanDays: spanDays,
-      seasonalityApplied: seasonalityApplied,
-      minResidualsForBootstrap: _minResidualsForBootstrap,
-      halfLifeDays: _halfLifeDays,
-    );
+    final recurringIds = recurringTxs.map((e) => e.id).toSet();
+    final nonRecurring = history.where((e) => !recurringIds.contains(e.id)).toList();
+    final shocks = _ShockPool.detect(nonRecurring, minDay, spanDays);
 
-    // Регулярные платежи — раздельно по типу, чтобы множители «Что если?»
-    // могли независимо подкрутить будущую зарплату (доход) и будущую аренду
-    // (расход).
-    final recurringIncomeByOffset = RecurringEngine.projectFutureContributions(
-      recurringTxs.where((t) => t.type == TransactionType.income).toList(),
-      days: days,
-      from: todayOnly,
-    );
-    final recurringExpenseByOffset = RecurringEngine.projectFutureContributions(
-      recurringTxs.where((t) => t.type == TransactionType.expense).toList(),
-      days: days,
-      from: todayOnly,
-    );
+    final streamKeys = _topStreamKeys(nonRecurring);
+    final incomeStreams = <_StreamStats>[];
+    final expenseStreams = <_StreamStats>[];
+    final denseIncome = List<double>.filled(spanDays, 0);
+    final denseExpense = List<double>.filled(spanDays, 0);
 
-    // Виртуальные операции «Что если?»: разовые и регулярные.
-    final whatIfByOffset = <int, double>{};
-    final whatIfHorizon = todayOnly.add(Duration(days: days));
-    for (final e in whatIf.events) {
-      final net = e.type == TransactionType.income ? e.amount : -e.amount;
-      final start = DateTime(e.date.year, e.date.month, e.date.day);
-      final period = e.recurringPeriod;
-      if (period == null) {
-        final offset = start.difference(todayOnly).inDays;
-        if (offset < 1 || offset > days) continue;
-        whatIfByOffset[offset] = (whatIfByOffset[offset] ?? 0) + net;
-        continue;
-      }
-
-      var occurrence = start.isAfter(todayOnly)
-          ? start
-          : RecurringEngine.nextOccurrenceAfter(start, period, todayOnly);
-      var guard = 0;
-      while (!occurrence.isAfter(whatIfHorizon) && guard < 10000) {
-        final offset = occurrence.difference(todayOnly).inDays;
-        if (offset >= 1 && offset <= days) {
-          whatIfByOffset[offset] = (whatIfByOffset[offset] ?? 0) + net;
+    for (final type in TransactionType.values) {
+      for (final key in streamKeys) {
+        final dense = List<double>.filled(spanDays, 0);
+        for (final tx in nonRecurring) {
+          if (tx.type != type || _streamKey(tx, streamKeys) != key) continue;
+          final idx = DateTime(tx.date.year, tx.date.month, tx.date.day)
+              .difference(minDay)
+              .inDays;
+          if (idx < 0 || idx >= spanDays) continue;
+          dense[idx] += tx.amount;
+          if (type == TransactionType.income) {
+            denseIncome[idx] += tx.amount;
+          } else {
+            denseExpense[idx] += tx.amount;
+          }
         }
-        occurrence = RecurringEngine.advance(occurrence, period);
-        guard++;
+        final excluded = type == TransactionType.income
+            ? shocks.incomeDays
+            : shocks.expenseDays;
+        if (dense.every((v) => v == 0)) continue;
+        final stats = _StreamStats.compute(
+          key: key,
+          type: type,
+          dense: dense,
+          minDay: minDay,
+          excludedDays: excluded,
+          seasonalityApplied: seasonalityApplied,
+        );
+        if (type == TransactionType.income) {
+          incomeStreams.add(stats);
+        } else {
+          expenseStreams.add(stats);
+        }
       }
     }
 
-    final incomeMult = whatIf.incomeMultiplier;
-    final expenseMult = whatIf.expenseMultiplier;
+    double expectedHistorical(int i, List<_StreamStats> streams) {
+      if (streams.isEmpty) return 0;
+      final wd = minDay.add(Duration(days: i)).weekday - 1;
+      var sum = 0.0;
+      for (final s in streams) {
+        sum += s.dailyBaseline + (seasonalityApplied ? s.weekdayFactor[wd] : 0);
+      }
+      return sum;
+    }
 
-    // ---------- Monte-Carlo: bootstrap-шум + сезонность + тренд + шоки + регулярные ----------
-    final rng = Random(
-        seed); // фиксированный seed — стабильность между перерисовками UI
+    final incomeResidual = List<double>.generate(spanDays, (i) {
+      if (shocks.incomeDays.contains(i)) return 0;
+      return denseIncome[i] - expectedHistorical(i, incomeStreams);
+    });
+    final expenseResidual = List<double>.generate(spanDays, (i) {
+      if (shocks.expenseDays.contains(i)) return 0;
+      return denseExpense[i] - expectedHistorical(i, expenseStreams);
+    });
+
+    final denseNet = List<double>.generate(
+      spanDays,
+      (i) => denseIncome[i] - denseExpense[i],
+    );
+    final regimeModel = _RegimeModel.detect(denseNet);
+
+    final committedByOffset = List<double>.filled(days, 0);
+    final knownMagnitudeByOffset = List<double>.filled(days, 0);
+    final recurringOccurrences = <int, List<({double net, double probability, String title, String? accountId})>>{};
+
+    for (final tx in recurringTxs) {
+      final projected = RecurringEngine.projectFutureContributions(
+        [tx],
+        days: days,
+        from: todayOnly,
+      );
+      final reliability = (recurringReliability[tx.id] ??
+              _estimateRecurringReliability(tx, transactions, todayOnly))
+          .clamp(0.05, 1.0)
+          .toDouble();
+      for (final entry in projected.entries) {
+        final raw = entry.value;
+        final probability = tx.type == TransactionType.expense
+            ? max(0.95, reliability)
+            : reliability;
+        final shiftedOffset = tx.type == TransactionType.income
+            ? entry.key + whatIf.incomeDelayDays
+            : entry.key;
+        if (shiftedOffset < 1 || shiftedOffset > days) continue;
+        (recurringOccurrences[shiftedOffset] ??= []).add((
+          net: raw,
+          probability: probability,
+          title: tx.title,
+          accountId: tx.accountId,
+        ));
+        if (probability >= 0.9 || tx.type == TransactionType.expense) {
+          committedByOffset[shiftedOffset - 1] += raw * probability;
+          knownMagnitudeByOffset[shiftedOffset - 1] += raw.abs() * probability;
+        }
+      }
+    }
+
+    final externalByOffset = <int, List<HorizonCashEvent>>{};
+    for (final tx in scheduledOneOff) {
+      final offset = DateTime(tx.date.year, tx.date.month, tx.date.day)
+          .difference(todayOnly)
+          .inDays;
+      if (offset < 1 || offset > days) continue;
+      final event = HorizonCashEvent(
+        title: tx.title,
+        amount: tx.type == TransactionType.income ? tx.amount : -tx.amount,
+        date: tx.date,
+        probability: 1,
+        committed: true,
+        source: 'treasury-scheduled',
+        accountId: tx.accountId,
+      );
+      final shiftedOffset = event.amount > 0 ? offset + whatIf.incomeDelayDays : offset;
+      if (shiftedOffset <= days) (externalByOffset[shiftedOffset] ??= []).add(event);
+    }
+    for (final event in businessEvents) {
+      final offset = DateTime(event.date.year, event.date.month, event.date.day)
+          .difference(todayOnly)
+          .inDays;
+      if (offset < 1 || offset > days) continue;
+      final shiftedOffset = event.amount > 0 ? offset + whatIf.incomeDelayDays : offset;
+      if (shiftedOffset < 1 || shiftedOffset > days) continue;
+      (externalByOffset[shiftedOffset] ??= []).add(event);
+      if (event.committed) {
+        committedByOffset[shiftedOffset - 1] += event.amount * event.probability;
+        knownMagnitudeByOffset[shiftedOffset - 1] += event.amount.abs() * event.probability;
+      }
+    }
+
+    final whatIfByOffset = _projectWhatIf(whatIf, todayOnly, days);
+    final fallbackDailyVolatility = _fallbackDailyVolatility(
+      history: history,
+      events: [...businessEvents, ...externalByOffset.values.expand((e) => e)],
+      currentBalance: currentBalance,
+    );
     final effectivePaths = pathsForHorizon(days, paths);
-    final balances =
-        List.generate(days, (_) => List<double>.filled(effectivePaths, 0));
+    final balances = List.generate(days, (_) => List<double>.filled(effectivePaths, 0));
+    final minBalances = List<double>.filled(effectivePaths, currentBalance);
+    final expectedUncertainNet = List<double>.filled(days, 0);
+    final expectedComponentCount = List<int>.filled(days, 0);
+    final rng = Random(seed);
 
-    for (int p = 0; p < effectivePaths; p++) {
-      double balance = currentBalance;
-      for (int i = 0; i < days; i++) {
-        final futureDay = todayOnly.add(Duration(days: i + 1));
-        final wd = futureDay.weekday - 1;
+    var incomeBaseline = 0.0;
+    var expenseBaseline = 0.0;
+    var incomeRecent = 0.0;
+    var expenseRecent = 0.0;
+    var maxDriftCap = 0.0;
+    final streamContribution = <String, double>{};
+    for (final s in incomeStreams) {
+      incomeBaseline += s.dailyBaseline;
+      incomeRecent += s.dailyRecent;
+      maxDriftCap += s.driftCap;
+      streamContribution[s.key] = (streamContribution[s.key] ?? 0) + s.dailyBaseline;
+    }
+    for (final s in expenseStreams) {
+      expenseBaseline += s.dailyBaseline;
+      expenseRecent += s.dailyRecent;
+      maxDriftCap += s.driftCap;
+      streamContribution[s.key] = (streamContribution[s.key] ?? 0) - s.dailyBaseline;
+    }
 
-        final incomeSeasonal =
-            seasonalityApplied ? incomeStats.weekdayFactor[wd] : 0.0;
-        final expenseSeasonal =
-            seasonalityApplied ? expenseStats.weekdayFactor[wd] : 0.0;
+    for (var path = 0; path < effectivePaths; path++) {
+      var balance = currentBalance;
+      var regime = _RegimeModel.sampleInitial(rng, regimeModel.probabilities);
+      var blockRemaining = 0;
+      var blockIndex = 0;
+      var blockLength = 0;
+      for (var i = 0; i < days; i++) {
+        final day = i + 1;
+        final futureDay = todayOnly.add(Duration(days: day));
+        final weekday = futureDay.weekday - 1;
+        if (i > 0 && i % 7 == 0) regime = _RegimeModel.transition(rng, regime);
 
-        final incomeNoise = incomeStats.hasBootstrapPool
-            ? incomeStats
-                .residualPool[rng.nextInt(incomeStats.residualPool.length)]
-            : (incomeStats.volatility > 0
-                ? _gaussian(rng) * incomeStats.volatility
-                : 0.0);
-        final expenseNoise = expenseStats.hasBootstrapPool
-            ? expenseStats
-                .residualPool[rng.nextInt(expenseStats.residualPool.length)]
-            : (expenseStats.volatility > 0
-                ? _gaussian(rng) * expenseStats.volatility
-                : 0.0);
-
-        double shock = 0;
-        if (shockMagnitudes.isNotEmpty &&
-            rng.nextDouble() < shockProbabilityPerDay) {
-          shock = shockMagnitudes[rng.nextInt(shockMagnitudes.length)];
+        var expectedIncome = 0.0;
+        var expectedExpense = 0.0;
+        if (hasStatisticalHistory) {
+          for (final s in incomeStreams) {
+            expectedIncome += s.expectedForDay(day, weekday, activeTuning);
+          }
+          for (final s in expenseStreams) {
+            expectedExpense += s.expectedForDay(day, weekday, activeTuning);
+          }
         }
 
-        // При короткой истории статистическую часть не считаем вовсе: тренд,
-        // оценённый по паре дней, — это не тренд, а один случайный день,
-        // растянутый на весь горизонт. Остаются только регулярные платежи,
-        // которые известны по датам и в истории не нуждаются.
-        final incomeToday = hasEnoughHistory
-            ? (incomeStats.trendPerDay + incomeSeasonal + incomeNoise) *
-                incomeMult
-            : 0.0;
-        final expenseToday = hasEnoughHistory
-            ? (expenseStats.trendPerDay +
-                    expenseSeasonal +
-                    expenseNoise +
-                    shock) *
-                expenseMult
-            : 0.0;
+        final regimeStrength = activeTuning.regimeStrength;
+        switch (regime) {
+          case CashRegime.growth:
+            expectedIncome *= 1 + 0.12 * regimeStrength;
+            expectedExpense *= 1 + 0.015 * regimeStrength;
+            break;
+          case CashRegime.downturn:
+            expectedIncome *= max(0, 1 - 0.22 * regimeStrength);
+            expectedExpense *= 1 + 0.06 * regimeStrength;
+            break;
+          case CashRegime.stable:
+            break;
+        }
 
-        final recurringIncome =
-            (recurringIncomeByOffset[i + 1] ?? 0.0) * incomeMult;
-        final recurringExpense =
-            (recurringExpenseByOffset[i + 1] ?? 0.0) * expenseMult;
-        final whatIfNet = whatIfByOffset[i + 1] ?? 0.0;
+        if (whatIf.mainIncomeLossDays >= day) expectedIncome *= 0.15;
+        expectedIncome *= whatIf.incomeMultiplier;
+        expectedExpense *= whatIf.expenseMultiplier;
 
-        balance += incomeToday -
-            expenseToday +
-            recurringIncome +
-            recurringExpense + // уже отрицательный (см. projectFutureContributions)
-            whatIfNet;
-        balances[i][p] = balance;
+        var residualIncome = 0.0;
+        var residualExpense = 0.0;
+        if (hasStatisticalHistory && spanDays >= 3) {
+          if (blockRemaining <= 0) {
+            blockLength = 3 + rng.nextInt(5); // 3..7 day block-bootstrap
+            blockIndex = rng.nextInt(max(1, spanDays - min(blockLength, spanDays) + 1));
+            blockRemaining = min(blockLength, spanDays);
+          }
+          final index = (blockIndex + (blockLength - blockRemaining)) % spanDays;
+          residualIncome = incomeResidual[index];
+          residualExpense = expenseResidual[index];
+          blockRemaining--;
+        } else {
+          final observedVol = max(
+            _StreamStats._stdDev(denseIncome),
+            _StreamStats._stdDev(denseExpense),
+          );
+          // Little history must NEVER collapse to a fake deterministic line.
+          // If observed variance is zero/undefined, derive a conservative
+          // scale from known transaction/event amounts (or current cash).
+          final fallbackVol = max(observedVol, fallbackDailyVolatility);
+          residualIncome = _gaussian(rng) * fallbackVol * 0.5;
+          residualExpense = _gaussian(rng) * fallbackVol * 0.5;
+        }
+
+        var uncertainty = 1 + 0.32 * sqrt(day / 30.0);
+        if (confidence == ForecastConfidence.low) {
+          uncertainty *= activeTuning.lowDataUncertainty;
+        } else if (confidence == ForecastConfidence.medium) {
+          uncertainty *= 1.18;
+        }
+        residualIncome *= uncertainty;
+        residualExpense *= uncertainty;
+
+        var uncertainIncome = max(0, expectedIncome + residualIncome);
+        var uncertainExpense = max(0, expectedExpense + residualExpense);
+
+        if (shocks.income.isNotEmpty && rng.nextDouble() < shocks.incomeProbability) {
+          uncertainIncome += shocks.income[rng.nextInt(shocks.income.length)];
+        }
+        if (shocks.expense.isNotEmpty && rng.nextDouble() < shocks.expenseProbability) {
+          uncertainExpense += shocks.expense[rng.nextInt(shocks.expense.length)];
+        }
+
+        if (whatIf.incomeDelayDays > 0 && day <= whatIf.incomeDelayDays) {
+          uncertainIncome = 0;
+        }
+
+        var knownNet = 0.0;
+        for (final recurring in recurringOccurrences[day] ?? const []) {
+          if (rng.nextDouble() <= recurring.probability) knownNet += recurring.net;
+        }
+        for (final event in externalByOffset[day] ?? const []) {
+          if (rng.nextDouble() <= event.probability) knownNet += event.amount;
+        }
+
+        var scenarioNet = whatIfByOffset[day] ?? 0.0;
+        if (day == 1 && whatIf.oneOffExpenseShock > 0) {
+          scenarioNet -= whatIf.oneOffExpenseShock;
+        }
+
+        final uncertainNet = uncertainIncome - uncertainExpense;
+        balance += uncertainNet + knownNet + scenarioNet;
+        balances[i][path] = balance;
+        if (balance < minBalances[path]) minBalances[path] = balance;
+
+        expectedUncertainNet[i] += uncertainNet;
+        expectedComponentCount[i]++;
+      }
+    }
+
+    for (var i = 0; i < days; i++) {
+      if (expectedComponentCount[i] > 0) {
+        expectedUncertainNet[i] /= expectedComponentCount[i];
       }
     }
 
     final p10 = <double>[];
     final p50 = <double>[];
     final p90 = <double>[];
-    final belowZeroProbability = <double>[];
-    int? runwayDays;
-    int? riskAlertDay;
+    final gapRisk = <double>[];
+    int? runway;
+    int? riskAlert;
+    int? risk10;
+    int? risk25;
 
-    for (int i = 0; i < days; i++) {
+    for (var i = 0; i < days; i++) {
       final sorted = List<double>.of(balances[i])..sort();
-      final medianVal = _percentile(sorted, 0.50);
-      p10.add(_percentile(sorted, 0.10));
-      p50.add(medianVal);
-      p90.add(_percentile(sorted, 0.90));
+      final raw10 = _percentile(sorted, 0.10);
+      final raw50 = _percentile(sorted, 0.50);
+      final raw90 = _percentile(sorted, 0.90);
+      final bucket = calibration.bucketFor(i + 1);
+      final progress = min(1.0, (i + 1) / max(1, bucket.horizonDays));
+      final adjusted50 = raw50 + bucket.biasCorrection * progress;
+      final scale = bucket.intervalScale;
+      p10.add(adjusted50 - (raw50 - raw10) * scale);
+      p50.add(adjusted50);
+      p90.add(adjusted50 + (raw90 - raw50) * scale);
 
-      var negIdx = sorted.indexWhere((v) => v >= 0);
-      if (negIdx == -1) negIdx = sorted.length;
-      final belowZero = negIdx / sorted.length;
-      belowZeroProbability.add(belowZero);
+      var negative = sorted.indexWhere((v) => v >= 0);
+      if (negative == -1) negative = sorted.length;
+      final rawRisk = negative / sorted.length;
+      final calibratedRisk = bucket.calibrateRisk(rawRisk).clamp(0.0, 1.0).toDouble();
+      gapRisk.add(calibratedRisk);
 
-      if (runwayDays == null && medianVal < 0) runwayDays = i + 1;
-      if (riskAlertDay == null && belowZero > _riskAlertThreshold) {
-        riskAlertDay = i + 1;
+      if (runway == null && p50.last < 0) runway = i + 1;
+      if (riskAlert == null && calibratedRisk > _legacyRiskAlertThreshold) {
+        riskAlert = i + 1;
       }
+      if (risk10 == null && calibratedRisk > 0.10) risk10 = i + 1;
+      if (risk25 == null && calibratedRisk > 0.25) risk25 = i + 1;
     }
 
     if (annualDiscountRate > 0) {
-      for (int i = 0; i < days; i++) {
+      for (var i = 0; i < days; i++) {
         final factor = 1 / pow(1 + annualDiscountRate, (i + 1) / 365.0);
         p10[i] *= factor;
         p50[i] *= factor;
@@ -550,46 +1061,506 @@ class ForecastEngine {
       }
     }
 
+    final requiredReserveSamples = minBalances
+        .map((minBalance) => max(0.0, currentBalance - minBalance))
+        .toList()
+      ..sort();
+    final recommendedReserve = _percentile(requiredReserveSamples, 0.90);
+    var committedOutflow30 = 0.0;
+    var knownTotal = 0.0;
+    var uncertainTotal = 0.0;
+    for (var i = 0; i < days; i++) {
+      if (i < 30 && committedByOffset[i] < 0) {
+        committedOutflow30 += -committedByOffset[i];
+      }
+      knownTotal += knownMagnitudeByOffset[i];
+      uncertainTotal += expectedUncertainNet[i].abs();
+    }
+    final committedNearTerm = committedOutflow30;
+    final safetyBuffer = currentBalance - recommendedReserve - committedNearTerm;
+    final knownShare = knownTotal + uncertainTotal == 0
+        ? 0.0
+        : knownTotal / (knownTotal + uncertainTotal);
+
+    final volatility = sqrt(
+      pow(_StreamStats._stdDev(incomeResidual), 2) +
+          pow(_StreamStats._stdDev(expenseResidual), 2),
+    );
+    final explanations = _buildExplanations(
+      days: days,
+      committedByOffset: committedByOffset,
+      externalByOffset: externalByOffset,
+      expectedUncertainNet: expectedUncertainNet,
+      volatility: volatility,
+      regime: regimeModel.current,
+      whatIfByOffset: whatIfByOffset,
+      oneOffShock: whatIf.oneOffExpenseShock,
+    );
+    final prompts = _buildPrompts(
+      confidence: confidence,
+      currentBalance: currentBalance,
+      p10: p10,
+      risk10Day: risk10,
+      risk25Day: risk25,
+      runway: runway,
+      safetyBuffer: safetyBuffer,
+      committedNearTerm: committedNearTerm,
+      denseIncome: denseIncome,
+      denseExpense: denseExpense,
+      recurringReliability: recurringReliability,
+    );
+
+    final accountRisks = _accountLiquidityRisks(
+      accounts: accounts,
+      transactions: history,
+      businessEvents: businessEvents,
+      today: todayOnly,
+      days: days,
+    );
+
+    final endBucket = calibration.bucketFor(days);
     return ForecastResult(
       p10: p10,
       p50: p50,
       p90: p90,
-      trendPerDay: incomeStats.trendPerDay - expenseStats.trendPerDay,
-      dailyVolatility: sqrt(
-          pow(incomeStats.volatility, 2) + pow(expenseStats.volatility, 2)),
+      trendPerDay: incomeRecent - expenseRecent,
+      dailyVolatility: volatility,
       historyDaysSpan: spanDays,
       simulatedPaths: effectivePaths,
       insufficientData: false,
       seasonalityApplied: seasonalityApplied,
-      weekdayFactor: seasonalityApplied
-          ? List<double>.generate(
-              7,
-              (wd) =>
-                  incomeStats.weekdayFactor[wd] -
-                  expenseStats.weekdayFactor[wd])
-          : const [],
-      belowZeroProbability: belowZeroProbability,
-      runwayDays: runwayDays,
-      riskAlertDay: riskAlertDay,
+      weekdayFactor: _netWeekdayFactor(incomeStreams, expenseStreams),
+      belowZeroProbability: gapRisk,
+      runwayDays: runway,
+      riskAlertDay: riskAlert,
+      confidence: confidence,
+      longRunBaselinePerDay: incomeBaseline - expenseBaseline,
+      recentNetPerDay: incomeRecent - expenseRecent,
+      driftCapPerDay: maxDriftCap,
+      uncertaintyScale: (1 + 0.32 * sqrt(days / 30.0)) *
+          (confidence == ForecastConfidence.low
+              ? activeTuning.lowDataUncertainty
+              : confidence == ForecastConfidence.medium
+                  ? 1.18
+                  : 1.0),
+      committedNearTerm: committedNearTerm,
+      recommendedReserve: max(recommendedReserve, committedNearTerm),
+      safetyBuffer: safetyBuffer,
+      risk10Day: risk10,
+      risk25Day: risk25,
+      intervalCalibrationScale: endBucket.intervalScale,
+      biasCorrection: endBucket.biasCorrection,
+      calibrationCoverage: endBucket.coverage,
+      regime: regimeModel.current,
+      regimeProbabilities: regimeModel.probabilities,
+      streamContribution: streamContribution,
+      committedNetByDay: committedByOffset,
+      uncertainMedianByDay: expectedUncertainNet,
+      explanations: explanations,
+      actionPrompts: prompts,
+      accountLiquidityRisks: accountRisks,
+      knownCashShare: knownShare,
     );
   }
 
-  /// Линейная интерполяция по отсортированному списку (аналог numpy.percentile).
+  static double _fallbackDailyVolatility({
+    required List<TransactionModel> history,
+    required List<HorizonCashEvent> events,
+    required double currentBalance,
+  }) {
+    final amounts = <double>[
+      ...history.map((e) => e.amount.abs()),
+      ...events.map((e) => e.amount.abs()),
+    ]..removeWhere((e) => !e.isFinite || e <= 0);
+    if (amounts.isNotEmpty) {
+      amounts.sort();
+      final mid = amounts.length ~/ 2;
+      final median = amounts.length.isOdd
+          ? amounts[mid]
+          : (amounts[mid - 1] + amounts[mid]) / 2;
+      // One or two observations are weak evidence, therefore 35% of the
+      // typical movement is intentionally conservative rather than zero.
+      return max(1.0, median * 0.35);
+    }
+    // Last-resort scale: with no observed movement at all, admit ignorance.
+    // 2% of current liquidity/day prevents a razor-thin long-range band.
+    return max(1.0, currentBalance.abs() * 0.02);
+  }
+
+  static ForecastConfidence _confidence(int spanDays, int txCount) {
+    if (spanDays < minHistorySpanDays || txCount < 3) {
+      return ForecastConfidence.low;
+    }
+    if (spanDays < 28 || txCount < 12) return ForecastConfidence.low;
+    if (spanDays < 90 || txCount < 40) return ForecastConfidence.medium;
+    return ForecastConfidence.high;
+  }
+
+  static List<String> _topStreamKeys(List<TransactionModel> txs) {
+    final totals = <String, double>{};
+    for (final tx in txs) {
+      final raw = (tx.category ?? '').trim();
+      final key = raw.isEmpty ? 'other' : raw;
+      totals[key] = (totals[key] ?? 0) + tx.amount.abs();
+    }
+    final sorted = totals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    if (sorted.length <= 6) return sorted.map((e) => e.key).toList();
+    return [...sorted.take(5).map((e) => e.key), 'other'];
+  }
+
+  static String _streamKey(TransactionModel tx, List<String> topKeys) {
+    final raw = (tx.category ?? '').trim();
+    final key = raw.isEmpty ? 'other' : raw;
+    return topKeys.contains(key) ? key : 'other';
+  }
+
+  static Map<int, double> _projectWhatIf(
+    WhatIfScenario scenario,
+    DateTime today,
+    int days,
+  ) {
+    final result = <int, double>{};
+    final horizon = today.add(Duration(days: days));
+    for (final event in scenario.events) {
+      final net = event.type == TransactionType.income
+          ? event.amount
+          : -event.amount;
+      final start = DateTime(event.date.year, event.date.month, event.date.day);
+      if (event.recurringPeriod == null) {
+        final offset = start.difference(today).inDays;
+        if (offset >= 1 && offset <= days) {
+          result[offset] = (result[offset] ?? 0) + net;
+        }
+        continue;
+      }
+      var occurrence = start.isAfter(today)
+          ? start
+          : RecurringEngine.nextOccurrenceAfter(
+              start, event.recurringPeriod!, today);
+      var guard = 0;
+      while (!occurrence.isAfter(horizon) && guard++ < 10000) {
+        final offset = occurrence.difference(today).inDays;
+        if (offset >= 1 && offset <= days) {
+          result[offset] = (result[offset] ?? 0) + net;
+        }
+        occurrence = RecurringEngine.advance(
+            occurrence, event.recurringPeriod!);
+      }
+    }
+    return result;
+  }
+
+  static double _estimateRecurringReliability(
+    TransactionModel recurring,
+    List<TransactionModel> all,
+    DateTime today,
+  ) {
+    final period = recurring.recurringPeriod;
+    if (period == null) return 1;
+    final children = all.where((tx) {
+      if (tx.id.startsWith('${recurring.id}_')) return true;
+      if (tx.isRecurring) return false;
+      return tx.title == recurring.title &&
+          tx.type == recurring.type &&
+          (tx.amount - recurring.amount).abs() <= max(1, recurring.amount * 0.01);
+    }).toList();
+    final lookback = switch (period) {
+      RecurringPeriod.daily => 30,
+      RecurringPeriod.weekly => 84,
+      RecurringPeriod.monthly => 365,
+      RecurringPeriod.yearly => 365 * 3,
+    };
+    final recentChildren = children
+        .where((e) => e.date.isAfter(today.subtract(Duration(days: lookback))))
+        .length;
+    final expected = switch (period) {
+      RecurringPeriod.daily => lookback,
+      RecurringPeriod.weekly => (lookback / 7).floor(),
+      RecurringPeriod.monthly => (lookback / 30.44).floor(),
+      RecurringPeriod.yearly => max(1, (lookback / 365).floor()),
+    };
+    // Beta prior: assume recurring entries are reasonably reliable before we
+    // have enough executions, but never grant 100% certainty to income.
+    return ((recentChildren + 3.0) / (expected + 4.0)).clamp(0.15, 1.0).toDouble();
+  }
+
+  static List<double> _netWeekdayFactor(
+    List<_StreamStats> income,
+    List<_StreamStats> expense,
+  ) =>
+      List<double>.generate(7, (wd) {
+        var value = 0.0;
+        for (final s in income) value += s.weekdayFactor[wd];
+        for (final s in expense) value -= s.weekdayFactor[wd];
+        return value;
+      });
+
+  static List<ForecastExplanation> _buildExplanations({
+    required int days,
+    required List<double> committedByOffset,
+    required Map<int, List<HorizonCashEvent>> externalByOffset,
+    required List<double> expectedUncertainNet,
+    required double volatility,
+    required CashRegime regime,
+    required Map<int, double> whatIfByOffset,
+    required double oneOffShock,
+  }) {
+    final result = <ForecastExplanation>[];
+    final threshold = max(1.0, volatility * 0.65);
+    for (var i = 0; i < days; i++) {
+      final day = i + 1;
+      final committed = committedByOffset[i];
+      if (committed.abs() >= threshold) {
+        result.add(ForecastExplanation(
+          day: day,
+          source: 'committed',
+          titleRu: committed < 0
+              ? 'Известный платёж / обязательство'
+              : 'Известное поступление',
+          titleEn: committed < 0 ? 'Committed payment' : 'Committed incoming',
+          impact: committed,
+        ));
+      }
+      for (final event in externalByOffset[day] ?? const []) {
+        if (event.amount.abs() < threshold * 0.5) continue;
+        result.add(ForecastExplanation(
+          day: day,
+          source: event.source,
+          titleRu: event.title,
+          titleEn: event.title,
+          impact: event.amount * event.probability,
+        ));
+      }
+      final whatIf = whatIfByOffset[day] ?? 0;
+      if (whatIf.abs() >= threshold * 0.5) {
+        result.add(ForecastExplanation(
+          day: day,
+          source: 'what-if',
+          titleRu: 'Сценарная операция What-If',
+          titleEn: 'What-If scenario event',
+          impact: whatIf,
+        ));
+      }
+      if (i > 0) {
+        final change = expectedUncertainNet[i] - expectedUncertainNet[i - 1];
+        if (change.abs() >= threshold) {
+          result.add(ForecastExplanation(
+            day: day,
+            source: 'rhythm',
+            titleRu: 'Изменение ритма/сезонности денежных потоков',
+            titleEn: 'Cash-flow rhythm / seasonality change',
+            impact: change,
+          ));
+        }
+      }
+    }
+    if (oneOffShock > 0) {
+      result.add(ForecastExplanation(
+        day: 1,
+        source: 'stress',
+        titleRu: 'Стресс: внезапный крупный расход',
+        titleEn: 'Stress: unexpected large expense',
+        impact: -oneOffShock,
+      ));
+    }
+    if (result.length < 2 && regime != CashRegime.stable) {
+      result.add(ForecastExplanation(
+        day: 7,
+        source: 'regime',
+        titleRu: regime == CashRegime.growth
+            ? 'Текущий режим похож на рост, но его влияние затухает'
+            : 'Текущий режим похож на просадку; модель допускает восстановление',
+        titleEn: regime == CashRegime.growth
+            ? 'Growth regime, with mean reversion'
+            : 'Downturn regime, with recovery transitions',
+        impact: expectedUncertainNet.take(min(7, expectedUncertainNet.length)).fold(0.0, (a, b) => a + b),
+      ));
+    }
+    result.sort((a, b) => a.day.compareTo(b.day));
+    return result.take(40).toList();
+  }
+
+  static List<ForecastActionPrompt> _buildPrompts({
+    required ForecastConfidence confidence,
+    required double currentBalance,
+    required List<double> p10,
+    required int? risk10Day,
+    required int? risk25Day,
+    required int? runway,
+    required double safetyBuffer,
+    required double committedNearTerm,
+    required List<double> denseIncome,
+    required List<double> denseExpense,
+    required Map<String, double> recurringReliability,
+  }) {
+    final prompts = <ForecastActionPrompt>[];
+    if (confidence == ForecastConfidence.low) {
+      prompts.add(const ForecastActionPrompt(
+        code: 'low-data',
+        severity: ForecastPromptSeverity.warning,
+        textRu: 'Истории мало: дальний прогноз намеренно широкий. Не планируй обязательства по одной линии P50.',
+        textEn: 'Limited history: long-range uncertainty is intentionally wide. Do not plan commitments from P50 alone.',
+      ));
+    }
+    if (risk25Day != null) {
+      final worst = p10.isEmpty ? 0.0 : p10.reduce(min);
+      final cut = max(0.0, -worst / max(1, risk25Day));
+      prompts.add(ForecastActionPrompt(
+        code: 'gap-25',
+        severity: ForecastPromptSeverity.critical,
+        textRu: 'Риск кассового разрыва превышает 25% через $risk25Day дн. Снизь средние расходы примерно на ${cut.toStringAsFixed(0)} ₽/день или добавь ликвидность.',
+        textEn: 'Cash-gap risk exceeds 25% in $risk25Day days. Cut average spending by about ${cut.toStringAsFixed(0)} per day or add liquidity.',
+        amount: cut,
+        day: risk25Day,
+      ));
+    } else if (risk10Day != null) {
+      prompts.add(ForecastActionPrompt(
+        code: 'gap-10',
+        severity: ForecastPromptSeverity.warning,
+        textRu: 'Риск кассового разрыва превышает 10% через $risk10Day дн. До этой даты лучше не брать новый крупный обязательный платёж.',
+        textEn: 'Cash-gap risk exceeds 10% in $risk10Day days. Avoid adding a large committed payment before then.',
+        day: risk10Day,
+      ));
+    }
+    if (safetyBuffer < 0) {
+      prompts.add(ForecastActionPrompt(
+        code: 'negative-buffer',
+        severity: ForecastPromptSeverity.critical,
+        textRu: 'Свободный буфер отрицательный: текущий баланс уже меньше рекомендуемой подушки и ближайших обязательств.',
+        textEn: 'Free safety buffer is negative: current cash is below the reserve plus near-term commitments.',
+        amount: -safetyBuffer,
+      ));
+    } else if (committedNearTerm > currentBalance * 0.7 && committedNearTerm > 0) {
+      prompts.add(const ForecastActionPrompt(
+        code: 'commitment-load',
+        severity: ForecastPromptSeverity.warning,
+        textRu: 'Ближайшие обязательные платежи забирают большую часть текущей ликвидности. Сохрани запас до их прохождения.',
+        textEn: 'Near-term committed payments consume most current liquidity. Preserve cash until they clear.',
+      ));
+    }
+
+    if (denseIncome.length >= 42) {
+      double nonZeroRate(List<double> values) => values.isEmpty
+          ? 0
+          : values.where((v) => v > 0).length / values.length;
+      final recent = denseIncome.sublist(denseIncome.length - 14);
+      final prior = denseIncome.sublist(max(0, denseIncome.length - 56), denseIncome.length - 14);
+      final priorRate = nonZeroRate(prior);
+      final recentRate = nonZeroRate(recent);
+      if (priorRate > 0.05 && recentRate < priorRate * 0.65) {
+        prompts.add(const ForecastActionPrompt(
+          code: 'income-rhythm-break',
+          severity: ForecastPromptSeverity.warning,
+          textRu: 'Ломается ритм входящих: за последние 14 дней дни с поступлениями стали заметно реже обычного.',
+          textEn: 'Incoming rhythm is weakening: cash-in days are materially less frequent over the last 14 days.',
+        ));
+      }
+    }
+    if (denseExpense.length >= 42) {
+      double mean(List<double> values) => values.isEmpty
+          ? 0
+          : values.reduce((a, b) => a + b) / values.length;
+      final recent = mean(denseExpense.sublist(denseExpense.length - 14));
+      final prior = mean(denseExpense.sublist(max(0, denseExpense.length - 56), denseExpense.length - 14));
+      if (prior > 0 && recent > prior * 1.35) {
+        prompts.add(const ForecastActionPrompt(
+          code: 'expense-acceleration',
+          severity: ForecastPromptSeverity.warning,
+          textRu: 'Расходный ритм ускорился более чем на 35% относительно предыдущего периода.',
+          textEn: 'Spending pace is more than 35% above the prior period.',
+        ));
+      }
+    }
+    if (recurringReliability.values.any((r) => r < 0.65)) {
+      prompts.add(const ForecastActionPrompt(
+        code: 'recurring-misses',
+        severity: ForecastPromptSeverity.warning,
+        textRu: 'Есть регулярные поступления/платежи, которые часто срываются. Horizon уменьшил их вес вместо проекции на 100%.',
+        textEn: 'Some recurring cash items are frequently missed. Horizon down-weights them instead of projecting 100%.',
+      ));
+    }
+    if (runway != null && risk25Day == null) {
+      prompts.add(ForecastActionPrompt(
+        code: 'median-runway',
+        severity: ForecastPromptSeverity.warning,
+        textRu: 'Медианный runway — около $runway дн. Проверь обязательства раньше этой даты.',
+        textEn: 'Median runway is about $runway days. Review commitments before that date.',
+        day: runway,
+      ));
+    }
+    return prompts;
+  }
+
+  static List<AccountLiquidityRisk> _accountLiquidityRisks({
+    required List<AccountLiquiditySnapshot> accounts,
+    required List<TransactionModel> transactions,
+    required List<HorizonCashEvent> businessEvents,
+    required DateTime today,
+    required int days,
+  }) {
+    if (accounts.isEmpty) return const [];
+    final result = <AccountLiquidityRisk>[];
+    final totalNettable = accounts
+        .where((a) => a.allowNetting)
+        .fold<double>(0, (sum, a) => sum + max(0, a.balance - a.minimumBalance));
+    for (final account in accounts) {
+      final own = transactions
+          .where((t) => t.effectiveAccountId == account.accountId)
+          .toList();
+      final daily = <DateTime, double>{};
+      for (final tx in own) {
+        final d = DateTime(tx.date.year, tx.date.month, tx.date.day);
+        daily[d] = (daily[d] ?? 0) +
+            (tx.type == TransactionType.income ? tx.amount : -tx.amount);
+      }
+      final values = daily.values.toList();
+      final mean = values.isEmpty ? 0.0 : values.reduce((a, b) => a + b) / values.length;
+      final vol = _StreamStats._stdDev(values);
+      int? riskDay;
+      var finalP10 = account.balance;
+      var cumulativeKnown = 0.0;
+      for (var day = 1; day <= days; day++) {
+        var known = 0.0;
+        for (final event in businessEvents) {
+          if (event.accountId != account.accountId) continue;
+          final offset = DateTime(event.date.year, event.date.month, event.date.day)
+              .difference(today)
+              .inDays;
+          if (offset == day) known += event.amount * event.probability;
+        }
+        cumulativeKnown += known;
+        finalP10 = account.balance + mean * day + cumulativeKnown - 1.2816 * vol * sqrt(day.toDouble());
+        if (riskDay == null && finalP10 < account.minimumBalance) riskDay = day;
+      }
+      final shortfall = max(0.0, account.minimumBalance - finalP10);
+      result.add(AccountLiquidityRisk(
+        accountId: account.accountId,
+        name: account.name,
+        currency: account.currency,
+        currentBalance: account.balance,
+        projectedP10: finalP10,
+        riskDay: riskDay,
+        canBeCoveredByNetting: account.allowNetting && totalNettable >= shortfall,
+      ));
+    }
+    return result;
+  }
+
   static double _percentile(List<double> sorted, double q) {
     if (sorted.isEmpty) return 0;
     if (sorted.length == 1) return sorted.first;
     final pos = q * (sorted.length - 1);
-    final lower = pos.floor();
-    final upper = pos.ceil();
-    if (lower == upper) return sorted[lower];
-    final frac = pos - lower;
-    return sorted[lower] + (sorted[upper] - sorted[lower]) * frac;
+    final lo = pos.floor();
+    final hi = pos.ceil();
+    if (lo == hi) return sorted[lo];
+    final f = pos - lo;
+    return sorted[lo] + (sorted[hi] - sorted[lo]) * f;
   }
 
-  /// Box-Muller: стандартное нормальное число из равномерного RNG.
   static double _gaussian(Random rng) {
-    final u1 = 1.0 - rng.nextDouble(); // (0,1], избегаем log(0)
+    final u1 = 1 - rng.nextDouble();
     final u2 = rng.nextDouble();
-    return sqrt(-2.0 * log(u1)) * cos(2 * pi * u2);
+    return sqrt(-2 * log(u1)) * cos(2 * pi * u2);
   }
 }

@@ -1,16 +1,16 @@
+import 'dart:math';
+
 import '../models/transaction_model.dart';
 import 'forecast_engine.dart';
+import 'horizon_calibration.dart';
 
-/// Один день ретро-проверки: что прогноз обещал и что вышло на самом деле.
 class BacktestPoint {
   final DateTime date;
-
-  /// Фактический баланс на конец этого дня.
   final double actual;
-
   final double p10;
   final double p50;
   final double p90;
+  final double gapRisk;
 
   const BacktestPoint({
     required this.date,
@@ -18,46 +18,25 @@ class BacktestPoint {
     required this.p10,
     required this.p50,
     required this.p90,
+    this.gapRisk = 0,
   });
 
-  /// Ошибка медианного сценария со знаком: >0 — прогноз занизил.
   double get error => actual - p50;
-
-  /// Попал ли факт в коридор P10…P90.
   bool get inBand => actual >= p10 && actual <= p90;
+  bool get actualGap => actual < 0;
 }
 
-/// Насколько прогноз оказался прав.
 class BacktestResult {
   final List<BacktestPoint> points;
-
-  /// День, на который «встал» прогноз (последний известный ему).
   final DateTime asOf;
-
-  /// На сколько дней вперёд проверяли.
   final int horizonDays;
-
-  /// Средняя абсолютная ошибка P50, в рублях.
   final double mae;
-
-  /// Та же ошибка в процентах от факта.
-  ///
-  /// null, когда фактический баланс всё время слишком близок к нулю: делить
-  /// на почти-ноль бессмысленно, проценты получаются любые.
   final double? mape;
-
-  /// Доля дней, когда факт попал в коридор P10…P90 (0..1).
-  ///
-  /// Ориентир — 0.8: коридор строится как 10-й и 90-й процентили, то есть
-  /// по построению должен накрывать примерно 80% случаев. Заметно меньше —
-  /// прогноз слишком самоуверен, заметно больше — коридор бесполезно широк.
   final double coverage;
-
-  /// Средняя ошибка СО ЗНАКОМ. Показывает систематический перекос:
-  /// стабильный минус — прогноз привычно завышает баланс.
   final double bias;
-
-  /// Проверить не удалось: мало истории или горизонт не помещается.
+  final double quantileLoss;
+  final double brierScore;
+  final int seedCount;
   final bool insufficientData;
 
   const BacktestResult({
@@ -68,11 +47,13 @@ class BacktestResult {
     required this.mape,
     required this.coverage,
     required this.bias,
+    this.quantileLoss = 0,
+    this.brierScore = 0,
+    this.seedCount = 1,
     this.insufficientData = false,
   });
 
-  factory BacktestResult.empty(DateTime asOf, int horizonDays) =>
-      BacktestResult(
+  factory BacktestResult.empty(DateTime asOf, int horizonDays) => BacktestResult(
         points: const [],
         asOf: asOf,
         horizonDays: horizonDays,
@@ -83,18 +64,9 @@ class BacktestResult {
         insufficientData: true,
       );
 
-  /// Словесная оценка попадания в коридор — чтобы число не приходилось
-  /// интерпретировать самому.
-  ///
-  /// Оценка НЕсимметричная, и это намеренно. Опасен только недобор: если
-  /// коридор обещал накрыть 80% дней, а накрыл 40%, прогноз самоуверен и
-  /// доверять ему нельзя. Перебор же сам по себе не порок — на ровных
-  /// данных коридор законно накрывает все 100%, и называть это «средне»
-  /// было бы неправдой. (Слишком широкий коридор виден по другому
-  /// показателю — ошибке в процентах.)
   BacktestGrade get grade {
     if (insufficientData) return BacktestGrade.unknown;
-    if (coverage >= 0.7) return BacktestGrade.good;
+    if (coverage >= 0.7 && brierScore <= 0.22) return BacktestGrade.good;
     if (coverage >= 0.5) return BacktestGrade.fair;
     return BacktestGrade.poor;
   }
@@ -102,26 +74,118 @@ class BacktestResult {
 
 enum BacktestGrade { unknown, poor, fair, good }
 
-/// Ретро-проверка прогноза: отматываем на [horizonDays] назад, строим
-/// прогноз по данным, известным НА ТУ ДАТУ, и сравниваем с тем, что
-/// произошло на самом деле.
-///
-/// Смысл в том, что точность прогноза нельзя объявить — её можно только
-/// показать на своих же данных. Число «коридор накрыл 78% дней» говорит о
-/// доверии к прогнозу больше, чем любое описание модели.
+class HorizonBacktestMetrics {
+  final int horizonDays;
+  final int samples;
+  final double mae;
+  final double? mape;
+  final double coverage;
+  final double bias;
+  final double quantileLoss;
+  final double brierScore;
+  final List<({double predicted, bool actual})> riskObservations;
+
+  const HorizonBacktestMetrics({
+    required this.horizonDays,
+    required this.samples,
+    required this.mae,
+    required this.mape,
+    required this.coverage,
+    required this.bias,
+    required this.quantileLoss,
+    required this.brierScore,
+    this.riskObservations = const [],
+  });
+
+  double get normalizedScore {
+    final pct = mape == null ? 1.0 : min(3.0, mape! / 100.0);
+    final coveragePenalty = (coverage - horizonTargetCoverage).abs();
+    return pct + coveragePenalty * 0.8 + brierScore * 0.6;
+  }
+
+  HorizonCalibrationBucket toCalibrationBucket() {
+    final shrink = min(1.0, samples / 80.0);
+    return HorizonCalibrationBucket(
+      horizonDays: horizonDays,
+      intervalScale: intervalScaleFromCoverage(coverage),
+      biasCorrection: bias * shrink,
+      coverage: coverage,
+      mape: mape,
+      quantileLoss: quantileLoss,
+      riskBins: _riskBins(riskObservations),
+      samples: samples,
+    );
+  }
+
+  static List<RiskCalibrationBin> _riskBins(
+    List<({double predicted, bool actual})> observations,
+  ) {
+    const edges = [0.0, 0.05, 0.10, 0.25, 0.50, 0.75, 1.000001];
+    final bins = <RiskCalibrationBin>[];
+    for (var i = 0; i < edges.length - 1; i++) {
+      final lower = edges[i];
+      final upper = edges[i + 1];
+      final own = observations
+          .where((o) => o.predicted >= lower && o.predicted < upper)
+          .toList();
+      if (own.isEmpty) continue;
+      final events = own.where((o) => o.actual).length;
+      bins.add(RiskCalibrationBin(
+        lower: lower,
+        upper: upper >= 1 ? 1 : upper,
+        observedRate: events / own.length,
+        samples: own.length,
+      ));
+    }
+    return bins;
+  }
+}
+
+class MultiHorizonBacktest {
+  final List<HorizonBacktestMetrics> metrics;
+  final HorizonTuning tuning;
+  final int seedCount;
+  final DateTime evaluatedAt;
+
+  const MultiHorizonBacktest({
+    required this.metrics,
+    required this.tuning,
+    required this.seedCount,
+    required this.evaluatedAt,
+  });
+
+  HorizonBacktestMetrics? forHorizon(int days) {
+    if (metrics.isEmpty) return null;
+    var best = metrics.first;
+    var distance = (best.horizonDays - days).abs();
+    for (final metric in metrics.skip(1)) {
+      final next = (metric.horizonDays - days).abs();
+      if (next < distance) {
+        best = metric;
+        distance = next;
+      }
+    }
+    return best;
+  }
+
+  HorizonCalibrationProfile toCalibrationProfile() => HorizonCalibrationProfile(
+        updatedAt: evaluatedAt,
+        tuning: tuning,
+        buckets: metrics
+            .where((e) => e.samples > 0)
+            .map((e) => e.toCalibrationBucket())
+            .toList(),
+        source: 'rolling-multi-horizon-backtest',
+      );
+}
+
 class ForecastBacktest {
-  /// Минимум истории ДО точки отсчёта, иначе проверять нечего: движку самому
-  /// нужно около трёх недель, чтобы вообще что-то оценить.
   static const int minHistoryBeforeAsOf = 21;
+  static const List<int> topTierHorizons = [14, 30, 90, 180];
+  static const List<int> evaluationSeeds = [11, 29, 47, 83, 131];
 
   static DateTime _dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
-  /// Фактический баланс на конец дня [day].
-  ///
-  /// Считается от ТЕКУЩЕГО баланса назад: он уже включает всё, что
-  /// произошло, поэтому достаточно вычесть операции, случившиеся позже
-  /// [day]. Так не нужен начальный остаток счетов и не накапливается
-  /// расхождение с цифрой, которую человек видит на экране.
   static double balanceOn(
     DateTime day,
     List<TransactionModel> transactions,
@@ -142,89 +206,256 @@ class ForecastBacktest {
     required double currentBalance,
     int horizonDays = 30,
     DateTime? now,
-    double annualDiscountRate = 0.0,
+    double annualDiscountRate = 0,
+    int seed = 42,
+    int paths = 1200,
+    HorizonCalibrationProfile calibration = HorizonCalibrationProfile.identity,
+    HorizonTuning? tuning,
   }) {
     final today = _dateOnly(now ?? DateTime.now());
     final asOf = today.subtract(Duration(days: horizonDays));
+    return _runAt(
+      transactions: transactions,
+      currentBalance: currentBalance,
+      asOf: asOf,
+      horizonDays: horizonDays,
+      annualDiscountRate: annualDiscountRate,
+      seeds: [seed],
+      paths: paths,
+      calibration: calibration,
+      tuning: tuning,
+    );
+  }
 
+  static BacktestResult _runAt({
+    required List<TransactionModel> transactions,
+    required double currentBalance,
+    required DateTime asOf,
+    required int horizonDays,
+    required List<int> seeds,
+    required int paths,
+    double annualDiscountRate = 0,
+    HorizonCalibrationProfile calibration = HorizonCalibrationProfile.identity,
+    HorizonTuning? tuning,
+  }) {
     if (horizonDays <= 0 || transactions.length < 3) {
       return BacktestResult.empty(asOf, horizonDays);
     }
-
-    // История ДО точки отсчёта — только по ней прогноз и имел право строиться.
-    final past = transactions
-        .where((t) => !_dateOnly(t.date).isAfter(asOf))
-        .toList();
+    final past = transactions.where((t) => !_dateOnly(t.date).isAfter(asOf)).toList();
     if (past.length < 3) return BacktestResult.empty(asOf, horizonDays);
-
     var earliest = asOf;
-    for (final t in past) {
-      final d = _dateOnly(t.date);
-      if (d.isBefore(earliest)) earliest = d;
+    for (final tx in past) {
+      final day = _dateOnly(tx.date);
+      if (day.isBefore(earliest)) earliest = day;
     }
     if (asOf.difference(earliest).inDays < minHistoryBeforeAsOf) {
       return BacktestResult.empty(asOf, horizonDays);
     }
 
     final balanceAtAsOf = balanceOn(asOf, transactions, currentBalance);
-
-    final forecast = ForecastEngine.generate(
-      transactions: past,
-      currentBalance: balanceAtAsOf,
-      days: horizonDays,
-      annualDiscountRate: annualDiscountRate,
-      asOf: asOf,
-    );
-    if (forecast.insufficientData || forecast.p50.isEmpty) {
-      return BacktestResult.empty(asOf, horizonDays);
+    final forecasts = <ForecastResult>[];
+    for (final seed in seeds) {
+      final forecast = ForecastEngine.generate(
+        transactions: past,
+        currentBalance: balanceAtAsOf,
+        days: horizonDays,
+        annualDiscountRate: annualDiscountRate,
+        asOf: asOf,
+        seed: seed,
+        paths: paths,
+        calibration: calibration,
+        tuning: tuning,
+      );
+      if (!forecast.insufficientData && forecast.p50.isNotEmpty) {
+        forecasts.add(forecast);
+      }
     }
+    if (forecasts.isEmpty) return BacktestResult.empty(asOf, horizonDays);
 
+    final n = min(horizonDays, forecasts.map((f) => f.p50.length).reduce(min));
     final points = <BacktestPoint>[];
-    final n = [forecast.p50.length, horizonDays].reduce((a, b) => a < b ? a : b);
     for (var i = 0; i < n; i++) {
-      final date = asOf.add(Duration(days: i + 1));
+      double avg(List<double> Function(ForecastResult) read) =>
+          forecasts.map((f) => read(f)[i]).reduce((a, b) => a + b) /
+          forecasts.length;
       points.add(BacktestPoint(
-        date: date,
-        actual: balanceOn(date, transactions, currentBalance),
-        p10: forecast.p10[i],
-        p50: forecast.p50[i],
-        p90: forecast.p90[i],
+        date: asOf.add(Duration(days: i + 1)),
+        actual: balanceOn(asOf.add(Duration(days: i + 1)), transactions, currentBalance),
+        p10: avg((f) => f.p10),
+        p50: avg((f) => f.p50),
+        p90: avg((f) => f.p90),
+        gapRisk: avg((f) => f.belowZeroProbability),
       ));
     }
-    if (points.isEmpty) return BacktestResult.empty(asOf, horizonDays);
+    return _summarize(points, asOf, horizonDays, forecasts.length);
+  }
 
+  static BacktestResult _summarize(
+    List<BacktestPoint> points,
+    DateTime asOf,
+    int horizonDays,
+    int seedCount,
+  ) {
+    if (points.isEmpty) return BacktestResult.empty(asOf, horizonDays);
     var absSum = 0.0;
     var signedSum = 0.0;
     var inBand = 0;
     var pctSum = 0.0;
     var pctCount = 0;
-    // Порог, ниже которого проценты теряют смысл: 1% от типичного масштаба
-    // баланса, но не меньше рубля.
-    var scale = 0.0;
-    for (final p in points) {
-      scale += p.actual.abs();
-    }
-    scale /= points.length;
-    final pctFloor = (scale * 0.01).clamp(1.0, double.infinity);
-
-    for (final p in points) {
-      absSum += p.error.abs();
-      signedSum += p.error;
-      if (p.inBand) inBand++;
-      if (p.actual.abs() >= pctFloor) {
-        pctSum += p.error.abs() / p.actual.abs();
+    var qLoss = 0.0;
+    var brier = 0.0;
+    final scale = points.map((p) => p.actual.abs()).reduce((a, b) => a + b) /
+        points.length;
+    final pctFloor = max(1.0, scale * 0.01);
+    for (final point in points) {
+      absSum += point.error.abs();
+      signedSum += point.error;
+      if (point.inBand) inBand++;
+      if (point.actual.abs() >= pctFloor) {
+        pctSum += point.error.abs() / point.actual.abs();
         pctCount++;
       }
+      qLoss += pinballLoss(point.actual, point.p10, 0.10);
+      qLoss += pinballLoss(point.actual, point.p50, 0.50);
+      qLoss += pinballLoss(point.actual, point.p90, 0.90);
+      final actualGap = point.actualGap ? 1.0 : 0.0;
+      final diff = point.gapRisk - actualGap;
+      brier += diff * diff;
     }
-
     return BacktestResult(
       points: points,
       asOf: asOf,
       horizonDays: horizonDays,
       mae: absSum / points.length,
-      mape: pctCount == 0 ? null : (pctSum / pctCount) * 100,
+      mape: pctCount == 0 ? null : pctSum / pctCount * 100,
       coverage: inBand / points.length,
       bias: signedSum / points.length,
+      quantileLoss: qLoss / (points.length * 3),
+      brierScore: brier / points.length,
+      seedCount: seedCount,
     );
+  }
+
+  /// Rolling multi-origin, multi-seed backtest. A single lucky cut-off can no
+  /// longer declare the model "accurate".
+  static MultiHorizonBacktest runMultiHorizon({
+    required List<TransactionModel> transactions,
+    required double currentBalance,
+    DateTime? now,
+    List<int> horizons = topTierHorizons,
+    List<int> seeds = evaluationSeeds,
+    int maxOriginsPerHorizon = 4,
+    int paths = 450,
+    HorizonTuning tuning = HorizonTuning.defaults,
+  }) {
+    final today = _dateOnly(now ?? DateTime.now());
+    final metrics = <HorizonBacktestMetrics>[];
+    for (final horizon in horizons) {
+      final allPoints = <BacktestPoint>[];
+      var origins = 0;
+      // Recent origins matter more, but require a full future horizon. Step by
+      // roughly half a horizon to avoid evaluating the same days repeatedly.
+      final step = max(7, horizon ~/ 2);
+      for (var offset = horizon; origins < maxOriginsPerHorizon; offset += step) {
+        final asOf = today.subtract(Duration(days: offset));
+        final result = _runAt(
+          transactions: transactions,
+          currentBalance: currentBalance,
+          asOf: asOf,
+          horizonDays: horizon,
+          seeds: seeds,
+          paths: paths,
+          tuning: tuning,
+        );
+        if (result.insufficientData) {
+          if (offset > 365 * 4) break;
+          continue;
+        }
+        allPoints.addAll(result.points);
+        origins++;
+      }
+      metrics.add(_metricsFromPoints(horizon, allPoints));
+    }
+    return MultiHorizonBacktest(
+      metrics: metrics,
+      tuning: tuning,
+      seedCount: seeds.length,
+      evaluatedAt: today,
+    );
+  }
+
+  static HorizonBacktestMetrics _metricsFromPoints(
+    int horizon,
+    List<BacktestPoint> points,
+  ) {
+    if (points.isEmpty) {
+      return HorizonBacktestMetrics(
+        horizonDays: horizon,
+        samples: 0,
+        mae: 0,
+        mape: null,
+        coverage: 0,
+        bias: 0,
+        quantileLoss: 0,
+        brierScore: 0,
+      );
+    }
+    final summary = _summarize(points, DateTime(2000), horizon, 1);
+    return HorizonBacktestMetrics(
+      horizonDays: horizon,
+      samples: points.length,
+      mae: summary.mae,
+      mape: summary.mape,
+      coverage: summary.coverage,
+      bias: summary.bias,
+      quantileLoss: summary.quantileLoss,
+      brierScore: summary.brierScore,
+      riskObservations: [
+        for (final point in points)
+          (predicted: point.gapRisk, actual: point.actualGap),
+      ],
+    );
+  }
+
+  /// Safe hyperparameter selection. Candidates are intentionally few and
+  /// interpretable; 14/30-day quality has more weight than long-horizon fit.
+  static HorizonTuning selectTuning({
+    required List<TransactionModel> transactions,
+    required double currentBalance,
+    DateTime? now,
+  }) {
+    HorizonTuning best = HorizonTuning.defaults;
+    var bestScore = double.infinity;
+    for (final candidate in HorizonTuningCandidates.values) {
+      final evaluation = runMultiHorizon(
+        transactions: transactions,
+        currentBalance: currentBalance,
+        now: now,
+        horizons: const [14, 30, 90],
+        seeds: const [29],
+        maxOriginsPerHorizon: 3,
+        paths: 250,
+        tuning: candidate,
+      );
+      var score = 0.0;
+      var weightTotal = 0.0;
+      for (final metric in evaluation.metrics) {
+        if (metric.samples == 0) continue;
+        final weight = switch (metric.horizonDays) {
+          14 => 0.45,
+          30 => 0.35,
+          _ => 0.20,
+        };
+        score += metric.normalizedScore * weight;
+        weightTotal += weight;
+      }
+      if (weightTotal == 0) continue;
+      score /= weightTotal;
+      if (score < bestScore) {
+        bestScore = score;
+        best = candidate;
+      }
+    }
+    return best;
   }
 }
