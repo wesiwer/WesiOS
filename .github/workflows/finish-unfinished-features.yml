@@ -29,19 +29,24 @@ jobs:
         run: |
           set -euo pipefail
           if grep -q 'home_clock_panel' lib/features/home/home_screen.dart; then
-            echo 'Home fix already present.'
+            echo 'Home base fix already present.'
           else
             git fetch origin agent/fix-full-home-mobile --depth=1
             git show origin/agent/fix-full-home-mobile:tools/fix_full_home_mobile.py > /tmp/fix_full_home_mobile.py
             python3 /tmp/fix_full_home_mobile.py
           fi
+          git fetch origin main --depth=1
+          git show origin/main:tools/finish_home_mobile_header.py > /tmp/finish_home_mobile_header.py
+          python3 /tmp/finish_home_mobile_header.py
 
       - name: Apply Audio Vault quick actions
         run: |
           set -euo pipefail
           git fetch origin main --depth=1
           git show origin/main:tools/finish_audio_quick_actions.py > /tmp/finish_audio_quick_actions.py
+          git show origin/main:tools/fix_audio_quick_actions_null.py > /tmp/fix_audio_quick_actions_null.py
           python3 /tmp/finish_audio_quick_actions.py
+          python3 /tmp/fix_audio_quick_actions_null.py
 
       - name: Format changed Dart files
         run: |
@@ -59,9 +64,12 @@ jobs:
           grep -q 'height: large ? 168 : 116' lib/core/widgets/wesi_clock.dart
           grep -q 'home_clock_panel' lib/features/home/home_screen.dart
           grep -q 'home_balance_card' lib/features/home/home_screen.dart
+          grep -q 'compactHeader' lib/features/home/home_screen.dart
+          grep -q 'showText: !compactHeader' lib/features/home/home_screen.dart
           grep -q '_quickAudioActions(BeatEntry beat)' lib/features/audio/audio_vault_v2_screen.dart
           grep -q '_analyzePendingBeats' lib/features/audio/audio_vault_v2_screen.dart
           grep -q '_openAbletonQuick' lib/features/audio/audio_vault_v2_screen.dart
+          grep -q 'File(abletonPath!).existsSync()' lib/features/audio/audio_vault_v2_screen.dart
           git diff --check
 
       - run: flutter pub get
