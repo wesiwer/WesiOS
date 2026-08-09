@@ -105,6 +105,9 @@ jobs:
               found.push({
                 "created": clean(row.created),
                 "message": safeMessage,
+                "dataKeys": decodedData && typeof decodedData === "object"
+                  ? Object.keys(decodedData).map((key) => clean(key)).slice(0, 30)
+                  : [],
                 "data": safeData,
               });
               if (found.length >= 12) break;
