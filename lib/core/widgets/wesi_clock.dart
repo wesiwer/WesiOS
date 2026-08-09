@@ -148,7 +148,16 @@ class _WesiClockState extends State<WesiClock> {
               constraints.hasBoundedWidth && constraints.maxWidth.isFinite
                   ? math.min(constraints.maxWidth, screenContentWidth)
                   : screenContentWidth;
-          return _buildClockBody(math.max(160.0, available), available >= 300);
+          final width = math.max(160.0, available);
+          final large = width >= 300;
+          return SizedBox(
+            width: width,
+            height: large ? 168 : 116,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _buildClockBody(width, large),
+            ),
+          );
         },
       ),
     );

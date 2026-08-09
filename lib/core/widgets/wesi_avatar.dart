@@ -83,73 +83,87 @@ class WesiAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ValueListenableBuilder → live update по всему приложению
-    return ValueListenableBuilder(
-      valueListenable: Hive.box(_box).listenable(keys: [_key, _customKey]),
-      builder: (context, Box box, _) {
-        final border = showBorder
-            ? Border.all(
-                color: AppTheme.accent.withOpacity(0.55),
-                width: size > 40 ? 2.2 : 1.5,
-              )
-            : null;
-        final shadow = [
-          BoxShadow(
-            color: AppTheme.accent.withOpacity(0.12),
-            blurRadius: size * 0.25,
-            spreadRadius: 1,
-          ),
-        ];
+    Box<dynamic>? box;
+    try {
+      if (Hive.isBoxOpen(_box)) box = Hive.box<dynamic>(_box);
+    } catch (_) {
+      box = null;
+    }
 
-        // Порядок: снимок этого человека → своя картинка (только когда
-        // рисуем себя) → пресет. Для чужой аватарки картинка владельца
-        // устройства не годится.
-        final custom = photo ?? (index == null ? customBytes : null);
-        final Widget avatar;
+    // Настройки могут открываться позже первого кадра. Аватар в таком случае
+    // обязан показать безопасный пресет, а не уронить всю шапку Home.
+    if (box == null) return _buildAvatar(null);
 
-        if (custom != null) {
-          avatar = Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: border,
-              boxShadow: shadow,
-              image: DecorationImage(
-                image: MemoryImage(custom),
-                fit: BoxFit.cover,
-              ),
-            ),
-          );
-        } else {
-          final resolved = (index ?? (box.get(_key, defaultValue: 0) as int))
-              .clamp(0, avatarPresets.length - 1);
-          final preset = avatarPresets[resolved];
-
-          avatar = Container(
-            width: size,
-            height: size,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: preset.gradient,
-              border: border,
-              boxShadow: shadow,
-            ),
-            child: Center(
-              child: IconTheme(
-                data: IconThemeData(size: size * 0.45),
-                child: preset.icon,
-              ),
-            ),
-          );
-        }
-
-        if (onTap != null) {
-          return GestureDetector(onTap: onTap, child: avatar);
-        }
-        return avatar;
-      },
+    return ValueListenableBuilder<Box<dynamic>>(
+      valueListenable: box.listenable(keys: const [_key, _customKey]),
+      builder: (context, liveBox, _) => _buildAvatar(liveBox),
     );
+  }
+
+  Widget _buildAvatar(Box<dynamic>? box) {
+    final border = showBorder
+        ? Border.all(
+            color: AppTheme.accent.withOpacity(0.55),
+            width: size > 40 ? 2.2 : 1.5,
+          )
+        : null;
+    final shadow = [
+      BoxShadow(
+        color: AppTheme.accent.withOpacity(0.12),
+        blurRadius: size * 0.25,
+        spreadRadius: 1,
+      ),
+    ];
+
+    final custom = photo ?? (index == null ? customBytes : null);
+    final Widget avatar;
+
+    if (custom != null) {
+      avatar = Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: border,
+          boxShadow: shadow,
+          image: DecorationImage(
+            image: MemoryImage(custom),
+            fit: BoxFit.cover,
+          ),
+        ),
+      );
+    } else {
+      var storedIndex = 0;
+      if (box != null) {
+        final raw = box.get(_key, defaultValue: 0);
+        if (raw is int) storedIndex = raw;
+      }
+      final resolved =
+          (index ?? storedIndex).clamp(0, avatarPresets.length - 1);
+      final preset = avatarPresets[resolved];
+
+      avatar = Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: preset.gradient,
+          border: border,
+          boxShadow: shadow,
+        ),
+        child: Center(
+          child: IconTheme(
+            data: IconThemeData(size: size * 0.45),
+            child: preset.icon,
+          ),
+        ),
+      );
+    }
+
+    if (onTap != null) {
+      return GestureDetector(onTap: onTap, child: avatar);
+    }
+    return avatar;
   }
 
   /// Набор пресетов. Обновлён: более насыщенные многоточечные градиенты
