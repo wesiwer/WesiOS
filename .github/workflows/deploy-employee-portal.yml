@@ -251,11 +251,18 @@ jobs:
           for path in \
             /api/wesi/app/bootstrap \
             /api/wesi/security/session/ping \
-            /api/wesi/security/sessions \
-            /api/wesi/security/confirm-owner-email; do
+            /api/wesi/security/sessions; do
             CODE=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 "$API$path" || true)
             case "$CODE" in
               401|403) echo "Protected route loaded: $path ($CODE)" ;;
               *) echo "::error::$path returned HTTP $CODE"; cat route-response.txt; exit 1 ;;
             esac
           done
+
+          path=/api/wesi/security/confirm-owner-email
+          CODE=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 \
+            -X POST -H 'Content-Type: application/json' -d '{}' "$API$path" || true)
+          case "$CODE" in
+            401|403) echo "Protected POST route loaded: $path ($CODE)" ;;
+            *) echo "::error::$path returned HTTP $CODE"; cat route-response.txt; exit 1 ;;
+          esac
