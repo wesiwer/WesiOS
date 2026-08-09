@@ -823,23 +823,9 @@ class ForecastEngine {
         .where((t) => t.isRecurring && t.recurringPeriod != null)
         .toList();
 
-    DateTime minDay = todayOnly;
-    for (final tx in history) {
-      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
-      if (day.isBefore(minDay)) minDay = day;
-    }
-    final spanDays = todayOnly.difference(minDay).inDays + 1;
     final hasKnownForwardCash = recurringTxs.isNotEmpty ||
         businessEvents.isNotEmpty ||
         scheduledOneOff.isNotEmpty;
-    if (!hasKnownForwardCash &&
-        (history.length < 3 || spanDays < minHistorySpanDays)) {
-      return ForecastResult.empty();
-    }
-    final confidence = _confidence(spanDays, history.length);
-    final hasStatisticalHistory =
-        spanDays >= minHistorySpanDays && history.length >= 3;
-    final seasonalityApplied = spanDays >= _seasonalityMinSpanDays;
 
     final recurringIds = recurringTxs.map((e) => e.id).toSet();
     final recurringIncomeIds = recurringTxs
@@ -853,6 +839,29 @@ class ForecastEngine {
         .where(
             (e) => !recurringIds.contains(e.id) && !autoMaterializedIncome(e))
         .toList();
+
+    // Both statistical sample count and statistical time span must be earned
+    // by actual non-recurring cash observations. Recurring schedule parents
+    // and legacy generated income rows belong to the known/expected layer and
+    // must never dilute occurrence frequency or manufacture confidence.
+    DateTime minDay = todayOnly;
+    for (final tx in nonRecurring) {
+      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
+      if (day.isBefore(minDay)) minDay = day;
+    }
+    final spanDays =
+        nonRecurring.isEmpty ? 1 : todayOnly.difference(minDay).inDays + 1;
+    final actualEvidenceCount = nonRecurring.length;
+    if (!hasKnownForwardCash &&
+        (actualEvidenceCount < 3 || spanDays < minHistorySpanDays)) {
+      return ForecastResult.empty();
+    }
+    final confidence = _confidence(spanDays, actualEvidenceCount);
+    final hasStatisticalHistory =
+        spanDays >= minHistorySpanDays && actualEvidenceCount >= 3;
+    final seasonalityApplied = hasStatisticalHistory &&
+        spanDays >= _seasonalityMinSpanDays &&
+        actualEvidenceCount >= 12;
     final shocks = _ShockPool.detect(nonRecurring, minDay, spanDays);
 
     final streamKeys = _topStreamKeys(nonRecurring);
