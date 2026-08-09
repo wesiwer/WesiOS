@@ -34,6 +34,18 @@ class HorizonBusinessContextService {
 
   static DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
 
+  static ForecastActionPrompt _sourceWarning({
+    required String code,
+    required String ru,
+    required String en,
+  }) =>
+      ForecastActionPrompt(
+        code: code,
+        severity: ForecastPromptSeverity.warning,
+        textRu: ru,
+        textEn: en,
+      );
+
   static Future<HorizonBusinessContext> load({
     required List<TransactionModel> transactions,
     required int days,
@@ -45,11 +57,20 @@ class HorizonBusinessContextService {
     final warnings = <ForecastActionPrompt>[];
     final exposure = <String, double>{};
 
-    await _addCrm(events, exposure, today, end);
-    await _addContracts(events, exposure, today, end);
+    await _addCrm(events, exposure, warnings, today, end);
+    await _addContracts(events, exposure, warnings, today, end);
     await _addTaskObligations(events, warnings, today, end);
 
-    final accounts = await AccountLiquidityService.snapshots(transactions);
+    List<AccountLiquiditySnapshot> accounts = const [];
+    try {
+      accounts = await AccountLiquidityService.snapshots(transactions);
+    } catch (_) {
+      warnings.add(_sourceWarning(
+        code: 'context-accounts-unavailable',
+        ru: 'Не удалось прочитать риск-профили счетов. Общий прогноз построен, но локальный риск ликвидности по счетам сейчас неизвестен.',
+        en: 'Account risk profiles could not be read. The total forecast is available, but local account liquidity risk is currently unknown.',
+      ));
+    }
     _addConcentrationWarnings(exposure, warnings);
 
     return HorizonBusinessContext(
@@ -63,6 +84,7 @@ class HorizonBusinessContextService {
   static Future<void> _addCrm(
     List<HorizonCashEvent> events,
     Map<String, double> exposure,
+    List<ForecastActionPrompt> warnings,
     DateTime today,
     DateTime end,
   ) async {
@@ -90,13 +112,18 @@ class HorizonBusinessContextService {
             (exposure['crm:${deal.clientId}'] ?? 0) + rub * probability;
       }
     } catch (_) {
-      // CRM must enrich Horizon, never make Treasury unusable.
+      warnings.add(_sourceWarning(
+        code: 'context-crm-unavailable',
+        ru: 'CRM сейчас недоступна для Horizon. Прогноз не включает ожидаемые сделки; не считай отсутствие этих входящих доказательством, что их не будет.',
+        en: 'CRM is currently unavailable to Horizon. Expected deals are excluded; their absence from the forecast is not evidence that they will not occur.',
+      ));
     }
   }
 
   static Future<void> _addContracts(
     List<HorizonCashEvent> events,
     Map<String, double> exposure,
+    List<ForecastActionPrompt> warnings,
     DateTime today,
     DateTime end,
   ) async {
@@ -179,7 +206,13 @@ class HorizonBusinessContextService {
               contract.expectedRoyaltyRub * contract.royaltyProbability;
         }
       }
-    } catch (_) {}
+    } catch (_) {
+      warnings.add(_sourceWarning(
+        code: 'context-vault-unavailable',
+        ru: 'Audio Vault сейчас недоступен для Horizon. Ожидаемые продления и роялти исключены из этого расчёта, поэтому доля неизвестного фактически выше.',
+        en: 'Audio Vault is currently unavailable to Horizon. Expected renewals and royalties are excluded, so true unknown cash exposure is higher.',
+      ));
+    }
   }
 
   /// Cash-tag convention on Tasks keeps the task model backward-compatible:
@@ -244,7 +277,13 @@ class HorizonBusinessContextService {
           source: 'task-obligation',
         ));
       }
-    } catch (_) {}
+    } catch (_) {
+      warnings.add(_sourceWarning(
+        code: 'context-tasks-unavailable',
+        ru: 'Tasks сейчас недоступны для Horizon. Денежные обязательства из задач не попали в этот расчёт; ближайший cash risk может быть занижен.',
+        en: 'Tasks are currently unavailable to Horizon. Cash obligations from tasks are excluded; near-term cash risk may be understated.',
+      ));
+    }
   }
 
   static void _addConcentrationWarnings(
