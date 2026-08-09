@@ -1,0 +1,91 @@
+name: Horizon CI fix runner
+
+on:
+  push:
+    branches:
+      - agent/horizon-ci-fix-runner
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fixes:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/horizon-top-tier
+          fetch-depth: 0
+      - name: Apply targeted final-gate fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str) -> None:
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected exactly one match, found {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_once(
+              'lib/features/treasury/services/forecast_engine.dart',
+              """    final fallbackDailyVolatility = _fallbackDailyVolatility(\n      history: history,\n      events: [...businessEvents, ...externalByOffset.values.expand((e) => e)],\n      currentBalance: currentBalance,\n    );""",
+              """    final fallbackDailyVolatility = _fallbackDailyVolatility(\n      history: nonRecurring,\n      events: [...businessEvents, ...externalByOffset.values.expand((e) => e)],\n      currentBalance: currentBalance,\n    );""",
+          )
+
+          replace_once(
+              'lib/features/treasury/services/forecast_engine.dart',
+              """    final expectedDates = <DateTime>[];\n    var occurrence = latest;\n    guard = 0;\n    while (!occurrence.isBefore(start) && guard++ < 10000) {\n      expectedDates.add(occurrence);\n      occurrence = previousOccurrence(occurrence);\n    }""",
+              """    // Reliability evidence starts when this recurring schedule actually\n    // existed. Never invent missed payments before the parent record's anchor.\n    final evidenceStart = start.isAfter(anchor) ? start : anchor;\n    final expectedDates = <DateTime>[];\n    var occurrence = latest;\n    guard = 0;\n    while (!occurrence.isBefore(evidenceStart) && guard++ < 10000) {\n      expectedDates.add(occurrence);\n      occurrence = previousOccurrence(occurrence);\n    }""",
+          )
+
+          replace_once(
+              'lib/features/treasury/services/forecast_backtest.dart',
+              """    final cutoff = _dateOnly(day);\n    final currentCutoff = _dateOnly(currentDate ?? DateTime.now());\n    var afterCutoffAlreadyInCurrentBalance = 0.0;\n    for (final tx in transactions) {\n      final txDay = _dateOnly(tx.date);\n      if (txDay.isAfter(cutoff) && !txDay.isAfter(currentCutoff)) {\n        afterCutoffAlreadyInCurrentBalance +=\n            tx.type == TransactionType.income ? tx.amount : -tx.amount;\n      }\n    }""",
+              """    final cutoff = _dateOnly(day);\n    final currentCutoff = _dateOnly(currentDate ?? DateTime.now());\n    final recurringIncomeIds = transactions\n        .where((tx) => tx.isRecurring && tx.type == TransactionType.income)\n        .map((tx) => tx.id)\n        .toList();\n    bool legacyAutoIncome(TransactionModel tx) =>\n        !tx.isRecurring &&\n        tx.type == TransactionType.income &&\n        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));\n    bool actualForBalance(TransactionModel tx) =>\n        !tx.isRecurring && !legacyAutoIncome(tx);\n\n    var afterCutoffAlreadyInCurrentBalance = 0.0;\n    for (final tx in transactions.where(actualForBalance)) {\n      final txDay = _dateOnly(tx.date);\n      if (txDay.isAfter(cutoff) && !txDay.isAfter(currentCutoff)) {\n        afterCutoffAlreadyInCurrentBalance +=\n            tx.type == TransactionType.income ? tx.amount : -tx.amount;\n      }\n    }""",
+          )
+
+          replace_once(
+              'lib/features/treasury/services/account_service.dart',
+              """    final cutoff = DateTime(now.year, now.month, now.day, now.hour, now.minute,\n        now.second, now.millisecond, now.microsecond);\n    return accounts.map((a) {\n      final own = transactions\n          .where((t) => t.effectiveAccountId == a.id && !t.date.isAfter(cutoff))\n          .toList();""",
+              """    final cutoff = DateTime(now.year, now.month, now.day, now.hour, now.minute,\n        now.second, now.millisecond, now.microsecond);\n    final recurringIncomeIds = transactions\n        .where((tx) => tx.isRecurring && tx.type == TransactionType.income)\n        .map((tx) => tx.id)\n        .toList();\n    bool legacyAutoIncome(TransactionModel tx) =>\n        !tx.isRecurring &&\n        tx.type == TransactionType.income &&\n        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));\n    bool actualForBalance(TransactionModel tx) =>\n        !tx.isRecurring && !legacyAutoIncome(tx);\n\n    return accounts.map((a) {\n      final own = transactions\n          .where((t) =>\n              t.effectiveAccountId == a.id &&\n              !t.date.isAfter(cutoff) &&\n              actualForBalance(t))\n          .toList();""",
+          )
+
+          replace_once(
+              'lib/features/treasury/services/recurring_payment_automation.dart',
+              """  RecurringPaymentAutomation({\n    TreasuryService? treasury,\n    DateTime Function()? now,\n    this.minInterval = const Duration(minutes: 5),\n  })  : _treasury = treasury ?? TreasuryService(),\n        _now = now ?? DateTime.now;""",
+              """  RecurringPaymentAutomation({\n    TreasuryService? treasury,\n    DateTime Function()? now,\n    Future<void> Function()? maintenance,\n    this.minInterval = const Duration(minutes: 5),\n  })  : _treasury = treasury ?? TreasuryService(),\n        _now = now ?? DateTime.now,\n        _maintenance = maintenance ??\n            (treasury == null\n                ? (() => HorizonMaintenanceAutomation.shared.runNow())\n                : (() async {}));""",
+          )
+
+          replace_once(
+              'lib/features/treasury/services/recurring_payment_automation.dart',
+              """  final TreasuryService _treasury;\n  final DateTime Function() _now;\n  final Duration minInterval;""",
+              """  final TreasuryService _treasury;\n  final DateTime Function() _now;\n  final Future<void> Function() _maintenance;\n  final Duration minInterval;""",
+          )
+
+          replace_once(
+              'lib/features/treasury/services/recurring_payment_automation.dart',
+              """      await HorizonMaintenanceAutomation.shared.runNow();""",
+              """      await _maintenance();""",
+          )
+          PY
+
+          git diff --check
+          git diff --stat
+          git diff
+      - name: Commit and push product fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "WesiOS CI Fix"
+          git config user.email "actions@users.noreply.github.com"
+          git add lib/features/treasury/services/forecast_engine.dart \
+                  lib/features/treasury/services/forecast_backtest.dart \
+                  lib/features/treasury/services/account_service.dart \
+                  lib/features/treasury/services/recurring_payment_automation.dart
+          git commit -m "fix(horizon): restore recurring cash truth contracts"
+          git push origin HEAD:agent/horizon-top-tier
