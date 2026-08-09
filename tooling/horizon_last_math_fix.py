@@ -148,4 +148,36 @@ text = text.replace(
 )
 
 p.write_text(text, encoding='utf-8')
-print('final Horizon math invariants patched')
+
+# The anti-millionaire test must compare against the ACTUAL observed lucky
+# month, not `recentNetPerDay`: after shock filtering that diagnostic correctly
+# represents ordinary cash, so using it as the lucky pace would punish the
+# model for becoming more robust.
+t = Path('test/horizon_top_tier_test.dart')
+test_text = t.read_text(encoding='utf-8')
+old_test = '''      // Explicit guard against absurd compounding/extrapolation from the lucky
+      // month: a year cannot simply repeat the current recent daily pace.
+      final naiveLuckyYear = 100000 + result.recentNetPerDay * 365;
+      if (naiveLuckyYear > 100000) {
+        expect(result.p50.last, lessThan(naiveLuckyYear * 0.80));
+      }
+'''
+new_test = '''      // Explicit guard against absurd compounding/extrapolation from the lucky
+      // month. Use the actually observed last-30-day net pace: `recentNetPerDay`
+      // deliberately excludes shock days and now represents ordinary cash.
+      final recentCutoff = now.subtract(const Duration(days: 30));
+      final observedRecentNet = history
+          .where((tx) => tx.date.isAfter(recentCutoff))
+          .fold<double>(
+            0,
+            (sum, tx) =>
+                sum + (tx.type == TransactionType.income ? tx.amount : -tx.amount),
+          );
+      final naiveLuckyYear = 100000 + (observedRecentNet / 30) * 365;
+      expect(result.p50.last, lessThan(naiveLuckyYear * 0.80));
+'''
+if old_test not in test_text:
+    raise SystemExit('anti-millionaire test anchor not found')
+t.write_text(test_text.replace(old_test, new_test, 1), encoding='utf-8')
+
+print('final Horizon math invariants and semantic guard patched')
