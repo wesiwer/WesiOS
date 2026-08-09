@@ -137,11 +137,7 @@ class HorizonDecisionPanel extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _progress(
-                  _ru ? 'Калибровка P10–P90' : 'P10–P90 coverage',
-                  forecast.calibrationCoverage,
-                  target: .8,
-                ),
+                child: _calibrationProgress(),
               ),
             ],
           ),
@@ -275,6 +271,80 @@ class HorizonDecisionPanel extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _calibrationProgress() {
+    final samples = forecast.calibrationSamples;
+    if (samples <= 0) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  _ru ? 'Калибровка P10–P90' : 'P10–P90 calibration',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
+                ),
+              ),
+              Text(
+                _ru ? 'нет оценки · цель 80%' : 'not measured · target 80%',
+                style: TextStyle(
+                  color: Colors.amber,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: 0,
+              minHeight: 5,
+              backgroundColor: AppTheme.surfaceLight,
+              color: Colors.amber.withOpacity(.55),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            _ru
+                ? 'Цель — не измеренный факт. Нужны созревшие backtest/live наблюдения.'
+                : 'The target is not measured evidence. Mature backtest/live observations are required.',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 9.5),
+          ),
+        ],
+      );
+    }
+
+    final source = forecast.calibrationSource
+            .startsWith('monthly-learning:backtest+issued')
+        ? (_ru ? 'live + backtest' : 'live + backtest')
+        : forecast.calibrationSource.startsWith('monthly-learning')
+            ? 'backtest'
+            : forecast.calibrationSource;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _progress(
+          _ru
+              ? 'P10–P90 coverage · n=$samples'
+              : 'P10–P90 coverage · n=$samples',
+          forecast.calibrationCoverage,
+          target: .8,
+        ),
+        const SizedBox(height: 3),
+        Text(
+          _ru ? 'Источник: $source' : 'Source: $source',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(color: AppTheme.textMuted, fontSize: 9.5),
+        ),
+      ],
     );
   }
 

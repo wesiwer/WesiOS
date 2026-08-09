@@ -259,6 +259,8 @@ class ForecastResult {
   final double intervalCalibrationScale;
   final double biasCorrection;
   final double calibrationCoverage;
+  final int calibrationSamples;
+  final String calibrationSource;
   final CashRegime regime;
   final Map<CashRegime, double> regimeProbabilities;
   final Map<String, double> streamContribution;
@@ -298,6 +300,8 @@ class ForecastResult {
     this.intervalCalibrationScale = 1,
     this.biasCorrection = 0,
     this.calibrationCoverage = 0,
+    this.calibrationSamples = 0,
+    this.calibrationSource = 'identity',
     this.regime = CashRegime.stable,
     this.regimeProbabilities = const {CashRegime.stable: 1},
     this.streamContribution = const {},
@@ -362,6 +366,8 @@ class ForecastResult {
         intervalCalibrationScale: intervalCalibrationScale,
         biasCorrection: biasCorrection,
         calibrationCoverage: calibrationCoverage,
+        calibrationSamples: calibrationSamples,
+        calibrationSource: calibrationSource,
         regime: regime,
         regimeProbabilities: regimeProbabilities,
         streamContribution: streamContribution,
@@ -1330,6 +1336,8 @@ class ForecastEngine {
       intervalCalibrationScale: endBucket.intervalScale,
       biasCorrection: endBucket.biasCorrection,
       calibrationCoverage: endBucket.coverage,
+      calibrationSamples: endBucket.samples,
+      calibrationSource: calibration.source,
       regime: regimeModel.current,
       regimeProbabilities: regimeModel.probabilities,
       streamContribution: streamContribution,
