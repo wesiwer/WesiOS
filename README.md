@@ -51,7 +51,10 @@
   WesiOS-устройствами
 - Time Center по нажатию на часы Home — device-local будильники, напоминания,
   persistent timer и секундомер с кругами; расписания восстанавливаются на
-  launch/resume, Android scheduled notifications переживают process death/reboot
+  launch/resume. Android scheduled notifications переживают process death/reboot;
+  Windows регистрирует будущие срабатывания в Task Scheduler и запускает WesiOS
+  в notification-only режиме, поэтому будильник/напоминание работают и при
+  закрытом обычном окне приложения
 - Knowledge Base linked charts — `forecast`/`analytics`/`treasury` получают
   реальные данные WesiOS вместо захардкоженных demo-серий
 - Home mobile — безопасный avatar/Hive bootstrap, компактная шапка и адаптивные
@@ -108,4 +111,4 @@ flutter build apk --release
 
 ## Версия
 
-v0.19.13 α — Private, Wesi Inc.
+v0.19.14 α — Private, Wesi Inc.
