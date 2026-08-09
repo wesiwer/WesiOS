@@ -1,0 +1,68 @@
+name: Horizon hardening executor
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/horizon-hardening-exec2'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/horizon-top-tier
+          fetch-depth: 1
+
+      - name: Apply hardening patch
+        run: |
+          set -euo pipefail
+          cp "$GITHUB_WORKSPACE/tooling/horizon_final_hardening.py" /tmp/horizon_final_hardening.py || true
+          git show origin/agent/horizon-hardening-exec2:tooling/horizon_final_hardening.py > /tmp/horizon_final_hardening.py
+          python3 -m py_compile /tmp/horizon_final_hardening.py
+          python3 /tmp/horizon_final_hardening.py
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Validate
+        run: |
+          set -euo pipefail
+          dart format \
+            lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/services/horizon_business_context.dart \
+            lib/features/treasury/services/horizon_maintenance_automation.dart \
+            lib/features/treasury/services/recurring_payment_automation.dart \
+            test/horizon_hardening_regression_test.dart
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test \
+            test/horizon_top_tier_test.dart \
+            test/horizon_completion_test.dart \
+            test/horizon_truth_invariants_test.dart \
+            test/horizon_main_source_stress_test.dart \
+            test/horizon_hardening_regression_test.dart
+
+      - name: Commit to Horizon branch
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/services/horizon_business_context.dart \
+            lib/features/treasury/services/horizon_maintenance_automation.dart \
+            lib/features/treasury/services/recurring_payment_automation.dart \
+            test/horizon_hardening_regression_test.dart
+          if git diff --cached --quiet; then
+            echo 'No product changes.'
+            exit 0
+          fi
+          git commit -m 'feat(horizon): harden production learning and cash truth'
+          git push origin HEAD:agent/horizon-top-tier
