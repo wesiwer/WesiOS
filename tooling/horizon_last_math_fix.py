@@ -3,6 +3,57 @@ from pathlib import Path
 p = Path('lib/features/treasury/services/forecast_engine.dart')
 text = p.read_text(encoding='utf-8')
 
+# A shock episode may occupy most of the last 21 days. Those days are removed
+# from the ordinary stream stats by design, but the one or two remaining empty
+# days must not become "proof" that normal income disappeared. If shock
+# filtering leaves too little recent evidence, fall back to the robust long-run
+# frequency/amount and let the regime layer carry the short-term growth signal.
+old = '''    var weightedAmount = 0.0;
+    var amountWeight = 0.0;
+    for (var i = dense.length - 1; i >= recentStart; i--) {
+      if (!excludedDays.contains(i)) {
+        totalOccurrenceWeight += recentWeight;
+        if (dense[i] > 0) {
+          weightedOccurrence += recentWeight;
+          weightedAmount += dense[i] * recentWeight;
+          amountWeight += recentWeight;
+        }
+      }
+      recentWeight *= 0.88;
+    }
+    final recentFrequency = totalOccurrenceWeight == 0
+        ? baselineFrequency
+        : weightedOccurrence / totalOccurrenceWeight;
+    final recentAmount =
+        amountWeight == 0 ? baselineAmount : weightedAmount / amountWeight;
+'''
+new = '''    var weightedAmount = 0.0;
+    var amountWeight = 0.0;
+    var recentUsableDays = 0;
+    for (var i = dense.length - 1; i >= recentStart; i--) {
+      if (!excludedDays.contains(i)) {
+        recentUsableDays++;
+        totalOccurrenceWeight += recentWeight;
+        if (dense[i] > 0) {
+          weightedOccurrence += recentWeight;
+          weightedAmount += dense[i] * recentWeight;
+          amountWeight += recentWeight;
+        }
+      }
+      recentWeight *= 0.88;
+    }
+    final recentEvidenceIsThin = recentUsableDays < 7;
+    final recentFrequency = recentEvidenceIsThin || totalOccurrenceWeight == 0
+        ? baselineFrequency
+        : weightedOccurrence / totalOccurrenceWeight;
+    final recentAmount = recentEvidenceIsThin || amountWeight == 0
+        ? baselineAmount
+        : weightedAmount / amountWeight;
+'''
+if old not in text:
+    raise SystemExit('recent evidence anchor not found')
+text = text.replace(old, new, 1)
+
 old = '''        var uncertainty = 1 + 0.32 * sqrt(day / 30.0);
         if (confidence == ForecastConfidence.low) {
           uncertainty *= activeTuning.lowDataUncertainty;
@@ -38,15 +89,8 @@ new = '''        var uncertainty = 1 + 0.32 * sqrt(day / 30.0);
 
         // Widen uncertainty around the NET cash center, not each non-negative
         // stream before clipping. Scaling income/expense residuals first and
-        // then applying max(0) creates a Jensen/truncation bias: the negative
-        // tail is chopped off while the positive tail survives, so merely
-        // admitting more uncertainty makes distant P50 richer. That is the
-        // exact opposite of an honest long-range forecast.
-        //
-        // First draw physically valid non-negative income/expense at their
-        // empirical scale; then scale only the centered net deviation. This
-        // keeps P50 anchored to mean-reverting cash economics while P10/P90
-        // still widen with horizon.
+        // then applying max(0) creates a truncation bias: simply admitting
+        // more uncertainty makes distant P50 richer.
         if (whatIf.incomeMultiplierDays <= 0 ||
             day <= whatIf.incomeMultiplierDays) {
           residualIncome *= whatIf.incomeMultiplier;
