@@ -997,6 +997,29 @@ class ForecastEngine {
             })>>{};
     final effectiveRecurringReliability = <String, double>{};
 
+    bool recurringIncomeHasExecutionEvidence(TransactionModel recurring) {
+      if (recurring.type != TransactionType.income) return true;
+      return transactions.any((candidate) {
+        if (candidate.isRecurring || candidate.type != TransactionType.income) {
+          return false;
+        }
+        // Auto-materialized recurring income is only an expectation marker;
+        // Treasury deliberately does not post it as received cash.
+        if (candidate.id.startsWith('${recurring.id}_')) return false;
+        final day = DateTime(
+          candidate.date.year,
+          candidate.date.month,
+          candidate.date.day,
+        );
+        if (day.isAfter(todayOnly)) return false;
+        final sameAmount = (candidate.amount - recurring.amount).abs() <=
+            max(2.0, recurring.amount.abs() * 0.05);
+        final sameTitle = candidate.title.trim().toLowerCase() ==
+            recurring.title.trim().toLowerCase();
+        return sameAmount && sameTitle;
+      });
+    }
+
     for (final tx in recurringTxs) {
       final projected = RecurringEngine.projectFutureContributions(
         [tx],
@@ -1040,7 +1063,10 @@ class ForecastEngine {
           riskSource: 'recurring:${tx.id}',
           accountId: tx.accountId,
         ));
-        if (probability >= 0.9 || tx.type == TransactionType.expense) {
+        final isCommitted = tx.type == TransactionType.expense ||
+            (probability >= 0.9 &&
+                recurringIncomeHasExecutionEvidence(tx));
+        if (isCommitted) {
           committedByOffset[shiftedOffset - 1] += modeledNet * probability;
           knownMagnitudeByOffset[shiftedOffset - 1] +=
               modeledNet.abs() * probability;
