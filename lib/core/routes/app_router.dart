@@ -20,6 +20,7 @@ import '../../features/calculator/calculator_screen.dart';
 import '../../features/audio/audio_vault_v2_screen.dart';
 import '../../features/crm/crm_screen.dart';
 import '../../features/calendar/calendar_screen.dart';
+import '../../features/time_center/time_center_screen.dart';
 import '../../features/founder/founder_story_screen.dart';
 import '../../features/sysadmin/sysadmin_screen.dart';
 import '../../features/team/contacts_screen.dart';
@@ -113,8 +114,7 @@ class AppRouter {
         return PageRouteBuilder(
           opaque: false,
           barrierDismissible: true,
-          pageBuilder: (_, __, ___) =>
-              _AccessGate(child: CalculatorScreen()),
+          pageBuilder: (_, __, ___) => _AccessGate(child: CalculatorScreen()),
           transitionsBuilder: (_, anim, __, child) {
             return FadeTransition(
               opacity: CurvedAnimation(parent: anim, curve: Curves.easeOut),
@@ -138,6 +138,10 @@ class AppRouter {
           module: TeamModules.calendar,
           child: CalendarScreen(),
         ));
+      case '/time':
+        return _slideUpRoute(
+          _AccessGate(child: const TimeCenterScreen()),
+        );
       case '/contacts':
         return _slideUpRoute(_AccessGate(
           module: TeamModules.contacts,

@@ -3,6 +3,8 @@ import 'dart:typed_data';
 
 import 'package:hive/hive.dart';
 
+import '../../features/calendar/models/calendar_event.dart';
+import '../../features/calendar/services/calendar_event_service.dart';
 import '../../features/chats/models/chat_message.dart';
 import '../../features/chats/models/chat_policy.dart';
 import '../../features/chats/models/chat_thread.dart';
@@ -127,8 +129,7 @@ T _enumByName<T extends Enum>(List<T> values, Object? raw, T fallback) {
   return fallback;
 }
 
-DateTime? _date(Object? raw) =>
-    raw is String ? DateTime.tryParse(raw) : null;
+DateTime? _date(Object? raw) => raw is String ? DateTime.tryParse(raw) : null;
 
 double? _double(Object? raw) {
   if (raw is num) return raw.toDouble();
@@ -290,9 +291,10 @@ class TasksSync extends SyncCollection<TaskModel> {
       id: id,
       title: _str(fields['title']),
       description: _strOrNull(fields['description']),
-      status: _enumByName(TaskStatus.values, fields['status'], TaskStatus.backlog),
-      priority:
-          _enumByName(TaskPriority.values, fields['priority'], TaskPriority.normal),
+      status:
+          _enumByName(TaskStatus.values, fields['status'], TaskStatus.backlog),
+      priority: _enumByName(
+          TaskPriority.values, fields['priority'], TaskPriority.normal),
       createdAt: createdAt,
       dueDate: _date(fields['dueDate']),
       assignee: _strOrNull(fields['assignee']),
@@ -367,6 +369,92 @@ class ArticlesSync extends SyncCollection<ArticleModel> {
       isFolder: fields['isFolder'] == true,
     );
   }
+}
+
+/// Собственные события Calendar синхронизируются между устройствами.
+/// Time Center (будильники/таймер/секундомер) остаётся device-local, чтобы
+/// одно и то же локальное действие не срабатывало одновременно везде.
+class CalendarEventsSync extends SyncCollection<dynamic> {
+  @override
+  void notifyChanged() {
+    CalendarEventService.revision.value++;
+    CalendarEventService().restoreSchedules();
+  }
+
+  @override
+  String get name => 'calendar_events';
+
+  @override
+  String get boxName => CalendarEventService.boxName;
+
+  @override
+  String idOf(dynamic value) => value is Map ? '${value['id'] ?? ''}' : '';
+
+  @override
+  Map<String, dynamic> encode(dynamic value) {
+    if (value is! Map) return const {};
+    try {
+      return CalendarEvent.fromJson(value).toJson();
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  @override
+  dynamic decode(Map<String, dynamic> fields) {
+    try {
+      final event = CalendarEvent.fromJson(fields);
+      if (event.id.isEmpty || event.title.trim().isEmpty) return null;
+      return event.toJson();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Box<dynamic>? box() {
+    if (!Hive.isBoxOpen(boxName)) return null;
+    try {
+      return Hive.box<dynamic>(boxName);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
+  Future<Box<dynamic>> ensureBox() async => Hive.isBoxOpen(boxName)
+      ? Hive.box<dynamic>(boxName)
+      : await Hive.openBox<dynamic>(boxName);
+
+  @override
+  Map<String, dynamic> local() {
+    final b = box();
+    if (b == null) return const {};
+    final out = <String, dynamic>{};
+    for (final raw in b.values) {
+      if (raw is! Map) continue;
+      try {
+        final event = CalendarEvent.fromJson(raw);
+        if (event.id.isEmpty || event.title.trim().isEmpty) continue;
+        out[event.id] = event.toJson();
+      } catch (_) {}
+    }
+    return out;
+  }
+
+  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    if (b == null) return false;
+    final decoded = decode(fields);
+    if (decoded is! Map) return false;
+    final event = CalendarEvent.fromJson(decoded);
+    await b.put(event.id, event.toJson());
+    return true;
+  }
+
+  @override
+  Future<void> removeById(String id) async => box()?.delete(id);
 }
 
 /// Состав.
@@ -475,8 +563,7 @@ class ChatsSync extends SyncCollection<ChatThread> {
   String idOf(ChatThread value) => value.id;
 
   @override
-  bool shouldSync(ChatThread value) =>
-      ChatEnvelopePolicy.travels(value.kind);
+  bool shouldSync(ChatThread value) => ChatEnvelopePolicy.travels(value.kind);
 
   /// `lastOpenedAt` в [ChatThread.toJson] намеренно нет: «докуда я дочитал» —
   /// это про устройство, а не про разговор. Уехав на сервер, эта отметка
@@ -623,6 +710,7 @@ class SyncCodec {
     AccountsSync(),
     TransactionsSync(),
     TasksSync(),
+    CalendarEventsSync(),
     ArticlesSync(),
     EmployeesSync(),
     ChatsSync(),
@@ -637,6 +725,5 @@ class SyncCodec {
   }
 
   /// Боксы, за которыми должен следить журнал.
-  static List<String> get boxNames =>
-      [for (final c in collections) c.boxName];
+  static List<String> get boxNames => [for (final c in collections) c.boxName];
 }
