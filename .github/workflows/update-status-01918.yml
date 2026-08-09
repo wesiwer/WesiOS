@@ -1,3 +1,4 @@
+# One-shot documentation sync for WesiOS 0.19.18+66.
 name: Record WesiOS 0.19.18 status
 
 on:
@@ -123,7 +124,6 @@ jobs:
           readme = Path('README.md')
           r = readme.read_text(encoding='utf-8')
           r = r.replace('v0.19.14 α — Private, Wesi Inc.', 'v0.19.18 α (+66) — Private, Wesi Inc.')
-          # Add the most visible 0.19.18 deltas after Home mobile if not already present.
           anchor = '- Home mobile — безопасный avatar/Hive bootstrap, компактная шапка и адаптивные\n  GlassCard-заголовки/действия; regression test покрывает Android 360×800\n'
           addition = '''- Home mobile UX 0.19.18 — полное имя WesiOS не скрывается на узком экране,\n  баланс показывается точно без `k/M`; часы открывают Time Center, мини-календарь — Calendar\n- Tasks/Roadmap/CRM — выбор ответственного из реального состава сотрудников + ручной вариант;\n  Audio Vault использует список сотрудников для ответственного\n- Treasury Operations — дата + точное время, время видно в строке, операции визуально\n  сгруппированы по дням\n- Roadmap — масштаб временной шкалы; Forecast — растянутые короткие горизонты;\n  Sandbox What-If — разовые и регулярные виртуальные доходы/траты\n'''
           if addition not in r and anchor in r:
