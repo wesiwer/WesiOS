@@ -24,6 +24,21 @@ jobs:
           git show origin/agent/horizon-hardening-exec2:tooling/horizon_final_hardening.py > /tmp/horizon_final_hardening.py
           python3 -m py_compile /tmp/horizon_final_hardening.py
           python3 /tmp/horizon_final_hardening.py
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('test/horizon_hardening_regression_test.dart')
+          text = p.read_text(encoding='utf-8')
+          broken = """    expect(source, isNot(contains('day <= whatIf.incomeDelayDays) {
+                    sampledIncome = 0.0')));
+"""
+          if broken in text:
+              text = text.replace(
+                  broken,
+                  "    expect(source, isNot(contains('sampledIncome = 0.0;')));\n",
+                  1,
+              )
+          p.write_text(text, encoding='utf-8')
+          PY
 
       - uses: subosito/flutter-action@v2
         with:
