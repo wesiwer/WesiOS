@@ -31,6 +31,11 @@ class WhatIfScenario {
   final double incomeMultiplier;
   final double expenseMultiplier;
 
+  /// Zero means the multiplier applies for the full selected horizon. A
+  /// positive value limits it to the first N future days (stress library).
+  final int incomeMultiplierDays;
+  final int expenseMultiplierDays;
+
   /// Delay all uncertain incoming cash by this many days. Used by the stress
   /// library; zero preserves the old behaviour.
   final int incomeDelayDays;
@@ -47,6 +52,8 @@ class WhatIfScenario {
     this.events = const [],
     this.incomeMultiplier = 1.0,
     this.expenseMultiplier = 1.0,
+    this.incomeMultiplierDays = 0,
+    this.expenseMultiplierDays = 0,
     this.incomeDelayDays = 0,
     this.mainIncomeLossDays = 0,
     this.oneOffExpenseShock = 0,
@@ -56,6 +63,8 @@ class WhatIfScenario {
       events.isEmpty &&
       incomeMultiplier == 1.0 &&
       expenseMultiplier == 1.0 &&
+      incomeMultiplierDays == 0 &&
+      expenseMultiplierDays == 0 &&
       incomeDelayDays == 0 &&
       mainIncomeLossDays == 0 &&
       oneOffExpenseShock == 0;
@@ -64,6 +73,8 @@ class WhatIfScenario {
         events: [...events, ...other.events],
         incomeMultiplier: incomeMultiplier * other.incomeMultiplier,
         expenseMultiplier: expenseMultiplier * other.expenseMultiplier,
+        incomeMultiplierDays: max(incomeMultiplierDays, other.incomeMultiplierDays),
+        expenseMultiplierDays: max(expenseMultiplierDays, other.expenseMultiplierDays),
         incomeDelayDays: max(incomeDelayDays, other.incomeDelayDays),
         mainIncomeLossDays:
             max(mainIncomeLossDays, other.mainIncomeLossDays),
@@ -936,8 +947,14 @@ class ForecastEngine {
         }
 
         if (whatIf.mainIncomeLossDays >= day) expectedIncome *= 0.15;
-        expectedIncome *= whatIf.incomeMultiplier;
-        expectedExpense *= whatIf.expenseMultiplier;
+        if (whatIf.incomeMultiplierDays <= 0 ||
+            day <= whatIf.incomeMultiplierDays) {
+          expectedIncome *= whatIf.incomeMultiplier;
+        }
+        if (whatIf.expenseMultiplierDays <= 0 ||
+            day <= whatIf.expenseMultiplierDays) {
+          expectedExpense *= whatIf.expenseMultiplier;
+        }
 
         var residualIncome = 0.0;
         var residualExpense = 0.0;

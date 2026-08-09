@@ -6,43 +6,14 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: pr-check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  materialize-horizon-compat:
-    if: github.event_name == 'pull_request' && github.head_ref == 'agent/horizon-top-tier'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/horizon-top-tier
-          fetch-depth: 0
-
-      - name: Apply bounded Horizon compatibility patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 tooling/horizon_top_tier_patch.py
-          rm tooling/horizon_top_tier_patch.py
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/pr-check.yml
-          git diff --check
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/features/treasury/services/forecast_engine.dart \
-                  lib/features/treasury/services/multi_engine_forecast.dart \
-                  .github/workflows/pr-check.yml
-          git add -u tooling/horizon_top_tier_patch.py
-          git commit -m 'feat(horizon): bounded stress windows and historical external backtests'
-          git push origin HEAD:agent/horizon-top-tier
-
   analyze-and-test:
-    if: github.head_ref != 'agent/horizon-top-tier'
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 15
     steps:

@@ -79,6 +79,7 @@ class ExternalForecastBridge {
     required List<TransactionModel> transactions,
     required double currentBalance,
     required int days,
+    DateTime? asOf,
   }) async {
     assert(engine == ForecastEngineKind.prophet ||
         engine == ForecastEngineKind.sarimax);
@@ -91,7 +92,12 @@ class ExternalForecastBridge {
     final script = await _resolveScript(engine, scriptFile);
     if (python == null || script == null) return null;
 
-    final payload = _buildPayload(transactions, currentBalance, days);
+    final payload = _buildPayload(
+      transactions,
+      currentBalance,
+      days,
+      asOf: asOf,
+    );
     if (payload == null) return null; // недостаточно истории
 
     try {
@@ -193,15 +199,17 @@ class ExternalForecastBridge {
   static Map<String, dynamic>? _buildPayload(
     List<TransactionModel> transactions,
     double currentBalance,
-    int days,
-  ) {
+    int days, {
+    DateTime? asOf,
+  }) {
     if (transactions.isEmpty) return null;
-    final today = DateTime.now();
+    final today = asOf ?? DateTime.now();
     final todayOnly = DateTime(today.year, today.month, today.day);
 
     DateTime minDay = todayOnly;
     for (final tx in transactions) {
       final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
+      if (day.isAfter(todayOnly)) continue;
       if (day.isBefore(minDay)) minDay = day;
     }
     final spanDays = todayOnly.difference(minDay).inDays + 1;
@@ -210,6 +218,7 @@ class ExternalForecastBridge {
     final dense = List<double>.filled(spanDays, 0);
     for (final tx in transactions) {
       final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
+      if (day.isAfter(todayOnly)) continue;
       final idx = day.difference(minDay).inDays;
       if (idx < 0 || idx >= spanDays) continue;
       dense[idx] += tx.type == TransactionType.income ? tx.amount : -tx.amount;
