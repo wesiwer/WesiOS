@@ -81,19 +81,18 @@ class EngineChampionship {
 
   ForecastEngineKind championFor(int horizon) {
     final nearest = _nearestHorizon(horizon);
-    final candidates = metrics
-        .where((m) => m.horizonDays == nearest && m.samples > 0)
-        .toList()
-      ..sort((a, b) {
-        final byScore = a.score.compareTo(b.score);
-        if (byScore != 0) return byScore;
-        // Equal averaging must earn a real improvement, not win a tie.
-        if (a.engine == ForecastEngineKind.combined &&
-            b.engine != ForecastEngineKind.combined) return 1;
-        if (b.engine == ForecastEngineKind.combined &&
-            a.engine != ForecastEngineKind.combined) return -1;
-        return a.engine.index.compareTo(b.engine.index);
-      });
+    final candidates =
+        metrics.where((m) => m.horizonDays == nearest && m.samples > 0).toList()
+          ..sort((a, b) {
+            final byScore = a.score.compareTo(b.score);
+            if (byScore != 0) return byScore;
+            // Equal averaging must earn a real improvement, not win a tie.
+            if (a.engine == ForecastEngineKind.combined &&
+                b.engine != ForecastEngineKind.combined) return 1;
+            if (b.engine == ForecastEngineKind.combined &&
+                a.engine != ForecastEngineKind.combined) return -1;
+            return a.engine.index.compareTo(b.engine.index);
+          });
     return candidates.isEmpty
         ? ForecastEngineKind.wesiHorizon
         : candidates.first.engine;
@@ -211,7 +210,8 @@ class HorizonEngineCompetitionService {
     final metrics = <EngineBacktestMetric>[];
     for (final horizon in horizons) {
       final points = <ForecastEngineKind, List<_EnginePoint>>{
-        for (final engine in ForecastEngineKind.values) engine: <_EnginePoint>[],
+        for (final engine in ForecastEngineKind.values)
+          engine: <_EnginePoint>[],
       };
       final step = max(7, horizon ~/ 2);
       for (var origin = 0; origin < _originsPerHorizon; origin++) {
@@ -262,7 +262,8 @@ class HorizonEngineCompetitionService {
           if (result == null ||
               result.insufficientData ||
               result.p50.length < horizon) continue;
-          for (var i = 0; i < horizon; i++) {
+          final evaluationStart = max(0, (horizon * 0.75).floor());
+          for (var i = evaluationStart; i < horizon; i++) {
             final target = asOf.add(Duration(days: i + 1));
             points[entry.key]!.add(_EnginePoint(
               actual: ForecastBacktest.balanceOn(
@@ -342,6 +343,7 @@ class HorizonEngineCompetitionService {
       }
       return null;
     }
+
     int? runway;
     for (var i = 0; i < p50.length; i++) {
       if (p50[i] < 0) {
@@ -360,8 +362,7 @@ class HorizonEngineCompetitionService {
               .map((r) => r.dailyVolatility)
               .fold<double>(0, (a, b) => a + b) /
           results.length,
-      historyDaysSpan:
-          results.map((r) => r.historyDaysSpan).reduce(max),
+      historyDaysSpan: results.map((r) => r.historyDaysSpan).reduce(max),
       simulatedPaths:
           results.map((r) => r.simulatedPaths).fold<int>(0, (a, b) => a + b),
       insufficientData: false,
@@ -386,8 +387,9 @@ class HorizonEngineCompetitionService {
     var covered = 0;
     var qLoss = 0.0;
     var brier = 0.0;
-    final scale = points.map((p) => p.actual.abs()).fold<double>(0, (a, b) => a + b) /
-        points.length;
+    final scale =
+        points.map((p) => p.actual.abs()).fold<double>(0, (a, b) => a + b) /
+            points.length;
     final pctFloor = max(1.0, scale * 0.01);
     for (final p in points) {
       final error = (p.actual - p.p50).abs();
@@ -421,8 +423,8 @@ class HorizonEngineCompetitionService {
     required Map<ForecastEngineKind, ForecastResult?> live,
   }) async {
     final championship = await load();
-    final champion = championship?.championFor(horizon) ??
-        ForecastEngineKind.wesiHorizon;
+    final champion =
+        championship?.championFor(horizon) ?? ForecastEngineKind.wesiHorizon;
 
     ForecastResult? pick(ForecastEngineKind kind) {
       final result = live[kind];
@@ -438,9 +440,8 @@ class HorizonEngineCompetitionService {
         pick(ForecastEngineKind.prophet),
         pick(ForecastEngineKind.sarimax),
       ].whereType<ForecastResult>().toList();
-      final combined = singles.length >= 2
-          ? combineForecastResults(singles)
-          : null;
+      final combined =
+          singles.length >= 2 ? combineForecastResults(singles) : null;
       if (combined != null) {
         return SmartCombinedResult(
           result: combined,

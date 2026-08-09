@@ -376,7 +376,9 @@ class ForecastBacktest {
           if (offset > 365 * 4) break;
           continue;
         }
-        allPoints.addAll(result.points);
+        final tailSize = max(3, (horizon * 0.20).round());
+        final startIndex = max(0, result.points.length - tailSize);
+        allPoints.addAll(result.points.sublist(startIndex));
         origins++;
       }
       metrics.add(_metricsFromPoints(horizon, allPoints));

@@ -118,18 +118,22 @@ class TreasuryService {
       var guard = 0;
       while (RecurringEngine.isDue(anchor, now) && guard < 366) {
         final due = RecurringEngine.advance(anchor.date, period);
-        await addTransaction(TransactionModel(
-          id: '${tx.id}_${due.millisecondsSinceEpoch}',
-          title: tx.title,
-          amount: tx.amount,
-          type: tx.type,
-          date: due,
-          category: tx.category,
-          description:
-              tx.description == null ? null : 'Recurring: ${tx.description}',
-          isRecurring: false,
-          accountId: tx.accountId,
-        ));
+        if (tx.type == TransactionType.expense) {
+          await addTransaction(TransactionModel(
+            id: '${tx.id}_${due.millisecondsSinceEpoch}',
+            title: tx.title,
+            amount: tx.amount,
+            type: tx.type,
+            date: due,
+            category: tx.category,
+            description:
+                tx.description == null ? null : 'Recurring: ${tx.description}',
+            isRecurring: false,
+            accountId: tx.accountId,
+          ));
+        }
+        // Income is NOT auto-posted as actual cash. A real received payment
+        // must be entered/imported separately and becomes execution evidence.
         anchor = anchor.copyWith(date: due);
         guard++;
       }

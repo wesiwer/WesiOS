@@ -69,7 +69,8 @@ class HorizonBehaviorMonitor {
           textEn:
               'Incoming cash shows a likely structural downshift rather than one bad week: the recent level is persistently below baseline.',
         ));
-      } else if (incomeShift >= 1.75 && _persistentCusumRise(income, lookback: 14)) {
+      } else if (incomeShift >= 1.75 &&
+          _persistentCusumRise(income, lookback: 14)) {
         prompts.add(const ForecastActionPrompt(
           code: 'structural-income-upshift',
           severity: ForecastPromptSeverity.info,
@@ -114,12 +115,13 @@ class HorizonBehaviorMonitor {
     if (historicalExpenses.length >= 12) {
       final sorted = [...historicalExpenses]..sort();
       final median = _median(sorted);
-      final deviations = historicalExpenses.map((e) => (e - median).abs()).toList()
-        ..sort();
+      final deviations =
+          historicalExpenses.map((e) => (e - median).abs()).toList()..sort();
       final mad = _median(deviations);
       final recentCutoff = today.subtract(const Duration(days: 30));
       final recentAnomalies = history.where((tx) {
-        if (tx.type != TransactionType.expense || !tx.date.isAfter(recentCutoff)) {
+        if (tx.type != TransactionType.expense ||
+            !tx.date.isAfter(recentCutoff)) {
           return false;
         }
         if (mad <= 1e-9) return tx.amount > median * 2.5 && tx.amount > 0;
@@ -147,9 +149,8 @@ class HorizonBehaviorMonitor {
     return unique.values.toList();
   }
 
-  static double _occurrenceRate(List<double> values) => values.isEmpty
-      ? 0
-      : values.where((v) => v > 0).length / values.length;
+  static double _occurrenceRate(List<double> values) =>
+      values.isEmpty ? 0 : values.where((v) => v > 0).length / values.length;
 
   static double _mean(List<double> values) => values.isEmpty
       ? 0
@@ -175,7 +176,8 @@ class HorizonBehaviorMonitor {
     return (_mean(recent) - _mean(baseline)) / scale;
   }
 
-  static bool _persistentCusumDrop(List<double> values, {required int lookback}) {
+  static bool _persistentCusumDrop(List<double> values,
+      {required int lookback}) {
     if (values.length < lookback + 14) return false;
     final baseline = values.sublist(0, values.length - lookback);
     final recent = values.sublist(values.length - lookback);
@@ -190,7 +192,8 @@ class HorizonBehaviorMonitor {
     return hits >= max(3, lookback ~/ 4);
   }
 
-  static bool _persistentCusumRise(List<double> values, {required int lookback}) {
+  static bool _persistentCusumRise(List<double> values,
+      {required int lookback}) {
     if (values.length < lookback + 14) return false;
     final baseline = values.sublist(0, values.length - lookback);
     final recent = values.sublist(values.length - lookback);

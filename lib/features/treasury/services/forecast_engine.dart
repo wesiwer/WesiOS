@@ -924,6 +924,7 @@ class ForecastEngine {
 
     final committedByOffset = List<double>.filled(days, 0);
     final knownMagnitudeByOffset = List<double>.filled(days, 0);
+    final uncertainMagnitudeByOffset = List<double>.filled(days, 0);
     final recurringOccurrences = <int,
         List<
             ({
@@ -975,6 +976,9 @@ class ForecastEngine {
           committedByOffset[shiftedOffset - 1] += modeledNet * probability;
           knownMagnitudeByOffset[shiftedOffset - 1] +=
               modeledNet.abs() * probability;
+        } else {
+          uncertainMagnitudeByOffset[shiftedOffset - 1] +=
+              modeledNet.abs() * probability;
         }
       }
     }
@@ -1015,6 +1019,9 @@ class ForecastEngine {
         committedByOffset[shiftedOffset - 1] +=
             event.amount * event.probability;
         knownMagnitudeByOffset[shiftedOffset - 1] +=
+            event.amount.abs() * event.probability;
+      } else {
+        uncertainMagnitudeByOffset[shiftedOffset - 1] +=
             event.amount.abs() * event.probability;
       }
     }
@@ -1264,7 +1271,8 @@ class ForecastEngine {
         committedOutflow30 += -committedByOffset[i];
       }
       knownTotal += knownMagnitudeByOffset[i];
-      uncertainTotal += expectedUncertainNet[i].abs();
+      uncertainTotal +=
+          expectedUncertainNet[i].abs() + uncertainMagnitudeByOffset[i];
     }
     final committedNearTerm = committedOutflow30;
     final recommendedReserve = (rawDrawdownReserve - committedNearTerm)
