@@ -37,7 +37,11 @@ jobs:
           fi
 
       - name: Apply Audio Vault quick actions
-        run: python3 tools/finish_audio_quick_actions.py
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git show origin/main:tools/finish_audio_quick_actions.py > /tmp/finish_audio_quick_actions.py
+          python3 /tmp/finish_audio_quick_actions.py
 
       - name: Format changed Dart files
         run: |
