@@ -16,7 +16,7 @@ jobs:
   apply-calibration-truth-ui:
     if: github.head_ref == 'agent/horizon-top-tier'
     runs-on: ubuntu-latest
-    timeout-minutes: 22
+    timeout-minutes: 24
     steps:
       - uses: actions/checkout@v4
         with:
@@ -41,6 +41,8 @@ jobs:
           set -euo pipefail
           dart format \
             lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/services/forecast_backtest.dart \
+            lib/features/treasury/services/horizon_engine_competition.dart \
             lib/features/treasury/services/treasury_service.dart \
             lib/features/treasury/services/horizon_behavior_monitor.dart \
             lib/features/treasury/widgets/horizon_decision_panel.dart
@@ -50,13 +52,16 @@ jobs:
             test/horizon_top_tier_test.dart \
             test/horizon_completion_test.dart \
             test/horizon_explainability_probability_test.dart
-          grep -Fq 'calibrationSamples' lib/features/treasury/services/forecast_engine.dart
-          grep -Fq 'autoMaterializedIncome' lib/features/treasury/services/forecast_engine.dart
+          grep -Fq 'uncertainMagnitudeByOffset' lib/features/treasury/services/forecast_engine.dart
+          grep -Fq 'final tailSize = max(3, (horizon * 0.20).round())' lib/features/treasury/services/forecast_backtest.dart
+          grep -Fq 'final evaluationStart = max(0, (horizon * 0.75).floor())' lib/features/treasury/services/horizon_engine_competition.dart
           grep -Fq 'Income is NOT auto-posted as actual cash' lib/features/treasury/services/treasury_service.dart
           grep -Fq 'legacyAutoIncome' lib/features/treasury/services/horizon_behavior_monitor.dart
           grep -Fq 'нет оценки · цель 80%' lib/features/treasury/widgets/horizon_decision_panel.dart
           git add \
             lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/services/forecast_backtest.dart \
+            lib/features/treasury/services/horizon_engine_competition.dart \
             lib/features/treasury/services/treasury_service.dart \
             lib/features/treasury/services/horizon_behavior_monitor.dart \
             lib/features/treasury/widgets/horizon_decision_panel.dart
@@ -66,7 +71,7 @@ jobs:
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(horizon): make recurring income execution evidence-only'
+          git commit -m 'fix(horizon): harden recurring truth and long-horizon evaluation'
           git push origin HEAD:agent/horizon-top-tier
 
   analyze-and-test:
