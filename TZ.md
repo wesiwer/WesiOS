@@ -239,3 +239,105 @@ What-If должен поддерживать виртуальные денеж�
 - What-If не имеет права изменять реальные Treasury-операции.
 - Релизные билды запускать только по явному запросу пользователя.
 - Не коммитить secrets, keystore, токены и пароли.
+
+---
+
+## 13. Wesi Horizon Top-Tier A→G
+
+**Статус:** реализовано и проверяется в изолированной ветке `agent/horizon-top-tier`, draft PR #66. До отдельного решения владельца не мержить в `main` и не выпускать production release.
+
+### Главный принцип
+
+Wesi Horizon обязан быть точным и полезным на 2–4 неделях, скромным и честным на 3–12 месяцах, калиброваться по собственным ошибкам, разделять известные и неизвестные деньги и давать пользователю решения — runway, риск, подушку, свободный буфер и действия — вместо одного красивого графика.
+
+### Sprint A — фундамент честности (1–6)
+
+1. **Anti-millionaire:** долгий baseline, mean reversion, затухание recent pace и ограниченный drift. Удачный месяц не имеет права превращаться в бесконечную годовую экстраполяцию.
+2. Недельная сезонность действует близко и экспоненциально затухает дальше.
+3. P10–P90 расширяется по горизонту; само расширение неопределённости не должно повышать P50 через truncation bias.
+4. Остатки моделируются блоками 3–7 последовательных дней, а не независимым шумом по дням.
+5. Явная политика горизонтов: 1–14 дней — recent rhythm/facts; 15–60 — активный возврат к baseline; 61+ — baseline/known cash и ускоренное затухание недавнего режима.
+6. Low-data режим обязан либо отказаться от статистической уверенности, либо показать широкую низкую уверенность. Известные recurring могут оставаться детерминированными.
+
+### Sprint B — калибровка (7–11)
+
+7. Ширина P10–P90 автоматически калибруется к target coverage ≈80%; severe undercoverage расширяет сильнее. Если coverage почти 100%, но MAPE огромный, слишком широкий бесполезный коридор сужается.
+8. Cash-gap probability калибруется по empirical bins с Bayesian shrinkage, монотонностью и интерполяцией; больший raw risk не может получить меньшую calibrated probability только из-за шума соседних bins.
+9. Систематический bias сдвигает P50, а не маскируется шириной.
+10. Backtest считается раздельно на 14/30/90/180 днях и использует несколько rolling origins.
+11. UI сохраняет стабильный seed; оценка качества использует несколько seed.
+
+### Sprint C — структура денег (12–16)
+
+12. Committed/known cash и uncertain cash являются разными примитивами и разными диагностическими слоями.
+13. Reliability recurring сверяется с ожидаемыми датами исполнения и period-specific grace window. Автоматически созданная WesiOS income-строка не является доказательством реального прихода; расходы остаются консервативными обязательствами.
+14. Редкие крупные доходные и расходные шоки имеют отдельные robust pools; соседние shock-дни объединяются в эпизоды.
+15. Нерегулярный поток моделируется как вероятность/частота появления × размер ненулевой операции.
+16. Денежные потоки моделируются до агрегации; используются семантические группы `music/services/payroll/taxes/marketing/infrastructure/personal` с fallback к категории.
+
+### Sprint D — режимы и стресс (17–20)
+
+17. Поддерживаются `stable / growth / downturn` с мягкими вероятностями текущего режима.
+18. Матрица переходов режимов обучается из недельных исторических состояний и сглаживается консервативным Bayesian prior; она не является вечной захардкоженной судьбой.
+19. Stress library: доход −30% на 60 дней, задержка входящих на 30 дней, крупный внезапный расход, потеря крупнейшего доходного источника на 60 дней.
+20. Каждый базовый расчёт имеет `Base / Conservative / Aggressive / Stress` пакет.
+
+### Sprint E — Decision Layer (21–25)
+
+21. Главные метрики — median runway и первый день, когда cash-gap risk пересекает 10% и 25%.
+22. Recommended reserve рассчитывается из Monte-Carlo maximum drawdown.
+23. Free safety buffer = current cash − stochastic reserve − committed near-term; committed cash не вычитается дважды.
+24. Action prompts показывают требуемое сокращение расходов/добавление ликвидности, небезопасные даты обязательств, дефицит подушки, concentration, recurring misses и структурные изменения поведения денег.
+25. What-If возвращает изменение cash-gap risk и runway относительно Base, а не только новую линию.
+
+### Sprint F — самообучение и конкуренция движков (26–29)
+
+26. `HorizonPredictionRegistry` ежедневно сохраняет реально выданный Base-прогноз с контрольными точками 14/30/90/180 P10/P50/P90 и gap risk. После наступления target date прогноз сравнивается с реальным балансом; live MAE/MAPE/coverage/bias/pinball/Brier входит в monthly learning вместе с rolling backtest. Вес live evidence растёт с выборкой, но малая выборка не может резко переобучить модель.
+27. Horizon / Prophet / SARIMAX / Combined сравниваются на одинаковых historical origins и target dates. Horizon как стохастический движок усредняется по нескольким seed. Combined допускается только если реально доступны минимум два движка и должен победить лучший одиночный по метрикам.
+28. Hyperparameter selection использует явный quantile-first objective: MAPE + pinball loss P10/P50/P90 + coverage + Brier + bias, с повышенным весом 14/30 дней.
+29. Чемпион выбирается отдельно для 14/30/90/180 горизонтов; Combined не выигрывает ничью автоматически.
+
+### Sprint G — Wesi Inc. cash-control system (30–35)
+
+30. `TreasuryService.generateForecast` объединяет Treasury, recurring, CRM, Tasks cash obligations, Audio Vault contract expectations, calibration и account liquidity в один risk engine.
+31. Audio Vault хранит editable contract assumptions отдельно от realized outcomes. Закрытие аренды записывает факт; следующая подходящая аренда отмечает фактическое продление. Default renewal probability обучается через Beta-smoothed историю beat/artist вместо вечной константы 35%; ожидаемые royalty/date/probability сохраняются отдельно.
+32. Early-warning включает level shifts, CUSUM-like persistence, break частоты входящих, ускорение расходов, clustered robust anomalies, recurring misses и concentration risk.
+33. Каждый счёт имеет физическую валюту, minimum local liquidity, netting permission, FX haircut и transfer delay. Межвалютный netting получает дополнительный день конвертации; деньги, которые не успевают прибыть до local shortfall, не считаются спасательным резервом. Проблемный счёт не может спасать сам себя.
+34. Материальные изменения P50 получают additive attribution: конкретные known events + remaining committed cash + uncertain operating center + явно названный остаток `regime/seasonality/shocks/quantile-calibration`. Необъяснённая математика не маскируется выдуманной причиной.
+35. Truth-first обязателен: confidence, known/unknown share и calibration evidence показываются явно; при слабых данных Horizon обязан признать неопределённость.
+
+### Интеграция без ломки данных
+
+- Tasks используют существующие tags через `TaskCashImpact`; Hive schema не меняется.
+- CRM open deals дают probability-weighted incoming cash на expected close date.
+- Audio Vault contract memory, realized outcomes и account liquidity profiles хранятся sidecar-данными и не переписывают юридические/старые записи.
+- Sandbox использует ту же математику и Decision Layer, но не читает реальный company context.
+- Prediction registry и monthly learning fail-soft: повреждение локального learning state не должно ломать Treasury.
+
+### Validation gate
+
+Перед merge обязательны на **чистом финальном head без self-modifying CI**:
+
+1. `flutter analyze --no-fatal-infos` — success.
+2. Полный `flutter test` — success.
+3. Legacy Treasury tests — success.
+4. `horizon_top_tier_test.dart` — anti-millionaire/calibration/cash/stress/decision invariants.
+5. `horizon_product_integration_test.dart` — реальная интеграция Tasks/Vault/accounts/Decision UI/Sandbox.
+6. `horizon_completion_test.dart` — ранее недоделанные требования: MAPE-aware width, monotone risk, quantile objective, structural early-warning, additive attribution, transfer latency, 180-day engine competition, prediction registry и realized contract learning.
+7. Android verification build — success.
+8. Windows release verification build — success.
+
+### Empirical truth gate
+
+**Кодовая реализация и эмпирически доказанная точность — разные вещи.** Нельзя объявлять, что 80%-коридор уже фактически даёт ровно 80% coverage или что заявленные 20% риска исторически реализуются ровно в 20% случаев, пока не накоплено достаточно реально выданных и созревших 14/30/90/180-дневных прогнозов.
+
+Никакой код не может искусственно создать месяцы будущих фактов. До накопления достаточной live-выборки Horizon обязан показывать доступный sample/coverage evidence, использовать bounded rolling backtest и сохранять честный confidence. `HorizonPredictionRegistry` существует именно затем, чтобы качество становилось измеряемым по реальным прогнозам, а не заявленным на веру.
+
+### Запреты
+
+- Не использовать нейросеть ради галочки на короткой истории.
+- Не делать вечную экстраполяцию текущего плюса.
+- Не смешивать recurring в общий случайный шум.
+- Не выбирать Combined, если он хуже одиночного чемпиона.
+- Не обещать точный баланс через год.
+- Не подменять отсутствие реальной зрелой статистики словами «100% точность».
