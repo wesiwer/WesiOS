@@ -1,0 +1,51 @@
+name: Horizon recurring commitment fix
+
+on:
+  push:
+    branches:
+      - agent/horizon-ci-fix-runner-2
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bc2cf7147f30e9a19204c9dc24308b8c0f74a125
+          fetch-depth: 0
+      - name: Apply truth-first recurring income commitment fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('lib/features/treasury/services/forecast_engine.dart')
+          text = p.read_text(encoding='utf-8')
+
+          old = """    final effectiveRecurringReliability = <String, double>{};\n\n    for (final tx in recurringTxs) {"""
+          new = """    final effectiveRecurringReliability = <String, double>{};\n\n    bool recurringIncomeHasExecutionEvidence(TransactionModel recurring) {\n      if (recurring.type != TransactionType.income) return true;\n      return transactions.any((candidate) {\n        if (candidate.isRecurring || candidate.type != TransactionType.income) {\n          return false;\n        }\n        // Auto-materialized recurring income is only an expectation marker;\n        // Treasury deliberately does not post it as received cash.\n        if (candidate.id.startsWith('${recurring.id}_')) return false;\n        final day = DateTime(\n          candidate.date.year,\n          candidate.date.month,\n          candidate.date.day,\n        );\n        if (day.isAfter(todayOnly)) return false;\n        final sameAmount = (candidate.amount - recurring.amount).abs() <=\n            max(2.0, recurring.amount.abs() * 0.05);\n        final sameTitle = candidate.title.trim().toLowerCase() ==\n            recurring.title.trim().toLowerCase();\n        return sameAmount && sameTitle;\n      });\n    }\n\n    for (final tx in recurringTxs) {"""
+          if text.count(old) != 1:
+              raise SystemExit(f'first anchor matches: {text.count(old)}')
+          text = text.replace(old, new, 1)
+
+          old = """        if (probability >= 0.9 || tx.type == TransactionType.expense) {\n          committedByOffset[shiftedOffset - 1] += modeledNet * probability;\n          knownMagnitudeByOffset[shiftedOffset - 1] +=\n              modeledNet.abs() * probability;\n        } else {\n          uncertainMagnitudeByOffset[shiftedOffset - 1] +=\n              modeledNet.abs() * probability;\n        }"""
+          new = """        final isCommitted = tx.type == TransactionType.expense ||\n            (probability >= 0.9 &&\n                recurringIncomeHasExecutionEvidence(tx));\n        if (isCommitted) {\n          committedByOffset[shiftedOffset - 1] += modeledNet * probability;\n          knownMagnitudeByOffset[shiftedOffset - 1] +=\n              modeledNet.abs() * probability;\n        } else {\n          uncertainMagnitudeByOffset[shiftedOffset - 1] +=\n              modeledNet.abs() * probability;\n        }"""
+          if text.count(old) != 1:
+              raise SystemExit(f'second anchor matches: {text.count(old)}')
+          text = text.replace(old, new, 1)
+          p.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          git diff
+      - name: Commit and push product fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "WesiOS CI Fix"
+          git config user.email "actions@users.noreply.github.com"
+          git add lib/features/treasury/services/forecast_engine.dart
+          git commit -m "fix(horizon): require evidence before income is committed"
+          git push origin HEAD:agent/horizon-top-tier
