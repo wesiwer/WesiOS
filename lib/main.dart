@@ -36,18 +36,26 @@ import 'features/team/models/employee_model.dart';
 import 'features/team/models/team_permissions.dart';
 import 'features/team/services/employee_documents_service.dart';
 import 'features/team/services/team_service.dart';
+import 'features/time_center/services/time_notification_scheduler.dart';
+import 'features/time_center/services/time_schedule_automation.dart';
 import 'features/treasury/models/account_model.dart';
 import 'features/treasury/models/transaction_model.dart';
 import 'features/treasury/services/recurring_payment_automation.dart';
-import 'features/time_center/services/time_schedule_automation.dart';
 
 bool get isDesktop {
   if (kIsWeb) return false;
   return Platform.isWindows || Platform.isMacOS || Platform.isLinux;
 }
 
-void main() async {
+void main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Windows Task Scheduler запускает тот же exe с безопасно закодированным
+  // payload. В этом режиме нужен только системный toast: обычное окно,
+  // хранилища, авторизация и остальная инициализация WesiOS не поднимаются.
+  if (await TimeNotificationScheduler.handleLaunchArguments(arguments)) {
+    return;
+  }
 
   if (isDesktop) {
     await windowManager.ensureInitialized();
