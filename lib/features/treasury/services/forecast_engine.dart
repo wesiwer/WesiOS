@@ -121,6 +121,7 @@ class AccountLiquiditySnapshot {
   final double minimumBalance;
   final bool allowNetting;
   final double fxHaircut;
+  final int transferDelayDays;
 
   const AccountLiquiditySnapshot({
     required this.accountId,
@@ -130,6 +131,7 @@ class AccountLiquiditySnapshot {
     this.minimumBalance = 0,
     this.allowNetting = true,
     this.fxHaircut = 0.03,
+    this.transferDelayDays = 0,
   });
 }
 
@@ -141,6 +143,8 @@ class AccountLiquidityRisk {
   final double projectedP10;
   final int? riskDay;
   final bool canBeCoveredByNetting;
+  final double nettableLiquidity;
+  final int? earliestNettingDay;
 
   const AccountLiquidityRisk({
     required this.accountId,
@@ -150,6 +154,8 @@ class AccountLiquidityRisk {
     required this.projectedP10,
     required this.riskDay,
     required this.canBeCoveredByNetting,
+    this.nettableLiquidity = 0,
+    this.earliestNettingDay,
   });
 }
 
@@ -1812,6 +1818,7 @@ class ForecastEngine {
           dense.isEmpty ? 0.0 : dense.reduce((a, b) => a + b) / dense.length;
       final vol = _StreamStats._stdDev(dense);
       int? riskDay;
+      var p10AtRisk = account.balance;
       var finalP10 = account.balance;
       var cumulativeKnown = 0.0;
       for (var day = 1; day <= days; day++) {
@@ -1842,19 +1849,33 @@ class ForecastEngine {
             1.2816 * vol * sqrt(day.toDouble());
         if (riskDay == null && finalP10 < account.minimumBalance) {
           riskDay = day;
+          p10AtRisk = finalP10;
         }
       }
-      final shortfall = max(0.0, account.minimumBalance - finalP10);
+
+      final shortfall =
+          riskDay == null ? 0.0 : max(0.0, account.minimumBalance - p10AtRisk);
       var transferable = 0.0;
-      for (final source in accounts) {
-        if (!source.allowNetting || source.accountId == account.accountId) {
-          continue;
+      int? earliestArrival;
+      if (riskDay != null && account.allowNetting) {
+        for (final source in accounts) {
+          if (!source.allowNetting || source.accountId == account.accountId) {
+            continue;
+          }
+          final crossCurrency =
+              source.currency.toLowerCase() != account.currency.toLowerCase();
+          final arrival =
+              max(0, source.transferDelayDays) + (crossCurrency ? 1 : 0);
+          if (arrival > riskDay) continue;
+          var free = max(0.0, source.balance - source.minimumBalance);
+          if (crossCurrency) {
+            free *= 1 - source.fxHaircut.clamp(0.0, 0.25);
+          }
+          if (free <= 0) continue;
+          transferable += free;
+          earliestArrival =
+              earliestArrival == null ? arrival : min(earliestArrival, arrival);
         }
-        var free = max(0.0, source.balance - source.minimumBalance);
-        if (source.currency.toLowerCase() != account.currency.toLowerCase()) {
-          free *= 1 - source.fxHaircut.clamp(0.0, 0.25);
-        }
-        transferable += free;
       }
       result.add(AccountLiquidityRisk(
         accountId: account.accountId,
@@ -1863,8 +1884,11 @@ class ForecastEngine {
         currentBalance: account.balance,
         projectedP10: finalP10,
         riskDay: riskDay,
-        canBeCoveredByNetting:
-            account.allowNetting && transferable >= shortfall,
+        canBeCoveredByNetting: riskDay != null &&
+            account.allowNetting &&
+            transferable >= shortfall,
+        nettableLiquidity: transferable,
+        earliestNettingDay: earliestArrival,
       ));
     }
     return result;

@@ -53,7 +53,8 @@ class BacktestResult {
     this.insufficientData = false,
   });
 
-  factory BacktestResult.empty(DateTime asOf, int horizonDays) => BacktestResult(
+  factory BacktestResult.empty(DateTime asOf, int horizonDays) =>
+      BacktestResult(
         points: const [],
         asOf: asOf,
         horizonDays: horizonDays,
@@ -107,7 +108,7 @@ class HorizonBacktestMetrics {
     final shrink = min(1.0, samples / 80.0);
     return HorizonCalibrationBucket(
       horizonDays: horizonDays,
-      intervalScale: intervalScaleFromCoverage(coverage),
+      intervalScale: intervalScaleFromCoverage(coverage, mape: mape),
       biasCorrection: bias * shrink,
       coverage: coverage,
       mape: mape,
@@ -241,7 +242,8 @@ class ForecastBacktest {
     if (horizonDays <= 0 || transactions.length < 3) {
       return BacktestResult.empty(asOf, horizonDays);
     }
-    final past = transactions.where((t) => !_dateOnly(t.date).isAfter(asOf)).toList();
+    final past =
+        transactions.where((t) => !_dateOnly(t.date).isAfter(asOf)).toList();
     if (past.length < 3) return BacktestResult.empty(asOf, horizonDays);
     var earliest = asOf;
     for (final tx in past) {
@@ -280,7 +282,8 @@ class ForecastBacktest {
           forecasts.length;
       points.add(BacktestPoint(
         date: asOf.add(Duration(days: i + 1)),
-        actual: balanceOn(asOf.add(Duration(days: i + 1)), transactions, currentBalance),
+        actual: balanceOn(
+            asOf.add(Duration(days: i + 1)), transactions, currentBalance),
         p10: avg((f) => f.p10),
         p50: avg((f) => f.p50),
         p90: avg((f) => f.p90),
@@ -356,7 +359,9 @@ class ForecastBacktest {
       // Recent origins matter more, but require a full future horizon. Step by
       // roughly half a horizon to avoid evaluating the same days repeatedly.
       final step = max(7, horizon ~/ 2);
-      for (var offset = horizon; origins < maxOriginsPerHorizon; offset += step) {
+      for (var offset = horizon;
+          origins < maxOriginsPerHorizon;
+          offset += step) {
         final asOf = today.subtract(Duration(days: offset));
         final result = _runAt(
           transactions: transactions,

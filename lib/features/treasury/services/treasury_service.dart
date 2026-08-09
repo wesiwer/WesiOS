@@ -8,7 +8,10 @@ import '../models/transaction_model.dart';
 import 'account_service.dart';
 import 'anomaly_engine.dart';
 import 'forecast_engine.dart';
+import 'horizon_behavior_monitor.dart';
 import 'horizon_business_context.dart';
+import 'horizon_calibration.dart';
+import 'horizon_explainability.dart';
 import 'horizon_engine_competition.dart';
 import 'horizon_learning_service.dart';
 import 'horizon_prediction_registry.dart';
@@ -185,6 +188,7 @@ class TreasuryService {
     final prompts = <ForecastActionPrompt>[
       ...active.actionPrompts,
       ...context.warnings,
+      ...HorizonBehaviorMonitor.analyze(transactions: all),
     ];
     final withDecisions = active.copyWith(
       scenarioSummaries: scenarios,
@@ -195,10 +199,18 @@ class TreasuryService {
       clearWhatIfRiskDelta: whatIf.isEmpty,
     );
 
+    final explained = withDecisions.copyWith(
+      explanations: HorizonExplainabilityService.build(
+        forecast: withDecisions,
+        transactions: all,
+        businessEvents: context.events,
+      ),
+    );
+
     // External engines may take seconds and are optional/Windows-only.
     _kickCompetition(all, balance);
 
-    return withDecisions;
+    return explained;
   }
 
   static void _kickLearning(
@@ -216,7 +228,7 @@ class TreasuryService {
   static void _kickPredictionAudit(
     List<TransactionModel> transactions,
     double currentBalance,
-    dynamic calibration,
+    HorizonCalibrationProfile calibration,
   ) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -256,7 +268,8 @@ class TreasuryService {
       } catch (_) {
         // Audit collection is strictly fail-soft.
       }
-    }().whenComplete(() => _predictionAuditInFlight = false));
+    }()
+        .whenComplete(() => _predictionAuditInFlight = false));
   }
 
   static void _kickCompetition(
