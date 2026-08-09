@@ -135,16 +135,13 @@ class _HomeAgendaState extends State<HomeAgenda> {
           if (!_loaded)
             _placeholder(ru ? 'Загрузка…' : 'Loading…')
           else if (_upcoming.isEmpty) ...[
-            _placeholder(ru
-                ? 'Активных задач нет'
-                : 'No active tasks'),
+            _placeholder(ru ? 'Активных задач нет' : 'No active tasks'),
             SizedBox(height: 8),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 onPressed: _createTask,
-                icon: Icon(Icons.add,
-                    size: 16, color: AppTheme.accent),
+                icon: Icon(Icons.add, size: 16, color: AppTheme.accent),
                 label: Text(
                   ru ? 'Создать первую задачу' : 'Create the first task',
                   style: TextStyle(color: AppTheme.accent),
@@ -175,43 +172,69 @@ class _HomeAgendaState extends State<HomeAgenda> {
     bool trailingIsAlert = false,
     required VoidCallback onAll,
   }) {
+    // homeAgendaCompactAction: keep title/badge/action inside a 286px
+    // GlassCard body on 360px phones.
     return Row(
       children: [
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 17,
-            fontWeight: FontWeight.w700,
-            // Серый на светлой теме, читаемый secondary на тёмной —
-            // не textPrimary (белый), иначе «белый на белом».
-            color: AppTheme.textSecondary,
+        Expanded(
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w700,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ),
+              if (trailing != null) ...[
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: (trailingIsAlert
+                              ? AppTheme.accentRed
+                              : AppTheme.accent)
+                          .withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(7),
+                    ),
+                    child: Text(
+                      trailing,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: trailingIsAlert
+                            ? AppTheme.accentRed
+                            : AppTheme.accent,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ],
           ),
         ),
-        if (trailing != null) ...[
-          SizedBox(width: 10),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: (trailingIsAlert ? AppTheme.accentRed : AppTheme.accent)
-                  .withOpacity(0.15),
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: Text(
-              trailing,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color:
-                    trailingIsAlert ? AppTheme.accentRed : AppTheme.accent,
-              ),
-            ),
-          ),
-        ],
-        Spacer(),
+        const SizedBox(width: 4),
         TextButton(
+          style: TextButton.styleFrom(
+            minimumSize: Size.zero,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+            tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            visualDensity: VisualDensity.compact,
+          ),
           onPressed: onAll,
-          child: Text(WesiLocale.get('all'),
-              style: TextStyle(color: AppTheme.accent)),
+          child: Text(
+            WesiLocale.get('all'),
+            style: TextStyle(color: AppTheme.accent),
+          ),
         ),
       ],
     );

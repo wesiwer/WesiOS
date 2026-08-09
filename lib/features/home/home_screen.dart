@@ -283,51 +283,65 @@ class _DashboardTabState extends State<_DashboardTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: WesiContextMenu(
-                            title: 'WesiOS',
-                            description: WesiLocale.isRussian
-                                ? 'WesiOS — Business Operating System. Управляйте бизнесом по-новому.'
-                                : 'WesiOS — Business Operating System. Manage your business in a new way.',
-                            purpose: WesiLocale.isRussian
-                                ? 'Центральная панель управления всеми системами Wesi'
-                                : 'Central dashboard for all Wesi systems',
-                            children: [
-                              WesiWordmark(size: 26),
-                            ],
-                          ),
-                        ),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
+                    LayoutBuilder(
+                      builder: (context, headerConstraints) {
+                        // На телефоне после горизонтальных padding остаётся
+                        // около 328 px. Полный wordmark + search + alerts +
+                        // avatar физически не помещаются в одну строку.
+                        // Сам знак W сохраняем всегда, текст скрываем только
+                        // при действительно узкой шапке.
+                        final compactHeader = headerConstraints.maxWidth < 360;
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            _HoverIconButton(
-                              icon: Icons.search,
-                              onTap: () => GlobalSearchSheet.show(context),
-                            ),
-                            const SizedBox(width: 6),
-                            if (_isDesktop) ...[
-                              Tooltip(
-                                message: WesiLocale.isRussian
-                                    ? 'Синхронизировать сейчас'
-                                    : 'Sync now',
-                                child: _HoverIconButton(
-                                  icon: _syncing
-                                      ? Icons.sync_disabled
-                                      : Icons.sync,
-                                  onTap: _syncNow,
-                                ),
+                            Expanded(
+                              child: WesiContextMenu(
+                                title: 'WesiOS',
+                                description: WesiLocale.isRussian
+                                    ? 'WesiOS — Business Operating System. Управляйте бизнесом по-новому.'
+                                    : 'WesiOS — Business Operating System. Manage your business in a new way.',
+                                purpose: WesiLocale.isRussian
+                                    ? 'Центральная панель управления всеми системами Wesi'
+                                    : 'Central dashboard for all Wesi systems',
+                                children: [
+                                  WesiWordmark(
+                                    size: compactHeader ? 24 : 26,
+                                    showText: !compactHeader,
+                                    markFirst: true,
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 6),
-                            ],
-                            const AlertsBell(size: 28),
-                            const SizedBox(width: 6),
-                            const _ProfileDropdown(),
+                            ),
+                            Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _HoverIconButton(
+                                  icon: Icons.search,
+                                  onTap: () => GlobalSearchSheet.show(context),
+                                ),
+                                const SizedBox(width: 6),
+                                if (_isDesktop) ...[
+                                  Tooltip(
+                                    message: WesiLocale.isRussian
+                                        ? 'Синхронизировать сейчас'
+                                        : 'Sync now',
+                                    child: _HoverIconButton(
+                                      icon: _syncing
+                                          ? Icons.sync_disabled
+                                          : Icons.sync,
+                                      onTap: _syncNow,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                ],
+                                const AlertsBell(size: 28),
+                                const SizedBox(width: 6),
+                                const _ProfileDropdown(),
+                              ],
+                            ),
                           ],
-                        ),
-                      ],
+                        );
+                      },
                     ),
                     const SizedBox(height: 14),
                     Tooltip(
@@ -346,6 +360,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                           setState(() {});
                         },
                         child: const SizedBox(
+                          key: ValueKey('home_clock_panel'),
                           width: double.infinity,
                           child: WesiClock(),
                         ),
@@ -362,13 +377,17 @@ class _DashboardTabState extends State<_DashboardTab> {
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: QuoteMindCharge(),
+                child: QuoteMindCharge(
+                  key: ValueKey('home_mind_charge'),
+                ),
               ),
             ),
             const SliverToBoxAdapter(
               child: Padding(
                 padding: EdgeInsets.fromLTRB(16, 0, 16, 16),
-                child: WesiQuoteCard(),
+                child: WesiQuoteCard(
+                  key: ValueKey('home_quote_card'),
+                ),
               ),
             ),
             const SliverToBoxAdapter(
@@ -381,6 +400,7 @@ class _DashboardTabState extends State<_DashboardTab> {
               child: Padding(
                 padding: EdgeInsets.symmetric(horizontal: 16),
                 child: GlassCard(
+                  key: const ValueKey('home_balance_card'),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -400,27 +420,48 @@ class _DashboardTabState extends State<_DashboardTab> {
                           color: AppTheme.primary,
                         ),
                       ),
-                      SizedBox(height: 16),
-                      Row(
-                        children: [
-                          _chip(
-                            WesiLocale.get('total_income'),
-                            CurrencyService.format(_breakdown['income'] ?? 0),
-                            AppTheme.accentGreen,
-                          ),
-                          SizedBox(width: 12),
-                          _chip(
-                            WesiLocale.get('total_expenses'),
-                            CurrencyService.format(_breakdown['expense'] ?? 0),
-                            AppTheme.accentRed,
-                          ),
-                          SizedBox(width: 12),
-                          _chip(
-                            WesiLocale.get('net'),
-                            CurrencyService.format(_breakdown['net'] ?? 0),
-                            AppTheme.textSecondary,
-                          ),
-                        ],
+                      const SizedBox(height: 16),
+                      LayoutBuilder(
+                        builder: (context, constraints) {
+                          const gap = 8.0;
+                          final columns = constraints.maxWidth >= 420 ? 3 : 2;
+                          final chipWidth =
+                              (constraints.maxWidth - gap * (columns - 1)) /
+                                  columns;
+                          return Wrap(
+                            spacing: gap,
+                            runSpacing: gap,
+                            children: [
+                              SizedBox(
+                                width: chipWidth,
+                                child: _chip(
+                                  WesiLocale.get('total_income'),
+                                  CurrencyService.format(
+                                      _breakdown['income'] ?? 0),
+                                  AppTheme.accentGreen,
+                                ),
+                              ),
+                              SizedBox(
+                                width: chipWidth,
+                                child: _chip(
+                                  WesiLocale.get('total_expenses'),
+                                  CurrencyService.format(
+                                      _breakdown['expense'] ?? 0),
+                                  AppTheme.accentRed,
+                                ),
+                              ),
+                              SizedBox(
+                                width: chipWidth,
+                                child: _chip(
+                                  WesiLocale.get('net'),
+                                  CurrencyService.format(
+                                      _breakdown['net'] ?? 0),
+                                  AppTheme.textSecondary,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ],
                   ),
@@ -522,25 +563,34 @@ class _DashboardTabState extends State<_DashboardTab> {
   }
 
   Widget _chip(String label, String amount, Color color) {
-    return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(label, style: TextStyle(fontSize: 11, color: color)),
-            SizedBox(height: 4),
-            Text(amount,
-                style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textPrimary)),
-          ],
-        ),
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 11, color: color),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            amount,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppTheme.textPrimary,
+            ),
+          ),
+        ],
       ),
     );
   }

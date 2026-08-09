@@ -274,7 +274,11 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
 
       default:
         if (hasUpdate) {
-          return Row(
+          // updateActionWrap: long version/size labels must wrap on phones.
+          return Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               _button(
                 ru
@@ -282,8 +286,7 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                     : 'Update${release!.sizeBytes != null ? ' · ${_size(release.sizeBytes)}' : ''}',
                 _install,
               ),
-              if (!widget.compact) ...[
-                SizedBox(width: 8),
+              if (!widget.compact)
                 TextButton(
                   onPressed: () => _skip(release.version),
                   child: Text(
@@ -291,7 +294,6 @@ class _AppUpdateCardState extends State<AppUpdateCard> {
                     style: TextStyle(color: AppTheme.textMuted),
                   ),
                 ),
-              ],
             ],
           );
         }
