@@ -245,7 +245,15 @@ routerAdd("POST", "/api/wesi/portal/profile/credentials", (e) => {
   const login = normalizeLogin(body.login);
   const password = String(body.password || "");
   const name = String(body.name || "").trim();
+  const securityEmail = String(body.email || "").trim().toLowerCase();
   const email = login + "@wesi.local";
+
+  if (securityEmail && (
+    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(securityEmail) ||
+    securityEmail.endsWith("@wesi.local")
+  )) {
+    throw new BadRequestError("Укажите действующую электронную почту");
+  }
 
   if (password.length < 8 || password.length > 128) {
     throw new BadRequestError("Пароль должен содержать от 8 до 128 символов");
@@ -267,6 +275,31 @@ routerAdd("POST", "/api/wesi/portal/profile/credentials", (e) => {
   record.setVerified(true);
   record.setIfFieldExists("name", name || login);
   e.app.save(record);
+
+  if (securityEmail) {
+    const marker = ownerMarker(record.id);
+    if (!marker) {
+      throw new ForbiddenError("Профиль владельца не закреплён");
+    }
+    let markerPayload = {};
+    try {
+      const raw = marker.get("payload");
+      if (raw && typeof raw === "object") {
+        markerPayload = raw;
+      } else if (typeof raw === "string" && raw.trim()) {
+        markerPayload = JSON.parse(raw);
+      }
+    } catch (_) {
+      markerPayload = {};
+    }
+    markerPayload.kind = "portal-owner";
+    markerPayload.ownerId = record.id;
+    markerPayload.email = securityEmail;
+    markerPayload.emailUpdatedAt = new Date().toISOString();
+    marker.set("payload", markerPayload);
+    marker.set("stamp", markerPayload.emailUpdatedAt);
+    e.app.save(marker);
+  }
 
   return e.json(200, {
     "id": record.id,
