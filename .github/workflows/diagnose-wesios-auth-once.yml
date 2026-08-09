@@ -106,7 +106,7 @@ jobs:
 
           CODE=''
           for attempt in $(seq 1 20); do
-            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}'               --max-time 20 -X POST               -H "X-Wesi-Builder-Probe: $TOKEN"               "http://127.0.0.1:8090/api/wesi/auth/start-v2" || true)
+            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}'               --max-time 20 -X POST               "http://127.0.0.1:8090/api/wesi/auth/start-v2?wesiProbe=$TOKEN" || true)
             [ "$CODE" != 404 ] && [ -n "$CODE" ] && break
             sleep 1
           done
