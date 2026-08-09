@@ -11,6 +11,7 @@ import 'services/forecast_backtest.dart';
 import 'services/forecast_engine.dart';
 import 'services/what_if_store.dart';
 import 'widgets/forecast_insights.dart';
+import 'widgets/horizon_decision_panel.dart';
 import 'widgets/what_if_dialog.dart';
 
 /// Прогноз внутри песочницы + конструктор собственных сценариев «Что если?».
@@ -216,8 +217,8 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                 fontSize: 17,
                 fontWeight: FontWeight.w700,
                 color: AppTheme.textPrimary)),
-        content: Text(preset.name,
-            style: TextStyle(color: AppTheme.textSecondary)),
+        content:
+            Text(preset.name, style: TextStyle(color: AppTheme.textSecondary)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -285,6 +286,8 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                           ),
                           const SizedBox(height: 10),
                           ForecastDiagnostics(forecast: _baseline),
+                          const SizedBox(height: 12),
+                          HorizonDecisionPanel(forecast: _baseline),
                           const SizedBox(height: 18),
                           _chart(),
                           const SizedBox(height: 18),
@@ -325,8 +328,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                   _ru
                       ? 'Свои сценарии «Что если?» на изолированных данных'
                       : 'Your own what-if scenarios on isolated data',
-                  style:
-                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -448,7 +450,8 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     final all = <double>[_startBalance, for (final s in series) ...s.values];
     var lo = all.reduce((a, b) => a < b ? a : b);
     var hi = all.reduce((a, b) => a > b ? a : b);
-    if (lo > 0) lo = 0; // ноль всегда в кадре — по нему читается кассовый разрыв
+    if (lo > 0)
+      lo = 0; // ноль всегда в кадре — по нему читается кассовый разрыв
     final pad = ((hi - lo).abs() * 0.12) + 1;
 
     return Container(
@@ -488,8 +491,8 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                       reservedSize: 52,
                       getTitlesWidget: (value, meta) => Text(
                         _compact(value),
-                        style: TextStyle(
-                            fontSize: 9, color: AppTheme.textMuted),
+                        style:
+                            TextStyle(fontSize: 9, color: AppTheme.textMuted),
                       ),
                     ),
                   ),
@@ -536,16 +539,14 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                     getTooltipItems: (spots) {
                       final day = spots.first.x.toInt();
                       final d = DateTime.now().add(Duration(days: day));
-                      final dateLabel =
-                          '${d.day.toString().padLeft(2, '0')}.'
+                      final dateLabel = '${d.day.toString().padLeft(2, '0')}.'
                           '${d.month.toString().padLeft(2, '0')}.${d.year}';
                       return List.generate(spots.length, (i) {
                         final spot = spots[i];
                         final s = spot.barIndex < series.length
                             ? series[spot.barIndex]
                             : null;
-                        final line =
-                            '${s?.label ?? ''}: '
+                        final line = '${s?.label ?? ''}: '
                             '${CurrencyService.formatExact(spot.y, decimals: 0)}';
                         return LineTooltipItem(
                           i == 0 ? '$dateLabel\n$line' : line,
@@ -671,14 +672,12 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     final notes = <String>[];
     if (delta != null && delta.abs() >= 1) {
       final sign = delta > 0 ? '+' : '−';
-      notes.add(
-          '${_ru ? 'разница' : 'delta'} $sign'
+      notes.add('${_ru ? 'разница' : 'delta'} $sign'
           '${CurrencyService.formatExact(delta.abs(), decimals: 0)}');
     }
     if (runway != null) {
-      notes.add(_ru
-          ? 'в минус на $runway-й день'
-          : 'goes negative on day $runway');
+      notes.add(
+          _ru ? 'в минус на $runway-й день' : 'goes negative on day $runway');
     }
     if (riskDay != null && riskDay != runway) {
       notes.add(_ru
@@ -697,7 +696,9 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
         color: AppTheme.surface.withOpacity(0.32),
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-            color: danger ? AppTheme.accentRed.withOpacity(0.4) : color.withOpacity(0.28)),
+            color: danger
+                ? AppTheme.accentRed.withOpacity(0.4)
+                : color.withOpacity(0.28)),
       ),
       child: Row(
         children: [
@@ -761,8 +762,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             Spacer(),
             if (_presets.isNotEmpty)
               Text('${_enabled.length}/${_presets.length}',
-                  style:
-                      TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
           ],
         ),
         SizedBox(height: 10),
@@ -778,9 +778,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             child: Column(
               children: [
                 Text(
-                  _ru
-                      ? 'Сценариев пока нет'
-                      : 'No scenarios yet',
+                  _ru ? 'Сценариев пока нет' : 'No scenarios yet',
                   style: TextStyle(
                       fontWeight: FontWeight.w600,
                       color: AppTheme.textSecondary),
@@ -795,8 +793,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                           'shift income and expenses by a percentage. '
                           'The chart draws itself.',
                   textAlign: TextAlign.center,
-                  style:
-                      TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -837,8 +834,7 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
                 SizedBox(height: 2),
                 Text(
                   preset.summary(_sym, _ru),
-                  style:
-                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -846,14 +842,14 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
             ),
           ),
           IconButton(
-            icon: Icon(Icons.edit_outlined,
-                size: 17, color: AppTheme.textMuted),
+            icon:
+                Icon(Icons.edit_outlined, size: 17, color: AppTheme.textMuted),
             tooltip: _ru ? 'Изменить' : 'Edit',
             onPressed: () => _createPreset(editing: preset),
           ),
           IconButton(
-            icon: Icon(Icons.delete_outline,
-                size: 17, color: AppTheme.textMuted),
+            icon:
+                Icon(Icons.delete_outline, size: 17, color: AppTheme.textMuted),
             tooltip: _ru ? 'Удалить' : 'Delete',
             onPressed: () => _deletePreset(preset),
           ),
@@ -913,15 +909,13 @@ class SandboxForecastButton extends StatelessWidget {
                 Text(
                   ru ? 'Прогноз и «Что если?»' : 'Forecast & what-if',
                   style: TextStyle(
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary),
+                      fontWeight: FontWeight.w700, color: AppTheme.textPrimary),
                 ),
                 Text(
                   ru
                       ? 'Свои сценарии, графики строятся автоматически'
                       : 'Your own scenarios, charts drawn automatically',
-                  style:
-                      TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                 ),
               ],
             ),

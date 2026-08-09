@@ -3,6 +3,8 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/transaction_model.dart';
 import 'anomaly_engine.dart';
 import 'forecast_engine.dart';
+import 'horizon_calibration.dart';
+import 'horizon_scenarios.dart';
 import 'recurring_engine.dart';
 import 'treasury_service.dart';
 
@@ -45,7 +47,8 @@ class SandboxService {
     return box.values.toList()..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  Future<List<TransactionModel>> getTransactionsByType(TransactionType type) async {
+  Future<List<TransactionModel>> getTransactionsByType(
+      TransactionType type) async {
     final all = await getAllTransactions();
     return all.where((t) => t.type == type).toList();
   }
@@ -129,12 +132,38 @@ class SandboxService {
   }) async {
     final all = await getAllTransactions();
     final balance = await getCurrentBalance();
-    return ForecastEngine.generate(
+    const calibration = HorizonCalibrationProfile.identity;
+    final base = ForecastEngine.generate(
       transactions: all,
       currentBalance: balance,
-      whatIf: whatIf,
       annualDiscountRate: annualDiscountRate,
       days: days,
+      calibration: calibration,
+    );
+    final active = whatIf.isEmpty
+        ? base
+        : ForecastEngine.generate(
+            transactions: all,
+            currentBalance: balance,
+            whatIf: whatIf,
+            annualDiscountRate: annualDiscountRate,
+            days: days,
+            calibration: calibration,
+          );
+    final package = await HorizonScenarioService.buildDefaultPackage(
+      base: base,
+      transactions: all,
+      currentBalance: balance,
+      days: days,
+      calibration: calibration,
+      annualDiscountRate: annualDiscountRate,
+    );
+    return active.copyWith(
+      scenarioSummaries: package,
+      whatIfRiskDelta: whatIf.isEmpty
+          ? null
+          : HorizonScenarioService.riskDelta(base: base, scenario: active),
+      clearWhatIfRiskDelta: whatIf.isEmpty,
     );
   }
 

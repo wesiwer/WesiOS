@@ -84,6 +84,7 @@ class HorizonScenarioService {
     List<HorizonCashEvent> businessEvents = const [],
     List<AccountLiquiditySnapshot> accounts = const [],
     Map<String, double> recurringReliability = const {},
+    double annualDiscountRate = 0.0,
   }) async {
     if (base.p50.isEmpty) return const [];
 
@@ -136,10 +137,12 @@ class HorizonScenarioService {
               transactions: transactions,
               currentBalance: currentBalance,
               days: days,
-              paths: max(500, min(1500, ForecastEngine.pathsForHorizon(days, 1500))),
+              paths: max(
+                  500, min(1500, ForecastEngine.pathsForHorizon(days, 1500))),
               seed: 42,
               whatIf: definition.scenario,
               calibration: calibration,
+              annualDiscountRate: annualDiscountRate,
               businessEvents: businessEvents,
               accounts: accounts,
               recurringReliability: recurringReliability,
@@ -149,7 +152,8 @@ class HorizonScenarioService {
         labelRu: definition.ru,
         labelEn: definition.en,
         endingP50: result.p50.isEmpty ? currentBalance : result.p50.last,
-        minimumP10: result.p10.isEmpty ? currentBalance : result.p10.reduce(min),
+        minimumP10:
+            result.p10.isEmpty ? currentBalance : result.p10.reduce(min),
         maximumGapRisk: result.maximumGapRisk,
         runwayDays: result.runwayDays,
       ));
