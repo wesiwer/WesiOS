@@ -41,7 +41,7 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Read sanitized start-v2 errors through PocketBase
+      - name: Verify branded mail builder after hot reload
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -50,72 +50,32 @@ jobs:
           set -euo pipefail
           test -n "${HOST:-}" && test -n "${USER:-}"
           TOKEN=$(openssl rand -hex 24)
-          REMOTE="/tmp/wesi-auth-log-probe-$GITHUB_RUN_ID"
-          PATCHED="$RUNNER_TEMP/wesi_auth_log_probe.pb.js"
+          REMOTE="/tmp/wesi-mail-builder-probe-$GITHUB_RUN_ID"
+          PATCHED="$RUNNER_TEMP/wesi_mail_builder_probe.pb.js"
           cp server/pb_hooks/wesi_auth_bootstrap.pb.js "$PATCHED"
           cat >> "$PATCHED" <<'JS'
 
-          routerAdd("POST", "/api/wesi/internal/auth-log-probe-__WESI_PROBE_TOKEN__", (e) => {
-            const clean = (value) => String(value == null ? "" : value)
-              .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, "<redacted-email>")
-              .replace(/(?:\d{1,3}\.){3}\d{1,3}/g, "<redacted-ip>")
-              .replace(/[A-Za-z0-9+\/_-]{32,}/g, "<redacted-value>")
-              .substring(0, 700);
-            const allowed = {
-              "status": true, "message": true, "error": true, "details": true,
-              "method": true, "url": true, "type": true, "reason": true,
-            };
-            const permitted = (input) => {
-              if (!input || typeof input !== "object" || Array.isArray(input)) return {};
-              const out = {};
-              for (const key of Object.keys(input)) {
-                if (!allowed[String(key).toLowerCase()]) continue;
-                const value = input[key];
-                if (value && typeof value === "object" && !Array.isArray(value)) {
-                  out[key] = permitted(value);
-                } else if (["string", "number", "boolean"].includes(typeof value) || value == null) {
-                  out[key] = clean(value);
-                }
-              }
-              return out;
-            };
-
-            const rows = arrayOf(new DynamicModel({
-              "created": "", "message": "", "data": {},
-            }));
-            e.app.logQuery()
-              .select("created", "message", "data")
-              .orderBy("created DESC")
-              .limit(1000)
-              .all(rows);
-
-            const found = [];
-            for (const row of rows) {
-              let decodedData = {};
-              try {
-                const rawData = row.data && typeof row.data.string === "function"
-                  ? row.data.string()
-                  : String(row.data || "{}");
-                decodedData = JSON.parse(rawData || "{}");
-              } catch (_) { decodedData = {}; }
-              const safeData = permitted(decodedData);
-              const safeMessage = clean(row.message || "");
-              const encoded = JSON.stringify(safeData);
-              if (
-                encoded.indexOf("/api/wesi/auth/start-v2") < 0 &&
-                safeMessage.indexOf("/api/wesi/auth/start-v2") < 0
-              ) continue;
-              found.push({
-                "created": clean(row.created),
-                "message": safeMessage,
-                "dataKeys": decodedData && typeof decodedData === "object"
-                  ? Object.keys(decodedData).map((key) => clean(key)).slice(0, 30)
-                  : [],
-                "data": safeData,
+          routerAdd("POST", "/api/wesi/internal/mail-builder-probe-__WESI_PROBE_TOKEN__", (e) => {
+            try {
+              const mail = globalThis.wesiBuildOtpMail("123456", "app");
+              const html = String(mail && mail.html || "");
+              const text = String(mail && mail.text || "");
+              const count = (html.match(/123456/g) || []).length;
+              return e.json(200, {
+                "ok": true,
+                "globalBuilder": typeof globalThis.wesiBuildOtpMail === "function",
+                "template": html.indexOf("2026-08-09.mail-design-v1") >= 0,
+                "logo": html.indexOf("https://api.wesi-inc.ru/portal/app_icon.png") >= 0,
+                "codeCount": count,
+                "textFallback": text.indexOf("123456") >= 0,
               });
-              if (found.length >= 12) break;
+            } catch (error) {
+              return e.json(500, {
+                "ok": false,
+                "errorType": String(error && error.name || "Error").substring(0, 80),
+                "reason": String(error && error.message || error || "unknown").substring(0, 300),
+              });
             }
-            return e.json(200, {"matchingEntries": found});
           });
           JS
           sed -i "s/__WESI_PROBE_TOKEN__/$TOKEN/g" "$PATCHED"
@@ -129,7 +89,7 @@ jobs:
           set -euo pipefail
           HOOK=/opt/pocketbase/pb_hooks/wesi_auth_bootstrap.pb.js
           ORIGINAL="$REMOTE/wesi_auth_bootstrap.pb.js"
-          PATCHED="$REMOTE/wesi_auth_log_probe.pb.js"
+          PATCHED="$REMOTE/wesi_mail_builder_probe.pb.js"
           test -s "$ORIGINAL" && test -s "$PATCHED"
           restore() {
             cat "$ORIGINAL" > "$HOOK" || true
@@ -142,13 +102,20 @@ jobs:
 
           CODE=''
           for attempt in $(seq 1 20); do
-            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}'               --max-time 20 -X POST               "http://127.0.0.1:8090/api/wesi/internal/auth-log-probe-$TOKEN" || true)
+            CODE=$(curl -sS -o "$REMOTE/result.json" -w '%{http_code}'               --max-time 20 -X POST               "http://127.0.0.1:8090/api/wesi/internal/mail-builder-probe-$TOKEN" || true)
             [ "$CODE" != 404 ] && [ -n "$CODE" ] && break
             sleep 1
           done
-          echo "probe_http=$CODE"
-          cat "$REMOTE/result.json" 2>/dev/null || true
+          cat "$REMOTE/result.json"
           echo
+          test "$CODE" = 200
+          grep -q '"ok":true' "$REMOTE/result.json"
+          grep -q '"globalBuilder":true' "$REMOTE/result.json"
+          grep -q '"template":true' "$REMOTE/result.json"
+          grep -q '"logo":true' "$REMOTE/result.json"
+          grep -q '"codeCount":1' "$REMOTE/result.json"
+          grep -q '"textFallback":true' "$REMOTE/result.json"
+
           cat "$ORIGINAL" > "$HOOK"
           chmod 0644 "$HOOK"
           sleep 2
