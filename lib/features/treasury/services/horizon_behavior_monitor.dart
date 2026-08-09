@@ -13,7 +13,18 @@ class HorizonBehaviorMonitor {
     DateTime? now,
   }) {
     final today = _day(now ?? DateTime.now());
-    final history = transactions.where((tx) => !_day(tx.date).isAfter(today)).toList();
+    final rawHistory =
+        transactions.where((tx) => !_day(tx.date).isAfter(today)).toList();
+    final recurringIncomeIds = rawHistory
+        .where((tx) => tx.isRecurring && tx.type == TransactionType.income)
+        .map((tx) => tx.id)
+        .toList();
+    bool legacyAutoIncome(TransactionModel tx) =>
+        !tx.isRecurring &&
+        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));
+    final history = rawHistory
+        .where((tx) => !tx.isRecurring && !legacyAutoIncome(tx))
+        .toList();
     if (history.length < 12) return const [];
 
     var first = today;
@@ -103,7 +114,8 @@ class HorizonBehaviorMonitor {
     if (historicalExpenses.length >= 12) {
       final sorted = [...historicalExpenses]..sort();
       final median = _median(sorted);
-      final deviations = historicalExpenses.map((e) => (e - median).abs()).toList()..sort();
+      final deviations = historicalExpenses.map((e) => (e - median).abs()).toList()
+        ..sort();
       final mad = _median(deviations);
       final recentCutoff = today.subtract(const Duration(days: 30));
       final recentAnomalies = history.where((tx) {
