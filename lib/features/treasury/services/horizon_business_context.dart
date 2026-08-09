@@ -199,18 +199,42 @@ class HorizonBusinessContextService {
         final parsed = TaskCashImpact.fromTags(task.tags);
         if (parsed == null) continue;
         final due = _day(task.dueDate!);
-        if (due.isBefore(today)) {
+
+        if (!due.isAfter(today)) {
+          final overdue = due.isBefore(today);
           warnings.add(ForecastActionPrompt(
-            code: 'overdue-cash-task-${task.id}',
-            severity: ForecastPromptSeverity.critical,
-            textRu:
-                'Просрочено денежное обязательство «${task.title}» (${parsed.signedAmount.abs().toStringAsFixed(0)} ₽).',
-            textEn:
-                'Overdue cash obligation “${task.title}” (${parsed.signedAmount.abs().toStringAsFixed(0)} RUB).',
+            code: overdue
+                ? 'overdue-cash-task-${task.id}'
+                : 'due-today-cash-task-${task.id}',
+            severity: parsed.signedAmount < 0
+                ? ForecastPromptSeverity.critical
+                : ForecastPromptSeverity.warning,
+            textRu: overdue
+                ? 'Просрочено денежное обязательство «${task.title}» (${parsed.signedAmount.abs().toStringAsFixed(0)} ₽). Horizon считает его немедленным движением денег.'
+                : 'Сегодня наступает денежное обязательство «${task.title}» (${parsed.signedAmount.abs().toStringAsFixed(0)} ₽). Horizon считает его немедленным движением денег.',
+            textEn: overdue
+                ? 'Overdue cash obligation “${task.title}” (${parsed.signedAmount.abs().toStringAsFixed(0)} RUB). Horizon treats it as immediate cash movement.'
+                : 'Cash obligation “${task.title}” is due today (${parsed.signedAmount.abs().toStringAsFixed(0)} RUB). Horizon treats it as immediate cash movement.',
             amount: parsed.signedAmount.abs(),
+            day: 1,
           ));
+
+          // Forecast offsets begin at day 1. An unpaid due/overdue cash task
+          // must not vanish merely because its calendar date is no longer in
+          // the future; move the unresolved obligation to the next forecast
+          // step while preserving its committed/probabilistic semantics.
+          events.add(HorizonCashEvent(
+            title: 'Task: ${task.title}',
+            amount: parsed.signedAmount,
+            date: today.add(const Duration(days: 1)),
+            probability: parsed.probability,
+            committed: parsed.committed,
+            source: 'task-obligation-overdue',
+          ));
+          continue;
         }
-        if (!due.isAfter(today) || due.isAfter(end)) continue;
+
+        if (due.isAfter(end)) continue;
         events.add(HorizonCashEvent(
           title: 'Task: ${task.title}',
           amount: parsed.signedAmount,
