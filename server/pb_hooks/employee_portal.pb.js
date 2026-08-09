@@ -249,7 +249,7 @@ routerAdd("POST", "/api/wesi/portal/profile/credentials", (e) => {
   const email = login + "@wesi.local";
 
   if (securityEmail && (
-    !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(securityEmail) ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(securityEmail) ||
     securityEmail.endsWith("@wesi.local")
   )) {
     throw new BadRequestError("Укажите действующую электронную почту");
