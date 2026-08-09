@@ -1,0 +1,100 @@
+name: Diagnose WesiOS mail once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-wesios-mail-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    environment:
+      name: employee-portal
+    steps:
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Inspect live mail transport without exposing data
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${USER:-}"
+          ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+
+          service_state() {
+            local unit="$1"
+            local state
+            state=$(systemctl is-active "$unit" 2>/dev/null || true)
+            printf '%s=%s\n' "$unit" "${state:-unknown}"
+          }
+
+          service_state pocketbase
+          service_state postfix
+          service_state opendkim
+
+          SMTP_BANNER=$(
+            timeout 5 bash -c '
+              exec 3<>/dev/tcp/127.0.0.1/25
+              IFS= read -r line <&3
+              printf "QUIT\r\n" >&3
+              printf "%s" "$line"
+            ' 2>/dev/null || true
+          )
+          case "$SMTP_BANNER" in
+            220*) echo 'smtp_socket=ready' ;;
+            *) echo 'smtp_socket=failed' ;;
+          esac
+
+          if command -v postqueue >/dev/null 2>&1; then
+            QUEUE_COUNT=$(postqueue -j 2>/dev/null | wc -l | tr -d ' ')
+            echo "postfix_queue_count=${QUEUE_COUNT:-unknown}"
+          else
+            echo 'postfix_queue_count=unavailable'
+          fi
+
+          LOGS=''
+          if journalctl -u pocketbase --since '45 minutes ago' --no-pager -o cat >/tmp/wesi-pb-mail.log 2>/dev/null; then
+            LOGS=$(cat /tmp/wesi-pb-mail.log)
+          elif sudo -n journalctl -u pocketbase --since '45 minutes ago' --no-pager -o cat >/tmp/wesi-pb-mail.log 2>/dev/null; then
+            LOGS=$(cat /tmp/wesi-pb-mail.log)
+          fi
+          rm -f /tmp/wesi-pb-mail.log
+
+          FILTERED=$(printf '%s\n' "$LOGS" |
+            grep -E 'WesiOS (SMTP delivery failed|security email delivery failed|owner email setup delivery failed)' |
+            tail -n 12 || true)
+          if [ -z "$FILTERED" ]; then
+            echo 'pocketbase_mail_error=not_visible'
+          else
+            echo 'pocketbase_mail_error_begin'
+            printf '%s\n' "$FILTERED" |
+              sed -E                 -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<redacted-email>/g'                 -e 's/(apiKey|password|token)[=:][^ ,;}]+/\1=<redacted>/Ig'                 -e 's/[A-Za-z0-9+\/_-]{32,}/<redacted-value>/g'
+            echo 'pocketbase_mail_error_end'
+          fi
+          REMOTE
