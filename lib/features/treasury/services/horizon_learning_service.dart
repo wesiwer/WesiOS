@@ -5,25 +5,36 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/transaction_model.dart';
 import 'forecast_backtest.dart';
 import 'horizon_calibration.dart';
+import 'horizon_prediction_registry.dart';
+import 'horizon_tuning_optimizer.dart';
 
 class HorizonLearningSnapshot {
   final DateTime updatedAt;
   final HorizonCalibrationProfile profile;
   final MultiHorizonBacktest evaluation;
+  final int realizedForecastSamples;
+  final double tuningObjective;
 
   const HorizonLearningSnapshot({
     required this.updatedAt,
     required this.profile,
     required this.evaluation,
+    this.realizedForecastSamples = 0,
+    this.tuningObjective = double.infinity,
   });
 }
 
 /// Persisted, bounded self-learning for Wesi Horizon.
 ///
-/// This is deliberately NOT an unconstrained optimizer. Once per calendar
-/// month it chooses among a few interpretable tuning candidates, then learns
-/// interval width, median bias and probability calibration from rolling
-/// 14/30/90/180-day backtests evaluated with multiple random seeds.
+/// There are deliberately two evidence sources:
+/// 1) rolling multi-origin reconstruction, which gives enough observations
+///    even early in the product lifecycle;
+/// 2) the production prediction registry, which evaluates the exact forecast
+///    that was actually issued to the user against the later realized cash.
+///
+/// As live evidence accumulates it receives progressively more weight. This
+/// prevents a new installation from overfitting two observations while also
+/// preventing the model from hiding forever behind synthetic backtests.
 class HorizonLearningService {
   HorizonLearningService._();
 
@@ -50,7 +61,6 @@ class HorizonLearningService {
         Map<String, dynamic>.from(decoded),
       );
     } catch (_) {
-      // Forecasting must fail soft if local learning state was damaged.
       return HorizonCalibrationProfile.identity;
     }
   }
@@ -78,22 +88,28 @@ class HorizonLearningService {
     final previous = await load();
     if (!force && !await isDue(date)) return null;
 
-    // With short history, marking the month as "learned" would postpone the
-    // first meaningful calibration. Leave identity in place and try later.
+    // Do not mark a month as learned until there is enough historical
+    // structure for at least the short-horizon backtest to mean something.
     if (transactions.length < 20) return null;
 
     try {
-      final tuning = ForecastBacktest.selectTuning(
+      final optimized = HorizonTuningOptimizer.select(
         transactions: transactions,
         currentBalance: currentBalance,
         now: date,
       );
-      final evaluation = ForecastBacktest.runMultiHorizon(
+      final backtest = optimized.backtest;
+      final live = await HorizonPredictionRegistry.evaluateRealized(
         transactions: transactions,
         currentBalance: currentBalance,
         now: date,
-        tuning: tuning,
       );
+      final evaluation = HorizonPredictionRegistry.blendWithBacktest(
+        backtest: backtest,
+        live: live,
+        tuning: optimized.tuning,
+      );
+
       final useful = evaluation.metrics.any((m) => m.samples >= 10);
       if (!useful) return null;
 
@@ -102,7 +118,9 @@ class HorizonLearningService {
         updatedAt: date,
         tuning: learned.tuning,
         buckets: learned.buckets,
-        source: 'monthly-learning-loop',
+        source: live.samples > 0
+            ? 'monthly-learning:backtest+issued-forecast-actual'
+            : 'monthly-learning:rolling-backtest',
       );
 
       final box = await _open();
@@ -117,6 +135,8 @@ class HorizonLearningService {
         'updatedAt': date.toIso8601String(),
         'previousSource': previous.source,
         'profile': profile.toJson(),
+        'tuningObjective': optimized.objective,
+        'realizedForecastSamples': live.samples,
         'metrics': [
           for (final metric in evaluation.metrics)
             {
@@ -129,18 +149,40 @@ class HorizonLearningService {
               'brier': metric.brierScore,
             },
         ],
+        'liveMetrics': [
+          for (final metric in live.metrics)
+            {
+              'horizon': metric.horizonDays,
+              'samples': metric.samples,
+              'coverage': metric.coverage,
+              'bias': metric.bias,
+              'quantileLoss': metric.quantileLoss,
+              'brier': metric.brierScore,
+            },
+        ],
       }));
-      if (history.length > 12) history.removeRange(0, history.length - 12);
+      if (history.length > 24) history.removeRange(0, history.length - 24);
       await box.put(_historyKey, history);
 
       return HorizonLearningSnapshot(
         updatedAt: date,
         profile: profile,
         evaluation: evaluation,
+        realizedForecastSamples: live.samples,
+        tuningObjective: optimized.objective,
       );
     } catch (_) {
-      // Never damage live forecasting because the learning pass failed.
+      // Learning must never be able to take live Treasury down.
       return null;
+    }
+  }
+
+  static Future<List<String>> history() async {
+    try {
+      final raw = (await _open()).get(_historyKey);
+      return raw is List ? raw.map((e) => '$e').toList() : const [];
+    } catch (_) {
+      return const [];
     }
   }
 
