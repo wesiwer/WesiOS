@@ -51,12 +51,22 @@ class SyncEndpoint {
     _sessionInitialized = true;
 
     Map<String, dynamic>? loaded;
+    String? secureRaw;
     try {
-      loaded = _decodeSession(
-        await _secureStorage.read(key: _secureSessionKey),
-      );
+      secureRaw = await _secureStorage.read(key: _secureSessionKey);
+      loaded = _decodeSession(secureRaw);
+      if (secureRaw != null &&
+          secureRaw.isNotEmpty &&
+          !_hasRevocableSessionShape(loaded)) {
+        await _secureStorage.delete(key: _secureSessionKey);
+        loaded = null;
+      }
     } catch (error) {
       debugPrint('WesiOS secure session read failed: $error');
+      try {
+        await _secureStorage.delete(key: _secureSessionKey);
+      } catch (_) {}
+      loaded = null;
     }
 
     final box = _open();
@@ -188,9 +198,7 @@ class SyncEndpoint {
     if (raw == null || raw.isEmpty) return null;
     try {
       final value = jsonDecode(raw);
-      return value is Map
-          ? Map<String, dynamic>.from(value)
-          : null;
+      return value is Map ? Map<String, dynamic>.from(value) : null;
     } catch (_) {
       return null;
     }

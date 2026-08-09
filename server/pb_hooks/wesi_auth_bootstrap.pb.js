@@ -15,7 +15,7 @@ routerAdd("GET", "/api/wesi/auth/version", (e) => {
     }
   } catch (_) {}
   return e.json(jsonReadable ? 200 : 503, {
-    "version": "2026-08-09.owner-email-v10",
+    "version": "2026-08-09.owner-email-v11",
     "jsonReadable": jsonReadable,
   });
 });
@@ -343,6 +343,38 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
   }
 
   sendCode(email, displayName, purpose, challengeId, challenge, payload);
+
+  // Only the newest successfully delivered OTP remains usable for this
+  // account and purpose. This prevents an older email from being paired with
+  // a newer client challenge after retries/reactivation.
+  try {
+    const records = e.app.findRecordsByFilter(
+      "wesios_records",
+      "owner='__wesios_security__' && coll='security' && deleted=false",
+      "-stamp",
+      500,
+      0,
+    );
+    for (const item of records) {
+      if (item.id === challenge.id) continue;
+      try {
+        const model = new DynamicModel({
+          "kind": "", "userId": "", "purpose": "", "usedAt": "",
+        });
+        item.unmarshalJSONField("payload", model);
+        if (String(model.kind || "") !== "otp" ||
+            String(model.userId || "") !== user.id ||
+            String(model.purpose || "app") !== purpose ||
+            String(model.usedAt || "")) {
+          continue;
+        }
+        item.set("deleted", true);
+        item.set("stamp", new Date().toISOString());
+        e.app.save(item);
+      } catch (_) {}
+    }
+  } catch (_) {}
+
   return e.json(200, {
     "challengeId": challengeId,
     "maskedEmail": maskEmail(email),
@@ -630,7 +662,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   return e.json(200, {
     "challengeId": challengeId,
     "maskedEmail": maskEmail(email),
-    "authVersion": "2026-08-09.owner-email-v10",
+    "authVersion": "2026-08-09.owner-email-v11",
     "expiresInSeconds": 600,
   });
 });

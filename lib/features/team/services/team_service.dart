@@ -164,6 +164,19 @@ class TeamService {
     return employee;
   }
 
+  static Future<void> repairLocalSessionReference() async {
+    final box = _settings();
+    if (box == null) return;
+    final currentId = box.get(_currentKey);
+    if (currentId is String &&
+        currentId.isNotEmpty &&
+        byId(currentId) == null) {
+      await box.delete(_currentKey);
+      await box.delete(_rememberKey);
+      revision.value++;
+    }
+  }
+
   static Future<void> forgetUnrememberedSession() async {
     final box = _settings();
     if (box == null) return;

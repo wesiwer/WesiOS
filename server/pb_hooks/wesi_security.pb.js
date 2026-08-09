@@ -15,7 +15,7 @@ routerAdd("GET", "/api/wesi/security/version", (e) => {
     }
   } catch (_) {}
   return e.json(jsonReadable ? 200 : 503, {
-    "version": "2026-08-09.security-mail-v8",
+    "version": "2026-08-09.security-mail-v9",
     "jsonReadable": jsonReadable,
   });
 });
@@ -201,12 +201,14 @@ routerAdd("POST", "/api/wesi/auth/start", (e) => {
     if (!record) return {};
     try {
       const model = new DynamicModel({
-        "kind": "", "userId": "", "email": "", "fullName": "", "name": "",
-        "id": "", "login": "", "usedAt": "", "sentAt": "",
+        "kind": "", "userId": "", "employeeId": "", "email": "",
+        "fullName": "", "name": "", "id": "", "login": "",
+        "usedAt": "", "sentAt": "",
       });
       record.unmarshalJSONField(field, model);
       return {
         "kind": String(model.kind || ""), "userId": String(model.userId || ""),
+        "employeeId": String(model.employeeId || ""),
         "email": String(model.email || ""), "fullName": String(model.fullName || ""),
         "name": String(model.name || ""), "id": String(model.id || ""),
         "login": String(model.login || ""), "usedAt": String(model.usedAt || ""),
@@ -422,7 +424,25 @@ routerAdd("POST", "/api/wesi/auth/verify", (e) => {
   } catch (_) {
     challenge = null;
   }
-  if (!challenge) throw new UnauthorizedError("Код недействителен или уже использован");
+  if (!challenge) {
+    let previous = null;
+    try {
+      previous = e.app.findFirstRecordByFilter(
+        "wesios_records",
+        "owner='__wesios_security__' && coll='security' && rid='otp:" + challengeId + "'",
+      );
+    } catch (_) {
+      previous = null;
+    }
+    if (previous) {
+      const previousPayload = valueObject(previous, "payload");
+      if (previousPayload.usedAt) {
+        throw new UnauthorizedError("Код уже использован. Запросите новый код");
+      }
+      throw new UnauthorizedError("Эта попытка входа завершена. Запросите новый код");
+    }
+    throw new UnauthorizedError("Проверка входа истекла. Запросите новый код");
+  }
 
   const payload = valueObject(challenge, "payload");
   const expiresAt = Date.parse(String(payload.expiresAt || ""));

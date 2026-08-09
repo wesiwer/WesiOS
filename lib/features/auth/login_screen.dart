@@ -77,10 +77,12 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _sendCode() async {
+    if (_busy) return;
     final entered = _login.text.trim();
     final password = _password.text;
     if (entered.isEmpty || password.isEmpty) {
-      setState(() => _error = _ru ? 'Введите логин и пароль' : 'Enter your login and password');
+      setState(() => _error =
+          _ru ? 'Введите логин и пароль' : 'Enter your login and password');
       return;
     }
     setState(() {
@@ -97,7 +99,8 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!result.ok || result.challengeId == null) {
       setState(() {
         _busy = false;
-        _error = result.error ?? (_ru ? 'Не удалось отправить код' : 'Unable to send the code');
+        _error = result.error ??
+            (_ru ? 'Не удалось отправить код' : 'Unable to send the code');
       });
       return;
     }
@@ -120,11 +123,14 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _submitOwnerEmail() async {
+    if (_busy) return;
     final challenge = _challengeId;
     if (challenge == null) return;
     final email = _setupEmail.text.trim();
     if (!PortalAccountService.validSecurityEmail(email)) {
-      setState(() => _error = _ru ? 'Укажите действующую электронную почту' : 'Enter a valid email address');
+      setState(() => _error = _ru
+          ? 'Укажите действующую электронную почту'
+          : 'Enter a valid email address');
       return;
     }
     setState(() {
@@ -139,7 +145,10 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!result.ok || result.challengeId == null) {
       setState(() {
         _busy = false;
-        _error = result.error ?? (_ru ? 'Не удалось отправить код на эту почту' : 'Unable to send the code');
+        _error = result.error ??
+            (_ru
+                ? 'Не удалось отправить код на эту почту'
+                : 'Unable to send the code');
       });
       return;
     }
@@ -156,10 +165,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _verifyCode() async {
+    if (_busy) return;
     final challengeId = _challengeId;
     if (challengeId == null) return;
     if (!RegExp(r'^\d{6}$').hasMatch(_code.text.trim())) {
-      setState(() => _error = _ru ? 'Введите 6 цифр из письма' : 'Enter the 6 digits from the email');
+      setState(() => _error = _ru
+          ? 'Введите 6 цифр из письма'
+          : 'Enter the 6 digits from the email');
       return;
     }
 
@@ -174,13 +186,38 @@ class _LoginScreenState extends State<LoginScreen> {
     );
     if (!mounted) return;
     if (!result.ok || result.identity == null) {
+      final challengeEnded = _challengeEnded(result);
       setState(() {
         _busy = false;
-        _error = result.error ?? (_ru ? 'Не удалось подтвердить вход' : 'Unable to verify sign-in');
+        if (challengeEnded) {
+          _challengeId = null;
+          _maskedEmail = null;
+          _needsEmailSetup = false;
+          _code.clear();
+          _error = _ru
+              ? 'Эта попытка входа уже завершена. Запросите новый код.'
+              : 'This sign-in attempt has ended. Request a new code.';
+        } else {
+          _error = result.error ??
+              (_ru
+                  ? 'Не удалось подтвердить вход'
+                  : 'Unable to verify sign-in');
+        }
       });
       return;
     }
     await _finishLogin(result.identity!);
+  }
+
+  bool _challengeEnded(PortalLoginResult result) {
+    if (result.statusCode != 401) return false;
+    final message = (result.error ?? '').toLowerCase();
+    return message.contains('уже использован') ||
+        message.contains('срок действия кода истёк') ||
+        message.contains('слишком много неверных попыток') ||
+        message.contains('проверка входа истекла') ||
+        message.contains('эта попытка входа завершена') ||
+        message.contains('challenge expired');
   }
 
   Future<void> _finishLogin(PortalAppIdentity identity) async {
@@ -260,13 +297,16 @@ class _LoginScreenState extends State<LoginScreen> {
                   Center(child: WesiWordmark(size: 34)),
                   const SizedBox(height: 10),
                   Center(
-                    child: Text(title, style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                    child: Text(title,
+                        style: TextStyle(
+                            fontSize: 13, color: AppTheme.textSecondary)),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     description,
                     textAlign: TextAlign.center,
-                    style: TextStyle(fontSize: 11, height: 1.4, color: AppTheme.textMuted),
+                    style: TextStyle(
+                        fontSize: 11, height: 1.4, color: AppTheme.textMuted),
                   ),
                   const SizedBox(height: 28),
                   if (_passwordStep)
@@ -294,7 +334,8 @@ class _LoginScreenState extends State<LoginScreen> {
           style: TextStyle(color: AppTheme.textPrimary),
           decoration: InputDecoration(
             labelText: _ru ? 'Логин' : 'Login',
-            prefixIcon: Icon(Icons.person_outline, size: 18, color: AppTheme.textMuted),
+            prefixIcon:
+                Icon(Icons.person_outline, size: 18, color: AppTheme.textMuted),
           ),
         ),
         const SizedBox(height: 14),
@@ -326,11 +367,14 @@ class _LoginScreenState extends State<LoginScreen> {
                 Checkbox(
                   value: _remember,
                   activeColor: AppTheme.accent,
-                  onChanged: _busy ? null : (v) => setState(() => _remember = v ?? true),
+                  onChanged: _busy
+                      ? null
+                      : (v) => setState(() => _remember = v ?? true),
                 ),
                 Expanded(
                   child: Text(_ru ? 'Запомнить меня' : 'Remember me',
-                      style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
+                      style: TextStyle(
+                          fontSize: 13, color: AppTheme.textSecondary)),
                 ),
               ],
             ),
@@ -356,7 +400,8 @@ class _LoginScreenState extends State<LoginScreen> {
           decoration: InputDecoration(
             labelText: _ru ? 'Электронная почта' : 'Email address',
             hintText: 'name@example.com',
-            prefixIcon: Icon(Icons.alternate_email, size: 18, color: AppTheme.textMuted),
+            prefixIcon: Icon(Icons.alternate_email,
+                size: 18, color: AppTheme.textMuted),
           ),
         ),
         _errorWidget(),
@@ -367,7 +412,9 @@ class _LoginScreenState extends State<LoginScreen> {
           busyLabel: _ru ? 'Отправляю…' : 'Sending…',
         ),
         const SizedBox(height: 8),
-        TextButton(onPressed: _busy ? null : _backToPassword, child: Text(_ru ? 'Назад' : 'Back')),
+        TextButton(
+            onPressed: _busy ? null : _backToPassword,
+            child: Text(_ru ? 'Назад' : 'Back')),
       ];
 
   List<Widget> _codeWidgets() => [
@@ -390,7 +437,8 @@ class _LoginScreenState extends State<LoginScreen> {
           decoration: InputDecoration(
             counterText: '',
             labelText: _ru ? 'Код из письма' : 'Email code',
-            prefixIcon: Icon(Icons.shield_outlined, size: 18, color: AppTheme.textMuted),
+            prefixIcon: Icon(Icons.shield_outlined,
+                size: 18, color: AppTheme.textMuted),
           ),
         ),
         _errorWidget(),
@@ -401,7 +449,9 @@ class _LoginScreenState extends State<LoginScreen> {
           busyLabel: _ru ? 'Подтверждаю…' : 'Verifying…',
         ),
         const SizedBox(height: 8),
-        TextButton(onPressed: _busy ? null : _backToPassword, child: Text(_ru ? 'Запросить код заново' : 'Request a new code')),
+        TextButton(
+            onPressed: _busy ? null : _backToPassword,
+            child: Text(_ru ? 'Запросить код заново' : 'Request a new code')),
       ];
 
   Widget _errorWidget() => _error == null
@@ -419,7 +469,8 @@ class _LoginScreenState extends State<LoginScreen> {
     required Future<void> Function() onTap,
     required String label,
     required String busyLabel,
-  }) => HoverButton(
+  }) =>
+      HoverButton(
         onTap: _busy ? () {} : onTap,
         padding: const EdgeInsets.symmetric(vertical: 15),
         backgroundColor: _busy ? AppTheme.surface : AppTheme.accent,
@@ -431,10 +482,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                          strokeWidth: 2, color: Colors.white),
                     ),
                     const SizedBox(width: 10),
-                    Text(busyLabel, style: const TextStyle(color: Colors.white)),
+                    Text(busyLabel,
+                        style: const TextStyle(color: Colors.white)),
                   ],
                 )
               : Text(label,
