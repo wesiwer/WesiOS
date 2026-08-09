@@ -34,6 +34,7 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
   late String _currency;
   late bool _allowNetting;
   late double _haircut;
+  late int _transferDelayDays;
   late final TextEditingController _minimum;
 
   bool get _ru => WesiLocale.isRussian;
@@ -44,6 +45,7 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
     _currency = widget.initial.currency;
     _allowNetting = widget.initial.allowNetting;
     _haircut = widget.initial.fxHaircut;
+    _transferDelayDays = widget.initial.transferDelayDays;
     _minimum = TextEditingController(
       text: widget.initial.minimumBalanceRub == 0
           ? ''
@@ -72,8 +74,8 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
             children: [
               Text(
                 _ru
-                    ? 'Horizon оценивает не только общий баланс, но и риск остаться без денег именно на нужном счёте.'
-                    : 'Horizon evaluates not only total cash, but the risk of running out at the location where money is actually needed.',
+                    ? 'Horizon оценивает не только общий баланс, но и риск остаться без денег именно на нужном счёте — с учётом валюты и времени перевода.'
+                    : 'Horizon evaluates not only total cash, but the risk of running out at the exact location where money is needed, including currency and transfer time.',
                 style: TextStyle(
                     color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
               ),
@@ -123,8 +125,32 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
                   style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
                 ),
               ),
-              if (_allowNetting && _currency != 'rub') ...[
+              if (_allowNetting) ...[
                 const SizedBox(height: 8),
+                Text(
+                  _ru
+                      ? 'Задержка перевода: $_transferDelayDays дн.'
+                      : 'Transfer delay: $_transferDelayDays d',
+                  style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
+                ),
+                Slider(
+                  value: _transferDelayDays.toDouble(),
+                  min: 0,
+                  max: 14,
+                  divisions: 14,
+                  label: '$_transferDelayDays',
+                  onChanged: (v) =>
+                      setState(() => _transferDelayDays = v.round()),
+                ),
+                Text(
+                  _ru
+                      ? 'Деньги со счёта не считаются спасательным резервом раньше этого срока. Для другой валюты Horizon добавляет ещё день на конвертацию.'
+                      : 'Cash from this account is not considered rescue liquidity before this delay. Cross-currency netting adds one more conversion day.',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+                ),
+              ],
+              if (_allowNetting && _currency != 'rub') ...[
+                const SizedBox(height: 12),
                 Text(
                   _ru
                       ? 'FX haircut: ${(_haircut * 100).toStringAsFixed(0)}%'
@@ -141,8 +167,8 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
                 ),
                 Text(
                   _ru
-                      ? 'Запас на курс, комиссии и задержку конвертации. Чем выше — тем консервативнее неттинг.'
-                      : 'Allowance for FX moves, fees and conversion delay. Higher means more conservative netting.',
+                      ? 'Запас на движение курса и комиссии. Чем выше — тем консервативнее валютный неттинг.'
+                      : 'Allowance for FX moves and fees. Higher means more conservative cross-currency netting.',
                   style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
                 ),
               ],
@@ -173,6 +199,7 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
       minimumBalanceRub: minimum,
       allowNetting: _allowNetting,
       fxHaircut: _currency == 'rub' ? 0 : _haircut,
+      transferDelayDays: _transferDelayDays,
     ));
     if (mounted) Navigator.pop(context);
   }
