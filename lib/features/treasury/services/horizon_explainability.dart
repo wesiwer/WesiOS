@@ -11,9 +11,9 @@ class HorizonExplainabilityService {
   /// Attribution of material P50 movements.
   ///
   /// This is deliberately additive: known event + other committed cash +
-  /// uncertain operating center + quantile/remainder = observed P50 daily
-  /// movement. The remainder is not hidden; Monte-Carlo non-linearity and
-  /// calibration are named explicitly instead of inventing a fake cause.
+  /// probabilistic business event + uncertain operating center + explicit
+  /// distribution/calibration remainder = observed P50 daily movement. The
+  /// remainder is never hidden behind an invented business explanation.
   static List<ForecastExplanation> build({
     required ForecastResult forecast,
     required List<TransactionModel> transactions,
@@ -38,7 +38,15 @@ class HorizonExplainabilityService {
       max(forecast.dailyVolatility * 0.40, typicalChange * 1.65),
     );
 
-    final eventsByDay = <int, List<({String title, String source, double impact})>>{};
+    final eventsByDay = <
+        int,
+        List<
+            ({
+              String title,
+              String source,
+              double impact,
+              bool committed,
+            })>>{};
     for (final event in businessEvents) {
       final offset = _day(event.date).difference(today).inDays;
       if (offset < 1 || offset > forecast.p50.length) continue;
@@ -46,6 +54,7 @@ class HorizonExplainabilityService {
         title: event.title,
         source: event.source,
         impact: event.amount * event.probability,
+        committed: event.committed,
       ));
     }
     for (final tx in transactions) {
@@ -56,6 +65,7 @@ class HorizonExplainabilityService {
         title: tx.title,
         source: 'treasury-scheduled',
         impact: tx.type == TransactionType.income ? tx.amount : -tx.amount,
+        committed: true,
       ));
     }
 
@@ -81,9 +91,14 @@ class HorizonExplainabilityService {
           committed.abs() >= threshold;
       if (!material) continue;
 
-      var eventTotal = 0.0;
+      var committedEventTotal = 0.0;
+      var probabilisticEventTotal = 0.0;
       for (final event in specificEvents) {
-        eventTotal += event.impact;
+        if (event.committed) {
+          committedEventTotal += event.impact;
+        } else {
+          probabilisticEventTotal += event.impact;
+        }
         result.add(ForecastExplanation(
           day: day,
           source: event.source,
@@ -93,7 +108,11 @@ class HorizonExplainabilityService {
         ));
       }
 
-      final committedRemainder = committed - eventTotal;
+      // Only committed events are already represented inside
+      // committedNetByDay. Probabilistic CRM/Vault expectations are not
+      // subtracted from this bucket; doing so would invent a negative
+      // "other commitment" and double-count them in the residual.
+      final committedRemainder = committed - committedEventTotal;
       if (committedRemainder.abs() >= max(10.0, threshold * 0.10)) {
         result.add(ForecastExplanation(
           day: day,
@@ -118,7 +137,8 @@ class HorizonExplainabilityService {
         ));
       }
 
-      final explainedCenter = committed + uncertain;
+      final explainedCenter =
+          committed + probabilisticEventTotal + uncertain;
       final remainder = delta - explainedCenter;
       if (previous != null && remainder.abs() >= max(10.0, threshold * 0.10)) {
         result.add(ForecastExplanation(
