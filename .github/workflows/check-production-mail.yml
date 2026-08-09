@@ -77,13 +77,15 @@ jobs:
           echo "SPF_VALUE=v=spf1 ip4:$PUBLIC_IP -all"
           echo "DKIM_NAME=wesios._domainkey"
           DKIM_FILE=/etc/opendkim/keys/wesi-inc.ru/wesios.txt
+          DKIM_RAW=''
           if [ -r "$DKIM_FILE" ]; then
-            # TXT public key is public information; flatten the bind-style file
-            # to a copy/paste-ready value and never read the .private key.
-            DKIM_VALUE=$(sed -n '/(/,/)/p' "$DKIM_FILE" | tr -d '\n\t\"' | sed -E 's/^[^(]*\(//; s/\).*//; s/[[:space:]]+//g')
-            if [ -z "$DKIM_VALUE" ]; then
-              DKIM_VALUE=$(tr -d '\n\t\"' < "$DKIM_FILE" | sed -E 's/^[^(]*\((.*)\)[^)]*$/\1/' | sed -E 's/[[:space:]]+//g')
-            fi
+            DKIM_RAW=$(cat "$DKIM_FILE")
+          elif command -v sudo >/dev/null 2>&1 && sudo -n test -r "$DKIM_FILE" 2>/dev/null; then
+            DKIM_RAW=$(sudo -n cat "$DKIM_FILE" 2>/dev/null)
+            echo 'DKIM_READ_MODE=sudo-read-public-txt'
+          fi
+          if [ -n "$DKIM_RAW" ]; then
+            DKIM_VALUE=$(printf '%s' "$DKIM_RAW" | tr -d '\n\t\"' | sed -E 's/^[^(]*\((.*)\)[^)]*$/\1/' | sed -E 's/[[:space:]]+//g')
             echo "DKIM_VALUE=$DKIM_VALUE"
           else
             echo "DKIM_VALUE=UNREADABLE_BY_DEPLOY_USER"
