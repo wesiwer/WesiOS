@@ -20,7 +20,7 @@ jobs:
       - name: Apply hardening patch
         run: |
           set -euo pipefail
-          cp "$GITHUB_WORKSPACE/tooling/horizon_final_hardening.py" /tmp/horizon_final_hardening.py || true
+          git fetch origin agent/horizon-hardening-exec2:refs/remotes/origin/agent/horizon-hardening-exec2
           git show origin/agent/horizon-hardening-exec2:tooling/horizon_final_hardening.py > /tmp/horizon_final_hardening.py
           python3 -m py_compile /tmp/horizon_final_hardening.py
           python3 /tmp/horizon_final_hardening.py
