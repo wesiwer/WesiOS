@@ -1,4 +1,4 @@
-name: Finish WesiOS feature branches
+name: Finish WesiOS Calendar and Time Center
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
 
 jobs:
   finish:
-    if: github.head_ref == 'feat/knowledge-live-charts' || github.head_ref == 'feat/calendar-clock-suite'
+    if: github.head_ref == 'feat/calendar-clock-suite'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -25,33 +25,36 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Apply feature patch
+      - name: Apply Calendar and Time Center patch
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "${GITHUB_HEAD_REF}" == "feat/knowledge-live-charts" ]]; then
-            if [[ -f tools/patch_knowledge_live_charts.py ]]; then
-              python3 tools/patch_knowledge_live_charts.py
-              rm tools/patch_knowledge_live_charts.py
-            fi
-          elif [[ "${GITHUB_HEAD_REF}" == "feat/calendar-clock-suite" ]]; then
-            if [[ -f tools/patch_calendar_clock.py ]]; then
-              python3 tools/patch_calendar_clock.py
-              rm tools/patch_calendar_clock.py
-            fi
-            if [[ -f tools/patch_calendar_sync.py ]]; then
-              python3 tools/patch_calendar_sync.py
-              rm tools/patch_calendar_sync.py
-            fi
-            if [[ -f tools/patch_calendar_dialog_validation.py ]]; then
-              python3 tools/patch_calendar_dialog_validation.py
-              rm tools/patch_calendar_dialog_validation.py
-            fi
-            rm -f tools/trigger_calendar_finisher.txt
+          if [[ -f tools/patch_calendar_clock.py ]]; then
+            python3 tools/patch_calendar_clock.py
+            rm tools/patch_calendar_clock.py
           fi
+          rm -f tools/trigger_calendar_finisher.txt
 
-      - name: Format
-        run: dart format lib test
+      - name: Format feature Dart files only
+        run: |
+          dart format \
+            lib/core/routes/app_router.dart \
+            lib/core/sync/sync_codec.dart \
+            lib/features/home/home_screen.dart \
+            lib/main.dart \
+            lib/features/calendar/calendar_screen.dart \
+            lib/features/calendar/calendar_v2_screen.dart \
+            lib/features/calendar/models/calendar_event.dart \
+            lib/features/calendar/services/calendar_event_service.dart \
+            lib/features/time_center/models/time_center_models.dart \
+            lib/features/time_center/services/time_center_service.dart \
+            lib/features/time_center/services/time_notification_scheduler.dart \
+            lib/features/time_center/services/time_schedule_automation.dart \
+            lib/features/time_center/time_center_screen.dart \
+            test/calendar_clock_surface_test.dart \
+            test/calendar_event_model_test.dart \
+            test/calendar_sync_surface_test.dart \
+            test/time_center_models_test.dart
 
       - name: Get dependencies
         run: flutter pub get
@@ -73,5 +76,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "feat: finish ${GITHUB_HEAD_REF#feat/}"
+          git commit -m "feat(calendar): finish Calendar and Time Center"
           git push origin HEAD:${GITHUB_HEAD_REF}
