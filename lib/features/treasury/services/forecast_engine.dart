@@ -100,6 +100,7 @@ class HorizonCashEvent {
   final double probability;
   final bool committed;
   final String source;
+  final String? riskSource;
   final String? accountId;
 
   const HorizonCashEvent({
@@ -109,8 +110,11 @@ class HorizonCashEvent {
     this.probability = 1,
     this.committed = false,
     this.source = 'external',
+    this.riskSource,
     this.accountId,
   });
+
+  String get effectiveRiskSource => riskSource ?? source;
 }
 
 class AccountLiquiditySnapshot {
@@ -931,6 +935,54 @@ class ForecastEngine {
     );
     final regimeModel = _RegimeModel.detect(denseNet);
 
+    // Stress “loss of main source” must target the economically largest
+    // incoming source across statistical streams, recurring contracts and
+    // company business events — not merely the largest historical category.
+    final mainLossWindow = min(days, max(0, whatIf.mainIncomeLossDays));
+    final mainIncomeExposure = <String, double>{};
+    if (mainLossWindow > 0) {
+      for (final stream in incomeStreams) {
+        final exposure = stream.dailyBaseline * mainLossWindow;
+        if (exposure > 0) {
+          mainIncomeExposure['stream:${stream.key}'] = exposure;
+        }
+      }
+      for (final tx in recurringTxs) {
+        if (tx.type != TransactionType.income) continue;
+        final projected = RecurringEngine.projectFutureContributions(
+          [tx],
+          days: mainLossWindow,
+          from: todayOnly,
+        );
+        final reliability = (recurringReliability[tx.id] ??
+                _estimateRecurringReliability(tx, transactions, todayOnly))
+            .clamp(0.05, 1.0)
+            .toDouble();
+        final expected = projected.values
+            .where((value) => value > 0)
+            .fold<double>(0, (sum, value) => sum + value * reliability);
+        if (expected > 0) {
+          mainIncomeExposure['recurring:${tx.id}'] = expected;
+        }
+      }
+      for (final event in businessEvents) {
+        if (event.amount <= 0) continue;
+        final offset =
+            DateTime(event.date.year, event.date.month, event.date.day)
+                .difference(todayOnly)
+                .inDays;
+        if (offset < 1 || offset > mainLossWindow) continue;
+        final key = 'business:${event.effectiveRiskSource}';
+        mainIncomeExposure[key] =
+            (mainIncomeExposure[key] ?? 0) + event.amount * event.probability;
+      }
+    }
+    final primaryLossSource = mainIncomeExposure.isEmpty
+        ? null
+        : mainIncomeExposure.entries
+            .reduce((a, b) => a.value >= b.value ? a : b)
+            .key;
+
     final committedByOffset = List<double>.filled(days, 0);
     final knownMagnitudeByOffset = List<double>.filled(days, 0);
     final uncertainMagnitudeByOffset = List<double>.filled(days, 0);
@@ -940,6 +992,7 @@ class ForecastEngine {
               double net,
               double probability,
               String title,
+              String riskSource,
               String? accountId
             })>>{};
     final effectiveRecurringReliability = <String, double>{};
@@ -966,6 +1019,11 @@ class ForecastEngine {
 
         var modeledNet = entry.value;
         if (modeledNet > 0 &&
+            shiftedOffset <= mainLossWindow &&
+            primaryLossSource == 'recurring:${tx.id}') {
+          modeledNet *= 0.15;
+        }
+        if (modeledNet > 0 &&
             (whatIf.incomeMultiplierDays <= 0 ||
                 shiftedOffset <= whatIf.incomeMultiplierDays)) {
           modeledNet *= whatIf.incomeMultiplier;
@@ -979,6 +1037,7 @@ class ForecastEngine {
           net: modeledNet,
           probability: probability,
           title: tx.title,
+          riskSource: 'recurring:${tx.id}',
           accountId: tx.accountId,
         ));
         if (probability >= 0.9 || tx.type == TransactionType.expense) {
@@ -1023,15 +1082,32 @@ class ForecastEngine {
       final shiftedOffset =
           event.amount > 0 ? offset + whatIf.incomeDelayDays : offset;
       if (shiftedOffset < 1 || shiftedOffset > days) continue;
-      (externalByOffset[shiftedOffset] ??= []).add(event);
-      if (event.committed) {
+
+      var modeledAmount = event.amount;
+      if (modeledAmount > 0 &&
+          shiftedOffset <= mainLossWindow &&
+          primaryLossSource == 'business:${event.effectiveRiskSource}') {
+        modeledAmount *= 0.15;
+      }
+      final modeledEvent = HorizonCashEvent(
+        title: event.title,
+        amount: modeledAmount,
+        date: event.date,
+        probability: event.probability,
+        committed: event.committed,
+        source: event.source,
+        riskSource: event.riskSource,
+        accountId: event.accountId,
+      );
+      (externalByOffset[shiftedOffset] ??= []).add(modeledEvent);
+      if (modeledEvent.committed) {
         committedByOffset[shiftedOffset - 1] +=
-            event.amount * event.probability;
+            modeledEvent.amount * modeledEvent.probability;
         knownMagnitudeByOffset[shiftedOffset - 1] +=
-            event.amount.abs() * event.probability;
+            modeledEvent.amount.abs() * modeledEvent.probability;
       } else {
         uncertainMagnitudeByOffset[shiftedOffset - 1] +=
-            event.amount.abs() * event.probability;
+            modeledEvent.amount.abs() * modeledEvent.probability;
       }
     }
 
@@ -1069,12 +1145,7 @@ class ForecastEngine {
       streamContribution[s.key] =
           (streamContribution[s.key] ?? 0) - s.dailyBaseline;
     }
-    final primaryIncomeKey = incomeStreams.isEmpty
-        ? null
-        : incomeStreams
-            .reduce((a, b) => a.dailyBaseline >= b.dailyBaseline ? a : b)
-            .key;
-
+    // main source selection is cross-layer (stream / recurring / business).
     for (var path = 0; path < effectivePaths; path++) {
       var balance = currentBalance;
       var regime = _RegimeModel.sampleInitial(rng, regimeModel.probabilities);
@@ -1092,7 +1163,8 @@ class ForecastEngine {
         if (hasStatisticalHistory) {
           for (final s in incomeStreams) {
             var component = s.expectedForDay(day, weekday, activeTuning);
-            if (whatIf.mainIncomeLossDays >= day && s.key == primaryIncomeKey) {
+            if (day <= mainLossWindow &&
+                primaryLossSource == 'stream:${s.key}') {
               component *= 0.15;
             }
             expectedIncome += component;

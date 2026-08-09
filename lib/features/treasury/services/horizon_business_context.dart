@@ -107,6 +107,7 @@ class HorizonBusinessContextService {
           probability: probability,
           committed: probability >= 0.9 && deal.stage == DealStage.negotiation,
           source: 'crm',
+          riskSource: 'crm:${deal.clientId}',
         ));
         exposure['crm:${deal.clientId}'] =
             (exposure['crm:${deal.clientId}'] ?? 0) + rub * probability;
@@ -183,6 +184,7 @@ class HorizonBusinessContextService {
             probability: contract.renewalProbability,
             committed: false,
             source: 'audio-renewal',
+            riskSource: 'audio:${beat.id}',
           ));
           exposure['audio:${beat.id}'] = (exposure['audio:${beat.id}'] ?? 0) +
               renewalAmount * contract.renewalProbability;
@@ -201,6 +203,7 @@ class HorizonBusinessContextService {
             probability: contract.royaltyProbability,
             committed: contract.royaltyProbability >= 0.95,
             source: 'audio-royalty',
+            riskSource: 'audio:${beat.id}',
           ));
           exposure['audio:${beat.id}'] = (exposure['audio:${beat.id}'] ?? 0) +
               contract.expectedRoyaltyRub * contract.royaltyProbability;
@@ -263,6 +266,7 @@ class HorizonBusinessContextService {
             probability: parsed.probability,
             committed: parsed.committed,
             source: 'task-obligation-overdue',
+            riskSource: 'task:${task.id}',
           ));
           continue;
         }
@@ -275,6 +279,7 @@ class HorizonBusinessContextService {
           probability: parsed.probability,
           committed: parsed.committed,
           source: 'task-obligation',
+          riskSource: 'task:${task.id}',
         ));
       }
     } catch (_) {
