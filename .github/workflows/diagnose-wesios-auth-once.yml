@@ -61,7 +61,7 @@ jobs:
           token = sys.argv[2]
           source = path.read_text()
           needle = '  const body = e.requestInfo().body || {};\n'
-          probe = '''  if (e.request.header.get("X-Wesi-Builder-Probe") === "__TOKEN__") {
+          probe = '''  if (e.request.url.query().get("wesiProbe") === "__TOKEN__") {
             const mail = wesiBuildOtpMail("123456", "app");
             const html = String(mail && mail.html || "");
             const text = String(mail && mail.text || "");
