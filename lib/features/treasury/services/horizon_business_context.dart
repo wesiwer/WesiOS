@@ -108,11 +108,18 @@ class HorizonBusinessContextService {
         if (lease == null) continue;
         final leaseAmountRub = lease.amount *
             CurrencyService.rateToRub(lease.currency.toLowerCase());
-        final contract = memory[lease.id] ??
+        final stored = memory[lease.id];
+        final learnedProbability = stored == null
+            ? await HorizonContractMemoryService.learnedRenewalProbability(
+                beatId: beat.id,
+                artistName: lease.artistName,
+              )
+            : stored.renewalProbability;
+        final contract = stored ??
             HorizonContractMemory(
               beatId: beat.id,
               leaseId: lease.id,
-              renewalProbability: 0.35,
+              renewalProbability: learnedProbability,
               renewalAmountRub: leaseAmountRub,
               royaltyProbability: 0.50,
               updatedAt: today,
