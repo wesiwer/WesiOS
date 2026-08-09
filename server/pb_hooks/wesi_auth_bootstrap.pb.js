@@ -1,7 +1,5 @@
-const WESI_AUTH_HOOK_VERSION = "2026-08-09.owner-email-v3";
-
 routerAdd("GET", "/api/wesi/auth/version", (e) => {
-  return e.json(200, {"version": WESI_AUTH_HOOK_VERSION});
+  return e.json(200, {"version": "2026-08-09.owner-email-v3"});
 });
 
 /// Safe migration for the owner account when an old installation has no real
@@ -327,7 +325,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   return e.json(200, {
     "challengeId": challengeId,
     "maskedEmail": maskEmail(email),
-    "authVersion": WESI_AUTH_HOOK_VERSION,
+    "authVersion": "2026-08-09.owner-email-v3",
     "expiresInSeconds": 600,
   });
 });
