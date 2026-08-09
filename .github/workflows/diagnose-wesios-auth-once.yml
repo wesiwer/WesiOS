@@ -75,7 +75,7 @@ jobs:
           fi
           REMOTE
           )
-          SUMMARY=$(printf '%s' "$SUMMARY" | tr -cd 'a-zA-Z0-9_- ' | cut -c1-120)
+          SUMMARY=$(printf '%s' "$SUMMARY" | tr -cd 'a-zA-Z0-9_ -' | cut -c1-120)
           test -n "$SUMMARY"
           echo "summary=$SUMMARY" >> "$GITHUB_OUTPUT"
 
