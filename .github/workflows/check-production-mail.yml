@@ -32,7 +32,7 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Diagnose self-hosted mail transport
+      - name: Diagnose self-hosted mail transport and exact DNS records
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -46,7 +46,6 @@ jobs:
           printf 'opendkim='; systemctl is-active opendkim 2>/dev/null || true
           printf 'pocketbase='; systemctl is-active pocketbase.service 2>/dev/null || true
           printf 'sendmail='; command -v sendmail || true
-          printf 'postfix_check='; postfix check >/tmp/wesi-postfix-check.out 2>&1; rc=$?; echo "$rc"; cat /tmp/wesi-postfix-check.out; rm -f /tmp/wesi-postfix-check.out
 
           echo "=== POSTFIX ==="
           postconf -h myhostname 2>/dev/null | sed 's/^/myhostname=/' || true
@@ -55,18 +54,42 @@ jobs:
           postconf -h non_smtpd_milters 2>/dev/null | sed 's/^/milters=/' || true
 
           echo "=== NETWORK ==="
+          PUBLIC_IP=$(curl -4fsS --max-time 10 https://api.ipify.org 2>/dev/null || true)
+          echo "PUBLIC_IP=$PUBLIC_IP"
           if timeout 10 bash -c 'cat < /dev/null > /dev/tcp/gmail-smtp-in.l.google.com/25' 2>/dev/null; then
             echo 'OUTBOUND_TCP25=OPEN'
           else
             echo 'OUTBOUND_TCP25=BLOCKED'
           fi
 
-          echo "=== DNS ==="
+          echo "=== DNS_CURRENT ==="
+          printf 'NS='; dig +short NS wesi-inc.ru 2>/dev/null | paste -sd, - || true
           printf 'A_mail='; dig +short A mail.wesi-inc.ru 2>/dev/null | paste -sd, - || true
-          printf 'PTR='; dig +short -x 185.221.199.19 2>/dev/null | paste -sd, - || true
+          printf 'PTR='; [ -n "$PUBLIC_IP" ] && dig +short -x "$PUBLIC_IP" 2>/dev/null | paste -sd, - || true
           printf 'SPF='; dig +short TXT wesi-inc.ru 2>/dev/null | grep -i 'v=spf1' | paste -sd' ' - || true
-          printf 'DKIM='; dig +short TXT wesios._domainkey.wesi-inc.ru 2>/dev/null | head -c 180 || true; echo
-          printf 'DMARC='; dig +short TXT _dmarc.wesi-inc.ru 2>/dev/null | head -c 180 || true; echo
+          printf 'DKIM='; dig +short TXT wesios._domainkey.wesi-inc.ru 2>/dev/null | paste -sd' ' - || true
+          printf 'DMARC='; dig +short TXT _dmarc.wesi-inc.ru 2>/dev/null | paste -sd' ' - || true
+
+          echo "=== DNS_REQUIRED ==="
+          echo "A_NAME=mail"
+          echo "A_VALUE=$PUBLIC_IP"
+          echo "SPF_NAME=@"
+          echo "SPF_VALUE=v=spf1 ip4:$PUBLIC_IP -all"
+          echo "DKIM_NAME=wesios._domainkey"
+          DKIM_FILE=/etc/opendkim/keys/wesi-inc.ru/wesios.txt
+          if [ -r "$DKIM_FILE" ]; then
+            # TXT public key is public information; flatten the bind-style file
+            # to a copy/paste-ready value and never read the .private key.
+            DKIM_VALUE=$(sed -n '/(/,/)/p' "$DKIM_FILE" | tr -d '\n\t\"' | sed -E 's/^[^(]*\(//; s/\).*//; s/[[:space:]]+//g')
+            if [ -z "$DKIM_VALUE" ]; then
+              DKIM_VALUE=$(tr -d '\n\t\"' < "$DKIM_FILE" | sed -E 's/^[^(]*\((.*)\)[^)]*$/\1/' | sed -E 's/[[:space:]]+//g')
+            fi
+            echo "DKIM_VALUE=$DKIM_VALUE"
+          else
+            echo "DKIM_VALUE=UNREADABLE_BY_DEPLOY_USER"
+          fi
+          echo "DMARC_NAME=_dmarc"
+          echo "DMARC_VALUE=v=DMARC1; p=quarantine; rua=mailto:postmaster@wesi-inc.ru; adkim=s; aspf=s"
 
           echo "=== QUEUE ==="
           mailq 2>/dev/null | tail -n 12 || true
