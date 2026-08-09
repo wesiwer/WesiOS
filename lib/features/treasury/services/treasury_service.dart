@@ -1,29 +1,28 @@
+import 'dart:async';
 import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+
 import '../models/transaction_model.dart';
 import 'anomaly_engine.dart';
 import 'forecast_engine.dart';
+import 'horizon_business_context.dart';
+import 'horizon_engine_competition.dart';
+import 'horizon_learning_service.dart';
+import 'horizon_scenarios.dart';
 import 'recurring_engine.dart';
 
 /// Wesi Treasury Service — управление финансами, аномалиями, прогнозами.
 ///
-/// Статистика (прогноз, аномалии, регулярные платежи) вынесена в общие
-/// движки ([ForecastEngine], [AnomalyEngine], [RecurringEngine]), которые
-/// использует и [TreasuryService], и SandboxService — так гарантируется,
-/// что поведение у них идентично, а данные при этом изолированы (разные
-/// Hive-боксы).
+/// ForecastEngine remains the pure mathematical core. This service is the
+/// company-level orchestration layer: it joins Treasury with CRM, Tasks,
+/// Audio Vault contracts, account liquidity, persisted calibration and the
+/// default scenario/decision package.
 class TreasuryService {
   static const String _boxName = 'wesios_treasury';
   Box<TransactionModel>? _box;
 
-  /// Счётчик изменений данных. Инкрементируется на каждую запись/удаление.
-  ///
-  /// Нужен, потому что вкладки живут в `IndexedStack` и **не пересоздаются**
-  /// при переключении: `initState` дашборда отрабатывает один раз за всё
-  /// время жизни приложения. Без этого сигнала баланс на главной оставался
-  /// таким, каким был на момент первого открытия, и расходился с Treasury,
-  /// стоило добавить операцию на другой вкладке.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   Future<Box<TransactionModel>> get _treasuryBox async {
@@ -50,7 +49,8 @@ class TreasuryService {
     return box.values.toList()..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  Future<List<TransactionModel>> getTransactionsByType(TransactionType type) async {
+  Future<List<TransactionModel>> getTransactionsByType(
+      TransactionType type) async {
     final all = await getAllTransactions();
     return all.where((t) => t.type == type).toList();
   }
@@ -92,13 +92,6 @@ class TreasuryService {
     return all.where((t) => t.isRecurring).toList();
   }
 
-  /// Материализует все просроченные регулярные платежи в отдельные
-  /// транзакции и сдвигает «якорь» (дату) регулярной записи вперёд.
-  ///
-  /// Раньше проверка due-даты сравнивалась с ИСХОДНОЙ датой создания записи,
-  /// которая никогда не обновлялась — при повторном вызове платёж
-  /// пересоздавался бы бесконечно. Теперь после срабатывания дата регулярной
-  /// транзакции переносится на дату последнего проведённого платежа.
   Future<void> processRecurringPayments() async {
     final recurring = await getRecurringPayments();
     final now = DateTime.now();
@@ -109,8 +102,6 @@ class TreasuryService {
 
       var anchor = tx;
       var guard = 0;
-      // Обрабатываем все просроченные периоды за один вызов — иначе платёж
-      // «застрянет» на первом же пропущенном разе.
       while (RecurringEngine.isDue(anchor, now) && guard < 366) {
         final due = RecurringEngine.advance(anchor.date, period);
         await addTransaction(TransactionModel(
@@ -123,17 +114,16 @@ class TreasuryService {
           description:
               tx.description == null ? null : 'Recurring: ${tx.description}',
           isRecurring: false,
+          accountId: tx.accountId,
         ));
         anchor = anchor.copyWith(date: due);
         guard++;
       }
-      if (guard > 0) {
-        await addTransaction(anchor); // сдвигаем якорь исходной записи
-      }
+      if (guard > 0) await addTransaction(anchor);
     }
   }
 
-  // ========== FORECAST ==========
+  // ========== WESI HORIZON ==========
 
   Future<ForecastResult> generateForecast({
     int days = 30,
@@ -142,16 +132,72 @@ class TreasuryService {
   }) async {
     final all = await getAllTransactions();
     final balance = await getCurrentBalance();
-    return ForecastEngine.generate(
+
+    // Monthly bounded learning is allowed to update only interpretable
+    // parameters + calibration. If it fails, the previous/identity profile is
+    // retained and forecasting stays available.
+    final learned = await HorizonLearningService.updateIfDue(
+      transactions: all,
+      currentBalance: balance,
+    );
+    final calibration = learned?.profile ?? await HorizonLearningService.load();
+
+    final context = await HorizonBusinessContextService.load(
+      transactions: all,
+      days: days,
+    );
+
+    ForecastResult core(WhatIfScenario scenario) => ForecastEngine.generate(
+          transactions: all,
+          currentBalance: balance,
+          days: days,
+          whatIf: scenario,
+          annualDiscountRate: annualDiscountRate,
+          calibration: calibration,
+          businessEvents: context.events,
+          accounts: context.accounts,
+        );
+
+    // Default scenario package must always be anchored to the unmodified base,
+    // not silently inherit an ad-hoc What-If currently open in the UI.
+    final base = core(WhatIfScenario.none);
+    final active = whatIf.isEmpty ? base : core(whatIf);
+
+    final scenarios = await HorizonScenarioService.buildDefaultPackage(
+      base: base,
       transactions: all,
       currentBalance: balance,
       days: days,
-      whatIf: whatIf,
-      annualDiscountRate: annualDiscountRate,
+      calibration: calibration,
+      businessEvents: context.events,
+      accounts: context.accounts,
     );
+
+    final prompts = <ForecastActionPrompt>[
+      ...active.actionPrompts,
+      ...context.warnings,
+    ];
+    final withDecisions = active.copyWith(
+      scenarioSummaries: scenarios,
+      actionPrompts: prompts,
+      whatIfRiskDelta: whatIf.isEmpty
+          ? null
+          : HorizonScenarioService.riskDelta(base: base, scenario: active),
+      clearWhatIfRiskDelta: whatIf.isEmpty,
+    );
+
+    // External engines may take seconds and are optional/Windows-only. Their
+    // monthly championship is deliberately background work; current Horizon
+    // must not wait for Python just to render a risk decision.
+    unawaited(HorizonEngineCompetitionService.evaluateIfDue(
+      transactions: all,
+      currentBalance: balance,
+    ));
+
+    return withDecisions;
   }
 
-  // ========== DEMO DATA (kept but NOT auto-called from forecast screen) ==========
+  // ========== DEMO DATA (never auto-called by forecast screen) ==========
 
   Future<void> generateDemoData() async {
     final box = await _treasuryBox;
@@ -159,14 +205,17 @@ class TreasuryService {
 
     final now = DateTime.now();
     final random = Random();
+    final categories = [
+      'Software',
+      'Marketing',
+      'Office',
+      'Salaries',
+      'Freelance',
+      'Investments'
+    ];
 
-    final categories = ['Software', 'Marketing', 'Office', 'Salaries', 'Freelance', 'Investments'];
-
-    // Generate 60 days of history
     for (int i = 60; i >= 0; i--) {
       final date = now.subtract(Duration(days: i));
-
-      // Daily income (freelance, sales)
       if (random.nextDouble() > 0.3) {
         await addTransaction(TransactionModel(
           id: 'inc_$i',
@@ -177,14 +226,11 @@ class TreasuryService {
           category: categories[random.nextInt(categories.length)],
         ));
       }
-
-      // Daily expenses
       if (random.nextDouble() > 0.2) {
-        final amount = 100 + random.nextInt(900).toDouble();
         await addTransaction(TransactionModel(
           id: 'exp_$i',
           title: 'Expense #$i',
-          amount: amount,
+          amount: 100 + random.nextInt(900).toDouble(),
           type: TransactionType.expense,
           date: date,
           category: categories[random.nextInt(categories.length)],
@@ -192,7 +238,6 @@ class TreasuryService {
       }
     }
 
-    // Add some anomalies
     await addTransaction(TransactionModel(
       id: 'anomaly_1',
       title: 'Emergency Server Repair',
@@ -204,7 +249,6 @@ class TreasuryService {
       zScore: 3.2,
     ));
 
-    // Add recurring
     await addTransaction(TransactionModel(
       id: 'recurring_salary',
       title: 'Monthly Salary',
