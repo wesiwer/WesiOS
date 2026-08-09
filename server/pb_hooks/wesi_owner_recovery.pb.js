@@ -1,19 +1,22 @@
-/// Temporary, root-gated owner recovery bridge.
+/// One-time, hash-gated owner recovery middleware.
 ///
-/// This hook does NOT disable normal WesiOS 2FA. It only handles
-/// POST /api/wesi/auth/start-v2 for login `WesiOff` when a short-lived,
-/// root-created /opt/pocketbase/.wesi-owner-recovery.json exists.
-/// The recovery flag is deliberately outside pb_hooks so creating/removing it
-/// cannot trigger PocketBase hook autoreload between start-v2 and verify.
+/// This source never contains the recovery password or code. The temporary
+/// password is high-entropy and ends with `-NNNNNN`; only its salted SHA-256
+/// digest is committed. After a valid password starts the flow, the six-digit
+/// suffix becomes a normal, single-use WesiOS OTP challenge.
 ///
-/// IMPORTANT: while this temporary recovery build exists, the flag is NOT
-/// consumed on start-v2. It remains valid only until its root-created expiry.
-/// This prevents a duplicate/retried start-v2 request from falling through to
-/// normal mail auth and producing a different OTP before verify completes.
-///
-/// The optional recovery `email` is copied only into the verified recovery
-/// challenge. This lets an owner whose legacy profile has no local email finish
-/// the one-time credential migration without hardcoding personal data here.
+/// The activation workflow substitutes the expiry placeholder immediately
+/// before deploying this middleware together with wesi_auth_bootstrap.pb.js.
+/// A clean bootstrap is deployed again after the owner confirms access.
+
+const wesiOneTimeOwnerRecovery = {
+  "id": "cee2b8b894a9978f",
+  "login": "owner-recovery",
+  "userId": "ex7bwkwp9e1l62o",
+  "passwordSalt": "098fd01f9c169af77c2c216d91cca64a",
+  "passwordHash": "7889bbd800cd2ae9e5c1ee3d82c85043434f4583c8d59a3063fc1fb3e1083b6b",
+  "expiresAt": "__WESI_RECOVERY_EXPIRES_AT__",
+};
 
 routerUse((e) => {
   const path = String(e.request.url.path || "");
@@ -25,63 +28,101 @@ routerUse((e) => {
   let body = {};
   try { body = e.requestInfo().body || {}; } catch (_) { body = {}; }
   const login = String(body.login || "").trim().toLowerCase();
-  if (login !== "wesioff") return e.next();
+  if (login !== wesiOneTimeOwnerRecovery.login) return e.next();
 
-  const recoveryPath = "/opt/pocketbase/.wesi-owner-recovery.json";
-  let recovery = null;
-  try {
-    const raw = $os.readFile(recoveryPath);
-    const text = typeof raw === "string"
-      ? raw
-      : String.fromCharCode.apply(null, raw || []);
-    recovery = JSON.parse(text || "{}");
-  } catch (_) {
-    return e.next();
+  const activationExpiresAt = Date.parse(wesiOneTimeOwnerRecovery.expiresAt);
+  if (!Number.isFinite(activationExpiresAt) || activationExpiresAt <= Date.now()) {
+    throw new UnauthorizedError("Временный вход владельца недействителен");
   }
 
-  const userId = String(recovery.userId || "").trim();
-  const code = String(recovery.code || "").trim();
-  const recoveryEmail = String(recovery.email || "").trim().toLowerCase();
-  const recoveryExpiresIso = String(recovery.expiresAt || "").trim();
-  const expiresAt = Date.parse(recoveryExpiresIso);
-  if (!/^[A-Za-z0-9_-]{10,40}$/.test(userId) ||
-      !/^\d{6}$/.test(code) ||
-      (recoveryEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recoveryEmail)) ||
-      recoveryEmail.endsWith("@wesi.local") ||
-      !Number.isFinite(expiresAt) ||
-      expiresAt <= Date.now() ||
-      expiresAt - Date.now() > 15 * 60 * 1000) {
-    throw new UnauthorizedError("Временное восстановление входа недействительно");
-  }
-
-  let user = null;
-  try { user = e.app.findRecordById("users", userId); } catch (_) { user = null; }
   const password = String(body.password || "");
-  if (!user || !password || !user.validatePassword(password)) {
+  const passwordHash = $security.sha256(
+    wesiOneTimeOwnerRecovery.passwordSalt + ":" + password,
+  );
+  const codeMatch = password.match(/-(\d{6})$/);
+  if (!codeMatch || passwordHash !== wesiOneTimeOwnerRecovery.passwordHash) {
     throw new UnauthorizedError("Неверный логин или пароль");
   }
+  const code = codeMatch[1];
 
-  // Recovery is owner-only. A copied recovery flag cannot be used for an
-  // arbitrary user record.
+  let user = null;
+  try {
+    user = e.app.findRecordById("users", wesiOneTimeOwnerRecovery.userId);
+  } catch (_) {
+    user = null;
+  }
+  if (!user) throw new ForbiddenError("Профиль владельца закрыт");
+
   try {
     e.app.findFirstRecordByFilter(
       "wesios_records",
       "owner='" + user.id + "' && coll='system' && rid='portal-owner' && deleted=false",
     );
   } catch (_) {
-    throw new ForbiddenError("Временное восстановление доступно только владельцу");
+    throw new ForbiddenError("Временный вход доступен только владельцу");
+  }
+
+  const valueObject = (record) => {
+    try {
+      const raw = record.get("payload");
+      return raw && typeof raw === "object" ? raw : {};
+    } catch (_) {
+      return {};
+    }
+  };
+  const stateRid = "recovery:" + wesiOneTimeOwnerRecovery.id;
+  let state = null;
+  try {
+    state = e.app.findFirstRecordByFilter(
+      "wesios_records",
+      "owner='__wesios_security__' && coll='security' && rid='" + stateRid + "' && deleted=false",
+    );
+  } catch (_) {
+    state = null;
+  }
+
+  if (state) {
+    const statePayload = valueObject(state);
+    const existingId = String(statePayload.challengeId || "");
+    let existing = null;
+    if (/^[A-Za-z0-9]{40}$/.test(existingId)) {
+      try {
+        existing = e.app.findFirstRecordByFilter(
+          "wesios_records",
+          "owner='__wesios_security__' && coll='security' && rid='otp:" + existingId + "' && deleted=false",
+        );
+      } catch (_) {
+        existing = null;
+      }
+    }
+    const existingPayload = existing ? valueObject(existing) : {};
+    const existingExpiresAt = Date.parse(String(existingPayload.expiresAt || ""));
+    if (existing && Number.isFinite(existingExpiresAt) && existingExpiresAt > Date.now()) {
+      return e.json(200, {
+        "challengeId": existingId,
+        "maskedEmail": "одноразовый защищённый канал",
+        "emailSetupRequired": false,
+        "expiresInSeconds": Math.max(1, Math.floor((existingExpiresAt - Date.now()) / 1000)),
+        "recovery": true,
+      });
+    }
+    throw new UnauthorizedError("Временный вход владельца уже использован");
   }
 
   const challengeId = $security.randomStringWithAlphabet(
     40,
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
   );
-  const salt = $security.randomStringWithAlphabet(
+  const challengeSalt = $security.randomStringWithAlphabet(
     32,
     "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
   );
   const now = new Date();
+  const challengeExpiresAt = new Date(
+    Math.min(activationExpiresAt, now.getTime() + 10 * 60 * 1000),
+  );
   const collection = e.app.findCollectionByNameOrId("wesios_records");
+
   const challenge = new Record(collection);
   challenge.set("owner", "__wesios_security__");
   challenge.set("org", "wesi-inc");
@@ -92,25 +133,49 @@ routerUse((e) => {
     "challengeId": challengeId,
     "userId": user.id,
     "employeeId": "owner",
-    "login": "wesioff",
-    "email": recoveryEmail,
+    "login": wesiOneTimeOwnerRecovery.login,
+    "email": "",
     "purpose": body.purpose === "portal" ? "portal" : "app",
-    "hash": $security.sha256(challengeId + ":" + salt + ":" + code),
-    "salt": salt,
+    "hash": $security.sha256(challengeId + ":" + challengeSalt + ":" + code),
+    "salt": challengeSalt,
     "attempts": 0,
     "sentAt": now.toISOString(),
-    "expiresAt": recoveryExpiresIso,
-    "delivery": "root-recovery",
+    "expiresAt": challengeExpiresAt.toISOString(),
+    "delivery": "private-one-time-recovery",
+    "recoveryId": wesiOneTimeOwnerRecovery.id,
   });
   challenge.set("stamp", now.toISOString());
   challenge.set("deleted", false);
   e.app.save(challenge);
 
+  const recoveryState = new Record(collection);
+  recoveryState.set("owner", "__wesios_security__");
+  recoveryState.set("org", "wesi-inc");
+  recoveryState.set("coll", "security");
+  recoveryState.set("rid", stateRid);
+  recoveryState.set("payload", {
+    "kind": "owner-recovery",
+    "recoveryId": wesiOneTimeOwnerRecovery.id,
+    "challengeId": challengeId,
+    "startedAt": now.toISOString(),
+    "expiresAt": challengeExpiresAt.toISOString(),
+  });
+  recoveryState.set("stamp", now.toISOString());
+  recoveryState.set("deleted", false);
+  try {
+    e.app.save(recoveryState);
+  } catch (_) {
+    challenge.set("deleted", true);
+    challenge.set("stamp", new Date().toISOString());
+    e.app.save(challenge);
+    throw new InternalServerError("Не удалось создать одноразовый вход владельца");
+  }
+
   return e.json(200, {
     "challengeId": challengeId,
-    "maskedEmail": recoveryEmail || "временный recovery-код",
+    "maskedEmail": "одноразовый защищённый канал",
     "emailSetupRequired": false,
-    "expiresInSeconds": Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)),
+    "expiresInSeconds": Math.max(1, Math.floor((challengeExpiresAt.getTime() - Date.now()) / 1000)),
     "recovery": true,
   });
 });
