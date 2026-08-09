@@ -10,6 +10,7 @@ import 'package:fl_chart/fl_chart.dart';
 import '../../../core/theme/app_theme.dart';
 import '../models/article_model.dart';
 import '../services/knowledge_service.dart';
+import '../services/knowledge_linked_chart_service.dart';
 import 'dart:io';
 
 /// Рендер тела статьи: Quill Delta JSON или legacy plain/Markdown.
@@ -395,7 +396,8 @@ class _InlineVideoState extends State<_InlineVideo> {
 
   Future<void> _init() async {
     try {
-      final isLocal = !widget.source.startsWith('http') && File(widget.source).existsSync();
+      final isLocal =
+          !widget.source.startsWith('http') && File(widget.source).existsSync();
       final c = isLocal
           ? VideoPlayerController.file(File(widget.source))
           : VideoPlayerController.networkUrl(Uri.parse(widget.source));
@@ -430,8 +432,8 @@ class _InlineVideoState extends State<_InlineVideo> {
           color: AppTheme.surface.withOpacity(0.4),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: CircularProgressIndicator(
-            color: AppTheme.accent.withOpacity(0.5)),
+        child:
+            CircularProgressIndicator(color: AppTheme.accent.withOpacity(0.5)),
       );
     }
     return ClipRRect(
@@ -480,7 +482,8 @@ class _InlineAudioState extends State<_InlineAudio> {
   @override
   void initState() {
     super.initState();
-    _isLocal = !widget.source.startsWith('http') && File(widget.source).existsSync();
+    _isLocal =
+        !widget.source.startsWith('http') && File(widget.source).existsSync();
     _initPlayer();
   }
 
@@ -514,7 +517,8 @@ class _InlineAudioState extends State<_InlineAudio> {
   }
 
   Future<void> _seek(double value) async {
-    final position = Duration(milliseconds: (value * _duration.inMilliseconds).toInt());
+    final position =
+        Duration(milliseconds: (value * _duration.inMilliseconds).toInt());
     await _player.seek(position);
   }
 
@@ -571,11 +575,13 @@ class _InlineAudioState extends State<_InlineAudio> {
                     children: [
                       Text(
                         _formatDuration(_position),
-                        style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                        style:
+                            TextStyle(fontSize: 11, color: AppTheme.textMuted),
                       ),
                       Text(
                         _formatDuration(_duration),
-                        style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                        style:
+                            TextStyle(fontSize: 11, color: AppTheme.textMuted),
                       ),
                     ],
                   ),
@@ -589,105 +595,230 @@ class _InlineAudioState extends State<_InlineAudio> {
   }
 }
 
-class _InlineChart extends StatelessWidget {
+class _InlineChart extends StatefulWidget {
   final String data;
   const _InlineChart({required this.data});
+
+  @override
+  State<_InlineChart> createState() => _InlineChartState();
+}
+
+class _InlineChartState extends State<_InlineChart> {
+  final KnowledgeLinkedChartService _linked = KnowledgeLinkedChartService();
+  String? _loadedSource;
+  Future<KnowledgeLinkedChartData>? _linkedFuture;
+
+  @override
+  void didUpdateWidget(covariant _InlineChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.data != widget.data) {
+      _loadedSource = null;
+      _linkedFuture = null;
+    }
+  }
+
+  Future<KnowledgeLinkedChartData> _futureFor(String source) {
+    if (_loadedSource != source || _linkedFuture == null) {
+      _loadedSource = source;
+      _linkedFuture = _linked.load(source);
+    }
+    return _linkedFuture!;
+  }
 
   @override
   Widget build(BuildContext context) {
     Map<String, dynamic> chartData;
     try {
-      chartData = jsonDecode(data);
+      chartData = jsonDecode(widget.data);
     } catch (_) {
       return _broken(Icons.bar_chart, 'Chart');
     }
+
+    final source = chartData['source'] as String? ?? 'manual';
+    if (source == 'manual') {
+      try {
+        final values = (chartData['data'] as List<dynamic>? ?? [])
+            .map((e) => (e as num).toDouble())
+            .toList();
+        final labels = (chartData['labels'] as List<dynamic>? ?? [])
+            .map((e) => e.toString())
+            .toList();
+        return _renderChart(chartData, values, labels);
+      } catch (_) {
+        return _broken(Icons.bar_chart, 'Chart');
+      }
+    }
+
+    return FutureBuilder<KnowledgeLinkedChartData>(
+      future: _futureFor(source),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) {
+          return _chartState(
+            icon: Icons.sync_rounded,
+            label: 'Loading live $source data…',
+            loading: true,
+          );
+        }
+        if (snapshot.hasError) {
+          return _chartState(
+            icon: Icons.error_outline_rounded,
+            label: 'Live $source data unavailable',
+          );
+        }
+        final linked = snapshot.data ?? KnowledgeLinkedChartData.empty;
+        if (linked.values.isEmpty) {
+          return _chartState(
+            icon: Icons.query_stats_rounded,
+            label: 'No real $source data yet',
+          );
+        }
+        return _renderChart(chartData, linked.values, linked.labels);
+      },
+    );
+  }
+
+  Widget _chartState({
+    required IconData icon,
+    required String label,
+    bool loading = false,
+  }) {
+    return Container(
+      height: 120,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(0.4),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (loading)
+            const SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Icon(icon, color: AppTheme.textMuted),
+          const SizedBox(height: 7),
+          Text(
+            label,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _renderChart(
+    Map<String, dynamic> chartData,
+    List<double> values,
+    List<String> labels,
+  ) {
+    if (values.isEmpty) return _broken(Icons.bar_chart, 'Chart');
+
     final type = chartData['type'] as String? ?? 'bar';
     final title = chartData['title'] as String? ?? '';
     final source = chartData['source'] as String? ?? 'manual';
 
-    List<double> values;
-    List<String> labels;
-
-    if (source == 'manual') {
-      values = (chartData['data'] as List<dynamic>? ?? []).map((e) => (e as num).toDouble()).toList();
-      labels = (chartData['labels'] as List<dynamic>? ?? []).map((e) => e.toString()).toList();
-    } else {
-      // Linked data — заглушка с демо-данными (в будущем: подгрузка из сервисов)
-      final linked = _getLinkedData(source);
-      values = linked['data'] as List<double>;
-      labels = linked['labels'] as List<String>;
-    }
-
-    if (values.isEmpty) return _broken(Icons.bar_chart, 'Chart');
-
     final barGroups = values.asMap().entries.map((e) {
       return BarChartGroupData(
         x: e.key,
-        barRods: [BarChartRodData(toY: e.value, color: AppTheme.accent, width: 16)],
+        barRods: [
+          BarChartRodData(toY: e.value, color: AppTheme.accent, width: 16),
+        ],
       );
     }).toList();
+
+    Widget bottomTitle(double value, TitleMeta _) {
+      final index = value.toInt();
+      if (index < 0 || index >= labels.length) return const SizedBox.shrink();
+      return Text(
+        labels[index],
+        style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+      );
+    }
+
+    Widget leftTitle(double value, TitleMeta _) => Text(
+          value.toInt().toString(),
+          style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
+        );
+
+    final titles = FlTitlesData(
+      bottomTitles: AxisTitles(
+        sideTitles: SideTitles(showTitles: true, getTitlesWidget: bottomTitle),
+      ),
+      leftTitles: AxisTitles(
+        sideTitles: SideTitles(
+          showTitles: true,
+          reservedSize: 40,
+          getTitlesWidget: leftTitle,
+        ),
+      ),
+      topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+      rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+    );
 
     Widget chartWidget;
     switch (type) {
       case 'line':
+      case 'area':
         chartWidget = LineChart(
           LineChartData(
-            gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.glassBorder)),
-            titlesData: FlTitlesData(
-              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(labels.length > v.toInt() ? labels[v.toInt()] : '', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
-              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, _) => Text(v.toInt().toString(), style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
-              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: AppTheme.glassBorder),
             ),
+            titlesData: titles,
             borderData: FlBorderData(show: false),
             lineBarsData: [
               LineChartBarData(
-                spots: values.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList(),
+                spots: values
+                    .asMap()
+                    .entries
+                    .map((e) => FlSpot(e.key.toDouble(), e.value))
+                    .toList(),
                 color: AppTheme.accent,
                 barWidth: 2,
-                dotData: FlDotData(show: true),
+                dotData: FlDotData(show: type == 'line'),
+                belowBarData: BarAreaData(
+                  show: type == 'area',
+                  color: AppTheme.accent.withOpacity(0.2),
+                ),
               ),
             ],
           ),
         );
         break;
       case 'pie':
-        final total = values.fold<double>(0, (s, v) => s + v);
+        final positive = values.map((v) => v < 0 ? v.abs() : v).toList();
+        final total = positive.fold<double>(0, (sum, value) => sum + value);
         chartWidget = PieChart(
           PieChartData(
-            sections: values.asMap().entries.map((e) {
+            sections: positive.asMap().entries.map((e) {
               final pct = total > 0 ? e.value / total : 0;
               return PieChartSectionData(
                 value: e.value,
                 title: '${(pct * 100).toStringAsFixed(0)}%',
-                color: [AppTheme.accent, AppTheme.accentGreen, AppTheme.accent, AppTheme.accentRed, AppTheme.lightAccentBlue][e.key % 5],
+                color: [
+                  AppTheme.accent,
+                  AppTheme.accentGreen,
+                  AppTheme.accentOrange,
+                  AppTheme.accentRed,
+                  AppTheme.lightAccentBlue,
+                ][e.key % 5],
                 radius: 60,
-                titleStyle: TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w600),
+                titleStyle: const TextStyle(
+                  fontSize: 11,
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
               );
             }).toList(),
-          ),
-        );
-        break;
-      case 'area':
-        chartWidget = LineChart(
-          LineChartData(
-            gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.glassBorder)),
-            titlesData: FlTitlesData(
-              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(labels.length > v.toInt() ? labels[v.toInt()] : '', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
-              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, _) => Text(v.toInt().toString(), style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
-              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            ),
-            borderData: FlBorderData(show: false),
-            lineBarsData: [
-              LineChartBarData(
-                spots: values.asMap().entries.map((e) => FlSpot(e.key.toDouble(), e.value)).toList(),
-                color: AppTheme.accent,
-                barWidth: 2,
-                belowBarData: BarAreaData(show: true, color: AppTheme.accent.withOpacity(0.2)),
-                dotData: FlDotData(show: false),
-              ),
-            ],
           ),
         );
         break;
@@ -695,13 +826,13 @@ class _InlineChart extends StatelessWidget {
       default:
         chartWidget = BarChart(
           BarChartData(
-            gridData: FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (_) => FlLine(color: AppTheme.glassBorder)),
-            titlesData: FlTitlesData(
-              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, getTitlesWidget: (v, _) => Text(labels.length > v.toInt() ? labels[v.toInt()] : '', style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
-              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (v, _) => Text(v.toInt().toString(), style: TextStyle(fontSize: 10, color: AppTheme.textMuted)))),
-              topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
-              rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            gridData: FlGridData(
+              show: true,
+              drawVerticalLine: false,
+              getDrawingHorizontalLine: (_) =>
+                  FlLine(color: AppTheme.glassBorder),
             ),
+            titlesData: titles,
             borderData: FlBorderData(show: false),
             barGroups: barGroups,
           ),
@@ -722,7 +853,14 @@ class _InlineChart extends StatelessWidget {
           if (title.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppTheme.textPrimary)),
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: AppTheme.textPrimary,
+                ),
+              ),
             ),
           if (source != 'manual')
             Padding(
@@ -743,28 +881,6 @@ class _InlineChart extends StatelessWidget {
       ),
     );
   }
-
-  static Map<String, List<dynamic>> _getLinkedData(String source) {
-    switch (source) {
-      case 'forecast':
-        return {
-          'data': [120.0, 135.0, 128.0, 155.0, 170.0, 185.0, 195.0, 210.0],
-          'labels': ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8'],
-        };
-      case 'analytics':
-        return {
-          'data': [45.0, 62.0, 38.0, 75.0, 55.0, 88.0],
-          'labels': ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'],
-        };
-      case 'treasury':
-        return {
-          'data': [5000.0, 4200.0, 6800.0, 5500.0, 7200.0, 8100.0, 7800.0],
-          'labels': ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл'],
-        };
-      default:
-        return {'data': <double>[], 'labels': <String>[]};
-    }
-  }
 }
 
 Widget _broken(IconData icon, String label) => Container(
@@ -780,7 +896,8 @@ Widget _broken(IconData icon, String label) => Container(
         children: [
           Icon(icon, color: AppTheme.textMuted),
           const SizedBox(height: 6),
-          Text(label, style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
+          Text(label,
+              style: TextStyle(color: AppTheme.textMuted, fontSize: 12)),
         ],
       ),
     );

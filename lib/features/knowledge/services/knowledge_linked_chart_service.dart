@@ -93,7 +93,8 @@ class KnowledgeLinkedChartService {
     for (final month in months) {
       double net = 0;
       for (final tx in transactions) {
-        if (tx.date.year != month.year || tx.date.month != month.month) continue;
+        if (tx.date.year != month.year || tx.date.month != month.month)
+          continue;
         net += tx.type == TransactionType.income ? tx.amount : -tx.amount;
       }
       values.add(net);
