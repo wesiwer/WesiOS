@@ -6,59 +6,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: pr-check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-horizon-correctness:
-    if: github.head_ref == 'agent/horizon-top-tier'
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/horizon-top-tier
-          fetch-depth: 1
-
-      - name: Apply correctness patch
-        run: python3 tooling/horizon_correctness_patch.py
-
-      - name: Setup Flutter for formatter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.0'
-          channel: stable
-          cache: true
-
-      - name: Format and commit patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          dart format \
-            lib/features/treasury/services/forecast_engine.dart \
-            lib/features/treasury/services/account_liquidity_service.dart \
-            lib/features/treasury/services/horizon_business_context.dart \
-            lib/features/treasury/services/treasury_service.dart \
-            test/horizon_top_tier_test.dart
-          git diff --check
-          if git diff --quiet; then
-            echo 'Correctness patch already applied.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add \
-            lib/features/treasury/services/forecast_engine.dart \
-            lib/features/treasury/services/account_liquidity_service.dart \
-            lib/features/treasury/services/horizon_business_context.dart \
-            lib/features/treasury/services/treasury_service.dart \
-            test/horizon_top_tier_test.dart
-          git commit -m 'fix(horizon): preserve monetary invariants and honest low-data semantics'
-          git push origin HEAD:agent/horizon-top-tier
-
   analyze-and-test:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 15
