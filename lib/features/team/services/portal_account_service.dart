@@ -490,6 +490,8 @@ class PortalAccountService {
         normalized == 'an error occurred while processing your request.' ||
         normalized == 'an error occurred while processing your request' ||
         normalized == 'failed to process the request.' ||
-        normalized == 'failed to process the request';
+        normalized == 'failed to process the request' ||
+        normalized == 'the request requires valid record authorization token.' ||
+        normalized == 'the request requires valid record authorization token';
   }
 }

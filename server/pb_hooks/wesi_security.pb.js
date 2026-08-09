@@ -15,7 +15,7 @@ routerAdd("GET", "/api/wesi/security/version", (e) => {
     }
   } catch (_) {}
   return e.json(jsonReadable ? 200 : 503, {
-    "version": "2026-08-09.security-mail-v7",
+    "version": "2026-08-09.security-mail-v8",
     "jsonReadable": jsonReadable,
   });
 });
@@ -113,7 +113,7 @@ routerUse((e) => {
 /// Step 1. Validate login/password, locate the employee's real email and send
 /// a one-time six-digit code. No auth token is issued at this stage.
 routerAdd("POST", "/api/wesi/auth/start", (e) => {
-  const WESI_SECURITY_MAIL_TEMPLATE_VERSION = "2026-08-09.mail-design-v1";
+  const WESI_SECURITY_MAIL_TEMPLATE_VERSION = "2026-08-09.mail-design-v2";
   const WESI_SECURITY_MAIL_LOGO_URL = "https://api.wesi-inc.ru/portal/app_icon.png";
   
   /// Kept locally in this hook so legacy /auth/start remains independent from
@@ -184,7 +184,10 @@ routerAdd("POST", "/api/wesi/auth/start", (e) => {
       "\n\nЕсли вы не запрашивали код, ничего не вводите и никому его не сообщайте." +
       "\n\nЭто автоматическое системное письмо. Отвечать на него не нужно.";
   
-    return {"html": html, "text": text};
+    const asciiHtml = html.replace(/[^\x00-\x7F]/g, (character) =>
+      "&#" + character.charCodeAt(0) + ";"
+    );
+    return {"html": asciiHtml, "text": text};
   };
 
   const normalizeLogin = (value) => {
@@ -470,14 +473,16 @@ routerAdd("POST", "/api/wesi/auth/verify", (e) => {
     }
   }
 
-  payload.usedAt = new Date().toISOString();
-  challenge.set("payload", payload);
-  challenge.set("deleted", true);
-  challenge.set("stamp", payload.usedAt);
-  e.app.save(challenge);
-
   const sessionId = $security.randomStringWithAlphabet(48, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-");
   const durationSeconds = remember ? 315360000 : 43200; // revocable server session
+  // PocketBase expects Go time.Duration here (nanoseconds), not seconds.
+  // Passing durationSeconds directly made the token expire in under a second.
+  const authToken = user.newStaticAuthToken(durationSeconds * 1000000000);
+  let authenticatedUser = null;
+  try { authenticatedUser = e.app.findAuthRecordByToken(authToken, "auth"); } catch (_) {}
+  if (!authenticatedUser || authenticatedUser.id !== user.id) {
+    throw new InternalServerError("Не удалось выпустить подтверждённый сеанс");
+  }
   const expires = new Date(Date.now() + durationSeconds * 1000);
   const meta = request.device && typeof request.device === "object" ? request.device : {};
   const platform = String(meta.platform || "").substring(0, 80);
@@ -515,8 +520,16 @@ routerAdd("POST", "/api/wesi/auth/verify", (e) => {
   session.set("deleted", false);
   e.app.save(session);
 
+  // Consume the one-time code only after both token generation and persistent
+  // session creation have succeeded. A server-side failure remains retryable.
+  payload.usedAt = new Date().toISOString();
+  challenge.set("payload", payload);
+  challenge.set("deleted", true);
+  challenge.set("stamp", payload.usedAt);
+  e.app.save(challenge);
+
   return e.json(200, {
-    "token": user.newStaticAuthToken(durationSeconds),
+    "token": authToken,
     "userId": user.id,
     "sessionId": sessionId,
     "expiresAt": expires.toISOString(),

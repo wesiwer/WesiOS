@@ -42,5 +42,15 @@ void main() {
 
       expect(message, 'Пароль слишком короткий');
     });
+
+    test('does not expose PocketBase authorization internals', () {
+      final message = PortalAccountService.messageForResponse(
+        401,
+        '{"message":"The request requires valid record authorization token."}',
+        fallback: 'Учётная запись не привязана к активному профилю WesiOS.',
+      );
+
+      expect(message, 'Сеанс или данные входа недействительны.');
+    });
   });
 }

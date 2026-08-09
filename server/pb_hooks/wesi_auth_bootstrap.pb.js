@@ -15,7 +15,7 @@ routerAdd("GET", "/api/wesi/auth/version", (e) => {
     }
   } catch (_) {}
   return e.json(jsonReadable ? 200 : 503, {
-    "version": "2026-08-09.owner-email-v8",
+    "version": "2026-08-09.owner-email-v9",
     "jsonReadable": jsonReadable,
   });
 });
@@ -39,7 +39,7 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
     }
   };
   
-  const WESI_MAIL_TEMPLATE_VERSION = "2026-08-09.mail-design-v1";
+  const WESI_MAIL_TEMPLATE_VERSION = "2026-08-09.mail-design-v2";
   const WESI_MAIL_LOGO_URL = "https://api.wesi-inc.ru/portal/app_icon.png";
   
   /// Transactional email markup intentionally uses tables and inline styles.
@@ -122,7 +122,13 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
       "\n\nЕсли вы не запрашивали код, ничего не вводите и никому его не сообщайте." +
       "\n\nЭто автоматическое системное письмо. Отвечать на него не нужно.";
   
-    return {"html": html, "text": text};
+    // The local sendmail chain may omit or rewrite the charset of a MIME part.
+    // Keep the rendered HTML byte-for-byte ASCII while preserving all visible
+    // Unicode text through numeric entities. This prevents mojibake in Gmail.
+    const asciiHtml = html.replace(/[^\x00-\x7F]/g, (character) =>
+      "&#" + character.charCodeAt(0) + ";"
+    );
+    return {"html": asciiHtml, "text": text};
   };
   
   const wesiDeliverMail = (app, email, displayName, subject, html, text) => {
@@ -353,7 +359,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
     }
   };
   
-  const WESI_MAIL_TEMPLATE_VERSION = "2026-08-09.mail-design-v1";
+  const WESI_MAIL_TEMPLATE_VERSION = "2026-08-09.mail-design-v2";
   const WESI_MAIL_LOGO_URL = "https://api.wesi-inc.ru/portal/app_icon.png";
   
   /// Transactional email markup intentionally uses tables and inline styles.
@@ -436,7 +442,10 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
       "\n\nЕсли вы не запрашивали код, ничего не вводите и никому его не сообщайте." +
       "\n\nЭто автоматическое системное письмо. Отвечать на него не нужно.";
   
-    return {"html": html, "text": text};
+    const asciiHtml = html.replace(/[^\x00-\x7F]/g, (character) =>
+      "&#" + character.charCodeAt(0) + ";"
+    );
+    return {"html": asciiHtml, "text": text};
   };
   
   const wesiDeliverMail = (app, email, displayName, subject, html, text) => {
@@ -558,7 +567,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   if (!challenge) throw new UnauthorizedError("Проверка входа истекла");
   const payload = valueObject(challenge);
   if (payload.kind !== "email-setup" || String(payload.employeeId || "") !== "owner") {
-    throw new ForbiddenError("Проверка привязки не соответствует профилю владельца [owner-email-v8]");
+    throw new ForbiddenError("Проверка привязки не соответствует профилю владельца [owner-email-v9]");
   }
   let ownerMarker = null;
   try {
@@ -568,7 +577,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
     );
   } catch (_) { ownerMarker = null; }
   if (!ownerMarker) {
-    throw new ForbiddenError("Профиль владельца не закреплён [owner-email-v8]");
+    throw new ForbiddenError("Профиль владельца не закреплён [owner-email-v9]");
   }
   const expires = Date.parse(String(payload.expiresAt || ""));
   if (!Number.isFinite(expires) || expires <= Date.now()) {
@@ -615,7 +624,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   return e.json(200, {
     "challengeId": challengeId,
     "maskedEmail": maskEmail(email),
-    "authVersion": "2026-08-09.owner-email-v8",
+    "authVersion": "2026-08-09.owner-email-v9",
     "expiresInSeconds": 600,
   });
 });
