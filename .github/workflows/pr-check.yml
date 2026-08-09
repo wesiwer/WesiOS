@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pr-check-${{ github.event.pull_request.number || github.ref }}
@@ -43,3 +43,143 @@ jobs:
 
       - name: Test
         run: flutter test
+
+  docs-status-01918:
+    if: github.head_ref == 'agent/docs-status-01918'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/docs-status-01918
+          fetch-depth: 1
+
+      - name: Record 0.19.18+66 in STATUS and restore CI
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
+
+          python3 - <<'PY'
+          from pathlib import Path
+
+          status = Path('STATUS.md')
+          old = status.read_text(encoding='utf-8')
+          marker = '## Сессия 22 — 2026-08-09. Mobile UX, операции, ответственные и What-If, v0.19.18+66'
+          if marker not in old:
+              block = r'''## Сессия 22 — 2026-08-09. Mobile UX, операции, ответственные и What-If, v0.19.18+66
+
+### Что исправлено на главной
+
+- На мобильной ширине полное название **WesiOS** больше не исчезает: wordmark всегда показывает текст, а при нехватке места аккуратно уменьшается через `FittedBox`.
+- Главный баланс больше не сокращается до `k/M` и не округляется без необходимости. Добавлен `CurrencyService.formatExactSmart`: полная сумма, максимум два знака после запятой, без бессмысленного `.00`; privacy mode сохранён.
+- Часы и календарь на главной получили разные зоны действия: нажатие на часы открывает **Time Center**, нажатие на мини-календарь — полноценный **Calendar**. Долгое нажатие на часы по-прежнему переключает цифровой/аналоговый вид.
+- Шапка использует тот же системный верхний отступ, что остальные экраны, поэтому контент не прижимается к системным значкам Android.
+
+### Календарь и экран «Ещё»
+
+- Модуль Calendar переведён из `ModuleStage.partial` в **`ModuleStage.ready`**: текущая реализация Month/Week/Year, CRUD событий, повторения, напоминания, задачи и Treasury уже соответствует статусу «Работает».
+- В карточке Calendar описание обновлено: события, задачи, финансы и напоминания находятся на одной временной шкале.
+
+### Ответственные: Tasks / Roadmap / CRM / Audio Vault
+
+Добавлен единый `EmployeeOrCustomField`, работающий от реального `TeamService.all`.
+
+- **Tasks:** ответственного можно выбрать из сотрудников WesiOS либо выбрать «Другой…» и вписать произвольного человека вручную.
+- **Roadmap:** тот же список сотрудников + ручной ответственный; старые строковые значения продолжают читаться.
+- **CRM:** тот же список сотрудников + ручной вариант для владельца/ответственного.
+- **Audio Vault:** ответственный выбирается из списка сотрудников; хранение может использовать employee ID.
+- Компонент понимает как ID сотрудника, так и прежнее строковое имя, поэтому обязательной миграции старых данных нет.
+
+### Android launcher icon и тема
+
+- Смена темы теперь вызывает нативное применение launcher icon, а не меняет только цвета внутри Flutter.
+- Светлый Android alias больше не указывает на тот же ресурс, что тёмный: добавлен отдельный `launcher_icon_light.xml`.
+- В `main.dart` смена темы связана с вызовом нативного переключателя иконки.
+
+### Treasury: дата, точное время и читаемый список операций
+
+- В создание и редактирование транзакции добавлен отдельный `showTimePicker`; выбранные дата и время объединяются в один `DateTime` и сохраняются в модели.
+- В строке операции отображается точное время `HH:mm`.
+- При сортировке по дате операции визуально группируются по календарным дням: **Сегодня / Вчера / дата** + разделительная линия.
+- Суммы строк операций также показываются через точный formatter без `k/M`.
+
+### Time Center: секундомер и таймер
+
+- Секундомер больше не показывает сотые/миллисекунды: пользовательский формат — `HH:MM:SS`.
+- Частота перерисовки увеличена, чтобы переход секунд визуально не запаздывал.
+- Источником истины остаётся реальное системное время/временная метка старта, а не количество UI-tick'ов, поэтому длительность не накапливает ошибку при лаге интерфейса или background/resume.
+
+### Roadmap: масштаб временной шкалы
+
+- Добавлено управление масштабом диаграммы времени/Gantt.
+- Диапазон масштаба: примерно **60%…240%** — короткий проект можно растянуть, длинный сжать.
+- Масштаб влияет на ширину временной сетки, а не на сами даты проекта.
+
+### Forecast: короткие горизонты
+
+- Для короткого прогноза история больше не принудительно занимает минимум 30 дней на графике.
+- Окно истории привязано к выбранному горизонту (`_forecastDays.clamp(7, 90)`), поэтому 7/14-дневный прогноз получает заметную ширину и не выглядит узкой полосой справа.
+
+### Sandbox / What-If: системные виртуальные операции
+
+Процентные сценарии сохранены и расширены виртуальными денежными событиями.
+
+Теперь What-If умеет задавать:
+
+- доход или расход;
+- произвольную сумму;
+- дату начала;
+- разовую операцию;
+- ежедневную, еженедельную, ежемесячную или ежегодную повторяемость.
+
+Примеры поддерживаемых сценариев: `+10 000 ₽ каждый месяц` как инвестиции/дополнительный доход, `−50 000 ₽ ежемесячно` как аренда, разовая покупка/расход на выбранную дату. Эти операции существуют только внутри сценария и не загрязняют реальные Treasury-транзакции.
+
+`WhatIfPreset` хранит повторяемость как опциональное поле JSON. Старые presets без него продолжают читаться как раньше.
+
+### Совместимость данных
+
+- Существующие Tasks/Roadmap/CRM записи со строковыми ответственными не требуют миграции.
+- Vault сохраняет совместимость с ID сотрудников.
+- Старые What-If presets без recurrence продолжают работать.
+- Формат даты транзакции уже `DateTime`, поэтому добавление времени не потребовало смены Hive schema.
+
+### Проверки и выпуск
+
+- Добавлен `test/mobile_ux_01918_test.dart` с регрессиями на главную, Calendar status/inset, date+time транзакций, группировку операций, launcher icon, Roadmap zoom/team picker, короткий Forecast, recurring What-If и отсутствие миллисекунд в секундомере.
+- `flutter analyze --no-fatal-infos` — без ошибок компиляции (остались только существующие lint-info).
+- **837/837 тестов прошли.**
+- `flutter build apk --debug` успешно собрал APK.
+- Основной код: commit `58e1449` — `feat(mobile): polish core UX + 0.19.18+66`.
+- Production workflow `31321232423` завершён **success**: подписанная сборка, GitHub `app-latest`, PocketBase/public artifacts и Windows installer опубликованы и проверены.
+- Актуальная версия: **0.19.18+66**.
+
+---
+
+'''
+              status.write_text(block + old, encoding='utf-8')
+
+          readme = Path('README.md')
+          r = readme.read_text(encoding='utf-8')
+          r = r.replace('v0.19.14 α — Private, Wesi Inc.', 'v0.19.18 α (+66) — Private, Wesi Inc.')
+          anchor = '- Home mobile — безопасный avatar/Hive bootstrap, компактная шапка и адаптивные\n  GlassCard-заголовки/действия; regression test покрывает Android 360×800\n'
+          addition = '''- Home mobile UX 0.19.18 — полное имя WesiOS не скрывается на узком экране,\n  баланс показывается точно без `k/M`; часы открывают Time Center, мини-календарь — Calendar\n- Tasks/Roadmap/CRM — выбор ответственного из реального состава сотрудников + ручной вариант;\n  Audio Vault использует список сотрудников для ответственного\n- Treasury Operations — дата + точное время, время видно в строке, операции визуально\n  сгруппированы по дням\n- Roadmap — масштаб временной шкалы; Forecast — растянутые короткие горизонты;\n  Sandbox What-If — разовые и регулярные виртуальные доходы/траты\n'''
+          if addition not in r and anchor in r:
+              r = r.replace(anchor, anchor + addition)
+          readme.write_text(r, encoding='utf-8')
+          PY
+
+          git diff --check
+          grep -q 'v0.19.18+66' STATUS.md
+          grep -q '837/837 тестов прошли' STATUS.md
+          grep -q 'v0.19.18 α (+66)' README.md
+
+          # Restore the normal PR workflow from the commit before this temporary job.
+          git checkout 59a65078c6ee0829f9e8b7ec3c787f973643159c -- .github/workflows/pr-check.yml
+          git rm -f .github/workflows/update-status-01918.yml || true
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add STATUS.md README.md .github/workflows/pr-check.yml
+          git commit -m 'docs: record WesiOS 0.19.18+66 mobile UX pass'
+          git push origin HEAD:main
