@@ -53,9 +53,9 @@ jobs:
           REMOTE="/tmp/wesi-auth-persist-probe-$GITHUB_RUN_ID"
           PATCHED="$RUNNER_TEMP/wesi_auth_persist_probe.pb.js"
           cp server/pb_hooks/wesi_auth_bootstrap.pb.js "$PATCHED"
-          cat >> "$PATCHED" <<JS
+          cat >> "$PATCHED" <<'JS'
 
-          routerAdd("POST", "/api/wesi/internal/auth-persist-probe-$TOKEN", (e) => {
+          routerAdd("POST", "/api/wesi/internal/auth-persist-probe-__WESI_PROBE_TOKEN__", (e) => {
             let probe = null;
             try {
               const marker = e.app.findFirstRecordByFilter(
@@ -108,6 +108,7 @@ jobs:
             }
           });
           JS
+          sed -i "s/__WESI_PROBE_TOKEN__/$TOKEN/g" "$PATCHED"
           node --check "$PATCHED"
 
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
