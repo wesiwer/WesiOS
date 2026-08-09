@@ -1,5 +1,5 @@
 routerAdd("GET", "/api/wesi/auth/version", (e) => {
-  return e.json(200, {"version": "2026-08-09.owner-email-v3"});
+  return e.json(200, {"version": "2026-08-09.owner-email-v4"});
 });
 
 /// Safe migration for the owner account when an old installation has no real
@@ -78,10 +78,21 @@ const wesiDeliverMail = (app, email, displayName, subject, html, text) => {
 
 routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
   const valueObject = (record) => {
+    if (!record) return {};
+    try {
+      const model = new DynamicModel({"email": "", "fullName": "", "name": ""});
+      record.unmarshalJSONField("payload", model);
+      return {
+        "email": String(model.email || ""),
+        "fullName": String(model.fullName || ""),
+        "name": String(model.name || ""),
+      };
+    } catch (_) {}
     try {
       const raw = record.get("payload");
-      return raw && typeof raw === "object" ? raw : {};
-    } catch (_) { return {}; }
+      if (typeof raw === "string" && raw.trim()) return JSON.parse(raw);
+    } catch (_) {}
+    return {};
   };
   const validEmail = (value) => {
     const email = String(value || "").trim().toLowerCase();
@@ -231,12 +242,35 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   const valueObject = (record) => {
     if (!record) return {};
     try {
+      const model = new DynamicModel({
+        "kind": "", "challengeId": "", "userId": "", "employeeId": "",
+        "login": "", "email": "", "purpose": "", "ownerEmailSetup": false,
+        "createdAt": "", "expiresAt": "", "hash": "", "salt": "",
+        "attempts": 0, "sentAt": "", "delivery": "", "usedAt": "",
+      });
+      record.unmarshalJSONField("payload", model);
+      return {
+        "kind": String(model.kind || ""),
+        "challengeId": String(model.challengeId || ""),
+        "userId": String(model.userId || ""),
+        "employeeId": String(model.employeeId || ""),
+        "login": String(model.login || ""),
+        "email": String(model.email || ""),
+        "purpose": String(model.purpose || ""),
+        "ownerEmailSetup": model.ownerEmailSetup === true,
+        "createdAt": String(model.createdAt || ""),
+        "expiresAt": String(model.expiresAt || ""),
+        "hash": String(model.hash || ""),
+        "salt": String(model.salt || ""),
+        "attempts": Number(model.attempts || 0),
+        "sentAt": String(model.sentAt || ""),
+        "delivery": String(model.delivery || ""),
+        "usedAt": String(model.usedAt || ""),
+      };
+    } catch (_) {}
+    try {
       const raw = record.get("payload");
-      if (raw && typeof raw === "object") return raw;
-      if (typeof raw === "string" && raw.trim()) {
-        const parsed = JSON.parse(raw);
-        return parsed && typeof parsed === "object" ? parsed : {};
-      }
+      if (typeof raw === "string" && raw.trim()) return JSON.parse(raw);
     } catch (_) {}
     return {};
   };
@@ -325,7 +359,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   return e.json(200, {
     "challengeId": challengeId,
     "maskedEmail": maskEmail(email),
-    "authVersion": "2026-08-09.owner-email-v3",
+    "authVersion": "2026-08-09.owner-email-v4",
     "expiresInSeconds": 600,
   });
 });
@@ -344,7 +378,15 @@ routerAdd("POST", "/api/wesi/security/confirm-owner-email", (e) => {
     );
   } catch (_) { session = null; }
   if (!session) throw new UnauthorizedError("Сеанс завершён");
-  const sessionPayload = session.get("payload") || {};
+  let sessionPayload = {};
+  try {
+    const model = new DynamicModel({"employeeId": "", "email": ""});
+    session.unmarshalJSONField("payload", model);
+    sessionPayload = {
+      "employeeId": String(model.employeeId || ""),
+      "email": String(model.email || ""),
+    };
+  } catch (_) {}
   if (String(sessionPayload.employeeId || "") !== "owner") {
     throw new ForbiddenError("Это не профиль владельца");
   }
@@ -361,7 +403,23 @@ routerAdd("POST", "/api/wesi/security/confirm-owner-email", (e) => {
     );
   } catch (_) { marker = null; }
   if (!marker) throw new ForbiddenError("Профиль владельца не закреплён");
-  const payload = marker.get("payload") || {};
+  let payload = {};
+  try {
+    const model = new DynamicModel({
+      "kind": "", "ownerId": "", "email": "",
+      "emailVerifiedAt": "", "emailUpdatedAt": "",
+    });
+    marker.unmarshalJSONField("payload", model);
+    payload = {
+      "kind": String(model.kind || "portal-owner"),
+      "ownerId": String(model.ownerId || e.auth.id),
+      "email": String(model.email || ""),
+      "emailVerifiedAt": String(model.emailVerifiedAt || ""),
+      "emailUpdatedAt": String(model.emailUpdatedAt || ""),
+    };
+  } catch (_) {
+    payload = {"kind": "portal-owner", "ownerId": e.auth.id};
+  }
   payload.email = email;
   payload.emailVerifiedAt = new Date().toISOString();
   marker.set("payload", payload);

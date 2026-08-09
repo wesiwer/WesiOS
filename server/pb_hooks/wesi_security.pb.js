@@ -1,3 +1,7 @@
+routerAdd("GET", "/api/wesi/security/version", (e) => {
+  return e.json(200, {"version": "2026-08-09.security-json-v4"});
+});
+
 /// WesiOS second-factor authentication and revocable sessions.
 ///
 /// PocketBase auth tokens are stateless. WesiOS therefore requires a second,
@@ -31,8 +35,13 @@ routerUse((e) => {
     }
     let payload = {};
     try {
-      const raw = record.get("payload");
-      payload = raw && typeof raw === "object" ? raw : {};
+      const model = new DynamicModel({"userId": "", "revokedAt": "", "expiresAt": ""});
+      record.unmarshalJSONField("payload", model);
+      payload = {
+        "userId": String(model.userId || ""),
+        "revokedAt": String(model.revokedAt || ""),
+        "expiresAt": String(model.expiresAt || ""),
+      };
     } catch (_) {
       payload = {};
     }
@@ -96,8 +105,18 @@ routerAdd("POST", "/api/wesi/auth/start", (e) => {
   const valueObject = (record, field) => {
     if (!record) return {};
     try {
-      const raw = record.get(field);
-      return raw && typeof raw === "object" ? raw : {};
+      const model = new DynamicModel({
+        "kind": "", "userId": "", "email": "", "fullName": "", "name": "",
+        "id": "", "login": "", "usedAt": "", "sentAt": "",
+      });
+      record.unmarshalJSONField(field, model);
+      return {
+        "kind": String(model.kind || ""), "userId": String(model.userId || ""),
+        "email": String(model.email || ""), "fullName": String(model.fullName || ""),
+        "name": String(model.name || ""), "id": String(model.id || ""),
+        "login": String(model.login || ""), "usedAt": String(model.usedAt || ""),
+        "sentAt": String(model.sentAt || ""),
+      };
     } catch (_) { return {}; }
   };
   const realEmail = (value) => {
@@ -278,8 +297,21 @@ routerAdd("POST", "/api/wesi/auth/verify", (e) => {
   const valueObject = (record, field) => {
     if (!record) return {};
     try {
-      const raw = record.get(field);
-      return raw && typeof raw === "object" ? raw : {};
+      const model = new DynamicModel({
+        "kind": "", "challengeId": "", "userId": "", "employeeId": "",
+        "login": "", "email": "", "purpose": "", "hash": "", "salt": "",
+        "attempts": 0, "sentAt": "", "expiresAt": "", "usedAt": "",
+      });
+      record.unmarshalJSONField(field, model);
+      return {
+        "kind": String(model.kind || ""), "challengeId": String(model.challengeId || ""),
+        "userId": String(model.userId || ""), "employeeId": String(model.employeeId || ""),
+        "login": String(model.login || ""), "email": String(model.email || ""),
+        "purpose": String(model.purpose || ""), "hash": String(model.hash || ""),
+        "salt": String(model.salt || ""), "attempts": Number(model.attempts || 0),
+        "sentAt": String(model.sentAt || ""), "expiresAt": String(model.expiresAt || ""),
+        "usedAt": String(model.usedAt || ""),
+      };
     } catch (_) { return {}; }
   };
   const request = e.requestInfo().body || {};
@@ -420,7 +452,29 @@ routerAdd("GET", "/api/wesi/security/session/ping", (e) => {
     );
   } catch (_) { record = null; }
   if (!record) throw new UnauthorizedError("Сеанс завершён");
-  const payload = record.get("payload") || {};
+  let payload = {};
+  try {
+    const model = new DynamicModel({
+      "kind": "", "sessionId": "", "userId": "", "employeeId": "",
+      "login": "", "email": "", "purpose": "", "remember": false,
+      "createdAt": "", "lastSeenAt": "", "expiresAt": "", "ip": "",
+      "platform": "", "deviceName": "", "timezone": "", "country": "",
+      "userAgent": "", "revokedAt": "", "revokedReason": "",
+    });
+    record.unmarshalJSONField("payload", model);
+    payload = {
+      "kind": String(model.kind || ""), "sessionId": String(model.sessionId || ""),
+      "userId": String(model.userId || ""), "employeeId": String(model.employeeId || ""),
+      "login": String(model.login || ""), "email": String(model.email || ""),
+      "purpose": String(model.purpose || ""), "remember": model.remember === true,
+      "createdAt": String(model.createdAt || ""), "lastSeenAt": String(model.lastSeenAt || ""),
+      "expiresAt": String(model.expiresAt || ""), "ip": String(model.ip || ""),
+      "platform": String(model.platform || ""), "deviceName": String(model.deviceName || ""),
+      "timezone": String(model.timezone || ""), "country": String(model.country || ""),
+      "userAgent": String(model.userAgent || ""), "revokedAt": String(model.revokedAt || ""),
+      "revokedReason": String(model.revokedReason || ""),
+    };
+  } catch (_) {}
   const lastSeen = Date.parse(String(payload.lastSeenAt || ""));
   if (!Number.isFinite(lastSeen) || Date.now() - lastSeen > 30000) {
     payload.lastSeenAt = new Date().toISOString();
@@ -434,9 +488,25 @@ routerAdd("GET", "/api/wesi/security/session/ping", (e) => {
 
 routerAdd("GET", "/api/wesi/security/sessions", (e) => {
   const valueObject = (record) => {
+    if (!record) return {};
     try {
-      const raw = record.get("payload");
-      return raw && typeof raw === "object" ? raw : {};
+      const model = new DynamicModel({
+        "kind": "", "sessionId": "", "userId": "", "employeeId": "",
+        "purpose": "", "createdAt": "", "lastSeenAt": "", "expiresAt": "",
+        "remember": false, "ip": "", "platform": "", "deviceName": "",
+        "timezone": "", "country": "", "userAgent": "", "revokedAt": "",
+      });
+      record.unmarshalJSONField("payload", model);
+      return {
+        "kind": String(model.kind || ""), "sessionId": String(model.sessionId || ""),
+        "userId": String(model.userId || ""), "employeeId": String(model.employeeId || ""),
+        "purpose": String(model.purpose || ""), "createdAt": String(model.createdAt || ""),
+        "lastSeenAt": String(model.lastSeenAt || ""), "expiresAt": String(model.expiresAt || ""),
+        "remember": model.remember === true, "ip": String(model.ip || ""),
+        "platform": String(model.platform || ""), "deviceName": String(model.deviceName || ""),
+        "timezone": String(model.timezone || ""), "country": String(model.country || ""),
+        "userAgent": String(model.userAgent || ""), "revokedAt": String(model.revokedAt || ""),
+      };
     } catch (_) { return {}; }
   };
   const currentId = String(e.get("wesiSessionId") || "");
@@ -490,7 +560,29 @@ routerAdd("POST", "/api/wesi/security/sessions/revoke", (e) => {
     );
   } catch (_) { target = null; }
   if (!target) return e.json(200, {"ok": true, "alreadyEnded": true});
-  const payload = target.get("payload") || {};
+  let payload = {};
+  try {
+    const model = new DynamicModel({
+      "kind": "", "sessionId": "", "userId": "", "employeeId": "",
+      "login": "", "email": "", "purpose": "", "remember": false,
+      "createdAt": "", "lastSeenAt": "", "expiresAt": "", "ip": "",
+      "platform": "", "deviceName": "", "timezone": "", "country": "",
+      "userAgent": "", "revokedAt": "", "revokedReason": "",
+    });
+    target.unmarshalJSONField("payload", model);
+    payload = {
+      "kind": String(model.kind || ""), "sessionId": String(model.sessionId || ""),
+      "userId": String(model.userId || ""), "employeeId": String(model.employeeId || ""),
+      "login": String(model.login || ""), "email": String(model.email || ""),
+      "purpose": String(model.purpose || ""), "remember": model.remember === true,
+      "createdAt": String(model.createdAt || ""), "lastSeenAt": String(model.lastSeenAt || ""),
+      "expiresAt": String(model.expiresAt || ""), "ip": String(model.ip || ""),
+      "platform": String(model.platform || ""), "deviceName": String(model.deviceName || ""),
+      "timezone": String(model.timezone || ""), "country": String(model.country || ""),
+      "userAgent": String(model.userAgent || ""), "revokedAt": String(model.revokedAt || ""),
+      "revokedReason": String(model.revokedReason || ""),
+    };
+  } catch (_) {}
   if (String(payload.userId || "") !== e.auth.id) {
     throw new ForbiddenError("Нельзя завершить чужой сеанс");
   }
@@ -522,9 +614,27 @@ onRecordAfterDeleteSuccess((e) => {
   for (const record of records) {
     let payload = {};
     try {
-      const raw = record.get("payload");
-      payload = raw && typeof raw === "object" ? raw : {};
-    } catch (_) { payload = {}; }
+      const model = new DynamicModel({
+        "kind": "", "sessionId": "", "userId": "", "employeeId": "",
+        "login": "", "email": "", "purpose": "", "remember": false,
+        "createdAt": "", "lastSeenAt": "", "expiresAt": "", "ip": "",
+        "platform": "", "deviceName": "", "timezone": "", "country": "",
+        "userAgent": "", "revokedAt": "", "revokedReason": "",
+      });
+      record.unmarshalJSONField("payload", model);
+      payload = {
+        "kind": String(model.kind || ""), "sessionId": String(model.sessionId || ""),
+        "userId": String(model.userId || ""), "employeeId": String(model.employeeId || ""),
+        "login": String(model.login || ""), "email": String(model.email || ""),
+        "purpose": String(model.purpose || ""), "remember": model.remember === true,
+        "createdAt": String(model.createdAt || ""), "lastSeenAt": String(model.lastSeenAt || ""),
+        "expiresAt": String(model.expiresAt || ""), "ip": String(model.ip || ""),
+        "platform": String(model.platform || ""), "deviceName": String(model.deviceName || ""),
+        "timezone": String(model.timezone || ""), "country": String(model.country || ""),
+        "userAgent": String(model.userAgent || ""), "revokedAt": String(model.revokedAt || ""),
+        "revokedReason": String(model.revokedReason || ""),
+      };
+    } catch (_) {}
     if (String(payload.userId || "") !== deletedUserId) continue;
     payload.revokedAt = new Date().toISOString();
     payload.revokedReason = "profile-deleted";
