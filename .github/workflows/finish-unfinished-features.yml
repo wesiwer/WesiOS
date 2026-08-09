@@ -82,7 +82,7 @@ jobs:
           grep -q '_analyzePendingBeats' lib/features/audio/audio_vault_v2_screen.dart
           grep -q '_openAbletonQuick' lib/features/audio/audio_vault_v2_screen.dart
           grep -q 'File(abletonPath).existsSync()' lib/features/audio/audio_vault_v2_screen.dart
-          grep -q 'audioVaultSingleColumnMobile' lib/features/audio/audio_vault_v2_screen.dart
+          grep -q 'c.maxWidth >= 560' lib/features/audio/audio_vault_v2_screen.dart
           grep -q 'audioVaultFooterWrap' lib/features/audio/audio_vault_v2_screen.dart
           ! grep -q 'quote_mind_charge.dart' test/home_mobile_layout_test.dart
           ! grep -q 'wesi_quote_card.dart' test/home_mobile_layout_test.dart
