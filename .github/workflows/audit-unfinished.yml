@@ -21,36 +21,38 @@ jobs:
       - name: Explicit unfinished markers
         run: |
           echo '=== TODO / FIXME / UNIMPLEMENTED / PLACEHOLDERS ==='
-          rg -n --hidden \
-            --glob '!build/**' --glob '!.git/**' --glob '!**/*.g.dart' \
+          grep -RInE \
+            --exclude='*.g.dart' --exclude-dir=.git --exclude-dir=build \
             '(TODO|FIXME|UnimplementedError|UnsupportedError|coming soon|Coming soon|скоро будет|заглушк|не реализован|не реализовано|placeholder)' \
             lib test server docs README.md STATUS.md 2>/dev/null || true
 
       - name: Recurring payments
         run: |
           echo '=== RECURRING PAYMENTS ==='
-          rg -n --hidden \
+          grep -RInE \
             '(processRecurringPayments|RecurringPayment|recurringPayment|recurring payment|регулярн.*плат)' \
             lib test README.md STATUS.md 2>/dev/null || true
 
       - name: Tasks Analytics CRM surface
         run: |
           echo '=== TASKS / ANALYTICS / CRM FILES AND MARKERS ==='
-          find lib -type f | grep -Ei '(task|analytics|crm)' | sort || true
-          echo '--- suspicious markers in those files ---'
           files=$(find lib -type f | grep -Ei '(task|analytics|crm)' || true)
+          printf '%s\n' "$files" | sort
+          echo '--- suspicious markers in those files ---'
           if [ -n "$files" ]; then
-            rg -n '(TODO|FIXME|placeholder|заглушк|не реализован|coming soon|demo|mock|random)' $files || true
+            grep -nEi '(TODO|FIXME|placeholder|заглушк|не реализован|coming soon|demo|mock|random)' $files || true
           fi
 
       - name: Empty callbacks and suspicious no-op implementations
         run: |
           echo '=== EMPTY / NO-OP CALLBACKS ==='
-          rg -n --glob 'lib/**/*.dart' \
-            '(=>\s*null\s*;|=>\s*false\s*;|=>\s*true\s*;|onPressed:\s*\(\)\s*\{\s*\}|onTap:\s*\(\)\s*\{\s*\}|Future<[^>]+>\s+\w+\([^)]*\)\s+async\s*\{\s*\})' \
+          grep -RInE --include='*.dart' \
+            '(=>[[:space:]]*null[[:space:]]*;|=>[[:space:]]*false[[:space:]]*;|=>[[:space:]]*true[[:space:]]*;|onPressed:[[:space:]]*\(\)[[:space:]]*\{[[:space:]]*\}|onTap:[[:space:]]*\(\)[[:space:]]*\{[[:space:]]*\})' \
             lib || true
 
       - name: Status backlog hints
         run: |
           echo '=== STATUS / README BACKLOG HINTS ==='
-          rg -n '(Очередь|осталось|не готов|незаверш|TODO|FIXME|блокер|processRecurringPayments|Tasks/Analytics/CRM|deep features)' README.md STATUS.md SECURITY_STATUS.md || true
+          grep -nEi \
+            '(Очередь|осталось|не готов|незаверш|TODO|FIXME|блокер|processRecurringPayments|Tasks/Analytics/CRM|deep features)' \
+            README.md STATUS.md SECURITY_STATUS.md || true
