@@ -1,5 +1,23 @@
 routerAdd("GET", "/api/wesi/auth/version", (e) => {
-  return e.json(200, {"version": "2026-08-09.owner-email-v4"});
+  let jsonReadable = false;
+  try {
+    const records = e.app.findRecordsByFilter(
+      "wesios_records",
+      "owner='__wesios_security__' && coll='security'",
+      "-stamp",
+      1,
+      0,
+    );
+    if (records.length > 0) {
+      const model = new DynamicModel({"kind": ""});
+      records[0].unmarshalJSONField("payload", model);
+      jsonReadable = Boolean(String(model.kind || ""));
+    }
+  } catch (_) {}
+  return e.json(jsonReadable ? 200 : 503, {
+    "version": "2026-08-09.owner-email-v4",
+    "jsonReadable": jsonReadable,
+  });
 });
 
 /// Safe migration for the owner account when an old installation has no real

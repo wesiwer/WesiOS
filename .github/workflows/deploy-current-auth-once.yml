@@ -114,12 +114,14 @@ jobs:
           BODY=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/version)
           echo "$BODY"
           grep -q '"version":"2026-08-09.owner-email-v4"' <<<"$BODY"
+          grep -q '"jsonReadable":true' <<<"$BODY"
       - name: Verify exact production security version
         run: |
           set -euo pipefail
           BODY=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/security/version)
           echo "$BODY"
           grep -q '"version":"2026-08-09.security-json-v4"' <<<"$BODY"
+          grep -q '"jsonReadable":true' <<<"$BODY"
       - name: Verify production mail
         run: |
           set -euo pipefail
