@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply-forecast-ui:
+  apply-sandbox-ui:
     if: github.head_ref == 'agent/horizon-top-tier'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -22,10 +22,10 @@ jobs:
         with:
           ref: agent/horizon-top-tier
           fetch-depth: 1
-      - name: Syntax-check and apply Forecast patch
+      - name: Syntax-check and apply Sandbox patch
         run: |
-          python3 -m py_compile tooling/horizon_forecast_ui_patch.py
-          python3 tooling/horizon_forecast_ui_patch.py
+          python3 -m py_compile tooling/horizon_sandbox_ui_patch.py
+          python3 tooling/horizon_sandbox_ui_patch.py
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -36,17 +36,23 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          dart format lib/features/treasury/forecast_chart_screen.dart lib/features/treasury/widgets/horizon_decision_panel.dart
+          dart format \
+            lib/features/treasury/services/sandbox_service.dart \
+            lib/features/treasury/services/horizon_scenarios.dart \
+            lib/features/treasury/sandbox_forecast_screen.dart
           flutter pub get
           flutter analyze --no-fatal-infos
           git diff --check
-          grep -q 'HorizonDecisionPanel' lib/features/treasury/forecast_chart_screen.dart
-          grep -q 'smartCombined' lib/features/treasury/forecast_chart_screen.dart
+          grep -q 'HorizonDecisionPanel' lib/features/treasury/sandbox_forecast_screen.dart
+          grep -q 'scenarioSummaries' lib/features/treasury/services/sandbox_service.dart
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/features/treasury/forecast_chart_screen.dart lib/features/treasury/widgets/horizon_decision_panel.dart
+          git add \
+            lib/features/treasury/services/sandbox_service.dart \
+            lib/features/treasury/services/horizon_scenarios.dart \
+            lib/features/treasury/sandbox_forecast_screen.dart
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'feat(horizon): expose decision layer and smart Combined'
+          git commit -m 'feat(horizon): bring decision risk into isolated Sandbox'
           git push origin HEAD:agent/horizon-top-tier
 
   analyze-and-test:
