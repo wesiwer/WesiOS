@@ -5,8 +5,7 @@ on:
     branches: [main]
 
 permissions:
-  actions: write
-  contents: write
+  contents: read
 
 jobs:
   android:
@@ -41,21 +40,3 @@ jobs:
       - run: flutter pub get
       - name: Build Windows release
         run: flutter build windows --release
-
-  employee-activation-repair:
-    if: github.head_ref == 'ci/fix-employee-activation-01916'
-    runs-on: ubuntu-latest
-    timeout-minutes: 120
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 1
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.0'
-          channel: stable
-      - name: Repair activation, deploy auth fix, and publish release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/fix_employee_activation_01916_v3.sh
