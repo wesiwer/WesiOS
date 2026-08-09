@@ -1,0 +1,63 @@
+name: Diagnose WesiOS auth once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-wesios-auth-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: employee-portal
+    steps:
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Read redacted PocketBase auth errors
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${USER:-}"
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          if journalctl -u pocketbase --since '12 hours ago' --no-pager >/tmp/wesi-auth-journal 2>/dev/null; then
+            :
+          elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            sudo -n journalctl -u pocketbase --since '12 hours ago' --no-pager >/tmp/wesi-auth-journal
+          else
+            echo 'journal_access=denied'
+            exit 31
+          fi
+          grep -E 'WesiOS PocketBase mail client failed|WesiOS security email delivery failed|No working WesiOS mail transport|/api/wesi/auth/start-v2|ReferenceError|TypeError|SyntaxError|panic' /tmp/wesi-auth-journal |
+            tail -n 160 |
+            sed -E               -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<redacted-email>/g'               -e 's/([0-9]{1,3}\.){3}[0-9]{1,3}/<redacted-ip>/g'               -e 's/[A-Za-z0-9+\/_-]{32,}/<redacted-value>/g' || true
+          rm -f /tmp/wesi-auth-journal
+          echo 'diagnostic_complete=true'
+          REMOTE
