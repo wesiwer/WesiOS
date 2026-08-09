@@ -70,7 +70,11 @@ class HorizonDecisionPanel extends StatelessWidget {
           LayoutBuilder(
             builder: (context, constraints) {
               final width = constraints.maxWidth;
-              final columns = width >= 900 ? 3 : width >= 560 ? 2 : 1;
+              final columns = width >= 900
+                  ? 3
+                  : width >= 560
+                      ? 2
+                      : 1;
               final gap = 8.0;
               final itemWidth = (width - gap * (columns - 1)) / columns;
               final metrics = <Widget>[
@@ -174,8 +178,8 @@ class HorizonDecisionPanel extends StatelessWidget {
               Icons.account_balance_outlined,
             ),
             const SizedBox(height: 6),
-            for (final risk
-                in forecast.accountLiquidityRisks.where((e) => e.riskDay != null))
+            for (final risk in forecast.accountLiquidityRisks
+                .where((e) => e.riskDay != null))
               _accountRisk(risk),
           ],
           if (forecast.explanations.isNotEmpty) ...[
@@ -194,7 +198,8 @@ class HorizonDecisionPanel extends StatelessWidget {
   }
 
   String _confidenceLabel() => switch (forecast.confidence) {
-        ForecastConfidence.high => _ru ? 'Высокая уверенность' : 'High confidence',
+        ForecastConfidence.high =>
+          _ru ? 'Высокая уверенность' : 'High confidence',
         ForecastConfidence.medium =>
           _ru ? 'Средняя уверенность' : 'Medium confidence',
         ForecastConfidence.low => _ru ? 'Низкая уверенность' : 'Low confidence',
@@ -499,7 +504,8 @@ class HorizonDecisionPanel extends StatelessWidget {
         ),
         child: Text(
           text,
-          style: TextStyle(color: color, fontSize: 9.5, fontWeight: FontWeight.w700),
+          style: TextStyle(
+              color: color, fontSize: 9.5, fontWeight: FontWeight.w700),
         ),
       );
 }
