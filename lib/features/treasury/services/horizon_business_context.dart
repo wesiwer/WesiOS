@@ -109,7 +109,8 @@ class HorizonBusinessContextService {
         final renewalDate = _day(lease.endsAt);
         final renewalAmount = contract.renewalAmountRub > 0
             ? contract.renewalAmountRub
-            : lease.amount;
+            : lease.amount *
+                CurrencyService.rateToRub(lease.currency.toLowerCase());
         if (renewalAmount > 0 &&
             renewalDate.isAfter(today) &&
             !renewalDate.isAfter(end)) {

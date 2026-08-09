@@ -961,7 +961,7 @@ class ForecastEngine {
         if (hasStatisticalHistory && spanDays >= 3) {
           if (blockRemaining <= 0) {
             blockLength = 3 + rng.nextInt(5); // 3..7 day block-bootstrap
-            blockIndex = rng.nextInt(max(1, spanDays - min(blockLength, spanDays) + 1));
+            blockIndex = rng.nextInt(max(1, spanDays - min(blockLength, spanDays) + 1).toInt());
             blockRemaining = min(blockLength, spanDays);
           }
           final index = (blockIndex + (blockLength - blockRemaining)) % spanDays;

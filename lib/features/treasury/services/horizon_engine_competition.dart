@@ -7,6 +7,7 @@ import '../models/transaction_model.dart';
 import 'forecast_backtest.dart';
 import 'forecast_engine.dart';
 import 'forecast_engine_kind.dart';
+import 'horizon_calibration.dart';
 import 'multi_engine_forecast.dart';
 
 class EngineBacktestMetric {
