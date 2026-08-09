@@ -116,6 +116,8 @@ jobs:
           grep -q '/api/wesi/auth/mail-ready' server/pb_hooks/wesi_mail_health.pb.js
           grep -q 'senderConfigured' server/pb_hooks/wesi_mail_health.pb.js
           grep -q 'smtpReady' server/pb_hooks/wesi_mail_health.pb.js
+          grep -q 'sendmailSelected' server/pb_hooks/wesi_mail_health.pb.js
+          grep -q 'mailClientMode' server/pb_hooks/wesi_mail_health.pb.js
           grep -q 'httpsProviderConfigured' server/pb_hooks/wesi_mail_health.pb.js
 
       - name: Check server secrets
@@ -216,8 +218,19 @@ jobs:
           with open('mail-ready.json', encoding='utf-8') as f:
               data=json.load(f)
           assert data.get('ready') is True, data
-          assert data.get('smtpReady') is True or data.get('httpsProviderConfigured') is True, data
-          transport = 'smtp' if data.get('smtpReady') else 'https:' + str(data.get('httpsProvider') or 'configured')
+          smtp_ready = data.get('smtpReady') is True
+          sendmail_ready = (
+              data.get('sendmailSelected') is True and
+              data.get('mailClientMode') == 'sendmail'
+          )
+          https_ready = data.get('httpsProviderConfigured') is True
+          assert smtp_ready or sendmail_ready or https_ready, data
+          if smtp_ready:
+              transport = 'smtp'
+          elif sendmail_ready:
+              transport = 'sendmail'
+          else:
+              transport = 'https:' + str(data.get('httpsProvider') or 'configured')
           print('OTP mail transport ready:', transport)
           PY
 
