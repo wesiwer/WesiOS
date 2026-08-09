@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:local_notifier/local_notifier.dart';
 import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 
@@ -20,17 +22,38 @@ class ScheduledTimeNotification {
   });
 }
 
+class _WindowsScheduledItem {
+  final String key;
+  final DateTime at;
+  final String title;
+  final String body;
+
+  const _WindowsScheduledItem({
+    required this.key,
+    required this.at,
+    required this.title,
+    required this.body,
+  });
+}
+
 /// Системное расписание для будильников, напоминаний, таймера и Calendar.
 ///
 /// Android получает настоящие scheduled notifications, которые переживают
-/// закрытие приложения и перезагрузку устройства. Desktop fallback держит
-/// таймер в текущем процессе; при следующем запуске сервисы восстанавливают
-/// расписание из Hive и просроченное уведомление показывается сразу.
+/// закрытие приложения и перезагрузку устройства. Windows регистрирует
+/// одноразовые задачи в Task Scheduler: в нужный момент система запускает
+/// WesiOS в notification-only режиме, показывает toast и сразу завершает
+/// процесс, не открывая обычный интерфейс. Для macOS/Linux остаётся
+/// in-process fallback с восстановлением расписания при следующем запуске.
 class TimeNotificationScheduler {
   TimeNotificationScheduler._();
 
   static final TimeNotificationScheduler instance =
       TimeNotificationScheduler._();
+
+  static const String _windowsLaunchFlag = '--wesios-time-notification';
+  static const String _windowsKeyArg = '--wesi-key';
+  static const String _windowsTitleArg = '--wesi-title';
+  static const String _windowsBodyArg = '--wesi-body';
 
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
@@ -49,6 +72,45 @@ class TimeNotificationScheduler {
     playSound: true,
     enableVibration: true,
   );
+
+  /// Ранний Windows entrypoint для задач Task Scheduler.
+  ///
+  /// Вызывается из main() до window_manager/Hive. Если процесс был запущен
+  /// системным планировщиком, обычный WesiOS UI вообще не поднимается.
+  static Future<bool> handleLaunchArguments(List<String> arguments) async {
+    if (kIsWeb || !Platform.isWindows) return false;
+    if (!arguments.contains(_windowsLaunchFlag)) return false;
+
+    final payload = decodeWindowsLaunchArguments(arguments);
+    if (payload == null) {
+      // Повреждённая системная задача не должна внезапно открыть WesiOS.
+      return true;
+    }
+
+    try {
+      await localNotifier.setup(
+        appName: 'WesiOS',
+        shortcutPolicy: ShortcutPolicy.requireCreate,
+      );
+      final toast = LocalNotification(
+        title: payload['title']!,
+        body: payload['body']!,
+      );
+      await toast.show();
+    } catch (error) {
+      debugPrint('Windows time notification failed: $error');
+    }
+
+    final key = payload['key']!;
+    if (key.isNotEmpty) {
+      // Одноразовая задача больше не нужна. Ошибка удаления не критична:
+      // она всё равно не повторится, а следующее сохранение перезапишет её.
+      try {
+        await instance._cancelWindowsTasks([key]);
+      } catch (_) {}
+    }
+    return true;
+  }
 
   Future<void> init() async {
     if (_initialized) return;
@@ -87,7 +149,6 @@ class TimeNotificationScheduler {
     required String body,
   }) async {
     await init();
-    await cancel(key);
 
     final now = DateTime.now();
     if (!at.isAfter(now)) {
@@ -99,6 +160,7 @@ class TimeNotificationScheduler {
     }
 
     if (!kIsWeb && Platform.isAndroid) {
+      await cancel(key);
       await _requestPermissions();
       try {
         await _plugin.zonedSchedule(
@@ -119,11 +181,21 @@ class TimeNotificationScheduler {
       }
     }
 
-    final delay = at.difference(now);
-    _desktopTimers[key] = Timer(delay, () async {
-      _desktopTimers.remove(key);
-      await _showFallback(key, title, body);
-    });
+    if (!kIsWeb && Platform.isWindows) {
+      _desktopTimers.remove(key)?.cancel();
+      final registered = await _scheduleWindowsBatch([
+        _WindowsScheduledItem(key: key, at: at, title: title, body: body),
+      ]);
+      if (registered) return true;
+
+      // Корпоративная политика Windows может запретить Task Scheduler.
+      // Пока приложение открыто, всё равно сохраняем рабочий fallback.
+      _scheduleDesktopTimer(key: key, at: at, title: title, body: body);
+      return true;
+    }
+
+    await cancel(key);
+    _scheduleDesktopTimer(key: key, at: at, title: title, body: body);
     return true;
   }
 
@@ -132,8 +204,52 @@ class TimeNotificationScheduler {
     required List<ScheduledTimeNotification> notifications,
     int capacity = 24,
   }) async {
-    await cancelSeries(keyPrefix, capacity: capacity);
+    await init();
     final limited = notifications.take(capacity).toList();
+
+    if (!kIsWeb && Platform.isWindows) {
+      final allKeys = [
+        for (var i = 0; i < capacity; i++) '${keyPrefix}_$i',
+      ];
+      for (final key in allKeys) {
+        _desktopTimers.remove(key)?.cancel();
+      }
+      await _cancelWindowsTasks(allKeys);
+
+      final now = DateTime.now();
+      final items = <_WindowsScheduledItem>[];
+      for (var i = 0; i < limited.length; i++) {
+        final item = limited[i];
+        final key = '${keyPrefix}_$i';
+        if (!item.at.isAfter(now)) {
+          if (now.difference(item.at) <= const Duration(minutes: 5)) {
+            await _showFallback(key, item.title, item.body);
+          }
+          continue;
+        }
+        items.add(_WindowsScheduledItem(
+          key: key,
+          at: item.at,
+          title: item.title,
+          body: item.body,
+        ));
+      }
+
+      final registered = await _scheduleWindowsBatch(items);
+      if (!registered) {
+        for (final item in items) {
+          _scheduleDesktopTimer(
+            key: item.key,
+            at: item.at,
+            title: item.title,
+            body: item.body,
+          );
+        }
+      }
+      return;
+    }
+
+    await cancelSeries(keyPrefix, capacity: capacity);
     for (var i = 0; i < limited.length; i++) {
       final item = limited[i];
       await schedule(
@@ -152,12 +268,119 @@ class TimeNotificationScheduler {
       try {
         await _plugin.cancel(stableId(key));
       } catch (_) {}
+      return;
+    }
+    if (!kIsWeb && Platform.isWindows) {
+      await _cancelWindowsTasks([key]);
     }
   }
 
   Future<void> cancelSeries(String keyPrefix, {int capacity = 24}) async {
+    if (!kIsWeb && Platform.isWindows) {
+      final keys = [
+        for (var i = 0; i < capacity; i++) '${keyPrefix}_$i',
+      ];
+      for (final key in keys) {
+        _desktopTimers.remove(key)?.cancel();
+      }
+      await _cancelWindowsTasks(keys);
+      return;
+    }
+
     for (var i = 0; i < capacity; i++) {
       await cancel('${keyPrefix}_$i');
+    }
+  }
+
+  void _scheduleDesktopTimer({
+    required String key,
+    required DateTime at,
+    required String title,
+    required String body,
+  }) {
+    _desktopTimers.remove(key)?.cancel();
+    final delay = at.difference(DateTime.now());
+    if (delay <= Duration.zero) {
+      unawaited(_showFallback(key, title, body));
+      return;
+    }
+    _desktopTimers[key] = Timer(delay, () async {
+      _desktopTimers.remove(key);
+      await _showFallback(key, title, body);
+    });
+  }
+
+  Future<bool> _scheduleWindowsBatch(
+    List<_WindowsScheduledItem> items,
+  ) async {
+    if (items.isEmpty) return true;
+
+    final executable = Platform.resolvedExecutable;
+    final script = StringBuffer()
+      ..writeln(r"$ErrorActionPreference = 'Stop'")
+      ..writeln(r'$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable');
+
+    for (final item in items) {
+      final launchArgs = windowsLaunchArgumentsFor(
+        key: item.key,
+        title: item.title,
+        body: item.body,
+      ).join(' ');
+      final localIso = item.at.toLocal().toIso8601String();
+      script
+        ..writeln(
+          '\$action = New-ScheduledTaskAction -Execute ${_powerShellQuote(executable)} -Argument ${_powerShellQuote(launchArgs)}',
+        )
+        ..writeln(
+          '\$trigger = New-ScheduledTaskTrigger -Once -At ([DateTime]::Parse(${_powerShellQuote(localIso)}, [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeLocal))',
+        )
+        ..writeln(
+          'Register-ScheduledTask -TaskName ${_powerShellQuote(windowsTaskNameFor(item.key))} -Action \$action -Trigger \$trigger -Settings \$settings -Force | Out-Null',
+        );
+    }
+
+    return _runPowerShell(script.toString());
+  }
+
+  Future<bool> _cancelWindowsTasks(List<String> keys) async {
+    if (keys.isEmpty) return true;
+    final script = StringBuffer()
+      ..writeln(r"$ErrorActionPreference = 'SilentlyContinue'");
+    for (final key in keys) {
+      script.writeln(
+        'Unregister-ScheduledTask -TaskName ${_powerShellQuote(windowsTaskNameFor(key))} -Confirm:\$false -ErrorAction SilentlyContinue',
+      );
+    }
+    return _runPowerShell(script.toString());
+  }
+
+  Future<bool> _runPowerShell(String script) async {
+    if (kIsWeb || !Platform.isWindows) return false;
+    final root = Platform.environment['SystemRoot'] ?? r'C:\Windows';
+    final powershell =
+        '$root\\System32\\WindowsPowerShell\\v1.0\\powershell.exe';
+    try {
+      final result = await Process.run(
+        powershell,
+        [
+          '-NoProfile',
+          '-NonInteractive',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-Command',
+          script,
+        ],
+      );
+      if (result.exitCode != 0) {
+        debugPrint(
+          'Windows Task Scheduler failed (${result.exitCode}): ${result.stderr}',
+        );
+        return false;
+      }
+      return true;
+    } catch (error) {
+      debugPrint('Windows Task Scheduler unavailable: $error');
+      return false;
     }
   }
 
@@ -172,6 +395,63 @@ class TimeNotificationScheduler {
       ),
     );
   }
+
+  @visibleForTesting
+  static List<String> windowsLaunchArgumentsFor({
+    required String key,
+    required String title,
+    required String body,
+  }) =>
+      [
+        _windowsLaunchFlag,
+        '$_windowsKeyArg=${_encodeArgument(key)}',
+        '$_windowsTitleArg=${_encodeArgument(title)}',
+        '$_windowsBodyArg=${_encodeArgument(body)}',
+      ];
+
+  @visibleForTesting
+  static Map<String, String>? decodeWindowsLaunchArguments(
+    List<String> arguments,
+  ) {
+    if (!arguments.contains(_windowsLaunchFlag)) return null;
+
+    String? rawValue(String name) {
+      final prefix = '$name=';
+      for (final argument in arguments) {
+        if (argument.startsWith(prefix)) {
+          return argument.substring(prefix.length);
+        }
+      }
+      return null;
+    }
+
+    final key = _decodeArgument(rawValue(_windowsKeyArg));
+    final title = _decodeArgument(rawValue(_windowsTitleArg));
+    final body = _decodeArgument(rawValue(_windowsBodyArg));
+    if (key == null || title == null || body == null) return null;
+    return {'key': key, 'title': title, 'body': body};
+  }
+
+  static String _encodeArgument(String value) =>
+      base64Url.encode(utf8.encode(value)).replaceAll('=', '');
+
+  static String? _decodeArgument(String? value) {
+    if (value == null) return null;
+    try {
+      final padding = (4 - value.length % 4) % 4;
+      final normalized = '$value${List<String>.filled(padding, '=').join()}';
+      return utf8.decode(base64Url.decode(normalized));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static String _powerShellQuote(String value) =>
+      "'${value.replaceAll("'", "''")}'";
+
+  @visibleForTesting
+  static String windowsTaskNameFor(String value) =>
+      'WesiOS_Time_${stableId(value)}';
 
   @visibleForTesting
   static int stableId(String value) {
