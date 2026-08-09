@@ -40,11 +40,11 @@ class AccountLiquidityMeta {
       currency: CurrencyService.currencies.containsKey(rawCurrency)
           ? rawCurrency
           : 'rub',
-      minimumBalanceRub:
-          (json['minimumBalanceRub'] as num?)?.toDouble() ?? 0,
+      minimumBalanceRub: (json['minimumBalanceRub'] as num?)?.toDouble() ?? 0,
       allowNetting: json['allowNetting'] != false,
-      fxHaircut:
-          ((json['fxHaircut'] as num?)?.toDouble() ?? 0.03).clamp(0, 0.25).toDouble(),
+      fxHaircut: ((json['fxHaircut'] as num?)?.toDouble() ?? 0.03)
+          .clamp(0, 0.25)
+          .toDouble(),
     );
   }
 }
@@ -123,6 +123,9 @@ class AccountLiquidityService {
           allowNetting: (meta[summary.account.id] ??
                   AccountLiquidityMeta(accountId: summary.account.id))
               .allowNetting,
+          fxHaircut: (meta[summary.account.id] ??
+                  AccountLiquidityMeta(accountId: summary.account.id))
+              .fxHaircut,
         ),
     ];
   }
@@ -136,8 +139,11 @@ class AccountLiquidityService {
   }) async {
     if (!from.allowNetting || from.accountId == to.accountId) return 0;
     final meta = await allMeta();
-    final own = meta[from.accountId] ?? AccountLiquidityMeta(accountId: from.accountId);
-    final free = (from.balance - from.minimumBalance).clamp(0, double.infinity).toDouble();
+    final own =
+        meta[from.accountId] ?? AccountLiquidityMeta(accountId: from.accountId);
+    final free = (from.balance - from.minimumBalance)
+        .clamp(0, double.infinity)
+        .toDouble();
     if (free == 0) return 0;
     if (from.currency == to.currency) return free;
     return free * (1 - own.fxHaircut);

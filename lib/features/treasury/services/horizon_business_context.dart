@@ -73,8 +73,10 @@ class HorizonBusinessContextService {
         }
         final due = _day(deal.expectedCloseAt!);
         if (!due.isAfter(today) || due.isAfter(end)) continue;
-        final probability = (deal.probability / 100).clamp(0.01, 0.99).toDouble();
-        final rub = deal.amount * CurrencyService.rateToRub(deal.currency.toLowerCase());
+        final probability =
+            (deal.probability / 100).clamp(0.01, 0.99).toDouble();
+        final rub = deal.amount *
+            CurrencyService.rateToRub(deal.currency.toLowerCase());
         events.add(HorizonCashEvent(
           title: 'CRM: ${deal.title}',
           amount: rub,
@@ -103,8 +105,17 @@ class HorizonBusinessContextService {
       for (final beat in beats) {
         final lease = beat.lease;
         if (lease == null) continue;
-        final contract = memory[lease.id];
-        if (contract == null) continue;
+        final leaseAmountRub = lease.amount *
+            CurrencyService.rateToRub(lease.currency.toLowerCase());
+        final contract = memory[lease.id] ??
+            HorizonContractMemory(
+              beatId: beat.id,
+              leaseId: lease.id,
+              renewalProbability: 0.35,
+              renewalAmountRub: leaseAmountRub,
+              royaltyProbability: 0.50,
+              updatedAt: today,
+            );
 
         final renewalDate = _day(lease.endsAt);
         final renewalAmount = contract.renewalAmountRub > 0
@@ -122,14 +133,12 @@ class HorizonBusinessContextService {
             committed: false,
             source: 'audio-renewal',
           ));
-          exposure['audio:${beat.id}'] =
-              (exposure['audio:${beat.id}'] ?? 0) +
-                  renewalAmount * contract.renewalProbability;
+          exposure['audio:${beat.id}'] = (exposure['audio:${beat.id}'] ?? 0) +
+              renewalAmount * contract.renewalProbability;
         }
 
-        final royaltyDate = contract.royaltyDueAt == null
-            ? null
-            : _day(contract.royaltyDueAt!);
+        final royaltyDate =
+            contract.royaltyDueAt == null ? null : _day(contract.royaltyDueAt!);
         if (contract.expectedRoyaltyRub > 0 &&
             royaltyDate != null &&
             royaltyDate.isAfter(today) &&
@@ -142,9 +151,8 @@ class HorizonBusinessContextService {
             committed: contract.royaltyProbability >= 0.95,
             source: 'audio-royalty',
           ));
-          exposure['audio:${beat.id}'] =
-              (exposure['audio:${beat.id}'] ?? 0) +
-                  contract.expectedRoyaltyRub * contract.royaltyProbability;
+          exposure['audio:${beat.id}'] = (exposure['audio:${beat.id}'] ?? 0) +
+              contract.expectedRoyaltyRub * contract.royaltyProbability;
         }
       }
     } catch (_) {}
@@ -171,8 +179,10 @@ class HorizonBusinessContextService {
           warnings.add(ForecastActionPrompt(
             code: 'overdue-cash-task-${task.id}',
             severity: ForecastPromptSeverity.critical,
-            textRu: 'Просрочено денежное обязательство «${task.title}» (${parsed.amount.toStringAsFixed(0)} ₽).',
-            textEn: 'Overdue cash obligation “${task.title}” (${parsed.amount.toStringAsFixed(0)} RUB).',
+            textRu:
+                'Просрочено денежное обязательство «${task.title}» (${parsed.amount.toStringAsFixed(0)} ₽).',
+            textEn:
+                'Overdue cash obligation “${task.title}” (${parsed.amount.toStringAsFixed(0)} RUB).',
             amount: parsed.amount.abs(),
           ));
         }
@@ -210,7 +220,8 @@ class HorizonBusinessContextService {
         if (probability > 1) probability /= 100;
         body = body.substring(0, at);
       }
-      final normalized = body.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9+.-]'), '');
+      final normalized =
+          body.replaceAll(',', '.').replaceAll(RegExp(r'[^0-9+.-]'), '');
       final amount = double.tryParse(normalized);
       if (amount == null || amount == 0) continue;
       return (
@@ -237,8 +248,10 @@ class HorizonBusinessContextService {
       warnings.add(ForecastActionPrompt(
         code: 'income-concentration',
         severity: ForecastPromptSeverity.warning,
-        textRu: 'Более ${(share * 100).round()}% ожидаемых входящих завязано на один источник. Horizon учитывает риск его потери в stress-сценарии.',
-        textEn: 'More than ${(share * 100).round()}% of expected incoming cash depends on one source. Horizon includes source-loss risk in stress.',
+        textRu:
+            'Более ${(share * 100).round()}% ожидаемых входящих завязано на один источник. Horizon учитывает риск его потери в stress-сценарии.',
+        textEn:
+            'More than ${(share * 100).round()}% of expected incoming cash depends on one source. Horizon includes source-loss risk in stress.',
       ));
     }
   }

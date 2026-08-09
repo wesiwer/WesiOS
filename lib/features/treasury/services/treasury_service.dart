@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../models/transaction_model.dart';
+import 'account_service.dart';
 import 'anomaly_engine.dart';
 import 'forecast_engine.dart';
 import 'horizon_business_context.dart';
@@ -24,6 +25,8 @@ class TreasuryService {
   Box<TransactionModel>? _box;
 
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
+  static bool _learningInFlight = false;
+  static bool _competitionInFlight = false;
 
   Future<Box<TransactionModel>> get _treasuryBox async {
     _box ??= await Hive.openBox<TransactionModel>(_boxName);
@@ -59,11 +62,16 @@ class TreasuryService {
 
   Future<double> getCurrentBalance() async {
     final all = await getAllTransactions();
-    double balance = 0;
-    for (final tx in all) {
-      balance += tx.type == TransactionType.income ? tx.amount : -tx.amount;
+    try {
+      final summaries = await AccountService.summaries(all);
+      return summaries.fold<double>(0, (sum, item) => sum + item.balance);
+    } catch (_) {
+      double balance = 0;
+      for (final tx in all) {
+        balance += tx.type == TransactionType.income ? tx.amount : -tx.amount;
+      }
+      return balance;
     }
-    return balance;
   }
 
   Future<Map<String, double>> getBalanceBreakdown() async {
@@ -133,14 +141,10 @@ class TreasuryService {
     final all = await getAllTransactions();
     final balance = await getCurrentBalance();
 
-    // Monthly bounded learning is allowed to update only interpretable
-    // parameters + calibration. If it fails, the previous/identity profile is
-    // retained and forecasting stays available.
-    final learned = await HorizonLearningService.updateIfDue(
-      transactions: all,
-      currentBalance: balance,
-    );
-    final calibration = learned?.profile ?? await HorizonLearningService.load();
+    // Rendering uses the last verified profile immediately. Monthly
+    // calibration is kicked after that and never blocks this forecast call.
+    final calibration = await HorizonLearningService.load();
+    _kickLearning(all, balance);
 
     final context = await HorizonBusinessContextService.load(
       transactions: all,
@@ -186,15 +190,34 @@ class TreasuryService {
       clearWhatIfRiskDelta: whatIf.isEmpty,
     );
 
-    // External engines may take seconds and are optional/Windows-only. Their
-    // monthly championship is deliberately background work; current Horizon
-    // must not wait for Python just to render a risk decision.
-    unawaited(HorizonEngineCompetitionService.evaluateIfDue(
-      transactions: all,
-      currentBalance: balance,
-    ));
+    // External engines may take seconds and are optional/Windows-only.
+    _kickCompetition(all, balance);
 
     return withDecisions;
+  }
+
+  static void _kickLearning(
+    List<TransactionModel> transactions,
+    double currentBalance,
+  ) {
+    if (_learningInFlight) return;
+    _learningInFlight = true;
+    unawaited(HorizonLearningService.updateIfDue(
+      transactions: transactions,
+      currentBalance: currentBalance,
+    ).whenComplete(() => _learningInFlight = false));
+  }
+
+  static void _kickCompetition(
+    List<TransactionModel> transactions,
+    double currentBalance,
+  ) {
+    if (_competitionInFlight) return;
+    _competitionInFlight = true;
+    unawaited(HorizonEngineCompetitionService.evaluateIfDue(
+      transactions: transactions,
+      currentBalance: currentBalance,
+    ).whenComplete(() => _competitionInFlight = false));
   }
 
   // ========== DEMO DATA (never auto-called by forecast screen) ==========

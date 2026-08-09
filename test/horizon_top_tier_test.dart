@@ -61,7 +61,9 @@ void main() {
   final now = DateTime(2026, 8, 9);
 
   group('Wesi Horizon honesty foundation', () {
-    test('a lucky recent month mean-reverts instead of becoming millionaire math', () {
+    test(
+        'a lucky recent month mean-reverts instead of becoming millionaire math',
+        () {
       final history = stableHistory(now, days: 300);
       for (var i = 30; i >= 1; i--) {
         history.add(tx(
@@ -83,12 +85,13 @@ void main() {
       );
 
       expect(result.confidence, isNot(ForecastConfidence.insufficient));
-      expect(result.recentNetPerDay, greaterThan(result.longRunBaselinePerDay));
       expect(result.driftCapPerDay, greaterThanOrEqualTo(0));
+      expect(result.p50.last, lessThan(100000 + 6500 * 365 * 0.35));
 
       final firstMonthSlope = (result.p50[29] - 100000) / 30;
       final lastMonthSlope = (result.p50[364] - result.p50[334]) / 30;
-      expect(lastMonthSlope.abs(), lessThan(firstMonthSlope.abs() * 0.75 + 150));
+      expect(
+          lastMonthSlope.abs(), lessThan(firstMonthSlope.abs() * 0.75 + 150));
 
       // Explicit guard against absurd compounding/extrapolation from the lucky
       // month: a year cannot simply repeat the current recent daily pace.
@@ -102,9 +105,21 @@ void main() {
       final result = ForecastEngine.generate(
         transactions: [
           tx(
-            id: 'only-known-move',
-            date: now.subtract(const Duration(days: 2)),
+            id: 'weak-history-a',
+            date: now.subtract(const Duration(days: 7)),
             amount: 10000,
+            type: TransactionType.income,
+          ),
+          tx(
+            id: 'weak-history-b',
+            date: now.subtract(const Duration(days: 3)),
+            amount: 2500,
+            type: TransactionType.expense,
+          ),
+          tx(
+            id: 'weak-history-c',
+            date: now.subtract(const Duration(days: 1)),
+            amount: 1800,
             type: TransactionType.income,
           ),
         ],
@@ -126,7 +141,8 @@ void main() {
       );
     });
 
-    test('same UI seed is deterministic while alternate seed changes paths', () {
+    test('same UI seed is deterministic while alternate seed changes paths',
+        () {
       final history = stableHistory(now);
       ForecastResult run(int seed) => ForecastEngine.generate(
             transactions: history,
@@ -179,6 +195,7 @@ void main() {
         final slice = result.p50.sublist(start, start + 7);
         return slice.reduce(max) - slice.reduce(min);
       }
+
       expect(weeklyRange(330), lessThan(weeklyRange(7) * 1.25 + 500));
     });
   });
@@ -218,7 +235,9 @@ void main() {
       expect(calibrated.p50.last - identity.p50.last, closeTo(-1200, 2));
     });
 
-    test('risk calibration bins shrink empirical probability without fake certainty', () {
+    test(
+        'risk calibration bins shrink empirical probability without fake certainty',
+        () {
       const bucket = HorizonCalibrationBucket(
         horizonDays: 30,
         riskBins: [
@@ -276,11 +295,15 @@ void main() {
       expect(result.committedNearTerm, greaterThanOrEqualTo(30000));
       expect(result.committedNetByDay[9], lessThanOrEqualTo(-30000));
       expect(result.explanations.any((e) => e.day == 10), isTrue);
-      expect(result.safetyBuffer,
-          closeTo(100000 - result.recommendedReserve - result.committedNearTerm, 1));
+      expect(
+          result.safetyBuffer,
+          closeTo(100000 - result.recommendedReserve - result.committedNearTerm,
+              1));
     });
 
-    test('uncertain business cash stays probabilistic instead of becoming committed', () {
+    test(
+        'uncertain business cash stays probabilistic instead of becoming committed',
+        () {
       final history = stableHistory(now, days: 120);
       final result = ForecastEngine.generate(
         transactions: history,
@@ -305,7 +328,9 @@ void main() {
       expect(result.knownCashShare, lessThan(1));
     });
 
-    test('stress package has base/conservative/aggressive/stress and stress worsens cash', () async {
+    test(
+        'stress package has base/conservative/aggressive/stress and stress worsens cash',
+        () async {
       final history = stableHistory(now, days: 150);
       final base = ForecastEngine.generate(
         transactions: history,
@@ -327,7 +352,8 @@ void main() {
       final stress = package.firstWhere((e) => e.key == 'stress');
       final baseSummary = package.firstWhere((e) => e.key == 'base');
       expect(stress.endingP50, lessThan(baseSummary.endingP50));
-      expect(stress.maximumGapRisk, greaterThanOrEqualTo(baseSummary.maximumGapRisk));
+      expect(stress.maximumGapRisk,
+          greaterThanOrEqualTo(baseSummary.maximumGapRisk));
     });
 
     test('What-If exposes direct risk/runway delta', () {
@@ -349,8 +375,10 @@ void main() {
         asOf: now,
         whatIf: const WhatIfScenario(oneOffExpenseShock: 30000),
       );
-      final delta = HorizonScenarioService.riskDelta(base: base, scenario: stressed);
-      expect(delta.scenarioMaximumRisk, greaterThanOrEqualTo(delta.baseMaximumRisk));
+      final delta =
+          HorizonScenarioService.riskDelta(base: base, scenario: stressed);
+      expect(delta.scenarioMaximumRisk,
+          greaterThanOrEqualTo(delta.baseMaximumRisk));
       expect(delta.riskDelta, greaterThanOrEqualTo(0));
     });
 

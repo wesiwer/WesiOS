@@ -73,11 +73,12 @@ class WhatIfScenario {
         events: [...events, ...other.events],
         incomeMultiplier: incomeMultiplier * other.incomeMultiplier,
         expenseMultiplier: expenseMultiplier * other.expenseMultiplier,
-        incomeMultiplierDays: max(incomeMultiplierDays, other.incomeMultiplierDays),
-        expenseMultiplierDays: max(expenseMultiplierDays, other.expenseMultiplierDays),
+        incomeMultiplierDays:
+            max(incomeMultiplierDays, other.incomeMultiplierDays),
+        expenseMultiplierDays:
+            max(expenseMultiplierDays, other.expenseMultiplierDays),
         incomeDelayDays: max(incomeDelayDays, other.incomeDelayDays),
-        mainIncomeLossDays:
-            max(mainIncomeLossDays, other.mainIncomeLossDays),
+        mainIncomeLossDays: max(mainIncomeLossDays, other.mainIncomeLossDays),
         oneOffExpenseShock: oneOffExpenseShock + other.oneOffExpenseShock,
       );
 
@@ -119,6 +120,7 @@ class AccountLiquiditySnapshot {
   final double balance;
   final double minimumBalance;
   final bool allowNetting;
+  final double fxHaircut;
 
   const AccountLiquiditySnapshot({
     required this.accountId,
@@ -127,6 +129,7 @@ class AccountLiquiditySnapshot {
     this.currency = 'RUB',
     this.minimumBalance = 0,
     this.allowNetting = true,
+    this.fxHaircut = 0.03,
   });
 }
 
@@ -315,9 +318,8 @@ class ForecastResult {
         confidence: ForecastConfidence.insufficient,
       );
 
-  double get maximumGapRisk => belowZeroProbability.isEmpty
-      ? 0
-      : belowZeroProbability.reduce(max);
+  double get maximumGapRisk =>
+      belowZeroProbability.isEmpty ? 0 : belowZeroProbability.reduce(max);
 
   ForecastResult copyWith({
     List<ForecastScenarioSummary>? scenarioSummaries,
@@ -454,7 +456,8 @@ class _StreamStats {
         count[wd]++;
       }
       for (var wd = 0; wd < 7; wd++) {
-        if (count[wd] > 0) weekdayFactor[wd] = sum[wd] / count[wd] - dailyBaseline;
+        if (count[wd] > 0)
+          weekdayFactor[wd] = sum[wd] / count[wd] - dailyBaseline;
       }
     }
 
@@ -491,9 +494,8 @@ class _StreamStats {
     final slopeCap = max(dailyBaseline.abs() * 0.02, volatility * 0.025);
     final cappedSlope = recentSlope.clamp(-slopeCap, slopeCap);
     final drift = cappedSlope * day * exp(-day / tuning.trendDecayDays);
-    final seasonalityWeight = day <= 14
-        ? 1.0
-        : exp(-(day - 14) / tuning.seasonalityDecayDays);
+    final seasonalityWeight =
+        day <= 14 ? 1.0 : exp(-(day - 14) / tuning.seasonalityDecayDays);
     return max(0, base + drift + weekdayFactor[weekday] * seasonalityWeight);
   }
 
@@ -502,8 +504,10 @@ class _StreamStats {
   static double _winsorMean(List<double> values) {
     if (values.isEmpty) return 0;
     final sorted = List<double>.of(values)..sort();
-    final lo = sorted[(sorted.length * 0.05).floor().clamp(0, sorted.length - 1)];
-    final hi = sorted[(sorted.length * 0.95).floor().clamp(0, sorted.length - 1)];
+    final lo =
+        sorted[(sorted.length * 0.05).floor().clamp(0, sorted.length - 1)];
+    final hi =
+        sorted[(sorted.length * 0.95).floor().clamp(0, sorted.length - 1)];
     var sum = 0.0;
     for (final value in values) {
       sum += value.clamp(lo, hi).toDouble();
@@ -551,7 +555,8 @@ class _RegimeModel {
         ? denseNet.sublist(denseNet.length - 90)
         : denseNet;
     final recent = denseNet.sublist(max(0, denseNet.length - 14));
-    final baseline = baselineWindow.reduce((a, b) => a + b) / baselineWindow.length;
+    final baseline =
+        baselineWindow.reduce((a, b) => a + b) / baselineWindow.length;
     final recentMean = recent.reduce((a, b) => a + b) / recent.length;
     final vol = _StreamStats._stdDev(baselineWindow);
     final z = vol <= 1e-9 ? 0.0 : (recentMean - baseline) / vol;
@@ -564,7 +569,8 @@ class _RegimeModel {
       CashRegime.downturn: downturnRaw / total,
       CashRegime.stable: stableRaw / total,
     };
-    final current = probs.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
+    final current =
+        probs.entries.reduce((a, b) => a.value >= b.value ? a : b).key;
     return _RegimeModel(current, probs);
   }
 
@@ -724,22 +730,27 @@ class ForecastEngine {
         .where((t) => t.isRecurring && t.recurringPeriod != null)
         .toList();
 
-    if (history.isEmpty && recurringTxs.isEmpty && businessEvents.isEmpty && scheduledOneOff.isEmpty) {
-      return ForecastResult.empty();
-    }
-
     DateTime minDay = todayOnly;
     for (final tx in history) {
       final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
       if (day.isBefore(minDay)) minDay = day;
     }
     final spanDays = todayOnly.difference(minDay).inDays + 1;
+    final hasKnownForwardCash = recurringTxs.isNotEmpty ||
+        businessEvents.isNotEmpty ||
+        scheduledOneOff.isNotEmpty;
+    if (!hasKnownForwardCash &&
+        (history.length < 3 || spanDays < minHistorySpanDays)) {
+      return ForecastResult.empty();
+    }
     final confidence = _confidence(spanDays, history.length);
-    final hasStatisticalHistory = spanDays >= minHistorySpanDays && history.length >= 3;
+    final hasStatisticalHistory =
+        spanDays >= minHistorySpanDays && history.length >= 3;
     final seasonalityApplied = spanDays >= _seasonalityMinSpanDays;
 
     final recurringIds = recurringTxs.map((e) => e.id).toSet();
-    final nonRecurring = history.where((e) => !recurringIds.contains(e.id)).toList();
+    final nonRecurring =
+        history.where((e) => !recurringIds.contains(e.id)).toList();
     final shocks = _ShockPool.detect(nonRecurring, minDay, spanDays);
 
     final streamKeys = _topStreamKeys(nonRecurring);
@@ -811,7 +822,15 @@ class ForecastEngine {
 
     final committedByOffset = List<double>.filled(days, 0);
     final knownMagnitudeByOffset = List<double>.filled(days, 0);
-    final recurringOccurrences = <int, List<({double net, double probability, String title, String? accountId})>>{};
+    final recurringOccurrences = <int,
+        List<
+            ({
+              double net,
+              double probability,
+              String title,
+              String? accountId
+            })>>{};
+    final effectiveRecurringReliability = <String, double>{};
 
     for (final tx in recurringTxs) {
       final projected = RecurringEngine.projectFutureContributions(
@@ -823,8 +842,8 @@ class ForecastEngine {
               _estimateRecurringReliability(tx, transactions, todayOnly))
           .clamp(0.05, 1.0)
           .toDouble();
+      effectiveRecurringReliability[tx.id] = reliability;
       for (final entry in projected.entries) {
-        final raw = entry.value;
         final probability = tx.type == TransactionType.expense
             ? max(0.95, reliability)
             : reliability;
@@ -832,15 +851,28 @@ class ForecastEngine {
             ? entry.key + whatIf.incomeDelayDays
             : entry.key;
         if (shiftedOffset < 1 || shiftedOffset > days) continue;
+
+        var modeledNet = entry.value;
+        if (modeledNet > 0 &&
+            (whatIf.incomeMultiplierDays <= 0 ||
+                shiftedOffset <= whatIf.incomeMultiplierDays)) {
+          modeledNet *= whatIf.incomeMultiplier;
+        } else if (modeledNet < 0 &&
+            (whatIf.expenseMultiplierDays <= 0 ||
+                shiftedOffset <= whatIf.expenseMultiplierDays)) {
+          modeledNet *= whatIf.expenseMultiplier;
+        }
+
         (recurringOccurrences[shiftedOffset] ??= []).add((
-          net: raw,
+          net: modeledNet,
           probability: probability,
           title: tx.title,
           accountId: tx.accountId,
         ));
         if (probability >= 0.9 || tx.type == TransactionType.expense) {
-          committedByOffset[shiftedOffset - 1] += raw * probability;
-          knownMagnitudeByOffset[shiftedOffset - 1] += raw.abs() * probability;
+          committedByOffset[shiftedOffset - 1] += modeledNet * probability;
+          knownMagnitudeByOffset[shiftedOffset - 1] +=
+              modeledNet.abs() * probability;
         }
       }
     }
@@ -860,20 +892,28 @@ class ForecastEngine {
         source: 'treasury-scheduled',
         accountId: tx.accountId,
       );
-      final shiftedOffset = event.amount > 0 ? offset + whatIf.incomeDelayDays : offset;
-      if (shiftedOffset <= days) (externalByOffset[shiftedOffset] ??= []).add(event);
+      final shiftedOffset =
+          event.amount > 0 ? offset + whatIf.incomeDelayDays : offset;
+      if (shiftedOffset >= 1 && shiftedOffset <= days) {
+        (externalByOffset[shiftedOffset] ??= []).add(event);
+        committedByOffset[shiftedOffset - 1] += event.amount;
+        knownMagnitudeByOffset[shiftedOffset - 1] += event.amount.abs();
+      }
     }
     for (final event in businessEvents) {
       final offset = DateTime(event.date.year, event.date.month, event.date.day)
           .difference(todayOnly)
           .inDays;
       if (offset < 1 || offset > days) continue;
-      final shiftedOffset = event.amount > 0 ? offset + whatIf.incomeDelayDays : offset;
+      final shiftedOffset =
+          event.amount > 0 ? offset + whatIf.incomeDelayDays : offset;
       if (shiftedOffset < 1 || shiftedOffset > days) continue;
       (externalByOffset[shiftedOffset] ??= []).add(event);
       if (event.committed) {
-        committedByOffset[shiftedOffset - 1] += event.amount * event.probability;
-        knownMagnitudeByOffset[shiftedOffset - 1] += event.amount.abs() * event.probability;
+        committedByOffset[shiftedOffset - 1] +=
+            event.amount * event.probability;
+        knownMagnitudeByOffset[shiftedOffset - 1] +=
+            event.amount.abs() * event.probability;
       }
     }
 
@@ -884,7 +924,8 @@ class ForecastEngine {
       currentBalance: currentBalance,
     );
     final effectivePaths = pathsForHorizon(days, paths);
-    final balances = List.generate(days, (_) => List<double>.filled(effectivePaths, 0));
+    final balances =
+        List.generate(days, (_) => List<double>.filled(effectivePaths, 0));
     final minBalances = List<double>.filled(effectivePaths, currentBalance);
     final expectedUncertainNet = List<double>.filled(days, 0);
     final expectedComponentCount = List<int>.filled(days, 0);
@@ -900,14 +941,21 @@ class ForecastEngine {
       incomeBaseline += s.dailyBaseline;
       incomeRecent += s.dailyRecent;
       maxDriftCap += s.driftCap;
-      streamContribution[s.key] = (streamContribution[s.key] ?? 0) + s.dailyBaseline;
+      streamContribution[s.key] =
+          (streamContribution[s.key] ?? 0) + s.dailyBaseline;
     }
     for (final s in expenseStreams) {
       expenseBaseline += s.dailyBaseline;
       expenseRecent += s.dailyRecent;
       maxDriftCap += s.driftCap;
-      streamContribution[s.key] = (streamContribution[s.key] ?? 0) - s.dailyBaseline;
+      streamContribution[s.key] =
+          (streamContribution[s.key] ?? 0) - s.dailyBaseline;
     }
+    final primaryIncomeKey = incomeStreams.isEmpty
+        ? null
+        : incomeStreams
+            .reduce((a, b) => a.dailyBaseline >= b.dailyBaseline ? a : b)
+            .key;
 
     for (var path = 0; path < effectivePaths; path++) {
       var balance = currentBalance;
@@ -925,7 +973,11 @@ class ForecastEngine {
         var expectedExpense = 0.0;
         if (hasStatisticalHistory) {
           for (final s in incomeStreams) {
-            expectedIncome += s.expectedForDay(day, weekday, activeTuning);
+            var component = s.expectedForDay(day, weekday, activeTuning);
+            if (whatIf.mainIncomeLossDays >= day && s.key == primaryIncomeKey) {
+              component *= 0.15;
+            }
+            expectedIncome += component;
           }
           for (final s in expenseStreams) {
             expectedExpense += s.expectedForDay(day, weekday, activeTuning);
@@ -961,19 +1013,21 @@ class ForecastEngine {
         if (hasStatisticalHistory && spanDays >= 3) {
           if (blockRemaining <= 0) {
             blockLength = 3 + rng.nextInt(5); // 3..7 day block-bootstrap
-            blockIndex = rng.nextInt(max(1, spanDays - min(blockLength, spanDays) + 1).toInt());
+            blockIndex = rng.nextInt(
+                max(1, spanDays - min(blockLength, spanDays) + 1).toInt());
             blockRemaining = min(blockLength, spanDays);
           }
-          final index = (blockIndex + (blockLength - blockRemaining)) % spanDays;
+          final index =
+              (blockIndex + (blockLength - blockRemaining)) % spanDays;
           residualIncome = incomeResidual[index];
           residualExpense = expenseResidual[index];
           blockRemaining--;
-        } else {
+        } else if (nonRecurring.isNotEmpty) {
           final observedVol = max(
             _StreamStats._stdDev(denseIncome),
             _StreamStats._stdDev(denseExpense),
           );
-          // Little history must NEVER collapse to a fake deterministic line.
+          // Little uncertain history must NEVER collapse to a fake deterministic line.
           // If observed variance is zero/undefined, derive a conservative
           // scale from known transaction/event amounts (or current cash).
           final fallbackVol = max(observedVol, fallbackDailyVolatility);
@@ -993,11 +1047,14 @@ class ForecastEngine {
         var uncertainIncome = max(0, expectedIncome + residualIncome);
         var uncertainExpense = max(0, expectedExpense + residualExpense);
 
-        if (shocks.income.isNotEmpty && rng.nextDouble() < shocks.incomeProbability) {
+        if (shocks.income.isNotEmpty &&
+            rng.nextDouble() < shocks.incomeProbability) {
           uncertainIncome += shocks.income[rng.nextInt(shocks.income.length)];
         }
-        if (shocks.expense.isNotEmpty && rng.nextDouble() < shocks.expenseProbability) {
-          uncertainExpense += shocks.expense[rng.nextInt(shocks.expense.length)];
+        if (shocks.expense.isNotEmpty &&
+            rng.nextDouble() < shocks.expenseProbability) {
+          uncertainExpense +=
+              shocks.expense[rng.nextInt(shocks.expense.length)];
         }
 
         if (whatIf.incomeDelayDays > 0 && day <= whatIf.incomeDelayDays) {
@@ -1006,7 +1063,8 @@ class ForecastEngine {
 
         var knownNet = 0.0;
         for (final recurring in recurringOccurrences[day] ?? const []) {
-          if (rng.nextDouble() <= recurring.probability) knownNet += recurring.net;
+          if (rng.nextDouble() <= recurring.probability)
+            knownNet += recurring.net;
         }
         for (final event in externalByOffset[day] ?? const []) {
           if (rng.nextDouble() <= event.probability) knownNet += event.amount;
@@ -1058,7 +1116,8 @@ class ForecastEngine {
       var negative = sorted.indexWhere((v) => v >= 0);
       if (negative == -1) negative = sorted.length;
       final rawRisk = negative / sorted.length;
-      final calibratedRisk = bucket.calibrateRisk(rawRisk).clamp(0.0, 1.0).toDouble();
+      final calibratedRisk =
+          bucket.calibrateRisk(rawRisk).clamp(0.0, 1.0).toDouble();
       gapRisk.add(calibratedRisk);
 
       if (runway == null && p50.last < 0) runway = i + 1;
@@ -1082,7 +1141,7 @@ class ForecastEngine {
         .map((minBalance) => max(0.0, currentBalance - minBalance))
         .toList()
       ..sort();
-    final recommendedReserve = _percentile(requiredReserveSamples, 0.90);
+    final rawDrawdownReserve = _percentile(requiredReserveSamples, 0.90);
     var committedOutflow30 = 0.0;
     var knownTotal = 0.0;
     var uncertainTotal = 0.0;
@@ -1094,7 +1153,11 @@ class ForecastEngine {
       uncertainTotal += expectedUncertainNet[i].abs();
     }
     final committedNearTerm = committedOutflow30;
-    final safetyBuffer = currentBalance - recommendedReserve - committedNearTerm;
+    final recommendedReserve = (rawDrawdownReserve - committedNearTerm)
+        .clamp(0.0, double.infinity)
+        .toDouble();
+    final safetyBuffer =
+        currentBalance - recommendedReserve - committedNearTerm;
     final knownShare = knownTotal + uncertainTotal == 0
         ? 0.0
         : knownTotal / (knownTotal + uncertainTotal);
@@ -1124,12 +1187,12 @@ class ForecastEngine {
       committedNearTerm: committedNearTerm,
       denseIncome: denseIncome,
       denseExpense: denseExpense,
-      recurringReliability: recurringReliability,
+      recurringReliability: effectiveRecurringReliability,
     );
 
     final accountRisks = _accountLiquidityRisks(
       accounts: accounts,
-      transactions: history,
+      transactions: transactions,
       businessEvents: businessEvents,
       today: todayOnly,
       days: days,
@@ -1240,9 +1303,8 @@ class ForecastEngine {
     final result = <int, double>{};
     final horizon = today.add(Duration(days: days));
     for (final event in scenario.events) {
-      final net = event.type == TransactionType.income
-          ? event.amount
-          : -event.amount;
+      final net =
+          event.type == TransactionType.income ? event.amount : -event.amount;
       final start = DateTime(event.date.year, event.date.month, event.date.day);
       if (event.recurringPeriod == null) {
         final offset = start.difference(today).inDays;
@@ -1261,8 +1323,8 @@ class ForecastEngine {
         if (offset >= 1 && offset <= days) {
           result[offset] = (result[offset] ?? 0) + net;
         }
-        occurrence = RecurringEngine.advance(
-            occurrence, event.recurringPeriod!);
+        occurrence =
+            RecurringEngine.advance(occurrence, event.recurringPeriod!);
       }
     }
     return result;
@@ -1275,31 +1337,54 @@ class ForecastEngine {
   ) {
     final period = recurring.recurringPeriod;
     if (period == null) return 1;
+
+    var earliest = today;
+    for (final tx in all) {
+      final d = DateTime(tx.date.year, tx.date.month, tx.date.day);
+      if (!d.isAfter(today) && d.isBefore(earliest)) earliest = d;
+    }
+    final observedSpan = today.difference(earliest).inDays + 1;
+    final minimumObservation = switch (period) {
+      RecurringPeriod.daily => 7,
+      RecurringPeriod.weekly => 21,
+      RecurringPeriod.monthly => 90,
+      RecurringPeriod.yearly => 365,
+    };
+    if (observedSpan < minimumObservation) return 1.0;
+
     final children = all.where((tx) {
-      if (tx.id.startsWith('${recurring.id}_')) return true;
+      if (tx.id.startsWith('${recurring.id}_')) {
+        // Auto-materialized income proves only that WesiOS generated a row,
+        // not that money actually arrived. Expenses remain committed cash.
+        return recurring.type == TransactionType.expense;
+      }
       if (tx.isRecurring) return false;
       return tx.title == recurring.title &&
           tx.type == recurring.type &&
-          (tx.amount - recurring.amount).abs() <= max(1, recurring.amount * 0.01);
+          (tx.amount - recurring.amount).abs() <=
+              max(1, recurring.amount * 0.01);
     }).toList();
+
     final lookback = switch (period) {
       RecurringPeriod.daily => 30,
       RecurringPeriod.weekly => 84,
       RecurringPeriod.monthly => 365,
       RecurringPeriod.yearly => 365 * 3,
     };
+    final observedWindow = min(lookback, observedSpan);
     final recentChildren = children
-        .where((e) => e.date.isAfter(today.subtract(Duration(days: lookback))))
+        .where((e) =>
+            e.date.isAfter(today.subtract(Duration(days: observedWindow))))
         .length;
     final expected = switch (period) {
-      RecurringPeriod.daily => lookback,
-      RecurringPeriod.weekly => (lookback / 7).floor(),
-      RecurringPeriod.monthly => (lookback / 30.44).floor(),
-      RecurringPeriod.yearly => max(1, (lookback / 365).floor()),
+      RecurringPeriod.daily => observedWindow,
+      RecurringPeriod.weekly => max(1, (observedWindow / 7).floor()),
+      RecurringPeriod.monthly => max(1, (observedWindow / 30.44).floor()),
+      RecurringPeriod.yearly => max(1, (observedWindow / 365).floor()),
     };
-    // Beta prior: assume recurring entries are reasonably reliable before we
-    // have enough executions, but never grant 100% certainty to income.
-    return ((recentChildren + 3.0) / (expected + 4.0)).clamp(0.15, 1.0).toDouble();
+    return ((recentChildren + 3.0) / (expected + 4.0))
+        .clamp(0.15, 1.0)
+        .toDouble();
   }
 
   static List<double> _netWeekdayFactor(
@@ -1391,7 +1476,9 @@ class ForecastEngine {
         titleEn: regime == CashRegime.growth
             ? 'Growth regime, with mean reversion'
             : 'Downturn regime, with recovery transitions',
-        impact: expectedUncertainNet.take(min(7, expectedUncertainNet.length)).fold(0.0, (a, b) => a + b),
+        impact: expectedUncertainNet
+            .take(min(7, expectedUncertainNet.length))
+            .fold(0.0, (a, b) => a + b),
       ));
     }
     result.sort((a, b) => a.day.compareTo(b.day));
@@ -1416,8 +1503,10 @@ class ForecastEngine {
       prompts.add(const ForecastActionPrompt(
         code: 'low-data',
         severity: ForecastPromptSeverity.warning,
-        textRu: 'Истории мало: дальний прогноз намеренно широкий. Не планируй обязательства по одной линии P50.',
-        textEn: 'Limited history: long-range uncertainty is intentionally wide. Do not plan commitments from P50 alone.',
+        textRu:
+            'Истории мало: дальний прогноз намеренно широкий. Не планируй обязательства по одной линии P50.',
+        textEn:
+            'Limited history: long-range uncertainty is intentionally wide. Do not plan commitments from P50 alone.',
       ));
     }
     if (risk25Day != null) {
@@ -1426,8 +1515,10 @@ class ForecastEngine {
       prompts.add(ForecastActionPrompt(
         code: 'gap-25',
         severity: ForecastPromptSeverity.critical,
-        textRu: 'Риск кассового разрыва превышает 25% через $risk25Day дн. Снизь средние расходы примерно на ${cut.toStringAsFixed(0)} ₽/день или добавь ликвидность.',
-        textEn: 'Cash-gap risk exceeds 25% in $risk25Day days. Cut average spending by about ${cut.toStringAsFixed(0)} per day or add liquidity.',
+        textRu:
+            'Риск кассового разрыва превышает 25% через $risk25Day дн. Снизь средние расходы примерно на ${cut.toStringAsFixed(0)} ₽/день или добавь ликвидность.',
+        textEn:
+            'Cash-gap risk exceeds 25% in $risk25Day days. Cut average spending by about ${cut.toStringAsFixed(0)} per day or add liquidity.',
         amount: cut,
         day: risk25Day,
       ));
@@ -1435,8 +1526,10 @@ class ForecastEngine {
       prompts.add(ForecastActionPrompt(
         code: 'gap-10',
         severity: ForecastPromptSeverity.warning,
-        textRu: 'Риск кассового разрыва превышает 10% через $risk10Day дн. До этой даты лучше не брать новый крупный обязательный платёж.',
-        textEn: 'Cash-gap risk exceeds 10% in $risk10Day days. Avoid adding a large committed payment before then.',
+        textRu:
+            'Риск кассового разрыва превышает 10% через $risk10Day дн. До этой даты лучше не брать новый крупный обязательный платёж.',
+        textEn:
+            'Cash-gap risk exceeds 10% in $risk10Day days. Avoid adding a large committed payment before then.',
         day: risk10Day,
       ));
     }
@@ -1444,16 +1537,21 @@ class ForecastEngine {
       prompts.add(ForecastActionPrompt(
         code: 'negative-buffer',
         severity: ForecastPromptSeverity.critical,
-        textRu: 'Свободный буфер отрицательный: текущий баланс уже меньше рекомендуемой подушки и ближайших обязательств.',
-        textEn: 'Free safety buffer is negative: current cash is below the reserve plus near-term commitments.',
+        textRu:
+            'Свободный буфер отрицательный: текущий баланс уже меньше рекомендуемой подушки и ближайших обязательств.',
+        textEn:
+            'Free safety buffer is negative: current cash is below the reserve plus near-term commitments.',
         amount: -safetyBuffer,
       ));
-    } else if (committedNearTerm > currentBalance * 0.7 && committedNearTerm > 0) {
+    } else if (committedNearTerm > currentBalance * 0.7 &&
+        committedNearTerm > 0) {
       prompts.add(const ForecastActionPrompt(
         code: 'commitment-load',
         severity: ForecastPromptSeverity.warning,
-        textRu: 'Ближайшие обязательные платежи забирают большую часть текущей ликвидности. Сохрани запас до их прохождения.',
-        textEn: 'Near-term committed payments consume most current liquidity. Preserve cash until they clear.',
+        textRu:
+            'Ближайшие обязательные платежи забирают большую часть текущей ликвидности. Сохрани запас до их прохождения.',
+        textEn:
+            'Near-term committed payments consume most current liquidity. Preserve cash until they clear.',
       ));
     }
 
@@ -1462,29 +1560,33 @@ class ForecastEngine {
           ? 0
           : values.where((v) => v > 0).length / values.length;
       final recent = denseIncome.sublist(denseIncome.length - 14);
-      final prior = denseIncome.sublist(max(0, denseIncome.length - 56), denseIncome.length - 14);
+      final prior = denseIncome.sublist(
+          max(0, denseIncome.length - 56), denseIncome.length - 14);
       final priorRate = nonZeroRate(prior);
       final recentRate = nonZeroRate(recent);
       if (priorRate > 0.05 && recentRate < priorRate * 0.65) {
         prompts.add(const ForecastActionPrompt(
           code: 'income-rhythm-break',
           severity: ForecastPromptSeverity.warning,
-          textRu: 'Ломается ритм входящих: за последние 14 дней дни с поступлениями стали заметно реже обычного.',
-          textEn: 'Incoming rhythm is weakening: cash-in days are materially less frequent over the last 14 days.',
+          textRu:
+              'Ломается ритм входящих: за последние 14 дней дни с поступлениями стали заметно реже обычного.',
+          textEn:
+              'Incoming rhythm is weakening: cash-in days are materially less frequent over the last 14 days.',
         ));
       }
     }
     if (denseExpense.length >= 42) {
-      double mean(List<double> values) => values.isEmpty
-          ? 0
-          : values.reduce((a, b) => a + b) / values.length;
+      double mean(List<double> values) =>
+          values.isEmpty ? 0 : values.reduce((a, b) => a + b) / values.length;
       final recent = mean(denseExpense.sublist(denseExpense.length - 14));
-      final prior = mean(denseExpense.sublist(max(0, denseExpense.length - 56), denseExpense.length - 14));
+      final prior = mean(denseExpense.sublist(
+          max(0, denseExpense.length - 56), denseExpense.length - 14));
       if (prior > 0 && recent > prior * 1.35) {
         prompts.add(const ForecastActionPrompt(
           code: 'expense-acceleration',
           severity: ForecastPromptSeverity.warning,
-          textRu: 'Расходный ритм ускорился более чем на 35% относительно предыдущего периода.',
+          textRu:
+              'Расходный ритм ускорился более чем на 35% относительно предыдущего периода.',
           textEn: 'Spending pace is more than 35% above the prior period.',
         ));
       }
@@ -1493,16 +1595,20 @@ class ForecastEngine {
       prompts.add(const ForecastActionPrompt(
         code: 'recurring-misses',
         severity: ForecastPromptSeverity.warning,
-        textRu: 'Есть регулярные поступления/платежи, которые часто срываются. Horizon уменьшил их вес вместо проекции на 100%.',
-        textEn: 'Some recurring cash items are frequently missed. Horizon down-weights them instead of projecting 100%.',
+        textRu:
+            'Есть регулярные поступления/платежи, которые часто срываются. Horizon уменьшил их вес вместо проекции на 100%.',
+        textEn:
+            'Some recurring cash items are frequently missed. Horizon down-weights them instead of projecting 100%.',
       ));
     }
     if (runway != null && risk25Day == null) {
       prompts.add(ForecastActionPrompt(
         code: 'median-runway',
         severity: ForecastPromptSeverity.warning,
-        textRu: 'Медианный runway — около $runway дн. Проверь обязательства раньше этой даты.',
-        textEn: 'Median runway is about $runway days. Review commitments before that date.',
+        textRu:
+            'Медианный runway — около $runway дн. Проверь обязательства раньше этой даты.',
+        textEn:
+            'Median runway is about $runway days. Review commitments before that date.',
         day: runway,
       ));
     }
@@ -1518,39 +1624,76 @@ class ForecastEngine {
   }) {
     if (accounts.isEmpty) return const [];
     final result = <AccountLiquidityRisk>[];
-    final totalNettable = accounts
-        .where((a) => a.allowNetting)
-        .fold<double>(0, (sum, a) => sum + max(0, a.balance - a.minimumBalance));
     for (final account in accounts) {
-      final own = transactions
-          .where((t) => t.effectiveAccountId == account.accountId)
-          .toList();
+      final history = transactions.where((t) {
+        if (t.effectiveAccountId != account.accountId) return false;
+        final d = DateTime(t.date.year, t.date.month, t.date.day);
+        return !d.isAfter(today);
+      }).toList();
       final daily = <DateTime, double>{};
-      for (final tx in own) {
+      for (final tx in history) {
         final d = DateTime(tx.date.year, tx.date.month, tx.date.day);
         daily[d] = (daily[d] ?? 0) +
             (tx.type == TransactionType.income ? tx.amount : -tx.amount);
       }
-      final values = daily.values.toList();
-      final mean = values.isEmpty ? 0.0 : values.reduce((a, b) => a + b) / values.length;
-      final vol = _StreamStats._stdDev(values);
+
+      final dense = <double>[];
+      if (daily.isNotEmpty) {
+        final ordered = daily.keys.toList()..sort();
+        final first = ordered.first;
+        final span = today.difference(first).inDays + 1;
+        for (var i = 0; i < span; i++) {
+          dense.add(daily[first.add(Duration(days: i))] ?? 0.0);
+        }
+      }
+      final mean =
+          dense.isEmpty ? 0.0 : dense.reduce((a, b) => a + b) / dense.length;
+      final vol = _StreamStats._stdDev(dense);
       int? riskDay;
       var finalP10 = account.balance;
       var cumulativeKnown = 0.0;
       for (var day = 1; day <= days; day++) {
         var known = 0.0;
-        for (final event in businessEvents) {
-          if (event.accountId != account.accountId) continue;
-          final offset = DateTime(event.date.year, event.date.month, event.date.day)
+        for (final tx in transactions) {
+          if (tx.effectiveAccountId != account.accountId || tx.isRecurring) {
+            continue;
+          }
+          final offset = DateTime(tx.date.year, tx.date.month, tx.date.day)
               .difference(today)
               .inDays;
+          if (offset == day) {
+            known += tx.type == TransactionType.income ? tx.amount : -tx.amount;
+          }
+        }
+        for (final event in businessEvents) {
+          if (event.accountId != account.accountId) continue;
+          final offset =
+              DateTime(event.date.year, event.date.month, event.date.day)
+                  .difference(today)
+                  .inDays;
           if (offset == day) known += event.amount * event.probability;
         }
         cumulativeKnown += known;
-        finalP10 = account.balance + mean * day + cumulativeKnown - 1.2816 * vol * sqrt(day.toDouble());
-        if (riskDay == null && finalP10 < account.minimumBalance) riskDay = day;
+        finalP10 = account.balance +
+            mean * day +
+            cumulativeKnown -
+            1.2816 * vol * sqrt(day.toDouble());
+        if (riskDay == null && finalP10 < account.minimumBalance) {
+          riskDay = day;
+        }
       }
       final shortfall = max(0.0, account.minimumBalance - finalP10);
+      var transferable = 0.0;
+      for (final source in accounts) {
+        if (!source.allowNetting || source.accountId == account.accountId) {
+          continue;
+        }
+        var free = max(0.0, source.balance - source.minimumBalance);
+        if (source.currency.toLowerCase() != account.currency.toLowerCase()) {
+          free *= 1 - source.fxHaircut.clamp(0.0, 0.25);
+        }
+        transferable += free;
+      }
       result.add(AccountLiquidityRisk(
         accountId: account.accountId,
         name: account.name,
@@ -1558,7 +1701,8 @@ class ForecastEngine {
         currentBalance: account.balance,
         projectedP10: finalP10,
         riskDay: riskDay,
-        canBeCoveredByNetting: account.allowNetting && totalNettable >= shortfall,
+        canBeCoveredByNetting:
+            account.allowNetting && transferable >= shortfall,
       ));
     }
     return result;
