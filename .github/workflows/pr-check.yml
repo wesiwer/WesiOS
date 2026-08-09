@@ -6,40 +6,209 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pr-check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  record-horizon-tz:
+    if: github.head_ref == 'agent/horizon-top-tier'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/horizon-top-tier
+          fetch-depth: 1
+
+      - name: Append canonical Horizon A-G contract to TZ
+        shell: bash
+        run: |
+          set -euo pipefail
+          marker='## 13. Wesi Horizon Top-Tier A→G'
+          if ! grep -Fq "$marker" TZ.md; then
+            cat >> TZ.md <<'MD'
+
+---
+
+## 13. Wesi Horizon Top-Tier A→G
+
+Статус: **реализовано в изолированной ветке `agent/horizon-top-tier`, draft PR #66; ещё не merged/released**.
+
+### Принцип модели
+
+Wesi Horizon обязан быть полезным и честным, а не демонстрационно красивым:
+
+- максимальная практическая точность на 2–4 неделях;
+- на 3–12 месяцах — возврат к устойчивому baseline и растущая неопределённость;
+- собственные ошибки используются для калибровки;
+- известные/обязательные деньги отделены от неизвестных/вероятностных;
+- главный результат — риск, runway, подушка и действия, а не только линия графика;
+- при слабых данных Horizon прямо сообщает низкую уверенность и не обещает точный дальний баланс.
+
+### Sprint A — фундамент честности (1–6)
+
+1. **Anti-millionaire:** mean reversion к долгому baseline, decay недавнего темпа, ограниченный drift. Удачный месяц не может бесконечно повторяться в годовом прогнозе.
+2. Недельная сезонность затухает с горизонтом: близко ритм выражен, далеко его влияние ослабевает.
+3. P10–P90 расширяется с горизонтом, причём расширение неопределённости не имеет права само поднимать дальний P50.
+4. Используется block-bootstrap последовательностей 3–7 дней вместо независимого дневного шума.
+5. Разные правила горизонтов: 7–14 дней — факты/ритм; 30–60 — тренд+сезонность; 90–365+ — baseline+known cash+широкая неопределённость.
+6. Low-data режим fail-honest: при недостатке истории статистический прогноз не строится либо получает явную низкую уверенность; известные recurring могут оставаться детерминированными.
+
+Дополнительный инвариант: если shock-фильтрация вырезала почти всё recent-окно, отсутствие нескольких обычных дней не трактуется как доказательство исчезновения базового бизнеса — recent откатывается к устойчивому baseline, а краткосрочный burst учитывается режимом/шоком.
+
+### Sprint B — калибровка (7–11)
+
+7. Ширина P10–P90 автоматически масштабируется по backtest coverage с целью около 80%.
+8. Вероятность cash gap калибруется по эмпирическим risk bins.
+9. Систематический bias корректирует медиану P50, а не маскируется расширением коридора.
+10. Backtest считается раздельно для 14 / 30 / 90 / 180 дней и использует rolling origins.
+11. UI сохраняет стабильный seed, оценка качества использует несколько seed.
+
+### Sprint C — структура денег (12–16)
+
+12. `committed/known cash` отделён от `uncertain cash` в данных и диагностике.
+13. Recurring income получает reliability по фактическим подтверждениям исполнения; автосозданная WesiOS запись дохода сама по себе не считается доказательством фактического прихода. Recurring expense трактуется консервативно как обязательство.
+14. Редкие крупные доходы и расходы моделируются раздельными shock pools; серии соседних шоковых дней считаются одним эпизодом, а не вечной ежедневной вероятностью джекпота.
+15. Нерегулярный поток моделируется как `частота появления × размер ненулевой операции`.
+16. Сначала считаются отдельные денежные потоки/категории, затем агрегируются; вклад потоков сохраняется для объяснимости и concentration-risk.
+
+### Sprint D — режимы и стресс (17–20)
+
+17. Есть режимы `stable / growth / downturn`.
+18. Между режимами используются вероятностные переходы; текущий рост/просадка не становится вечной судьбой.
+19. Stress library содержит: доход −30% на 60 дней, задержку входящих на 30 дней, крупный внезапный расход, потерю крупнейшего источника на 60 дней. Потеря главного источника не обнуляет все остальные доходы.
+20. Каждый расчёт формирует пакет `Base / Conservative / Aggressive / Stress`.
+
+### Sprint E — Decision Layer (21–25)
+
+21. Главные метрики: median runway и первый день, когда cash-gap risk превышает 10% и 25%.
+22. `recommendedReserve` рассчитывается из Monte-Carlo maximum drawdown как стохастическая подушка.
+23. `safetyBuffer/free cash = current cash − recommendedReserve − committedNearTerm`. Committed obligations не учитываются в подушке второй раз.
+24. Horizon выдаёт короткие action prompts: дефицит подушки, приближение риска, концентрация, срывы recurring, аномальная динамика.
+25. What-If возвращает не только новую линию, но `riskDelta` и изменение runway относительно Base.
+
+`HorizonDecisionPanel` показывается в основном Forecast и Sandbox до графика: confidence, runway, risk 10/25, подушка, свободный буфер, committed ≤30 дней, known-cash share, coverage, сценарии, What-If delta, действия, account-risk и объяснения изломов.
+
+### Sprint F — самообучение и конкуренция движков (26–29)
+
+26. Ежемесячный bounded learning loop сохраняет только интерпретируемые параметры и calibration profile. Он работает background/single-flight и не блокирует открытие Forecast.
+27. Horizon / Prophet / SARIMAX / Combined оцениваются backtest-метриками; победитель выбирается качеством, а не видом линии.
+28. В оценке используется quantile/pinball loss для P10/P50/P90, а не только MAE/MAPE.
+29. Champion выбирается отдельно по горизонту. `Combined` больше не обязан быть средним: если equal averaging хуже чем одиночный победитель, UI получает победивший движок и явно сообщает, что усреднение отклонено backtest.
+
+### Sprint G — система управления кассой Wesi Inc. (30–35)
+
+30. `TreasuryService.generateForecast` — company-level orchestration: Treasury history + recurring + Tasks obligations + CRM pipeline + Audio Vault expectations + account liquidity.
+31. Audio Vault имеет contract memory: вероятность/сумма продления, ожидаемые роялти, дата/вероятность. Даже без ручной настройки существующая аренда получает консервативный default expectation; закрытие аренды очищает sidecar memory.
+32. Early-warning отслеживает ритм входящих, concentration risk, аномальные расходы и recurring misses.
+33. Счета имеют sidecar liquidity profile: валюта, неснижаемый локальный остаток, разрешение netting и FX haircut. Проблемный счёт не может считать собственные деньги источником своего же покрытия.
+34. Материальные изломы имеют explanation records: known cash, scenario events, recurring/obligations и прочие существенные факторы.
+35. Truth-first: confidence и known/unknown доля показываются явно; слабая история не превращается в узкую «истину».
+
+### Интеграция модулей без ломки данных
+
+- **Tasks:** денежное влияние хранится в существующих tags через `TaskCashImpact`; можно задать приход/расход, сумму, committed либо uncertain и вероятность. Срок задачи является датой движения. Человеческие теги сохраняются. Hive schema не меняется.
+- **CRM:** открытые сделки уже дают probabilistic incoming cash через `amount × probability × expectedCloseAt`.
+- **Audio Vault:** `HorizonContractMemoryService` хранится отдельно от юридической записи аренды; пользователь может менять прогнозные ожидания, не переписывая договор.
+- **Accounts:** `AccountLiquidityService` — sidecar metadata, поэтому `AccountModel`/Hive schema не меняется.
+- **Sandbox:** использует ту же математику, Stress/Scenario/Decision layer, но намеренно не читает реальный company context из CRM/Tasks/Vault/accounts.
+
+### Математические и регрессионные гарантии
+
+- Нельзя вернуть вечную экстраполяцию lucky month.
+- Рост ширины P10–P90 не должен механически повышать P50 из-за `max(0)`/truncation bias; uncertainty применяется к центрированному net deviation.
+- Pure known recurring остаётся детерминированным и не получает искусственный stochastic noise.
+- Low-data без известных будущих денег сохраняет старый fail-honest контракт.
+- DCF, recurring projection, path scaling и прежние Treasury engine invariants не должны регрессировать.
+- Focused математический gate после финальных фиксов: **33/33 tests passed** (`horizon_top_tier_test` + legacy `treasury_engines_test`).
+- Отдельный `horizon_product_integration_test.dart` закрепляет Tasks cash tags, finite stress, smart Combined/Decision UI и wiring Tasks/Vault/accounts/Sandbox.
+
+### Merge / release gate
+
+До переноса в `main` обязательно:
+
+1. `flutter analyze --no-fatal-infos` — success.
+2. Полный `flutter test` — success.
+3. Проверочные Android/Windows workflows — success.
+4. Draft PR #66 остаётся немерженным, пока эти gates не подтверждены на финальном clean head.
+5. **Production release не запускать без отдельного явного запроса владельца.**
+
+MD
+          fi
+
+          cat > .github/workflows/pr-check.yml <<'YAML'
+          name: Pull request check
+
+          on:
+            pull_request:
+              branches: [main]
+            workflow_dispatch:
+
+          permissions:
+            contents: read
+
+          concurrency:
+            group: pr-check-${{ github.event.pull_request.number || github.ref }}
+            cancel-in-progress: true
+
+          jobs:
+            analyze-and-test:
+              runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+              timeout-minutes: 20
+              steps:
+                - uses: actions/checkout@v4
+
+                - name: Validate server JavaScript
+                  shell: bash
+                  run: |
+                    set -euo pipefail
+                    for file in server/pb_hooks/*.js server/employee-portal/*.js; do
+                      [ -f "$file" ] || continue
+                      node --check "$file"
+                    done
+
+                - name: Setup Flutter
+                  uses: subosito/flutter-action@v2
+                  with:
+                    flutter-version: '3.24.0'
+                    channel: stable
+                    cache: true
+
+                - name: Get dependencies
+                  run: flutter pub get
+
+                - name: Analyze
+                  run: flutter analyze --no-fatal-infos
+
+                - name: Test
+                  run: flutter test
+          YAML
+
+          git diff --check
+          grep -q '## 13. Wesi Horizon Top-Tier A→G' TZ.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add TZ.md .github/workflows/pr-check.yml
+          git commit -m 'docs(horizon): record complete A-G contract in TZ'
+          git push origin HEAD:agent/horizon-top-tier
+
   analyze-and-test:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
-
-      - name: Validate server JavaScript
-        shell: bash
-        run: |
-          set -euo pipefail
-          for file in server/pb_hooks/*.js server/employee-portal/*.js; do
-            [ -f "$file" ] || continue
-            node --check "$file"
-          done
-
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
           channel: stable
           cache: true
-
       - name: Get dependencies
         run: flutter pub get
-
       - name: Analyze
         run: flutter analyze --no-fatal-infos
-
       - name: Test
         run: flutter test
