@@ -1,0 +1,212 @@
+name: Activate WesiOS Local Mail
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesios-production-mail
+  cancel-in-progress: false
+
+jobs:
+  activate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment:
+      name: employee-portal
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Validate source hook
+        run: |
+          set -euo pipefail
+          test -s server/pb_hooks/wesi_mail_health.pb.js
+          node --check server/pb_hooks/wesi_mail_health.pb.js
+
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${USER:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+            echo '::warning::WESI_SERVER_KNOWN_HOSTS не задан — используется текущий host key.'
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Fail closed until mail DNS and transport are valid
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          DOMAIN='wesi-inc.ru'
+          MAIL_HOST='mail.wesi-inc.ru'
+          SELECTOR='wesios'
+          PUBLIC_IP=$(curl -4fsS --max-time 10 https://api.ipify.org)
+
+          A=$(dig +short A "$MAIL_HOST" | tail -n1)
+          [ "$A" = "$PUBLIC_IP" ] || {
+            echo "DNS A mismatch for $MAIL_HOST" >&2; exit 10; }
+
+          PTR=$(dig +short -x "$PUBLIC_IP" | head -n1 | sed 's/\.$//')
+          [ "$PTR" = "$MAIL_HOST" ] || {
+            echo "PTR mismatch: $PTR" >&2; exit 11; }
+
+          SPF=$(dig +short TXT "$DOMAIN" | tr -d '"' | tr '\n' ' ')
+          printf '%s' "$SPF" | grep -Fq 'v=spf1' || {
+            echo 'SPF missing' >&2; exit 12; }
+          printf '%s' "$SPF" | grep -Fq "ip4:$PUBLIC_IP" || {
+            echo 'SPF does not authorize this server' >&2; exit 13; }
+
+          DKIM=$(dig +short TXT "$SELECTOR._domainkey.$DOMAIN" | tr -d '"' | tr '\n' ' ')
+          printf '%s' "$DKIM" | grep -Fq 'v=DKIM1' || {
+            echo 'DKIM TXT missing' >&2; exit 14; }
+          printf '%s' "$DKIM" | grep -Eq '(^|[;[:space:]])p=[A-Za-z0-9+/=]+' || {
+            echo 'DKIM public key missing' >&2; exit 15; }
+          command -v opendkim-testkey >/dev/null 2>&1 || {
+            echo 'opendkim-testkey missing' >&2; exit 16; }
+          opendkim-testkey -d "$DOMAIN" -s "$SELECTOR" -vvv >/tmp/wesi-dkim-check.log 2>&1 || {
+            cat /tmp/wesi-dkim-check.log >&2; rm -f /tmp/wesi-dkim-check.log; exit 17; }
+          cat /tmp/wesi-dkim-check.log
+          rm -f /tmp/wesi-dkim-check.log
+
+          DMARC=$(dig +short TXT "_dmarc.$DOMAIN" | tr -d '"' | tr '\n' ' ')
+          printf '%s' "$DMARC" | grep -Fq 'v=DMARC1' || {
+            echo 'DMARC missing' >&2; exit 18; }
+
+          systemctl is-active --quiet postfix || { echo 'Postfix inactive' >&2; exit 19; }
+          systemctl is-active --quiet opendkim || { echo 'OpenDKIM inactive' >&2; exit 20; }
+          timeout 10 bash -c 'cat < /dev/null > /dev/tcp/gmail-smtp-in.l.google.com/25' || {
+            echo 'Outbound TCP/25 blocked' >&2; exit 21; }
+
+          echo 'MAIL_DNS_AND_TRANSPORT_READY'
+          REMOTE
+
+      - name: Configure PocketBase SMTP through temporary localhost-only hook
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          TOKEN=$(openssl rand -hex 24)
+          REMOTE="/tmp/wesi-local-smtp-$GITHUB_RUN_ID"
+          LOCAL="$RUNNER_TEMP/wesi_mail_health_activate.pb.js"
+
+          cp server/pb_hooks/wesi_mail_health.pb.js "$LOCAL"
+          cat >> "$LOCAL" <<JS
+
+          // Ephemeral CI-only route. It exists only for a few seconds and the
+          // original health hook is restored immediately after the settings save.
+          routerAdd("POST", "/api/wesi/internal/local-smtp-$TOKEN", (e) => {
+            const settings = e.app.settings();
+            settings.smtp.enabled = true;
+            settings.smtp.host = "127.0.0.1";
+            settings.smtp.port = 25;
+            settings.smtp.username = "";
+            settings.smtp.password = "";
+            settings.smtp.tls = false;
+            settings.smtp.localName = "mail.wesi-inc.ru";
+            settings.meta.senderName = "WesiOS";
+            settings.meta.senderAddress = "security@wesi-inc.ru";
+            e.app.save(settings);
+            return e.json(200, {
+              "ok": true,
+              "smtpEnabled": settings.smtp.enabled === true,
+              "smtpHost": settings.smtp.host,
+              "smtpPort": settings.smtp.port,
+              "sender": settings.meta.senderAddress,
+            });
+          });
+          JS
+          node --check "$LOCAL"
+
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            "$LOCAL" \
+            server/pb_hooks/wesi_mail_health.pb.js \
+            "$USER@$HOST:$REMOTE/"
+
+          $SSH "$USER@$HOST" \
+            "TOKEN='$TOKEN' REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          HOOK=/opt/pocketbase/pb_hooks/wesi_mail_health.pb.js
+          ORIGINAL="$REMOTE/wesi_mail_health.pb.js"
+          PATCHED="$REMOTE/wesi_mail_health_activate.pb.js"
+          test -w "$HOOK" || { echo "Existing health hook is not writable" >&2; exit 30; }
+          test -s "$ORIGINAL" && test -s "$PATCHED"
+
+          restore() {
+            cat "$ORIGINAL" > "$HOOK" || true
+            chmod 0644 "$HOOK" || true
+            rm -rf "$REMOTE" || true
+          }
+          trap restore EXIT
+
+          cat "$PATCHED" > "$HOOK"
+          chmod 0644 "$HOOK"
+
+          CODE=''
+          for attempt in $(seq 1 20); do
+            CODE=$(curl -sS -o "$REMOTE/configure.json" -w '%{http_code}' \
+              --max-time 10 -X POST \
+              "http://127.0.0.1:8090/api/wesi/internal/local-smtp-$TOKEN" || true)
+            [ "$CODE" = 200 ] && break
+            sleep 1
+          done
+          [ "$CODE" = 200 ] || {
+            echo "Temporary SMTP configure route returned HTTP $CODE" >&2
+            cat "$REMOTE/configure.json" 2>/dev/null || true
+            exit 31
+          }
+          cat "$REMOTE/configure.json"
+
+          # Restore immediately; trap repeats this safely on exit.
+          cat "$ORIGINAL" > "$HOOK"
+          chmod 0644 "$HOOK"
+          sleep 2
+          cmp -s "$ORIGINAL" "$HOOK" || {
+            echo 'Health hook restore mismatch' >&2; exit 32; }
+          echo 'POCKETBASE_LOCAL_SMTP_CONFIGURED_AND_EPHEMERAL_ROUTE_REMOVED'
+          REMOTE_SCRIPT
+
+      - name: Verify WesiOS mail readiness
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 10); do
+            CODE=$(curl -sS -o mail-ready.json -w '%{http_code}' --max-time 20 \
+              https://api.wesi-inc.ru/api/wesi/auth/mail-ready || true)
+            if [ "$CODE" = 200 ]; then
+              python3 - <<'PY'
+          import json
+          d=json.load(open('mail-ready.json', encoding='utf-8'))
+          assert d.get('ready') is True, d
+          assert d.get('smtpReady') is True, d
+          assert d.get('smtpEnabled') is True, d
+          print('WESIOS_LOCAL_SMTP_READY')
+          PY
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "::error::mail-ready still not healthy (HTTP $CODE)"
+          cat mail-ready.json 2>/dev/null || true
+          exit 1
