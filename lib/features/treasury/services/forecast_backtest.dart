@@ -190,16 +190,20 @@ class ForecastBacktest {
   static double balanceOn(
     DateTime day,
     List<TransactionModel> transactions,
-    double currentBalance,
-  ) {
+    double currentBalance, {
+    DateTime? currentDate,
+  }) {
     final cutoff = _dateOnly(day);
-    var future = 0.0;
+    final currentCutoff = _dateOnly(currentDate ?? DateTime.now());
+    var afterCutoffAlreadyInCurrentBalance = 0.0;
     for (final tx in transactions) {
-      if (_dateOnly(tx.date).isAfter(cutoff)) {
-        future += tx.type == TransactionType.income ? tx.amount : -tx.amount;
+      final txDay = _dateOnly(tx.date);
+      if (txDay.isAfter(cutoff) && !txDay.isAfter(currentCutoff)) {
+        afterCutoffAlreadyInCurrentBalance +=
+            tx.type == TransactionType.income ? tx.amount : -tx.amount;
       }
     }
-    return currentBalance - future;
+    return currentBalance - afterCutoffAlreadyInCurrentBalance;
   }
 
   static BacktestResult run({
@@ -219,6 +223,7 @@ class ForecastBacktest {
       transactions: transactions,
       currentBalance: currentBalance,
       asOf: asOf,
+      currentDate: today,
       horizonDays: horizonDays,
       annualDiscountRate: annualDiscountRate,
       seeds: [seed],
@@ -232,6 +237,7 @@ class ForecastBacktest {
     required List<TransactionModel> transactions,
     required double currentBalance,
     required DateTime asOf,
+    required DateTime currentDate,
     required int horizonDays,
     required List<int> seeds,
     required int paths,
@@ -254,7 +260,12 @@ class ForecastBacktest {
       return BacktestResult.empty(asOf, horizonDays);
     }
 
-    final balanceAtAsOf = balanceOn(asOf, transactions, currentBalance);
+    final balanceAtAsOf = balanceOn(
+      asOf,
+      transactions,
+      currentBalance,
+      currentDate: currentDate,
+    );
     final forecasts = <ForecastResult>[];
     for (final seed in seeds) {
       final forecast = ForecastEngine.generate(
@@ -367,6 +378,7 @@ class ForecastBacktest {
           transactions: transactions,
           currentBalance: currentBalance,
           asOf: asOf,
+          currentDate: today,
           horizonDays: horizon,
           seeds: seeds,
           paths: paths,

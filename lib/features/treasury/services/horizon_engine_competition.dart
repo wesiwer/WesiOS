@@ -220,8 +220,9 @@ class HorizonEngineCompetitionService {
             .subtract(Duration(days: offset));
         final past = transactions.where((t) => !t.date.isAfter(asOf)).toList();
         if (past.length < 14) continue;
-        final balance =
-            ForecastBacktest.balanceOn(asOf, transactions, currentBalance);
+        final balance = ForecastBacktest.balanceOn(
+            asOf, transactions, currentBalance,
+            currentDate: today);
 
         final native = _nativeAverage(
           transactions: past,
@@ -270,6 +271,7 @@ class HorizonEngineCompetitionService {
                 target,
                 transactions,
                 currentBalance,
+                currentDate: today,
               ),
               p10: result.p10[i],
               p50: result.p50[i],

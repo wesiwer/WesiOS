@@ -81,7 +81,10 @@ class TreasuryService {
   }
 
   Future<Map<String, double>> getBalanceBreakdown() async {
-    final all = await getAllTransactions();
+    final now = DateTime.now();
+    final all = (await getAllTransactions())
+        .where((tx) => !tx.date.isAfter(now))
+        .toList();
     double income = 0, expense = 0;
     for (final tx in all) {
       if (tx.type == TransactionType.income) {
@@ -96,7 +99,11 @@ class TreasuryService {
   // ========== ANOMALY DETECTION ==========
 
   Future<List<TransactionModel>> detectAnomalies() async {
-    return AnomalyEngine.detect(await getAllTransactions());
+    final now = DateTime.now();
+    final actual = (await getAllTransactions())
+        .where((tx) => !tx.date.isAfter(now))
+        .toList();
+    return AnomalyEngine.detect(actual);
   }
 
   // ========== RECURRING PAYMENTS ==========

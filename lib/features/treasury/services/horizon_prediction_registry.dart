@@ -76,8 +76,7 @@ class HorizonPredictionRecord {
         id: '${json['id'] ?? ''}',
         issuedAt: DateTime.tryParse('${json['issuedAt'] ?? ''}') ??
             DateTime.fromMillisecondsSinceEpoch(0),
-        startingBalance:
-            (json['startingBalance'] as num?)?.toDouble() ?? 0,
+        startingBalance: (json['startingBalance'] as num?)?.toDouble() ?? 0,
         calibrationSource: '${json['calibrationSource'] ?? 'unknown'}',
         predictions: [
           for (final raw in (json['predictions'] as List? ?? const []))
@@ -242,6 +241,7 @@ class HorizonPredictionRegistry {
           prediction.targetDate,
           transactions,
           currentBalance,
+          currentDate: today,
         );
         observations.add(HorizonRealizedPrediction(
           recordId: record.id,
@@ -279,7 +279,9 @@ class HorizonPredictionRegistry {
       var qLoss = 0.0;
       var brier = 0.0;
       final risk = <({double predicted, bool actual})>[];
-      final scale = own.map((o) => o.actualBalance.abs()).fold<double>(0, (a, b) => a + b) /
+      final scale = own
+              .map((o) => o.actualBalance.abs())
+              .fold<double>(0, (a, b) => a + b) /
           own.length;
       final denominatorFloor = max(1.0, scale * 0.01);
       for (final observation in own) {
@@ -287,7 +289,8 @@ class HorizonPredictionRegistry {
         signed += observation.error;
         if (observation.covered) covered++;
         if (observation.actualBalance.abs() >= denominatorFloor) {
-          percentage += observation.error.abs() / observation.actualBalance.abs();
+          percentage +=
+              observation.error.abs() / observation.actualBalance.abs();
           percentageSamples++;
         }
         qLoss += observation.quantileLoss;
@@ -350,6 +353,7 @@ class HorizonPredictionRegistry {
         if (b == null) return a;
         return a * backWeight + b * liveWeight;
       }
+
       blended.add(HorizonBacktestMetrics(
         horizonDays: horizon,
         samples: historical.samples + realized.samples,
@@ -360,8 +364,8 @@ class HorizonPredictionRegistry {
         bias: historical.bias * backWeight + realized.bias * liveWeight,
         quantileLoss: historical.quantileLoss * backWeight +
             realized.quantileLoss * liveWeight,
-        brierScore:
-            historical.brierScore * backWeight + realized.brierScore * liveWeight,
+        brierScore: historical.brierScore * backWeight +
+            realized.brierScore * liveWeight,
         riskObservations: [
           ...historical.riskObservations,
           ...realized.riskObservations,

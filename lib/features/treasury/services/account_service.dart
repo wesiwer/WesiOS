@@ -62,19 +62,19 @@ class AccountService {
     return main;
   }
 
-  static Future<List<AccountModel>> getAll({bool includeArchived = true}) async {
+  static Future<List<AccountModel>> getAll(
+      {bool includeArchived = true}) async {
     await ensureMain();
     final box = await _accountsBox;
-    final list = box.values
-        .where((a) => includeArchived || !a.archived)
-        .toList()
-      // Основной всегда первым, остальные по дате создания: так порядок не
-      // прыгает при переименованиях.
-      ..sort((a, b) {
-        if (a.id == AccountModel.mainId) return -1;
-        if (b.id == AccountModel.mainId) return 1;
-        return a.createdAt.compareTo(b.createdAt);
-      });
+    final list =
+        box.values.where((a) => includeArchived || !a.archived).toList()
+          // Основной всегда первым, остальные по дате создания: так порядок не
+          // прыгает при переименованиях.
+          ..sort((a, b) {
+            if (a.id == AccountModel.mainId) return -1;
+            if (b.id == AccountModel.mainId) return 1;
+            return a.createdAt.compareTo(b.createdAt);
+          });
     return list;
   }
 
@@ -153,11 +153,17 @@ class AccountService {
   /// Операции без `accountId` попадают в основной счёт — см.
   /// [TransactionModel.effectiveAccountId].
   static Future<List<AccountSummary>> summaries(
-      List<TransactionModel> transactions) async {
+    List<TransactionModel> transactions, {
+    DateTime? asOf,
+  }) async {
     final accounts = await getAll();
+    final now = asOf ?? DateTime.now();
+    final cutoff = DateTime(now.year, now.month, now.day, now.hour, now.minute,
+        now.second, now.millisecond, now.microsecond);
     return accounts.map((a) {
-      final own =
-          transactions.where((t) => t.effectiveAccountId == a.id).toList();
+      final own = transactions
+          .where((t) => t.effectiveAccountId == a.id && !t.date.isAfter(cutoff))
+          .toList();
       var income = 0.0;
       var expense = 0.0;
       for (final t in own) {
