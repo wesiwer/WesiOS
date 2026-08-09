@@ -32,12 +32,14 @@ jobs:
           node --check server/pb_hooks/wesi_auth_bootstrap.pb.js
           node --check server/pb_hooks/wesi_security.pb.js
           node --check server/pb_hooks/wesi_mail_health.pb.js
-          grep -q '2026-08-09.owner-email-v7' server/pb_hooks/wesi_auth_bootstrap.pb.js
-          grep -q '2026-08-09.security-mail-v6' server/pb_hooks/wesi_security.pb.js
+          grep -q '2026-08-09.owner-email-v8' server/pb_hooks/wesi_auth_bootstrap.pb.js
+          grep -q '2026-08-09.security-mail-v7' server/pb_hooks/wesi_security.pb.js
           grep -q '2026-08-09.mail-design-v1' server/pb_hooks/wesi_auth_bootstrap.pb.js
-          grep -q 'globalThis.wesiBuildOtpMail = function wesiBuildOtpMail' server/pb_hooks/wesi_auth_bootstrap.pb.js
+          test "$(grep -c 'const wesiBuildOtpMail = (code, purpose) =>' server/pb_hooks/wesi_auth_bootstrap.pb.js)" -eq 2
+          ! grep -q 'globalThis.wesiBuildOtpMail' server/pb_hooks/wesi_auth_bootstrap.pb.js
           grep -q '2026-08-09.mail-design-v1' server/pb_hooks/wesi_security.pb.js
-          grep -q 'globalThis.wesiSecurityBuildOtpMail = function wesiSecurityBuildOtpMail' server/pb_hooks/wesi_security.pb.js
+          test "$(grep -c 'const wesiSecurityBuildOtpMail = (code, purpose) =>' server/pb_hooks/wesi_security.pb.js)" -eq 1
+          ! grep -q 'globalThis.wesiSecurityBuildOtpMail' server/pb_hooks/wesi_security.pb.js
           grep -q 'https://api.wesi-inc.ru/portal/app_icon.png' server/pb_hooks/wesi_auth_bootstrap.pb.js
           grep -q 'https://api.wesi-inc.ru/portal/app_icon.png' server/pb_hooks/wesi_security.pb.js
           grep -q 'sendmailSelected' server/pb_hooks/wesi_mail_health.pb.js
@@ -120,21 +122,21 @@ jobs:
           BODY=''
           for attempt in $(seq 1 20); do
             BODY=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/version || true)
-            if grep -q '"version":"2026-08-09.owner-email-v7"' <<<"$BODY" &&
+            if grep -q '"version":"2026-08-09.owner-email-v8"' <<<"$BODY" &&
                grep -q '"jsonReadable":true' <<<"$BODY"; then
               break
             fi
             sleep 1
           done
           echo "$BODY"
-          grep -q '"version":"2026-08-09.owner-email-v7"' <<<"$BODY"
+          grep -q '"version":"2026-08-09.owner-email-v8"' <<<"$BODY"
           grep -q '"jsonReadable":true' <<<"$BODY"
       - name: Verify exact production security version
         run: |
           set -euo pipefail
           BODY=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/security/version)
           echo "$BODY"
-          grep -q '"version":"2026-08-09.security-mail-v6"' <<<"$BODY"
+          grep -q '"version":"2026-08-09.security-mail-v7"' <<<"$BODY"
           grep -q '"jsonReadable":true' <<<"$BODY"
       - name: Verify production mail
         run: |
