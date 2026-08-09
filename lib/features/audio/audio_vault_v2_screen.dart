@@ -489,23 +489,31 @@ class _AudioVaultV2ScreenState extends State<AudioVaultV2Screen> {
                   LeaseCountdown(lease: beat.lease!, compact: true),
               ]),
               const SizedBox(height: 9),
-              Row(children: [
-                _fileBadge('MP3', beat.mp3Path, beat),
-                const SizedBox(width: 6),
-                _fileBadge('WAV', beat.wavPath, beat),
-                const SizedBox(width: 6),
-                _fileBadge('TRACK', beat.trackoutPath, beat),
-                const SizedBox(width: 6),
-                _quickAudioActions(beat),
-                const Spacer(),
-                if (beat.attachments.isNotEmpty) ...[
-                  Icon(Icons.description_outlined,
-                      size: 15, color: AppTheme.textMuted),
-                  const SizedBox(width: 3),
-                  Text('${beat.attachments.length}',
-                      style: TextStyle(color: AppTheme.textMuted, fontSize: 9)),
+              // audioVaultFooterWrap: file/ALS/AI actions can grow
+              // with scores and must wrap instead of overflowing narrow cards.
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _fileBadge('MP3', beat.mp3Path, beat),
+                  _fileBadge('WAV', beat.wavPath, beat),
+                  _fileBadge('TRACK', beat.trackoutPath, beat),
+                  _quickAudioActions(beat),
+                  if (beat.attachments.isNotEmpty)
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.description_outlined,
+                            size: 15, color: AppTheme.textMuted),
+                        const SizedBox(width: 3),
+                        Text('${beat.attachments.length}',
+                            style: TextStyle(
+                                color: AppTheme.textMuted, fontSize: 9)),
+                      ],
+                    ),
                 ],
-              ]),
+              ),
             ]),
           ),
         ]),
