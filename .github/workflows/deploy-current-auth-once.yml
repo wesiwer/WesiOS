@@ -1,9 +1,10 @@
-name: Deploy current WesiOS auth once
+name: Deploy WesiOS auth hook
 
 on:
   push:
     branches: [main]
     paths:
+      - 'server/pb_hooks/wesi_auth_bootstrap.pb.js'
       - '.github/workflows/deploy-current-auth-once.yml'
 
 permissions:
@@ -25,7 +26,7 @@ jobs:
           set -euo pipefail
           test -s server/pb_hooks/wesi_auth_bootstrap.pb.js
           node --check server/pb_hooks/wesi_auth_bootstrap.pb.js
-          grep -q 'ownerEmailSetup' server/pb_hooks/wesi_auth_bootstrap.pb.js
+          grep -q "rid='portal-owner'" server/pb_hooks/wesi_auth_bootstrap.pb.js
       - name: Prepare SSH
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
