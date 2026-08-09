@@ -39,6 +39,10 @@ jobs:
               python3 tools/patch_calendar_clock.py
               rm tools/patch_calendar_clock.py
             fi
+            if [[ -f tools/patch_calendar_sync.py ]]; then
+              python3 tools/patch_calendar_sync.py
+              rm tools/patch_calendar_sync.py
+            fi
             rm -f tools/trigger_calendar_finisher.txt
           fi
 
