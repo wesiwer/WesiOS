@@ -33,55 +33,20 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Diagnose anti-millionaire center
+      - name: Validate Horizon math and commit
         shell: bash
         run: |
           set -euo pipefail
           dart format lib/features/treasury/services/forecast_engine.dart
           flutter pub get
-          cat > test/_horizon_diag_test.dart <<'DART'
-          import 'package:flutter_test/flutter_test.dart';
-          import 'package:wesios/features/treasury/models/transaction_model.dart';
-          import 'package:wesios/features/treasury/services/forecast_engine.dart';
-
-          TransactionModel tx(String id, DateTime date, double amount, TransactionType type, String category) =>
-              TransactionModel(id: id, title: id, amount: amount, type: type, date: date, category: category);
-
-          void main() {
-            test('diag', () {
-              final now = DateTime(2026, 8, 9);
-              final history = <TransactionModel>[];
-              for (var i = 300; i >= 1; i--) {
-                final day = now.subtract(Duration(days: i));
-                if (i % 2 == 0) {
-                  history.add(tx('inc-$i', day, 1200 + (i % 7) * 35, TransactionType.income, 'services'));
-                }
-                if (i % 3 != 0) {
-                  history.add(tx('exp-$i', day, 420 + (i % 5) * 20, TransactionType.expense, 'operations'));
-                }
-              }
-              for (var i = 30; i >= 1; i--) {
-                history.add(tx('lucky-$i', now.subtract(Duration(days: i)), 6500 + i * 20, TransactionType.income, 'one-lucky-client'));
-              }
-              final r = ForecastEngine.generate(
-                transactions: history,
-                currentBalance: 100000,
-                days: 365,
-                paths: 350,
-                seed: 42,
-                asOf: now,
-              );
-              final first = (r.p50[29] - 100000) / 30;
-              final last = (r.p50[364] - r.p50[334]) / 30;
-              print('HORIZON_DIAG baseline=${r.longRunBaselinePerDay} recent=${r.recentNetPerDay} driftCap=${r.driftCapPerDay} regime=${r.regime} firstSlope=$first lastSlope=$last p50_30=${r.p50[29]} p50_365=${r.p50.last}');
-              print('HORIZON_DIAG streams=${r.streamContribution} regimeP=${r.regimeProbabilities}');
-            });
-          }
-          DART
-          flutter test test/_horizon_diag_test.dart
-          rm test/_horizon_diag_test.dart
-          flutter test test/horizon_top_tier_test.dart test/treasury_engines_test.dart || true
-          exit 1
+          flutter test test/horizon_top_tier_test.dart test/treasury_engines_test.dart
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/features/treasury/services/forecast_engine.dart
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'fix(horizon): keep recent evidence robust after shock filtering'
+          git push origin HEAD:agent/horizon-top-tier
 
   analyze-and-test:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
