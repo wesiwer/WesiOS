@@ -1,0 +1,127 @@
+name: Horizon docs finalize
+
+on:
+  push:
+    branches:
+      - agent/horizon-docs-finalize
+
+permissions:
+  contents: write
+
+jobs:
+  finalize-docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 4f07cd05e3d9461870874595230cf74a0aa358d0
+          fetch-depth: 0
+      - name: Update final Horizon handoff docs
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          marker = '## Horizon final validation — 2026-08-10'
+          block = '''
+
+## Horizon final validation — 2026-08-10
+
+The Top-Tier A→G implementation reached a fully green clean code gate on product commit `4f07cd05e3d9461870874595230cf74a0aa358d0`.
+
+- Verification workflow: `31342362575` (`Horizon final verification`, run #6) — **success**.
+- Exact-SHA guard: passed in analysis/tests, Android, and Windows jobs.
+- `flutter analyze --no-fatal-infos`: **success**.
+- Full `flutter test`: **887/887 passed**.
+- Legacy Treasury regression tests: **success**.
+- `horizon_top_tier_test.dart`: **success**.
+- `horizon_product_integration_test.dart`: **success**.
+- `horizon_completion_test.dart`: **success**.
+- Android verification build (`flutter build apk --debug`): **success**.
+- Windows release verification (`flutter build windows --release`): **success** on `windows-2022`.
+
+Final-gate fixes made during validation:
+
+1. Pinned the Windows verification runner to a VS-compatible Windows Server 2022 image instead of drifting `windows-latest` (which had moved to Windows Server 2025 / VS 2026 for this run).
+2. Recurring reliability no longer invents missed occurrences before a schedule existed.
+3. Fallback volatility uses actual non-recurring cash observations.
+4. Balance/backtest truth excludes recurring schedule parents and legacy auto-generated recurring-income expectation rows from actual cash.
+5. Recurring-payment automation tests no longer invoke global Hive maintenance when an injected Treasury service is under test; production behavior is preserved.
+6. Recurring income can be modeled on a known schedule, but it is not classified as committed cash without matching real execution evidence; auto-generated income rows do not count as receipts.
+
+Empirical-truth constraint remains unchanged: green CI validates implementation/contracts, not future empirical calibration. `HorizonPredictionRegistry` must continue recording issued forecasts and only matured 14/30/90/180-day outcomes can support real coverage/calibration claims.
+'''
+
+          for name in ('TZ.md', 'STATUS.md'):
+              p = Path(name)
+              text = p.read_text(encoding='utf-8')
+              if marker not in text:
+                  p.write_text(text.rstrip() + block + '\n', encoding='utf-8')
+
+          handoff = '''# WesiOS — Horizon Top-Tier A→G final handoff
+
+**Date:** 2026-08-10  
+**Product branch:** `agent/horizon-top-tier`  
+**Validated code SHA:** `4f07cd05e3d9461870874595230cf74a0aa358d0`  
+**Successful verification workflow:** `31342362575` (`Horizon final verification`, run #6)  
+**Read-only verification PR:** #72 — `verify: Horizon final gate after committed-income fix`  
+
+This file supplements the main `TZ.md`. The stale red verification run and PR #69 are historical only and are no longer the current continuation point.
+
+## Validation result
+
+The clean gate on exact product SHA `4f07cd05e3d9461870874595230cf74a0aa358d0` completed successfully:
+
+- exact-SHA guard — success in all jobs;
+- `flutter analyze --no-fatal-infos` — success;
+- full `flutter test` — 887/887 passed;
+- legacy Treasury regression tests — success;
+- `horizon_top_tier_test.dart` — success;
+- `horizon_product_integration_test.dart` — success;
+- `horizon_completion_test.dart` — success;
+- Android verification build (`flutter build apk --debug`) — success;
+- Windows release verification (`flutter build windows --release`) — success.
+
+Workflow jobs:
+
+- full analysis/tests: `93318127054` — success;
+- Windows release build: `93318127077` — success;
+- Android verification build: `93318127096` — success.
+
+## Final-gate fixes
+
+- Windows verification is pinned to `windows-2022`, avoiding the incompatible `windows-latest` environment seen on Windows Server 2025 / VS 2026 with Flutter 3.24.
+- Recurring reliability starts when the schedule exists rather than manufacturing historical misses before its anchor.
+- Fallback daily volatility is computed from non-recurring actual cash history.
+- Account summaries and backtests exclude recurring schedule parents and legacy auto-generated recurring-income expectation rows from actual cash.
+- Injected recurring-payment automation no longer triggers global Hive maintenance in isolated tests; production shared automation still does.
+- Recurring income is not marked committed merely because its schedule probability is high. It requires matching real received-cash evidence; generated income expectation rows are explicitly not evidence.
+
+## Merge/release state
+
+The Horizon code gate is green and the branch is technically ready for the owner's merge decision after the final documentation-SHA revalidation. **Do not merge `agent/horizon-top-tier` to `main` automatically and do not launch a production release without separate owner approval.**
+
+Read-only verification PRs are CI harnesses, not product merge PRs, and must not be merged as product changes.
+
+## Empirical truth gate
+
+CI success proves the implementation and test contracts pass; it does not prove future forecast accuracy or exact real-world interval coverage. `HorizonPredictionRegistry` must keep storing live issued predictions. Claims about 14/30/90/180-day empirical coverage, calibration, bias, or cash-gap accuracy require enough matured real outcomes.
+
+## Continuation point
+
+Do not restart Horizon or repeat the architecture pass. Continue only from the current `agent/horizon-top-tier` head, preserve the green contracts above, and treat the owner's merge decision as the next product action after exact-SHA validation of the documentation head.
+'''
+          Path('TZ_HANDOFF.md').write_text(handoff, encoding='utf-8')
+          PY
+          git diff --check
+          git diff --stat
+      - name: Commit and push documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "WesiOS CI Fix"
+          git config user.email "actions@users.noreply.github.com"
+          git add TZ.md STATUS.md TZ_HANDOFF.md
+          git commit -m "docs(horizon): record green final validation"
+          git push origin HEAD:agent/horizon-top-tier
