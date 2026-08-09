@@ -39,6 +39,7 @@ jobs:
               python3 tools/patch_calendar_clock.py
               rm tools/patch_calendar_clock.py
             fi
+            rm -f tools/trigger_calendar_finisher.txt
           fi
 
       - name: Format
