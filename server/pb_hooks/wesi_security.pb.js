@@ -15,7 +15,7 @@ routerAdd("GET", "/api/wesi/security/version", (e) => {
     }
   } catch (_) {}
   return e.json(jsonReadable ? 200 : 503, {
-    "version": "2026-08-09.security-mail-v5",
+    "version": "2026-08-09.security-mail-v6",
     "jsonReadable": jsonReadable,
   });
 });
@@ -25,7 +25,7 @@ const WESI_SECURITY_MAIL_LOGO_URL = "https://api.wesi-inc.ru/portal/app_icon.png
 
 /// Kept locally in this hook so legacy /auth/start remains independent from
 /// the newer bootstrap hook while rendering the same branded email.
-const wesiSecurityBuildOtpMail = (code, purpose) => {
+globalThis.wesiSecurityBuildOtpMail = function wesiSecurityBuildOtpMail(code, purpose) {
   const safeCode = String(code || "").replace(/[^0-9]/g, "");
   const portal = purpose === "portal";
   const title = "Подтверждение входа";
@@ -351,7 +351,7 @@ routerAdd("POST", "/api/wesi/auth/start", (e) => {
   const subject = purpose === "portal"
     ? "Код входа на портал WesiOS"
     : "Код входа в WesiOS";
-  const mail = wesiSecurityBuildOtpMail(code, purpose);
+  const mail = globalThis.wesiSecurityBuildOtpMail(code, purpose);
   const message = new MailerMessage({
     "from": {
       "address": e.app.settings().meta.senderAddress,
