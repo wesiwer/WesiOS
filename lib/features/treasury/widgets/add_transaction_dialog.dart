@@ -99,9 +99,38 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
       },
     );
     if (picked != null) {
-      setState(() => _selectedDate = picked);
+      setState(() {
+        _selectedDate = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          _selectedDate.hour,
+          _selectedDate.minute,
+          _selectedDate.second,
+        );
+      });
     }
   }
+
+  Future<void> _pickTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_selectedDate),
+    );
+    if (picked == null) return;
+    setState(() {
+      _selectedDate = DateTime(
+        _selectedDate.year,
+        _selectedDate.month,
+        _selectedDate.day,
+        picked.hour,
+        picked.minute,
+      );
+    });
+  }
+
+  String _formatTime(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 
   String _formatDate(DateTime d) {
     final now = DateTime.now();
@@ -179,8 +208,8 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                               value: c,
                               child: Text(c,
                                   overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                      color: AppTheme.textPrimary)),
+                                  style:
+                                      TextStyle(color: AppTheme.textPrimary)),
                             ))
                         .toList(),
                     onChanged: (v) =>
@@ -191,8 +220,7 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                   tooltip: WesiLocale.isRussian
                       ? 'Изменить категории'
                       : 'Edit categories',
-                  icon: Icon(Icons.tune,
-                      size: 18, color: AppTheme.accent),
+                  icon: Icon(Icons.tune, size: 18, color: AppTheme.accent),
                   onPressed: () async {
                     await CategoryEditorDialog.show(context, widget.type);
                     if (!mounted) return;
@@ -213,41 +241,68 @@ class _AddTransactionDialogState extends State<AddTransactionDialog> {
                   labelText: WesiLocale.get('description_optional')),
             ),
             SizedBox(height: 12),
-            // Выбор даты транзакции
-            GestureDetector(
-              onTap: _pickDate,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                decoration: BoxDecoration(
-                  color: AppTheme.surface.withOpacity(0.3),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.glassBorder),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.calendar_today, size: 18, color: AppTheme.accent),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Text(
-                        _formatDate(_selectedDate),
-                        style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
+            // Дата и точное время операции редактируются независимо.
+            Row(
+              children: [
+                Expanded(
+                  child: GestureDetector(
+                    onTap: _pickDate,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.glassBorder),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.calendar_today,
+                              size: 18, color: AppTheme.accent),
+                          const SizedBox(width: 9),
+                          Expanded(
+                            child: Text(
+                              _formatDate(_selectedDate),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                  fontSize: 13, color: AppTheme.textPrimary),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    if (_selectedDate.isAfter(DateTime.now().add(const Duration(days: 1))))
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration: BoxDecoration(
-                          color: AppTheme.accent.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          WesiLocale.isRussian ? 'Запланировано' : 'Planned',
-                          style: TextStyle(fontSize: 10, color: AppTheme.accent, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                  ],
+                  ),
                 ),
-              ),
+                const SizedBox(width: 8),
+                SizedBox(
+                  width: 112,
+                  child: GestureDetector(
+                    onTap: _pickTime,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 14),
+                      decoration: BoxDecoration(
+                        color: AppTheme.surface.withOpacity(0.3),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: AppTheme.glassBorder),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.schedule,
+                              size: 18, color: AppTheme.accent),
+                          const SizedBox(width: 8),
+                          Text(
+                            _formatTime(_selectedDate),
+                            style: TextStyle(
+                                fontSize: 13, color: AppTheme.textPrimary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
             SizedBox(height: 24),
             Row(

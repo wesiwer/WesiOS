@@ -45,8 +45,10 @@ class _OperationsScreenState extends State<OperationsScreen> {
     _filtered = _transactions.where((tx) {
       final matchesSearch = _searchQuery.isEmpty ||
           tx.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          (tx.category?.toLowerCase().contains(_searchQuery.toLowerCase()) ?? false);
-      final matchesCategory = _filterCategory == null || tx.category == _filterCategory;
+          (tx.category?.toLowerCase().contains(_searchQuery.toLowerCase()) ??
+              false);
+      final matchesCategory =
+          _filterCategory == null || tx.category == _filterCategory;
       return matchesSearch && matchesCategory;
     }).toList();
 
@@ -59,7 +61,8 @@ class _OperationsScreenState extends State<OperationsScreen> {
         _filtered.sort((a, b) => b.amount.compareTo(a.amount));
         break;
       case 'category':
-        _filtered.sort((a, b) => (a.category ?? '').compareTo(b.category ?? ''));
+        _filtered
+            .sort((a, b) => (a.category ?? '').compareTo(b.category ?? ''));
         break;
     }
   }
@@ -99,7 +102,9 @@ class _OperationsScreenState extends State<OperationsScreen> {
   }
 
   Set<String> get _categories {
-    return _transactions.map((t) => t.category ?? WesiLocale.get('uncategorized')).toSet();
+    return _transactions
+        .map((t) => t.category ?? WesiLocale.get('uncategorized'))
+        .toSet();
   }
 
   @override
@@ -109,7 +114,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
         backgroundColor: AppTheme.background,
         body: Center(
           child: CircularProgressIndicator(
-            color: AppTheme.accent.withOpacity(0.5)),
+              color: AppTheme.accent.withOpacity(0.5)),
         ),
       );
     }
@@ -130,9 +135,14 @@ class _OperationsScreenState extends State<OperationsScreen> {
               });
             },
             itemBuilder: (_) => [
-              PopupMenuItem(value: 'date', child: Text(WesiLocale.get('sort_by_date'))),
-              PopupMenuItem(value: 'amount', child: Text(WesiLocale.get('sort_by_amount'))),
-              PopupMenuItem(value: 'category', child: Text(WesiLocale.get('sort_by_category'))),
+              PopupMenuItem(
+                  value: 'date', child: Text(WesiLocale.get('sort_by_date'))),
+              PopupMenuItem(
+                  value: 'amount',
+                  child: Text(WesiLocale.get('sort_by_amount'))),
+              PopupMenuItem(
+                  value: 'category',
+                  child: Text(WesiLocale.get('sort_by_category'))),
             ],
           ),
         ],
@@ -181,16 +191,16 @@ class _OperationsScreenState extends State<OperationsScreen> {
                   ),
                   const SizedBox(width: 8),
                   ..._categories.map((cat) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      selected: _filterCategory == cat,
-                      onSelected: (_) => setState(() {
-                        _filterCategory = cat;
-                        _applyFilters();
-                      }),
-                      label: Text(cat),
-                    ),
-                  )),
+                        padding: const EdgeInsets.only(right: 8),
+                        child: FilterChip(
+                          selected: _filterCategory == cat,
+                          onSelected: (_) => setState(() {
+                            _filterCategory = cat;
+                            _applyFilters();
+                          }),
+                          label: Text(cat),
+                        ),
+                      )),
                 ],
               ),
             ),
@@ -212,7 +222,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
                       // а не только перечень строк ниже.
                       CategoryPieSection(transactions: _filtered),
                       const SizedBox(height: 20),
-                      ..._filtered.map(_txItem),
+                      ..._transactionRows(),
                     ],
                   ),
           ),
@@ -221,9 +231,53 @@ class _OperationsScreenState extends State<OperationsScreen> {
     );
   }
 
+  List<Widget> _transactionRows() {
+    if (_filtered.isEmpty) return const [];
+    if (_sortBy != 'date') return _filtered.map(_txItem).toList();
+
+    final rows = <Widget>[];
+    DateTime? previousDay;
+    for (final tx in _filtered) {
+      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
+      if (previousDay != day) {
+        rows.add(_dateHeader(day));
+        previousDay = day;
+      }
+      rows.add(_txItem(tx));
+    }
+    return rows;
+  }
+
+  Widget _dateHeader(DateTime day) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final yesterday = today.subtract(const Duration(days: 1));
+    final label = day == today
+        ? (WesiLocale.isRussian ? 'Сегодня' : 'Today')
+        : day == yesterday
+            ? (WesiLocale.isRussian ? 'Вчера' : 'Yesterday')
+            : _formatDate(day);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 14, 4, 8),
+      child: Row(
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: AppTheme.textSecondary,
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(child: Divider(color: AppTheme.glassBorder)),
+        ],
+      ),
+    );
+  }
+
   Widget _txItem(TransactionModel tx) {
     final isIncome = tx.type == TransactionType.income;
-    final sym = CurrencyService.symbol;
     return Dismissible(
       key: Key(tx.id),
       direction: DismissDirection.endToStart,
@@ -259,15 +313,14 @@ class _OperationsScreenState extends State<OperationsScreen> {
                           fontWeight: FontWeight.w600)),
                   SizedBox(height: 4),
                   Text(
-                    '${tx.category ?? WesiLocale.get('uncategorized')} · ${_formatDate(tx.date)}',
-                    style: TextStyle(
-                        color: AppTheme.textMuted, fontSize: 11),
+                    '${tx.category ?? WesiLocale.get('uncategorized')} · ${_formatDate(tx.date)} · ${_formatTime(tx.date)}',
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
                   ),
                 ],
               ),
             ),
             Text(
-              '${isIncome ? '+' : '-'}$sym${CurrencyService.fromRub(tx.amount).toStringAsFixed(0)}',
+              '${isIncome ? '+' : '-'}${CurrencyService.formatExactSmart(tx.amount)}',
               style: TextStyle(
                 fontWeight: FontWeight.w600,
                 color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
@@ -300,13 +353,10 @@ class _OperationsScreenState extends State<OperationsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surface,
-        shape:
-            RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding:
-            EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        insetPadding: EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
         title: Text(ru ? 'Удалить операцию?' : 'Delete operation?',
-            style: TextStyle(
-                fontSize: 17, color: AppTheme.textPrimary)),
+            style: TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: Text(
           ru
               ? '«${tx.title}» будет удалена безвозвратно.'
@@ -333,4 +383,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
   String _formatDate(DateTime d) {
     return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
   }
+
+  String _formatTime(DateTime d) =>
+      '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
 }

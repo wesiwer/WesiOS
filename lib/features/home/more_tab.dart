@@ -44,9 +44,9 @@ class MoreTab extends StatelessWidget {
             icon: Icons.calendar_month,
             title: ru ? 'Календарь' : 'Calendar',
             subtitle: ru
-                ? 'Сетка месяца работает, события — впереди'
-                : 'Month grid works, events are next',
-            stage: ModuleStage.partial,
+                ? 'События, задачи, финансы и напоминания на временной шкале'
+                : 'Events, tasks, finance and reminders on one timeline',
+            stage: ModuleStage.ready,
           ),
         ],
       ),
@@ -237,7 +237,12 @@ class MoreTab extends StatelessWidget {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: ListView(
-        padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 32),
+        padding: EdgeInsets.fromLTRB(
+          16,
+          MediaQuery.paddingOf(context).top + kTitleBarInset + 16,
+          16,
+          32,
+        ),
         children: [
           WesiTitle(ru ? 'Ещё' : 'More'),
           const SizedBox(height: 4),

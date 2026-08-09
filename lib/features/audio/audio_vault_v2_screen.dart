@@ -7,6 +7,7 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../team/services/team_service.dart';
+import '../team/widgets/employee_or_custom_field.dart';
 import 'models/audio_vault_extended_models.dart';
 import 'models/audio_vault_models.dart';
 import 'services/audio_player_service.dart';
@@ -949,7 +950,6 @@ class _BeatEditorV2State extends State<_BeatEditorV2> {
 
   @override
   Widget build(BuildContext context) {
-    final employees = TeamService.all;
     return AlertDialog(
       backgroundColor: AppTheme.surface,
       title: Text(widget.initial == null ? 'Новый бит' : 'Редактировать бит'),
@@ -959,15 +959,13 @@ class _BeatEditorV2State extends State<_BeatEditorV2> {
           child: Column(children: [
             _field(title, 'Название'),
             const SizedBox(height: 10),
-            DropdownButtonFormField<String>(
+            EmployeeOrCustomField(
+              label: 'Ответственный / автор',
               value: authorId,
-              dropdownColor: AppTheme.surface,
-              decoration: const InputDecoration(labelText: 'Автор / сотрудник'),
-              items: employees
-                  .map((e) =>
-                      DropdownMenuItem(value: e.id, child: Text(e.displayName)))
-                  .toList(),
-              onChanged: (v) => setState(() => authorId = v),
+              storeEmployeeId: true,
+              allowCustom: false,
+              allowEmpty: false,
+              onChanged: (value) => setState(() => authorId = value),
             ),
             const SizedBox(height: 10),
             DropdownButtonFormField<BeatStage>(

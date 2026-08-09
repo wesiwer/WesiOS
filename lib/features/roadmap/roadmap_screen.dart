@@ -7,6 +7,7 @@ import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
 import '../tasks/models/task_model.dart';
 import '../tasks/services/task_service.dart';
+import '../team/widgets/employee_or_custom_field.dart';
 import 'models/roadmap_models.dart';
 import 'services/roadmap_service.dart';
 
@@ -21,6 +22,7 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
   int _tab = 0;
   String? _projectId;
   bool _showArchived = false;
+  double _timelineZoom = 1.0;
 
   bool get _ru => WesiLocale.isRussian;
 
@@ -48,9 +50,7 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
   Future<void> _addItem(_RoadmapData data, {RoadmapItemKind? kind}) async {
     final projects = data.projects.where((value) => !value.archived).toList();
     if (projects.isEmpty) {
-      _message(_ru
-          ? 'Сначала создайте проект.'
-          : 'Create a project first.');
+      _message(_ru ? 'Сначала создайте проект.' : 'Create a project first.');
       return;
     }
     final selected = data.projectById(_projectId) ?? projects.first;
@@ -139,7 +139,8 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
                             CircularProgressIndicator(color: AppTheme.accent))
                     : data == null
                         ? Center(
-                            child: Text('${_ru ? 'Ошибка' : 'Error'}: ${snapshot.error}'))
+                            child: Text(
+                                '${_ru ? 'Ошибка' : 'Error'}: ${snapshot.error}'))
                         : Column(
                             children: [
                               _summary(data.summary),
@@ -198,7 +199,9 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
         Icons.auto_graph,
         _ru ? 'Общий прогресс' : 'Overall progress',
         '${(summary.averageProgress * 100).round()}%',
-        _ru ? '${summary.completed}/${summary.items} завершено' : '${summary.completed}/${summary.items} complete',
+        _ru
+            ? '${summary.completed}/${summary.items} завершено'
+            : '${summary.completed}/${summary.items} complete',
       ),
       _RoadMetric(
         Icons.diamond_outlined,
@@ -210,7 +213,9 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
         Icons.warning_amber_rounded,
         _ru ? 'Требуют внимания' : 'Need attention',
         '${summary.blocked + summary.overdue}',
-        _ru ? '${summary.blocked} блоков · ${summary.overdue} просрочек' : '${summary.blocked} blocked · ${summary.overdue} overdue',
+        _ru
+            ? '${summary.blocked} блоков · ${summary.overdue} просрочек'
+            : '${summary.blocked} blocked · ${summary.overdue} overdue',
         warning: summary.blocked + summary.overdue > 0,
       ),
     ];
@@ -260,7 +265,8 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
                 Text(value.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
+                    style:
+                        TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
                 const SizedBox(height: 2),
                 Text(value.value,
                     style: TextStyle(
@@ -321,8 +327,8 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
                         Container(
                           width: 8,
                           height: 8,
-                          decoration:
-                              BoxDecoration(color: color, shape: BoxShape.circle),
+                          decoration: BoxDecoration(
+                              color: color, shape: BoxShape.circle),
                         ),
                         const SizedBox(width: 8),
                         Flexible(
@@ -425,9 +431,7 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
     if (project == null) return _emptyProjects();
     final items = data.itemsForProject(project.id);
     final progress = _projectProgress(items);
-    final next = items
-        .where((value) => !value.isDone)
-        .toList()
+    final next = items.where((value) => !value.isDone).toList()
       ..sort((a, b) => a.endDate.compareTo(b.endDate));
     final blocked = items.where((value) => value.isBlocked).toList();
     final overdue = items.where((value) => value.isOverdue).toList();
@@ -475,7 +479,8 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
                       Expanded(child: risks),
                     ],
                   )
-                : Column(children: [schedule, const SizedBox(height: 12), risks]);
+                : Column(
+                    children: [schedule, const SizedBox(height: 12), risks]);
           },
         ),
         const SizedBox(height: 12),
@@ -567,9 +572,7 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
               ),
               Text('${(progress * 100).round()}%',
                   style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      color: color)),
+                      fontSize: 14, fontWeight: FontWeight.w900, color: color)),
             ],
           ),
           const SizedBox(height: 7),
@@ -593,8 +596,7 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
                   _ru ? '$milestones вех' : '$milestones milestones'),
               if (project.owner.isNotEmpty)
                 _heroChip(Icons.person_outline, project.owner),
-              for (final tag in project.tags.take(3))
-                _heroChip(Icons.tag, tag),
+              for (final tag in project.tags.take(3)) _heroChip(Icons.tag, tag),
             ],
           ),
         ],
@@ -705,10 +707,8 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
 
   Widget _structureRow(RoadmapItem item, _RoadmapData data) {
     final color = _statusColor(item.status);
-    final dependencies = item.dependencyIds
-        .map(data.itemById)
-        .whereType<RoadmapItem>()
-        .toList();
+    final dependencies =
+        item.dependencyIds.map(data.itemById).whereType<RoadmapItem>().toList();
     return InkWell(
       borderRadius: BorderRadius.circular(13),
       onTap: () => _editItem(item, data),
@@ -810,11 +810,38 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
             _legend(AppTheme.accentRed, _ru ? 'Риск' : 'Risk'),
           ],
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(Icons.zoom_out, size: 17, color: AppTheme.textMuted),
+            Expanded(
+              child: Slider(
+                value: _timelineZoom,
+                min: 0.6,
+                max: 2.4,
+                divisions: 9,
+                label: '${(_timelineZoom * 100).round()}%',
+                onChanged: (value) => setState(() => _timelineZoom = value),
+              ),
+            ),
+            Text(
+              '${(_timelineZoom * 100).round()}%',
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+                color: AppTheme.textSecondary,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.zoom_in, size: 17, color: AppTheme.textMuted),
+          ],
+        ),
+        const SizedBox(height: 6),
         _TimelineBoard(
           project: project,
           items: items,
           russian: _ru,
+          zoom: _timelineZoom,
           onTap: (item) => _editItem(item, data),
         ),
       ],
@@ -830,7 +857,8 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
             decoration: BoxDecoration(color: color, shape: BoxShape.circle),
           ),
           const SizedBox(width: 4),
-          Text(text, style: TextStyle(fontSize: 9.5, color: AppTheme.textMuted)),
+          Text(text,
+              style: TextStyle(fontSize: 9.5, color: AppTheme.textMuted)),
         ],
       );
 
@@ -898,9 +926,7 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
             ),
             child: Text('$count',
                 style: TextStyle(
-                    fontSize: 9.5,
-                    fontWeight: FontWeight.w800,
-                    color: color)),
+                    fontSize: 9.5, fontWeight: FontWeight.w800, color: color)),
           ),
         ],
       );
@@ -1098,9 +1124,7 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
               Text(text,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontSize: 12,
-                      height: 1.5,
-                      color: AppTheme.textMuted)),
+                      fontSize: 12, height: 1.5, color: AppTheme.textMuted)),
               const SizedBox(height: 16),
               FilledButton.icon(
                 onPressed: action,
@@ -1132,7 +1156,8 @@ class _RoadmapScreenState extends State<RoadmapScreen> {
 
   double _projectProgress(List<RoadmapItem> items) {
     if (items.isEmpty) return 0;
-    final phases = items.where((value) => value.kind == RoadmapItemKind.phase).toList();
+    final phases =
+        items.where((value) => value.kind == RoadmapItemKind.phase).toList();
     final source = phases.isEmpty ? items : phases;
     return source.fold<double>(0, (sum, value) => sum + value.progress) /
         source.length /
@@ -1147,12 +1172,14 @@ class _TimelineBoard extends StatelessWidget {
   final RoadmapProject project;
   final List<RoadmapItem> items;
   final bool russian;
+  final double zoom;
   final ValueChanged<RoadmapItem> onTap;
 
   const _TimelineBoard({
     required this.project,
     required this.items,
     required this.russian,
+    required this.zoom,
     required this.onTap,
   });
 
@@ -1167,7 +1194,12 @@ class _TimelineBoard extends StatelessWidget {
     start = DateTime(start.year, start.month, start.day);
     end = DateTime(end.year, end.month, end.day);
     final days = end.difference(start).inDays + 1;
-    final dayWidth = days <= 45 ? 25.0 : days <= 120 ? 16.0 : 10.0;
+    final baseDayWidth = days <= 45
+        ? 25.0
+        : days <= 120
+            ? 16.0
+            : 10.0;
+    final dayWidth = (baseDayWidth * zoom).clamp(5.0, 48.0);
     final labelWidth = 190.0;
     final timelineWidth = days * dayWidth;
     final totalWidth = labelWidth + timelineWidth;
@@ -1217,7 +1249,8 @@ class _TimelineBoard extends StatelessWidget {
                           for (var i = 0; i < days; i++)
                             if (i == 0 ||
                                 start.add(Duration(days: i)).day == 1 ||
-                                start.add(Duration(days: i)).weekday == DateTime.monday)
+                                start.add(Duration(days: i)).weekday ==
+                                    DateTime.monday)
                               Positioned(
                                 left: i * dayWidth,
                                 top: 0,
@@ -1280,7 +1313,8 @@ class _TimelineBoard extends StatelessWidget {
     int todayIndex,
   ) {
     final color = _statusColor(item.status);
-    final left = item.startDate.difference(start).inDays.clamp(0, days - 1) * dayWidth;
+    final left =
+        item.startDate.difference(start).inDays.clamp(0, days - 1) * dayWidth;
     final rawLength = item.endDate.difference(item.startDate).inDays + 1;
     final width = item.kind == RoadmapItemKind.milestone
         ? 18.0
@@ -1323,7 +1357,8 @@ class _TimelineBoard extends StatelessWidget {
                                 fontWeight: FontWeight.w700,
                                 color: AppTheme.textPrimary)),
                         const SizedBox(height: 2),
-                        Text('${item.progress}% · ${_statusLabel(item.status, russian)}',
+                        Text(
+                            '${item.progress}% · ${_statusLabel(item.status, russian)}',
                             style: TextStyle(
                                 fontSize: 9, color: AppTheme.textMuted)),
                       ],
@@ -1496,10 +1531,20 @@ class _ProjectEditorSheetState extends State<_ProjectEditorSheet> {
           children: [
             _roadField(_title, _ru ? 'Название проекта' : 'Project title',
                 required: true),
-            _roadField(_description, _ru ? 'Цель и описание' : 'Goal and description',
+            _roadField(
+                _description, _ru ? 'Цель и описание' : 'Goal and description',
                 lines: 4),
-            _roadField(_owner, _ru ? 'Владелец проекта' : 'Project owner'),
-            _roadField(_tags, _ru ? 'Теги через запятую' : 'Comma-separated tags'),
+            EmployeeOrCustomField(
+              label: _ru ? 'Владелец проекта' : 'Project owner',
+              value: _owner.text,
+              storeEmployeeId: false,
+              allowCustom: true,
+              customLabel: _ru ? 'Другой владелец' : 'Other owner',
+              onChanged: (value) => _owner.text = value ?? '',
+            ),
+            const SizedBox(height: 10),
+            _roadField(
+                _tags, _ru ? 'Теги через запятую' : 'Comma-separated tags'),
             Row(
               children: [
                 Expanded(
@@ -1528,7 +1573,8 @@ class _ProjectEditorSheetState extends State<_ProjectEditorSheet> {
             Align(
               alignment: Alignment.centerLeft,
               child: Text(_ru ? 'Цвет проекта' : 'Project color',
-                  style: TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
+                  style:
+                      TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
             ),
             const SizedBox(height: 8),
             Wrap(
@@ -1552,11 +1598,16 @@ class _ProjectEditorSheetState extends State<_ProjectEditorSheet> {
                           width: 3,
                         ),
                         boxShadow: _color == color
-                            ? [BoxShadow(color: Color(color).withOpacity(.4), blurRadius: 10)]
+                            ? [
+                                BoxShadow(
+                                    color: Color(color).withOpacity(.4),
+                                    blurRadius: 10)
+                              ]
                             : null,
                       ),
                       child: _color == color
-                          ? const Icon(Icons.check, size: 18, color: Colors.white)
+                          ? const Icon(Icons.check,
+                              size: 18, color: Colors.white)
                           : null,
                     ),
                   ),
@@ -1746,9 +1797,18 @@ class _ItemEditorSheetState extends State<_ItemEditorSheet> {
             ),
             const SizedBox(height: 12),
             _roadField(_title, _ru ? 'Название' : 'Title', required: true),
-            _roadField(_description, _ru ? 'Описание результата' : 'Outcome description',
+            _roadField(_description,
+                _ru ? 'Описание результата' : 'Outcome description',
                 lines: 3),
-            _roadField(_assignee, _ru ? 'Ответственный' : 'Assignee'),
+            EmployeeOrCustomField(
+              label: _ru ? 'Ответственный' : 'Assignee',
+              value: _assignee.text,
+              storeEmployeeId: false,
+              allowCustom: true,
+              customLabel: _ru ? 'Другой ответственный' : 'Other assignee',
+              onChanged: (value) => _assignee.text = value ?? '',
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 Expanded(
@@ -1758,7 +1818,8 @@ class _ItemEditorSheetState extends State<_ItemEditorSheet> {
                     _start,
                     (value) => setState(() {
                       _start = value;
-                      if (_kind == RoadmapItemKind.milestone || _end.isBefore(value)) {
+                      if (_kind == RoadmapItemKind.milestone ||
+                          _end.isBefore(value)) {
                         _end = value;
                       }
                     }),
@@ -2006,7 +2067,8 @@ Widget _roadSheet(
   required Widget child,
 }) =>
     Container(
-      constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .92),
+      constraints:
+          BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * .92),
       decoration: BoxDecoration(
         color: AppTheme.background,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),

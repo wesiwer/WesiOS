@@ -304,10 +304,14 @@ class _DashboardTabState extends State<_DashboardTab> {
                                     ? 'Центральная панель управления всеми системами Wesi'
                                     : 'Central dashboard for all Wesi systems',
                                 children: [
-                                  WesiWordmark(
-                                    size: compactHeader ? 24 : 26,
-                                    showText: !compactHeader,
-                                    markFirst: true,
+                                  FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: Alignment.centerLeft,
+                                    child: WesiWordmark(
+                                      size: compactHeader ? 21 : 26,
+                                      showText: true,
+                                      markFirst: true,
+                                    ),
                                   ),
                                 ],
                               ),
@@ -346,23 +350,24 @@ class _DashboardTabState extends State<_DashboardTab> {
                     const SizedBox(height: 14),
                     Tooltip(
                       message: WesiLocale.isRussian
-                          ? 'Открыть центр времени · долгий тап — стиль часов'
-                          : 'Open Time Center · long-press for clock style',
-                      child: GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTap: () => Navigator.pushNamed(context, '/time'),
-                        onLongPress: () {
-                          final next =
-                              WesiClock.savedStyle == ClockStyle.digital
-                                  ? ClockStyle.analog
-                                  : ClockStyle.digital;
-                          WesiClock.setStyle(next);
-                          setState(() {});
-                        },
-                        child: const SizedBox(
-                          key: ValueKey('home_clock_panel'),
-                          width: double.infinity,
-                          child: WesiClock(),
+                          ? 'Открыть центр времени; календарь открывает календарь'
+                          : 'Clock opens Time Center, calendar opens Calendar',
+                      child: SizedBox(
+                        key: const ValueKey('home_clock_panel'),
+                        width: double.infinity,
+                        child: WesiClock(
+                          onClockTap: () =>
+                              Navigator.pushNamed(context, '/time'),
+                          onClockLongPress: () {
+                            final next =
+                                WesiClock.savedStyle == ClockStyle.digital
+                                    ? ClockStyle.analog
+                                    : ClockStyle.digital;
+                            WesiClock.setStyle(next);
+                            setState(() {});
+                          },
+                          onCalendarTap: () =>
+                              Navigator.pushNamed(context, '/calendar'),
                         ),
                       ),
                     ),
@@ -413,7 +418,7 @@ class _DashboardTabState extends State<_DashboardTab> {
                       ),
                       SizedBox(height: 8),
                       Text(
-                        CurrencyService.format(_balance),
+                        CurrencyService.formatExactSmart(_balance),
                         style: TextStyle(
                           fontSize: 36,
                           fontWeight: FontWeight.bold,

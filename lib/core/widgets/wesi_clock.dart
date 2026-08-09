@@ -12,11 +12,17 @@ enum ClockStyle { digital, analog }
 class WesiClock extends StatefulWidget {
   final bool showSeconds;
   final ClockStyle? forceStyle;
+  final VoidCallback? onClockTap;
+  final VoidCallback? onClockLongPress;
+  final VoidCallback? onCalendarTap;
 
   const WesiClock({
     super.key,
     this.showSeconds = true,
     this.forceStyle,
+    this.onClockTap,
+    this.onClockLongPress,
+    this.onCalendarTap,
   });
 
   static const _box = 'wesios_settings';
@@ -267,19 +273,28 @@ class _WesiClockState extends State<WesiClock> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          SizedBox(
-            width: clockWidth,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: SizedBox(width: clockWidth, child: info),
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onClockTap,
+            onLongPress: widget.onClockLongPress,
+            child: SizedBox(
+              width: clockWidth,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: SizedBox(width: clockWidth, child: info),
+              ),
             ),
           ),
           SizedBox(width: gap),
-          _MiniMonthCalendar(
-            now: _now,
-            width: calendarWidth,
-            large: large,
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: widget.onCalendarTap,
+            child: _MiniMonthCalendar(
+              now: _now,
+              width: calendarWidth,
+              large: large,
+            ),
           ),
         ],
       ),

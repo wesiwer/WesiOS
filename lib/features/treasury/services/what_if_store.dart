@@ -37,17 +37,19 @@ class WhatIfPreset {
     final parts = <String>[];
     for (final e in scenario.events) {
       final sign = e.type == TransactionType.income ? '+' : '−';
-      parts.add('${e.title}: $sign$symbol${e.amount.toStringAsFixed(0)}');
+      final repeat = e.recurringPeriod == null
+          ? ''
+          : ' (${_periodLabel(e.recurringPeriod!, ru)})';
+      parts
+          .add('${e.title}: $sign$symbol${e.amount.toStringAsFixed(0)}$repeat');
     }
     final inc = ((scenario.incomeMultiplier - 1) * 100).round();
     final exp = ((scenario.expenseMultiplier - 1) * 100).round();
     if (inc != 0) {
-      parts.add(
-          '${ru ? 'доходы' : 'income'} ${inc > 0 ? '+' : ''}$inc%');
+      parts.add('${ru ? 'доходы' : 'income'} ${inc > 0 ? '+' : ''}$inc%');
     }
     if (exp != 0) {
-      parts.add(
-          '${ru ? 'расходы' : 'expenses'} ${exp > 0 ? '+' : ''}$exp%');
+      parts.add('${ru ? 'расходы' : 'expenses'} ${exp > 0 ? '+' : ''}$exp%');
     }
     if (parts.isEmpty) return ru ? 'Без изменений' : 'No changes';
     return parts.join(' · ');
@@ -63,12 +65,14 @@ class WhatIfPreset {
             .map((e) => {
                   'title': e.title,
                   'amount': e.amount,
-                  'type': e.type == TransactionType.income ? 'income' : 'expense',
+                  'type':
+                      e.type == TransactionType.income ? 'income' : 'expense',
                   // Храним смещение в днях, а не абсолютную дату: сценарий
                   // «крупная закупка через 2 недели» должен оставаться
                   // осмысленным и через месяц, а прибитая дата к тому времени
                   // уже уехала бы в прошлое и просто выпала из прогноза.
                   'dayOffset': _offsetOf(e.date),
+                  'recurringPeriod': e.recurringPeriod?.name,
                 })
             .toList(),
       };
@@ -79,6 +83,31 @@ class WhatIfPreset {
     final target = DateTime(date.year, date.month, date.day);
     final diff = target.difference(today).inDays;
     return diff < 1 ? 1 : diff;
+  }
+
+  static String _periodLabel(RecurringPeriod value, bool ru) {
+    if (ru) {
+      return switch (value) {
+        RecurringPeriod.daily => 'ежедневно',
+        RecurringPeriod.weekly => 'еженедельно',
+        RecurringPeriod.monthly => 'ежемесячно',
+        RecurringPeriod.yearly => 'ежегодно',
+      };
+    }
+    return switch (value) {
+      RecurringPeriod.daily => 'daily',
+      RecurringPeriod.weekly => 'weekly',
+      RecurringPeriod.monthly => 'monthly',
+      RecurringPeriod.yearly => 'yearly',
+    };
+  }
+
+  static RecurringPeriod? _recurringPeriod(dynamic raw) {
+    if (raw is! String || raw.isEmpty) return null;
+    for (final value in RecurringPeriod.values) {
+      if (value.name == raw) return value;
+    }
+    return null;
   }
 
   static WhatIfPreset? fromJson(Map<String, dynamic> json) {
@@ -96,13 +125,14 @@ class WhatIfPreset {
               ? TransactionType.income
               : TransactionType.expense,
           date: today.add(Duration(days: offset)),
+          recurringPeriod: _recurringPeriod(e['recurringPeriod']),
         ));
       }
       return WhatIfPreset(
         id: json['id'] as String,
         name: json['name'] as String? ?? '',
-        createdAt:
-            DateTime.tryParse(json['createdAt'] as String? ?? '') ?? DateTime.now(),
+        createdAt: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+            DateTime.now(),
         scenario: WhatIfScenario(
           events: events,
           incomeMultiplier:

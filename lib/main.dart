@@ -137,6 +137,7 @@ void main(List<String> arguments) async {
 
   CurrencyService.loadPrivacyMode();
   ThemeNotifier.load();
+  ThemeNotifier.instance.addListener(AppIconService.apply);
   AppIconService.load();
   QuoteMindChargeService.load();
   SecretsService.loadCached();

@@ -32,7 +32,10 @@ class TaskAssignment {
       assignee == null ? null : TeamService.byId(assignee);
 
   static String? coerce(String? requested) {
-    if (canAssignToOthers) return requested;
+    if (canAssignToOthers) {
+      final value = requested?.trim();
+      return value == null || value.isEmpty ? null : value;
+    }
     final me = currentId;
     if (me == null) return null;
     return me;

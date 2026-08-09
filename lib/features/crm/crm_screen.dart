@@ -5,6 +5,7 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
+import '../team/widgets/employee_or_custom_field.dart';
 import 'models/crm_models.dart';
 import 'services/crm_service.dart';
 
@@ -57,9 +58,7 @@ class _CrmScreenState extends State<CrmScreen> {
     if (data.clients
         .where((value) => value.status != CrmClientStatus.archived)
         .isEmpty) {
-      _message(_ru
-          ? 'Сначала добавьте клиента.'
-          : 'Add a client first.');
+      _message(_ru ? 'Сначала добавьте клиента.' : 'Add a client first.');
       return;
     }
     final value = await _InteractionEditorSheet.show(
@@ -259,7 +258,8 @@ class _CrmScreenState extends State<CrmScreen> {
                 Text(metric.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
+                    style:
+                        TextStyle(fontSize: 10.5, color: AppTheme.textMuted)),
                 const SizedBox(height: 2),
                 Text(metric.value,
                     maxLines: 1,
@@ -338,13 +338,16 @@ class _CrmScreenState extends State<CrmScreen> {
 
   Widget _overview(_CrmData data) {
     final followUps = data.clients
-        .where((value) => value.nextContactAt != null &&
+        .where((value) =>
+            value.nextContactAt != null &&
             value.status != CrmClientStatus.archived)
         .toList()
       ..sort((a, b) => a.nextContactAt!.compareTo(b.nextContactAt!));
     final recent = data.interactions.take(8).toList();
-    final won = data.deals.where((value) => value.stage == DealStage.won).length;
-    final lost = data.deals.where((value) => value.stage == DealStage.lost).length;
+    final won =
+        data.deals.where((value) => value.stage == DealStage.won).length;
+    final lost =
+        data.deals.where((value) => value.stage == DealStage.lost).length;
     final conversion = won + lost == 0 ? 0.0 : won / (won + lost);
 
     return ListView(
@@ -376,7 +379,9 @@ class _CrmScreenState extends State<CrmScreen> {
               child: Column(
                 children: [
                   _progressRow(
-                    _ru ? 'Конверсия закрытых сделок' : 'Closed-deal conversion',
+                    _ru
+                        ? 'Конверсия закрытых сделок'
+                        : 'Closed-deal conversion',
                     conversion,
                     '${(conversion * 100).round()}%',
                   ),
@@ -405,9 +410,7 @@ class _CrmScreenState extends State<CrmScreen> {
                       ),
                       const SizedBox(width: 10),
                       Expanded(
-                        child: _miniValue(
-                            _ru ? 'Потеряно' : 'Lost',
-                            '$lost',
+                        child: _miniValue(_ru ? 'Потеряно' : 'Lost', '$lost',
                             AppTheme.accentRed),
                       ),
                     ],
@@ -514,7 +517,8 @@ class _CrmScreenState extends State<CrmScreen> {
           children: [
             Expanded(
               child: Text(label,
-                  style: TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
+                  style:
+                      TextStyle(fontSize: 11, color: AppTheme.textSecondary)),
             ),
             Text(end,
                 style: TextStyle(
@@ -554,9 +558,7 @@ class _CrmScreenState extends State<CrmScreen> {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: color)),
+                    fontSize: 15, fontWeight: FontWeight.w800, color: color)),
           ],
         ),
       );
@@ -732,7 +734,8 @@ class _CrmScreenState extends State<CrmScreen> {
               ),
               const SizedBox(height: 7),
               Text(
-                client?.displayName ?? (_ru ? 'Клиент удалён' : 'Client removed'),
+                client?.displayName ??
+                    (_ru ? 'Клиент удалён' : 'Client removed'),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
@@ -770,9 +773,8 @@ class _CrmScreenState extends State<CrmScreen> {
                   children: [
                     Icon(Icons.event_outlined,
                         size: 13,
-                        color: overdue
-                            ? AppTheme.accentRed
-                            : AppTheme.textMuted),
+                        color:
+                            overdue ? AppTheme.accentRed : AppTheme.textMuted),
                     const SizedBox(width: 5),
                     Text(_date(deal.expectedCloseAt!),
                         style: TextStyle(
@@ -858,8 +860,7 @@ class _CrmScreenState extends State<CrmScreen> {
                   padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
                   itemCount: filtered.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 9),
-                  itemBuilder: (_, index) =>
-                      _clientCard(filtered[index], data),
+                  itemBuilder: (_, index) => _clientCard(filtered[index], data),
                 ),
         ),
       ],
@@ -874,8 +875,8 @@ class _CrmScreenState extends State<CrmScreen> {
       label: Text(label),
       selectedColor: AppTheme.accent.withOpacity(.15),
       checkmarkColor: AppTheme.accent,
-      side: BorderSide(
-          color: selected ? AppTheme.accent : AppTheme.glassBorder),
+      side:
+          BorderSide(color: selected ? AppTheme.accent : AppTheme.glassBorder),
       labelStyle: TextStyle(
         fontSize: 11,
         color: selected ? AppTheme.textPrimary : AppTheme.textMuted,
@@ -927,8 +928,8 @@ class _CrmScreenState extends State<CrmScreen> {
                                   color: AppTheme.textPrimary)),
                         ),
                         const SizedBox(width: 7),
-                        _statusBadge(
-                            _clientStatusLabel(client.status, _ru), statusColor),
+                        _statusBadge(_clientStatusLabel(client.status, _ru),
+                            statusColor),
                       ],
                     ),
                     const SizedBox(height: 2),
@@ -981,8 +982,8 @@ class _CrmScreenState extends State<CrmScreen> {
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
       itemCount: data.interactions.length,
-      itemBuilder: (_, index) => _interactionTimeline(
-          data.interactions[index], data, index == data.interactions.length - 1),
+      itemBuilder: (_, index) => _interactionTimeline(data.interactions[index],
+          data, index == data.interactions.length - 1),
     );
   }
 
@@ -1176,9 +1177,7 @@ class _CrmScreenState extends State<CrmScreen> {
               Text(text,
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                      fontSize: 11.5,
-                      height: 1.45,
-                      color: AppTheme.textMuted)),
+                      fontSize: 11.5, height: 1.45, color: AppTheme.textMuted)),
             ],
           ),
         ),
@@ -1215,9 +1214,7 @@ class _CrmScreenState extends State<CrmScreen> {
         ),
         child: Text(text,
             style: TextStyle(
-                fontSize: 9,
-                fontWeight: FontWeight.w700,
-                color: color)),
+                fontSize: 9, fontWeight: FontWeight.w700, color: color)),
       );
 
   Widget _tiny(IconData icon, String text, {Color? color}) => Row(
@@ -1226,15 +1223,16 @@ class _CrmScreenState extends State<CrmScreen> {
           Icon(icon, size: 12, color: color ?? AppTheme.textMuted),
           const SizedBox(width: 4),
           Text(text,
-              style: TextStyle(
-                  fontSize: 9.8, color: color ?? AppTheme.textMuted)),
+              style:
+                  TextStyle(fontSize: 9.8, color: color ?? AppTheme.textMuted)),
         ],
       );
 
   Future<void> _openClient(CrmClient client) async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => CrmClientDetailScreen(clientId: client.id)),
+      MaterialPageRoute(
+          builder: (_) => CrmClientDetailScreen(clientId: client.id)),
     );
   }
 
@@ -1301,7 +1299,8 @@ class _CrmClientDetailScreenState extends State<CrmClientDetailScreen> {
             backgroundColor: AppTheme.background,
             appBar: AppBar(
               backgroundColor: AppTheme.background,
-              title: WesiTitle(_ru ? 'Карточка клиента' : 'Client card', size: 18),
+              title:
+                  WesiTitle(_ru ? 'Карточка клиента' : 'Client card', size: 18),
               actions: [
                 if (data != null)
                   IconButton(
@@ -1324,7 +1323,8 @@ class _CrmClientDetailScreenState extends State<CrmClientDetailScreen> {
                         child:
                             CircularProgressIndicator(color: AppTheme.accent))
                     : Center(
-                        child: Text(_ru ? 'Клиент не найден' : 'Client not found'))
+                        child:
+                            Text(_ru ? 'Клиент не найден' : 'Client not found'))
                 : ListView(
                     padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
                     children: [
@@ -1420,11 +1420,15 @@ class _CrmClientDetailScreenState extends State<CrmClientDetailScreen> {
           const SizedBox(height: 18),
           Row(
             children: [
-              Expanded(child: _stat(_ru ? 'Сделки' : 'Deals', '${data.deals.length}')),
+              Expanded(
+                  child:
+                      _stat(_ru ? 'Сделки' : 'Deals', '${data.deals.length}')),
               const SizedBox(width: 8),
-              Expanded(child: _stat(_ru ? 'Открыто' : 'Open', '${open.length}')),
+              Expanded(
+                  child: _stat(_ru ? 'Открыто' : 'Open', '${open.length}')),
               const SizedBox(width: 8),
-              Expanded(child: _stat(_ru ? 'Воронка' : 'Pipeline', _money(amount))),
+              Expanded(
+                  child: _stat(_ru ? 'Воронка' : 'Pipeline', _money(amount))),
             ],
           ),
           if (data.client.nextContactAt != null) ...[
@@ -1472,12 +1476,16 @@ class _CrmClientDetailScreenState extends State<CrmClientDetailScreen> {
         Icons.contact_page_outlined,
         Column(
           children: [
-            _contact(Icons.phone_outlined, _ru ? 'Телефон' : 'Phone', client.phone),
+            _contact(
+                Icons.phone_outlined, _ru ? 'Телефон' : 'Phone', client.phone),
             _contact(Icons.email_outlined, 'Email', client.email),
             _contact(Icons.language, _ru ? 'Сайт' : 'Website', client.website),
-            _contact(Icons.location_on_outlined, _ru ? 'Адрес' : 'Address', client.address),
-            _contact(Icons.campaign_outlined, _ru ? 'Источник' : 'Source', client.source),
-            _contact(Icons.person_outline, _ru ? 'Ответственный' : 'Owner', client.owner),
+            _contact(Icons.location_on_outlined, _ru ? 'Адрес' : 'Address',
+                client.address),
+            _contact(Icons.campaign_outlined, _ru ? 'Источник' : 'Source',
+                client.source),
+            _contact(Icons.person_outline, _ru ? 'Ответственный' : 'Owner',
+                client.owner),
             if (client.tags.isNotEmpty) ...[
               const SizedBox(height: 8),
               Align(
@@ -1671,8 +1679,8 @@ class _CrmClientDetailScreenState extends State<CrmClientDetailScreen> {
           ),
           Expanded(
             child: Text(value,
-                style: TextStyle(
-                    fontSize: 11.5, color: AppTheme.textSecondary)),
+                style:
+                    TextStyle(fontSize: 11.5, color: AppTheme.textSecondary)),
           ),
         ],
       ),
@@ -1709,9 +1717,7 @@ class _CrmClientDetailScreenState extends State<CrmClientDetailScreen> {
         ),
         child: Text(text,
             style: TextStyle(
-                fontSize: 9.5,
-                fontWeight: FontWeight.w700,
-                color: color)),
+                fontSize: 9.5, fontWeight: FontWeight.w700, color: color)),
       );
 
   Widget _empty(String text) => Padding(
@@ -1723,7 +1729,11 @@ class _CrmClientDetailScreenState extends State<CrmClientDetailScreen> {
       );
 
   String _money(double value, [String currency = 'RUB']) {
-    final symbol = currency == 'USD' ? r'$' : currency == 'EUR' ? '€' : '₽';
+    final symbol = currency == 'USD'
+        ? r'$'
+        : currency == 'EUR'
+            ? '€'
+            : '₽';
     return NumberFormat.currency(
       locale: _ru ? 'ru_RU' : 'en_US',
       symbol: symbol,
@@ -1734,7 +1744,8 @@ class _CrmClientDetailScreenState extends State<CrmClientDetailScreen> {
   String _date(DateTime value) =>
       DateFormat(_ru ? 'dd.MM.yyyy' : 'MMM d, yyyy').format(value.toLocal());
   String _dateTime(DateTime value) =>
-      DateFormat(_ru ? 'dd.MM.yy HH:mm' : 'MMM d, HH:mm').format(value.toLocal());
+      DateFormat(_ru ? 'dd.MM.yy HH:mm' : 'MMM d, HH:mm')
+          .format(value.toLocal());
 }
 
 class _ClientEditorSheet extends StatefulWidget {
@@ -1839,7 +1850,15 @@ class _ClientEditorSheetState extends State<_ClientEditorSheet> {
               ],
             ),
             _field(_address, _ru ? 'Адрес' : 'Address'),
-            _field(_owner, _ru ? 'Ответственный' : 'Owner'),
+            EmployeeOrCustomField(
+              label: _ru ? 'Ответственный' : 'Owner',
+              value: _owner.text,
+              storeEmployeeId: false,
+              allowCustom: true,
+              customLabel: _ru ? 'Другой ответственный' : 'Other owner',
+              onChanged: (value) => _owner.text = value ?? '',
+            ),
+            const SizedBox(height: 10),
             _field(_tags, _ru ? 'Теги через запятую' : 'Comma-separated tags'),
             DropdownButtonFormField<CrmClientStatus>(
               value: _status,
@@ -1980,7 +1999,8 @@ class _DealEditorSheetState extends State<_DealEditorSheet> {
     _tags = TextEditingController(text: value?.tags.join(', ') ?? '');
     _currency = value?.currency ?? 'RUB';
     _stage = value?.stage ?? widget.initialStage ?? DealStage.newLead;
-    _probability = (value?.probability ?? _defaultProbability(_stage)).toDouble();
+    _probability =
+        (value?.probability ?? _defaultProbability(_stage)).toDouble();
     _expectedClose = value?.expectedCloseAt;
   }
 
@@ -2031,7 +2051,8 @@ class _DealEditorSheetState extends State<_DealEditorSheet> {
                   child: _field(
                     _amount,
                     _ru ? 'Сумма' : 'Amount',
-                    keyboard: const TextInputType.numberWithOptions(decimal: true),
+                    keyboard:
+                        const TextInputType.numberWithOptions(decimal: true),
                   ),
                 ),
                 const SizedBox(width: 10),
@@ -2095,8 +2116,11 @@ class _DealEditorSheetState extends State<_DealEditorSheet> {
             ),
             const SizedBox(height: 10),
             _field(_tags, _ru ? 'Теги через запятую' : 'Comma-separated tags'),
-            _field(_transaction,
-                _ru ? 'ID операции Treasury (необязательно)' : 'Treasury transaction ID (optional)'),
+            _field(
+                _transaction,
+                _ru
+                    ? 'ID операции Treasury (необязательно)'
+                    : 'Treasury transaction ID (optional)'),
             _field(_notes, _ru ? 'Условия и заметки' : 'Terms and notes',
                 lines: 4),
             const SizedBox(height: 16),
@@ -2225,9 +2249,8 @@ class _InteractionEditorSheetState extends State<_InteractionEditorSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final deals = widget.deals
-        .where((value) => value.clientId == _clientId)
-        .toList();
+    final deals =
+        widget.deals.where((value) => value.clientId == _clientId).toList();
     if (_dealId != null && !deals.any((value) => value.id == _dealId)) {
       _dealId = null;
     }
@@ -2277,7 +2300,8 @@ class _InteractionEditorSheetState extends State<_InteractionEditorSheet> {
             if (deals.isNotEmpty)
               DropdownButtonFormField<String?>(
                 value: _dealId,
-                decoration: _decoration(_ru ? 'Связанная сделка' : 'Related deal'),
+                decoration:
+                    _decoration(_ru ? 'Связанная сделка' : 'Related deal'),
                 items: [
                   DropdownMenuItem<String?>(
                     value: null,
@@ -2538,7 +2562,8 @@ Widget _dateTimePicker(
         initialTime: TimeOfDay.fromDateTime(value),
       );
       if (time == null) return;
-      onChanged(DateTime(date.year, date.month, date.day, time.hour, time.minute));
+      onChanged(
+          DateTime(date.year, date.month, date.day, time.hour, time.minute));
     },
     child: InputDecorator(
       decoration: _decoration(label).copyWith(

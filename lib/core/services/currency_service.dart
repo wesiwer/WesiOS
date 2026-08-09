@@ -124,7 +124,8 @@ class CurrencyService {
   /// Восстанавливает режим при старте.
   static void loadPrivacyMode() {
     try {
-      privacyMode.value = Hive.box('wesios_settings').get('privacy_mode') == true;
+      privacyMode.value =
+          Hive.box('wesios_settings').get('privacy_mode') == true;
     } catch (_) {
       privacyMode.value = false;
     }
@@ -155,6 +156,19 @@ class CurrencyService {
     final v = fromRub(rubValue);
     final sign = v < 0 ? '-' : '';
     return '$sign$symbol${v.abs().toStringAsFixed(decimals)}';
+  }
+
+  /// Точная сумма без k/M, но без бессмысленных хвостов `.00`.
+  static String formatExactSmart(double rubValue, {int maxDecimals = 2}) {
+    if (privacyMode.value) return '$symbol$_masked';
+    final v = fromRub(rubValue);
+    final sign = v < 0 ? '-' : '';
+    var amount = v.abs().toStringAsFixed(maxDecimals);
+    if (amount.contains('.')) {
+      amount = amount.replaceFirst(RegExp(r'0+$'), '');
+      amount = amount.replaceFirst(RegExp(r'\.$'), '');
+    }
+    return '$sign$symbol$amount';
   }
 
   /// Конвертирует и возвращает голое число в текущей валюте — для графиков,

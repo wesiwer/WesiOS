@@ -4,6 +4,7 @@ import '../../../core/localization/wesi_locale.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/wesi_avatar.dart';
 import '../../team/models/employee_model.dart';
+import '../../team/widgets/employee_or_custom_field.dart';
 import '../services/task_assignment.dart';
 
 /// Выбор исполнителя.
@@ -20,7 +21,8 @@ class AssigneeField extends StatelessWidget {
   final String? value;
   final ValueChanged<String?> onChanged;
 
-  const AssigneeField({super.key, required this.value, required this.onChanged});
+  const AssigneeField(
+      {super.key, required this.value, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -62,8 +64,8 @@ class AssigneeField extends StatelessWidget {
                 Expanded(
                   child: Text(
                     me?.displayName ?? (ru ? 'Вы' : 'You'),
-                    style: TextStyle(
-                        fontSize: 13, color: AppTheme.textSecondary),
+                    style:
+                        TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                   ),
                 ),
                 Icon(Icons.lock_outline, size: 15, color: AppTheme.textMuted),
@@ -78,47 +80,14 @@ class AssigneeField extends StatelessWidget {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        _label(ru ? 'Исполнитель' : 'Assignee'),
-        const SizedBox(height: 5),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            color: AppTheme.surfaceLight.withOpacity(0.4),
-            borderRadius: BorderRadius.circular(9),
-            border: Border.all(color: AppTheme.glassBorder),
-          ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<String?>(
-              value: _valueInList(people) ? value : null,
-              isExpanded: true,
-              dropdownColor: AppTheme.surface,
-              icon: Icon(Icons.expand_more,
-                  size: 18, color: AppTheme.textMuted),
-              style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
-              hint: Text(ru ? 'Без исполнителя' : 'Unassigned',
-                  style:
-                      TextStyle(fontSize: 13, color: AppTheme.textMuted)),
-              items: [
-                DropdownMenuItem<String?>(
-                  value: null,
-                  child: Text(ru ? 'Без исполнителя' : 'Unassigned',
-                      style: TextStyle(
-                          fontSize: 13, color: AppTheme.textMuted)),
-                ),
-                for (final p in people)
-                  DropdownMenuItem<String?>(
-                    value: p.id,
-                    child: _person(p, ru),
-                  ),
-              ],
-              onChanged: onChanged,
-            ),
-          ),
-        ),
-      ],
+    return EmployeeOrCustomField(
+      label: ru ? 'Исполнитель' : 'Assignee',
+      value: value,
+      storeEmployeeId: true,
+      allowCustom: true,
+      allowEmpty: true,
+      customLabel: ru ? 'Другой исполнитель' : 'Other assignee',
+      onChanged: onChanged,
     );
   }
 
@@ -133,16 +102,11 @@ class AssigneeField extends StatelessWidget {
     return Row(
       children: [
         WesiAvatar(
-            size: 20,
-            index: p.avatarIndex,
-            photo: p.photo,
-            showBorder: false),
+            size: 20, index: p.avatarIndex, photo: p.photo, showBorder: false),
         const SizedBox(width: 8),
         Flexible(
           child: Text(
-            isMe
-                ? '${p.displayName} · ${ru ? 'вы' : 'you'}'
-                : p.displayName,
+            isMe ? '${p.displayName} · ${ru ? 'вы' : 'you'}' : p.displayName,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
@@ -157,7 +121,7 @@ class AssigneeField extends StatelessWidget {
 
   Widget _hint(String text) => Text(
         text,
-        style: TextStyle(
-            fontSize: 10.5, height: 1.35, color: AppTheme.textMuted),
+        style:
+            TextStyle(fontSize: 10.5, height: 1.35, color: AppTheme.textMuted),
       );
 }

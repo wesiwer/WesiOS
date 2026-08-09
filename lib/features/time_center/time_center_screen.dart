@@ -33,7 +33,7 @@ class _TimeCenterScreenState extends State<TimeCenterScreen> {
     super.initState();
     TimeCenterService.revision.addListener(_load);
     _load();
-    _ticker = Timer.periodic(const Duration(milliseconds: 200), (_) {
+    _ticker = Timer.periodic(const Duration(milliseconds: 50), (_) {
       if (!mounted) return;
       if (_timer.running || _stopwatch.running) {
         setState(() {});
@@ -955,10 +955,10 @@ class _TimeCenterScreenState extends State<TimeCenterScreen> {
 
   String _formatStopwatchMs(int ms) {
     final safe = ms < 0 ? 0 : ms;
-    final hours = safe ~/ 3600000;
-    final minutes = (safe ~/ 60000) % 60;
-    final seconds = (safe ~/ 1000) % 60;
-    final hundredths = (safe ~/ 10) % 100;
-    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}.${hundredths.toString().padLeft(2, '0')}';
+    final totalSeconds = safe ~/ 1000;
+    final hours = totalSeconds ~/ 3600;
+    final minutes = (totalSeconds ~/ 60) % 60;
+    final seconds = totalSeconds % 60;
+    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 }

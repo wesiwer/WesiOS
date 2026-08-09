@@ -1,15 +1,12 @@
 import 'package:flutter/material.dart';
+
+import '../../../core/localization/wesi_locale.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/widgets/hover_button.dart';
 import '../../../core/widgets/window_controls.dart';
-import '../../../core/localization/wesi_locale.dart';
 import '../models/transaction_model.dart';
 import '../services/forecast_engine.dart';
 
-/// Диалог сценария «Что если?» — виртуальное разовое событие и/или
-/// процентная корректировка доходов/расходов. Ничего не пишет в базу:
-/// возвращает [WhatIfScenario] через Navigator.pop, экран-вызыватель просто
-/// передаёт его в следующий [ForecastEngine.generate].
 class WhatIfDialog extends StatefulWidget {
   final WhatIfScenario initial;
   final int forecastDays;
@@ -27,75 +24,65 @@ class WhatIfDialog extends StatefulWidget {
 }
 
 class _WhatIfDialogState extends State<WhatIfDialog> {
-  final _titleCtrl = TextEditingController();
-  final _amountCtrl = TextEditingController();
-  bool _includeEvent = false;
-  TransactionType _eventType = TransactionType.expense;
-  late DateTime _eventDate;
   late double _incomeMult;
   late double _expenseMult;
+  final List<_VirtualOperationDraft> _operations = [];
+
+  bool get _ru => WesiLocale.isRussian;
 
   @override
   void initState() {
     super.initState();
-    final today = DateTime.now();
-    _eventDate = DateTime(today.year, today.month, today.day)
-        .add(Duration(days: (widget.forecastDays / 2).round().clamp(1, widget.forecastDays)));
     _incomeMult = widget.initial.incomeMultiplier;
     _expenseMult = widget.initial.expenseMultiplier;
-    if (widget.initial.events.isNotEmpty) {
-      final e = widget.initial.events.first;
-      _includeEvent = true;
-      _titleCtrl.text = e.title;
-      _amountCtrl.text = e.amount.toStringAsFixed(0);
-      _eventType = e.type;
-      _eventDate = DateTime(e.date.year, e.date.month, e.date.day);
+    for (final event in widget.initial.events) {
+      _operations.add(_VirtualOperationDraft.fromEvent(event));
     }
   }
 
   @override
   void dispose() {
-    _titleCtrl.dispose();
-    _amountCtrl.dispose();
+    for (final operation in _operations) {
+      operation.dispose();
+    }
     super.dispose();
   }
 
-  Future<void> _pickDate() async {
-    final today = DateTime.now();
-    final start = DateTime(today.year, today.month, today.day);
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _eventDate,
-      firstDate: start.add(Duration(days: 1)),
-      lastDate: start.add(Duration(days: widget.forecastDays)),
-      locale: WesiLocale.isRussian ? Locale('ru') : const Locale('en'),
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: ColorScheme.dark(
-            primary: AppTheme.accent,
-            onPrimary: AppTheme.background,
-            surface: AppTheme.surface,
-            onSurface: AppTheme.textPrimary,
-          ),
+  void _addOperation() {
+    final now = DateTime.now();
+    setState(() {
+      _operations.add(
+        _VirtualOperationDraft(
+          date: DateTime(now.year, now.month, now.day)
+              .add(const Duration(days: 1)),
         ),
-        child: child!,
-      ),
-    );
-    if (picked != null) setState(() => _eventDate = picked);
+      );
+    });
+  }
+
+  void _removeOperation(int index) {
+    final value = _operations.removeAt(index);
+    value.dispose();
+    setState(() {});
   }
 
   void _apply() {
     final events = <WhatIfEvent>[];
-    if (_includeEvent) {
-      final amount = double.tryParse(_amountCtrl.text);
-      if (_titleCtrl.text.isNotEmpty && amount != null && amount > 0) {
-        events.add(WhatIfEvent(
-          title: _titleCtrl.text,
+    for (final operation in _operations) {
+      final amount = double.tryParse(
+        operation.amount.text.trim().replaceAll(',', '.'),
+      );
+      final title = operation.title.text.trim();
+      if (title.isEmpty || amount == null || amount <= 0) continue;
+      events.add(
+        WhatIfEvent(
+          title: title,
           amount: amount,
-          type: _eventType,
-          date: _eventDate,
-        ));
-      }
+          type: operation.type,
+          date: operation.date,
+          recurringPeriod: operation.recurringPeriod,
+        ),
+      );
     }
     Navigator.pop(
       context,
@@ -114,13 +101,11 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
     return Dialog(
       backgroundColor: AppTheme.surface,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      // Отступ сверху на высоту кастомного title bar — кнопки диалога не
-      // должны оказаться под системными кнопками окна.
-      insetPadding: const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
+      insetPadding: const EdgeInsets.fromLTRB(20, kTitleBarHeight + 20, 20, 20),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440, maxHeight: 640),
+        constraints: const BoxConstraints(maxWidth: 560, maxHeight: 720),
         child: SingleChildScrollView(
-          padding: EdgeInsets.all(24),
+          padding: const EdgeInsets.all(22),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -128,83 +113,63 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
               Text(
                 'what_if'.w,
                 style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w700,
-                    color: AppTheme.textPrimary),
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
+                  color: AppTheme.textPrimary,
+                ),
               ),
-              SizedBox(height: 6),
+              const SizedBox(height: 6),
               Text(
-                'what_if_hint'.w,
+                _ru
+                    ? 'Добавьте виртуальные доходы и траты: один раз или по расписанию. Реальные операции не изменятся.'
+                    : 'Add virtual income and expenses once or on a schedule. Real operations stay untouched.',
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
-              SizedBox(height: 20),
+              const SizedBox(height: 18),
               Row(
                 children: [
-                  Switch(
-                    value: _includeEvent,
-                    activeColor: AppTheme.accent,
-                    onChanged: (v) => setState(() => _includeEvent = v),
-                  ),
                   Expanded(
-                    child: Text('what_if_add_event'.w,
-                        style: TextStyle(color: AppTheme.textPrimary)),
+                    child: Text(
+                      _ru ? 'Виртуальные операции' : 'Virtual operations',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textSecondary,
+                      ),
+                    ),
+                  ),
+                  TextButton.icon(
+                    onPressed: _addOperation,
+                    icon: const Icon(Icons.add, size: 17),
+                    label: Text(_ru ? 'Добавить' : 'Add'),
                   ),
                 ],
               ),
-              if (_includeEvent) ...[
-                SizedBox(height: 8),
-                TextField(
-                  controller: _titleCtrl,
-                  style: TextStyle(color: AppTheme.textPrimary),
-                  decoration: InputDecoration(
-                      labelText: 'what_if_event_title'.w),
-                ),
-                SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _amountCtrl,
-                        keyboardType: TextInputType.number,
-                        style: TextStyle(color: AppTheme.textPrimary),
-                        decoration: InputDecoration(
-                          labelText: 'amount'.w,
-                          prefixText: '${widget.symbol} ',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    _typeToggle(),
-                  ],
-                ),
-                SizedBox(height: 12),
-                GestureDetector(
-                  onTap: _pickDate,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 14, vertical: 14),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppTheme.glassBorder),
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(Icons.calendar_month,
-                            size: 18, color: AppTheme.textMuted),
-                        SizedBox(width: 10),
-                        Text(
-                          '${'what_if_event_date'.w}: '
-                          '${_eventDate.day.toString().padLeft(2, '0')}.'
-                          '${_eventDate.month.toString().padLeft(2, '0')}.'
-                          '${_eventDate.year}',
-                          style: TextStyle(color: AppTheme.textPrimary),
-                        ),
-                      ],
+              if (_operations.isEmpty)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(13),
+                    border: Border.all(color: AppTheme.glassBorder),
+                  ),
+                  child: Text(
+                    _ru
+                        ? 'Например: инвестиции +10 000 ₽ каждый месяц, аренда −50 000 ₽ ежемесячно или разовая покупка.'
+                        : 'For example: +10,000 monthly investment, −50,000 monthly rent, or a one-time purchase.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.4,
+                      color: AppTheme.textMuted,
                     ),
                   ),
-                ),
-              ],
-              SizedBox(height: 24),
+                )
+              else
+                for (var i = 0; i < _operations.length; i++) ...[
+                  _operationCard(i, _operations[i]),
+                  if (i + 1 < _operations.length) const SizedBox(height: 10),
+                ],
+              const SizedBox(height: 22),
               _slider(
                 label: 'what_if_income_adjust'.w,
                 value: _incomeMult,
@@ -213,7 +178,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                 color: AppTheme.accentGreen,
                 onChanged: (v) => setState(() => _incomeMult = v),
               ),
-              SizedBox(height: 12),
+              const SizedBox(height: 12),
               _slider(
                 label: 'what_if_expense_adjust'.w,
                 value: _expenseMult,
@@ -222,7 +187,7 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                 color: AppTheme.accentRed,
                 onChanged: (v) => setState(() => _expenseMult = v),
               ),
-              SizedBox(height: 24),
+              const SizedBox(height: 22),
               Row(
                 children: [
                   TextButton(
@@ -230,16 +195,16 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
                     child: Text('what_if_reset'.w,
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  Spacer(),
+                  const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.pop(context),
                     child: Text('cancel'.w,
                         style: TextStyle(color: AppTheme.textMuted)),
                   ),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   HoverButton(
                     onTap: _apply,
-                    padding: EdgeInsets.symmetric(
+                    padding: const EdgeInsets.symmetric(
                         horizontal: 24, vertical: 12),
                     backgroundColor: AppTheme.accent,
                     child: Text('what_if_apply'.w,
@@ -254,26 +219,147 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
     );
   }
 
-  Widget _typeToggle() {
-    return ToggleButtons(
-      isSelected: [
-        _eventType == TransactionType.income,
-        _eventType == TransactionType.expense,
-      ],
-      onPressed: (i) => setState(
-          () => _eventType = i == 0 ? TransactionType.income : TransactionType.expense),
-      borderRadius: BorderRadius.circular(10),
-      selectedColor: Colors.white,
-      fillColor: _eventType == TransactionType.income
-          ? AppTheme.accentGreen
-          : AppTheme.accentRed,
-      color: AppTheme.textMuted,
-      constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
-      children: const [
-        Icon(Icons.add_circle_outline, size: 18),
-        Icon(Icons.remove_circle_outline, size: 18),
-      ],
+  Widget _operationCard(int index, _VirtualOperationDraft operation) {
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppTheme.background.withOpacity(.28),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: operation.title,
+                  decoration: InputDecoration(
+                    labelText: _ru ? 'Название' : 'Title',
+                    hintText: _ru ? 'Инвестиции' : 'Investment',
+                  ),
+                ),
+              ),
+              IconButton(
+                tooltip: _ru ? 'Удалить' : 'Delete',
+                onPressed: () => _removeOperation(index),
+                icon: Icon(Icons.delete_outline, color: AppTheme.accentRed),
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: operation.amount,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: InputDecoration(
+                    labelText: 'amount'.w,
+                    prefixText: '${widget.symbol} ',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              ToggleButtons(
+                isSelected: [
+                  operation.type == TransactionType.income,
+                  operation.type == TransactionType.expense,
+                ],
+                onPressed: (value) => setState(() {
+                  operation.type = value == 0
+                      ? TransactionType.income
+                      : TransactionType.expense;
+                }),
+                borderRadius: BorderRadius.circular(10),
+                selectedColor: Colors.white,
+                fillColor: operation.type == TransactionType.income
+                    ? AppTheme.accentGreen
+                    : AppTheme.accentRed,
+                constraints: const BoxConstraints(minWidth: 44, minHeight: 44),
+                children: const [
+                  Icon(Icons.add_circle_outline, size: 18),
+                  Icon(Icons.remove_circle_outline, size: 18),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 9),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton.icon(
+                  onPressed: () => _pickOperationDate(operation),
+                  icon: const Icon(Icons.calendar_month, size: 17),
+                  label: Text(
+                    '${operation.date.day.toString().padLeft(2, '0')}.'
+                    '${operation.date.month.toString().padLeft(2, '0')}.'
+                    '${operation.date.year}',
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: DropdownButtonFormField<RecurringPeriod?>(
+                  value: operation.recurringPeriod,
+                  isExpanded: true,
+                  decoration:
+                      InputDecoration(labelText: _ru ? 'Повтор' : 'Repeat'),
+                  items: [
+                    DropdownMenuItem<RecurringPeriod?>(
+                      value: null,
+                      child: Text(_ru ? 'Один раз' : 'Once'),
+                    ),
+                    for (final period in RecurringPeriod.values)
+                      DropdownMenuItem<RecurringPeriod?>(
+                        value: period,
+                        child: Text(_periodLabel(period)),
+                      ),
+                  ],
+                  onChanged: (value) =>
+                      setState(() => operation.recurringPeriod = value),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _pickOperationDate(_VirtualOperationDraft operation) async {
+    final today = DateTime.now();
+    final start = DateTime(today.year, today.month, today.day);
+    final end = start.add(Duration(days: widget.forecastDays));
+    var initial = operation.date;
+    if (initial.isBefore(start)) initial = start;
+    if (initial.isAfter(end)) initial = end;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: initial,
+      firstDate: start,
+      lastDate: end,
+      locale: _ru ? const Locale('ru') : const Locale('en'),
+    );
+    if (picked != null) setState(() => operation.date = picked);
+  }
+
+  String _periodLabel(RecurringPeriod value) {
+    if (_ru) {
+      return switch (value) {
+        RecurringPeriod.daily => 'Каждый день',
+        RecurringPeriod.weekly => 'Каждую неделю',
+        RecurringPeriod.monthly => 'Каждый месяц',
+        RecurringPeriod.yearly => 'Каждый год',
+      };
+    }
+    return switch (value) {
+      RecurringPeriod.daily => 'Daily',
+      RecurringPeriod.weekly => 'Weekly',
+      RecurringPeriod.monthly => 'Monthly',
+      RecurringPeriod.yearly => 'Yearly',
+    };
   }
 
   Widget _slider({
@@ -293,8 +379,8 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
           children: [
             Expanded(
               child: Text(label,
-                  style: TextStyle(
-                      fontSize: 13, color: AppTheme.textSecondary)),
+                  style:
+                      TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
             ),
             Text(pctLabel,
                 style: TextStyle(
@@ -318,5 +404,36 @@ class _WhatIfDialogState extends State<WhatIfDialog> {
         ),
       ],
     );
+  }
+}
+
+class _VirtualOperationDraft {
+  final TextEditingController title;
+  final TextEditingController amount;
+  TransactionType type;
+  DateTime date;
+  RecurringPeriod? recurringPeriod;
+
+  _VirtualOperationDraft({
+    String title = '',
+    String amount = '',
+    this.type = TransactionType.expense,
+    required this.date,
+    this.recurringPeriod,
+  })  : title = TextEditingController(text: title),
+        amount = TextEditingController(text: amount);
+
+  factory _VirtualOperationDraft.fromEvent(WhatIfEvent event) =>
+      _VirtualOperationDraft(
+        title: event.title,
+        amount: event.amount.toStringAsFixed(event.amount % 1 == 0 ? 0 : 2),
+        type: event.type,
+        date: event.date,
+        recurringPeriod: event.recurringPeriod,
+      );
+
+  void dispose() {
+    title.dispose();
+    amount.dispose();
   }
 }

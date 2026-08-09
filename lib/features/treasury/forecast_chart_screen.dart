@@ -64,7 +64,9 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   // один раз до следующего изменения периода/сценария (см. _loadData).
   // Комбинированный не считается отдельно — это среднее по тем движкам,
   // что реально посчитались (см. combineForecastResults).
-  final Set<ForecastEngineKind> _activeEngines = {ForecastEngineKind.wesiHorizon};
+  final Set<ForecastEngineKind> _activeEngines = {
+    ForecastEngineKind.wesiHorizon
+  };
   final Map<ForecastEngineKind, ForecastResult?> _engineCache = {};
   final Set<ForecastEngineKind> _loadingEngines = {};
   final Set<ForecastEngineKind> _unavailableEngines = {};
@@ -88,9 +90,9 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   /// (surface@0.4 поверх background). Нужен, чтобы «стереть» лишнюю заливку
   /// под P10 и получить полосу ровно между P10 и P90, а не до низа графика.
   static Color get _chartBg => Color.alphaBlend(
-    AppTheme.surface.withOpacity(0.4),
-    AppTheme.background,
-  );
+        AppTheme.surface.withOpacity(0.4),
+        AppTheme.background,
+      );
 
   @override
   void initState() {
@@ -143,7 +145,9 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
 
     // История на графике масштабируется вместе с горизонтом прогноза —
     // 90-дневный прогноз без контекста истории тяжелее оценить на глаз.
-    final historyWindowDays = _forecastDays.clamp(30, 90);
+    // Keep short horizons readable: a 7-day forecast gets about 7 days
+    // of history instead of being squeezed by a fixed 30-day history window.
+    final historyWindowDays = _forecastDays.clamp(7, 90);
 
     final data = <ForecastPoint>[];
     final now = DateTime.now();
@@ -350,8 +354,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 Text(
                   'insufficient_data_hint'.w,
                   textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 13, color: AppTheme.textMuted),
+                  style: TextStyle(fontSize: 13, color: AppTheme.textMuted),
                 ),
               ],
             ),
@@ -513,8 +516,6 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     );
   }
 
-
-
   /// Переключатель движков прогноза: Wesi Horizon (родной), Prophet, SARIMAX
   /// — независимые тумблеры, можно включить любое подмножество (в т.ч. ни
   /// одного — тогда график и таблица пустые) или все сразу. «Комбинированный»
@@ -538,7 +539,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             child: CircularProgressIndicator(strokeWidth: 1.5, color: color),
           );
         } else if (unavailable) {
-          leading = Icon(Icons.error_outline, size: 14, color: AppTheme.textMuted);
+          leading =
+              Icon(Icons.error_outline, size: 14, color: AppTheme.textMuted);
         } else {
           leading = Container(
             width: 10,
@@ -559,7 +561,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               color: active ? color.withOpacity(0.15) : AppTheme.surface,
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                  color: active ? color.withOpacity(0.5) : AppTheme.glassBorder),
+                  color:
+                      active ? color.withOpacity(0.5) : AppTheme.glassBorder),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
@@ -657,8 +660,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         columns: [
           DataColumn(
               label: Text('day'.w,
-                  style: TextStyle(
-                      fontSize: 11, color: AppTheme.textMuted))),
+                  style: TextStyle(fontSize: 11, color: AppTheme.textMuted))),
           for (final kind in active)
             DataColumn(
               label: Text(
@@ -676,21 +678,17 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               '${date.month.toString().padLeft(2, '0')}';
           return DataRow(cells: [
             DataCell(Text(dateLabel,
-                style: TextStyle(
-                    fontSize: 11, color: AppTheme.textSecondary))),
+                style: TextStyle(fontSize: 11, color: AppTheme.textSecondary))),
             for (final kind in active)
               DataCell(Text(
                 CurrencyService.format(_engineCache[kind]!.p50[i]),
-                style: TextStyle(
-                    fontSize: 11, color: AppTheme.textPrimary),
+                style: TextStyle(fontSize: 11, color: AppTheme.textPrimary),
               )),
           ]);
         }).toList(),
       ),
     );
   }
-
-
 
   /// «1 год / 2 года / 5 лет» — без склонения подпись выглядит калькой.
   static String _yearsWordRu(int years) {
@@ -750,9 +748,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         duration: Duration(milliseconds: 180),
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: selected
-              ? AppTheme.accent.withOpacity(0.2)
-              : AppTheme.surface,
+          color: selected ? AppTheme.accent.withOpacity(0.2) : AppTheme.surface,
           borderRadius: BorderRadius.circular(8),
           border: Border.all(
               color: selected
@@ -765,8 +761,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             if (icon != null) ...[
               Icon(icon,
                   size: 14,
-                  color:
-                      selected ? AppTheme.accent : AppTheme.textSecondary),
+                  color: selected ? AppTheme.accent : AppTheme.textSecondary),
               SizedBox(width: 6),
             ],
             Text(
@@ -774,8 +769,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: selected ? FontWeight.w700 : FontWeight.w400,
-                color:
-                    selected ? AppTheme.accent : AppTheme.textSecondary,
+                color: selected ? AppTheme.accent : AppTheme.textSecondary,
               ),
             ),
           ],
@@ -791,7 +785,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   String _dateLabelForX(int x) {
     final now = DateTime.now();
     final offset = x - _historyWindowDays;
-    final d = DateTime(now.year, now.month, now.day).add(Duration(days: offset));
+    final d =
+        DateTime(now.year, now.month, now.day).add(Duration(days: offset));
     final dd = d.day.toString().padLeft(2, '0');
     final mm = d.month.toString().padLeft(2, '0');
     final prefix = offset > 0
@@ -869,8 +864,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     final minY = rawMin - pad;
     final maxY = rawMax + pad;
 
-    List<FlSpot> spotsFor(List<double> series) => List.generate(
-        series.length,
+    List<FlSpot> spotsFor(List<double> series) => List.generate(series.length,
         (i) => FlSpot((_historyWindowDays + 1 + i).toDouble(), series[i]));
 
     return Container(
@@ -897,8 +891,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 showTitles: true,
                 reservedSize: 50,
                 getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
-                    style: TextStyle(
-                        color: AppTheme.textMuted, fontSize: 10)),
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
               ),
             ),
             bottomTitles: AxisTitles(
@@ -913,21 +906,18 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                           _data[i].day.clamp(0, _historyWindowDays)));
                   // Для прогноза — дата вперёд
                   final d = _data[i].isForecast
-                      ? DateTime.now()
-                          .add(Duration(days: _data[i].day - _historyWindowDays))
+                      ? DateTime.now().add(
+                          Duration(days: _data[i].day - _historyWindowDays))
                       : day;
                   return Text(
                     '${d.day}.${d.month}',
-                    style: TextStyle(
-                        color: AppTheme.textMuted, fontSize: 9),
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 9),
                   );
                 },
               ),
             ),
-            rightTitles:
-                AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles:
-                AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
           borderData: FlBorderData(show: false),
           // Свой тултип: дефолтный у fl_chart светло-голубой (нечитаемо на
@@ -937,8 +927,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             touchTooltipData: LineTouchTooltipData(
               tooltipBgColor: AppTheme.surface.withOpacity(0.96),
               tooltipRoundedRadius: 10,
-              tooltipPadding: const EdgeInsets.symmetric(
-                  horizontal: 12, vertical: 8),
+              tooltipPadding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               fitInsideHorizontally: true,
               fitInsideVertically: true,
               getTooltipItems: (spots) {
@@ -1063,9 +1053,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
             duration: Duration(milliseconds: 180),
             padding: EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: sel
-                  ? AppTheme.accent.withOpacity(0.2)
-                  : AppTheme.surface,
+              color: sel ? AppTheme.accent.withOpacity(0.2) : AppTheme.surface,
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                   color: sel
@@ -1153,8 +1141,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 showTitles: true,
                 reservedSize: 50,
                 getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
-                    style: TextStyle(
-                        color: AppTheme.textMuted, fontSize: 10)),
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
               ),
             ),
             bottomTitles: AxisTitles(
@@ -1170,8 +1157,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                       top[i].key.length > 8
                           ? '${top[i].key.substring(0, 7)}…'
                           : top[i].key,
-                      style: TextStyle(
-                          color: AppTheme.textMuted, fontSize: 9),
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 9),
                     ),
                   );
                 },
@@ -1245,8 +1231,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 showTitles: true,
                 reservedSize: 50,
                 getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
-                    style: TextStyle(
-                        color: AppTheme.textMuted, fontSize: 10)),
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 10)),
               ),
             ),
             bottomTitles: AxisTitles(
@@ -1259,15 +1244,12 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                       days: _historyWindowDays -
                           v.toInt().clamp(0, _historyWindowDays)));
                   return Text('${d.day}.${d.month}',
-                      style: TextStyle(
-                          color: AppTheme.textMuted, fontSize: 9));
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 9));
                 },
               ),
             ),
-            rightTitles:
-                AxisTitles(sideTitles: SideTitles(showTitles: false)),
-            topTitles:
-                AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
           ),
           borderData: FlBorderData(show: false),
           minY: minY - pad,
@@ -1340,8 +1322,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                     sideTitles: SideTitles(
                       showTitles: true,
                       reservedSize: 50,
-                      getTitlesWidget: (v, _) => Text(
-                          CurrencyService.format(v),
+                      getTitlesWidget: (v, _) => Text(CurrencyService.format(v),
                           style: TextStyle(
                               color: AppTheme.textMuted, fontSize: 10)),
                     ),
@@ -1419,9 +1400,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       child: Container(
         padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
-          color: value
-              ? AppTheme.accent.withOpacity(0.15)
-              : AppTheme.surface,
+          color: value ? AppTheme.accent.withOpacity(0.15) : AppTheme.surface,
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
               color: value
@@ -1457,8 +1436,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
                 children: [
                   Expanded(
                       child: Text(e.key,
-                          style: TextStyle(
-                              color: AppTheme.textSecondary))),
+                          style: TextStyle(color: AppTheme.textSecondary))),
                   Text(CurrencyService.format(e.value.abs()),
                       style: TextStyle(
                           fontWeight: FontWeight.w600,
@@ -1489,8 +1467,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
         SizedBox(height: 8),
         ..._anomalies.map((a) => Text(
               '• ${a.title}: ${CurrencyService.format(a.amount)}',
-              style: TextStyle(
-                  fontSize: 13, color: AppTheme.textSecondary),
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
             )),
       ],
     );

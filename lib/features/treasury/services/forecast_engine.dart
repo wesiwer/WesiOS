@@ -11,13 +11,17 @@ class WhatIfEvent {
   final double amount;
   final TransactionType type;
   final DateTime date;
+  final RecurringPeriod? recurringPeriod;
 
   const WhatIfEvent({
     required this.title,
     required this.amount,
     required this.type,
     required this.date,
+    this.recurringPeriod,
   });
+
+  bool get isRecurring => recurringPeriod != null;
 }
 
 /// Виртуальный сценарий «Что если?»: одноразовые события + процентная
@@ -209,8 +213,7 @@ class _StreamStats {
   static double _stdDev(List<double> v) {
     if (v.length < 2) return 0;
     final mean = v.reduce((a, b) => a + b) / v.length;
-    final sumSq =
-        v.map((x) => (x - mean) * (x - mean)).reduce((a, b) => a + b);
+    final sumSq = v.map((x) => (x - mean) * (x - mean)).reduce((a, b) => a + b);
     return sqrt(sumSq / (v.length - 1));
   }
 }
@@ -408,28 +411,46 @@ class ForecastEngine {
       days: days,
       from: todayOnly,
     );
-    final recurringExpenseByOffset =
-        RecurringEngine.projectFutureContributions(
+    final recurringExpenseByOffset = RecurringEngine.projectFutureContributions(
       recurringTxs.where((t) => t.type == TransactionType.expense).toList(),
       days: days,
       from: todayOnly,
     );
 
-    // Виртуальные события «Что если?» — по смещению в днях.
+    // Виртуальные операции «Что если?»: разовые и регулярные.
     final whatIfByOffset = <int, double>{};
+    final whatIfHorizon = todayOnly.add(Duration(days: days));
     for (final e in whatIf.events) {
-      final day = DateTime(e.date.year, e.date.month, e.date.day);
-      final offset = day.difference(todayOnly).inDays;
-      if (offset < 1 || offset > days) continue;
       final net = e.type == TransactionType.income ? e.amount : -e.amount;
-      whatIfByOffset[offset] = (whatIfByOffset[offset] ?? 0) + net;
+      final start = DateTime(e.date.year, e.date.month, e.date.day);
+      final period = e.recurringPeriod;
+      if (period == null) {
+        final offset = start.difference(todayOnly).inDays;
+        if (offset < 1 || offset > days) continue;
+        whatIfByOffset[offset] = (whatIfByOffset[offset] ?? 0) + net;
+        continue;
+      }
+
+      var occurrence = start.isAfter(todayOnly)
+          ? start
+          : RecurringEngine.nextOccurrenceAfter(start, period, todayOnly);
+      var guard = 0;
+      while (!occurrence.isAfter(whatIfHorizon) && guard < 10000) {
+        final offset = occurrence.difference(todayOnly).inDays;
+        if (offset >= 1 && offset <= days) {
+          whatIfByOffset[offset] = (whatIfByOffset[offset] ?? 0) + net;
+        }
+        occurrence = RecurringEngine.advance(occurrence, period);
+        guard++;
+      }
     }
 
     final incomeMult = whatIf.incomeMultiplier;
     final expenseMult = whatIf.expenseMultiplier;
 
     // ---------- Monte-Carlo: bootstrap-шум + сезонность + тренд + шоки + регулярные ----------
-    final rng = Random(seed); // фиксированный seed — стабильность между перерисовками UI
+    final rng = Random(
+        seed); // фиксированный seed — стабильность между перерисовками UI
     final effectivePaths = pathsForHorizon(days, paths);
     final balances =
         List.generate(days, (_) => List<double>.filled(effectivePaths, 0));
@@ -446,7 +467,8 @@ class ForecastEngine {
             seasonalityApplied ? expenseStats.weekdayFactor[wd] : 0.0;
 
         final incomeNoise = incomeStats.hasBootstrapPool
-            ? incomeStats.residualPool[rng.nextInt(incomeStats.residualPool.length)]
+            ? incomeStats
+                .residualPool[rng.nextInt(incomeStats.residualPool.length)]
             : (incomeStats.volatility > 0
                 ? _gaussian(rng) * incomeStats.volatility
                 : 0.0);
@@ -479,7 +501,8 @@ class ForecastEngine {
                 expenseMult
             : 0.0;
 
-        final recurringIncome = (recurringIncomeByOffset[i + 1] ?? 0.0) * incomeMult;
+        final recurringIncome =
+            (recurringIncomeByOffset[i + 1] ?? 0.0) * incomeMult;
         final recurringExpense =
             (recurringExpenseByOffset[i + 1] ?? 0.0) * expenseMult;
         final whatIfNet = whatIfByOffset[i + 1] ?? 0.0;
@@ -532,15 +555,18 @@ class ForecastEngine {
       p50: p50,
       p90: p90,
       trendPerDay: incomeStats.trendPerDay - expenseStats.trendPerDay,
-      dailyVolatility:
-          sqrt(pow(incomeStats.volatility, 2) + pow(expenseStats.volatility, 2)),
+      dailyVolatility: sqrt(
+          pow(incomeStats.volatility, 2) + pow(expenseStats.volatility, 2)),
       historyDaysSpan: spanDays,
       simulatedPaths: effectivePaths,
       insufficientData: false,
       seasonalityApplied: seasonalityApplied,
       weekdayFactor: seasonalityApplied
           ? List<double>.generate(
-              7, (wd) => incomeStats.weekdayFactor[wd] - expenseStats.weekdayFactor[wd])
+              7,
+              (wd) =>
+                  incomeStats.weekdayFactor[wd] -
+                  expenseStats.weekdayFactor[wd])
           : const [],
       belowZeroProbability: belowZeroProbability,
       runwayDays: runwayDays,

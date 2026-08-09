@@ -51,8 +51,8 @@
             android:name=".IconLight"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/launcher_icon"
-            android:roundIcon="@mipmap/launcher_icon"
+            android:icon="@drawable/launcher_icon_light"
+            android:roundIcon="@drawable/launcher_icon_light"
             android:label="WesiOS"
             android:targetActivity=".MainActivity">
             <intent-filter>
