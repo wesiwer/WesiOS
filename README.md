@@ -41,13 +41,14 @@
 - Отзывные WesiOS-сеансы: удалённое завершение и автоматический выход при удалении сотрудника
 - Remembered auth token + WesiOS session ID хранятся в platform secure storage; legacy plaintext Hive session мигрируется и удаляется
 - Android launcher icon привязан к реальному WesiOS resource на всех поддерживаемых API
-- Windows release поддерживает установщик вместо ручной распаковки ZIP
-- Production release pipeline: signed Android + Windows → GitHub `app-latest` → PocketBase `pb_public/artifacts` → публичная проверка manifest/files
+- Windows fresh install: Inno Setup `wesios-windows-x64-setup.exe`, smoke-tested install/uninstall
+- Windows auto-update: portable ZIP остаётся отдельным совместимым каналом для встроенного updater
+- Production release pipeline: signed Android + Windows ZIP → GitHub `app-latest` → PocketBase `pb_public/artifacts` → публичная проверка → Windows installer
 - Settings locale live (пересобирает все вкладки)
 - Live avatars (Hive listenable)
 
 ### Внешний production-блокер
-- Логика email OTP и server hooks опубликованы, но на production пока нет рабочего SMTP/sendmail/mail API credential. Авторизация намеренно fail-closed до подключения реального почтового провайдера. Подробности → `SECURITY_STATUS.md`.
+- Self-hosted Postfix/OpenDKIM уже подняты, исходящий TCP/25 открыт, PTR настроен. Осталось опубликовать DNS для `mail.wesi-inc.ru` (A/SPF/DKIM/DMARC), после чего workflow `Activate WesiOS Local Mail` проверит DNS/transport и fail-closed включит PocketBase SMTP на локальный Postfix. Подробности → `SECURITY_STATUS.md`.
 
 ### Очередь
 - Tasks/Analytics/CRM deep features
@@ -74,11 +75,15 @@ flutter build apk --release
 Она делает полный цикл:
 
 1. вызывает низкоуровневый `Publish WesiOS Release` с `deploy_to_server=false`;
-2. собирает подписанный Android APK и Windows ZIP;
+2. собирает подписанный Android APK и Windows portable ZIP;
 3. обновляет GitHub Release `app-latest` и `app-manifest.json`;
 4. скачивает ровно опубликованные assets;
-5. выкладывает их в `/opt/pocketbase/pb_public/artifacts`;
-6. проверяет публичный `https://api.wesi-inc.ru/artifacts/app/app-manifest.json` и размеры Windows/Android файлов.
+5. выкладывает ZIP/APK в `/opt/pocketbase/pb_public/artifacts`;
+6. проверяет публичный `https://api.wesi-inc.ru/artifacts/app/app-manifest.json` и размеры Windows/Android файлов;
+7. запускает `Publish WesiOS Windows Installer`;
+8. собирает Inno Setup `wesios-windows-x64-setup.exe`, делает silent install/uninstall smoke-test, публикует installer в `app-latest` и PocketBase и проверяет публичный файл.
+
+**Важно:** `app-manifest.json` для Windows продолжает указывать на ZIP, потому что встроенный `AppUpdateService` обновляет текущую установку через `Expand-Archive`. `.exe` — отдельный fresh-install канал; это не ломает существующее автообновление.
 
 `release-app.yml` остаётся внутренним builder-workflow. Для обычного production release запускайте `Publish WesiOS Production`, а не его legacy server-deploy ветку.
 
