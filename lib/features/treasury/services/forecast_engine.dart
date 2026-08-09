@@ -842,8 +842,17 @@ class ForecastEngine {
     final seasonalityApplied = spanDays >= _seasonalityMinSpanDays;
 
     final recurringIds = recurringTxs.map((e) => e.id).toSet();
-    final nonRecurring =
-        history.where((e) => !recurringIds.contains(e.id)).toList();
+    final recurringIncomeIds = recurringTxs
+        .where((e) => e.type == TransactionType.income)
+        .map((e) => e.id)
+        .toList();
+    bool autoMaterializedIncome(TransactionModel tx) =>
+        !tx.isRecurring &&
+        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));
+    final nonRecurring = history
+        .where(
+            (e) => !recurringIds.contains(e.id) && !autoMaterializedIncome(e))
+        .toList();
     final shocks = _ShockPool.detect(nonRecurring, minDay, spanDays);
 
     final streamKeys = _topStreamKeys(nonRecurring);
@@ -1505,20 +1514,51 @@ class ForecastEngine {
       RecurringPeriod.yearly => 14,
     };
     final start = today.subtract(Duration(days: lookback));
+    final anchor =
+        DateTime(recurring.date.year, recurring.date.month, recurring.date.day);
+    if (anchor.isAfter(today)) return 1.0;
 
-    var occurrence = recurring.date;
+    // Bring an old original anchor forward to the latest expected occurrence
+    // not after today. If TreasuryService has already advanced the parent,
+    // this loop is naturally a no-op or only a few iterations.
+    var latest = anchor;
     var guard = 0;
-    while (occurrence.isBefore(start) && guard++ < 10000) {
-      occurrence = RecurringEngine.advance(occurrence, period);
+    while (guard++ < 10000) {
+      final next = RecurringEngine.advance(latest, period);
+      if (next.isAfter(today)) break;
+      latest = next;
     }
-    final expectedDates = <DateTime>[];
-    while (!occurrence.isAfter(today) && guard++ < 10000) {
-      if (!occurrence.isBefore(start)) {
-        expectedDates
-            .add(DateTime(occurrence.year, occurrence.month, occurrence.day));
+
+    DateTime previousOccurrence(DateTime date) {
+      switch (period) {
+        case RecurringPeriod.daily:
+          return date.subtract(const Duration(days: 1));
+        case RecurringPeriod.weekly:
+          return date.subtract(const Duration(days: 7));
+        case RecurringPeriod.monthly:
+          var year = date.year;
+          var month = date.month - 1;
+          if (month < 1) {
+            year--;
+            month = 12;
+          }
+          final lastDay = DateTime(year, month + 1, 0).day;
+          return DateTime(year, month, min(date.day, lastDay));
+        case RecurringPeriod.yearly:
+          final year = date.year - 1;
+          final lastDay = DateTime(year, date.month + 1, 0).day;
+          return DateTime(year, date.month, min(date.day, lastDay));
       }
-      occurrence = RecurringEngine.advance(occurrence, period);
     }
+
+    final expectedDates = <DateTime>[];
+    var occurrence = latest;
+    guard = 0;
+    while (!occurrence.isBefore(start) && guard++ < 10000) {
+      expectedDates.add(occurrence);
+      occurrence = previousOccurrence(occurrence);
+    }
+    expectedDates.sort();
     if (expectedDates.length < 2) return 1.0;
 
     final candidates = all.where((tx) {
