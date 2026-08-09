@@ -38,6 +38,7 @@ import 'features/team/services/employee_documents_service.dart';
 import 'features/team/services/team_service.dart';
 import 'features/treasury/models/account_model.dart';
 import 'features/treasury/models/transaction_model.dart';
+import 'features/treasury/services/recurring_payment_automation.dart';
 
 bool get isDesktop {
   if (kIsWeb) return false;
@@ -91,6 +92,11 @@ void main() async {
   await Hive.openBox<EmployeeModel>(TeamService.boxName);
   await MessageStore.open();
   await ChatService.open();
+
+  // Recurring Treasury operations are materialized automatically at launch
+  // and when WesiOS returns from background. The automation is single-flight
+  // and throttled; Sandbox remains intentionally isolated.
+  RecurringPaymentAutomation.shared.start();
 
   // Auth token + revocable session id live in OS-protected storage, not Hive.
   // This also performs a one-time migration from old plaintext `sync_session`.
