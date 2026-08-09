@@ -14,6 +14,8 @@ def replace(path, old, new, label):
 
 engine = 'lib/features/treasury/services/forecast_engine.dart'
 panel = 'lib/features/treasury/widgets/horizon_decision_panel.dart'
+treasury = 'lib/features/treasury/services/treasury_service.dart'
+behavior = 'lib/features/treasury/services/horizon_behavior_monitor.dart'
 
 replace(
     engine,
@@ -59,6 +61,26 @@ replace(
     '''    final start = today.subtract(Duration(days: lookback));\n\n    var occurrence = recurring.date;\n    var guard = 0;\n    while (occurrence.isBefore(start) && guard++ < 10000) {\n      occurrence = RecurringEngine.advance(occurrence, period);\n    }\n    final expectedDates = <DateTime>[];\n    while (!occurrence.isAfter(today) && guard++ < 10000) {\n      if (!occurrence.isBefore(start)) {\n        expectedDates\n            .add(DateTime(occurrence.year, occurrence.month, occurrence.day));\n      }\n      occurrence = RecurringEngine.advance(occurrence, period);\n    }\n    if (expectedDates.length < 2) return 1.0;''',
     '''    final start = today.subtract(Duration(days: lookback));\n    final anchor =\n        DateTime(recurring.date.year, recurring.date.month, recurring.date.day);\n    if (anchor.isAfter(today)) return 1.0;\n\n    // Bring an old original anchor forward to the latest expected occurrence\n    // not after today. If TreasuryService has already advanced the parent,\n    // this loop is naturally a no-op or only a few iterations.\n    var latest = anchor;\n    var guard = 0;\n    while (guard++ < 10000) {\n      final next = RecurringEngine.advance(latest, period);\n      if (next.isAfter(today)) break;\n      latest = next;\n    }\n\n    DateTime previousOccurrence(DateTime date) {\n      switch (period) {\n        case RecurringPeriod.daily:\n          return date.subtract(const Duration(days: 1));\n        case RecurringPeriod.weekly:\n          return date.subtract(const Duration(days: 7));\n        case RecurringPeriod.monthly:\n          var year = date.year;\n          var month = date.month - 1;\n          if (month < 1) {\n            year--;\n            month = 12;\n          }\n          final lastDay = DateTime(year, month + 1, 0).day;\n          return DateTime(year, month, min(date.day, lastDay));\n        case RecurringPeriod.yearly:\n          final year = date.year - 1;\n          final lastDay = DateTime(year, date.month + 1, 0).day;\n          return DateTime(year, date.month, min(date.day, lastDay));\n      }\n    }\n\n    final expectedDates = <DateTime>[];\n    var occurrence = latest;\n    guard = 0;\n    while (!occurrence.isBefore(start) && guard++ < 10000) {\n      expectedDates.add(occurrence);\n      occurrence = previousOccurrence(occurrence);\n    }\n    expectedDates.sort();\n    if (expectedDates.length < 2) return 1.0;''',
     'reconstruct recurring execution schedule backwards from advanced anchor',
+)
+
+# Treasury recurring income is a receivable expectation until real cash is
+# entered. Never materialize it automatically as actual balance. Expenses keep
+# the conservative auto-materialization behavior, while both directions move
+# the schedule anchor forward so the next due date stays correct.
+replace(
+    treasury,
+    '''      while (RecurringEngine.isDue(anchor, now) && guard < 366) {\n        final due = RecurringEngine.advance(anchor.date, period);\n        await addTransaction(TransactionModel(\n          id: '${tx.id}_${due.millisecondsSinceEpoch}',\n          title: tx.title,\n          amount: tx.amount,\n          type: tx.type,\n          date: due,\n          category: tx.category,\n          description:\n              tx.description == null ? null : 'Recurring: ${tx.description}',\n          isRecurring: false,\n          accountId: tx.accountId,\n        ));\n        anchor = anchor.copyWith(date: due);\n        guard++;\n      }''',
+    '''      while (RecurringEngine.isDue(anchor, now) && guard < 366) {\n        final due = RecurringEngine.advance(anchor.date, period);\n        if (tx.type == TransactionType.expense) {\n          await addTransaction(TransactionModel(\n            id: '${tx.id}_${due.millisecondsSinceEpoch}',\n            title: tx.title,\n            amount: tx.amount,\n            type: tx.type,\n            date: due,\n            category: tx.category,\n            description:\n                tx.description == null ? null : 'Recurring: ${tx.description}',\n            isRecurring: false,\n            accountId: tx.accountId,\n          ));\n        }\n        // Income is NOT auto-posted as actual cash. A real received payment\n        // must be entered/imported separately and becomes execution evidence.\n        anchor = anchor.copyWith(date: due);\n        guard++;\n      }''',
+    'stop auto-posting recurring income as actual Treasury cash',
+)
+
+# Behavioral warnings must observe actual cash, not recurring schedule marker
+# rows or legacy auto-materialized recurring income children.
+replace(
+    behavior,
+    '''    final history = transactions.where((tx) => !_day(tx.date).isAfter(today)).toList();\n    if (history.length < 12) return const [];''',
+    '''    final rawHistory =\n        transactions.where((tx) => !_day(tx.date).isAfter(today)).toList();\n    final recurringIncomeIds = rawHistory\n        .where((tx) => tx.isRecurring && tx.type == TransactionType.income)\n        .map((tx) => tx.id)\n        .toList();\n    bool legacyAutoIncome(TransactionModel tx) =>\n        !tx.isRecurring &&\n        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));\n    final history = rawHistory\n        .where((tx) => !tx.isRecurring && !legacyAutoIncome(tx))\n        .toList();\n    if (history.length < 12) return const [];''',
+    'behavior monitor uses actual cash only',
 )
 
 replace(
