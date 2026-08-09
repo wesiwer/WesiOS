@@ -295,6 +295,98 @@ class TeamService {
     );
   }
 
+  /// Возвращает удалённого сотрудника из архива.
+  ///
+  /// Пароль, хеш, права и заметки в архиве намеренно не хранятся — поэтому
+  /// при восстановлении выдаётся новый пароль и базовые права сотрудника.
+  /// Тот же [id] сохраняется, чтобы не рвать связи в задачах/чатах.
+  /// Логин берётся старый, если он свободен; иначе — новый из пула.
+  static Future<CreatedEmployee?> restoreFromArchive(
+    String archivedId, {
+    Random? random,
+  }) async {
+    if (!isOwnerSession) return null;
+    final box = _open();
+    if (box == null) return null;
+    if (byId(archivedId) != null) return null;
+
+    Map<String, dynamic>? row;
+    for (final e in EmployeeAdminService.deleted) {
+      if ('${e['id']}' == archivedId) {
+        row = e;
+        break;
+      }
+    }
+    if (row == null) return null;
+
+    final email = '${row['email']}'.trim().toLowerCase();
+    if (!validEmployeeEmail(email)) return null;
+    if (byEmail(email) != null) return null;
+
+    var login = CredentialsGenerator.normalize('${row['login']}');
+    if (login.isEmpty ||
+        byLogin(login) != null ||
+        LoginPoolService.isTaken(login)) {
+      final suggested = LoginPoolService.suggest(random: random);
+      if (suggested == null) return null;
+      login = suggested;
+    }
+
+    if (!await LoginPoolService.reserve(login)) return null;
+
+    final pass = CredentialsGenerator.password();
+    final salt = _newSalt(random);
+    final createdAt =
+        DateTime.tryParse('${row['createdAt']}') ?? DateTime.now();
+
+    final socialsRaw = row['socials'];
+    final socials = <String, String>{};
+    if (socialsRaw is Map) {
+      socialsRaw.forEach((k, v) {
+        final key = '$k'.trim();
+        final value = '$v'.trim();
+        if (key.isNotEmpty && value.isNotEmpty) socials[key] = value;
+      });
+    }
+
+    final employee = EmployeeModel(
+      id: archivedId,
+      login: login,
+      fullName: '${row['fullName']}'.trim(),
+      nickname: '${row['nickname']}'.trim(),
+      position: '${row['position']}'.trim(),
+      phone: '${row['phone']}'.trim(),
+      email: email,
+      socials: socials,
+      permissions: TeamPermissions.employeeDefault,
+      passwordHash: ShieldService.derive(pass, salt, _iterations),
+      passwordSalt: salt,
+      createdAt: createdAt,
+      demoStats: const {},
+    );
+
+    await box.put(employee.id, employee);
+    revision.value++;
+
+    final portal = await PortalAccountService.provisionDetailed(
+      employee: employee,
+      password: pass,
+    );
+    await EmployeeAdminService.setActivationResult(
+      employee.id,
+      success: portal.ok,
+      message: portal.message,
+    );
+    await EmployeeAdminService.deleteArchiveEntry(archivedId);
+    revision.value++;
+
+    return CreatedEmployee(
+      employee,
+      pass,
+      portalProvisioned: portal.ok,
+    );
+  }
+
   static Future<EmployeeModel?> ensureOwner({String name = 'Владелец'}) async {
     final box = _open();
     if (box == null) return null;
