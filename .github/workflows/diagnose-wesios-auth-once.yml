@@ -77,9 +77,11 @@ jobs:
           }
 
           '''.replace("__TOKEN__", token)
-          if source.count(needle) != 1:
+          route = source.find('routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {')
+          position = source.find(needle, route)
+          if route < 0 or position < 0:
               raise SystemExit("unexpected start-v2 source shape")
-          path.write_text(source.replace(needle, probe + needle))
+          path.write_text(source[:position] + probe + source[position:])
           PY
           node --check "$PATCHED"
 
