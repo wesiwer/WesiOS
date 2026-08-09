@@ -15,7 +15,7 @@ routerAdd("GET", "/api/wesi/auth/version", (e) => {
     }
   } catch (_) {}
   return e.json(jsonReadable ? 200 : 503, {
-    "version": "2026-08-09.owner-email-v5",
+    "version": "2026-08-09.owner-email-v6",
     "jsonReadable": jsonReadable,
   });
 });
@@ -36,6 +36,92 @@ const wesiReadMailConfig = () => {
   } catch (_) {
     return {};
   }
+};
+
+const WESI_MAIL_TEMPLATE_VERSION = "2026-08-09.mail-design-v1";
+const WESI_MAIL_LOGO_URL = "https://api.wesi-inc.ru/portal/app_icon.png";
+
+/// Transactional email markup intentionally uses tables and inline styles.
+/// This keeps the dark WesiOS design stable in Gmail, Apple Mail, Outlook,
+/// and narrow mobile clients without relying on external fonts or scripts.
+const wesiBuildOtpMail = (code, purpose) => {
+  const safeCode = String(code || "").replace(/[^0-9]/g, "");
+  const emailSetup = purpose === "email-setup";
+  const portal = purpose === "portal";
+  const title = emailSetup ? "Подтверждение почты" : "Подтверждение входа";
+  const eyebrow = emailSetup ? "БЕЗОПАСНОСТЬ АККАУНТА" : "КОД БЕЗОПАСНОСТИ";
+  const lead = emailSetup
+    ? "Введите этот код, чтобы подтвердить адрес почты и завершить защищённый вход."
+    : portal
+      ? "Введите этот код на портале WesiOS, чтобы продолжить вход."
+      : "Введите этот код в приложении WesiOS, чтобы продолжить вход.";
+  const preheader = emailSetup
+    ? "Подтвердите адрес почты в WesiOS. Код действует 10 минут."
+    : "Код подтверждения входа в WesiOS действует 10 минут.";
+  const textLead = emailSetup
+    ? "Код подтверждения почты и входа"
+    : portal
+      ? "Код входа на портал WesiOS"
+      : "Код входа в WesiOS";
+
+  const html = "<!doctype html>" +
+    "<html lang=\"ru\"><head><meta charset=\"utf-8\">" +
+    "<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">" +
+    "<meta name=\"color-scheme\" content=\"dark\">" +
+    "<meta name=\"supported-color-schemes\" content=\"dark\">" +
+    "<meta name=\"x-wesios-template\" content=\"" + WESI_MAIL_TEMPLATE_VERSION + "\">" +
+    "<title>" + title + " · WesiOS</title>" +
+    "<style>@media only screen and (max-width:620px){" +
+    ".wesi-shell{padding:16px!important}.wesi-card{border-radius:20px!important}" +
+    ".wesi-pad{padding-left:24px!important;padding-right:24px!important}" +
+    ".wesi-code{font-size:36px!important;letter-spacing:7px!important}" +
+    "}</style></head>" +
+    "<body style=\"margin:0;padding:0;background:#09090B;color:#F7F7F8;\">" +
+    "<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;\">" +
+    preheader + "&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;&#847;&zwnj;&nbsp;</div>" +
+    "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" bgcolor=\"#09090B\" style=\"width:100%;background:#09090B;\">" +
+    "<tr><td class=\"wesi-shell\" align=\"center\" style=\"padding:36px 16px;\">" +
+    "<table role=\"presentation\" class=\"wesi-card\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" bgcolor=\"#121216\" style=\"width:100%;max-width:560px;background:#121216;border:1px solid #29292F;border-radius:28px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.35);\">" +
+    "<tr><td height=\"4\" bgcolor=\"#F97316\" style=\"height:4px;background:#F97316;font-size:0;line-height:0;\">&nbsp;</td></tr>" +
+    "<tr><td class=\"wesi-pad\" style=\"padding:30px 36px 16px;\">" +
+    "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr>" +
+    "<td width=\"64\" valign=\"middle\"><img src=\"" + WESI_MAIL_LOGO_URL + "\" width=\"56\" height=\"56\" alt=\"WesiOS\" style=\"display:block;width:56px;height:56px;border:0;border-radius:16px;\"></td>" +
+    "<td valign=\"middle\" style=\"padding-left:14px;font-family:Arial,'Helvetica Neue',sans-serif;\">" +
+    "<div style=\"font-size:20px;line-height:24px;font-weight:700;letter-spacing:.2px;color:#FFFFFF;\">WesiOS</div>" +
+    "<div style=\"margin-top:4px;font-size:11px;line-height:15px;font-weight:700;letter-spacing:1.5px;color:#84CC16;\">SECURITY CENTER</div>" +
+    "</td></tr></table></td></tr>" +
+    "<tr><td class=\"wesi-pad\" style=\"padding:22px 36px 0;font-family:Arial,'Helvetica Neue',sans-serif;\">" +
+    "<div style=\"font-size:11px;line-height:16px;font-weight:700;letter-spacing:1.6px;color:#F97316;\">" + eyebrow + "</div>" +
+    "<h1 style=\"margin:10px 0 12px;font-size:30px;line-height:36px;font-weight:750;letter-spacing:-.5px;color:#FFFFFF;\">" + title + "</h1>" +
+    "<p style=\"margin:0;font-size:16px;line-height:25px;color:#B8B8C2;\">" + lead + "</p>" +
+    "</td></tr>" +
+    "<tr><td class=\"wesi-pad\" style=\"padding:26px 36px 0;\">" +
+    "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" bgcolor=\"#09090B\" style=\"width:100%;background:#09090B;border:1px solid #303038;border-radius:18px;\">" +
+    "<tr><td align=\"center\" style=\"padding:14px 20px 4px;font-family:Arial,'Helvetica Neue',sans-serif;font-size:10px;line-height:14px;font-weight:700;letter-spacing:1.5px;color:#7F808B;\">ОДНОРАЗОВЫЙ КОД</td></tr>" +
+    "<tr><td class=\"wesi-code\" align=\"center\" style=\"padding:4px 14px 18px;font-family:'Courier New',Courier,monospace;font-size:42px;line-height:50px;font-weight:700;letter-spacing:10px;color:#FFFFFF;font-variant-numeric:tabular-nums;\">" + safeCode + "</td></tr>" +
+    "</table></td></tr>" +
+    "<tr><td class=\"wesi-pad\" style=\"padding:18px 36px 0;font-family:Arial,'Helvetica Neue',sans-serif;\">" +
+    "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\"><tr>" +
+    "<td width=\"10\" valign=\"middle\"><span style=\"display:block;width:8px;height:8px;background:#84CC16;border-radius:99px;\"></span></td>" +
+    "<td valign=\"middle\" style=\"padding-left:8px;font-size:13px;line-height:19px;color:#D2D2D8;\">Код действует <strong style=\"color:#FFFFFF;\">10 минут</strong> и подходит только для одной попытки входа.</td>" +
+    "</tr></table></td></tr>" +
+    "<tr><td class=\"wesi-pad\" style=\"padding:24px 36px 32px;\">" +
+    "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" border=\"0\" bgcolor=\"#1A1715\" style=\"width:100%;background:#1A1715;border-left:3px solid #F97316;border-radius:12px;\">" +
+    "<tr><td style=\"padding:15px 16px;font-family:Arial,'Helvetica Neue',sans-serif;font-size:13px;line-height:20px;color:#C8C4C1;\"><strong style=\"color:#FFFFFF;\">Не запрашивали код?</strong><br>Ничего не вводите и никому его не сообщайте. Пароль WesiOS остаётся скрытым и в письме не передаётся.</td></tr>" +
+    "</table></td></tr>" +
+    "<tr><td class=\"wesi-pad\" style=\"padding:18px 36px 24px;border-top:1px solid #29292F;font-family:Arial,'Helvetica Neue',sans-serif;font-size:12px;line-height:19px;color:#777781;\">" +
+    "Это автоматическое системное письмо. Отвечать на него не нужно.<br>" +
+    "<span style=\"color:#A5A5AE;\">WesiOS · security@wesi-inc.ru</span>" +
+    "</td></tr></table>" +
+    "<div style=\"max-width:560px;padding:18px 12px 0;font-family:Arial,'Helvetica Neue',sans-serif;font-size:11px;line-height:17px;color:#5F6069;text-align:center;\">Защищённая авторизация WesiOS</div>" +
+    "</td></tr></table></body></html>";
+
+  const text = "WesiOS\n\n" + textLead + ": " + safeCode +
+    "\n\nКод действует 10 минут и подходит только для одной попытки входа." +
+    "\n\nЕсли вы не запрашивали код, ничего не вводите и никому его не сообщайте." +
+    "\n\nЭто автоматическое системное письмо. Отвечать на него не нужно.";
+
+  return {"html": html, "text": text};
 };
 
 const wesiDeliverMail = (app, email, displayName, subject, html, text) => {
@@ -141,13 +227,9 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
     e.app.save(challenge);
 
     const subject = purpose === "portal" ? "Код входа на портал WesiOS" : "Код входа в WesiOS";
-    const html = "<div style=\"font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px\">" +
-      "<h2>WesiOS</h2><p>Код подтверждения входа:</p>" +
-      "<div style=\"font-size:34px;font-weight:700;letter-spacing:8px;margin:22px 0\">" + code + "</div>" +
-      "<p>Код действует 10 минут. Если вход выполняете не вы — никому не сообщайте этот код.</p></div>";
-    const text = "Код подтверждения WesiOS: " + code + ". Код действует 10 минут.";
+    const mail = wesiBuildOtpMail(code, purpose);
     try {
-      payload.delivery = wesiDeliverMail(e.app, email, displayName, subject, html, text);
+      payload.delivery = wesiDeliverMail(e.app, email, displayName, subject, mail.html, mail.text);
       challenge.set("payload", payload);
       e.app.save(challenge);
     } catch (error) {
@@ -320,7 +402,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   if (!challenge) throw new UnauthorizedError("Проверка входа истекла");
   const payload = valueObject(challenge);
   if (payload.kind !== "email-setup" || String(payload.employeeId || "") !== "owner") {
-    throw new ForbiddenError("Проверка привязки не соответствует профилю владельца [owner-email-v5]");
+    throw new ForbiddenError("Проверка привязки не соответствует профилю владельца [owner-email-v6]");
   }
   let ownerMarker = null;
   try {
@@ -330,7 +412,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
     );
   } catch (_) { ownerMarker = null; }
   if (!ownerMarker) {
-    throw new ForbiddenError("Профиль владельца не закреплён [owner-email-v5]");
+    throw new ForbiddenError("Профиль владельца не закреплён [owner-email-v6]");
   }
   const expires = Date.parse(String(payload.expiresAt || ""));
   if (!Number.isFinite(expires) || expires <= Date.now()) {
@@ -357,16 +439,15 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   if (!user) throw new ForbiddenError("Профиль владельца закрыт");
 
   const subject = "Подтверждение почты WesiOS";
-  const html = "<div style=\"font-family:Arial,sans-serif;max-width:520px;margin:auto;padding:24px\"><h2>WesiOS</h2><p>Код подтверждения почты и входа:</p><div style=\"font-size:34px;font-weight:700;letter-spacing:8px;margin:22px 0\">" + code + "</div><p>Код действует 10 минут.</p></div>";
-  const text = "Код подтверждения WesiOS: " + code + ". Код действует 10 минут.";
+  const mail = wesiBuildOtpMail(code, "email-setup");
   try {
     payload.delivery = wesiDeliverMail(
       e.app,
       email,
       user.getString("name") || String(payload.login || "WesiOS"),
       subject,
-      html,
-      text,
+      mail.html,
+      mail.text,
     );
     challenge.set("payload", payload);
     e.app.save(challenge);
@@ -378,7 +459,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   return e.json(200, {
     "challengeId": challengeId,
     "maskedEmail": maskEmail(email),
-    "authVersion": "2026-08-09.owner-email-v5",
+    "authVersion": "2026-08-09.owner-email-v6",
     "expiresInSeconds": 600,
   });
 });
