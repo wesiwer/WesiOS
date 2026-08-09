@@ -23,6 +23,10 @@
 ### Готово
 - Desktop window controls, splash, home IndexedStack
 - Treasury/Sandbox (продажа/траты, multi-currency, edit/delete, identical engine)
+- Treasury Dashboard — реальные баланс/KPI/операции, поиск, recurring, anomalies,
+  Treasury Signals и 30-дневный P10/P50/P90 forecast без demo-цифр
+- Регулярные Treasury-операции автоматически материализуются при запуске и
+  возврате WesiOS из background; single-flight/throttle исключают дубли
 - Forecast — bootstrap Monte-Carlo с сезонностью по дню недели и проекцией
   регулярных платежей, P10/P50/P90 без дёрганья при смене периода;
   Cash Gap Risk Score, What-If сценарии, DCF-дисконтирование
@@ -41,6 +45,15 @@
   анализирует все новые или изменённые WAV без актуального отчёта
 - Mobile Audio Vault — одна читаемая колонка на узких экранах и переносимый
   footer MP3/WAV/TRACK/ALS/AI без RenderFlex overflow
+- Calendar — Month/Week/Year, собственные события CRUD, all-day/длительность,
+  daily/weekly/monthly/yearly repeat, системные напоминания, реальные дедлайны
+  Tasks и recurring Treasury; собственные события синхронизируются между
+  WesiOS-устройствами
+- Time Center по нажатию на часы Home — device-local будильники, напоминания,
+  persistent timer и секундомер с кругами; расписания восстанавливаются на
+  launch/resume, Android scheduled notifications переживают process death/reboot
+- Knowledge Base linked charts — `forecast`/`analytics`/`treasury` получают
+  реальные данные WesiOS вместо захардкоженных demo-серий
 - Home mobile — безопасный avatar/Hive bootstrap, компактная шапка и адаптивные
   GlassCard-заголовки/действия; regression test покрывает Android 360×800
 - Profile auto-save, custom avatar, защищённый вход и управление активными сеансами
@@ -59,7 +72,6 @@
 
 ### Очередь
 - Tasks/Analytics/CRM deep features
-- Автоматический запуск processRecurringPayments (сейчас доступен, но нигде не вызывается)
 
 Полный чеклист и правила для AI → **STATUS.md**
 
@@ -96,4 +108,4 @@ flutter build apk --release
 
 ## Версия
 
-v0.19.12 α — Private, Wesi Inc.
+v0.19.13 α — Private, Wesi Inc.
