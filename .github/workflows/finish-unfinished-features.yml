@@ -37,7 +37,9 @@ jobs:
           fi
           git fetch origin main --depth=1
           git show origin/main:tools/finish_home_mobile_header.py > /tmp/finish_home_mobile_header.py
+          git show origin/main:tools/fix_home_glasscard_rows.py > /tmp/fix_home_glasscard_rows.py
           python3 /tmp/finish_home_mobile_header.py
+          python3 /tmp/fix_home_glasscard_rows.py
 
       - name: Apply Audio Vault quick actions
         run: |
@@ -53,7 +55,9 @@ jobs:
           dart format \
             lib/core/widgets/wesi_avatar.dart \
             lib/core/widgets/wesi_clock.dart \
+            lib/core/widgets/app_update_card.dart \
             lib/features/home/home_screen.dart \
+            lib/features/home/widgets/home_agenda.dart \
             lib/features/audio/audio_vault_v2_screen.dart \
             test/home_mobile_layout_test.dart
 
@@ -66,6 +70,8 @@ jobs:
           grep -q 'home_balance_card' lib/features/home/home_screen.dart
           grep -q 'compactHeader' lib/features/home/home_screen.dart
           grep -q 'showText: !compactHeader' lib/features/home/home_screen.dart
+          grep -q 'homeAgendaCompactAction' lib/features/home/widgets/home_agenda.dart
+          grep -q 'updateActionWrap' lib/core/widgets/app_update_card.dart
           grep -q '_quickAudioActions(BeatEntry beat)' lib/features/audio/audio_vault_v2_screen.dart
           grep -q '_analyzePendingBeats' lib/features/audio/audio_vault_v2_screen.dart
           grep -q '_openAbletonQuick' lib/features/audio/audio_vault_v2_screen.dart
@@ -94,7 +100,9 @@ jobs:
           git add \
             lib/core/widgets/wesi_avatar.dart \
             lib/core/widgets/wesi_clock.dart \
+            lib/core/widgets/app_update_card.dart \
             lib/features/home/home_screen.dart \
+            lib/features/home/widgets/home_agenda.dart \
             lib/features/audio/audio_vault_v2_screen.dart \
             test/home_mobile_layout_test.dart
           git add -u .github/finish-unfinished.marker || true
