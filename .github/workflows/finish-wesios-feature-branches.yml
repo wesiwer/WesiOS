@@ -1,0 +1,66 @@
+name: Finish WesiOS feature branches
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  finish:
+    if: github.head_ref == 'feat/knowledge-live-charts' || github.head_ref == 'feat/calendar-clock-suite'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Apply feature patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${GITHUB_HEAD_REF}" == "feat/knowledge-live-charts" ]]; then
+            if [[ -f tools/patch_knowledge_live_charts.py ]]; then
+              python3 tools/patch_knowledge_live_charts.py
+              rm tools/patch_knowledge_live_charts.py
+            fi
+          elif [[ "${GITHUB_HEAD_REF}" == "feat/calendar-clock-suite" ]]; then
+            if [[ -f tools/patch_calendar_clock.py ]]; then
+              python3 tools/patch_calendar_clock.py
+              rm tools/patch_calendar_clock.py
+            fi
+          fi
+
+      - name: Format
+        run: dart format lib test
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test
+        run: flutter test
+
+      - name: Commit product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No product changes to commit"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: finish ${GITHUB_HEAD_REF#feat/}"
+          git push origin HEAD:${GITHUB_HEAD_REF}
