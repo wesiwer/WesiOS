@@ -26,7 +26,7 @@ jobs:
           set -euo pipefail
           test -s server/pb_hooks/wesi_auth_bootstrap.pb.js
           node --check server/pb_hooks/wesi_auth_bootstrap.pb.js
-          grep -q "rid='portal-owner'" server/pb_hooks/wesi_auth_bootstrap.pb.js
+          grep -q '2026-08-09.owner-email-v3' server/pb_hooks/wesi_auth_bootstrap.pb.js
       - name: Prepare SSH
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -74,10 +74,32 @@ jobs:
           else
             sudo -n cmp -s "$SOURCE" "$HOOK"
           fi
+          MATCHES=$(grep -Rsl --include='*.js' '/api/wesi/auth/setup-email' /opt/pocketbase/pb_hooks | wc -l)
+          test "$MATCHES" -eq 1 || {
+            echo "Expected exactly one setup-email route, found $MATCHES" >&2
+            grep -Rsl --include='*.js' '/api/wesi/auth/setup-email' /opt/pocketbase/pb_hooks >&2 || true
+            exit 31
+          }
+          if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+            sudo -n systemctl restart pocketbase
+          else
+            systemctl restart pocketbase
+          fi
           rm -rf "$REMOTE"
-          sleep 5
-          curl -fsS --max-time 15 http://127.0.0.1:8090/api/health >/dev/null
+          for attempt in $(seq 1 30); do
+            if curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null; then
+              break
+            fi
+            test "$attempt" -lt 30
+            sleep 2
+          done
           REMOTE
+      - name: Verify exact production auth version
+        run: |
+          set -euo pipefail
+          BODY=$(curl -fsS --max-time 20 https://api.wesi-inc.ru/api/wesi/auth/version)
+          echo "$BODY"
+          grep -q '"version":"2026-08-09.owner-email-v3"' <<<"$BODY"
       - name: Verify production mail
         run: |
           set -euo pipefail
