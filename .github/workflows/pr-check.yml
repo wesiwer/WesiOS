@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   apply-final-core:
-    if: github.head_ref == 'agent/horizon-top-tier' && github.event.pull_request.head.sha == 'a21d8ce08cc03dc041379b92c2b568e288622283'
+    if: github.head_ref == 'agent/horizon-top-tier'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -23,11 +23,11 @@ jobs:
           ref: agent/horizon-top-tier
           fetch-depth: 1
 
-      - name: Apply final Horizon core patch
+      - name: Apply final Horizon core patch idempotently
         run: |
           set -euo pipefail
-          python3 -m py_compile tooling/horizon_final_core_patch.py
-          python3 tooling/horizon_final_core_patch.py
+          python3 -m py_compile tooling/horizon_final_core_patch.py tooling/run_horizon_final_core_patch.py
+          python3 tooling/run_horizon_final_core_patch.py
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -46,9 +46,13 @@ jobs:
           grep -q 'Data-adaptive regime' lib/features/treasury/services/forecast_engine.dart
           grep -q '_semanticStream' lib/features/treasury/services/forecast_engine.dart
 
-      - name: Commit core patch
+      - name: Commit core patch when changed
         run: |
           set -euo pipefail
+          if git diff --quiet -- lib/features/treasury/services/forecast_engine.dart; then
+            echo 'Core patch already committed.'
+            exit 0
+          fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add lib/features/treasury/services/forecast_engine.dart
