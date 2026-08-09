@@ -1089,6 +1089,15 @@ class ForecastEngine {
           primaryLossSource == 'business:${event.effectiveRiskSource}') {
         modeledAmount *= 0.15;
       }
+      if (modeledAmount > 0 &&
+          (whatIf.incomeMultiplierDays <= 0 ||
+              shiftedOffset <= whatIf.incomeMultiplierDays)) {
+        modeledAmount *= whatIf.incomeMultiplier;
+      } else if (modeledAmount < 0 &&
+          (whatIf.expenseMultiplierDays <= 0 ||
+              shiftedOffset <= whatIf.expenseMultiplierDays)) {
+        modeledAmount *= whatIf.expenseMultiplier;
+      }
       final modeledEvent = HorizonCashEvent(
         title: event.title,
         amount: modeledAmount,
@@ -1152,6 +1161,10 @@ class ForecastEngine {
       var blockRemaining = 0;
       var blockIndex = 0;
       var blockLength = 0;
+      final delay = max(0, whatIf.incomeDelayDays);
+      final delayedExpectedIncome = List<double>.filled(days + delay + 2, 0);
+      final delayedSampledIncome = List<double>.filled(days + delay + 2, 0);
+      final delayedIncomeShock = List<double>.filled(days + delay + 2, 0);
       for (var i = 0; i < days; i++) {
         final day = i + 1;
         final futureDay = todayOnly.add(Duration(days: day));
@@ -1246,19 +1259,34 @@ class ForecastEngine {
 
         var sampledIncome = max(0.0, expectedIncome + residualIncome);
         final sampledExpense = max(0.0, expectedExpense + residualExpense);
-        if (whatIf.incomeDelayDays > 0 && day <= whatIf.incomeDelayDays) {
-          sampledIncome = 0.0;
-          expectedIncome = 0.0;
+        var incomeShock = 0.0;
+        if (shocks.income.isNotEmpty &&
+            rng.nextDouble() < shocks.incomeProbability) {
+          incomeShock = shocks.income[rng.nextInt(shocks.income.length)];
         }
+
+        // A payment delay is a timing shock, not income destruction. Queue the
+        // generated statistical incoming cash and release the exact same draw
+        // N days later. This preserves trend/seasonality/shock semantics while
+        // producing the temporary liquidity gap the stress scenario intends.
+        if (delay > 0) {
+          final target = day + delay;
+          if (target < delayedExpectedIncome.length) {
+            delayedExpectedIncome[target] += expectedIncome;
+            delayedSampledIncome[target] += sampledIncome;
+            delayedIncomeShock[target] += incomeShock;
+          }
+          expectedIncome = delayedExpectedIncome[day];
+          sampledIncome = delayedSampledIncome[day];
+          incomeShock = delayedIncomeShock[day];
+        }
+
         final expectedNetCenter = expectedIncome - expectedExpense;
         final sampledNet = sampledIncome - sampledExpense;
         var uncertainNet =
             expectedNetCenter + (sampledNet - expectedNetCenter) * uncertainty;
+        uncertainNet += incomeShock;
 
-        if (shocks.income.isNotEmpty &&
-            rng.nextDouble() < shocks.incomeProbability) {
-          uncertainNet += shocks.income[rng.nextInt(shocks.income.length)];
-        }
         if (shocks.expense.isNotEmpty &&
             rng.nextDouble() < shocks.expenseProbability) {
           uncertainNet -= shocks.expense[rng.nextInt(shocks.expense.length)];
@@ -1397,6 +1425,8 @@ class ForecastEngine {
       accounts: accounts,
       transactions: transactions,
       businessEvents: businessEvents,
+      recurringReliability: effectiveRecurringReliability,
+      whatIf: whatIf,
       today: todayOnly,
       days: days,
     );
@@ -1924,14 +1954,27 @@ class ForecastEngine {
     required List<AccountLiquiditySnapshot> accounts,
     required List<TransactionModel> transactions,
     required List<HorizonCashEvent> businessEvents,
+    required Map<String, double> recurringReliability,
+    required WhatIfScenario whatIf,
     required DateTime today,
     required int days,
   }) {
     if (accounts.isEmpty) return const [];
+    final recurring = transactions
+        .where((t) => t.isRecurring && t.recurringPeriod != null)
+        .toList();
+    final recurringIncomeIds = recurring
+        .where((t) => t.type == TransactionType.income)
+        .map((t) => t.id)
+        .toList();
+    bool legacySyntheticIncome(TransactionModel tx) =>
+        !tx.isRecurring &&
+        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));
     final result = <AccountLiquidityRisk>[];
     for (final account in accounts) {
       final history = transactions.where((t) {
         if (t.effectiveAccountId != account.accountId) return false;
+        if (t.isRecurring || legacySyntheticIncome(t)) return false;
         final d = DateTime(t.date.year, t.date.month, t.date.day);
         return !d.isAfter(today);
       }).toList();
@@ -1954,12 +1997,45 @@ class ForecastEngine {
       final mean =
           dense.isEmpty ? 0.0 : dense.reduce((a, b) => a + b) / dense.length;
       final vol = _StreamStats._stdDev(dense);
+      final recurringByDay = <int, double>{};
+      for (final tx in recurring) {
+        if (tx.effectiveAccountId != account.accountId) continue;
+        final projected = RecurringEngine.projectFutureContributions(
+          [tx],
+          days: days,
+          from: today,
+        );
+        final reliability = (recurringReliability[tx.id] ??
+                _estimateRecurringReliability(tx, transactions, today))
+            .clamp(0.05, 1.0)
+            .toDouble();
+        final probability = tx.type == TransactionType.expense
+            ? max(0.95, reliability)
+            : reliability;
+        for (final entry in projected.entries) {
+          var target = entry.key;
+          var value = entry.value * probability;
+          if (value > 0) target += whatIf.incomeDelayDays;
+          if (target < 1 || target > days) continue;
+          if (value > 0 &&
+              (whatIf.incomeMultiplierDays <= 0 ||
+                  target <= whatIf.incomeMultiplierDays)) {
+            value *= whatIf.incomeMultiplier;
+          } else if (value < 0 &&
+              (whatIf.expenseMultiplierDays <= 0 ||
+                  target <= whatIf.expenseMultiplierDays)) {
+            value *= whatIf.expenseMultiplier;
+          }
+          recurringByDay[target] = (recurringByDay[target] ?? 0) + value;
+        }
+      }
+
       int? riskDay;
       var p10AtRisk = account.balance;
       var finalP10 = account.balance;
       var cumulativeKnown = 0.0;
       for (var day = 1; day <= days; day++) {
-        var known = 0.0;
+        var known = recurringByDay[day] ?? 0.0;
         for (final tx in transactions) {
           if (tx.effectiveAccountId != account.accountId || tx.isRecurring) {
             continue;
@@ -1973,11 +2049,23 @@ class ForecastEngine {
         }
         for (final event in businessEvents) {
           if (event.accountId != account.accountId) continue;
-          final offset =
+          var offset =
               DateTime(event.date.year, event.date.month, event.date.day)
                   .difference(today)
                   .inDays;
-          if (offset == day) known += event.amount * event.probability;
+          var amount = event.amount * event.probability;
+          if (amount > 0) offset += whatIf.incomeDelayDays;
+          if (offset != day) continue;
+          if (amount > 0 &&
+              (whatIf.incomeMultiplierDays <= 0 ||
+                  day <= whatIf.incomeMultiplierDays)) {
+            amount *= whatIf.incomeMultiplier;
+          } else if (amount < 0 &&
+              (whatIf.expenseMultiplierDays <= 0 ||
+                  day <= whatIf.expenseMultiplierDays)) {
+            amount *= whatIf.expenseMultiplier;
+          }
+          known += amount;
         }
         cumulativeKnown += known;
         finalP10 = account.balance +

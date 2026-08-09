@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'horizon_maintenance_automation.dart';
 import 'treasury_service.dart';
 
 /// Автоматически материализует просроченные регулярные операции Treasury.
@@ -75,6 +76,10 @@ class RecurringPaymentAutomation with WidgetsBindingObserver {
   Future<void> _run() async {
     try {
       await _treasury.processRecurringPayments();
+      // Maintenance is intentionally independent from opening Forecast UI:
+      // issued-forecast ledger, monthly learning and engine championship keep
+      // advancing on ordinary app launch/resume.
+      await HorizonMaintenanceAutomation.shared.runNow();
       _lastCompletedAt = _now();
     } catch (error, stackTrace) {
       debugPrint('Recurring payments automation failed: $error');

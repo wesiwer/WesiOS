@@ -95,17 +95,35 @@ class HorizonBusinessContextService {
           continue;
         }
         final due = _day(deal.expectedCloseAt!);
-        if (!due.isAfter(today) || due.isAfter(end)) continue;
-        final probability =
-            (deal.probability / 100).clamp(0.01, 0.99).toDouble();
+        var eventDate = due;
+        var probability = (deal.probability / 100).clamp(0.01, 0.99).toDouble();
+        var committed =
+            probability >= 0.9 && deal.stage == DealStage.negotiation;
+        if (!due.isAfter(today)) {
+          final overdueDays = max(0, today.difference(due).inDays);
+          final decay = exp(-overdueDays / 45.0).clamp(0.25, 0.80);
+          probability = (probability * decay).clamp(0.01, 0.75).toDouble();
+          committed = false;
+          eventDate = today.add(const Duration(days: 1));
+          warnings.add(ForecastActionPrompt(
+            code: 'crm-overdue-${deal.id}',
+            severity: ForecastPromptSeverity.warning,
+            textRu:
+                'Срок ожидаемой сделки «${deal.title}» уже прошёл. Horizon не удаляет входящий поток, но снизил его вероятность до ${(probability * 100).round()}%.',
+            textEn:
+                'The expected close date for “${deal.title}” has passed. Horizon keeps the incoming cash visible but reduced its probability to ${(probability * 100).round()}%.',
+            day: 1,
+          ));
+        }
+        if (eventDate.isAfter(end)) continue;
         final rub = deal.amount *
             CurrencyService.rateToRub(deal.currency.toLowerCase());
         events.add(HorizonCashEvent(
           title: 'CRM: ${deal.title}',
           amount: rub,
-          date: due,
+          date: eventDate,
           probability: probability,
-          committed: probability >= 0.9 && deal.stage == DealStage.negotiation,
+          committed: committed,
           source: 'crm',
           riskSource: 'crm:${deal.clientId}',
         ));
@@ -259,12 +277,16 @@ class HorizonBusinessContextService {
           // must not vanish merely because its calendar date is no longer in
           // the future; move the unresolved obligation to the next forecast
           // step while preserving its committed/probabilistic semantics.
+          final missedIncoming = overdue && parsed.signedAmount > 0;
+          final overdueProbability = missedIncoming
+              ? min(parsed.probability, 0.65).toDouble()
+              : parsed.probability;
           events.add(HorizonCashEvent(
             title: 'Task: ${task.title}',
             amount: parsed.signedAmount,
             date: today.add(const Duration(days: 1)),
-            probability: parsed.probability,
-            committed: parsed.committed,
+            probability: overdueProbability,
+            committed: missedIncoming ? false : parsed.committed,
             source: 'task-obligation-overdue',
             riskSource: 'task:${task.id}',
           ));
