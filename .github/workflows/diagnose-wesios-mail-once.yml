@@ -10,17 +10,12 @@ permissions:
   contents: read
 
 jobs:
-  probe:
+  permissions:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 5
     environment:
       name: employee-portal
     steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: main
-          fetch-depth: 1
-
       - name: Prepare SSH
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -41,7 +36,7 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Run one owner-only PocketBase mail probe
+      - name: Check exact non-interactive sudo capabilities
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -49,116 +44,19 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${HOST:-}" && test -n "${USER:-}"
-          TOKEN=$(openssl rand -hex 24)
-          REMOTE="/tmp/wesi-mail-probe-$GITHUB_RUN_ID"
-          PATCHED="$RUNNER_TEMP/wesi_auth_mail_probe.pb.js"
-          cp server/pb_hooks/wesi_auth_bootstrap.pb.js "$PATCHED"
-          cat >> "$PATCHED" <<JS
-
-          routerAdd("POST", "/api/wesi/internal/mail-probe-$TOKEN", (e) => {
-            let email = "";
-            let displayName = "WesiOS";
-            try {
-              const records = e.app.findRecordsByFilter(
-                "wesios_records",
-                "owner='__wesios_security__' && coll='security'",
-                "-stamp",
-                50,
-                0,
-              );
-              for (const record of records) {
-                const model = new DynamicModel({
-                  "email": "", "employeeId": "", "userId": "", "login": "",
-                });
-                record.unmarshalJSONField("payload", model);
-                const candidate = String(model.email || "").trim().toLowerCase();
-                if (String(model.employeeId || "") !== "owner") continue;
-                if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(candidate)) continue;
-                if (candidate.endsWith("@wesi.local")) continue;
-                let marker = null;
-                try {
-                  marker = e.app.findFirstRecordByFilter(
-                    "wesios_records",
-                    "owner='" + String(model.userId || "") + "' && coll='system' && rid='portal-owner' && deleted=false",
-                  );
-                } catch (_) { marker = null; }
-                if (!marker) continue;
-                email = candidate;
-                displayName = String(model.login || "WesiOS");
-                break;
-              }
-            } catch (_) {}
-
-            if (!email) {
-              return e.json(409, {"ok": false, "stage": "verified_owner_recipient_not_found"});
-            }
-
-            const settings = e.app.settings();
-            const message = new MailerMessage({
-              "from": {
-                "address": settings.meta.senderAddress,
-                "name": settings.meta.senderName || "WesiOS",
-              },
-              "to": [{"address": email, "name": displayName}],
-              "subject": "Проверка почтового транспорта WesiOS",
-              "html": "<p>Это техническая проверка доставки WesiOS. Никаких действий не требуется.</p>",
-              "text": "Это техническая проверка доставки WesiOS. Никаких действий не требуется.",
-            });
-            try {
-              e.app.newMailClient().send(message);
-              return e.json(200, {"ok": true, "stage": "smtp_accepted"});
-            } catch (error) {
-              const raw = String((error && error.message) || error || "unknown");
-              const safe = raw
-                .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/g, "<redacted-email>")
-                .replace(/[A-Za-z0-9+\\/_-]{32,}/g, "<redacted-value>")
-                .substring(0, 500);
-              return e.json(502, {"ok": false, "stage": "smtp_send_failed", "reason": safe});
-            }
-          });
-          JS
-          node --check "$PATCHED"
-
-          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
-          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
-          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
-            "$PATCHED" \
-            server/pb_hooks/wesi_auth_bootstrap.pb.js \
-            "$USER@$HOST:$REMOTE/"
-
-          $SSH "$USER@$HOST" "TOKEN='$TOKEN' REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
+          ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          HOOK=/opt/pocketbase/pb_hooks/wesi_auth_bootstrap.pb.js
-          ORIGINAL="$REMOTE/wesi_auth_bootstrap.pb.js"
-          PATCHED="$REMOTE/wesi_auth_mail_probe.pb.js"
-          test -w "$HOOK"
-          test -s "$ORIGINAL" && test -s "$PATCHED"
-
-          restore() {
-            cat "$ORIGINAL" > "$HOOK" || true
-            chmod 0644 "$HOOK" || true
-            rm -rf "$REMOTE" || true
-          }
-          trap restore EXIT
-
-          cat "$PATCHED" > "$HOOK"
-          chmod 0644 "$HOOK"
-
-          CODE=''
-          for attempt in $(seq 1 20); do
-            CODE=$(curl -sS -o "$REMOTE/probe.json" -w '%{http_code}' \
-              --max-time 25 -X POST \
-              "http://127.0.0.1:8090/api/wesi/internal/mail-probe-$TOKEN" || true)
-            [ "$CODE" != 404 ] && [ -n "$CODE" ] && break
-            sleep 1
-          done
-          echo "probe_http=$CODE"
-          cat "$REMOTE/probe.json" 2>/dev/null || true
-          echo
-
-          cat "$ORIGINAL" > "$HOOK"
-          chmod 0644 "$HOOK"
-          sleep 2
-          cmp -s "$ORIGINAL" "$HOOK"
-          echo 'temporary_probe_removed=true'
-          REMOTE_SCRIPT
+          POSTCONF=$(command -v postconf || true)
+          SYSTEMCTL=$(command -v systemctl || true)
+          if [ -n "$POSTCONF" ] && sudo -n -l "$POSTCONF" >/dev/null 2>&1; then
+            echo 'sudo_postconf_allowed=true'
+          else
+            echo 'sudo_postconf_allowed=false'
+          fi
+          if [ -n "$SYSTEMCTL" ] && sudo -n -l "$SYSTEMCTL" reload postfix.service >/dev/null 2>&1; then
+            echo 'sudo_postfix_reload_allowed=true'
+          else
+            echo 'sudo_postfix_reload_allowed=false'
+          fi
+          echo "smtpd_tls_security_level=$(postconf -h smtpd_tls_security_level 2>/dev/null || echo unknown)"
+          REMOTE
