@@ -16,18 +16,22 @@ jobs:
   apply-final-core:
     if: github.head_ref == 'agent/horizon-top-tier'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/horizon-top-tier
           fetch-depth: 1
 
-      - name: Apply final Horizon core patch idempotently
+      - name: Apply final Horizon patches idempotently
         run: |
           set -euo pipefail
-          python3 -m py_compile tooling/horizon_final_core_patch.py tooling/run_horizon_final_core_patch.py
+          python3 -m py_compile \
+            tooling/horizon_final_core_patch.py \
+            tooling/run_horizon_final_core_patch.py \
+            tooling/horizon_final_product_patch.py
           python3 tooling/run_horizon_final_core_patch.py
+          python3 tooling/horizon_final_product_patch.py
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -36,28 +40,39 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Validate core patch
+      - name: Validate final patches
         run: |
           set -euo pipefail
-          dart format lib/features/treasury/services/forecast_engine.dart
+          dart format \
+            lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/services/forecast_backtest.dart \
+            lib/features/treasury/services/treasury_service.dart
           flutter pub get
           flutter analyze --no-fatal-infos
-          flutter test test/horizon_top_tier_test.dart test/treasury_engines_test.dart
-          grep -Fq 'static const Map<CashRegime, Map<CashRegime, double>> _prior' lib/features/treasury/services/forecast_engine.dart
+          flutter test \
+            test/horizon_top_tier_test.dart \
+            test/treasury_engines_test.dart \
+            test/horizon_product_integration_test.dart
           grep -Fq '_semanticStream' lib/features/treasury/services/forecast_engine.dart
-          grep -Fq 'regimeModel.transition' lib/features/treasury/services/forecast_engine.dart
+          grep -Fq 'transferDelayDays' lib/features/treasury/services/forecast_engine.dart
+          grep -Fq 'HorizonExplainabilityService.build' lib/features/treasury/services/treasury_service.dart
+          grep -Fq 'HorizonBehaviorMonitor.analyze' lib/features/treasury/services/treasury_service.dart
+          grep -Fq 'intervalScaleFromCoverage(coverage, mape: mape)' lib/features/treasury/services/forecast_backtest.dart
 
-      - name: Commit core patch when changed
+      - name: Commit final patches when changed
         run: |
           set -euo pipefail
-          if git diff --quiet -- lib/features/treasury/services/forecast_engine.dart; then
-            echo 'Core patch already committed.'
+          git add \
+            lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/services/forecast_backtest.dart \
+            lib/features/treasury/services/treasury_service.dart
+          if git diff --cached --quiet; then
+            echo 'Final patches already committed.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add lib/features/treasury/services/forecast_engine.dart
-          git commit -m 'feat(horizon): learn regimes and enforce horizon policy'
+          git commit -m 'feat(horizon): finalize liquidity attribution and calibration wiring'
           git push origin HEAD:agent/horizon-top-tier
 
   analyze-and-test:
