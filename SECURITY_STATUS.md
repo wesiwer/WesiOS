@@ -4,11 +4,11 @@
 
 ## Текущий релиз
 
-- Версия приложения: **0.19.12+60**.
+- Версия приложения: **0.19.13+61**.
 - `pubspec.yaml`, `lib/core/constants/app_version.dart` и README синхронизированы.
 - Канонический production workflow: `.github/workflows/publish-wesios-production.yml` (`Publish WesiOS Production`).
 - Подписанные Android/Windows assets публикуются через низкоуровневый `release-app.yml`, после чего канонический workflow выкладывает ровно опубликованные файлы в PocketBase `pb_public/artifacts` и публично перепроверяет их.
-- Production run **`31289293202`** полностью **SUCCESS**: signed release build, GitHub `app-latest`, PocketBase deployment, public artifact verification и Windows installer publication/verification.
+- Production run **`31293093499`** полностью **SUCCESS**: signed release builder **`31293098729`**, GitHub `app-latest`, PocketBase deployment, public Windows/Android artifact verification и Windows installer run **`31293453932`**.
 - Windows fresh-install installer собирается отдельным `.github/workflows/publish-windows-installer.yml`; канонический production workflow ждёт его полного success, включая silent install/uninstall, GitHub `app-latest`, PocketBase upload и public verification.
 - Windows ZIP **сохраняется** как канал встроенного автообновления `AppUpdateService`; `.exe` — канал первой установки. Не переключать `app-manifest.json` на installer без изменения updater.
 
@@ -66,7 +66,7 @@
 - Windows release содержит WesiOS icon.
 - Fresh install: `wesios-windows-x64-setup.exe`, Inno Setup, per-user install в `%LOCALAPPDATA%\Programs\WesiOS`, Start Menu shortcut, optional Desktop shortcut, uninstall support.
 - Installer workflow на чистом Windows runner выполняет silent install, проверяет `wesios.exe`, затем silent uninstall; только после этого публикует `.exe`.
-- Public installer для **0.19.12+60** проверен каноническим production run `31289293202`.
+- Public installer для **0.19.13+61** проверен каноническим production run `31293093499` и installer run `31293453932`.
 - Auto-update остаётся ZIP-механизмом: `AppUpdateService` скачивает ZIP, проверяет SHA-256, делает `Expand-Archive` и атомарную замену файлов после выхода приложения.
 
 ## Production portal и artifacts
