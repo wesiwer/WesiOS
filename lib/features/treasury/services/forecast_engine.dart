@@ -660,13 +660,25 @@ class _ShockPool {
                 .inDays,
         }..removeWhere((i) => i < 0 || i >= spanDays);
 
+    int shockEpisodes(List<TransactionModel> list) {
+      final days = daySet(list).toList()..sort();
+      if (days.isEmpty) return 0;
+      var episodes = 1;
+      for (var i = 1; i < days.length; i++) {
+        if (days[i] - days[i - 1] > 2) episodes++;
+      }
+      return episodes;
+    }
+
+    final incomeEpisodes = shockEpisodes(incomeTx);
+    final expenseEpisodes = shockEpisodes(expenseTx);
     return _ShockPool(
       income: incomeTx.map((e) => e.amount).toList(),
       expense: expenseTx.map((e) => e.amount).toList(),
       incomeProbability:
-          spanDays == 0 ? 0 : (incomeTx.length / spanDays).clamp(0.0, 0.12),
+          spanDays == 0 ? 0 : (incomeEpisodes / spanDays).clamp(0.0, 0.12),
       expenseProbability:
-          spanDays == 0 ? 0 : (expenseTx.length / spanDays).clamp(0.0, 0.12),
+          spanDays == 0 ? 0 : (expenseEpisodes / spanDays).clamp(0.0, 0.12),
       incomeDays: daySet(incomeTx),
       expenseDays: daySet(expenseTx),
     );

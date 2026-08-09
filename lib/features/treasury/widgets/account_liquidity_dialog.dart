@@ -61,7 +61,9 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: AppTheme.surface,
-      title: Text(_ru ? 'Ликвидность · ${widget.account.name}' : 'Liquidity · ${widget.account.name}'),
+      title: Text(_ru
+          ? 'Ликвидность · ${widget.account.name}'
+          : 'Liquidity · ${widget.account.name}'),
       content: SizedBox(
         width: 480,
         child: SingleChildScrollView(
@@ -72,26 +74,35 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
                 _ru
                     ? 'Horizon оценивает не только общий баланс, но и риск остаться без денег именно на нужном счёте.'
                     : 'Horizon evaluates not only total cash, but the risk of running out at the location where money is actually needed.',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
+                style: TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
               ),
               const SizedBox(height: 14),
               DropdownButtonFormField<String>(
                 value: _currency,
-                decoration: InputDecoration(labelText: _ru ? 'Валюта ликвидности' : 'Liquidity currency'),
-                items: CurrencyService.currencies.entries
-                    .map((e) => DropdownMenuItem(
-                          value: e.key,
-                          child: Text('${e.value.flag} ${e.value.code} · ${e.value.name}'),
+                decoration: InputDecoration(
+                    labelText:
+                        _ru ? 'Валюта ликвидности' : 'Liquidity currency'),
+                items: CurrencyService.currencies.keys
+                    .map((code) => DropdownMenuItem(
+                          value: code,
+                          child: Text(
+                            '${CurrencyService.flag(code)} ${code.toUpperCase()} · ${CurrencyService.currencyName(code, russian: _ru)}',
+                          ),
                         ))
                     .toList(),
-                onChanged: (value) => setState(() => _currency = value ?? 'rub'),
+                onChanged: (value) =>
+                    setState(() => _currency = value ?? 'rub'),
               ),
               const SizedBox(height: 12),
               TextField(
                 controller: _minimum,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
                 decoration: InputDecoration(
-                  labelText: _ru ? 'Неснижаемый остаток, ₽-экв.' : 'Minimum local liquidity, RUB eq.',
+                  labelText: _ru
+                      ? 'Неснижаемый остаток, ₽-экв.'
+                      : 'Minimum local liquidity, RUB eq.',
                   helperText: _ru
                       ? 'Ниже этой суммы Horizon считает локальный дефицит.'
                       : 'Below this level Horizon flags a local shortfall.',
@@ -102,7 +113,9 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
                 contentPadding: EdgeInsets.zero,
                 value: _allowNetting,
                 onChanged: (v) => setState(() => _allowNetting = v),
-                title: Text(_ru ? 'Разрешить покрытие с других счетов' : 'Allow netting from other accounts'),
+                title: Text(_ru
+                    ? 'Разрешить покрытие с других счетов'
+                    : 'Allow netting from other accounts'),
                 subtitle: Text(
                   _ru
                       ? 'Если выключено, Horizon не считает деньги в других местах доступными для спасения этого счёта.'
@@ -138,7 +151,9 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(_ru ? 'Отмена' : 'Cancel')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_ru ? 'Отмена' : 'Cancel')),
         FilledButton.icon(
           icon: const Icon(Icons.shield_outlined, size: 17),
           label: Text(_ru ? 'Сохранить риск-профиль' : 'Save risk profile'),
@@ -150,7 +165,8 @@ class _AccountLiquidityDialogState extends State<AccountLiquidityDialog> {
 
   Future<void> _save() async {
     final raw = _minimum.text.trim().replaceAll(',', '.');
-    final minimum = (double.tryParse(raw) ?? 0).clamp(0, double.infinity).toDouble();
+    final minimum =
+        (double.tryParse(raw) ?? 0).clamp(0, double.infinity).toDouble();
     await AccountLiquidityService.save(AccountLiquidityMeta(
       accountId: widget.account.id,
       currency: _currency,

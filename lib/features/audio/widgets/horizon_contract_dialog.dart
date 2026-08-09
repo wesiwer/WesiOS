@@ -23,9 +23,9 @@ class HorizonContractDialog extends StatefulWidget {
   static Future<void> show(BuildContext context, BeatEntry beat) async {
     final lease = beat.lease;
     if (lease == null) return;
-    final existing = await HorizonContractMemoryService.forLease(lease.id);
-    final fallbackAmount = lease.amount *
-        CurrencyService.rateToRub(lease.currency.toLowerCase());
+    final existing = await HorizonContractMemoryService.byLease(lease.id);
+    final fallbackAmount =
+        lease.amount * CurrencyService.rateToRub(lease.currency.toLowerCase());
     final initial = existing ??
         HorizonContractMemory(
           beatId: beat.id,
@@ -96,15 +96,18 @@ class _HorizonContractDialogState extends State<HorizonContractDialog> {
             children: [
               Text(
                 'Контрактная память не меняет договор. Она говорит Horizon, какие деньги ожидаются после окончания аренды и насколько им можно доверять.',
-                style: TextStyle(color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
+                style: TextStyle(
+                    color: AppTheme.textSecondary, fontSize: 12, height: 1.4),
               ),
               const SizedBox(height: 16),
               _section('Продление аренды', Icons.autorenew),
               const SizedBox(height: 8),
               TextField(
                 controller: _renewalAmount,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Ожидаемая сумма продления, ₽'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                    labelText: 'Ожидаемая сумма продления, ₽'),
               ),
               const SizedBox(height: 8),
               _probability(
@@ -113,18 +116,22 @@ class _HorizonContractDialogState extends State<HorizonContractDialog> {
                 onChanged: (v) => setState(() => _renewalProbability = v),
               ),
               const SizedBox(height: 18),
-              _section('Роялти / отложенное поступление', Icons.payments_outlined),
+              _section(
+                  'Роялти / отложенное поступление', Icons.payments_outlined),
               const SizedBox(height: 8),
               TextField(
                 controller: _royaltyAmount,
-                keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                decoration: const InputDecoration(labelText: 'Ожидаемое роялти, ₽'),
+                keyboardType:
+                    const TextInputType.numberWithOptions(decimal: true),
+                decoration:
+                    const InputDecoration(labelText: 'Ожидаемое роялти, ₽'),
               ),
               const SizedBox(height: 8),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Ожидаемая дата роялти'),
-                subtitle: Text(_royaltyDate == null ? 'Не указана' : _date(_royaltyDate!)),
+                subtitle: Text(
+                    _royaltyDate == null ? 'Не указана' : _date(_royaltyDate!)),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -157,7 +164,8 @@ class _HorizonContractDialogState extends State<HorizonContractDialog> {
                 ),
                 child: Text(
                   'Если ничего не настраивать, Wesi Horizon использует консервативное допущение: 35% вероятности продления на сумму текущей сделки.',
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5, height: 1.35),
+                  style: TextStyle(
+                      color: AppTheme.textMuted, fontSize: 10.5, height: 1.35),
                 ),
               ),
             ],
@@ -165,7 +173,9 @@ class _HorizonContractDialogState extends State<HorizonContractDialog> {
         ),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('Отмена')),
+        TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Отмена')),
         FilledButton.icon(
           onPressed: _save,
           icon: const Icon(Icons.save_outlined, size: 17),
@@ -209,7 +219,8 @@ class _HorizonContractDialogState extends State<HorizonContractDialog> {
       );
 
   Future<void> _pickRoyaltyDate() async {
-    final initial = _royaltyDate ?? widget.lease.endsAt.add(const Duration(days: 30));
+    final initial =
+        _royaltyDate ?? widget.lease.endsAt.add(const Duration(days: 30));
     final picked = await showDatePicker(
       context: context,
       initialDate: initial,
@@ -220,8 +231,10 @@ class _HorizonContractDialogState extends State<HorizonContractDialog> {
   }
 
   Future<void> _save() async {
-    final renewal = double.tryParse(_renewalAmount.text.trim().replaceAll(',', '.')) ?? 0;
-    final royalty = double.tryParse(_royaltyAmount.text.trim().replaceAll(',', '.')) ?? 0;
+    final renewal =
+        double.tryParse(_renewalAmount.text.trim().replaceAll(',', '.')) ?? 0;
+    final royalty =
+        double.tryParse(_royaltyAmount.text.trim().replaceAll(',', '.')) ?? 0;
     await HorizonContractMemoryService.save(HorizonContractMemory(
       beatId: widget.beat.id,
       leaseId: widget.lease.id,
