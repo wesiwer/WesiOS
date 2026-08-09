@@ -1,0 +1,363 @@
+name: Finish WesiOS unfinished features
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: github.head_ref == 'feat/finish-unfinished-20260809'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Apply unfinished Home regression fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q "home_clock_panel" lib/features/home/home_screen.dart 2>/dev/null; then
+            echo 'Home mobile fix already present.'
+          else
+            git fetch origin agent/fix-full-home-mobile --depth=1
+            git show origin/agent/fix-full-home-mobile:tools/fix_full_home_mobile.py > /tmp/fix_full_home_mobile.py
+            python3 /tmp/fix_full_home_mobile.py
+          fi
+
+      - name: Add Audio Vault quick ALS and AI actions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('lib/features/audio/audio_vault_v2_screen.dart')
+          text = path.read_text(encoding='utf-8')
+          if '_quickAudioActions(BeatEntry beat)' in text:
+              print('Audio Vault quick actions already present.')
+              raise SystemExit(0)
+
+          def replace_once(old: str, new: str):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one Audio Vault anchor, got {count}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              "import 'models/audio_vault_models.dart';",
+              "import 'models/audio_vault_extended_models.dart';\nimport 'models/audio_vault_models.dart';",
+          )
+
+          replace_once(
+              "  VisualizerMode _visualizer = VisualizerMode.water;\n",
+              "  VisualizerMode _visualizer = VisualizerMode.water;\n"
+              "  final Set<String> _quickAnalyzing = <String>{};\n"
+              "  bool _batchAnalyzing = false;\n",
+          )
+
+          replace_once(
+              """        actions: [
+          if (_tab == 0)
+            IconButton(
+              tooltip: 'Добавить бит',
+              onPressed: _createBeat,
+              icon: Icon(Icons.add_circle_outline, color: AppTheme.accent),
+            ),
+        ],""",
+              """        actions: [
+          if (_tab == 0) ...[
+            IconButton(
+              tooltip: 'Wesi AI: анализировать новые / изменённые WAV',
+              onPressed: _batchAnalyzing ? null : _analyzePendingBeats,
+              icon: _batchAnalyzing
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(Icons.auto_awesome, color: AppTheme.accent),
+            ),
+            IconButton(
+              tooltip: 'Добавить бит',
+              onPressed: _createBeat,
+              icon: Icon(Icons.add_circle_outline, color: AppTheme.accent),
+            ),
+          ],
+        ],""",
+          )
+
+          replace_once(
+              """                _fileBadge('TRACK', beat.trackoutPath, beat),
+                const Spacer(),""",
+              """                _fileBadge('TRACK', beat.trackoutPath, beat),
+                const SizedBox(width: 6),
+                _quickAudioActions(beat),
+                const Spacer(),""",
+          )
+
+          marker = """  Widget _pill(String text, Color color) => Container("""
+          methods = r'''  Future<(BeatExtendedMeta, AudioAnalysisReport?)> _quickAudioState(
+    BeatEntry beat,
+  ) async {
+    final meta = await AudioVaultExtrasService.metaFor(beat.id);
+    final report = await AudioVaultExtrasService.analysisForBeat(beat);
+    return (meta, report);
+  }
+
+  Widget _quickAudioActions(BeatEntry beat) =>
+      FutureBuilder<(BeatExtendedMeta, AudioAnalysisReport?)>(
+        future: _quickAudioState(beat),
+        builder: (context, snapshot) {
+          final data = snapshot.data;
+          if (data == null) return const SizedBox.shrink();
+
+          final meta = data.$1;
+          final report = data.$2;
+          final abletonPath = meta.abletonProjectPath;
+          final hasAbleton = abletonPath != null && abletonPath.isNotEmpty;
+          final abletonExists = hasAbleton && File(abletonPath).existsSync();
+          final wavExists = beat.wavPath != null && File(beat.wavPath!).existsSync();
+          final stale = meta.analysis != null && report == null;
+          final analyzing = _quickAnalyzing.contains(beat.id);
+
+          final scoreColor = report == null
+              ? (stale ? Colors.orange : AppTheme.accent)
+              : report.score >= 85
+                  ? AppTheme.accentGreen
+                  : report.score >= 65
+                      ? Colors.orange
+                      : AppTheme.accentRed;
+
+          return Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (hasAbleton)
+                _miniActionBadge(
+                  label: 'ALS',
+                  icon: abletonExists
+                      ? Icons.music_note_rounded
+                      : Icons.link_off_rounded,
+                  color: abletonExists ? AppTheme.accent : AppTheme.accentRed,
+                  onTap: () => _openAbletonQuick(abletonPath),
+                ),
+              if (hasAbleton && (wavExists || report != null || stale))
+                const SizedBox(width: 5),
+              if (wavExists || report != null || stale)
+                _miniActionBadge(
+                  label: analyzing
+                      ? 'AI…'
+                      : report != null
+                          ? 'AI ${report.score}'
+                          : stale
+                              ? 'AI ↻'
+                              : 'AI',
+                  icon: analyzing
+                      ? Icons.hourglass_top_rounded
+                      : Icons.psychology_alt_outlined,
+                  color: scoreColor,
+                  onTap: analyzing ? null : () => _quickAnalyzeBeat(beat),
+                ),
+            ],
+          );
+        },
+      );
+
+  Widget _miniActionBadge({
+    required String label,
+    required IconData icon,
+    required Color color,
+    VoidCallback? onTap,
+  }) =>
+      InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 5),
+          decoration: BoxDecoration(
+            color: color.withOpacity(.1),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: color.withOpacity(.28)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 12, color: color),
+              const SizedBox(width: 3),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: 9,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+
+  Future<void> _openAbletonQuick(String path) async {
+    final error = await AudioVaultExtrasService.openAbletonProject(path);
+    if (error != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error)),
+      );
+    }
+  }
+
+  Future<void> _quickAnalyzeBeat(BeatEntry beat) async {
+    if (_quickAnalyzing.contains(beat.id)) return;
+    setState(() => _quickAnalyzing.add(beat.id));
+    try {
+      final report = await AudioVaultExtrasService.analyzeBeat(beat);
+      if (!mounted) return;
+      final critical = report.insights
+          .where((e) => e.severity == AudioIssueSeverity.critical)
+          .length;
+      final warning = report.insights
+          .where((e) => e.severity == AudioIssueSeverity.warning)
+          .length;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Wesi AI · ${beat.title}: ${report.score}/100 · '
+            '${report.estimatedIntegratedLufs.toStringAsFixed(1)} LUFS · '
+            '${report.estimatedTruePeakDbtp.toStringAsFixed(2)} dBTP · '
+            '$critical крит. / $warning предупр.',
+          ),
+          action: SnackBarAction(
+            label: 'Отчёт',
+            onPressed: () => _openBeat(beat),
+          ),
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Wesi AI: не удалось проанализировать «${beat.title}»: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _quickAnalyzing.remove(beat.id));
+    }
+  }
+
+  Future<void> _analyzePendingBeats() async {
+    if (_batchAnalyzing) return;
+    setState(() => _batchAnalyzing = true);
+    var analyzed = 0;
+    var skipped = 0;
+    var failed = 0;
+    try {
+      final beats = await AudioVaultService.all();
+      final candidates = beats
+          .where((b) => b.wavPath != null && File(b.wavPath!).existsSync())
+          .toList();
+
+      for (final beat in candidates) {
+        final current = await AudioVaultExtrasService.analysisForBeat(beat);
+        if (current != null) {
+          skipped++;
+          continue;
+        }
+        if (mounted) setState(() => _quickAnalyzing.add(beat.id));
+        try {
+          await AudioVaultExtrasService.analyzeBeat(beat);
+          analyzed++;
+        } catch (_) {
+          failed++;
+        } finally {
+          if (mounted) setState(() => _quickAnalyzing.remove(beat.id));
+        }
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Wesi AI batch: $analyzed новых отчётов · '
+              '$skipped уже актуальны · $failed ошибок.',
+            ),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _batchAnalyzing = false);
+    }
+  }
+
+'''
+          if marker not in text:
+              raise SystemExit('Audio Vault method insertion marker not found')
+          text = text.replace(marker, methods + marker, 1)
+          path.write_text(text, encoding='utf-8')
+          print('Audio Vault quick ALS/AI actions applied.')
+          PY
+
+      - name: Format product files
+        run: |
+          dart format \
+            lib/core/widgets/wesi_avatar.dart \
+            lib/core/widgets/wesi_clock.dart \
+            lib/features/home/home_screen.dart \
+            lib/features/audio/audio_vault_v2_screen.dart \
+            test/home_mobile_layout_test.dart
+
+      - name: Static guards
+        run: |
+          set -euo pipefail
+          grep -q "Hive.isBoxOpen(_box)" lib/core/widgets/wesi_avatar.dart
+          grep -q "height: large ? 168 : 116" lib/core/widgets/wesi_clock.dart
+          grep -q "home_clock_panel" lib/features/home/home_screen.dart
+          grep -q "home_balance_card" lib/features/home/home_screen.dart
+          grep -q "_quickAudioActions(BeatEntry beat)" lib/features/audio/audio_vault_v2_screen.dart
+          grep -q "_analyzePendingBeats" lib/features/audio/audio_vault_v2_screen.dart
+          grep -q "_openAbletonQuick" lib/features/audio/audio_vault_v2_screen.dart
+          git diff --check
+
+      - run: flutter pub get
+
+      - name: Targeted tests
+        run: |
+          flutter test test/home_mobile_layout_test.dart
+          flutter test test/audio_analysis_v2_model_test.dart test/audio_analysis_v2_service_test.dart
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Full test suite
+        run: flutter test
+
+      - name: Commit product changes to feature branch
+        run: |
+          set -euo pipefail
+          rm -f .github/finish-unfinished.marker
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            lib/core/widgets/wesi_avatar.dart \
+            lib/core/widgets/wesi_clock.dart \
+            lib/features/home/home_screen.dart \
+            lib/features/audio/audio_vault_v2_screen.dart \
+            test/home_mobile_layout_test.dart
+          git add -u .github/finish-unfinished.marker || true
+          if git diff --cached --quiet; then
+            echo 'No product changes to commit.'
+            exit 0
+          fi
+          git commit -m 'feat: finish Home mobile and Audio Vault quick actions'
+          git push origin HEAD:${{ github.head_ref }}
