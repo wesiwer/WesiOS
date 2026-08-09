@@ -1,0 +1,56 @@
+name: Audit WesiOS unfinished work
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    if: github.head_ref == 'ci/audit-unfinished'
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Explicit unfinished markers
+        run: |
+          echo '=== TODO / FIXME / UNIMPLEMENTED / PLACEHOLDERS ==='
+          rg -n --hidden \
+            --glob '!build/**' --glob '!.git/**' --glob '!**/*.g.dart' \
+            '(TODO|FIXME|UnimplementedError|UnsupportedError|coming soon|Coming soon|скоро будет|заглушк|не реализован|не реализовано|placeholder)' \
+            lib test server docs README.md STATUS.md 2>/dev/null || true
+
+      - name: Recurring payments
+        run: |
+          echo '=== RECURRING PAYMENTS ==='
+          rg -n --hidden \
+            '(processRecurringPayments|RecurringPayment|recurringPayment|recurring payment|регулярн.*плат)' \
+            lib test README.md STATUS.md 2>/dev/null || true
+
+      - name: Tasks Analytics CRM surface
+        run: |
+          echo '=== TASKS / ANALYTICS / CRM FILES AND MARKERS ==='
+          find lib -type f | grep -Ei '(task|analytics|crm)' | sort || true
+          echo '--- suspicious markers in those files ---'
+          files=$(find lib -type f | grep -Ei '(task|analytics|crm)' || true)
+          if [ -n "$files" ]; then
+            rg -n '(TODO|FIXME|placeholder|заглушк|не реализован|coming soon|demo|mock|random)' $files || true
+          fi
+
+      - name: Empty callbacks and suspicious no-op implementations
+        run: |
+          echo '=== EMPTY / NO-OP CALLBACKS ==='
+          rg -n --glob 'lib/**/*.dart' \
+            '(=>\s*null\s*;|=>\s*false\s*;|=>\s*true\s*;|onPressed:\s*\(\)\s*\{\s*\}|onTap:\s*\(\)\s*\{\s*\}|Future<[^>]+>\s+\w+\([^)]*\)\s+async\s*\{\s*\})' \
+            lib || true
+
+      - name: Status backlog hints
+        run: |
+          echo '=== STATUS / README BACKLOG HINTS ==='
+          rg -n '(Очередь|осталось|не готов|незаверш|TODO|FIXME|блокер|processRecurringPayments|Tasks/Analytics/CRM|deep features)' README.md STATUS.md SECURITY_STATUS.md || true
