@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'agent/horizon-hardening-exec2'
+    if: github.head_ref == 'agent/horizon-hardening-exec3'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
