@@ -1,0 +1,105 @@
+name: Mobile UX 0.19.18 one-shot
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  mobile-ux-repair:
+    if: github.head_ref == 'agent/mobile-ux-01918'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/mobile-ux-01918
+          fetch-depth: 1
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+
+      - name: Apply, verify and publish mobile UX pass
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cp .github/scripts/mobile_ux_01918.py /tmp/mobile_ux_01918.py
+          git fetch origin main
+          git checkout -B main origin/main
+
+          python3 /tmp/mobile_ux_01918.py
+
+          dart format \
+            lib/features/team/widgets/employee_or_custom_field.dart \
+            lib/features/home/home_screen.dart \
+            lib/features/home/more_tab.dart \
+            lib/core/widgets/wesi_clock.dart \
+            lib/features/tasks/widgets/assignee_field.dart \
+            lib/features/tasks/services/task_assignment.dart \
+            lib/features/roadmap/roadmap_screen.dart \
+            lib/features/crm/crm_screen.dart \
+            lib/features/audio/audio_vault_v2_screen.dart \
+            lib/main.dart \
+            lib/features/treasury/widgets/add_transaction_dialog.dart \
+            lib/features/treasury/operations_screen.dart \
+            lib/features/time_center/time_center_screen.dart \
+            lib/features/treasury/forecast_chart_screen.dart \
+            lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/widgets/what_if_dialog.dart \
+            lib/features/treasury/services/what_if_store.dart \
+            lib/core/services/currency_service.dart \
+            lib/core/constants/app_version.dart \
+            test/mobile_ux_01918_test.dart
+
+          git diff --check
+          grep -q '^version: 0.19.18+66$' pubspec.yaml
+          grep -q 'showTimePicker' lib/features/treasury/widgets/add_transaction_dialog.dart
+          grep -q '_forecastDays.clamp(7, 90)' lib/features/treasury/forecast_chart_screen.dart
+          grep -q '@drawable/launcher_icon_light' android/app/src/main/AndroidManifest.xml
+
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          flutter test
+          flutter build apk --debug
+
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat(mobile): polish core UX + 0.19.18+66'
+          git push origin HEAD:main
+
+          started=$(date -u +%s)
+          gh workflow run publish-wesios-production.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Мобильный UX: возвращено название WesiOS и точный баланс на главной; календарь отмечен готовым; ответственные выбираются из сотрудников с ручным вариантом; исправлена тематическая иконка Android; операции получили время и группировку по датам; часы/календарь на главной открываются раздельно; секундомер показывает целые секунды; Roadmap получил масштаб шкалы; короткие прогнозы растягиваются; What-If поддерживает разовые и регулярные виртуальные доходы/траты.'
+
+          release_run=''
+          for attempt in $(seq 1 60); do
+            runs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=workflow_dispatch&per_page=50")
+            release_run=$(printf '%s' "$runs" | jq -r --argjson started "$started" '[.workflow_runs[] | select(.name == "Publish WesiOS Production") | select((.created_at | fromdateiso8601) >= ($started - 5))] | sort_by(.created_at) | last | .id // empty')
+            [ -n "$release_run" ] && break
+            sleep 5
+          done
+          [ -n "$release_run" ] || { echo 'Production release run not found' >&2; exit 1; }
+
+          for attempt in $(seq 1 220); do
+            run=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$release_run")
+            status=$(printf '%s' "$run" | jq -r '.status')
+            conclusion=$(printf '%s' "$run" | jq -r '.conclusion // ""')
+            echo "production release: $status $conclusion"
+            if [ "$status" = completed ]; then
+              [ "$conclusion" = success ] && exit 0
+              exit 1
+            fi
+            sleep 15
+          done
+
+          echo 'Production release timed out' >&2
+          exit 1
