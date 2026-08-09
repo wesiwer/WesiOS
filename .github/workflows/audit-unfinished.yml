@@ -50,6 +50,17 @@ jobs:
             '(=>[[:space:]]*null[[:space:]]*;|=>[[:space:]]*false[[:space:]]*;|=>[[:space:]]*true[[:space:]]*;|onPressed:[[:space:]]*\(\)[[:space:]]*\{[[:space:]]*\}|onTap:[[:space:]]*\(\)[[:space:]]*\{[[:space:]]*\})' \
             lib || true
 
+      - name: Resolve suspicious legacy references
+        run: |
+          echo '=== TREASURY DASHBOARD REFERENCES ==='
+          grep -RIn --include='*.dart' 'TreasuryDashboardScreen' lib || true
+          echo '=== AVATAR COMING-SOON KEY REFERENCES ==='
+          grep -RIn --include='*.dart' 'upload_avatar_soon' lib || true
+          echo '=== MODULE SCAFFOLD REFERENCES ==='
+          grep -RIn --include='*.dart' 'ModuleScaffold' lib || true
+          echo '=== TOPIC JUDGE NAME TOPIC REFERENCES ==='
+          grep -RIn --include='*.dart' 'nameTopic(' lib || true
+
       - name: Status backlog hints
         run: |
           echo '=== STATUS / README BACKLOG HINTS ==='
