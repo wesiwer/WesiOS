@@ -34,6 +34,16 @@ jobs:
           git checkout -B main origin/main
 
           python3 /tmp/mobile_ux_01918.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/features/home/home_screen.dart')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+              "? 'Часы открывают центр времени, календарь — календарь'",
+              "? 'Открыть центр времени; календарь открывает календарь'",
+          )
+          p.write_text(s, encoding='utf-8')
+          PY
 
           dart format \
             lib/features/team/widgets/employee_or_custom_field.dart \
