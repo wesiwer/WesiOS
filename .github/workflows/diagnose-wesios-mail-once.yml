@@ -10,12 +10,17 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  probe:
     runs-on: ubuntu-latest
     timeout-minutes: 8
     environment:
       name: employee-portal
     steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
       - name: Prepare SSH
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -36,7 +41,7 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Inspect live mail error without exposing data
+      - name: Run one owner-only PocketBase mail probe
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
@@ -44,73 +49,116 @@ jobs:
         run: |
           set -euo pipefail
           test -n "${HOST:-}" && test -n "${USER:-}"
-          ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes "$USER@$HOST" 'bash -s' <<'REMOTE'
+          TOKEN=$(openssl rand -hex 24)
+          REMOTE="/tmp/wesi-mail-probe-$GITHUB_RUN_ID"
+          PATCHED="$RUNNER_TEMP/wesi_auth_mail_probe.pb.js"
+          cp server/pb_hooks/wesi_auth_bootstrap.pb.js "$PATCHED"
+          cat >> "$PATCHED" <<JS
+
+          routerAdd("POST", "/api/wesi/internal/mail-probe-$TOKEN", (e) => {
+            let email = "";
+            let displayName = "WesiOS";
+            try {
+              const records = e.app.findRecordsByFilter(
+                "wesios_records",
+                "owner='__wesios_security__' && coll='security'",
+                "-stamp",
+                50,
+                0,
+              );
+              for (const record of records) {
+                const model = new DynamicModel({
+                  "email": "", "employeeId": "", "userId": "", "login": "",
+                });
+                record.unmarshalJSONField("payload", model);
+                const candidate = String(model.email || "").trim().toLowerCase();
+                if (String(model.employeeId || "") !== "owner") continue;
+                if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(candidate)) continue;
+                if (candidate.endsWith("@wesi.local")) continue;
+                let marker = null;
+                try {
+                  marker = e.app.findFirstRecordByFilter(
+                    "wesios_records",
+                    "owner='" + String(model.userId || "") + "' && coll='system' && rid='portal-owner' && deleted=false",
+                  );
+                } catch (_) { marker = null; }
+                if (!marker) continue;
+                email = candidate;
+                displayName = String(model.login || "WesiOS");
+                break;
+              }
+            } catch (_) {}
+
+            if (!email) {
+              return e.json(409, {"ok": false, "stage": "verified_owner_recipient_not_found"});
+            }
+
+            const settings = e.app.settings();
+            const message = new MailerMessage({
+              "from": {
+                "address": settings.meta.senderAddress,
+                "name": settings.meta.senderName || "WesiOS",
+              },
+              "to": [{"address": email, "name": displayName}],
+              "subject": "Проверка почтового транспорта WesiOS",
+              "html": "<p>Это техническая проверка доставки WesiOS. Никаких действий не требуется.</p>",
+              "text": "Это техническая проверка доставки WesiOS. Никаких действий не требуется.",
+            });
+            try {
+              e.app.newMailClient().send(message);
+              return e.json(200, {"ok": true, "stage": "smtp_accepted"});
+            } catch (error) {
+              const raw = String((error && error.message) || error || "unknown");
+              const safe = raw
+                .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}/g, "<redacted-email>")
+                .replace(/[A-Za-z0-9+\\/_-]{32,}/g, "<redacted-value>")
+                .substring(0, 500);
+              return e.json(502, {"ok": false, "stage": "smtp_send_failed", "reason": safe});
+            }
+          });
+          JS
+          node --check "$PATCHED"
+
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            "$PATCHED" \
+            server/pb_hooks/wesi_auth_bootstrap.pb.js \
+            "$USER@$HOST:$REMOTE/"
+
+          $SSH "$USER@$HOST" "TOKEN='$TOKEN' REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
+          HOOK=/opt/pocketbase/pb_hooks/wesi_auth_bootstrap.pb.js
+          ORIGINAL="$REMOTE/wesi_auth_bootstrap.pb.js"
+          PATCHED="$REMOTE/wesi_auth_mail_probe.pb.js"
+          test -w "$HOOK"
+          test -s "$ORIGINAL" && test -s "$PATCHED"
 
-          sanitize() {
-            sed -E \
-              -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<redacted-email>/g' \
-              -e 's/(apiKey|password|token)[=:][^ ,;}]+/\1=<redacted>/Ig' \
-              -e 's/[A-Za-z0-9+\/_-]{32,}/<redacted-value>/g'
+          restore() {
+            cat "$ORIGINAL" > "$HOOK" || true
+            chmod 0644 "$HOOK" || true
+            rm -rf "$REMOTE" || true
           }
+          trap restore EXIT
 
-          for unit in pocketbase postfix opendkim; do
-            state=$(systemctl is-active "$unit" 2>/dev/null || true)
-            printf '%s=%s\n' "$unit" "${state:-unknown}"
+          cat "$PATCHED" > "$HOOK"
+          chmod 0644 "$HOOK"
+
+          CODE=''
+          for attempt in $(seq 1 20); do
+            CODE=$(curl -sS -o "$REMOTE/probe.json" -w '%{http_code}' \
+              --max-time 25 -X POST \
+              "http://127.0.0.1:8090/api/wesi/internal/mail-probe-$TOKEN" || true)
+            [ "$CODE" != 404 ] && [ -n "$CODE" ] && break
+            sleep 1
           done
+          echo "probe_http=$CODE"
+          cat "$REMOTE/probe.json" 2>/dev/null || true
+          echo
 
-          SMTP_BANNER=$(
-            timeout 5 bash -c '
-              exec 3<>/dev/tcp/127.0.0.1/25
-              IFS= read -r line <&3
-              printf "QUIT\r\n" >&3
-              printf "%s" "$line"
-            ' 2>/dev/null || true
-          )
-          case "$SMTP_BANNER" in
-            220*) echo 'smtp_socket=ready' ;;
-            *) echo 'smtp_socket=failed' ;;
-          esac
-
-          if command -v postqueue >/dev/null 2>&1; then
-            QUEUE_COUNT=$(postqueue -j 2>/dev/null | wc -l | tr -d ' ')
-            echo "postfix_queue_count=${QUEUE_COUNT:-unknown}"
-          else
-            echo 'postfix_queue_count=unavailable'
-          fi
-
-          ALL_LOGS=''
-          STATUS_LOGS=$(systemctl status pocketbase --no-pager -n 200 2>&1 || true)
-          ALL_LOGS="$STATUS_LOGS"
-
-          JOURNAL_LOGS=$(journalctl -u pocketbase --since '90 minutes ago' --no-pager -o cat 2>/dev/null || true)
-          if [ -z "$JOURNAL_LOGS" ]; then
-            JOURNAL_LOGS=$(sudo -n journalctl -u pocketbase --since '90 minutes ago' --no-pager -o cat 2>/dev/null || true)
-          fi
-          ALL_LOGS="$ALL_LOGS
-          $JOURNAL_LOGS"
-
-          FILTERED=$(printf '%s\n' "$ALL_LOGS" |
-            grep -E 'WesiOS (SMTP delivery failed|security email delivery failed|owner email setup delivery failed)' |
-            tail -n 20 || true)
-
-          DB_FILTERED=''
-          if command -v sqlite3 >/dev/null 2>&1 && [ -r /opt/pocketbase/pb_data/auxiliary.db ]; then
-            DB_FILTERED=$(sqlite3 -readonly /opt/pocketbase/pb_data/auxiliary.db \
-              "select message || ' ' || data from _logs where message like '%WesiOS%' or data like '%WesiOS%' order by created desc limit 20;" \
-              2>/dev/null || true)
-          fi
-
-          COMBINED="$FILTERED
-          $DB_FILTERED"
-          COMBINED=$(printf '%s\n' "$COMBINED" | sed '/^[[:space:]]*$/d' | tail -n 20)
-          if [ -z "$COMBINED" ]; then
-            echo 'pocketbase_mail_error=not_visible'
-            echo "sqlite_available=$(command -v sqlite3 >/dev/null 2>&1 && echo true || echo false)"
-            echo "auxiliary_readable=$([ -r /opt/pocketbase/pb_data/auxiliary.db ] && echo true || echo false)"
-          else
-            echo 'pocketbase_mail_error_begin'
-            printf '%s\n' "$COMBINED" | sanitize
-            echo 'pocketbase_mail_error_end'
-          fi
-          REMOTE
+          cat "$ORIGINAL" > "$HOOK"
+          chmod 0644 "$HOOK"
+          sleep 2
+          cmp -s "$ORIGINAL" "$HOOK"
+          echo 'temporary_probe_removed=true'
+          REMOTE_SCRIPT
