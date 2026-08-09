@@ -42,6 +42,7 @@
 - Remembered auth token + WesiOS session ID хранятся в platform secure storage; legacy plaintext Hive session мигрируется и удаляется
 - Android launcher icon привязан к реальному WesiOS resource на всех поддерживаемых API
 - Windows release поддерживает установщик вместо ручной распаковки ZIP
+- Production release pipeline: signed Android + Windows → GitHub `app-latest` → PocketBase `pb_public/artifacts` → публичная проверка manifest/files
 - Settings locale live (пересобирает все вкладки)
 - Live avatars (Hive listenable)
 
@@ -62,7 +63,24 @@ flutter build windows --release
 flutter build apk --release
 ```
 
-CI: push в `main` → GitHub Actions (Windows + Android).
+Обычный CI: push/PR → GitHub Actions (analyze/tests + Windows + Android).
+
+### Production release
+
+Единственная каноническая точка production-выпуска:
+
+**GitHub Actions → `Publish WesiOS Production`** (`.github/workflows/publish-wesios-production.yml`).
+
+Она делает полный цикл:
+
+1. вызывает низкоуровневый `Publish WesiOS Release` с `deploy_to_server=false`;
+2. собирает подписанный Android APK и Windows ZIP;
+3. обновляет GitHub Release `app-latest` и `app-manifest.json`;
+4. скачивает ровно опубликованные assets;
+5. выкладывает их в `/opt/pocketbase/pb_public/artifacts`;
+6. проверяет публичный `https://api.wesi-inc.ru/artifacts/app/app-manifest.json` и размеры Windows/Android файлов.
+
+`release-app.yml` остаётся внутренним builder-workflow. Для обычного production release запускайте `Publish WesiOS Production`, а не его legacy server-deploy ветку.
 
 ## Версия
 
