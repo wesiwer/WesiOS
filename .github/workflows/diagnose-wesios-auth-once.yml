@@ -91,10 +91,13 @@ jobs:
 
             const found = [];
             for (const row of rows) {
-              let decodedData = row.data || {};
-              if (typeof decodedData === "string") {
-                try { decodedData = JSON.parse(decodedData || "{}"); } catch (_) { decodedData = {}; }
-              }
+              let decodedData = {};
+              try {
+                const rawData = row.data && typeof row.data.string === "function"
+                  ? row.data.string()
+                  : String(row.data || "{}");
+                decodedData = JSON.parse(rawData || "{}");
+              } catch (_) { decodedData = {}; }
               const safeData = permitted(decodedData);
               const safeMessage = clean(row.message || "");
               const encoded = JSON.stringify(safeData);
