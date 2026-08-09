@@ -8,6 +8,7 @@ import '../../../core/widgets/window_controls.dart';
 import '../models/account_model.dart';
 import '../models/transaction_model.dart';
 import '../services/account_service.dart';
+import 'account_liquidity_dialog.dart';
 
 /// Полоса счетов над балансом: «Все счета» плюс карточка на каждый счёт.
 class AccountsBar extends StatefulWidget {
@@ -152,6 +153,7 @@ class _AccountsBarState extends State<AccountsBar> {
       amount: s.balance,
       onTap: () => widget.onSelect(s.account.id),
       onEdit: () => _editAccount(s),
+      onRisk: () => AccountLiquidityDialog.show(context, s.account),
     );
   }
 
@@ -164,6 +166,7 @@ class _AccountsBarState extends State<AccountsBar> {
     required double amount,
     required VoidCallback onTap,
     VoidCallback? onEdit,
+    VoidCallback? onRisk,
   }) {
     return Padding(
       padding: const EdgeInsets.only(right: 10),
@@ -203,6 +206,15 @@ class _AccountsBarState extends State<AccountsBar> {
                       ),
                     ),
                   ),
+                  if (onRisk != null)
+                    GestureDetector(
+                      onTap: onRisk,
+                      child: Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: Icon(Icons.shield_outlined,
+                            size: 14, color: AppTheme.textMuted),
+                      ),
+                    ),
                   if (onEdit != null)
                     GestureDetector(
                       onTap: onEdit,
@@ -426,8 +438,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                           AccountKind.main => _ru ? 'Основной' : 'Main',
                           AccountKind.card => _ru ? 'Карта' : 'Card',
                           AccountKind.cash => _ru ? 'Наличные' : 'Cash',
-                          AccountKind.savings =>
-                            _ru ? 'Накопления' : 'Savings',
+                          AccountKind.savings => _ru ? 'Накопления' : 'Savings',
                           AccountKind.project => _ru ? 'Проект' : 'Project',
                         },
                         style: TextStyle(
@@ -498,8 +509,7 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                     backgroundColor: AppTheme.accent,
                     child: Text(WesiLocale.get('save'),
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600)),
+                            color: Colors.white, fontWeight: FontWeight.w600)),
                   ),
                 ],
               ),

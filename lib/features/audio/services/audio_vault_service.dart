@@ -10,6 +10,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../tasks/models/task_model.dart';
 import '../../tasks/services/task_service.dart';
 import '../../team/services/team_service.dart';
+import '../../treasury/services/horizon_contract_memory.dart';
 import '../models/audio_vault_models.dart';
 
 class AudioVaultService {
@@ -213,6 +214,10 @@ class AudioVaultService {
   }
 
   static Future<BeatEntry> clearLease(BeatEntry beat) async {
+    final leaseId = beat.lease?.id;
+    if (leaseId != null && leaseId.isNotEmpty) {
+      await HorizonContractMemoryService.removeLease(leaseId);
+    }
     final taskId = beat.lease?.reminderTaskId;
     if (taskId != null && taskId.isNotEmpty) {
       await TaskService().delete(taskId);
