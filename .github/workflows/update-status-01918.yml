@@ -1,27 +1,27 @@
-# One-shot documentation sync for WesiOS 0.19.18+66.
 name: Record WesiOS 0.19.18 status
 
 on:
-  push:
+  pull_request:
     branches: [main]
-    paths:
-      - '.github/workflows/update-status-01918.yml'
 
 permissions:
   contents: write
 
 jobs:
   update-status:
+    if: github.head_ref == 'agent/docs-status-01918'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: agent/docs-status-01918
           fetch-depth: 1
 
       - name: Update STATUS and README
         run: |
           set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
           python3 - <<'PY'
           from pathlib import Path
 
@@ -135,10 +135,10 @@ jobs:
           grep -q 'v0.19.18+66' STATUS.md
           grep -q '837/837 тестов прошли' STATUS.md
           grep -q 'v0.19.18 α (+66)' README.md
-
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add STATUS.md README.md
-          git rm .github/workflows/update-status-01918.yml
+          git rm -f .github/workflows/update-status-01918.yml || true
+          git rm -f .github/workflows/docs-status-01918-pr.yml || true
           git commit -m 'docs: record WesiOS 0.19.18+66 mobile UX pass'
           git push origin HEAD:main
