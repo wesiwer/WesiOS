@@ -2,10 +2,6 @@ name: Activate WesiOS Local Mail
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/activate-wesios-local-mail.yml'
 
 permissions:
   contents: read
