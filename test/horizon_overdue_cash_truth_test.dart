@@ -8,10 +8,12 @@ void main() {
         File('lib/features/treasury/services/horizon_business_context.dart')
             .readAsStringSync();
 
-    expect(source, contains('final crmOverdue = !due.isAfter(today);'));
-    expect(source, contains("code: 'overdue-crm-${deal.id}'"));
-    expect(source, contains('probability = (probability * 0.65)'));
+    expect(source, contains('if (!due.isAfter(today))'));
+    expect(source, contains("code: 'crm-overdue-\${deal.id}'"));
+    expect(source, contains('final decay = exp(-overdueDays / 45.0)'));
+    expect(source, contains('probability = (probability * decay)'));
     expect(source, contains('committed = false;'));
+    expect(source, contains('eventDate = today.add(const Duration(days: 1))'));
 
     expect(source,
         contains('final missedIncoming = overdue && parsed.signedAmount > 0;'));
