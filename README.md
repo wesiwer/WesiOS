@@ -36,6 +36,13 @@
 - Audio Vault — архив битов, локальный player/FFT, аренды и календарные сроки,
   Ableton `.als` links, Music Hub/Spotify Connect и локальная ветвь
   Wesi AI Audio Quick Analysis v2
+- Audio Vault quick actions — `ALS` открывает проект прямо из карточки архива,
+  `AI <score>` запускает/показывает локальный анализ, верхняя AI-кнопка пакетно
+  анализирует все новые или изменённые WAV без актуального отчёта
+- Mobile Audio Vault — одна читаемая колонка на узких экранах и переносимый
+  footer MP3/WAV/TRACK/ALS/AI без RenderFlex overflow
+- Home mobile — безопасный avatar/Hive bootstrap, компактная шапка и адаптивные
+  GlassCard-заголовки/действия; regression test покрывает Android 360×800
 - Profile auto-save, custom avatar, защищённый вход и управление активными сеансами
 - Обязательная почта сотрудника и двухэтапный вход: пароль → 6-значный код по email
 - Отзывные WesiOS-сеансы: удалённое завершение и автоматический выход при удалении сотрудника
@@ -89,4 +96,4 @@ flutter build apk --release
 
 ## Версия
 
-v0.19.11 α — Private, Wesi Inc.
+v0.19.12 α — Private, Wesi Inc.
