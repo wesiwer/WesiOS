@@ -1,0 +1,103 @@
+name: Horizon final verification
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  apply-final-docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/horizon-top-tier
+          fetch-depth: 0
+      - name: Update TZ, STATUS and handoff
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          marker = '## Horizon final validation — 2026-08-10'
+          block = '''
+
+## Horizon final validation — 2026-08-10
+
+Clean code validation completed successfully on `4f07cd05e3d9461870874595230cf74a0aa358d0` in workflow `31342362575` (run #6).
+
+- `flutter analyze --no-fatal-infos`: success.
+- Full `flutter test`: 887/887 passed.
+- Legacy Treasury regression tests: success.
+- `horizon_top_tier_test.dart`: success.
+- `horizon_product_integration_test.dart`: success.
+- `horizon_completion_test.dart`: success.
+- Android verification build: success.
+- Windows release build: success on `windows-2022`.
+
+Final-gate fixes: compatible Windows runner; recurring reliability starts at schedule existence; fallback volatility uses non-recurring actual cash; schedule parents and generated recurring-income expectations are excluded from actual balance/backtest truth; injected recurring automation avoids global Hive side effects in tests; recurring income requires real matching execution evidence before it is classified as committed cash.
+
+Empirical truth remains separate from CI: `HorizonPredictionRegistry` must retain issued forecasts, and real 14/30/90/180-day coverage/calibration claims require matured live outcomes.
+'''
+          for filename in ('TZ.md', 'STATUS.md'):
+              p = Path(filename)
+              text = p.read_text(encoding='utf-8')
+              if marker not in text:
+                  p.write_text(text.rstrip() + block + '\n', encoding='utf-8')
+
+          Path('TZ_HANDOFF.md').write_text('''# WesiOS — Horizon Top-Tier A→G final handoff
+
+**Date:** 2026-08-10  
+**Product branch:** `agent/horizon-top-tier`  
+**Validated code SHA:** `4f07cd05e3d9461870874595230cf74a0aa358d0`  
+**Successful workflow:** `31342362575` (`Horizon final verification`, run #6)  
+**Jobs:** analysis/tests `93318127054`; Windows `93318127077`; Android `93318127096` — all success.  
+
+The former red run, job `93300530710`, PR #69 and `bef2dcb...` are historical only and are not the current continuation point.
+
+## Green gate
+
+- exact product SHA guard: success in all jobs;
+- `flutter analyze --no-fatal-infos`: success;
+- full `flutter test`: 887/887 passed;
+- legacy Treasury regression tests: success;
+- `horizon_top_tier_test.dart`: success;
+- `horizon_product_integration_test.dart`: success;
+- `horizon_completion_test.dart`: success;
+- Android verification build: success;
+- Windows release build: success on `windows-2022`.
+
+## Final-gate fixes
+
+1. Windows verification no longer follows drifting `windows-latest`; the successful gate uses `windows-2022` with a compatible Visual Studio toolchain for Flutter 3.24.
+2. Recurring reliability does not invent missed history before a schedule existed.
+3. Fallback volatility uses non-recurring actual-cash observations.
+4. Account balance and backtests exclude recurring schedule parents and generated recurring-income expectation rows from actual cash.
+5. Recurring automation with an injected Treasury service does not invoke unrelated global Hive maintenance; production shared automation remains intact.
+6. Recurring income is not committed merely because its schedule probability is high: matching real received-cash evidence is required, and generated income rows are not evidence.
+
+## Merge/release state
+
+The implementation gate is green. Do **not** merge `agent/horizon-top-tier` into `main` and do **not** start a production release without a separate explicit owner decision. Verification PRs are CI harnesses, not product merge PRs.
+
+## Empirical truth
+
+Green CI validates implementation and contracts, not future empirical accuracy. `HorizonPredictionRegistry` must keep issued live predictions. Real coverage, calibration, bias and cash-gap claims for 14/30/90/180-day horizons require enough matured outcomes.
+
+## Continuation
+
+Do not restart Horizon. After the documentation head itself is revalidated on an exact SHA, the next product step is the owner's merge decision.
+''', encoding='utf-8')
+          PY
+          git diff --check
+      - name: Commit final documentation to product branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "WesiOS CI Fix"
+          git config user.email "actions@users.noreply.github.com"
+          git add TZ.md STATUS.md TZ_HANDOFF.md
+          git commit -m "docs(horizon): record green final validation"
+          git push origin HEAD:agent/horizon-top-tier
