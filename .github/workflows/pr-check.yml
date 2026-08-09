@@ -6,82 +6,13 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: pr-check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  apply-final-cash-truth:
-    if: github.head_ref == 'agent/horizon-top-tier'
-    runs-on: ubuntu-latest
-    timeout-minutes: 24
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/horizon-top-tier
-          fetch-depth: 1
-
-      - name: Apply final Horizon cash-truth patches
-        run: |
-          set -euo pipefail
-          python3 -m py_compile \
-            tooling/horizon_confidence_patch.py \
-            tooling/horizon_main_source_stress_patch.py \
-            tooling/horizon_balance_truth_patch.py
-          python3 tooling/horizon_confidence_patch.py
-          python3 tooling/horizon_main_source_stress_patch.py
-          python3 tooling/horizon_balance_truth_patch.py
-
-      - name: Setup Flutter
-        uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.0'
-          channel: stable
-          cache: true
-
-      - name: Validate and commit when changed
-        run: |
-          set -euo pipefail
-          dart format \
-            lib/features/treasury/services/forecast_engine.dart \
-            lib/features/treasury/services/forecast_backtest.dart \
-            lib/features/treasury/services/horizon_engine_competition.dart \
-            lib/features/treasury/services/horizon_prediction_registry.dart \
-            lib/features/treasury/services/horizon_business_context.dart \
-            lib/features/treasury/services/account_service.dart \
-            lib/features/treasury/services/treasury_service.dart
-          flutter pub get
-          flutter analyze --no-fatal-infos
-          flutter test \
-            test/horizon_top_tier_test.dart \
-            test/horizon_completion_test.dart \
-            test/horizon_truth_invariants_test.dart \
-            test/horizon_main_source_stress_test.dart \
-            test/horizon_balance_truth_test.dart \
-            test/horizon_explainability_probability_test.dart
-          grep -Fq 'final actualEvidenceCount = nonRecurring.length;' lib/features/treasury/services/forecast_engine.dart
-          grep -Fq 'final primaryLossSource = mainIncomeExposure.isEmpty' lib/features/treasury/services/forecast_engine.dart
-          grep -Fq 'DateTime? asOf' lib/features/treasury/services/account_service.dart
-          grep -Fq 'DateTime? currentDate' lib/features/treasury/services/forecast_backtest.dart
-          git add \
-            lib/features/treasury/services/forecast_engine.dart \
-            lib/features/treasury/services/forecast_backtest.dart \
-            lib/features/treasury/services/horizon_engine_competition.dart \
-            lib/features/treasury/services/horizon_prediction_registry.dart \
-            lib/features/treasury/services/horizon_business_context.dart \
-            lib/features/treasury/services/account_service.dart \
-            lib/features/treasury/services/treasury_service.dart
-          if git diff --cached --quiet; then
-            echo 'Final cash-truth patches already committed.'
-            exit 0
-          fi
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m 'fix(horizon): separate current cash from future schedules'
-          git push origin HEAD:agent/horizon-top-tier
-
   analyze-and-test:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 25
