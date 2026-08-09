@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - agent/horizon-docs-finalize
+  pull_request:
 
 permissions:
   contents: write
