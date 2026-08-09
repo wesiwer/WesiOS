@@ -2,7 +2,7 @@ from pathlib import Path
 
 path = Path('lib/features/home/home_screen.dart')
 text = path.read_text(encoding='utf-8')
-if "compactHeader" in text and "WesiWordmark(size: compactHeader ? 24 : 26" in text:
+if 'compactHeader' in text and 'showText: !compactHeader' in text:
     print('Compact Home header already present.')
     raise SystemExit(0)
 
