@@ -29,6 +29,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          if [[ -f tools/pre_patch_calendar_validation.py ]]; then
+            python3 tools/pre_patch_calendar_validation.py
+            rm tools/pre_patch_calendar_validation.py
+          fi
           if [[ -f tools/patch_calendar_clock.py ]]; then
             python3 tools/patch_calendar_clock.py
             rm tools/patch_calendar_clock.py
