@@ -108,6 +108,23 @@ class HorizonBusinessContextService {
         if (lease == null) continue;
         final leaseAmountRub = lease.amount *
             CurrencyService.rateToRub(lease.currency.toLowerCase());
+        final renewalDate = _day(lease.endsAt);
+
+        // Natural expiry is a realized contract outcome even when the user
+        // never presses “close lease”. recordClosedLease is idempotent by
+        // leaseId, so a later explicit close cannot duplicate evidence. If a
+        // new matching lease appears within the renewal window,
+        // markRenewalIfApplicable upgrades this outcome to renewed=true.
+        if (!renewalDate.isAfter(today)) {
+          await HorizonContractMemoryService.recordClosedLease(
+            beatId: beat.id,
+            leaseId: lease.id,
+            artistName: lease.artistName,
+            closedAt: renewalDate,
+            amountRub: leaseAmountRub,
+          );
+        }
+
         final stored = memory[lease.id];
         final learnedProbability = stored == null
             ? await HorizonContractMemoryService.learnedRenewalProbability(
@@ -125,7 +142,6 @@ class HorizonBusinessContextService {
               updatedAt: today,
             );
 
-        final renewalDate = _day(lease.endsAt);
         final renewalAmount = contract.renewalAmountRub > 0
             ? contract.renewalAmountRub
             : lease.amount *
