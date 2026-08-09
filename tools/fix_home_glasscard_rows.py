@@ -44,7 +44,8 @@ if 'homeAgendaCompactAction' not in agenda:
         ),
       ],
     );'''
-    new = '''    const homeAgendaCompactAction = true;
+    new = '''    // homeAgendaCompactAction: keep title/badge/action inside a 286px
+    // GlassCard body on 360px phones.
     return Row(
       children: [
         Expanded(
@@ -141,7 +142,7 @@ if 'updateActionWrap' not in update:
               ],
             ],
           );'''
-    new = '''          const updateActionWrap = true;
+    new = '''          // updateActionWrap: long version/size labels must wrap on phones.
           return Wrap(
             spacing: 8,
             runSpacing: 8,
