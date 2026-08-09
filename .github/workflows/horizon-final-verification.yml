@@ -1,0 +1,85 @@
+name: Horizon final verification
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  full-analysis-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bc2cf7147f30e9a19204c9dc24308b8c0f74a125
+      - name: Verify exact product SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "bc2cf7147f30e9a19204c9dc24308b8c0f74a125"
+      - name: Validate server JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in server/pb_hooks/*.js server/employee-portal/*.js; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+          done
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Full test suite
+        run: flutter test
+      - name: Legacy Treasury regression tests
+        run: flutter test test/treasury_engines_test.dart test/recurring_payment_automation_test.dart test/horizon_legacy_income_truth_test.dart
+      - name: Horizon Top-Tier contract
+        run: flutter test test/horizon_top_tier_test.dart
+      - name: Horizon product integration
+        run: flutter test test/horizon_product_integration_test.dart
+      - name: Horizon completion contract
+        run: flutter test test/horizon_completion_test.dart
+
+  android-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bc2cf7147f30e9a19204c9dc24308b8c0f74a125
+      - name: Verify exact product SHA
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "bc2cf7147f30e9a19204c9dc24308b8c0f74a125"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --debug
+
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: bc2cf7147f30e9a19204c9dc24308b8c0f74a125
+      - name: Verify exact product SHA
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne 'bc2cf7147f30e9a19204c9dc24308b8c0f74a125') { throw 'Unexpected product SHA' }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - name: Verify Windows toolchain
+        shell: pwsh
+        run: flutter doctor -v
+      - run: flutter pub get
+      - run: flutter build windows --release
