@@ -1,96 +1,120 @@
 # Wesi Horizon — top-tier implementation contract
 
-This document is the engineering contract for the A→G upgrade approved on 2026-08-09. It intentionally treats calibration and honesty as prerequisites for sophistication.
+This document is the engineering contract for the A→G upgrade approved on 2026-08-09. Calibration and honesty are prerequisites for sophistication; a visually attractive curve is never treated as evidence of quality.
 
 ## Non-negotiable invariants
 
-- 2–4 week accuracy is optimized before long-range cosmetics.
-- 3–12 month forecasts mean-revert and become less certain; no permanent extrapolation of a good month.
+- 2–4 week usefulness is optimized before long-range cosmetics.
+- 3–12 month forecasts explicitly mean-revert and become less certain; no permanent extrapolation of a good month.
 - Recurring/committed cash is never blended into generic random noise.
-- P10/P50/P90 and gap probabilities are calibrated against realized history.
+- P10/P50/P90 and gap probabilities are calibrated against historical reconstruction **and**, as production observations mature, against forecasts actually issued to the user.
 - A dumb Combined forecast may never replace a better single engine.
 - Sparse history must say “low confidence / insufficient evidence”, never fake a narrow interval.
 - UI seed may be stable; evaluation uses multiple seeds.
-- Every material forecast kink must have an explanation source.
+- Material P50 changes must have additive attribution; unexplained distribution/calibration remainder is shown rather than hidden.
 - Decision outputs (runway, reserve, free buffer, risk thresholds, prompts) are first-class results.
 
-## Delivery order
+## Sprint A — honesty foundation (1–6)
 
-### Sprint A — honesty foundation (1–6)
-- [x] mean reversion to long-run baseline
-- [x] decay of recent pace and explicit drift cap
-- [x] horizon-decaying weekly seasonality
-- [x] uncertainty widening with horizon without inflating distant P50
-- [x] paired 3–7 day block bootstrap
-- [x] horizon-specific behavior and honest low-data confidence
-- [x] lucky/shock episodes cannot masquerade as permanent recent baseline
+- [x] Mean reversion to long-run baseline.
+- [x] Decay of recent pace and explicit drift cap.
+- [x] Weekly seasonality fades with horizon.
+- [x] Uncertainty widens with horizon without mechanically inflating distant P50.
+- [x] Paired 3–7 day block bootstrap preserves serial cash-flow patterns.
+- [x] Explicit horizon policy: 1–14 days prioritizes recent rhythm/facts, 15–60 materially mean-reverts, 61+ rapidly hands control to baseline/known cash.
+- [x] Low-data mode fails honestly and never collapses uncertain cash into a razor-thin line.
+- [x] Shock-filtered recent windows with too little ordinary evidence fall back to stable baseline instead of inventing business disappearance.
 
-### Sprint B — calibration (7–11)
-- [x] coverage-driven interval scaling model
-- [x] empirical gap-risk probability calibration bins
-- [x] median bias correction
-- [x] rolling 14/30/90/180 day backtests
-- [x] multi-seed evaluation while UI keeps deterministic seed
+## Sprint B — calibration (7–11)
 
-### Sprint C — cash structure (12–16)
-- [x] committed vs uncertain event primitives in Horizon core
-- [x] recurring reliability weighting from realized evidence
-- [x] separate income and expense shock pools
-- [x] frequency × non-zero amount modeling
-- [x] category/stream-first modeling before aggregation
-- [x] company data sources wired into the primitives
+- [x] Coverage-driven interval scaling around the 80% P10–P90 target.
+- [x] Very high coverage plus huge MAPE is recognized as an uninformatively wide band and narrowed more aggressively.
+- [x] Risk calibration uses empirical bins, Bayesian shrinkage, monotonicity and interpolation so calibrated risk cannot become non-monotone due to noisy bins.
+- [x] Median bias correction moves P50 rather than hiding systematic error inside interval width.
+- [x] Rolling 14/30/90/180 day backtests are separate.
+- [x] Evaluation is multi-origin and multi-seed; UI keeps deterministic seed behavior.
 
-### Sprint D — regimes and stress (17–20)
-- [x] stable/growth/downturn regime detector
-- [x] explicit Markov transitions so regimes are not permanent
-- [x] default stress library: income −30%/60d, incoming delay 30d, large expense, main-source loss
-- [x] Base / Conservative / Aggressive / Stress package in orchestration and decision UI
+## Sprint C — cash structure (12–16)
 
-### Sprint E — decision layer (21–25)
-- [x] runway and 10% / 25% gap-risk thresholds
-- [x] reserve from simulated maximum drawdown
-- [x] safety buffer = cash − stochastic reserve − near-term committed outflows, with no double counting
-- [x] action prompts and behavioral warnings
-- [x] What-If reports direct risk/runway delta, not only a new line
-- [x] Forecast and Sandbox expose the decision panel before the chart
+- [x] Committed/known cash and uncertain cash are separate forecast primitives and diagnostics.
+- [x] Recurring reliability is reconciled against expected due dates with period-specific grace windows; auto-materialized income is not proof of receipt.
+- [x] Recurring expenses remain conservative obligations.
+- [x] Rare income and expense shocks use separate robust pools and clustered shock episodes.
+- [x] Irregular cash uses occurrence frequency × non-zero amount.
+- [x] Streams are modeled before aggregation and now use semantic business groups (music, services, payroll, taxes, marketing, infrastructure, personal) with category fallback rather than only top raw labels.
 
-### Sprint F — learning and engine competition (26–29)
-- [x] monthly persisted bounded learning loop
-- [x] champion selection by backtest, not visual preference
-- [x] quantile-loss metric and quantile calibration
-- [x] separate champions by horizon
-- [x] Combined uses the backtest winner and explicitly rejects equal averaging when it loses
+## Sprint D — regimes and stress (17–20)
 
-### Sprint G — company cash control (30–35)
-- [x] Treasury + Tasks + recurring + obligations business-context aggregator
-- [x] Tasks can carry committed or probabilistic cash impact without a Hive schema migration
-- [x] Audio Vault contract/renewal/royalty memory with conservative defaults
-- [x] transaction-rhythm, recurring-miss and concentration early warnings
-- [x] account-level liquidity/netting risk with local minimum, currency and FX haircut
-- [x] per-day explanation primitives for material curve breaks
-- [x] truth-first confidence state and explicit known/unknown cash share
+- [x] Stable / growth / downturn regime detection.
+- [x] Regime transition matrix is learned from weekly historical states with a conservative Bayesian prior; it is no longer a permanently hard-coded destiny.
+- [x] Current-regime probabilities remain soft rather than forcing one certain regime.
+- [x] Stress library: income −30% for 60 days, incoming delay 30 days, large one-off expense, loss of the largest income stream for 60 days.
+- [x] Base / Conservative / Aggressive / Stress package is generated by orchestration and exposed in the decision UI.
 
-## Product wiring
+## Sprint E — decision layer (21–25)
 
-- `TreasuryService.generateForecast` is the company-level orchestration point. It combines native Treasury history, learned calibration, CRM probabilistic pipeline, task cash commitments, Audio Vault expectations and account liquidity snapshots.
-- `ForecastEngine` remains pure/deterministic given inputs, seed and `asOf`; persistence and cross-module reads stay outside the math core.
-- `TaskCashImpact` is encoded in existing task tags and therefore does not change the Task Hive schema.
-- `HorizonContractMemoryService` and `AccountLiquidityService` use sidecar storage so legal/account records are not mutated by forecast assumptions.
-- Sandbox uses the same Horizon math and risk/scenario package but intentionally does not import real CRM/Tasks/Vault/account context.
-- Prophet/SARIMAX remain optional external engines; their absence is fail-soft. Wesi Horizon remains always available.
+- [x] Median runway and first 10% / 25% cash-gap-risk days.
+- [x] Recommended reserve from simulated maximum drawdown.
+- [x] Free safety buffer = current cash − stochastic reserve − near-term committed outflows, without double counting committed obligations.
+- [x] Action prompts cover required spending reduction/liquidity, unsafe commitment dates, reserve deficit, concentration, recurring misses and behavioral breaks.
+- [x] What-If reports direct risk and runway delta relative to Base.
+- [x] Forecast and Sandbox show the decision panel before the chart.
+
+## Sprint F — self-learning and engine competition (26–29)
+
+- [x] Monthly bounded learning loop persists interpretable tuning/calibration profiles.
+- [x] `HorizonPredictionRegistry` stores one real Base forecast per day with 14/30/90/180 P10/P50/P90 and gap-risk statements.
+- [x] When target dates mature, those exact issued forecasts are compared with realized balances and produce live MAE/MAPE/coverage/bias/pinball/Brier evidence.
+- [x] Live issued-forecast evidence is blended with rolling reconstruction and becomes increasingly influential as sample size grows; a few live samples cannot abruptly overfit the model.
+- [x] Daily 180-day background audit is recorded even when the user normally views only short horizons, so 90/180-day live evidence can accumulate naturally.
+- [x] Hyperparameter selection has an explicit quantile-first objective: MAPE + pinball loss + coverage + Brier + bias, weighted more heavily toward 14/30-day usefulness.
+- [x] Horizon / Prophet / SARIMAX / Combined compete on the same historical origins and target dates for 14/30/90/180 days.
+- [x] Stochastic Horizon is evaluated across multiple seeds; deterministic external engines use the same data cuts.
+- [x] Combined only enters an origin when at least two real engines are available and must actually beat the best single engine; it cannot win a bookkeeping tie.
+- [x] Champion is selected independently by horizon.
+
+## Sprint G — Wesi Inc. cash-control system (30–35)
+
+- [x] `TreasuryService.generateForecast` orchestrates Treasury history, recurring cash, CRM, task obligations, Audio Vault contract expectations, calibration and account liquidity.
+- [x] Tasks can carry committed or probabilistic cash impact without a Hive schema migration.
+- [x] CRM open deals become probability-weighted incoming cash at expected close dates.
+- [x] Audio Vault keeps editable contract assumptions separately from realized contract outcomes.
+- [x] Closing a lease records an outcome; a later matching lease marks realized renewal evidence.
+- [x] Default renewal probability is Beta-smoothed from actual beat/artist renewal history instead of remaining a permanent 35% magic constant. Manual contract assumptions can still override it.
+- [x] Structural early-warning includes standardized level shifts, CUSUM-like persistence checks, incoming-frequency breaks, expense acceleration, clustered robust outliers, recurring misses and concentration risk.
+- [x] Accounts have local minimum liquidity, physical currency, netting permission, FX haircut and transfer delay.
+- [x] Cross-currency rescue liquidity receives both haircut and an additional conversion day; money that cannot arrive before the local shortfall is not counted as rescue cash.
+- [x] A problem account cannot use its own balance as its rescue source.
+- [x] Material graph changes use additive attribution: specific known events + remaining committed cash + operating uncertain center + explicit regime/seasonality/shock/quantile-calibration remainder.
+- [x] Truth-first confidence and known/unknown cash share are shown explicitly; low-data uncertainty remains visible.
+
+## Product wiring and data compatibility
+
+- `ForecastEngine` remains deterministic given inputs, seed and `asOf`; persistence and cross-module reads stay outside the math core.
+- `TaskCashImpact` uses existing task tags, so no Task Hive migration is required.
+- `HorizonContractMemoryService`, `HorizonPredictionRegistry`, `HorizonLearningService` and `AccountLiquidityService` use sidecar stores.
+- Existing legal Audio Vault lease records and account models are not rewritten by forecast assumptions.
+- Sandbox uses the same Horizon mathematics and decision/scenario layer but intentionally does not import real company CRM/Tasks/Vault/account context.
+- Prophet/SARIMAX remain optional. Their absence is fail-soft; Wesi Horizon is always available.
 
 ## Validation gates
 
-The branch is not considered merge-ready until all of these are green on the final clean head:
+The branch is not merge-ready until the **clean final head**, with no self-modifying patch runners, satisfies all of the following:
 
-1. `flutter analyze --no-fatal-infos`.
-2. Entire `flutter test` suite.
-3. `test/horizon_top_tier_test.dart` plus legacy `test/treasury_engines_test.dart` preserve both new and old mathematical invariants.
-4. `test/horizon_product_integration_test.dart` verifies Tasks/Vault/accounts/Decision UI wiring and finite stress semantics.
-5. Repository build verification workflows stay green.
+1. `flutter analyze --no-fatal-infos` — success.
+2. Entire `flutter test` suite — success.
+3. Legacy Treasury engine tests remain green.
+4. `horizon_top_tier_test.dart` verifies anti-millionaire/calibration/cash/stress/decision invariants.
+5. `horizon_product_integration_test.dart` verifies Tasks/Vault/accounts/Decision UI wiring and finite stress semantics.
+6. `horizon_completion_test.dart` specifically covers previously partial requirements: MAPE-aware width, monotone risk calibration, quantile objective, structural early-warning, additive attribution, transfer latency, 180-day championship, prediction registry serialization and realized contract evidence wiring.
+7. Android and Windows verification workflows — success.
 
-The focused mathematical gate has already passed **33/33** tests after the final anti-millionaire fixes. A full clean CI is still the final authority before merge.
+## Empirical truth gate
+
+Implementation completeness is not the same as historical proof. WesiOS must never claim that an 80% band is empirically calibrated to exactly 80%, or that a stated 20% gap risk occurs exactly 20% of the time, until enough **issued production forecasts have matured**. The prediction registry exists specifically so this claim can become measurable rather than assumed.
+
+Until sufficient real 14/30/90/180-day observations accumulate, the model reports its available coverage/sample evidence and falls back to bounded rolling backtests plus conservative confidence. No code change can manufacture months of future realized data.
 
 ## Release state
 
-This work is intentionally isolated in draft PR #66 / branch `agent/horizon-top-tier`. It has **not** been merged to `main` and **has not** been released to production. Production release remains out of scope until the owner explicitly requests it.
+This work is isolated in draft PR #66 / branch `agent/horizon-top-tier`. It is not merged to `main` and is not released to production. Production release requires a separate explicit owner request.
