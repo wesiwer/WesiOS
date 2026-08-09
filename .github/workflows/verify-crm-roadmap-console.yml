@@ -58,4 +58,4 @@ jobs:
       - name: Repair activation, deploy auth fix, and publish release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: bash .github/scripts/fix_employee_activation_01916.sh
+        run: bash .github/scripts/fix_employee_activation_01916_v2.sh
