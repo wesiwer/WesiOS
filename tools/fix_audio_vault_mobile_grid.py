@@ -3,52 +3,12 @@ from pathlib import Path
 path = Path('lib/features/audio/audio_vault_v2_screen.dart')
 text = path.read_text(encoding='utf-8')
 
-if 'audioVaultSingleColumnMobile' not in text:
-    old = '''              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
-                sliver: SliverGrid(
-                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                    maxCrossAxisExtent: 280,
-                    mainAxisSpacing: 12,
-                    crossAxisSpacing: 12,
-                    childAspectRatio: .92,
-                  ),
-                  delegate: SliverChildBuilderDelegate(
-                    (_, i) => _beatCard(beats[i], beats),
-                    childCount: beats.length,
-                  ),
-                ),
-              ),'''
-    new = '''              SliverPadding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 110),
-                sliver: SliverLayoutBuilder(
-                  // audioVaultSingleColumnMobile: a 360px phone must not be
-                  // split into two ~158px beat cards. Desktop keeps the dense
-                  // multi-column archive, mobile gets one readable card.
-                  builder: (context, constraints) {
-                    final narrow = constraints.crossAxisExtent < 600;
-                    return SliverGrid(
-                      gridDelegate: SliverGridDelegateWithMaxCrossAxisExtent(
-                        maxCrossAxisExtent:
-                            narrow ? constraints.crossAxisExtent : 280,
-                        mainAxisSpacing: 12,
-                        crossAxisSpacing: 12,
-                        childAspectRatio: narrow ? 1.02 : .92,
-                      ),
-                      delegate: SliverChildBuilderDelegate(
-                        (_, i) => _beatCard(beats[i], beats),
-                        childCount: beats.length,
-                      ),
-                    );
-                  },
-                ),
-              ),'''
-    if text.count(old) != 1:
-        raise SystemExit(f'Audio Vault grid anchor count={text.count(old)}')
-    text = text.replace(old, new, 1)
-    print('Audio Vault single-column mobile grid applied.')
-else:
-    print('Audio Vault mobile grid already present.')
+# The current archive already has the correct responsive grid:
+# 4/3/2 columns on wide screens and exactly 1 column below 560 px.
+# Do not replace it with the obsolete MaxCrossAxisExtent implementation.
+if 'final columns = c.maxWidth >= 1200' not in text or 'c.maxWidth >= 560' not in text:
+    raise SystemExit('Current responsive Audio Vault grid markers not found')
+print('Audio Vault grid already mobile-safe (1 column below 560 px).')
 
 if 'audioVaultFooterWrap' not in text:
     old = '''              Row(children: [
