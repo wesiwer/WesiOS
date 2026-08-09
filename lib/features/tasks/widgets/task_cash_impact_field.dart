@@ -34,7 +34,9 @@ class _TaskCashImpactFieldState extends State<TaskCashImpactField> {
     _direction = value?.direction;
     _committed = value?.committed ?? true;
     _probability = value?.probability ?? .5;
-    if (value != null) _amount.text = value.amount.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
+    if (value != null)
+      _amount.text =
+          value.amount.toStringAsFixed(2).replaceFirst(RegExp(r'\.00$'), '');
   }
 
   @override
@@ -44,7 +46,8 @@ class _TaskCashImpactFieldState extends State<TaskCashImpactField> {
   }
 
   void _emit() {
-    final amount = double.tryParse(_amount.text.trim().replaceAll(',', '.')) ?? 0;
+    final amount =
+        double.tryParse(_amount.text.trim().replaceAll(',', '.')) ?? 0;
     if (_direction == null || amount <= 0) {
       widget.onChanged(null);
       return;
@@ -75,14 +78,20 @@ class _TaskCashImpactFieldState extends State<TaskCashImpactField> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  _ru ? 'Денежное влияние для Horizon' : 'Cash impact for Horizon',
-                  style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w700, fontSize: 12.5),
+                  _ru
+                      ? 'Денежное влияние для Horizon'
+                      : 'Cash impact for Horizon',
+                  style: TextStyle(
+                      color: AppTheme.textPrimary,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5),
                 ),
               ),
               if (_direction != null)
                 IconButton(
                   visualDensity: VisualDensity.compact,
-                  tooltip: _ru ? 'Убрать денежное влияние' : 'Remove cash impact',
+                  tooltip:
+                      _ru ? 'Убрать денежное влияние' : 'Remove cash impact',
                   onPressed: () {
                     setState(() {
                       _direction = null;
@@ -98,7 +107,8 @@ class _TaskCashImpactFieldState extends State<TaskCashImpactField> {
             _ru
                 ? 'Дата дедлайна задачи становится датой обязательства/ожидаемого поступления. Это не создаёт Treasury-операцию.'
                 : 'The task due date becomes the obligation/expected cash date. This does not create a Treasury transaction.',
-            style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5, height: 1.35),
+            style: TextStyle(
+                color: AppTheme.textMuted, fontSize: 10.5, height: 1.35),
           ),
           const SizedBox(height: 10),
           SegmentedButton<TaskCashDirection?>(
@@ -128,10 +138,13 @@ class _TaskCashImpactFieldState extends State<TaskCashImpactField> {
             const SizedBox(height: 10),
             TextField(
               controller: _amount,
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              keyboardType:
+                  const TextInputType.numberWithOptions(decimal: true),
               onChanged: (_) => _emit(),
               decoration: InputDecoration(
-                labelText: _ru ? 'Сумма, ${CurrencyService.symbol}' : 'Amount, ${CurrencyService.symbol}',
+                labelText: _ru
+                    ? 'Сумма, ${CurrencyService.symbol}'
+                    : 'Amount, ${CurrencyService.symbol}',
               ),
             ),
             const SizedBox(height: 6),
@@ -139,7 +152,9 @@ class _TaskCashImpactFieldState extends State<TaskCashImpactField> {
               contentPadding: EdgeInsets.zero,
               dense: true,
               value: _committed,
-              title: Text(_ru ? 'Обязательство / почти точно' : 'Committed / near-certain'),
+              title: Text(_ru
+                  ? 'Обязательство / почти точно'
+                  : 'Committed / near-certain'),
               subtitle: Text(
                 _ru
                     ? 'Выключи для вероятностной надежды: лид, возможный платёж, неподтверждённая покупка.'

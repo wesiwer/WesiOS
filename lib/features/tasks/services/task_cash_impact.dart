@@ -59,9 +59,8 @@ class TaskCashImpact {
       final signed = double.tryParse(normalizedAmount);
       if (signed == null || signed == 0) continue;
       return TaskCashImpact(
-        direction: signed > 0
-            ? TaskCashDirection.income
-            : TaskCashDirection.expense,
+        direction:
+            signed > 0 ? TaskCashDirection.income : TaskCashDirection.expense,
         amount: signed.abs(),
         committed: committed && probability >= 0.9,
         probability: probability.clamp(0.01, 1.0).toDouble(),
