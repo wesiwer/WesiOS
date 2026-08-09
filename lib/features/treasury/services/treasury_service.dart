@@ -11,6 +11,7 @@ import 'forecast_engine.dart';
 import 'horizon_business_context.dart';
 import 'horizon_engine_competition.dart';
 import 'horizon_learning_service.dart';
+import 'horizon_prediction_registry.dart';
 import 'horizon_scenarios.dart';
 import 'recurring_engine.dart';
 
@@ -27,6 +28,8 @@ class TreasuryService {
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   static bool _learningInFlight = false;
   static bool _competitionInFlight = false;
+  static bool _predictionAuditInFlight = false;
+  static DateTime? _predictionAuditDay;
 
   Future<Box<TransactionModel>> get _treasuryBox async {
     _box ??= await Hive.openBox<TransactionModel>(_boxName);
@@ -141,10 +144,12 @@ class TreasuryService {
     final all = await getAllTransactions();
     final balance = await getCurrentBalance();
 
-    // Rendering uses the last verified profile immediately. Monthly
-    // calibration is kicked after that and never blocks this forecast call.
+    // Rendering uses the last verified profile immediately. Monthly learning,
+    // engine competition and the production forecast ledger are background
+    // jobs and never hold the forecast screen hostage.
     final calibration = await HorizonLearningService.load();
     _kickLearning(all, balance);
+    _kickPredictionAudit(all, balance, calibration);
 
     final context = await HorizonBusinessContextService.load(
       transactions: all,
@@ -206,6 +211,52 @@ class TreasuryService {
       transactions: transactions,
       currentBalance: currentBalance,
     ).whenComplete(() => _learningInFlight = false));
+  }
+
+  static void _kickPredictionAudit(
+    List<TransactionModel> transactions,
+    double currentBalance,
+    dynamic calibration,
+  ) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final alreadyRan = _predictionAuditDay != null &&
+        _predictionAuditDay!.year == today.year &&
+        _predictionAuditDay!.month == today.month &&
+        _predictionAuditDay!.day == today.day;
+    if (_predictionAuditInFlight || alreadyRan) return;
+    _predictionAuditInFlight = true;
+    _predictionAuditDay = today;
+
+    unawaited(() async {
+      try {
+        const auditDays = 180;
+        final context = await HorizonBusinessContextService.load(
+          transactions: transactions,
+          days: auditDays,
+          now: today,
+        );
+        final audit = ForecastEngine.generate(
+          transactions: transactions,
+          currentBalance: currentBalance,
+          days: auditDays,
+          paths: ForecastEngine.pathsForHorizon(auditDays, 1600),
+          seed: 42,
+          asOf: today,
+          calibration: calibration,
+          businessEvents: context.events,
+          accounts: context.accounts,
+        );
+        await HorizonPredictionRegistry.recordBaseForecast(
+          forecast: audit,
+          currentBalance: currentBalance,
+          calibration: calibration,
+          now: today,
+        );
+      } catch (_) {
+        // Audit collection is strictly fail-soft.
+      }
+    }().whenComplete(() => _predictionAuditInFlight = false));
   }
 
   static void _kickCompetition(
