@@ -1,3 +1,9 @@
+const WESI_AUTH_HOOK_VERSION = "2026-08-09.owner-email-v3";
+
+routerAdd("GET", "/api/wesi/auth/version", (e) => {
+  return e.json(200, {"version": WESI_AUTH_HOOK_VERSION});
+});
+
 /// Safe migration for the owner account when an old installation has no real
 /// security email yet. Password validation creates only a short-lived setup
 /// challenge. The email is not committed until a code sent to that address
@@ -224,6 +230,18 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
 });
 
 routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
+  const valueObject = (record) => {
+    if (!record) return {};
+    try {
+      const raw = record.get("payload");
+      if (raw && typeof raw === "object") return raw;
+      if (typeof raw === "string" && raw.trim()) {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : {};
+      }
+    } catch (_) {}
+    return {};
+  };
   const validEmail = (value) => {
     const email = String(value || "").trim().toLowerCase();
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) && !email.endsWith("@wesi.local") ? email : "";
@@ -249,7 +267,10 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
     );
   } catch (_) { challenge = null; }
   if (!challenge) throw new UnauthorizedError("Проверка входа истекла");
-  const payload = challenge.get("payload") || {};
+  const payload = valueObject(challenge);
+  if (payload.kind !== "email-setup" || String(payload.employeeId || "") !== "owner") {
+    throw new ForbiddenError("Проверка привязки не соответствует профилю владельца [owner-email-v3]");
+  }
   let ownerMarker = null;
   try {
     ownerMarker = e.app.findFirstRecordByFilter(
@@ -257,8 +278,8 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
       "owner='" + String(payload.userId || "") + "' && coll='system' && rid='portal-owner' && deleted=false",
     );
   } catch (_) { ownerMarker = null; }
-  if (payload.kind !== "email-setup" || String(payload.employeeId || "") !== "owner" || !ownerMarker) {
-    throw new ForbiddenError("Для этого профиля первичная привязка почты недоступна");
+  if (!ownerMarker) {
+    throw new ForbiddenError("Профиль владельца не закреплён [owner-email-v3]");
   }
   const expires = Date.parse(String(payload.expiresAt || ""));
   if (!Number.isFinite(expires) || expires <= Date.now()) {
@@ -306,6 +327,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   return e.json(200, {
     "challengeId": challengeId,
     "maskedEmail": maskEmail(email),
+    "authVersion": WESI_AUTH_HOOK_VERSION,
     "expiresInSeconds": 600,
   });
 });
