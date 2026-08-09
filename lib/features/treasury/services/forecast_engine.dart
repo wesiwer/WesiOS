@@ -1122,7 +1122,7 @@ class ForecastEngine {
 
     final whatIfByOffset = _projectWhatIf(whatIf, todayOnly, days);
     final fallbackDailyVolatility = _fallbackDailyVolatility(
-      history: history,
+      history: nonRecurring,
       events: [...businessEvents, ...externalByOffset.values.expand((e) => e)],
       currentBalance: currentBalance,
     );
@@ -1670,10 +1670,13 @@ class ForecastEngine {
       }
     }
 
+    // Reliability evidence starts when this recurring schedule actually
+    // existed. Never invent missed payments before the parent record's anchor.
+    final evidenceStart = start.isAfter(anchor) ? start : anchor;
     final expectedDates = <DateTime>[];
     var occurrence = latest;
     guard = 0;
-    while (!occurrence.isBefore(start) && guard++ < 10000) {
+    while (!occurrence.isBefore(evidenceStart) && guard++ < 10000) {
       expectedDates.add(occurrence);
       occurrence = previousOccurrence(occurrence);
     }

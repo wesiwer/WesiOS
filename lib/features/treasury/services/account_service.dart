@@ -160,9 +160,23 @@ class AccountService {
     final now = asOf ?? DateTime.now();
     final cutoff = DateTime(now.year, now.month, now.day, now.hour, now.minute,
         now.second, now.millisecond, now.microsecond);
+    final recurringIncomeIds = transactions
+        .where((tx) => tx.isRecurring && tx.type == TransactionType.income)
+        .map((tx) => tx.id)
+        .toList();
+    bool legacyAutoIncome(TransactionModel tx) =>
+        !tx.isRecurring &&
+        tx.type == TransactionType.income &&
+        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));
+    bool actualForBalance(TransactionModel tx) =>
+        !tx.isRecurring && !legacyAutoIncome(tx);
+
     return accounts.map((a) {
       final own = transactions
-          .where((t) => t.effectiveAccountId == a.id && !t.date.isAfter(cutoff))
+          .where((t) =>
+              t.effectiveAccountId == a.id &&
+              !t.date.isAfter(cutoff) &&
+              actualForBalance(t))
           .toList();
       var income = 0.0;
       var expense = 0.0;

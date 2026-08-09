@@ -195,8 +195,19 @@ class ForecastBacktest {
   }) {
     final cutoff = _dateOnly(day);
     final currentCutoff = _dateOnly(currentDate ?? DateTime.now());
+    final recurringIncomeIds = transactions
+        .where((tx) => tx.isRecurring && tx.type == TransactionType.income)
+        .map((tx) => tx.id)
+        .toList();
+    bool legacyAutoIncome(TransactionModel tx) =>
+        !tx.isRecurring &&
+        tx.type == TransactionType.income &&
+        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));
+    bool actualForBalance(TransactionModel tx) =>
+        !tx.isRecurring && !legacyAutoIncome(tx);
+
     var afterCutoffAlreadyInCurrentBalance = 0.0;
-    for (final tx in transactions) {
+    for (final tx in transactions.where(actualForBalance)) {
       final txDay = _dateOnly(tx.date);
       if (txDay.isAfter(cutoff) && !txDay.isAfter(currentCutoff)) {
         afterCutoffAlreadyInCurrentBalance +=
