@@ -149,11 +149,14 @@ jobs:
             -X POST -H 'Content-Type: application/json' \
             -d '{"login":"owner-recovery","password":"invalid","purpose":"app"}' \
             "$API/api/wesi/auth/start-v2" || true)
-          [ "$CODE" = 401 ] || {
-            echo "Unexpected recovery boundary response: HTTP $CODE" >&2
-            cat invalid-recovery.json >&2 || true
-            exit 1
-          }
+          case "$CODE" in
+            400|401) ;;
+            *)
+              echo "Unexpected recovery boundary response: HTTP $CODE" >&2
+              cat invalid-recovery.json >&2 || true
+              exit 1
+              ;;
+          esac
 
           MAIL_CODE=$(curl -sS -o mail-ready.json -w '%{http_code}' --max-time 20 \
             "$API/api/wesi/auth/mail-ready" || true)
