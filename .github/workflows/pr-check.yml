@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  apply-domain-ui:
+  apply-decision-ui:
     if: github.head_ref == 'agent/horizon-top-tier'
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -23,8 +23,8 @@ jobs:
           ref: agent/horizon-top-tier
           fetch-depth: 1
 
-      - name: Apply Vault and account liquidity integration
-        run: python3 tooling/horizon_domain_ui_integration.py
+      - name: Apply decision layer integration
+        run: python3 tooling/horizon_decision_integration.py
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -38,26 +38,27 @@ jobs:
         run: |
           set -euo pipefail
           dart format \
-            lib/features/audio/audio_vault_v2_screen.dart \
-            lib/features/audio/services/audio_vault_service.dart \
-            lib/features/audio/widgets/horizon_contract_dialog.dart \
-            lib/features/treasury/widgets/accounts_bar.dart \
-            lib/features/treasury/widgets/account_liquidity_dialog.dart
+            lib/features/treasury/forecast_chart_screen.dart \
+            lib/features/treasury/services/sandbox_service.dart \
+            lib/features/treasury/services/horizon_scenarios.dart \
+            lib/features/treasury/sandbox_forecast_screen.dart \
+            lib/features/treasury/widgets/horizon_decision_panel.dart
           flutter pub get
           flutter analyze --no-fatal-infos
           git diff --check
-          grep -q 'HorizonContractDialog.show' lib/features/audio/audio_vault_v2_screen.dart
-          grep -q 'AccountLiquidityDialog.show' lib/features/treasury/widgets/accounts_bar.dart
+          grep -q 'HorizonDecisionPanel' lib/features/treasury/forecast_chart_screen.dart
+          grep -q 'smartCombined' lib/features/treasury/forecast_chart_screen.dart
+          grep -q 'HorizonDecisionPanel' lib/features/treasury/sandbox_forecast_screen.dart
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
-            lib/features/audio/audio_vault_v2_screen.dart \
-            lib/features/audio/services/audio_vault_service.dart \
-            lib/features/audio/widgets/horizon_contract_dialog.dart \
-            lib/features/treasury/widgets/accounts_bar.dart \
-            lib/features/treasury/widgets/account_liquidity_dialog.dart
+            lib/features/treasury/forecast_chart_screen.dart \
+            lib/features/treasury/services/sandbox_service.dart \
+            lib/features/treasury/services/horizon_scenarios.dart \
+            lib/features/treasury/sandbox_forecast_screen.dart \
+            lib/features/treasury/widgets/horizon_decision_panel.dart
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m 'feat(horizon): connect contract memory and account liquidity'
+          git commit -m 'feat(horizon): expose decision layer and smart champions'
           git push origin HEAD:agent/horizon-top-tier
 
   analyze-and-test:
