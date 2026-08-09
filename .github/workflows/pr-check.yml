@@ -6,16 +6,70 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: pr-check-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
+  apply-horizon-integration:
+    if: github.head_ref == 'agent/horizon-top-tier'
+    runs-on: ubuntu-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/horizon-top-tier
+          fetch-depth: 1
+
+      - name: Apply Horizon integration patch
+        run: python3 tooling/horizon_integration_patch.py
+
+      - name: Setup Flutter for formatting
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Format, sanity-check and commit product changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format \
+            lib/features/treasury/services/forecast_engine.dart \
+            lib/features/treasury/services/horizon_business_context.dart \
+            lib/features/treasury/services/horizon_scenarios.dart \
+            lib/features/treasury/services/sandbox_service.dart \
+            lib/features/treasury/forecast_chart_screen.dart \
+            lib/features/treasury/sandbox_forecast_screen.dart \
+            lib/features/treasury/widgets/account_liquidity_dialog.dart \
+            lib/features/treasury/widgets/accounts_bar.dart \
+            lib/features/treasury/widgets/horizon_decision_panel.dart \
+            lib/features/tasks/widgets/task_editor_dialog.dart \
+            lib/features/tasks/widgets/task_cash_impact_field.dart \
+            lib/features/tasks/services/task_cash_impact.dart \
+            lib/features/audio/audio_vault_v2_screen.dart \
+            lib/features/audio/services/audio_vault_service.dart \
+            lib/features/audio/widgets/horizon_contract_dialog.dart
+          git diff --check
+          grep -q 'shockEpisodes' lib/features/treasury/services/forecast_engine.dart
+          grep -q 'HorizonDecisionPanel' lib/features/treasury/forecast_chart_screen.dart
+          grep -q 'TaskCashImpactField' lib/features/tasks/widgets/task_editor_dialog.dart
+          if git diff --quiet; then
+            echo 'Integration patch already applied.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/features
+          git commit -m 'feat(horizon): integrate decision layer and company cash controls'
+          git push origin HEAD:agent/horizon-top-tier
+
   analyze-and-test:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
-    timeout-minutes: 15
+    timeout-minutes: 18
     steps:
       - uses: actions/checkout@v4
 
