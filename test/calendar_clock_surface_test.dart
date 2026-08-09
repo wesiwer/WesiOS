@@ -26,6 +26,10 @@ void main() {
         .readAsStringSync();
 
     expect(home, contains("Navigator.pushNamed(context, '/time')"));
+    expect(
+      home,
+      isNot(contains("onTap: () => Navigator.pushNamed(context, '/calendar')")),
+    );
     expect(home, contains('Открыть центр времени'));
     expect(router, contains("case '/time':"));
     expect(router, contains('TimeCenterScreen'));
