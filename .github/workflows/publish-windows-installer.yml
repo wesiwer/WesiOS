@@ -1,0 +1,183 @@
+name: Publish WesiOS Windows Installer
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-wesios-windows-installer
+  cancel-in-progress: false
+
+jobs:
+  build-installer:
+    runs-on: windows-2022
+    timeout-minutes: 25
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      build: ${{ steps.meta.outputs.build }}
+      size: ${{ steps.setupmeta.outputs.size }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Download current Windows portable release and manifest
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path download | Out-Null
+          gh release download app-latest --repo $env:GITHUB_REPOSITORY `
+            --dir download `
+            --pattern 'wesios-windows-x64.zip' `
+            --pattern 'app-manifest.json' `
+            --clobber
+          if (!(Test-Path download/wesios-windows-x64.zip)) { throw 'Windows ZIP missing in app-latest' }
+          if (!(Test-Path download/app-manifest.json)) { throw 'app-manifest.json missing in app-latest' }
+
+      - id: meta
+        name: Read version and unpack portable release
+        shell: pwsh
+        run: |
+          $m = Get-Content download/app-manifest.json -Raw | ConvertFrom-Json
+          $version = [string]$m.version
+          $build = [int]$m.build
+          if ([string]::IsNullOrWhiteSpace($version) -or $build -le 0) { throw 'Invalid release metadata' }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "build=$build" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          Remove-Item installer-src -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive download/wesios-windows-x64.zip -DestinationPath installer-src -Force
+          if (!(Test-Path installer-src/wesios.exe)) { throw 'wesios.exe missing after ZIP extraction' }
+          Write-Host "Installer source: WesiOS $version+$build"
+
+      - name: Ensure Inno Setup compiler
+        id: inno
+        shell: pwsh
+        run: |
+          $candidates = @(
+            "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+          $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) {
+            choco install innosetup -y --no-progress
+            $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
+          }
+          if (-not $iscc) { throw 'ISCC.exe not found after Inno Setup install' }
+          "path=$iscc" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          & $iscc /? | Select-Object -First 5
+
+      - name: Build installer
+        shell: pwsh
+        run: |
+          $iscc = '${{ steps.inno.outputs.path }}'
+          $source = (Resolve-Path installer-src).Path
+          $out = Join-Path $PWD 'dist'
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          & $iscc "/DMyAppVersion=${{ steps.meta.outputs.version }}" "/DSourceDir=$source" "/O$out" installer/windows/wesios.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
+          $setup = Join-Path $out 'wesios-windows-x64-setup.exe'
+          if (!(Test-Path $setup)) { throw 'Installer output missing' }
+          Write-Host "Installer size: $((Get-Item $setup).Length) bytes"
+
+      - name: Smoke-test silent install and uninstall
+        shell: pwsh
+        run: |
+          $setup = (Resolve-Path dist/wesios-windows-x64-setup.exe).Path
+          $testDir = Join-Path $env:RUNNER_TEMP 'WesiOS-Installer-Smoke'
+          Remove-Item $testDir -Recurse -Force -ErrorAction SilentlyContinue
+          $p = Start-Process -FilePath $setup -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART',"/DIR=$testDir") -PassThru -Wait
+          if ($p.ExitCode -ne 0) { throw "Installer smoke install failed: $($p.ExitCode)" }
+          if (!(Test-Path (Join-Path $testDir 'wesios.exe'))) { throw 'wesios.exe missing after installer smoke install' }
+          $uninstaller = Join-Path $testDir 'unins000.exe'
+          if (!(Test-Path $uninstaller)) { throw 'Uninstaller missing after install' }
+          $u = Start-Process -FilePath $uninstaller -ArgumentList @('/VERYSILENT','/SUPPRESSMSGBOXES','/NORESTART') -PassThru -Wait
+          if ($u.ExitCode -ne 0) { throw "Installer smoke uninstall failed: $($u.ExitCode)" }
+          Write-Host 'WINDOWS_INSTALLER_SMOKE_OK'
+
+      - id: setupmeta
+        name: Collect installer metadata
+        shell: pwsh
+        run: |
+          $f = Get-Item dist/wesios-windows-x64-setup.exe
+          "size=$($f.Length)" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          $hash = (Get-FileHash $f.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "sha256=$hash"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WesiOS-Windows-Installer
+          path: dist/wesios-windows-x64-setup.exe
+          retention-days: 7
+
+  publish-installer:
+    needs: build-installer
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment:
+      name: employee-portal
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: WesiOS-Windows-Installer
+          path: installer
+
+      - name: Publish installer to app-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -s installer/wesios-windows-x64-setup.exe
+          gh release upload app-latest installer/wesios-windows-x64-setup.exe \
+            --repo "$GITHUB_REPOSITORY" --clobber
+          echo 'GITHUB_WINDOWS_INSTALLER_PUBLISHED'
+
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Publish installer to PocketBase artifacts
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          VERSION: ${{ needs.build-installer.outputs.version }}
+          BUILD: ${{ needs.build-installer.outputs.build }}
+        run: |
+          set -euo pipefail
+          TARGET="/opt/pocketbase/pb_public/artifacts/app/$VERSION+$BUILD"
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" "mkdir -p '$TARGET' && test -w '$TARGET'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            installer/wesios-windows-x64-setup.exe \
+            "$USER@$HOST:$TARGET/wesios-windows-x64-setup.exe"
+          $SSH "$USER@$HOST" "chmod 0644 '$TARGET/wesios-windows-x64-setup.exe'"
+
+      - name: Verify public installer
+        env:
+          VERSION: ${{ needs.build-installer.outputs.version }}
+          BUILD: ${{ needs.build-installer.outputs.build }}
+          EXPECTED_SIZE: ${{ needs.build-installer.outputs.size }}
+        run: |
+          set -euo pipefail
+          URL="https://api.wesi-inc.ru/artifacts/app/$VERSION+$BUILD/wesios-windows-x64-setup.exe"
+          SIZE=$(curl -fsSI --max-time 30 "$URL" | tr -d '\r' | awk 'tolower($1)=="content-length:" {print $2}' | tail -n1)
+          [ "$SIZE" = "$EXPECTED_SIZE" ] || {
+            echo "::error::installer public size $SIZE != expected $EXPECTED_SIZE"; exit 1; }
+          echo "WINDOWS_INSTALLER_PUBLIC_OK $URL $SIZE bytes"
