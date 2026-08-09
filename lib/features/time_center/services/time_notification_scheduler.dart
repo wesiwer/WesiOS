@@ -439,7 +439,7 @@ class TimeNotificationScheduler {
     if (value == null) return null;
     try {
       final padding = (4 - value.length % 4) % 4;
-      final normalized = '$value${'=' * padding}';
+      final normalized = '$value${List<String>.filled(padding, '=').join()}';
       return utf8.decode(base64Url.decode(normalized));
     } catch (_) {
       return null;
