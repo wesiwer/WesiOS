@@ -25,7 +25,21 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos
       - name: Full test suite
-        run: flutter test
+        id: full_tests
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee full-test.log
+      - name: Upload full test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: org-hierarchy-full-test-log
+          path: full-test.log
+          retention-days: 2
+      - name: Enforce full suite result
+        if: steps.full_tests.outcome != 'success'
+        run: exit 1
       - name: Organization hierarchy v1.1 contracts
         run: flutter test test/organization_hierarchy_test.dart test/organization_migration_context_test.dart test/inter_org_transfer_test.dart test/employee_finance_org_test.dart test/organization_sync_integrity_test.dart test/organization_tz_contract_test.dart
       - name: Legacy Treasury and Horizon contracts
