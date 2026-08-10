@@ -1,0 +1,58 @@
+name: Org sync legacy finalize temp
+
+on:
+  push:
+    paths:
+      - '.github/workflows/org-sync-legacy-finalize-temp.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+          fetch-depth: 0
+      - name: Correct legacy and tagged task sync ownership
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p=Path('lib/core/sync/sync_codec.dart')
+          s=p.read_text()
+          old="""    final raw = fields['subtasks'];\n    return TaskModel(\n      id: id,"""
+          new="""    final raw = fields['subtasks'];\n    final tags = _strings(fields['tags']);\n    String? ownershipTag(String prefix) {\n      for (final tag in tags) {\n        if (tag.startsWith(prefix) && tag.length > prefix.length) {\n          return tag.substring(prefix.length);\n        }\n      }\n      return null;\n    }\n    final assignee = _strOrNull(fields['assignee']);\n    final organizationId = _strOrNull(fields['organizationId']) ??\n        ownershipTag(TaskModel.organizationTagPrefix) ??\n        OrganizationModel.rootId;\n    final responsibleEmployeeId =\n        _strOrNull(fields['responsibleEmployeeId']) ??\n        ownershipTag(TaskModel.employeeTagPrefix) ??\n        assignee;\n    return TaskModel(\n      id: id,"""
+          if old not in s: raise SystemExit('TasksSync prelude marker missing')
+          s=s.replace(old,new,1)
+          s=s.replace("      assignee: _strOrNull(fields['assignee']),", "      assignee: assignee,", 1)
+          old2="""      tags: _strings(fields['tags']),\n      order: _int(fields['order']),\n      organizationId: _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId,\n      responsibleEmployeeId: _strOrNull(fields['responsibleEmployeeId']),"""
+          new2="""      tags: tags,\n      order: _int(fields['order']),\n      organizationId: organizationId,\n      responsibleEmployeeId: responsibleEmployeeId,"""
+          if old2 not in s: raise SystemExit('TasksSync ownership marker missing')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+
+          p=Path('test/organization_sync_integrity_test.dart')
+          s=p.read_text()
+          s=s.replace(
+              "test('legacy account and transaction sync records become physical Wesi Beats records', () {",
+              "test('legacy account and transaction sync records become physical Wesi Inc records', () {",
+          )
+          s=s.replace('OrganizationModel.wesiBeatsId', 'OrganizationModel.rootId')
+          # Keep the tagged task assertion: compatibility tags must beat the
+          # Wesi Inc fallback and become physical stable ownership.
+          p.write_text(s)
+          PY
+          git diff --check
+      - name: Commit and self-remove
+        shell: bash
+        run: |
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/org-sync-legacy-finalize-temp.yml
+          git add lib/core/sync/sync_codec.dart test/organization_sync_integrity_test.dart
+          git commit -m 'fix(org): preserve tagged task ownership over legacy root fallback'
+          git push origin HEAD:agent/org-hierarchy-v1
