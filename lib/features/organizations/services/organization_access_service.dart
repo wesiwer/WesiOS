@@ -166,6 +166,8 @@ class OrganizationAccessService {
   }
 
   /// Backward-compatible grants for users that already existed before org v1.
+  /// Existing users belong to Wesi Inc. Child organizations are granted only
+  /// explicitly, except for the root owner who always owns the whole subtree.
   static Future<void> ensureLegacyGrants() async {
     await OrganizationService.ensureBaseline();
     for (final employee in TeamService.all) {
@@ -200,7 +202,7 @@ class OrganizationAccessService {
           : <String>[OrganizationPermissions.view];
       await grant(
         employeeId: employee.id,
-        organizationId: OrganizationModel.wesiBeatsId,
+        organizationId: OrganizationModel.rootId,
         includeSubtree: false,
         permissions: permissions,
         canViewTeamFinance: employee.permissions.canSeeOthersStats,
