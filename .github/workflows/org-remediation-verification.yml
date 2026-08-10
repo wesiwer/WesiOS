@@ -34,7 +34,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: Security, scope, money, sync, UI and fault-injection suite
+      - name: Security, scope, money, sync, migration, UI and fault-injection suite
         run: >-
           flutter test
           test/organization_privilege_escalation_test.dart
@@ -50,6 +50,7 @@ jobs:
           test/background_org_processing_test.dart
           test/sync_corruption_guard_test.dart
           test/org_physical_ownership_test.dart
+          test/organization_legacy_migration_rehearsal_test.dart
           test/organization_access_revocation_test.dart
           test/organization_finance_access_test.dart
           test/organization_sync_integrity_test.dart
