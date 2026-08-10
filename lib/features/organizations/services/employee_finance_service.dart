@@ -12,7 +12,7 @@ import '../../treasury/models/transaction_model.dart';
 import '../../treasury/services/anomaly_engine.dart';
 import '../../treasury/services/forecast_engine.dart';
 import '../../treasury/services/treasury_service.dart';
-import 'organization_access_grant.dart';
+import '../models/organization_access_grant.dart';
 import 'organization_access_service.dart';
 import 'organization_context.dart';
 import 'organization_service.dart';
