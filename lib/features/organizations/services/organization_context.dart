@@ -42,7 +42,6 @@ class OrganizationContext {
 
   static Future<void> initialize() async {
     await OrganizationService.ensureBaseline();
-    await OrganizationAccessService.ensureLegacyGrants();
 
     final stored = currentOrganizationId;
     final org = await OrganizationService.byId(stored);
@@ -66,6 +65,9 @@ class OrganizationContext {
     } else if (visible.isNotEmpty) {
       fallback = visible.first;
     } else {
+      // Keep a deterministic local context even when the signed-in employee
+      // currently has no organization grant. Data services remain fail-closed,
+      // so this does not create access to Wesi Inc.
       fallback = OrganizationModel.rootId;
     }
     await _settings?.put(_orgKey, fallback);
