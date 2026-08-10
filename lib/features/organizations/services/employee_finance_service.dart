@@ -139,8 +139,22 @@ class EmployeeFinanceService {
   ) async {
     final requested = await _requestedIds(organizationId, view);
     if (TeamService.current == null) return requested;
-    final allowed = await OrganizationAccessService.visibleOrganizationIds();
-    return requested.intersection(allowed);
+    final financeAllowed = await OrganizationAccessService.organizationIdsFor(
+      'view_finance',
+    );
+    return requested.intersection(financeAllowed);
+  }
+
+  static Future<Set<String>> _authorizedSelfIds() async {
+    final requested = await OrganizationContext.effectiveOrganizationIds();
+    if (TeamService.current == null) return requested;
+    final result = <String>{};
+    for (final id in requested) {
+      if (await OrganizationAccessService.canViewSelfFinance(id)) {
+        result.add(id);
+      }
+    }
+    return result;
   }
 
   static EmployeeFinanceMetrics _calculate({
@@ -255,14 +269,13 @@ class EmployeeFinanceService {
         previous: EmployeeFinanceMetrics.empty('', previousFrom, previousTo),
       );
     }
-    final orgId = OrganizationContext.currentOrganizationId;
-    if (!await OrganizationAccessService.canViewSelfFinance(orgId)) {
+    final ids = await _authorizedSelfIds();
+    if (ids.isEmpty) {
       return EmployeeFinanceComparison(
         current: EmployeeFinanceMetrics.empty(employee.id, currentFrom, now),
         previous: EmployeeFinanceMetrics.empty(employee.id, previousFrom, previousTo),
       );
     }
-    final ids = await OrganizationContext.effectiveOrganizationIds();
     final all = (await TreasuryService().getAllTransactionsRaw())
         .where((t) => ids.contains(t.effectiveOrganizationId))
         .toList();
@@ -398,7 +411,8 @@ class EmployeeFinanceService {
   static Future<ForecastResult> selfForecast({int days = 30}) async {
     final employee = TeamService.current;
     if (employee == null) return ForecastResult.empty();
-    final ids = await OrganizationContext.effectiveOrganizationIds();
+    final ids = await _authorizedSelfIds();
+    if (ids.isEmpty) return ForecastResult.empty();
     final allTransactions = await TreasuryService().getAllTransactionsRaw();
     final tx = allTransactions
         .where((t) =>
