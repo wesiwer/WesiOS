@@ -1,3 +1,11 @@
+import 'dart:math';
+
+import '../../../core/services/currency_service.dart';
+import '../../crm/models/crm_models.dart';
+import '../../crm/services/crm_service.dart';
+import '../../tasks/models/task_model.dart';
+import '../../tasks/services/task_cash_impact.dart';
+import '../../tasks/services/task_service.dart';
 import '../../team/models/employee_model.dart';
 import '../../team/services/team_service.dart';
 import '../../treasury/models/transaction_model.dart';
@@ -34,7 +42,11 @@ class EmployeeFinanceMetrics {
     required this.upcoming,
   });
 
-  static EmployeeFinanceMetrics empty(String employeeId, DateTime from, DateTime to) =>
+  static EmployeeFinanceMetrics empty(
+    String employeeId,
+    DateTime from,
+    DateTime to,
+  ) =>
       EmployeeFinanceMetrics(
         employeeId: employeeId,
         from: from,
@@ -58,6 +70,8 @@ class EmployeeFinanceRow {
 class EmployeeFinanceService {
   EmployeeFinanceService._();
 
+  static DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
+
   static Future<Set<String>> _requestedIds(
     String organizationId,
     EmployeeFinanceView view,
@@ -78,13 +92,17 @@ class EmployeeFinanceService {
     return requested.intersection(allowed);
   }
 
-  static EmployeeFinanceMetrics _calculate(
-    String employeeId,
-    List<TransactionModel> transactions,
-    DateTime from,
-    DateTime to,
-  ) {
-    final owned = transactions.where((t) => t.ownerEmployeeId == employeeId).toList();
+  static EmployeeFinanceMetrics _calculate({
+    required String employeeId,
+    required List<TransactionModel> transactions,
+    required List<CrmDeal> deals,
+    required List<TaskModel> tasks,
+    required DateTime from,
+    required DateTime to,
+  }) {
+    final owned = transactions
+        .where((t) => t.ownerEmployeeId == employeeId)
+        .toList();
     var income = 0.0;
     var expense = 0.0;
     var recurring = 0.0;
@@ -114,6 +132,37 @@ class EmployeeFinanceService {
         overdue++;
       }
     }
+
+    final transactionIds = transactions.map((t) => t.id).toSet();
+    for (final deal in deals) {
+      if (deal.responsibleEmployeeId != employeeId ||
+          deal.stage != DealStage.won) {
+        continue;
+      }
+      final closed = deal.closedAt ?? deal.updatedAt;
+      if (closed.isBefore(from) || closed.isAfter(to)) continue;
+      // If CRM already points to a Treasury fact, the Treasury fact is the
+      // source of truth and must not be counted twice.
+      if (deal.transactionId.isNotEmpty &&
+          transactionIds.contains(deal.transactionId)) {
+        continue;
+      }
+      income += deal.amount *
+          CurrencyService.rateToRub(deal.currency.toLowerCase());
+    }
+
+    for (final task in tasks) {
+      if (task.effectiveResponsibleEmployeeId != employeeId ||
+          task.status == TaskStatus.done ||
+          task.dueDate == null) {
+        continue;
+      }
+      final cash = TaskCashImpact.fromTags(task.tags);
+      if (cash == null) continue;
+      if (task.isOverdue) overdue++;
+      if (cash.signedAmount < 0) recurring += cash.signedAmount.abs();
+    }
+
     upcoming.sort((a, b) => a.date.compareTo(b.date));
     return EmployeeFinanceMetrics(
       employeeId: employeeId,
@@ -123,15 +172,18 @@ class EmployeeFinanceService {
       expenses: expense,
       net: income - expense,
       recurringObligations: recurring,
-      operations: owned.where((t) => !t.isRecurring && !t.date.isBefore(from) && !t.date.isAfter(to)).length,
+      operations: owned
+          .where((t) =>
+              !t.isRecurring &&
+              !t.date.isBefore(from) &&
+              !t.date.isAfter(to))
+          .length,
       overdueEvents: overdue,
       upcoming: upcoming,
     );
   }
 
-  static Future<EmployeeFinanceMetrics> self({
-    int periodDays = 30,
-  }) async {
+  static Future<EmployeeFinanceMetrics> self({int periodDays = 30}) async {
     final employee = TeamService.current;
     final now = DateTime.now();
     final from = now.subtract(Duration(days: periodDays - 1));
@@ -141,12 +193,18 @@ class EmployeeFinanceService {
       return EmployeeFinanceMetrics.empty(employee.id, from, now);
     }
     final ids = await OrganizationContext.effectiveOrganizationIds();
-    final all = await TreasuryService().getAllTransactionsRaw();
+    final all = (await TreasuryService().getAllTransactionsRaw())
+        .where((t) => ids.contains(t.effectiveOrganizationId))
+        .toList();
+    final deals = await CrmService.dealsForOrganizations(ids);
+    final tasks = await TaskService().getForOrganizations(ids);
     return _calculate(
-      employee.id,
-      all.where((t) => ids.contains(t.effectiveOrganizationId)).toList(),
-      from,
-      now,
+      employeeId: employee.id,
+      transactions: all,
+      deals: deals,
+      tasks: tasks,
+      from: from,
+      to: now,
     );
   }
 
@@ -166,17 +224,27 @@ class EmployeeFinanceService {
     final all = (await TreasuryService().getAllTransactionsRaw())
         .where((t) => ids.contains(t.effectiveOrganizationId))
         .toList();
+    final deals = await CrmService.dealsForOrganizations(ids);
+    final tasks = await TaskService().getForOrganizations(ids);
 
     final rows = <EmployeeFinanceRow>[];
     for (final employee in TeamService.all) {
       if (!employee.isOwner) {
-        final employeeOrgs =
-            await OrganizationAccessService.visibleOrganizationIds(employeeId: employee.id);
+        final employeeOrgs = await OrganizationAccessService.visibleOrganizationIds(
+          employeeId: employee.id,
+        );
         if (employeeOrgs.intersection(ids).isEmpty) continue;
       }
       rows.add(EmployeeFinanceRow(
         employee,
-        _calculate(employee.id, all, from, now),
+        _calculate(
+          employeeId: employee.id,
+          transactions: all,
+          deals: deals,
+          tasks: tasks,
+          from: from,
+          to: now,
+        ),
       ));
     }
     rows.sort((a, b) => b.metrics.net.compareTo(a.metrics.net));
@@ -187,16 +255,75 @@ class EmployeeFinanceService {
     final employee = TeamService.current;
     if (employee == null) return ForecastResult.empty();
     final ids = await OrganizationContext.effectiveOrganizationIds();
-    final tx = (await TreasuryService().getAllTransactionsRaw())
+    final allTransactions = await TreasuryService().getAllTransactionsRaw();
+    final tx = allTransactions
         .where((t) =>
             ids.contains(t.effectiveOrganizationId) &&
             t.ownerEmployeeId == employee.id)
         .toList();
+    final today = _day(DateTime.now());
+    final end = today.add(Duration(days: days));
+    final events = <HorizonCashEvent>[];
+
+    for (final deal in await CrmService.dealsForOrganizations(ids)) {
+      if (deal.responsibleEmployeeId != employee.id ||
+          !deal.isOpen ||
+          deal.amount <= 0 ||
+          deal.expectedCloseAt == null) {
+        continue;
+      }
+      final due = _day(deal.expectedCloseAt!);
+      if (due.isAfter(end)) continue;
+      final effectiveDate = due.isAfter(today)
+          ? due
+          : today.add(const Duration(days: 1));
+      final probability =
+          (deal.probability / 100.0).clamp(0.01, 0.99).toDouble();
+      events.add(HorizonCashEvent(
+        title: 'CRM: ${deal.title}',
+        amount: deal.amount *
+            CurrencyService.rateToRub(deal.currency.toLowerCase()),
+        date: effectiveDate,
+        probability: due.isAfter(today)
+            ? probability
+            : min(probability, 0.65).toDouble(),
+        committed: due.isAfter(today) &&
+            deal.stage == DealStage.negotiation &&
+            probability >= 0.9,
+        source: 'employee-crm',
+        riskSource: 'employee:${employee.id}:crm:${deal.id}',
+      ));
+    }
+
+    for (final task in await TaskService().getForOrganizations(ids)) {
+      if (task.effectiveResponsibleEmployeeId != employee.id ||
+          task.status == TaskStatus.done ||
+          task.dueDate == null) {
+        continue;
+      }
+      final cash = TaskCashImpact.fromTags(task.tags);
+      if (cash == null) continue;
+      final due = _day(task.dueDate!);
+      if (due.isAfter(end)) continue;
+      events.add(HorizonCashEvent(
+        title: 'Task: ${task.title}',
+        amount: cash.signedAmount,
+        date: due.isAfter(today) ? due : today.add(const Duration(days: 1)),
+        probability: due.isAfter(today)
+            ? cash.probability
+            : min(cash.probability, 0.65).toDouble(),
+        committed: due.isAfter(today) && cash.committed,
+        source: 'employee-task',
+        riskSource: 'employee:${employee.id}:task:${task.id}',
+      ));
+    }
+
     return ForecastEngine.generate(
       transactions: tx,
       currentBalance: 0,
       days: days,
       seed: 42,
+      businessEvents: events,
     );
   }
 }
