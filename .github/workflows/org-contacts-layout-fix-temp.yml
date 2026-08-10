@@ -1,0 +1,144 @@
+name: Apply responsive org contacts fix
+on:
+  push:
+    branches: [agent/org-hierarchy-v1]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+      - name: Patch, format, self-remove and push
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          p = Path('lib/features/team/contacts_screen.dart')
+          s = p.read_text()
+          old = """    TeamService.ensureOwner();\n    _loadContextMembers();\n"""
+          new = """    TeamService.ensureOwner();\n    _contextEmployeeIds = TeamService.all\n        .where((employee) => employee.isOwner)\n        .map((employee) => employee.id)\n        .toSet();\n    _membersLoading = false;\n    _loadContextMembers();\n"""
+          if old not in s:
+              raise SystemExit('initState anchor not found')
+          s = s.replace(old, new, 1)
+
+          start = s.index('  Widget _header(int count) => Padding(')
+          end = s.index('\n\n  Widget _searchField()', start)
+          replacement = r'''  Widget _header(int count) => Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          kTitleBarInset + 12,
+          kHasCustomTitleBar ? 148 : 16,
+          0,
+        ),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            Widget title() => Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    WesiTitle(_ru ? 'Контакты' : 'Contacts', size: 22),
+                    const SizedBox(height: 2),
+                    Text(
+                      count == 0
+                          ? (_ru ? 'Пока никого' : 'Nobody yet')
+                          : '$count ${_ru ? 'чел.' : 'people'}',
+                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                    ),
+                  ],
+                );
+
+            final deletedButton = _ownerOnly
+                ? IconButton(
+                    tooltip: _ru
+                        ? 'Удалённые сотрудники'
+                        : 'Deleted employees',
+                    icon: Icon(
+                      Icons.inventory_2_outlined,
+                      color: AppTheme.textPrimary,
+                    ),
+                    onPressed: () => DeletedEmployeesScreen.open(context),
+                  )
+                : null;
+            final statsButton = IconButton(
+              tooltip: _ru ? 'Показатели' : 'Performance',
+              icon: Icon(Icons.insights_outlined, color: AppTheme.textPrimary),
+              onPressed: () => TeamStatsScreen.open(context),
+            );
+
+            if (constraints.maxWidth < 520) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: Icon(
+                          Icons.arrow_back,
+                          color: AppTheme.textPrimary,
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      Expanded(child: title()),
+                      if (deletedButton != null) deletedButton,
+                      statsButton,
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const OrganizationSwitcher(compact: true),
+                ],
+              );
+            }
+
+            return Row(
+              children: [
+                IconButton(
+                  icon: Icon(Icons.arrow_back, color: AppTheme.textPrimary),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                Expanded(child: title()),
+                const OrganizationSwitcher(compact: true),
+                const SizedBox(width: 6),
+                if (deletedButton != null) deletedButton,
+                statsButton,
+              ],
+            );
+          },
+        ),
+      );'''
+          s = s[:start] + replacement + s[end:]
+          p.write_text(s)
+
+          p = Path('lib/features/organizations/widgets/organization_switcher.dart')
+          s = p.read_text()
+          old = "org?.name ?? 'Wesi Beats'"
+          if old not in s:
+              raise SystemExit('organization switcher fallback anchor not found')
+          p.write_text(s.replace(old, "org?.name ?? 'Wesi Inc'", 1))
+
+          p = Path('test/organization_migration_context_test.dart')
+          s = p.read_text()
+          old = 'legacy money/tasks/CRM are physically backfilled to Wesi Beats once'
+          if old in s:
+              s = s.replace(old, 'legacy money/tasks/CRM are physically backfilled to Wesi Inc once', 1)
+          p.write_text(s)
+          PY
+
+          dart format lib/features/team/contacts_screen.dart lib/features/organizations/widgets/organization_switcher.dart test/organization_migration_context_test.dart
+          rm .github/workflows/org-contacts-layout-fix-temp.yml
+          git diff --check
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: make org-aware contacts responsive'
+          git push origin HEAD:agent/org-hierarchy-v1
