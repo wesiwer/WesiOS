@@ -68,8 +68,8 @@ void main() {
     );
     await signIn(manager.id);
 
-    expect(
-      () => OrganizationService.create(
+    await expectLater(
+      OrganizationService.create(
         name: 'Forbidden child',
         parentId: OrganizationModel.rootId,
         createdBy: manager.id,
@@ -99,16 +99,32 @@ void main() {
     );
     await signIn(manager.id);
 
+    expect(TeamService.current?.id, manager.id);
+    expect(TeamService.current?.isOwner, isFalse);
     expect(
-      () => OrganizationService.update(child, name: 'Nope'),
+      await OrganizationAccessService.can(
+        child.id,
+        OrganizationPermissions.manageOrgSettings,
+        employeeId: manager.id,
+      ),
+      isFalse,
+    );
+    await expectLater(
+      OrganizationService.update(child, name: 'Nope'),
       throwsA(isA<StateError>()),
     );
-    expect(() => OrganizationService.archive(child.id), throwsA(isA<StateError>()));
+    await expectLater(
+      OrganizationService.archive(child.id),
+      throwsA(isA<StateError>()),
+    );
 
     await signIn(owner.id);
     expect(await OrganizationService.archive(child.id), isTrue);
     await signIn(manager.id);
-    expect(() => OrganizationService.restore(child.id), throwsA(isA<StateError>()));
+    await expectLater(
+      OrganizationService.restore(child.id),
+      throwsA(isA<StateError>()),
+    );
   });
 
   test('authorized manager may create within scope but not move outside it', () async {
@@ -142,8 +158,8 @@ void main() {
       createdBy: manager.id,
     );
     expect(child.parentId, branch.id);
-    expect(
-      () => OrganizationService.update(child, parentId: outside.id),
+    await expectLater(
+      OrganizationService.update(child, parentId: outside.id),
       throwsA(isA<StateError>()),
     );
   });
