@@ -1,0 +1,49 @@
+name: Organization hierarchy diagnostics
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  analyzer-diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 10f8555b51272b8b0a3fc554a9c095d3ce2a5245
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze and publish concise diagnostics
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+        shell: bash
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos > analyze.log 2>&1
+          code=$?
+          errors=$(grep -E '(^|[[:space:]])error[[:space:]]+[•-]|[•][[:space:]]error[[:space:]][•]' analyze.log | head -40 || true)
+          if [ -z "$errors" ]; then
+            errors=$(grep -E 'error' analyze.log | head -40 || true)
+          fi
+          body=$(cat <<EOF
+          DIAGNOSTIC ONLY — DO NOT MERGE.
+
+          Exact product SHA: \`10f8555b51272b8b0a3fc554a9c095d3ce2a5245\`
+          Analyzer exit: \`$code\`
+
+          \`\`\`text
+          $errors
+          \`\`\`
+          EOF
+          )
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --body "$body"
+          exit 0
