@@ -94,7 +94,7 @@ void main() {
           toOrganizationId: f.toOrg,
           fromAccountId: f.fromAccount,
           toAccountId: f.toAccount,
-          amount: 1000 + step,
+          amount: (1000 + step).toDouble(),
           currency: 'RUB',
           type: InterOrgTransferType.internalTransfer,
         ),
@@ -131,7 +131,7 @@ void main() {
         toOrganizationId: f.toOrg,
         fromAccountId: f.fromAccount,
         toAccountId: f.toAccount,
-        amount: 2000 + step,
+        amount: (2000 + step).toDouble(),
         currency: 'RUB',
         type: InterOrgTransferType.funding,
       );
