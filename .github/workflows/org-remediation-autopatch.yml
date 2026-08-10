@@ -1,0 +1,164 @@
+name: Org remediation targeted patch
+
+on:
+  push:
+    branches:
+      - agent/org-hierarchy-remediation-1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-remediation-1
+          fetch-depth: 0
+
+      - name: Apply audited targeted patches
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_one(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one match, got {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          replace_one(
+              'lib/features/organizations/services/employee_finance_service.dart',
+              "import 'organization_access_grant.dart';",
+              "import '../models/organization_access_grant.dart';",
+          )
+
+          replace_one(
+              'lib/core/sync/sync_codec.dart',
+              """    if (incoming.createdBy == 'sync' || incoming.createdBy == 'migration') {
+              return true;
+            }
+""",
+              """    // `sync` is transport metadata, never an authorization principal.
+            // Remote payloads must not mint privileges by claiming a magic actor.
+            if (incoming.createdBy == 'sync') return false;
+            if (incoming.createdBy == 'migration') {
+              if (incoming.organizationId != OrganizationModel.rootId) return false;
+              final target = Hive.box<EmployeeModel>(TeamService.boxName)
+                  .get(incoming.employeeId);
+              if (target?.isOwner == true) {
+                return incoming.includeSubtree;
+              }
+              if (incoming.includeSubtree) return false;
+              if (incoming.permissions.contains(OrganizationPermissions.manageMembers) ||
+                  incoming.permissions.contains(OrganizationPermissions.manageOrgSettings)) {
+                return false;
+              }
+              return true;
+            }
+""",
+          )
+
+          replace_one(
+              'lib/features/treasury/treasury_screen.dart',
+              """  Future<void> _recalc() async {
+            final visible = _visible;
+""",
+              """  Future<void> _recalc() async {
+            var visible = _visible;
+            if (_accountId == null &&
+                OrganizationContext.scope == OrganizationScope.subtree) {
+              visible = TreasuryService.eliminateInternalTransfers(visible);
+            }
+""",
+          )
+
+          replace_one(
+              'lib/features/treasury/widgets/add_transaction_dialog.dart',
+              """                            'amount': rub,
+                            'category': _category,
+""",
+              """                            'amount': rub,
+                            'originalAmount': amount,
+                            'originalCurrency':
+                                CurrencyService.current.toUpperCase(),
+                            'fxRateToReporting': CurrencyService.rateToRub(
+                              CurrencyService.current,
+                            ),
+                            'fxRateAt': _selectedDate,
+                            'fxSource': 'CurrencyService',
+                            'category': _category,
+""",
+          )
+
+          replace_one(
+              'lib/features/treasury/treasury_screen.dart',
+              """        organizationId: OrganizationContext.currentOrganizationId,
+            ownerEmployeeId: result['ownerEmployeeId'] as String?,
+""",
+              """        organizationId: OrganizationContext.currentOrganizationId,
+            ownerEmployeeId: result['ownerEmployeeId'] as String?,
+            originalAmount: result['originalAmount'] as double?,
+            originalCurrency: result['originalCurrency'] as String? ?? 'RUB',
+            fxRateToReporting:
+                result['fxRateToReporting'] as double? ?? 1.0,
+            fxRateAt: result['fxRateAt'] as DateTime?,
+            fxSource: result['fxSource'] as String? ?? 'CurrencyService',
+""",
+          )
+
+          replace_one(
+              'lib/features/treasury/models/transaction_model.dart',
+              """    double? organizationBaseAmount,
+            String? organizationBaseCurrency,
+""",
+              """    double? organizationBaseAmount,
+            bool clearOrganizationBaseAmount = false,
+            String? organizationBaseCurrency,
+""",
+          )
+
+          replace_one(
+              'lib/features/treasury/models/transaction_model.dart',
+              """      organizationBaseAmount:
+                  organizationBaseAmount ?? this.organizationBaseAmount,
+""",
+              """      organizationBaseAmount: clearOrganizationBaseAmount
+                  ? null
+                  : (organizationBaseAmount ?? this.organizationBaseAmount),
+""",
+          )
+
+          replace_one(
+              'lib/features/treasury/operations_screen.dart',
+              """        ownerEmployeeId: result['ownerEmployeeId'] as String?,
+            clearOwnerEmployeeId: result['ownerEmployeeId'] == null,
+""",
+              """        ownerEmployeeId: result['ownerEmployeeId'] as String?,
+            clearOwnerEmployeeId: result['ownerEmployeeId'] == null,
+            originalAmount: result['originalAmount'] as double?,
+            originalCurrency: result['originalCurrency'] as String?,
+            clearOrganizationBaseAmount: true,
+            fxRateToReporting: result['fxRateToReporting'] as double?,
+            fxRateAt: result['fxRateAt'] as DateTime?,
+            fxSource: result['fxSource'] as String?,
+""",
+          )
+
+      - name: Commit patches
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No patch changes"
+            exit 0
+          fi
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib
+          git commit -m "fix: close remaining organization audit edge cases [org-remediation-patched]"
+          git push origin HEAD:agent/org-hierarchy-remediation-1
