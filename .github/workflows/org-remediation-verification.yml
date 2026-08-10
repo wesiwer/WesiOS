@@ -57,6 +57,7 @@ jobs:
           test/inter_org_transfer_test.dart
           test/organization_ui_behavior_test.dart
           test/organization_finance_ui_behavior_test.dart
+          test/team_stats_organization_scope_ui_test.dart
 
   full-tests:
     runs-on: ubuntu-24.04
