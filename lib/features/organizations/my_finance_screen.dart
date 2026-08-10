@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/services/currency_service.dart';
 import '../../core/theme/app_theme.dart';
-import '../team/services/team_service.dart';
 import '../treasury/services/forecast_engine.dart';
 import 'services/employee_finance_service.dart';
 import 'services/organization_access_service.dart';
@@ -19,8 +18,11 @@ class MyFinanceScreen extends StatefulWidget {
 class _MyFinanceScreenState extends State<MyFinanceScreen> {
   EmployeeFinanceView _view = EmployeeFinanceView.self;
   EmployeeFinanceMetrics? _self;
+  OrganizationFinanceMetrics? _organization;
   List<EmployeeFinanceRow> _team = const [];
   ForecastResult _forecast = ForecastResult.empty();
+  bool _canOrganization = false;
+  bool _canSubtree = false;
   bool _canTeam = false;
   bool _loading = true;
 
@@ -42,26 +44,51 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
   Future<void> _load() async {
     if (mounted) setState(() => _loading = true);
     final orgId = OrganizationContext.currentOrganizationId;
-    final canTeam = TeamService.current?.isOwner == true ||
-        await OrganizationAccessService.canViewTeamFinance(orgId);
+    final canOrganization =
+        await OrganizationAccessService.canViewOrganizationFinance(orgId);
+    final canSubtree = canOrganization &&
+        await OrganizationAccessService.canUseSubtreeFinance(orgId);
+    final canTeam = await OrganizationAccessService.canViewTeamFinance(orgId);
+
+    var effectiveView = _view;
+    if (effectiveView == EmployeeFinanceView.organization && !canOrganization) {
+      effectiveView = EmployeeFinanceView.self;
+    }
+    if (effectiveView == EmployeeFinanceView.subtree && !canSubtree) {
+      effectiveView = canOrganization
+          ? EmployeeFinanceView.organization
+          : EmployeeFinanceView.self;
+    }
+
     final self = await EmployeeFinanceService.self(periodDays: 30);
     final forecast = await EmployeeFinanceService.selfForecast(days: 30);
+    OrganizationFinanceMetrics? organization;
     var team = <EmployeeFinanceRow>[];
-    if (canTeam && _view != EmployeeFinanceView.self) {
-      team = await EmployeeFinanceService.teamBreakdown(
+    if (effectiveView != EmployeeFinanceView.self) {
+      organization = await EmployeeFinanceService.organizationFinance(
         organizationId: orgId,
-        view: _view,
+        view: effectiveView,
         periodDays: 30,
       );
+      if (canTeam) {
+        team = await EmployeeFinanceService.teamBreakdown(
+          organizationId: orgId,
+          view: effectiveView,
+          periodDays: 30,
+        );
+      }
     }
     if (!mounted) return;
     setState(() {
+      _view = effectiveView;
+      _canOrganization = canOrganization;
+      _canSubtree = canSubtree;
       _canTeam = canTeam;
       _self = self;
+      _organization = organization;
       _forecast = forecast;
       _team = team;
       _loading = false;
-      if (!canTeam) _view = EmployeeFinanceView.self;
     });
   }
 
@@ -73,7 +100,7 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
       backgroundColor: AppTheme.background,
       appBar: AppBar(
         backgroundColor: AppTheme.background,
-        title: const Text('Мои финансы'),
+        title: const Text('Финансовые показатели'),
         actions: const [
           Padding(
             padding: EdgeInsets.only(right: 12),
@@ -94,7 +121,7 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
                   if (_view == EmployeeFinanceView.self)
                     _selfView()
                   else
-                    _managerView(),
+                    _organizationView(),
                 ],
               ),
             ),
@@ -102,13 +129,28 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
   }
 
   Widget _viewSelector() {
-    if (!_canTeam) return const SizedBox.shrink();
+    final segments = <ButtonSegment<EmployeeFinanceView>>[
+      const ButtonSegment(
+        value: EmployeeFinanceView.self,
+        label: Text('Мои'),
+        icon: Icon(Icons.person_outline),
+      ),
+      if (_canOrganization)
+        const ButtonSegment(
+          value: EmployeeFinanceView.organization,
+          label: Text('Организация'),
+          icon: Icon(Icons.business_outlined),
+        ),
+      if (_canSubtree)
+        const ButtonSegment(
+          value: EmployeeFinanceView.subtree,
+          label: Text('Ветка'),
+          icon: Icon(Icons.account_tree_outlined),
+        ),
+    ];
+    if (segments.length == 1) return const SizedBox.shrink();
     return SegmentedButton<EmployeeFinanceView>(
-      segments: const [
-        ButtonSegment(value: EmployeeFinanceView.self, label: Text('Мои')),
-        ButtonSegment(value: EmployeeFinanceView.organization, label: Text('Организация')),
-        ButtonSegment(value: EmployeeFinanceView.subtree, label: Text('Ветка')),
-      ],
+      segments: segments,
       selected: {_view},
       onSelectionChanged: (value) async {
         setState(() => _view = value.first);
@@ -124,6 +166,11 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _section(
+          'Личный контур',
+          'Этот режим показывает только показатели текущего пользователя в выбранном доступном контуре. Руководящая роль не заменяет личный режим.',
+        ),
+        const SizedBox(height: 12),
         Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -156,26 +203,48 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
     );
   }
 
-  Widget _managerView() {
-    final contribution = _team.fold<double>(0, (s, r) => s + r.metrics.contribution);
-    final expenses = _team.fold<double>(0, (s, r) => s + r.metrics.expenses);
+  Widget _organizationView() {
+    final metrics = _organization;
+    if (metrics == null) {
+      return _section('Нет доступа', 'Финансовый контур организации недоступен.');
+    }
+    final scopeLabel = _view == EmployeeFinanceView.subtree
+        ? 'Ветка: организация + доступные дочерние'
+        : 'Только выбранная организация';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        _section(
+          scopeLabel,
+          'Агрегированные показатели не раскрывают персональную атрибуцию сотрудников. Личные строки команды требуют отдельного права.',
+        ),
+        const SizedBox(height: 12),
         Wrap(
           spacing: 10,
           runSpacing: 10,
           children: [
-            _metric('Вклад команды', _money(contribution), Icons.groups_2_outlined, AppTheme.accentGreen),
-            _metric('Расходы команды', _money(expenses), Icons.payments_outlined, AppTheme.accentRed),
-            _metric('Net команды', _money(contribution - expenses), Icons.balance_outlined, AppTheme.accent),
+            _metric('Доходы контура', _money(metrics.income), Icons.trending_up, AppTheme.accentGreen),
+            _metric('Расходы контура', _money(metrics.expenses), Icons.trending_down, AppTheme.accentRed),
+            _metric('Net контура', _money(metrics.net), Icons.balance_outlined, AppTheme.accent),
+            _metric('Регулярные обязательства', _money(metrics.recurringObligations), Icons.repeat_rounded, AppTheme.textSecondary),
           ],
         ),
         const SizedBox(height: 18),
-        Text('По сотрудникам',
-            style: TextStyle(color: AppTheme.textPrimary, fontSize: 17, fontWeight: FontWeight.w900)),
+        Text(
+          'По сотрудникам',
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
         const SizedBox(height: 8),
-        if (_team.isEmpty)
+        if (!_canTeam)
+          _section(
+            'Персональная разбивка скрыта',
+            'У тебя есть доступ к агрегатам этого подразделения, но нет отдельного права canViewTeamFinance на чужие личные показатели.',
+          )
+        else if (_team.isEmpty)
           _section('Нет данных', 'Нет доступных персональных финансовых показателей в выбранном контуре.')
         else
           for (final row in _team)
