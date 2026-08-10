@@ -9,6 +9,7 @@ import '../../core/widgets/currency_picker.dart';
 import '../../core/services/exchange_rate_service.dart';
 import '../organizations/services/organization_context.dart';
 import '../organizations/widgets/organization_switcher.dart';
+import '../organizations/widgets/subtree_finance_breakdown.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 import 'widgets/accounts_bar.dart';
@@ -228,6 +229,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           ),
           const SizedBox(height: 16),
           _balanceCard(),
+          if (OrganizationContext.scope == OrganizationScope.subtree) ...[
+            const SizedBox(height: 16),
+            const SubtreeFinanceBreakdown(),
+          ],
           const SizedBox(height: 20),
           Row(
             children: [

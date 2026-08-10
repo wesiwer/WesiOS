@@ -4,6 +4,9 @@ import '../../../core/services/currency_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../treasury/services/account_service.dart';
 import '../../treasury/services/treasury_service.dart';
+import '../../team/services/team_service.dart';
+import '../models/organization_access_grant.dart';
+import '../services/organization_access_service.dart';
 import '../models/organization_model.dart';
 import '../services/organization_context.dart';
 import '../services/organization_service.dart';
@@ -55,7 +58,13 @@ class _SubtreeFinanceBreakdownState extends State<SubtreeFinanceBreakdown> {
 
   Future<List<_OrganizationBalanceRow>> _load() async {
     if (OrganizationContext.scope != OrganizationScope.subtree) return const [];
-    final ids = await OrganizationContext.effectiveOrganizationIds();
+    var ids = await OrganizationContext.effectiveOrganizationIds();
+    if (TeamService.current != null) {
+      final financeIds = await OrganizationAccessService.organizationIdsFor(
+        OrganizationPermissions.viewFinance,
+      );
+      ids = ids.intersection(financeIds);
+    }
     if (ids.length <= 1) return const [];
     final transactions = await TreasuryService().getAllTransactions();
     final summaries = await AccountService.summaries(transactions);

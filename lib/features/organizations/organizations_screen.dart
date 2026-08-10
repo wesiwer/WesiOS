@@ -485,6 +485,45 @@ class _OrganizationMembersDialogState extends State<_OrganizationMembersDialog> 
     await _load();
   }
 
+  Future<void> _selfFinance(String employeeId, bool value) async {
+    final grant = _grants[employeeId];
+    if (grant == null) return;
+    await OrganizationAccessService.grant(
+      employeeId: employeeId,
+      organizationId: grant.organizationId,
+      includeSubtree: grant.includeSubtree,
+      permissions: grant.permissions,
+      canViewSelfFinance: value,
+      canViewTeamFinance: grant.canViewTeamFinance,
+    );
+    await _load();
+  }
+
+  Future<void> _permission(
+    String employeeId,
+    String permission,
+    bool value,
+  ) async {
+    final grant = _grants[employeeId];
+    if (grant == null) return;
+    final permissions = grant.permissions.toSet();
+    if (value) {
+      permissions.add(permission);
+      permissions.add(OrganizationPermissions.view);
+    } else {
+      permissions.remove(permission);
+    }
+    await OrganizationAccessService.grant(
+      employeeId: employeeId,
+      organizationId: grant.organizationId,
+      includeSubtree: grant.includeSubtree,
+      permissions: permissions.toList(),
+      canViewSelfFinance: grant.canViewSelfFinance,
+      canViewTeamFinance: grant.canViewTeamFinance,
+    );
+    await _load();
+  }
+
   Future<void> _subtree(String employeeId, bool value) async {
     final grant = _grants[employeeId];
     if (grant == null) return;
@@ -521,6 +560,11 @@ class _OrganizationMembersDialogState extends State<_OrganizationMembersDialog> 
                       ),
                       if (_grants[employee.id] case final grant?) ...[
                         CheckboxListTile(
+                          value: grant.canViewSelfFinance,
+                          onChanged: (v) => _selfFinance(employee.id, v ?? true),
+                          title: const Text('Личные показатели (Мои)'),
+                        ),
+                        CheckboxListTile(
                           value: grant.includeSubtree,
                           onChanged: (v) => _subtree(employee.id, v ?? false),
                           title: const Text('Доступ к поддереву'),
@@ -528,8 +572,29 @@ class _OrganizationMembersDialogState extends State<_OrganizationMembersDialog> 
                         CheckboxListTile(
                           value: grant.canViewTeamFinance,
                           onChanged: (v) => _teamFinance(employee.id, v ?? false),
-                          title: const Text('Видит финансы команды'),
+                          title: const Text('Персональные финансы команды'),
                         ),
+                        const Divider(),
+                        for (final permission in const [
+                          OrganizationPermissions.viewFinance,
+                          OrganizationPermissions.createTransactions,
+                          OrganizationPermissions.editTransactions,
+                          OrganizationPermissions.manageAccounts,
+                          OrganizationPermissions.manageRecurring,
+                          OrganizationPermissions.viewForecast,
+                          OrganizationPermissions.manageOrgSettings,
+                          OrganizationPermissions.manageMembers,
+                        ])
+                          CheckboxListTile(
+                            dense: true,
+                            value: grant.permissions.contains(permission),
+                            onChanged: (v) => _permission(
+                              employee.id,
+                              permission,
+                              v ?? false,
+                            ),
+                            title: Text(permission),
+                          ),
                       ],
                     ],
                   ),

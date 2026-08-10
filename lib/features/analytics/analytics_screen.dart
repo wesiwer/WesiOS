@@ -7,6 +7,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/module_header.dart';
 import '../../core/widgets/window_controls.dart';
 import '../tasks/services/task_service.dart';
+import '../organizations/services/organization_context.dart';
+import '../organizations/widgets/subtree_finance_breakdown.dart';
 import '../treasury/services/treasury_service.dart';
 import 'services/analytics_service.dart';
 
@@ -35,12 +37,14 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     _load();
     TreasuryService.revision.addListener(_load);
     TaskService.revision.addListener(_load);
+    OrganizationContext.revision.addListener(_load);
   }
 
   @override
   void dispose() {
     TreasuryService.revision.removeListener(_load);
     TaskService.revision.removeListener(_load);
+    OrganizationContext.revision.removeListener(_load);
     super.dispose();
   }
 
@@ -90,6 +94,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     _emptyState()
                   else ...[
                     _kpiGrid(d),
+                    if (OrganizationContext.scope == OrganizationScope.subtree) ...[
+                      const SizedBox(height: 18),
+                      const SubtreeFinanceBreakdown(),
+                    ],
                     const SizedBox(height: 18),
                     _trendCard(d),
                     const SizedBox(height: 18),
