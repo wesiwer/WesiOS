@@ -68,7 +68,7 @@ void main() {
     if (await temp.exists()) await temp.delete(recursive: true);
   });
 
-  test('legacy money/tasks/CRM are physically backfilled to Wesi Beats once', () async {
+  test('legacy money/tasks/CRM are physically backfilled to Wesi Inc once', () async {
     final accounts = Hive.box<AccountModel>('wesios_accounts');
     await accounts.put(
       'main',
