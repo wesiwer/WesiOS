@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../team/services/team_service.dart';
+import '../models/organization_access_grant.dart';
 import '../models/organization_model.dart';
 import 'organization_access_service.dart';
 import 'organization_service.dart';
@@ -83,7 +84,6 @@ class OrganizationContext {
       throw StateError('organization access denied');
     }
     await _settings?.put(_orgKey, organizationId);
-    // Keep user's scope choice; effective ids are always intersected with grants.
     revision.value++;
   }
 
