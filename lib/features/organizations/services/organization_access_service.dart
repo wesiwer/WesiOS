@@ -350,7 +350,7 @@ class OrganizationAccessService {
         }
 
         if (canViewTeamFinance) {
-          if (!await canViewTeamFinance(
+          if (!await OrganizationAccessService.canViewTeamFinance(
             organizationId,
             employeeId: currentActor.id,
           )) {
