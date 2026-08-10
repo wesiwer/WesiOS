@@ -1,12 +1,12 @@
 name: Apply responsive org contacts fix
 on:
-  push:
-    branches: [agent/org-hierarchy-v1]
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
 permissions:
   contents: write
 jobs:
   patch:
-    if: github.actor != 'github-actions[bot]'
+    if: github.event.pull_request.head.ref == 'agent/org-contacts-layout-fix'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
