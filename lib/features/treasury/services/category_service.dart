@@ -6,7 +6,7 @@ import '../../organizations/services/organization_context.dart';
 import '../models/transaction_model.dart';
 
 /// Categories are organization-owned vocabulary. Legacy keys remain the
-/// Wesi Beats source so existing custom categories survive migration without
+/// Wesi Inc source so existing custom categories survive migration without
 /// duplicating or silently resetting them.
 class CategoryService {
   static const String _box = 'wesios_settings';
@@ -33,7 +33,7 @@ class CategoryService {
 
   static String _key(TransactionType type, [String? organizationId]) {
     final orgId = organizationId ?? OrganizationContext.currentOrganizationId;
-    if (orgId == OrganizationModel.wesiBeatsId) return _legacyKey(type);
+    if (orgId == OrganizationModel.rootId) return _legacyKey(type);
     return '${_legacyKey(type)}.$orgId';
   }
 
