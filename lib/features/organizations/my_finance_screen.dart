@@ -32,12 +32,14 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
   void initState() {
     super.initState();
     OrganizationContext.revision.addListener(_reload);
+    OrganizationAccessService.revision.addListener(_reload);
     _load();
   }
 
   @override
   void dispose() {
     OrganizationContext.revision.removeListener(_reload);
+    OrganizationAccessService.revision.removeListener(_reload);
     super.dispose();
   }
 
@@ -200,10 +202,17 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
           spacing: 10,
           runSpacing: 10,
           children: [
-            _metric('Мой вклад', _money(m.contribution), Icons.trending_up, AppTheme.accentGreen),
-            _metric('Мои расходы', _money(m.expenses), Icons.trending_down, AppTheme.accentRed),
-            _metric('Мой net', _money(m.net), Icons.balance_outlined, AppTheme.accent),
-            _metric('Регулярные обязательства', _money(m.recurringObligations), Icons.repeat_rounded, AppTheme.textSecondary),
+            _metric('Мой вклад', _money(m.contribution), Icons.trending_up,
+                AppTheme.accentGreen),
+            _metric('Мои расходы', _money(m.expenses), Icons.trending_down,
+                AppTheme.accentRed),
+            _metric('Мой net', _money(m.net), Icons.balance_outlined,
+                AppTheme.accent),
+            _metric(
+                'Регулярные обязательства',
+                _money(m.recurringObligations),
+                Icons.repeat_rounded,
+                AppTheme.textSecondary),
           ],
         ),
         const SizedBox(height: 18),
@@ -228,11 +237,15 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
           'Ближайшие денежные события',
           m.upcoming.isEmpty
               ? 'На 30 дней персональных событий нет.'
-              : m.upcoming.take(6).map((e) => '${e.title}: ${_money(e.amount)}').join('\n'),
+              : m.upcoming
+                  .take(6)
+                  .map((e) => '${e.title}: ${_money(e.amount)}')
+                  .join('\n'),
         ),
         if (m.overdueEvents > 0) ...[
           const SizedBox(height: 12),
-          _section('Просрочки', '${m.overdueEvents} денежных задач требуют внимания.'),
+          _section('Просрочки',
+              '${m.overdueEvents} денежных задач требуют внимания.'),
         ],
       ],
     );
@@ -241,7 +254,8 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
   Widget _organizationView() {
     final metrics = _organization;
     if (metrics == null) {
-      return _section('Нет доступа', 'Финансовый контур организации недоступен.');
+      return _section(
+          'Нет доступа', 'Финансовый контур организации недоступен.');
     }
     final scopeLabel = _view == EmployeeFinanceView.subtree
         ? 'Ветка: организация + доступные дочерние'
@@ -258,10 +272,17 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
           spacing: 10,
           runSpacing: 10,
           children: [
-            _metric('Доходы контура', _money(metrics.income), Icons.trending_up, AppTheme.accentGreen),
-            _metric('Расходы контура', _money(metrics.expenses), Icons.trending_down, AppTheme.accentRed),
-            _metric('Net контура', _money(metrics.net), Icons.balance_outlined, AppTheme.accent),
-            _metric('Регулярные обязательства', _money(metrics.recurringObligations), Icons.repeat_rounded, AppTheme.textSecondary),
+            _metric('Доходы контура', _money(metrics.income),
+                Icons.trending_up, AppTheme.accentGreen),
+            _metric('Расходы контура', _money(metrics.expenses),
+                Icons.trending_down, AppTheme.accentRed),
+            _metric('Net контура', _money(metrics.net), Icons.balance_outlined,
+                AppTheme.accent),
+            _metric(
+                'Регулярные обязательства',
+                _money(metrics.recurringObligations),
+                Icons.repeat_rounded,
+                AppTheme.textSecondary),
           ],
         ),
         const SizedBox(height: 18),
@@ -277,29 +298,111 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
         if (!_canTeam)
           _section(
             'Персональная разбивка скрыта',
-            'У тебя есть доступ к агрегатам этого подразделения, но нет отдельного права canViewTeamFinance на чужие личные показатели.',
+            'Для персональных строк одновременно нужны view_finance и отдельное право canViewTeamFinance.',
           )
         else if (_team.isEmpty)
-          _section('Нет данных', 'Нет доступных персональных финансовых показателей в выбранном контуре.')
+          _section('Нет данных',
+              'Нет доступных персональных финансовых показателей в выбранном контуре.')
         else
           for (final row in _team)
             Card(
               child: ListTile(
+                onTap: () => _showEmployeeFinance(row),
                 title: Text(row.employee.displayName),
-                subtitle: Text('${row.employee.position}\nВклад ${_money(row.metrics.contribution)} • Расходы ${_money(row.metrics.expenses)}'),
+                subtitle: Text(
+                    '${row.employee.position}\nВклад ${_money(row.metrics.contribution)} • Расходы ${_money(row.metrics.expenses)}'),
                 isThreeLine: true,
-                trailing: Text(
-                  _money(row.metrics.net),
-                  style: TextStyle(
-                    color: row.metrics.net >= 0 ? AppTheme.accentGreen : AppTheme.accentRed,
-                    fontWeight: FontWeight.w900,
-                  ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _money(row.metrics.net),
+                      style: TextStyle(
+                        color: row.metrics.net >= 0
+                            ? AppTheme.accentGreen
+                            : AppTheme.accentRed,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    const Icon(Icons.chevron_right),
+                  ],
                 ),
               ),
             ),
       ],
     );
   }
+
+  Future<void> _showEmployeeFinance(EmployeeFinanceRow row) async {
+    final orgId = OrganizationContext.currentOrganizationId;
+    // Re-check at click time so a revoked grant cannot be used through a stale
+    // already-rendered row.
+    if (!await OrganizationAccessService.canViewTeamFinance(orgId)) {
+      if (mounted) await _load();
+      return;
+    }
+    if (!mounted) return;
+    final m = row.metrics;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(row.employee.displayName),
+        content: SizedBox(
+          width: 440,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (row.employee.position.isNotEmpty)
+                  Text(row.employee.position,
+                      style: TextStyle(color: AppTheme.textSecondary)),
+                const SizedBox(height: 16),
+                _dialogLine('Вклад', _money(m.contribution)),
+                _dialogLine('Расходы', _money(m.expenses)),
+                _dialogLine('Net', _money(m.net)),
+                _dialogLine('Регулярные обязательства',
+                    _money(m.recurringObligations)),
+                _dialogLine('Операций', '${m.operations}'),
+                _dialogLine('Просроченных событий', '${m.overdueEvents}'),
+                _dialogLine(
+                    'Просроченных ожиданий CRM', '${m.missedDealExpectations}'),
+                _dialogLine('Аномальных расходов', '${m.anomalousExpenses}'),
+                if (m.upcoming.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text('Ближайшие события',
+                      style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 6),
+                  for (final tx in m.upcoming.take(8))
+                    Text('• ${tx.title}: ${_money(tx.amount)}'),
+                ],
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Закрыть'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _dialogLine(String label, String value) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 4),
+        child: Row(
+          children: [
+            Expanded(child: Text(label)),
+            const SizedBox(width: 16),
+            Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
+          ],
+        ),
+      );
 
   String _delta(double current, double previous) {
     if (previous == 0) {
@@ -327,12 +430,15 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
       risks.add('просроченные денежные задачи: ${metrics.overdueEvents}');
     }
     if (metrics.missedDealExpectations > 0) {
-      risks.add('сделки позже ожидаемой даты: ${metrics.missedDealExpectations}');
+      risks.add(
+          'сделки позже ожидаемой даты: ${metrics.missedDealExpectations}');
     }
     if (metrics.anomalousExpenses > 0) {
       risks.add('аномальные расходы: ${metrics.anomalousExpenses}');
     }
-    return risks.isEmpty ? 'Активных персональных финансовых рисков не найдено.' : risks.join(' • ');
+    return risks.isEmpty
+        ? 'Активных персональных финансовых рисков не найдено.'
+        : risks.join(' • ');
   }
 
   Widget _metric(String label, String value, IconData icon, Color color) =>
@@ -349,9 +455,14 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
           children: [
             Icon(icon, color: color, size: 20),
             const SizedBox(height: 8),
-            Text(label, style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
+            Text(label,
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 11)),
             const SizedBox(height: 4),
-            Text(value, style: TextStyle(color: AppTheme.textPrimary, fontSize: 18, fontWeight: FontWeight.w900)),
+            Text(value,
+                style: TextStyle(
+                    color: AppTheme.textPrimary,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900)),
           ],
         ),
       );
@@ -367,9 +478,13 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(title, style: TextStyle(color: AppTheme.textPrimary, fontWeight: FontWeight.w800)),
+            Text(title,
+                style: TextStyle(
+                    color: AppTheme.textPrimary, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
-            Text(body, style: TextStyle(color: AppTheme.textSecondary, height: 1.45)),
+            Text(body,
+                style: TextStyle(
+                    color: AppTheme.textSecondary, height: 1.45)),
           ],
         ),
       );
