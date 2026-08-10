@@ -154,6 +154,17 @@ class InterOrgTransferService {
   static Future<void> _reconcileOne(InterOrgTransferModel transfer) async {
     await _validateModel(transfer);
     final treasury = TreasuryService();
+    final raw = await treasury.getAllTransactionsRaw();
+    final hadDebit = raw.any((t) =>
+        t.id == transfer.linkedDebitTransactionId &&
+        t.interOrgTransferId == transfer.id);
+    final hadCredit = raw.any((t) =>
+        t.id == transfer.linkedCreditTransactionId &&
+        t.interOrgTransferId == transfer.id);
+    final recoveryNeeded = transfer.cancelled
+        ? hadDebit || hadCredit
+        : !hadDebit || !hadCredit;
+
     if (transfer.cancelled) {
       await treasury.deleteInterOrgLegForRecovery(
         transfer.linkedDebitTransactionId,
@@ -166,6 +177,21 @@ class InterOrgTransferService {
     } else {
       await treasury.restoreInterOrgLeg(await _debit(transfer));
       await treasury.restoreInterOrgLeg(await _credit(transfer));
+    }
+
+    if (recoveryNeeded) {
+      await CriticalAuditService.record(
+        event: 'interorg.recovery',
+        entityType: 'inter_org_transfer',
+        entityId: transfer.id,
+        organizationId: transfer.fromOrganizationId,
+        after: _auditJson(transfer),
+        reason: transfer.cancelled
+            ? 'reconciled cancelled transfer to zero ledger legs'
+            : 'reconciled active transfer to two ledger legs',
+        actorId: 'interorg-recovery',
+        source: 'system/recovery',
+      );
     }
   }
 
