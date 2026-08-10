@@ -42,6 +42,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   bool get _canManage => _canManageContext;
   bool get _canSeeNotes => TeamService.currentPermissions.canSeeNotes;
   bool get _ownerOnly => TeamService.isOwnerSession;
+  bool get _localFullAccess => TeamService.current == null || _ownerOnly;
 
   @override
   void initState() {
@@ -49,6 +50,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
     TeamService.revision.addListener(_refresh);
     OrganizationContext.revision.addListener(_refresh);
     TeamService.ensureOwner();
+    if (_localFullAccess) {
+      _contextEmployeeIds = TeamService.all.map((e) => e.id).toSet();
+      _membersLoading = false;
+    }
     _loadContextMembers();
     _activationTicker = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) setState(() {});
@@ -68,31 +73,46 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _loadContextMembers() async {
-    final orgIds = await OrganizationContext.effectiveOrganizationIds();
-    final employeeIds = <String>{};
-    for (final employee in TeamService.all) {
-      if (employee.isOwner) {
-        employeeIds.add(employee.id);
-        continue;
+    try {
+      final orgIds = await OrganizationContext.effectiveOrganizationIds();
+      final employeeIds = <String>{};
+      for (final employee in TeamService.all) {
+        if (employee.isOwner) {
+          employeeIds.add(employee.id);
+          continue;
+        }
+        if (_localFullAccess) {
+          employeeIds.add(employee.id);
+          continue;
+        }
+        final visible = await OrganizationAccessService.visibleOrganizationIds(
+          employeeId: employee.id,
+        );
+        if (visible.intersection(orgIds).isNotEmpty) employeeIds.add(employee.id);
       }
-      final visible = await OrganizationAccessService.visibleOrganizationIds(
-        employeeId: employee.id,
-      );
-      if (visible.intersection(orgIds).isNotEmpty) employeeIds.add(employee.id);
+      final current = TeamService.current;
+      final canManage = current?.isOwner == true ||
+          (current != null &&
+              await OrganizationAccessService.can(
+                OrganizationContext.currentOrganizationId,
+                OrganizationPermissions.manageMembers,
+              ));
+      if (!mounted) return;
+      setState(() {
+        _contextEmployeeIds = employeeIds;
+        _canManageContext = canManage;
+        _membersLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _contextEmployeeIds = _localFullAccess
+            ? TeamService.all.map((e) => e.id).toSet()
+            : const <String>{};
+        _canManageContext = TeamService.isOwnerSession;
+        _membersLoading = false;
+      });
     }
-    final current = TeamService.current;
-    final canManage = current?.isOwner == true ||
-        (current != null &&
-            await OrganizationAccessService.can(
-              OrganizationContext.currentOrganizationId,
-              OrganizationPermissions.manageMembers,
-            ));
-    if (!mounted) return;
-    setState(() {
-      _contextEmployeeIds = employeeIds;
-      _canManageContext = canManage;
-      _membersLoading = false;
-    });
   }
 
   List<EmployeeModel> get _visible {
@@ -441,10 +461,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
                   : people.isEmpty
                       ? _empty()
                       : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                      itemCount: people.length,
-                      itemBuilder: (context, index) => _card(people[index]),
-                    ),
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                          itemCount: people.length,
+                          itemBuilder: (context, index) => _card(people[index]),
+                        ),
             ),
           ],
         ),
