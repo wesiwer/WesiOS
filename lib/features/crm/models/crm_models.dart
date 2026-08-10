@@ -1,7 +1,7 @@
+import '../../organizations/models/organization_model.dart';
+
 enum CrmClientStatus { lead, active, paused, archived }
-
 enum DealStage { newLead, qualification, proposal, negotiation, won, lost }
-
 enum InteractionKind { note, call, email, meeting, message }
 
 class CrmClient {
@@ -20,6 +20,8 @@ class CrmClient {
   final DateTime createdAt;
   final DateTime updatedAt;
   final DateTime? nextContactAt;
+  final String organizationId;
+  final String? ownerEmployeeId;
 
   const CrmClient({
     required this.id,
@@ -37,6 +39,8 @@ class CrmClient {
     required this.createdAt,
     required this.updatedAt,
     this.nextContactAt,
+    this.organizationId = OrganizationModel.wesiBeatsId,
+    this.ownerEmployeeId,
   });
 
   String get displayName => company.trim().isEmpty ? name : '$name · $company';
@@ -66,6 +70,9 @@ class CrmClient {
     DateTime? updatedAt,
     DateTime? nextContactAt,
     bool clearNextContact = false,
+    String? organizationId,
+    String? ownerEmployeeId,
+    bool clearOwnerEmployee = false,
   }) {
     return CrmClient(
       id: id,
@@ -84,6 +91,10 @@ class CrmClient {
       updatedAt: updatedAt ?? this.updatedAt,
       nextContactAt:
           clearNextContact ? null : (nextContactAt ?? this.nextContactAt),
+      organizationId: organizationId ?? this.organizationId,
+      ownerEmployeeId: clearOwnerEmployee
+          ? null
+          : (ownerEmployeeId ?? this.ownerEmployeeId),
     );
   }
 
@@ -103,6 +114,8 @@ class CrmClient {
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
         'nextContactAt': nextContactAt?.toIso8601String(),
+        'organizationId': organizationId,
+        'ownerEmployeeId': ownerEmployeeId,
       };
 
   static CrmClient? tryParse(Map<String, dynamic> json) {
@@ -112,6 +125,8 @@ class CrmClient {
     if (id.isEmpty || name.isEmpty || created == null) return null;
     final statusName = '${json['status'] ?? ''}';
     final status = CrmClientStatus.values.where((e) => e.name == statusName);
+    final employeeRaw = '${json['ownerEmployeeId'] ?? ''}'.trim();
+    final orgRaw = '${json['organizationId'] ?? ''}'.trim();
     return CrmClient(
       id: id,
       name: name,
@@ -128,6 +143,9 @@ class CrmClient {
       createdAt: created,
       updatedAt: DateTime.tryParse('${json['updatedAt'] ?? ''}') ?? created,
       nextContactAt: DateTime.tryParse('${json['nextContactAt'] ?? ''}'),
+      organizationId:
+          orgRaw.isEmpty ? OrganizationModel.wesiBeatsId : orgRaw,
+      ownerEmployeeId: employeeRaw.isEmpty ? null : employeeRaw,
     );
   }
 }
@@ -147,6 +165,8 @@ class CrmDeal {
   final DateTime updatedAt;
   final DateTime? expectedCloseAt;
   final DateTime? closedAt;
+  final String organizationId;
+  final String? responsibleEmployeeId;
 
   const CrmDeal({
     required this.id,
@@ -163,6 +183,8 @@ class CrmDeal {
     required this.updatedAt,
     this.expectedCloseAt,
     this.closedAt,
+    this.organizationId = OrganizationModel.wesiBeatsId,
+    this.responsibleEmployeeId,
   });
 
   bool get isOpen => stage != DealStage.won && stage != DealStage.lost;
@@ -183,6 +205,9 @@ class CrmDeal {
     bool clearExpectedClose = false,
     DateTime? closedAt,
     bool clearClosedAt = false,
+    String? organizationId,
+    String? responsibleEmployeeId,
+    bool clearResponsibleEmployee = false,
   }) {
     return CrmDeal(
       id: id,
@@ -201,6 +226,10 @@ class CrmDeal {
           ? null
           : (expectedCloseAt ?? this.expectedCloseAt),
       closedAt: clearClosedAt ? null : (closedAt ?? this.closedAt),
+      organizationId: organizationId ?? this.organizationId,
+      responsibleEmployeeId: clearResponsibleEmployee
+          ? null
+          : (responsibleEmployeeId ?? this.responsibleEmployeeId),
     );
   }
 
@@ -219,6 +248,8 @@ class CrmDeal {
         'updatedAt': updatedAt.toIso8601String(),
         'expectedCloseAt': expectedCloseAt?.toIso8601String(),
         'closedAt': closedAt?.toIso8601String(),
+        'organizationId': organizationId,
+        'responsibleEmployeeId': responsibleEmployeeId,
       };
 
   static CrmDeal? tryParse(Map<String, dynamic> json) {
@@ -233,11 +264,15 @@ class CrmDeal {
     final stage = DealStage.values.where((e) => e.name == stageName);
     final rawAmount = json['amount'];
     final rawProbability = json['probability'];
+    final orgRaw = '${json['organizationId'] ?? ''}'.trim();
+    final employeeRaw = '${json['responsibleEmployeeId'] ?? ''}'.trim();
     return CrmDeal(
       id: id,
       clientId: clientId,
       title: title,
-      amount: rawAmount is num ? rawAmount.toDouble() : double.tryParse('$rawAmount') ?? 0,
+      amount: rawAmount is num
+          ? rawAmount.toDouble()
+          : double.tryParse('$rawAmount') ?? 0,
       currency: '${json['currency'] ?? 'RUB'}',
       stage: stage.isEmpty ? DealStage.newLead : stage.first,
       probability: rawProbability is num
@@ -250,6 +285,9 @@ class CrmDeal {
       updatedAt: DateTime.tryParse('${json['updatedAt'] ?? ''}') ?? created,
       expectedCloseAt: DateTime.tryParse('${json['expectedCloseAt'] ?? ''}'),
       closedAt: DateTime.tryParse('${json['closedAt'] ?? ''}'),
+      organizationId:
+          orgRaw.isEmpty ? OrganizationModel.wesiBeatsId : orgRaw,
+      responsibleEmployeeId: employeeRaw.isEmpty ? null : employeeRaw,
     );
   }
 }
