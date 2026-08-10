@@ -1,0 +1,5 @@
+exit=1
+product_sha=ca44986cb5b88ed1d2717af6fe230a39fa9c6480
+  error • The type 'AccountKind' is not exhaustively matched by the switch cases since it doesn't match 'AccountKind.reserve' • lib/features/treasury/widgets/accounts_bar.dart:67:39 • non_exhaustive_switch_expression
+  error • The type 'AccountKind' is not exhaustively matched by the switch cases since it doesn't match 'AccountKind.reserve' • lib/features/treasury/widgets/accounts_bar.dart:75:42 • non_exhaustive_switch_expression
+  error • The type 'AccountKind' is not exhaustively matched by the switch cases since it doesn't match 'AccountKind.reserve' • lib/features/treasury/widgets/accounts_bar.dart:437:25 • non_exhaustive_switch_expression
