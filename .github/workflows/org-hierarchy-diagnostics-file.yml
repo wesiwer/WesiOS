@@ -1,0 +1,53 @@
+name: Org hierarchy diagnostics file
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  diagnostics:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze and write diagnostics file
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos > analyze.log 2>&1
+          code=$?
+          grep -E '(^|[[:space:]])error[[:space:]]+[•-]|[•][[:space:]]error[[:space:]][•]|error - ' analyze.log | head -80 > errors.txt || true
+          if [ ! -s errors.txt ]; then grep -Ei 'error' analyze.log | head -80 > errors.txt || true; fi
+          {
+            echo "exit=$code"
+            echo "product_sha=$(git rev-parse HEAD)"
+            cat errors.txt
+          } > diagnostic.txt
+          content=$(base64 -w0 diagnostic.txt)
+          path='diagnostics/org-hierarchy-analyze.txt'
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/contents/$path?ref=agent/org-hierarchy-verify-1" --jq '.sha' 2>/dev/null || true)
+          if [ -n "$sha" ]; then
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$path" \
+              -f message='ci: update org analyzer diagnostics' \
+              -f content="$content" \
+              -f branch='agent/org-hierarchy-verify-1' \
+              -f sha="$sha" >/dev/null
+          else
+            gh api --method PUT "repos/$GITHUB_REPOSITORY/contents/$path" \
+              -f message='ci: add org analyzer diagnostics' \
+              -f content="$content" \
+              -f branch='agent/org-hierarchy-verify-1' >/dev/null
+          fi
+          exit 0
