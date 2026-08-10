@@ -5,6 +5,10 @@ on:
     branches:
       - agent/org-hierarchy-v1
 
+concurrency:
+  group: org-remediation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
