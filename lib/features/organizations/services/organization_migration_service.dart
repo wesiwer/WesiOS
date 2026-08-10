@@ -24,6 +24,10 @@ class OrganizationMigrationService {
   /// Existing WesiOS data predates the organization tree and belongs to the
   /// root operating contour, Wesi Inc. Wesi Beats is created as an empty child
   /// and receives data only when the user explicitly creates/moves data there.
+  ///
+  /// Legacy organization grants are created only during this migration. They
+  /// must never be recreated on every launch because an explicit revoke is a
+  /// durable security decision.
   static Future<void> runV1() async {
     await OrganizationService.ensureBaseline(createdBy: 'migration:v1');
     final log = await Hive.openBox<dynamic>(logBoxName);
@@ -100,6 +104,11 @@ class OrganizationMigrationService {
         crmDealsUpdated = dealsResult.changed;
       }
 
+      // Only users that already existed when organization hierarchy is first
+      // introduced receive a backward-compatible Wesi Inc grant. New employees
+      // are assigned explicitly by the organization-aware Contacts flow.
+      await OrganizationAccessService.ensureLegacyGrants();
+
       await log.put(migrationKey, <String, dynamic>{
         'completed': true,
         'completedAt': DateTime.now().toIso8601String(),
@@ -111,12 +120,10 @@ class OrganizationMigrationService {
         'tasksUpdated': tasksUpdated,
         'crmClientsUpdated': crmClientsUpdated,
         'crmDealsUpdated': crmDealsUpdated,
+        'legacyGrantsCreatedOnce': true,
       });
     }
 
-    // Safe every launch: employees created after the first migration still
-    // need an explicit default grant.
-    await OrganizationAccessService.ensureLegacyGrants();
     await OrganizationContext.initialize();
   }
 
