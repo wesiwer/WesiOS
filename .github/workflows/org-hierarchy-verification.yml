@@ -25,7 +25,23 @@ jobs:
       - name: Analyze
         run: flutter analyze --no-fatal-infos
       - name: Full test suite
-        run: flutter test
+        id: full_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee full-test.log
+      - name: Print compact full-suite failure summary
+        if: steps.full_tests.outcome != 'success'
+        shell: bash
+        run: |
+          echo '--- failure markers ---'
+          grep -E -B3 -A8 'Some tests failed|\[E\]|Expected:|Actual:|TestFailure|Exception|Error:' full-test.log | tail -n 500 || true
+          echo '--- failing test file markers ---'
+          grep -E 'test/.+\.dart' full-test.log | tail -n 250 || true
+      - name: Enforce full suite result
+        if: steps.full_tests.outcome != 'success'
+        run: exit 1
       - name: Organization hierarchy v1.1 contracts
         run: flutter test test/organization_hierarchy_test.dart test/organization_migration_context_test.dart test/inter_org_transfer_test.dart test/employee_finance_org_test.dart test/organization_finance_access_test.dart test/employee_finance_dynamics_test.dart test/organization_sync_integrity_test.dart test/organization_tz_contract_test.dart test/organization_ui_contract_test.dart
       - name: Legacy Treasury and Horizon contracts
