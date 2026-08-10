@@ -32,7 +32,7 @@ class TransactionModel {
   @HiveField(11)
   final String? accountId;
 
-  /// Null only for legacy rows. Migration backfills Wesi Beats.
+  /// Null only for legacy rows. Migration backfills Wesi Inc.
   @HiveField(12)
   final String? organizationId;
   @HiveField(13)
@@ -80,7 +80,7 @@ class TransactionModel {
   });
 
   String get effectiveOrganizationId =>
-      organizationId ?? OrganizationModel.wesiBeatsId;
+      organizationId ?? OrganizationModel.rootId;
 
   String get effectiveAccountId =>
       accountId ?? AccountModel.mainIdFor(effectiveOrganizationId);
