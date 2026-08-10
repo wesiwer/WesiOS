@@ -91,15 +91,32 @@ void main() {
     expect(tx.organizationBaseCurrency, 'EUR');
     expect(tx.fxRateToReporting, 100);
 
-    final base = await AccountService.baseBalancesByOrganization(
+    var base = await AccountService.baseBalancesByOrganization(
       {studio.id},
       [tx],
     );
     expect(base[studio.id], closeTo(100, 0.000001));
-    final reporting = await AccountService.reportingBalanceForOrganizations(
+    var reporting = await AccountService.reportingBalanceForOrganizations(
       {studio.id},
       [tx],
     );
+    expect(reporting, closeTo(10000, 0.000001));
+
+    // A later market-rate update must not rewrite historical accounting.
+    CurrencyService.setRates({'eur': 140.0, 'usd': 120.0});
+    final persisted = Hive.box<TransactionModel>('wesios_treasury').get('eur-income')!;
+    expect(persisted.fxRateToReporting, 100);
+    expect(persisted.amount, 10000);
+    expect(persisted.effectiveOrganizationBaseAmount, 100);
+    base = await AccountService.baseBalancesByOrganization(
+      {studio.id},
+      [persisted],
+    );
+    reporting = await AccountService.reportingBalanceForOrganizations(
+      {studio.id},
+      [persisted],
+    );
+    expect(base[studio.id], closeTo(100, 0.000001));
     expect(reporting, closeTo(10000, 0.000001));
   });
 
