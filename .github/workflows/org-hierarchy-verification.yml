@@ -1,0 +1,96 @@
+name: Organization hierarchy verification
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  analysis-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0af443c5c099555195ba747e8ed7b7653fefdc52
+      - name: Verify exact product SHA
+        run: test "$(git rev-parse HEAD)" = "0af443c5c099555195ba747e8ed7b7653fefdc52"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Full test suite
+        id: full_tests
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -o pipefail
+          flutter test 2>&1 | tee full-test.log
+      - name: Build failure summary
+        if: steps.full_tests.outcome != 'success'
+        shell: bash
+        run: |
+          {
+            echo '=== FAILURE MARKERS ==='
+            grep -E -B4 -A10 'Some tests failed|\[E\]|Expected:|Actual:|TestFailure|Exception|Error:' full-test.log | tail -n 1000 || true
+            echo '=== TEST FILE MARKERS ==='
+            grep -E 'test/.+\.dart' full-test.log | tail -n 500 || true
+          } > failure-summary.txt
+          cat failure-summary.txt
+      - name: Upload failure summary
+        if: steps.full_tests.outcome != 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: org-hierarchy-failure-summary
+          path: |
+            failure-summary.txt
+            full-test.log
+          retention-days: 2
+      - name: Enforce full suite result
+        if: steps.full_tests.outcome != 'success'
+        run: exit 1
+      - name: Organization hierarchy v1.1 contracts
+        run: flutter test test/organization_hierarchy_test.dart test/organization_migration_context_test.dart test/inter_org_transfer_test.dart test/employee_finance_org_test.dart test/organization_finance_access_test.dart test/employee_finance_dynamics_test.dart test/organization_sync_integrity_test.dart test/organization_tz_contract_test.dart test/organization_ui_contract_test.dart test/organization_access_revocation_test.dart test/contacts_screen_layout_test.dart
+      - name: Legacy Treasury and Horizon contracts
+        run: flutter test test/treasury_engines_test.dart test/recurring_payment_automation_test.dart test/horizon_legacy_income_truth_test.dart test/horizon_top_tier_test.dart test/horizon_product_integration_test.dart test/horizon_completion_test.dart
+
+  android-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0af443c5c099555195ba747e8ed7b7653fefdc52
+      - name: Verify exact product SHA
+        run: test "$(git rev-parse HEAD)" = "0af443c5c099555195ba747e8ed7b7653fefdc52"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --debug
+
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0af443c5c099555195ba747e8ed7b7653fefdc52
+      - name: Verify exact product SHA
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne '0af443c5c099555195ba747e8ed7b7653fefdc52') { throw 'Unexpected product SHA' }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
