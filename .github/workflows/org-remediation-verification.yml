@@ -1,0 +1,68 @@
+name: Organization remediation verification
+
+on:
+  pull_request:
+    branches:
+      - agent/org-hierarchy-v1
+
+permissions:
+  contents: read
+
+jobs:
+  analysis-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Full test suite
+        run: flutter test
+      - name: Remediation security and integrity suite
+        run: >-
+          flutter test
+          test/organization_privilege_escalation_test.dart
+          test/organization_domain_permission_test.dart
+          test/organization_scope_isolation_test.dart
+          test/organization_finance_negative_test.dart
+          test/inter_org_fault_injection_test.dart
+          test/multi_currency_org_test.dart
+          test/background_org_processing_test.dart
+          test/sync_corruption_guard_test.dart
+          test/org_physical_ownership_test.dart
+          test/organization_access_revocation_test.dart
+          test/organization_finance_access_test.dart
+          test/organization_sync_integrity_test.dart
+          test/inter_org_transfer_test.dart
+
+  android-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --debug
+
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
