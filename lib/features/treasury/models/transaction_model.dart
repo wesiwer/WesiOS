@@ -11,6 +11,11 @@ class TransactionModel {
   final String id;
   @HiveField(1)
   final String title;
+
+  /// Canonical Wesi reporting amount. Org hierarchy v1 keeps RUB as the
+  /// reporting currency because all pre-existing WesiOS ledger history was
+  /// already stored as RUB-equivalent. Mixed-currency arithmetic therefore
+  /// always aggregates this normalized amount, never raw local amounts.
   @HiveField(2)
   final double amount;
   @HiveField(3)
@@ -32,7 +37,8 @@ class TransactionModel {
   @HiveField(11)
   final String? accountId;
 
-  /// Null only for legacy rows. Migration backfills Wesi Inc.
+  /// Null only for legacy rows. Migration/service writes physically backfill
+  /// Wesi Inc for all new/updated records.
   @HiveField(12)
   final String? organizationId;
   @HiveField(13)
@@ -53,6 +59,26 @@ class TransactionModel {
   final String? interOrgTransferId;
   @HiveField(21)
   final String? createdByEmployeeId;
+
+  /// Amount as entered/received in [originalCurrency].
+  @HiveField(22)
+  final double? originalAmount;
+  @HiveField(23)
+  final String originalCurrency;
+
+  /// Amount normalized into the owning Organization.baseCurrency.
+  @HiveField(24)
+  final double? organizationBaseAmount;
+  @HiveField(25)
+  final String organizationBaseCurrency;
+
+  /// RUB per one unit of [originalCurrency] used when [amount] was frozen.
+  @HiveField(26)
+  final double fxRateToReporting;
+  @HiveField(27)
+  final DateTime? fxRateAt;
+  @HiveField(28)
+  final String fxSource;
 
   const TransactionModel({
     required this.id,
@@ -77,6 +103,13 @@ class TransactionModel {
     this.ownerEmployeeId,
     this.interOrgTransferId,
     this.createdByEmployeeId,
+    this.originalAmount,
+    this.originalCurrency = 'RUB',
+    this.organizationBaseAmount,
+    this.organizationBaseCurrency = 'RUB',
+    this.fxRateToReporting = 1.0,
+    this.fxRateAt,
+    this.fxSource = 'legacy',
   });
 
   String get effectiveOrganizationId =>
@@ -84,6 +117,10 @@ class TransactionModel {
 
   String get effectiveAccountId =>
       accountId ?? AccountModel.mainIdFor(effectiveOrganizationId);
+
+  double get effectiveOriginalAmount => originalAmount ?? amount;
+  double get effectiveOrganizationBaseAmount =>
+      organizationBaseAmount ?? amount;
 
   TransactionModel copyWith({
     String? id,
@@ -117,6 +154,13 @@ class TransactionModel {
     String? interOrgTransferId,
     bool clearInterOrgTransferId = false,
     String? createdByEmployeeId,
+    double? originalAmount,
+    String? originalCurrency,
+    double? organizationBaseAmount,
+    String? organizationBaseCurrency,
+    double? fxRateToReporting,
+    DateTime? fxRateAt,
+    String? fxSource,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -151,6 +195,17 @@ class TransactionModel {
           : (interOrgTransferId ?? this.interOrgTransferId),
       createdByEmployeeId:
           createdByEmployeeId ?? this.createdByEmployeeId,
+      originalAmount: originalAmount ?? this.originalAmount,
+      originalCurrency:
+          (originalCurrency ?? this.originalCurrency).toUpperCase(),
+      organizationBaseAmount:
+          organizationBaseAmount ?? this.organizationBaseAmount,
+      organizationBaseCurrency:
+          (organizationBaseCurrency ?? this.organizationBaseCurrency)
+              .toUpperCase(),
+      fxRateToReporting: fxRateToReporting ?? this.fxRateToReporting,
+      fxRateAt: fxRateAt ?? this.fxRateAt,
+      fxSource: fxSource ?? this.fxSource,
     );
   }
 
@@ -177,6 +232,13 @@ class TransactionModel {
         'ownerEmployeeId': ownerEmployeeId,
         'interOrgTransferId': interOrgTransferId,
         'createdByEmployeeId': createdByEmployeeId,
+        'originalAmount': originalAmount,
+        'originalCurrency': originalCurrency,
+        'organizationBaseAmount': organizationBaseAmount,
+        'organizationBaseCurrency': organizationBaseCurrency,
+        'fxRateToReporting': fxRateToReporting,
+        'fxRateAt': fxRateAt?.toIso8601String(),
+        'fxSource': fxSource,
       };
 }
 
