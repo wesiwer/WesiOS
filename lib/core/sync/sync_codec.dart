@@ -298,6 +298,23 @@ class TasksSync extends SyncCollection<TaskModel> {
     final createdAt = _date(fields['createdAt']);
     if (id == null || createdAt == null) return null;
     final raw = fields['subtasks'];
+    final tags = _strings(fields['tags']);
+    String? ownershipTag(String prefix) {
+      for (final tag in tags) {
+        if (tag.startsWith(prefix) && tag.length > prefix.length) {
+          return tag.substring(prefix.length);
+        }
+      }
+      return null;
+    }
+    final assignee = _strOrNull(fields['assignee']);
+    final organizationId = _strOrNull(fields['organizationId']) ??
+        ownershipTag(TaskModel.organizationTagPrefix) ??
+        OrganizationModel.rootId;
+    final responsibleEmployeeId =
+        _strOrNull(fields['responsibleEmployeeId']) ??
+        ownershipTag(TaskModel.employeeTagPrefix) ??
+        assignee;
     return TaskModel(
       id: id,
       title: _str(fields['title']),
@@ -310,7 +327,7 @@ class TasksSync extends SyncCollection<TaskModel> {
       ),
       createdAt: createdAt,
       dueDate: _date(fields['dueDate']),
-      assignee: _strOrNull(fields['assignee']),
+      assignee: assignee,
       subtasks: raw is! List
           ? const []
           : [
@@ -318,10 +335,10 @@ class TasksSync extends SyncCollection<TaskModel> {
                 if (s is Map)
                   SubTask(title: _str(s['title']), done: s['done'] == true),
             ],
-      tags: _strings(fields['tags']),
+      tags: tags,
       order: _int(fields['order']),
-      organizationId: _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId,
-      responsibleEmployeeId: _strOrNull(fields['responsibleEmployeeId']),
+      organizationId: organizationId,
+      responsibleEmployeeId: responsibleEmployeeId,
     );
   }
 }

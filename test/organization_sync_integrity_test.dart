@@ -4,7 +4,7 @@ import 'package:wesios/features/organizations/models/organization_model.dart';
 import 'package:wesios/features/tasks/models/task_model.dart';
 
 void main() {
-  test('legacy account and transaction sync records become physical Wesi Beats records', () {
+  test('legacy account and transaction sync records become physical Wesi Inc records', () {
     final account = AccountsSync().decode({
       'id': 'legacy-main',
       'name': 'Legacy',
@@ -16,7 +16,7 @@ void main() {
       'currency': 'RUB',
     });
     expect(account, isNotNull);
-    expect(account!.organizationId, OrganizationModel.wesiBeatsId);
+    expect(account!.organizationId, OrganizationModel.rootId);
 
     final tx = TransactionsSync().decode({
       'id': 'legacy-tx',
@@ -26,7 +26,7 @@ void main() {
       'date': DateTime(2026, 1, 2).toIso8601String(),
     });
     expect(tx, isNotNull);
-    expect(tx!.organizationId, OrganizationModel.wesiBeatsId);
+    expect(tx!.organizationId, OrganizationModel.rootId);
   });
 
   test('task sync recovers stable ownership from compatibility tags', () {
