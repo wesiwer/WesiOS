@@ -100,7 +100,7 @@ class TaskModel {
 
   String get effectiveOrganizationId => organizationId ??
       _machineTagValue(organizationTagPrefix) ??
-      OrganizationModel.wesiBeatsId;
+      OrganizationModel.rootId;
 
   String? get effectiveResponsibleEmployeeId =>
       responsibleEmployeeId ??
