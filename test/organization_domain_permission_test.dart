@@ -151,6 +151,84 @@ void main() {
     expect(persisted.effectiveAccountId, rootAccount.id);
   });
 
+  test('account with linked transactions cannot be moved across organizations', () async {
+    final child = await OrganizationService.create(
+      name: 'Studio B',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final account = await AccountService.create(
+      name: 'Root project account',
+      organizationId: OrganizationModel.rootId,
+    );
+    await Hive.box<TransactionModel>('wesios_treasury').put(
+      'account-linked-tx',
+      TransactionModel(
+        id: 'account-linked-tx',
+        title: 'Linked money',
+        amount: 250,
+        type: TransactionType.income,
+        date: DateTime(2026, 8, 1),
+        accountId: account.id,
+        organizationId: OrganizationModel.rootId,
+      ),
+    );
+
+    final employee = await addEmployee('account-manager');
+    for (final orgId in [OrganizationModel.rootId, child.id]) {
+      await OrganizationAccessService.grant(
+        employeeId: employee.id,
+        organizationId: orgId,
+        includeSubtree: false,
+        permissions: const [
+          OrganizationPermissions.view,
+          OrganizationPermissions.viewFinance,
+          OrganizationPermissions.manageAccounts,
+        ],
+        enforceActor: false,
+      );
+    }
+    await signIn(employee.id);
+
+    await expectLater(
+      AccountService.save(account.copyWith(organizationId: child.id)),
+      throwsStateError,
+    );
+    final persisted = await AccountService.byId(account.id);
+    expect(persisted!.effectiveOrganizationId, OrganizationModel.rootId);
+  });
+
+  test('account delete recomputes linked operations and archives instead of orphaning them',
+      () async {
+    final account = await AccountService.create(
+      name: 'History account',
+      organizationId: OrganizationModel.rootId,
+    );
+    await Hive.box<TransactionModel>('wesios_treasury').put(
+      'history-account-tx',
+      TransactionModel(
+        id: 'history-account-tx',
+        title: 'History',
+        amount: 100,
+        type: TransactionType.expense,
+        date: DateTime(2026, 8, 1),
+        accountId: account.id,
+        organizationId: OrganizationModel.rootId,
+      ),
+    );
+
+    expect(await AccountService.delete(account.id, hasOperations: false), isTrue);
+    final persisted = await AccountService.byId(account.id);
+    expect(persisted, isNotNull);
+    expect(persisted!.archived, isTrue);
+    expect(
+      Hive.box<TransactionModel>('wesios_treasury')
+          .get('history-account-tx')!
+          .effectiveAccountId,
+      account.id,
+    );
+  });
+
   test('create_transactions alone cannot create recurring schedule', () async {
     final employee = await addEmployee('cashier');
     await OrganizationAccessService.grant(
