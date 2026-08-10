@@ -1,0 +1,56 @@
+name: Organization hierarchy gate reporter
+
+on:
+  pull_request:
+
+permissions:
+  actions: read
+  pull-requests: write
+  contents: read
+
+jobs:
+  report:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Wait for exact gate and report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gate=''
+          for i in $(seq 1 60); do
+            gate=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs?event=pull_request&branch=$HEAD_BRANCH&per_page=30" \
+              --jq '[.workflow_runs[] | select(.name == "Organization hierarchy exact gate")] | sort_by(.created_at) | last | .id // empty')
+            [ -n "$gate" ] && break
+            sleep 5
+          done
+          [ -n "$gate" ] || exit 0
+
+          for i in $(seq 1 300); do
+            status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$gate" --jq '.status')
+            [ "$status" = completed ] && break
+            sleep 15
+          done
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$gate" --jq '.conclusion // "unknown"')
+          jobs=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$gate/jobs?per_page=100")
+          analysis=$(printf '%s' "$jobs" | jq -r '[.jobs[] | select(.name == "analysis-tests")][0].conclusion // "missing"')
+          android=$(printf '%s' "$jobs" | jq -r '[.jobs[] | select(.name == "android-build")][0].conclusion // "missing"')
+          windows=$(printf '%s' "$jobs" | jq -r '[.jobs[] | select(.name == "windows-build")][0].conclusion // "missing"')
+          body=$(cat <<EOF
+          READ-ONLY VERIFICATION — DO NOT MERGE.
+
+          Exact product base SHA: \`$BASE_SHA\`
+          Gate run: \`$gate\`
+          Overall: **$conclusion**
+
+          - analyze + full tests + org contracts + legacy Horizon/Treasury: **$analysis**
+          - Android verification build: **$android**
+          - Windows release build: **$windows**
+          EOF
+          )
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --body "$body"
