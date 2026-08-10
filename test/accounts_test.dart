@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:wesios/features/organizations/models/organization_access_grant.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
 import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 import 'package:wesios/features/treasury/services/account_service.dart';
@@ -17,6 +19,9 @@ void main() {
     Hive.registerAdapter(RecurringPeriodAdapter());
     Hive.registerAdapter(AccountKindAdapter());
     Hive.registerAdapter(AccountModelAdapter());
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
+    Hive.registerAdapter(OrganizationAccessGrantAdapter());
   });
 
   tearDownAll(() async {

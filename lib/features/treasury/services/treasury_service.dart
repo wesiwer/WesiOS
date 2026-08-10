@@ -284,7 +284,8 @@ class TreasuryService {
             createdByEmployeeId: tx.createdByEmployeeId,
           ));
         }
-        // Recurring income remains an expectation until a real receipt exists.
+        // Income is NOT auto-posted as actual cash. Recurring income remains
+        // an expectation until a real receipt exists.
         anchor = anchor.copyWith(date: due, updatedAt: DateTime.now());
         guard++;
       }
