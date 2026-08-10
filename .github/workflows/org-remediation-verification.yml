@@ -9,9 +9,9 @@ permissions:
   contents: read
 
 jobs:
-  analysis-tests:
+  analysis:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
@@ -22,14 +22,26 @@ jobs:
       - run: flutter pub get
       - name: Analyze
         run: flutter analyze --no-fatal-infos
-      - name: Full test suite
-        run: flutter test
-      - name: Remediation security and integrity suite
+
+  remediation-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Security, scope, money, sync and fault-injection suite
         run: >-
           flutter test
           test/organization_privilege_escalation_test.dart
           test/organization_domain_permission_test.dart
+          test/organization_service_authorization_test.dart
           test/organization_scope_isolation_test.dart
+          test/task_crm_organization_scope_test.dart
           test/organization_finance_negative_test.dart
           test/inter_org_fault_injection_test.dart
           test/multi_currency_org_test.dart
@@ -40,6 +52,19 @@ jobs:
           test/organization_finance_access_test.dart
           test/organization_sync_integrity_test.dart
           test/inter_org_transfer_test.dart
+
+  full-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
 
   android-build:
     runs-on: ubuntu-24.04
