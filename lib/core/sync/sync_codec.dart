@@ -365,9 +365,52 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
   }
 
   bool _actorMayHaveIssued(OrganizationAccessGrant incoming) {
-    if (incoming.createdBy == 'sync' || incoming.createdBy == 'migration') {
+    // Transport metadata is never a trusted authorization principal.
+    if (incoming.createdBy == 'untrusted-sync' || incoming.createdBy == 'sync') {
+      return false;
+    }
+
+    // Legacy migration grants are deterministic. Accept them only in the exact
+    // shape that OrganizationAccessService.ensureLegacyGrants() could create
+    // from the target employee's already-synchronized legacy permissions.
+    if (incoming.createdBy == 'migration/internal' ||
+        incoming.createdBy == 'migration') {
+      if (incoming.organizationId != OrganizationModel.rootId) return false;
+      final target = Hive.box<EmployeeModel>(TeamService.boxName)
+          .get(incoming.employeeId);
+      if (target == null) return false;
+      if (target.isOwner) {
+        final incomingSet = incoming.permissions.toSet();
+        final allSet = OrganizationPermissions.all.toSet();
+        return incoming.includeSubtree &&
+            incoming.canViewTeamFinance &&
+            incoming.canViewSelfFinance &&
+            incomingSet.length == allSet.length &&
+            incomingSet.containsAll(allSet);
+      }
+      if (incoming.includeSubtree || !incoming.canViewSelfFinance) return false;
+      final financeVisible = target.permissions.allows(TeamModules.treasury) ||
+          target.permissions.allows(TeamModules.forecast) ||
+          target.permissions.allows(TeamModules.analytics);
+      final expected = financeVisible
+          ? <String>{
+              OrganizationPermissions.view,
+              OrganizationPermissions.viewFinance,
+              OrganizationPermissions.createTransactions,
+              OrganizationPermissions.editTransactions,
+              OrganizationPermissions.manageAccounts,
+              OrganizationPermissions.manageRecurring,
+              OrganizationPermissions.viewForecast,
+            }
+          : <String>{OrganizationPermissions.view};
+      final incomingSet = incoming.permissions.toSet();
+      if (incomingSet.length != expected.length ||
+          !incomingSet.containsAll(expected)) return false;
+      if (incoming.canViewTeamFinance !=
+          (financeVisible && target.permissions.canSeeOthersStats)) return false;
       return true;
     }
+
     if (!_employeeExists(incoming.createdBy)) return false;
     final actor = Hive.box<EmployeeModel>(TeamService.boxName).get(incoming.createdBy);
     if (actor?.isOwner == true) return true;
