@@ -6,6 +6,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/services/currency_service.dart';
 import '../../organizations/models/organization_access_grant.dart';
+import '../../organizations/models/organization_model.dart';
 import '../../organizations/services/organization_access_service.dart';
 import '../../organizations/services/organization_context.dart';
 import '../../organizations/services/organization_service.dart';
