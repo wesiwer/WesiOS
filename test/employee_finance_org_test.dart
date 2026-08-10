@@ -23,7 +23,7 @@ void main() {
         id: id,
         login: id,
         fullName: id,
-        position: owner ? 'Owner' : 'Developer',
+        position: owner ? 'CEO' : 'Developer',
         permissions: const TeamPermissions(),
         createdAt: DateTime(2026, 1, 1),
         isOwner: owner,
@@ -71,7 +71,7 @@ void main() {
     if (await temp.exists()) await temp.delete(recursive: true);
   });
 
-  test('ordinary employee sees only own finance and cannot open team breakdown', () async {
+  test('employee can see self plus allowed org aggregate without seeing coworker rows', () async {
     final dev = employee('dev-a');
     final other = employee('dev-b');
     await Hive.box<EmployeeModel>(TeamService.boxName).putAll({
@@ -82,10 +82,11 @@ void main() {
 
     await OrganizationAccessService.grant(
       employeeId: dev.id,
-      organizationId: OrganizationModel.wesiBeatsId,
+      organizationId: OrganizationModel.rootId,
       includeSubtree: false,
       permissions: const [
         OrganizationPermissions.view,
+        OrganizationPermissions.viewFinance,
         OrganizationPermissions.createTransactions,
       ],
       canViewSelfFinance: true,
@@ -94,7 +95,7 @@ void main() {
     );
     await OrganizationAccessService.grant(
       employeeId: other.id,
-      organizationId: OrganizationModel.wesiBeatsId,
+      organizationId: OrganizationModel.rootId,
       includeSubtree: false,
       permissions: const [OrganizationPermissions.view],
       canViewSelfFinance: true,
@@ -102,7 +103,7 @@ void main() {
       enforceActor: false,
     );
     await OrganizationContext.initialize();
-    await OrganizationContext.selectOrganization(OrganizationModel.wesiBeatsId);
+    await OrganizationContext.selectOrganization(OrganizationModel.rootId);
     await OrganizationContext.setScope(OrganizationScope.only);
 
     final treasury = TreasuryService();
@@ -112,10 +113,9 @@ void main() {
       amount: 1000,
       type: TransactionType.income,
       date: DateTime.now(),
-      organizationId: OrganizationModel.wesiBeatsId,
+      organizationId: OrganizationModel.rootId,
       ownerEmployeeId: dev.id,
     ));
-    // Direct raw fixture represents another employee's existing finance.
     await Hive.box<TransactionModel>('wesios_treasury').put(
       'other',
       TransactionModel(
@@ -124,7 +124,7 @@ void main() {
         amount: 9000,
         type: TransactionType.income,
         date: DateTime.now(),
-        organizationId: OrganizationModel.wesiBeatsId,
+        organizationId: OrganizationModel.rootId,
         ownerEmployeeId: other.id,
       ),
     );
@@ -133,13 +133,20 @@ void main() {
     expect(mine.contribution, 1000);
     expect(mine.net, 1000);
 
-    final team = await EmployeeFinanceService.teamBreakdown(
-      organizationId: OrganizationModel.wesiBeatsId,
+    final org = await EmployeeFinanceService.organizationFinance(
+      organizationId: OrganizationModel.rootId,
     );
-    expect(team, isEmpty);
+    expect(org.income, 10000);
+    expect(org.net, 10000);
+
+    final team = await EmployeeFinanceService.teamBreakdown(
+      organizationId: OrganizationModel.rootId,
+    );
+    expect(team, isEmpty,
+        reason: 'view_finance must not reveal coworker attribution');
   });
 
-  test('root owner can see team breakdown but self view still filters by ownerEmployeeId', () async {
+  test('CEO keeps personal self view while also seeing root organization and team', () async {
     final owner = employee('owner', owner: true);
     final dev = employee('dev-a');
     await Hive.box<EmployeeModel>(TeamService.boxName).putAll({
@@ -149,17 +156,17 @@ void main() {
     await Hive.box('wesios_settings').put('team_current_employee', owner.id);
     await OrganizationAccessService.ensureLegacyGrants();
     await OrganizationContext.initialize();
-    await OrganizationContext.selectOrganization(OrganizationModel.wesiBeatsId);
+    await OrganizationContext.selectOrganization(OrganizationModel.rootId);
     await OrganizationContext.setScope(OrganizationScope.only);
 
     await Hive.box<TransactionModel>('wesios_treasury').putAll({
       'owner-income': TransactionModel(
         id: 'owner-income',
-        title: 'Owner contribution',
+        title: 'CEO contribution',
         amount: 2000,
         type: TransactionType.income,
         date: DateTime.now(),
-        organizationId: OrganizationModel.wesiBeatsId,
+        organizationId: OrganizationModel.rootId,
         ownerEmployeeId: owner.id,
       ),
       'dev-income': TransactionModel(
@@ -168,21 +175,88 @@ void main() {
         amount: 5000,
         type: TransactionType.income,
         date: DateTime.now(),
-        organizationId: OrganizationModel.wesiBeatsId,
+        organizationId: OrganizationModel.rootId,
         ownerEmployeeId: dev.id,
       ),
     });
 
     final self = await EmployeeFinanceService.self();
-    expect(self.contribution, 2000);
+    expect(self.contribution, 2000,
+        reason: 'CEO management access must not replace personal finance');
+
+    final org = await EmployeeFinanceService.organizationFinance(
+      organizationId: OrganizationModel.rootId,
+    );
+    expect(org.income, 7000);
 
     final team = await EmployeeFinanceService.teamBreakdown(
-      organizationId: OrganizationModel.wesiBeatsId,
+      organizationId: OrganizationModel.rootId,
     );
     expect(team.map((r) => r.employee.id).toSet(), containsAll([owner.id, dev.id]));
     expect(
       team.firstWhere((r) => r.employee.id == dev.id).metrics.contribution,
       5000,
     );
+  });
+
+  test('subtree finance is additive to self and requires explicit subtree grant', () async {
+    final lead = employee('it-lead');
+    await Hive.box<EmployeeModel>(TeamService.boxName).put(lead.id, lead);
+    await Hive.box('wesios_settings').put('team_current_employee', lead.id);
+
+    final it = await OrganizationService.create(
+      name: 'IT',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'test',
+    );
+    final studio = await OrganizationService.create(
+      name: 'Studio A',
+      parentId: it.id,
+      createdBy: 'test',
+    );
+    await OrganizationAccessService.grant(
+      employeeId: lead.id,
+      organizationId: it.id,
+      includeSubtree: true,
+      permissions: const [
+        OrganizationPermissions.view,
+        OrganizationPermissions.viewFinance,
+      ],
+      canViewSelfFinance: true,
+      canViewTeamFinance: false,
+      enforceActor: false,
+    );
+    await OrganizationContext.initialize();
+    await OrganizationContext.selectOrganization(it.id);
+    await OrganizationContext.setScope(OrganizationScope.subtree);
+
+    await Hive.box<TransactionModel>('wesios_treasury').putAll({
+      'lead-self': TransactionModel(
+        id: 'lead-self',
+        title: 'Lead contribution',
+        amount: 100,
+        type: TransactionType.income,
+        date: DateTime.now(),
+        organizationId: it.id,
+        ownerEmployeeId: lead.id,
+      ),
+      'studio-income': TransactionModel(
+        id: 'studio-income',
+        title: 'Studio revenue',
+        amount: 900,
+        type: TransactionType.income,
+        date: DateTime.now(),
+        organizationId: studio.id,
+      ),
+    });
+
+    final self = await EmployeeFinanceService.self();
+    expect(self.contribution, 100);
+    final branch = await EmployeeFinanceService.organizationFinance(
+      organizationId: it.id,
+      view: EmployeeFinanceView.subtree,
+    );
+    expect(branch.income, 1000);
+    expect(await OrganizationAccessService.canUseSubtreeFinance(it.id), isTrue);
   });
 }
