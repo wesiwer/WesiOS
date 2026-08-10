@@ -1,8 +1,9 @@
 import 'package:hive/hive.dart';
 
+import '../../organizations/models/organization_model.dart';
+
 part 'task_model.g.dart';
 
-/// Колонка канбан-доски.
 @HiveType(typeId: 10)
 enum TaskStatus {
   @HiveField(0)
@@ -15,7 +16,6 @@ enum TaskStatus {
   done,
 }
 
-/// Приоритет задачи.
 @HiveType(typeId: 11)
 enum TaskPriority {
   @HiveField(0)
@@ -28,12 +28,10 @@ enum TaskPriority {
   urgent,
 }
 
-/// Пункт чек-листа внутри задачи.
 @HiveType(typeId: 12)
 class SubTask {
   @HiveField(0)
   final String title;
-
   @HiveField(1)
   final bool done;
 
@@ -47,38 +45,35 @@ class SubTask {
 class TaskModel {
   @HiveField(0)
   final String id;
-
   @HiveField(1)
   final String title;
-
   @HiveField(2)
   final String? description;
-
   @HiveField(3)
   final TaskStatus status;
-
   @HiveField(4)
   final TaskPriority priority;
-
   @HiveField(5)
   final DateTime createdAt;
-
-  /// Срок. null — задача без дедлайна.
   @HiveField(6)
   final DateTime? dueDate;
-
   @HiveField(7)
   final String? assignee;
-
   @HiveField(8)
   final List<SubTask> subtasks;
-
   @HiveField(9)
   final List<String> tags;
-
-  /// Порядок внутри колонки — чтобы перетаскивание сохранялось.
   @HiveField(10)
   final int order;
+
+  /// Null only for tasks created before organization hierarchy v1.
+  @HiveField(11)
+  final String? organizationId;
+
+  /// Stable employee id used by finance/Horizon. Legacy free-form assignee is
+  /// retained independently so old tasks are still readable.
+  @HiveField(12)
+  final String? responsibleEmployeeId;
 
   const TaskModel({
     required this.id,
@@ -92,10 +87,13 @@ class TaskModel {
     this.subtasks = const [],
     this.tags = const [],
     this.order = 0,
+    this.organizationId,
+    this.responsibleEmployeeId,
   });
 
-  /// Просрочена ли задача. Завершённые не считаются просроченными, даже
-  /// если срок прошёл, — иначе доска краснеет от уже сделанного.
+  String get effectiveOrganizationId =>
+      organizationId ?? OrganizationModel.wesiBeatsId;
+
   bool get isOverdue {
     if (dueDate == null || status == TaskStatus.done) return false;
     final now = DateTime.now();
@@ -104,7 +102,6 @@ class TaskModel {
     return due.isBefore(today);
   }
 
-  /// Срок сегодня.
   bool get isDueToday {
     if (dueDate == null || status == TaskStatus.done) return false;
     final now = DateTime.now();
@@ -126,12 +123,13 @@ class TaskModel {
     DateTime? dueDate,
     bool clearDueDate = false,
     String? assignee,
-    // По образцу clearDueDate: без явного флага исполнителя можно только
-    // заменить, но не снять — `assignee ?? this.assignee` вернёт прежнего.
     bool clearAssignee = false,
     List<SubTask>? subtasks,
     List<String>? tags,
     int? order,
+    String? organizationId,
+    String? responsibleEmployeeId,
+    bool clearResponsibleEmployee = false,
   }) {
     return TaskModel(
       id: id,
@@ -145,6 +143,10 @@ class TaskModel {
       subtasks: subtasks ?? this.subtasks,
       tags: tags ?? this.tags,
       order: order ?? this.order,
+      organizationId: organizationId ?? this.organizationId,
+      responsibleEmployeeId: clearResponsibleEmployee
+          ? null
+          : (responsibleEmployeeId ?? this.responsibleEmployeeId),
     );
   }
 }
