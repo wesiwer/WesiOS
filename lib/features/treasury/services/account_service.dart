@@ -31,6 +31,7 @@ class AccountSummary {
 class AccountService {
   static const String _boxName = 'wesios_accounts';
   static const String _settingsBox = 'wesios_settings';
+  static const String _treasuryBoxName = 'wesios_treasury';
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   static Box<AccountModel>? _box;
 
@@ -55,6 +56,16 @@ class AccountService {
         'fxHaircut': a.fxHaircut,
         'transferDelayDays': a.transferDelayDays,
       };
+
+  static Future<Box<TransactionModel>> _transactionsBox() async =>
+      Hive.isBoxOpen(_treasuryBoxName)
+          ? Hive.box<TransactionModel>(_treasuryBoxName)
+          : Hive.openBox<TransactionModel>(_treasuryBoxName);
+
+  static Future<bool> hasLinkedTransactions(String accountId) async =>
+      (await _transactionsBox())
+          .values
+          .any((tx) => tx.effectiveAccountId == accountId);
 
   static Future<AccountModel> ensureMain({String? organizationId}) async {
     await OrganizationService.ensureBaseline();
@@ -166,6 +177,13 @@ class AccountService {
         throw StateError('manage_accounts permission required on previous organization');
       }
     }
+    if (before != null && before.effectiveOrganizationId != orgId) {
+      if (await hasLinkedTransactions(before.id)) {
+        throw StateError(
+          'cannot move account with existing transactions to another organization',
+        );
+      }
+    }
     final normalized = account.copyWith(
       organizationId: orgId,
       currency: account.currency.toUpperCase(),
@@ -230,7 +248,11 @@ class AccountService {
         )) {
       return false;
     }
-    if (hasOperations) {
+    // Never trust the caller's cached operation count as the integrity source.
+    // A stale UI or direct service invocation must not orphan ledger rows.
+    final actualHasOperations =
+        hasOperations || await hasLinkedTransactions(account.id);
+    if (actualHasOperations) {
       await save(account.copyWith(archived: true));
       return true;
     }
