@@ -6,6 +6,7 @@ class OrganizationPermissions {
   OrganizationPermissions._();
 
   static const String view = 'view';
+  static const String viewFinance = 'view_finance';
   static const String createTransactions = 'create_transactions';
   static const String editTransactions = 'edit_transactions';
   static const String manageAccounts = 'manage_accounts';
@@ -16,6 +17,7 @@ class OrganizationPermissions {
 
   static const List<String> all = [
     view,
+    viewFinance,
     createTransactions,
     editTransactions,
     manageAccounts,
