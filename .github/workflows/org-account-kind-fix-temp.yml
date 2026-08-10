@@ -1,0 +1,92 @@
+name: Org AccountKind compatibility fixer
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/org-account-kind-fix-trigger'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - name: Patch every AccountKind switch compatibly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          changed = []
+          for p in Path('lib').rglob('*.dart'):
+              text = p.read_text(encoding='utf-8')
+              lines = text.splitlines(True)
+              out = []
+              i = 0
+              touched = False
+              while i < len(lines):
+                  line = lines[i]
+                  if 'switch (' not in line:
+                      out.append(line); i += 1; continue
+                  # Collect a compact switch-expression block ending at `};`.
+                  block = [line]
+                  j = i + 1
+                  while j < len(lines) and j < i + 80:
+                      block.append(lines[j])
+                      if lines[j].lstrip().startswith('};'):
+                          break
+                      j += 1
+                  source = ''.join(block)
+                  if ('AccountKind.' in source and '=>' in source and
+                      ('AccountKind.reserve' not in source or 'AccountKind.other' not in source)):
+                      savings = None
+                      indent = '      '
+                      for bline in block:
+                          m = re.match(r'^(\s*)AccountKind\.savings\s*=>\s*(.+),\s*$', bline.rstrip('\n'))
+                          if m:
+                              indent, savings = m.group(1), m.group(2)
+                              break
+                      if savings is not None:
+                          insert_at = next((k for k,b in enumerate(block) if b.lstrip().startswith('};')), len(block))
+                          additions = []
+                          if 'AccountKind.reserve' not in source:
+                              additions.append(f'{indent}AccountKind.reserve => {savings},\n')
+                          if 'AccountKind.other' not in source:
+                              additions.append(f'{indent}AccountKind.other => {savings},\n')
+                          block[insert_at:insert_at] = additions
+                          touched = True
+                  out.extend(block)
+                  i = j + 1
+              if touched:
+                  p.write_text(''.join(out), encoding='utf-8')
+                  changed.append(str(p))
+          print('patched:', *changed, sep='\n- ')
+          if not changed:
+              raise SystemExit('No AccountKind switch was patched')
+          PY
+          flutter pub get
+          flutter analyze --no-fatal-infos
+          rm -f .github/workflows/org-account-kind-fix-temp.yml
+          git diff --check
+      - name: Commit to product branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "WesiOS CI Fix"
+          git config user.email "actions@users.noreply.github.com"
+          git add lib .github/workflows/org-account-kind-fix-temp.yml
+          git commit -m "fix(org): handle reserve and other account kinds"
+          git push origin HEAD:agent/org-hierarchy-v1
