@@ -198,18 +198,16 @@ void main() {
     await OrganizationContext.selectOrganization(OrganizationModel.rootId);
     await OrganizationContext.setScope(OrganizationScope.only);
 
-    expect(
-      () => TaskService().save(
-        (await TaskService().getAllRaw())
-            .singleWhere((t) => t.id == 'bob-task')
-            .copyWith(title: 'stolen'),
-      ),
+    final bobTask = (await TaskService().getAllRaw())
+        .singleWhere((t) => t.id == 'bob-task');
+    await expectLater(
+      TaskService().save(bobTask.copyWith(title: 'stolen')),
       throwsA(isA<StateError>()),
     );
     final bobClient = (await CrmService.clientsRaw())
         .singleWhere((c) => c.id == 'bob-client');
-    expect(
-      () => CrmService.saveClient(bobClient.copyWith(name: 'stolen')),
+    await expectLater(
+      CrmService.saveClient(bobClient.copyWith(name: 'stolen')),
       throwsA(isA<StateError>()),
     );
   });
