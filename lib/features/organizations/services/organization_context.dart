@@ -30,7 +30,7 @@ class OrganizationContext {
   static String get currentOrganizationId {
     final value = _settings?.get(_orgKey);
     if (value is String && value.isNotEmpty) return value;
-    return OrganizationModel.wesiBeatsId;
+    return OrganizationModel.rootId;
   }
 
   static OrganizationScope get scope {
@@ -58,15 +58,15 @@ class OrganizationContext {
     }
 
     final visible = employee == null
-        ? <String>{OrganizationModel.wesiBeatsId}
+        ? <String>{OrganizationModel.rootId}
         : await OrganizationAccessService.visibleOrganizationIds();
     String fallback;
-    if (visible.contains(OrganizationModel.wesiBeatsId)) {
-      fallback = OrganizationModel.wesiBeatsId;
+    if (visible.contains(OrganizationModel.rootId)) {
+      fallback = OrganizationModel.rootId;
     } else if (visible.isNotEmpty) {
       fallback = visible.first;
     } else {
-      fallback = OrganizationModel.wesiBeatsId;
+      fallback = OrganizationModel.rootId;
     }
     await _settings?.put(_orgKey, fallback);
     await _settings?.put(_scopeKey, OrganizationScope.only.name);
