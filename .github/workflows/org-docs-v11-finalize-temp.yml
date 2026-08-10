@@ -1,0 +1,122 @@
+name: Org hierarchy v1.1 docs finalize temp
+
+on:
+  push:
+    paths:
+      - '.github/workflows/org-docs-v11-finalize-temp.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+          fetch-depth: 0
+      - name: Append canonical v1.1 status without truncating history
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          sections = {
+            'TZ.md': r'''
+
+---
+
+## 2026-08-10 — Иерархия организаций v1.1
+
+Каноническое полное ТЗ фичи хранится в `TZ_ORG_HIERARCHY_V1.md` и имеет приоритет для organization hierarchy / employee finance.
+
+Зафиксированные инварианты:
+
+- `Wesi Inc` — единственный полноценный root организации.
+- **Все данные, существовавшие в WesiOS до внедрения дерева организаций, принадлежат `Wesi Inc`.** Это относится к legacy accounts, transactions, Tasks/CRM ownership, категориям и старому Horizon learning/prediction context. `Wesi Beats` создаётся отдельной дочерней организацией и не получает старую историю автоматически.
+- Каждый финансовый факт принадлежит ровно одной организации.
+- Глобальный контекст: `currentOrganizationId` + `scope: only | subtree`.
+- `InterOrgTransfer` создаёт связанные debit/credit проводки; при subtree-консолидации внутренние стороны одного transfer исключаются из двойного cash-flow.
+- Доступ разделён на `self`, агрегированный `view_finance` организации/ветки и более сильный `canViewTeamFinance` для персональной разбивки сотрудников.
+- **CEO/root owner, руководитель и обычный сотрудник не теряют режим `Мои` из-за управленческой роли.** Руководящий доступ только добавляет `Организация` / `Ветка` поверх личного контура.
+- `Ветка` доступна только при явном subtree-праве.
+- Horizon, Analytics, Accounts, Transactions, Recurring, CRM cash events и cash-tasks обязаны соблюдать org/scope ownership.
+
+Code gate для функционального SHA `5184ca92184f7ea2b3c883fa78fac90b5a38b968`:
+
+- GitHub Actions run `31378231025` — SUCCESS;
+- `flutter analyze --no-fatal-infos` — SUCCESS;
+- полный `flutter test` — SUCCESS;
+- organization hierarchy v1.1 contracts — SUCCESS;
+- legacy Treasury/Horizon contracts — SUCCESS;
+- Android verification APK — SUCCESS;
+- Windows `flutter build windows --release` — SUCCESS.
+
+Документационный commit после этой записи должен быть повторно провалидирован exact-SHA gate перед merge/release.
+''',
+            'STATUS.md': r'''
+
+---
+
+## 2026-08-10 — Organization hierarchy v1.1 / employee finance
+
+Реализован полный первый проход `TZ_ORG_HIERARCHY_V1.md`:
+
+- дерево организаций `Wesi Inc` → дочерние узлы любой глубины;
+- миграция всей pre-hierarchy истории в `Wesi Inc` (не в `Wesi Beats`);
+- `only/subtree` context для Treasury/Analytics/Horizon;
+- org-owned accounts/categories/transactions/recurring sources;
+- explicit `InterOrgTransfer` + linked debit/credit + audit + consolidation elimination;
+- org/subtree access grants;
+- независимые уровни finance visibility: `self`, `view_finance`, `canViewTeamFinance`;
+- `Мои` показатели доступны CEO/руководителю/сотруднику независимо от управленческого scope;
+- employee finance: contribution, expenses, net, recurring obligations, overdue cash events, CRM/task attribution, self forecast;
+- sync сохраняет physical `organizationId`; legacy untagged data → `Wesi Inc`, explicit machine-tag ownership имеет приоритет;
+- UI: org switcher, organization management, inter-org transfer, My Finance `Мои / Организация / Ветка`.
+
+Проверка функционального SHA `5184ca92184f7ea2b3c883fa78fac90b5a38b968`: workflow `31378231025` полностью SUCCESS — analyze, full tests, v1.1 contracts, legacy Horizon/Treasury, Android, Windows release.
+''',
+            'TZ_HANDOFF.md': r'''
+
+---
+
+# Handoff — Organization hierarchy v1.1 (2026-08-10)
+
+**Рабочая ветка:** `agent/org-hierarchy-v1`  
+**Каноническое ТЗ:** `TZ_ORG_HIERARCHY_V1.md` v1.1  
+**Проверенный функциональный SHA:** `5184ca92184f7ea2b3c883fa78fac90b5a38b968`  
+**Успешный code-gate run:** `31378231025`
+
+Текущее правило миграции: вся существовавшая до org hierarchy история принадлежит `Wesi Inc`; `Wesi Beats` — отдельный child и не получает legacy history автоматически.
+
+Текущее правило employee finance: любой пользователь сохраняет личный режим `Мои`. CEO/root owner дополнительно имеет полный root subtree; руководитель получает `Организация`/`Ветка` по grants; обычный сотрудник может иметь `Мои` + агрегированные финансы разрешённых подразделений. Чужая персональная разбивка требует отдельного `canViewTeamFinance`.
+
+На функциональном SHA подтверждены: analyze, полный test suite, новые org/privacy/sync/inter-org contracts, старые Treasury/Horizon contracts, Android verification и Windows release build — всё SUCCESS.
+
+Следующий обязательный шаг перед merge/release: exact-SHA повторная валидация документационного head. Verification PR не мержить; production/main не менять без отдельного решения владельца.
+''',
+          }
+
+          markers = {
+            'TZ.md': '## 2026-08-10 — Иерархия организаций v1.1',
+            'STATUS.md': '## 2026-08-10 — Organization hierarchy v1.1 / employee finance',
+            'TZ_HANDOFF.md': '# Handoff — Organization hierarchy v1.1 (2026-08-10)',
+          }
+
+          for name, section in sections.items():
+              p = Path(name)
+              text = p.read_text()
+              if markers[name] not in text:
+                  p.write_text(text.rstrip() + section + '\n')
+          PY
+          git diff --check
+      - name: Commit docs and self-remove
+        shell: bash
+        run: |
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/org-docs-v11-finalize-temp.yml
+          git add TZ.md STATUS.md TZ_HANDOFF.md
+          git commit -m 'docs(org): record organization hierarchy v1.1 green gate'
+          git push origin HEAD:agent/org-hierarchy-v1
