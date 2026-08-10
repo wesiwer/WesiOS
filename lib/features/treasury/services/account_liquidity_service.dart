@@ -12,15 +12,10 @@ class AccountLiquidityMeta {
   final String accountId;
   final String currency;
 
-  /// Stored in RUB-equivalent, like the rest of Treasury's internal ledger.
+  /// Canonical reporting-currency (RUB in org-v1) equivalent.
   final double minimumBalanceRub;
   final bool allowNetting;
   final double fxHaircut;
-
-  /// Operational time needed before money on this account can rescue another
-  /// account. Cross-currency transfers get an additional conversion day in the
-  /// risk engine. This prevents “money exists somewhere” from meaning “cash is
-  /// available right now”.
   final int transferDelayDays;
 
   const AccountLiquidityMeta({
@@ -59,23 +54,25 @@ class AccountLiquidityMeta {
   }
 }
 
-/// Metadata that turns “several accounts” into liquidity locations rather
-/// than one undifferentiated balance. Existing AccountModel/Hive adapters are
-/// intentionally not changed, so old installations require no migration.
+/// Compatibility facade for Horizon liquidity. AccountModel is now the only
+/// authoritative source for currency/minimum balance/netting/risk metadata.
+/// The old JSON box is read once only to migrate fields that did not previously
+/// exist on AccountModel, then ignored to prevent cross-device divergence.
 class AccountLiquidityService {
   AccountLiquidityService._();
 
   static const String boxName = 'wesios_account_liquidity';
   static const String _key = 'meta_v1';
+  static bool _legacyMigrated = false;
 
-  static Future<Box<dynamic>> _open() async {
+  static Future<Box<dynamic>> _openLegacy() async {
     if (Hive.isBoxOpen(boxName)) return Hive.box<dynamic>(boxName);
     return Hive.openBox<dynamic>(boxName);
   }
 
-  static Future<Map<String, AccountLiquidityMeta>> allMeta() async {
+  static Future<Map<String, AccountLiquidityMeta>> _legacyMeta() async {
     try {
-      final box = await _open();
+      final box = await _openLegacy();
       final raw = box.get(_key);
       if (raw is! String || raw.isEmpty) return {};
       final decoded = jsonDecode(raw);
@@ -94,75 +91,109 @@ class AccountLiquidityService {
     }
   }
 
+  static Future<void> _migrateLegacyRiskFields() async {
+    if (_legacyMigrated) return;
+    _legacyMigrated = true;
+    final legacy = await _legacyMeta();
+    if (legacy.isEmpty) return;
+    for (final account in await AccountService.getAllRaw()) {
+      final old = legacy[account.id];
+      if (old == null) continue;
+      // currency/minimumBalance/allowNetting already existed on AccountModel
+      // and therefore win any old conflict. Only formerly meta-only fields are
+      // migrated into the authoritative account record.
+      if ((account.fxHaircut - old.fxHaircut).abs() > 1e-12 ||
+          account.transferDelayDays != old.transferDelayDays) {
+        await AccountService.save(account.copyWith(
+          fxHaircut: old.fxHaircut,
+          transferDelayDays: old.transferDelayDays,
+        ));
+      }
+    }
+    try {
+      await (await _openLegacy()).delete(_key);
+    } catch (_) {}
+  }
+
+  static AccountLiquidityMeta _fromAccount(AccountModel account) =>
+      AccountLiquidityMeta(
+        accountId: account.id,
+        currency: account.currency.toLowerCase(),
+        minimumBalanceRub: account.minimumBalance,
+        allowNetting: account.allowNetting,
+        fxHaircut: account.fxHaircut,
+        transferDelayDays: account.transferDelayDays,
+      );
+
+  static Future<Map<String, AccountLiquidityMeta>> allMeta() async {
+    await _migrateLegacyRiskFields();
+    return {
+      for (final account in await AccountService.getAllRaw())
+        account.id: _fromAccount(account),
+    };
+  }
+
   static Future<AccountLiquidityMeta> forAccount(AccountModel account) async {
-    final map = await allMeta();
-    return map[account.id] ?? AccountLiquidityMeta(accountId: account.id);
+    await _migrateLegacyRiskFields();
+    final fresh = await AccountService.byId(account.id) ?? account;
+    return _fromAccount(fresh);
   }
 
   static Future<void> save(AccountLiquidityMeta meta) async {
-    final map = await allMeta();
-    map[meta.accountId] = meta;
-    final box = await _open();
-    await box.put(
-      _key,
-      jsonEncode({for (final e in map.entries) e.key: e.value.toJson()}),
-    );
+    await _migrateLegacyRiskFields();
+    final account = await AccountService.byId(meta.accountId);
+    if (account == null) throw StateError('account does not exist');
+    await AccountService.save(account.copyWith(
+      currency: meta.currency.toUpperCase(),
+      minimumBalance: meta.minimumBalanceRub,
+      allowNetting: meta.allowNetting,
+      fxHaircut: meta.fxHaircut,
+      transferDelayDays: meta.transferDelayDays,
+    ));
   }
 
-  /// Converts AccountService summaries into the risk-engine representation.
-  /// Balances stay in RUB-equivalent for arithmetic; [currency] says where
-  /// that liquidity physically lives and therefore whether FX/netting is
-  /// required to cover another location.
   static Future<List<AccountLiquiditySnapshot>> snapshots(
-    List<TransactionModel> transactions,
-  ) async {
-    final summaries = await AccountService.summaries(transactions);
-    final meta = await allMeta();
+    List<TransactionModel> transactions, {
+    Set<String>? organizationIds,
+  }) async {
+    await _migrateLegacyRiskFields();
+    final summaries = await AccountService.summaries(
+      transactions,
+      organizationIds: organizationIds,
+    );
     return [
       for (final summary in summaries)
         AccountLiquiditySnapshot(
           accountId: summary.account.id,
           name: summary.account.name,
           balance: summary.balance,
-          currency: (meta[summary.account.id] ??
-                  AccountLiquidityMeta(accountId: summary.account.id))
-              .currency,
-          minimumBalance: (meta[summary.account.id] ??
-                  AccountLiquidityMeta(accountId: summary.account.id))
-              .minimumBalanceRub,
-          allowNetting: (meta[summary.account.id] ??
-                  AccountLiquidityMeta(accountId: summary.account.id))
-              .allowNetting,
-          fxHaircut: (meta[summary.account.id] ??
-                  AccountLiquidityMeta(accountId: summary.account.id))
-              .fxHaircut,
-          transferDelayDays: (meta[summary.account.id] ??
-                  AccountLiquidityMeta(accountId: summary.account.id))
-              .transferDelayDays,
+          currency: summary.account.currency.toLowerCase(),
+          minimumBalance: summary.account.minimumBalance,
+          allowNetting: summary.account.allowNetting,
+          fxHaircut: summary.account.fxHaircut,
+          transferDelayDays: summary.account.transferDelayDays,
         ),
     ];
   }
 
-  /// Conservative RUB-equivalent transferable amount. This helper is used by
-  /// settings/tests; day-specific availability is enforced in ForecastEngine.
   static Future<double> nettableRub({
     required AccountLiquiditySnapshot from,
     required AccountLiquiditySnapshot to,
   }) async {
     if (!from.allowNetting || from.accountId == to.accountId) return 0;
-    final meta = await allMeta();
-    final own =
-        meta[from.accountId] ?? AccountLiquidityMeta(accountId: from.accountId);
     final free = (from.balance - from.minimumBalance)
         .clamp(0, double.infinity)
         .toDouble();
     if (free == 0) return 0;
     if (from.currency.toLowerCase() == to.currency.toLowerCase()) return free;
-    return free * (1 - own.fxHaircut);
+    final account = await AccountService.byId(from.accountId);
+    final haircut = account?.fxHaircut ?? 0.03;
+    return free * (1 - haircut);
   }
 
   static Future<void> clearForTest() async {
-    final box = await _open();
+    _legacyMigrated = false;
+    final box = await _openLegacy();
     await box.clear();
   }
 }
