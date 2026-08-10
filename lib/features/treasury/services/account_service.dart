@@ -2,7 +2,9 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/localization/wesi_locale.dart';
+import '../../../core/services/currency_service.dart';
 import '../../organizations/models/organization_access_grant.dart';
+import '../../organizations/services/critical_audit_service.dart';
 import '../../organizations/services/organization_access_service.dart';
 import '../../organizations/services/organization_context.dart';
 import '../../organizations/services/organization_service.dart';
@@ -40,6 +42,20 @@ class AccountService {
   static String get _selectedKey =>
       'selected_account.${OrganizationContext.currentOrganizationId}';
 
+  static Map<String, dynamic> _auditJson(AccountModel a) => {
+        'id': a.id,
+        'name': a.name,
+        'kind': a.kind.name,
+        'openingBalance': a.openingBalance,
+        'archived': a.archived,
+        'organizationId': a.effectiveOrganizationId,
+        'minimumBalance': a.minimumBalance,
+        'allowNetting': a.allowNetting,
+        'currency': a.currency,
+        'fxHaircut': a.fxHaircut,
+        'transferDelayDays': a.transferDelayDays,
+      };
+
   static Future<AccountModel> ensureMain({String? organizationId}) async {
     await OrganizationService.ensureBaseline();
     final orgId = organizationId ?? OrganizationContext.currentOrganizationId;
@@ -69,7 +85,8 @@ class AccountService {
     return main;
   }
 
-  /// Raw list is intentionally reserved for migration/audit/admin operations.
+  /// Raw list is intentionally reserved for migration/audit/admin/background
+  /// integrity operations. User-facing code must use [getAll].
   static Future<List<AccountModel>> getAllRaw({bool includeArchived = true}) async {
     final box = await _accountsBox;
     return box.values.where((a) => includeArchived || !a.archived).toList();
@@ -97,6 +114,12 @@ class AccountService {
         if (b.kind == AccountKind.main && a.kind != AccountKind.main) return 1;
         return a.createdAt.compareTo(b.createdAt);
       });
+    final selected = selectedId;
+    if (selected != null && !list.any((a) => a.id == selected)) {
+      try {
+        await Hive.box(_settingsBox).delete(_selectedKey);
+      } catch (_) {}
+    }
     return list;
   }
 
@@ -121,20 +144,43 @@ class AccountService {
 
   static Future<void> save(AccountModel account) async {
     final orgId = account.organizationId ?? OrganizationContext.currentOrganizationId;
-    if (await OrganizationService.byId(orgId) == null) {
-      throw StateError('account organization does not exist');
+    final org = await OrganizationService.byId(orgId);
+    if (org == null || org.archived) {
+      throw StateError('account organization does not exist or is archived');
     }
-    if (TeamService.current != null &&
-        !await OrganizationAccessService.can(
-          orgId,
-          OrganizationPermissions.manageAccounts,
-        )) {
-      throw StateError('manage_accounts permission required');
+    final box = await _accountsBox;
+    final before = box.get(account.id);
+    if (TeamService.current != null) {
+      if (!await OrganizationAccessService.can(
+        orgId,
+        OrganizationPermissions.manageAccounts,
+      )) {
+        throw StateError('manage_accounts permission required');
+      }
+      if (before != null &&
+          before.effectiveOrganizationId != orgId &&
+          !await OrganizationAccessService.can(
+            before.effectiveOrganizationId,
+            OrganizationPermissions.manageAccounts,
+          )) {
+        throw StateError('manage_accounts permission required on previous organization');
+      }
     }
-    final normalized = account.organizationId == null
-        ? account.copyWith(organizationId: orgId)
-        : account;
-    await (await _accountsBox).put(normalized.id, normalized);
+    final normalized = account.copyWith(
+      organizationId: orgId,
+      currency: account.currency.toUpperCase(),
+      fxHaircut: account.fxHaircut,
+      transferDelayDays: account.transferDelayDays,
+    );
+    await box.put(normalized.id, normalized);
+    await CriticalAuditService.record(
+      event: before == null ? 'account.create' : 'account.update',
+      entityType: 'account',
+      entityId: normalized.id,
+      organizationId: orgId,
+      before: before == null ? null : _auditJson(before),
+      after: _auditJson(normalized),
+    );
     revision.value++;
   }
 
@@ -148,6 +194,8 @@ class AccountService {
     double minimumBalance = 0,
     bool allowNetting = true,
     String? currency,
+    double fxHaircut = 0.03,
+    int transferDelayDays = 0,
   }) async {
     final orgId = organizationId ?? OrganizationContext.currentOrganizationId;
     final org = await OrganizationService.byId(orgId);
@@ -164,6 +212,8 @@ class AccountService {
       minimumBalance: minimumBalance,
       allowNetting: allowNetting,
       currency: (currency ?? org.baseCurrency).toUpperCase(),
+      fxHaircut: fxHaircut,
+      transferDelayDays: transferDelayDays,
     );
     await save(account);
     return account;
@@ -184,6 +234,14 @@ class AccountService {
       await save(account.copyWith(archived: true));
       return true;
     }
+    await CriticalAuditService.record(
+      event: 'account.delete',
+      entityType: 'account',
+      entityId: account.id,
+      organizationId: account.effectiveOrganizationId,
+      before: _auditJson(account),
+      after: null,
+    );
     await box.delete(id);
     if (selectedId == id) await select(null);
     revision.value++;
@@ -204,10 +262,14 @@ class AccountService {
       if (id == null) {
         await box.delete(_selectedKey);
       } else {
-        final account = await byId(id);
-        if (account == null ||
-            account.effectiveOrganizationId != OrganizationContext.currentOrganizationId) {
-          throw StateError('account is outside current organization');
+        // The selector may display descendant accounts in subtree mode. Any
+        // account returned by getAll() is therefore selectable; exact-current-
+        // node equality would make the UI offer values the service rejects.
+        final visibleIds = (await getAll(includeArchived: false))
+            .map((a) => a.id)
+            .toSet();
+        if (!visibleIds.contains(id)) {
+          throw StateError('account is outside current organization scope');
         }
         await box.put(_selectedKey, id);
       }
@@ -220,8 +282,13 @@ class AccountService {
   static Future<List<AccountSummary>> summaries(
     List<TransactionModel> transactions, {
     DateTime? asOf,
+    Set<String>? organizationIds,
   }) async {
-    final accounts = await getAll();
+    final accounts = organizationIds == null
+        ? await getAll()
+        : (await getAllRaw(includeArchived: false))
+            .where((a) => organizationIds.contains(a.effectiveOrganizationId))
+            .toList();
     final now = asOf ?? DateTime.now();
     final cutoff = DateTime(now.year, now.month, now.day, now.hour, now.minute,
         now.second, now.millisecond, now.microsecond);
@@ -273,12 +340,62 @@ class AccountService {
     List<TransactionModel> transactions,
   ) async {
     final result = <String, double>{};
-    for (final summary in await summaries(transactions)) {
+    final orgIds = transactions.map((t) => t.effectiveOrganizationId).toSet();
+    for (final summary in await summaries(
+      transactions,
+      organizationIds: orgIds,
+    )) {
       result.update(
         summary.account.effectiveOrganizationId,
         (value) => value + summary.balance,
         ifAbsent: () => summary.balance,
       );
+    }
+    return result;
+  }
+
+  /// Current balance in canonical reporting currency for an explicit set of
+  /// organizations. Used by background Horizon without mutating UI context.
+  static Future<double> reportingBalanceForOrganizations(
+    Set<String> organizationIds,
+    List<TransactionModel> transactions,
+  ) async {
+    final scoped = transactions
+        .where((t) => organizationIds.contains(t.effectiveOrganizationId))
+        .toList();
+    final rows = await summaries(scoped, organizationIds: organizationIds);
+    return rows.fold<double>(0, (sum, row) => sum + row.balance);
+  }
+
+  /// Local organization balances in each organization's base currency.
+  /// Transaction base amounts are frozen at write time; account opening values
+  /// are legacy reporting amounts and are converted using the current rate.
+  static Future<Map<String, double>> baseBalancesByOrganization(
+    Set<String> organizationIds,
+    List<TransactionModel> transactions,
+  ) async {
+    final result = <String, double>{};
+    final accounts = (await getAllRaw(includeArchived: false))
+        .where((a) => organizationIds.contains(a.effectiveOrganizationId));
+    for (final account in accounts) {
+      final org = await OrganizationService.byId(account.effectiveOrganizationId);
+      if (org == null) continue;
+      final rate = CurrencyService.rateToRub(org.baseCurrency.toLowerCase());
+      result.update(
+        org.id,
+        (v) => v + (rate == 0 ? account.openingBalance : account.openingBalance / rate),
+        ifAbsent: () => rate == 0 ? account.openingBalance : account.openingBalance / rate,
+      );
+    }
+    for (final tx in transactions) {
+      if (!organizationIds.contains(tx.effectiveOrganizationId) || tx.isRecurring) {
+        continue;
+      }
+      final signed = tx.type == TransactionType.income
+          ? tx.effectiveOrganizationBaseAmount
+          : -tx.effectiveOrganizationBaseAmount;
+      result.update(tx.effectiveOrganizationId, (v) => v + signed,
+          ifAbsent: () => signed);
     }
     return result;
   }
