@@ -2,10 +2,15 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../core/localization/wesi_locale.dart';
+import '../../organizations/models/organization_access_grant.dart';
+import '../../organizations/models/organization_model.dart';
+import '../../organizations/services/organization_access_service.dart';
+import '../../organizations/services/organization_context.dart';
+import '../../organizations/services/organization_service.dart';
+import '../../team/services/team_service.dart';
 import '../models/account_model.dart';
 import '../models/transaction_model.dart';
 
-/// Сводка по одному счёту.
 class AccountSummary {
   final AccountModel account;
   final double balance;
@@ -22,20 +27,10 @@ class AccountSummary {
   });
 }
 
-/// Счета внутри Wesi Inc.
-///
-/// Общий счёт компании разбивается на любое число дополнительных: резерв,
-/// отдельный проект, наличные, карта. Операция принадлежит счёту, общий
-/// баланс — сумма по всем.
 class AccountService {
   static const String _boxName = 'wesios_accounts';
-
-  /// Какой счёт выбран сейчас в интерфейсе. `null` — «все счета».
-  static const String _selectedKey = 'selected_account';
   static const String _settingsBox = 'wesios_settings';
-
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
-
   static Box<AccountModel>? _box;
 
   static Future<Box<AccountModel>> get _accountsBox async {
@@ -43,49 +38,94 @@ class AccountService {
     return _box!;
   }
 
-  /// Основной счёт создаётся сам при первом обращении.
-  ///
-  /// Без него операции, сделанные до появления счетов, ссылались бы на
-  /// несуществующий `main`, и их не было бы видно ни в одном разрезе.
-  static Future<AccountModel> ensureMain() async {
+  static String get _selectedKey =>
+      'selected_account.${OrganizationContext.currentOrganizationId}';
+
+  static Future<AccountModel> ensureMain({String? organizationId}) async {
+    await OrganizationService.ensureBaseline();
+    final orgId = organizationId ?? OrganizationContext.currentOrganizationId;
+    final org = await OrganizationService.byId(orgId);
+    if (org == null) throw StateError('organization does not exist: $orgId');
     final box = await _accountsBox;
-    final existing = box.get(AccountModel.mainId);
-    if (existing != null) return existing;
+    final id = AccountModel.mainIdFor(orgId);
+    final existing = box.get(id);
+    if (existing != null) {
+      if (existing.organizationId == null) {
+        final migrated = existing.copyWith(organizationId: orgId);
+        await box.put(id, migrated);
+        return migrated;
+      }
+      return existing;
+    }
     final main = AccountModel(
-      id: AccountModel.mainId,
+      id: id,
       name: WesiLocale.isRussian ? 'Основной счёт' : 'Main account',
       kind: AccountKind.main,
       createdAt: DateTime.now(),
+      organizationId: orgId,
+      currency: org.baseCurrency,
     );
     await box.put(main.id, main);
     revision.value++;
     return main;
   }
 
-  static Future<List<AccountModel>> getAll(
-      {bool includeArchived = true}) async {
-    await ensureMain();
+  /// Raw list is intentionally reserved for migration/audit/admin operations.
+  static Future<List<AccountModel>> getAllRaw({bool includeArchived = true}) async {
     final box = await _accountsBox;
-    final list =
-        box.values.where((a) => includeArchived || !a.archived).toList()
-          // Основной всегда первым, остальные по дате создания: так порядок не
-          // прыгает при переименованиях.
-          ..sort((a, b) {
-            if (a.id == AccountModel.mainId) return -1;
-            if (b.id == AccountModel.mainId) return 1;
-            return a.createdAt.compareTo(b.createdAt);
-          });
+    return box.values.where((a) => includeArchived || !a.archived).toList();
+  }
+
+  static Future<List<AccountModel>> getAll({bool includeArchived = true}) async {
+    final ids = await OrganizationContext.effectiveOrganizationIds();
+    for (final id in ids) {
+      await ensureMain(organizationId: id);
+    }
+    final box = await _accountsBox;
+    final list = box.values
+        .where((a) =>
+            ids.contains(a.effectiveOrganizationId) &&
+            (includeArchived || !a.archived))
+        .toList()
+      ..sort((a, b) {
+        if (a.kind == AccountKind.main && b.kind != AccountKind.main) return -1;
+        if (b.kind == AccountKind.main && a.kind != AccountKind.main) return 1;
+        return a.createdAt.compareTo(b.createdAt);
+      });
     return list;
   }
 
-  static Future<AccountModel?> byId(String id) async {
+  static Future<List<AccountModel>> forOrganization(
+    String organizationId, {
+    bool includeArchived = true,
+  }) async {
+    await ensureMain(organizationId: organizationId);
     final box = await _accountsBox;
-    return box.get(id);
+    return box.values
+        .where((a) =>
+            a.effectiveOrganizationId == organizationId &&
+            (includeArchived || !a.archived))
+        .toList();
   }
 
+  static Future<AccountModel?> byId(String id) async => (await _accountsBox).get(id);
+
   static Future<void> save(AccountModel account) async {
-    final box = await _accountsBox;
-    await box.put(account.id, account);
+    final orgId = account.organizationId ?? OrganizationContext.currentOrganizationId;
+    if (await OrganizationService.byId(orgId) == null) {
+      throw StateError('account organization does not exist');
+    }
+    if (TeamService.current != null &&
+        !await OrganizationAccessService.can(
+          orgId,
+          OrganizationPermissions.manageAccounts,
+        )) {
+      throw StateError('manage_accounts permission required');
+    }
+    final normalized = account.organizationId == null
+        ? account.copyWith(organizationId: orgId)
+        : account;
+    await (await _accountsBox).put(normalized.id, normalized);
     revision.value++;
   }
 
@@ -95,28 +135,42 @@ class AccountService {
     double openingBalance = 0,
     int colorValue = 0xFF38BDF8,
     String? note,
+    String? organizationId,
+    double minimumBalance = 0,
+    bool allowNetting = true,
+    String? currency,
   }) async {
+    final orgId = organizationId ?? OrganizationContext.currentOrganizationId;
+    final org = await OrganizationService.byId(orgId);
+    if (org == null || org.archived) throw StateError('organization unavailable');
     final account = AccountModel(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      id: 'acct_${DateTime.now().microsecondsSinceEpoch}',
       name: name.trim(),
       kind: kind,
       openingBalance: openingBalance,
       colorValue: colorValue,
       createdAt: DateTime.now(),
       note: note,
+      organizationId: orgId,
+      minimumBalance: minimumBalance,
+      allowNetting: allowNetting,
+      currency: (currency ?? org.baseCurrency).toUpperCase(),
     );
     await save(account);
     return account;
   }
 
-  /// Удаляет счёт. Основной удалить нельзя — на него ссылаются все старые
-  /// операции. Счёт с историей тоже не удаляется, а архивируется: удаление
-  /// потеряло бы часть прошлого.
   static Future<bool> delete(String id, {required bool hasOperations}) async {
-    if (id == AccountModel.mainId) return false;
     final box = await _accountsBox;
     final account = box.get(id);
-    if (account == null) return false;
+    if (account == null || account.kind == AccountKind.main) return false;
+    if (TeamService.current != null &&
+        !await OrganizationAccessService.can(
+          account.effectiveOrganizationId,
+          OrganizationPermissions.manageAccounts,
+        )) {
+      return false;
+    }
     if (hasOperations) {
       await save(account.copyWith(archived: true));
       return true;
@@ -127,7 +181,6 @@ class AccountService {
     return true;
   }
 
-  /// Выбранный счёт. `null` — показывать все.
   static String? get selectedId {
     try {
       return Hive.box(_settingsBox).get(_selectedKey) as String?;
@@ -142,16 +195,19 @@ class AccountService {
       if (id == null) {
         await box.delete(_selectedKey);
       } else {
+        final account = await byId(id);
+        if (account == null ||
+            account.effectiveOrganizationId != OrganizationContext.currentOrganizationId) {
+          throw StateError('account is outside current organization');
+        }
         await box.put(_selectedKey, id);
       }
       revision.value++;
-    } catch (_) {/* настройки недоступны — выбор просто не запомнится */}
+    } catch (_) {
+      if (id != null) rethrow;
+    }
   }
 
-  /// Считает сводку по каждому счёту из переданных операций.
-  ///
-  /// Операции без `accountId` попадают в основной счёт — см.
-  /// [TransactionModel.effectiveAccountId].
   static Future<List<AccountSummary>> summaries(
     List<TransactionModel> transactions, {
     DateTime? asOf,
@@ -174,6 +230,7 @@ class AccountService {
     return accounts.map((a) {
       final own = transactions
           .where((t) =>
+              t.effectiveOrganizationId == a.effectiveOrganizationId &&
               t.effectiveAccountId == a.id &&
               !t.date.isAfter(cutoff) &&
               actualForBalance(t))
@@ -197,12 +254,23 @@ class AccountService {
     }).toList();
   }
 
-  /// Отфильтровать операции по выбранному счёту. `null` — вернуть все.
   static List<TransactionModel> filter(
       List<TransactionModel> transactions, String? accountId) {
     if (accountId == null) return transactions;
-    return transactions
-        .where((t) => t.effectiveAccountId == accountId)
-        .toList();
+    return transactions.where((t) => t.effectiveAccountId == accountId).toList();
+  }
+
+  static Future<Map<String, double>> balancesByOrganization(
+    List<TransactionModel> transactions,
+  ) async {
+    final result = <String, double>{};
+    for (final summary in await summaries(transactions)) {
+      result.update(
+        summary.account.effectiveOrganizationId,
+        (value) => value + summary.balance,
+        ifAbsent: () => summary.balance,
+      );
+    }
+    return result;
   }
 }
