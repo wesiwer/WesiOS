@@ -9,6 +9,10 @@ import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
+import '../organizations/models/organization_access_grant.dart';
+import '../organizations/services/organization_access_service.dart';
+import '../organizations/services/organization_context.dart';
+import '../organizations/widgets/organization_switcher.dart';
 import 'deleted_employees_screen.dart';
 import 'employee_editor_screen.dart';
 import 'models/employee_model.dart';
@@ -29,9 +33,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
   String _search = '';
   final Set<String> _activationBusy = <String>{};
   Timer? _activationTicker;
+  Set<String> _contextEmployeeIds = const <String>{};
+  bool _membersLoading = true;
+  bool _canManageContext = false;
 
   bool get _ru => WesiLocale.isRussian;
-  bool get _canManage => TeamService.currentPermissions.canManageTeam;
+  bool get _canManage => _canManageContext;
   bool get _canSeeNotes => TeamService.currentPermissions.canSeeNotes;
   bool get _ownerOnly => TeamService.isOwnerSession;
 
@@ -39,7 +46,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
   void initState() {
     super.initState();
     TeamService.revision.addListener(_refresh);
+    OrganizationContext.revision.addListener(_refresh);
     TeamService.ensureOwner();
+    _loadContextMembers();
     _activationTicker = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) setState(() {});
     });
@@ -49,17 +58,49 @@ class _ContactsScreenState extends State<ContactsScreen> {
   void dispose() {
     _activationTicker?.cancel();
     TeamService.revision.removeListener(_refresh);
+    OrganizationContext.revision.removeListener(_refresh);
     super.dispose();
   }
 
   void _refresh() {
-    if (mounted) setState(() {});
+    _loadContextMembers();
+  }
+
+  Future<void> _loadContextMembers() async {
+    final orgIds = await OrganizationContext.effectiveOrganizationIds();
+    final employeeIds = <String>{};
+    for (final employee in TeamService.all) {
+      if (employee.isOwner) {
+        employeeIds.add(employee.id);
+        continue;
+      }
+      final visible = await OrganizationAccessService.visibleOrganizationIds(
+        employeeId: employee.id,
+      );
+      if (visible.intersection(orgIds).isNotEmpty) employeeIds.add(employee.id);
+    }
+    final current = TeamService.current;
+    final canManage = current?.isOwner == true ||
+        (current != null &&
+            await OrganizationAccessService.can(
+              OrganizationContext.currentOrganizationId,
+              OrganizationPermissions.manageMembers,
+            ));
+    if (!mounted) return;
+    setState(() {
+      _contextEmployeeIds = employeeIds;
+      _canManageContext = canManage;
+      _membersLoading = false;
+    });
   }
 
   List<EmployeeModel> get _visible {
     final query = _search.trim().toLowerCase();
-    if (query.isEmpty) return TeamService.all;
-    return TeamService.all.where((employee) {
+    final contextual = TeamService.all
+        .where((employee) => _contextEmployeeIds.contains(employee.id))
+        .toList();
+    if (query.isEmpty) return contextual;
+    return contextual.where((employee) {
       return employee.displayName.toLowerCase().contains(query) ||
           employee.position.toLowerCase().contains(query) ||
           employee.login.contains(query) ||
@@ -69,8 +110,33 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _add() async {
+    if (!_canManageContext) return;
     final created = await EmployeeEditorScreen.open(context);
-    if (created != null && mounted) setState(() {});
+    if (created == null) return;
+    final orgId = OrganizationContext.currentOrganizationId;
+    final financeVisible = created.permissions.allows(TeamModules.treasury) ||
+        created.permissions.allows(TeamModules.forecast) ||
+        created.permissions.allows(TeamModules.analytics);
+    final permissions = <String>[OrganizationPermissions.view];
+    if (financeVisible) {
+      permissions.addAll(const [
+        OrganizationPermissions.viewFinance,
+        OrganizationPermissions.createTransactions,
+        OrganizationPermissions.editTransactions,
+        OrganizationPermissions.manageAccounts,
+        OrganizationPermissions.manageRecurring,
+        OrganizationPermissions.viewForecast,
+      ]);
+    }
+    await OrganizationAccessService.grant(
+      employeeId: created.id,
+      organizationId: orgId,
+      includeSubtree: false,
+      permissions: permissions,
+      canViewSelfFinance: true,
+      canViewTeamFinance: created.permissions.canSeeOthersStats,
+    );
+    await _loadContextMembers();
   }
 
   Future<void> _edit(EmployeeModel employee) async {
@@ -369,9 +435,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
             _header(people.length),
             _searchField(),
             Expanded(
-              child: people.isEmpty
-                  ? _empty()
-                  : ListView.builder(
+              child: _membersLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : people.isEmpty
+                      ? _empty()
+                      : ListView.builder(
                       padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
                       itemCount: people.length,
                       itemBuilder: (context, index) => _card(people[index]),
@@ -411,6 +479,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ],
               ),
             ),
+            const OrganizationSwitcher(compact: true),
+            const SizedBox(width: 6),
             if (_ownerOnly)
               IconButton(
                 tooltip: _ru ? 'Удалённые сотрудники' : 'Deleted employees',
