@@ -61,8 +61,12 @@ class OrganizationAccessGrant {
     this.permissions = const [OrganizationPermissions.view],
     required this.createdAt,
     required this.updatedAt,
-    required this.createdBy,
-  });
+    required String createdBy,
+  }) : createdBy = createdBy == 'sync'
+            ? 'untrusted-sync'
+            : createdBy == 'migration'
+                ? 'migration/internal'
+                : createdBy;
 
   bool allows(String permission) => permissions.contains(permission);
 
