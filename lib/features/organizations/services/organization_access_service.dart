@@ -91,6 +91,18 @@ class OrganizationAccessService {
     return false;
   }
 
+  /// Aggregate finance visibility for an organization. This intentionally does
+  /// not grant access to per-employee rows; that remains canViewTeamFinance.
+  static Future<bool> canViewOrganizationFinance(
+    String organizationId, {
+    String? employeeId,
+  }) =>
+      can(
+        organizationId,
+        OrganizationPermissions.viewFinance,
+        employeeId: employeeId,
+      );
+
   static Future<bool> canViewTeamFinance(
     String organizationId, {
     String? employeeId,
@@ -107,6 +119,32 @@ class OrganizationAccessService {
                 grant.organizationId,
               ));
       if (applies && grant.canViewTeamFinance) return true;
+    }
+    return false;
+  }
+
+  /// Whether the current employee owns an explicit subtree grant that covers
+  /// [organizationId]. Owner/root always has this capability.
+  static Future<bool> canUseSubtreeFinance(
+    String organizationId, {
+    String? employeeId,
+  }) async {
+    final employee = employeeId == null
+        ? TeamService.current
+        : TeamService.byId(employeeId);
+    if (employee == null || employee.isOwner) return true;
+    for (final grant in await grantsFor(employee.id)) {
+      if (!grant.includeSubtree ||
+          !grant.allows(OrganizationPermissions.viewFinance)) {
+        continue;
+      }
+      if (grant.organizationId == organizationId ||
+          await OrganizationService.isDescendant(
+            organizationId,
+            grant.organizationId,
+          )) {
+        return true;
+      }
     }
     return false;
   }
@@ -193,6 +231,7 @@ class OrganizationAccessService {
       final permissions = financeVisible
           ? <String>[
               OrganizationPermissions.view,
+              OrganizationPermissions.viewFinance,
               OrganizationPermissions.createTransactions,
               OrganizationPermissions.editTransactions,
               OrganizationPermissions.manageAccounts,
