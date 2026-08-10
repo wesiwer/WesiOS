@@ -1,0 +1,101 @@
+name: Organization hierarchy final code gate
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  analysis-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Verify exact product SHA
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.base.sha }}"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Full test suite
+        run: flutter test
+      - name: Organization hierarchy contracts
+        run: flutter test test/organization_hierarchy_test.dart test/organization_migration_context_test.dart test/inter_org_transfer_test.dart test/employee_finance_org_test.dart test/organization_sync_integrity_test.dart test/organization_tz_contract_test.dart
+      - name: Legacy Treasury and Horizon contracts
+        run: flutter test test/treasury_engines_test.dart test/recurring_payment_automation_test.dart test/horizon_legacy_income_truth_test.dart test/horizon_top_tier_test.dart test/horizon_product_integration_test.dart test/horizon_completion_test.dart
+
+  android-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Verify exact product SHA
+        run: test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.base.sha }}"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --debug
+
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 80
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+      - name: Verify exact product SHA
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne '${{ github.event.pull_request.base.sha }}') { throw 'Unexpected product SHA' }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release
+
+  report:
+    if: always()
+    needs: [analysis-tests, android-build, windows-build]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Record exact gate result on verification PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          RUN_ID: ${{ github.run_id }}
+          ANALYSIS: ${{ needs.analysis-tests.result }}
+          ANDROID: ${{ needs.android-build.result }}
+          WINDOWS: ${{ needs.windows-build.result }}
+        shell: bash
+        run: |
+          overall=success
+          if [ "$ANALYSIS" != success ] || [ "$ANDROID" != success ] || [ "$WINDOWS" != success ]; then overall=failure; fi
+          body=$(cat <<EOF
+          FINAL CODE VERIFICATION — DO NOT MERGE.
+
+          Exact product SHA: \`$BASE_SHA\`
+          Workflow run: \`$RUN_ID\`
+          Overall: **$overall**
+
+          - analyze + full tests + organization/privacy/sync/inter-org contracts + legacy Horizon/Treasury: **$ANALYSIS**
+          - Android verification build: **$ANDROID**
+          - Windows release build: **$WINDOWS**
+          EOF
+          )
+          gh pr edit "$PR" --repo "$GITHUB_REPOSITORY" --body "$body"
