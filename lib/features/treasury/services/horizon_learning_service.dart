@@ -35,7 +35,7 @@ class HorizonLearningService {
   static const String _legacyHistoryKey = 'learning_history_v1';
 
   static bool get _legacyContext =>
-      OrganizationContext.currentOrganizationId == OrganizationModel.wesiBeatsId &&
+      OrganizationContext.currentOrganizationId == OrganizationModel.rootId &&
       OrganizationContext.scope == OrganizationScope.only;
 
   static String _scoped(String base) => _legacyContext
