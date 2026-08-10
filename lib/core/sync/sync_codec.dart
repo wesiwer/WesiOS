@@ -193,7 +193,7 @@ class AccountsSync extends SyncCollection<AccountModel> {
       createdAt: createdAt,
       archived: fields['archived'] == true,
       note: _strOrNull(fields['note']),
-      organizationId: _strOrNull(fields['organizationId']),
+      organizationId: _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId,
       minimumBalance: _double(fields['minimumBalance']) ?? 0,
       allowNetting: fields['allowNetting'] != false,
       currency: _str(fields['currency'], 'RUB'),
@@ -245,7 +245,7 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
       isAnomaly: fields['isAnomaly'] == true,
       zScore: _double(fields['zScore']),
       accountId: _strOrNull(fields['accountId']),
-      organizationId: _strOrNull(fields['organizationId']),
+      organizationId: _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId,
       projectId: _strOrNull(fields['projectId']),
       counterpartyId: _strOrNull(fields['counterpartyId']),
       source: _enumByName(
@@ -285,6 +285,8 @@ class TasksSync extends SyncCollection<TaskModel> {
         'assignee': value.assignee,
         'tags': value.tags,
         'order': value.order,
+        'organizationId': value.effectiveOrganizationId,
+        'responsibleEmployeeId': value.effectiveResponsibleEmployeeId,
         'subtasks': [
           for (final s in value.subtasks) {'title': s.title, 'done': s.done},
         ],
@@ -318,6 +320,8 @@ class TasksSync extends SyncCollection<TaskModel> {
             ],
       tags: _strings(fields['tags']),
       order: _int(fields['order']),
+      organizationId: _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId,
+      responsibleEmployeeId: _strOrNull(fields['responsibleEmployeeId']),
     );
   }
 }
@@ -692,7 +696,7 @@ class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
       reason: _strOrNull(fields['reason']),
       organizationId: _str(
         fields['organizationId'],
-        OrganizationModel.wesiBeatsId,
+        OrganizationModel.rootId,
       ),
     );
   }

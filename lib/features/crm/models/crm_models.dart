@@ -144,7 +144,7 @@ class CrmClient {
       updatedAt: DateTime.tryParse('${json['updatedAt'] ?? ''}') ?? created,
       nextContactAt: DateTime.tryParse('${json['nextContactAt'] ?? ''}'),
       organizationId:
-          orgRaw.isEmpty ? OrganizationModel.wesiBeatsId : orgRaw,
+          orgRaw.isEmpty ? OrganizationModel.rootId : orgRaw,
       ownerEmployeeId: employeeRaw.isEmpty ? null : employeeRaw,
     );
   }
@@ -286,7 +286,7 @@ class CrmDeal {
       expectedCloseAt: DateTime.tryParse('${json['expectedCloseAt'] ?? ''}'),
       closedAt: DateTime.tryParse('${json['closedAt'] ?? ''}'),
       organizationId:
-          orgRaw.isEmpty ? OrganizationModel.wesiBeatsId : orgRaw,
+          orgRaw.isEmpty ? OrganizationModel.rootId : orgRaw,
       responsibleEmployeeId: employeeRaw.isEmpty ? null : employeeRaw,
     );
   }

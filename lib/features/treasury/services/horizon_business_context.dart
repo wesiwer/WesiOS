@@ -65,7 +65,7 @@ class HorizonBusinessContextService {
       end,
       organizationIds,
     );
-    if (organizationIds.contains(OrganizationModel.wesiBeatsId)) {
+    if (organizationIds.contains(OrganizationModel.rootId)) {
       await _addContracts(events, exposure, warnings, today, end);
     }
     await _addTaskObligations(

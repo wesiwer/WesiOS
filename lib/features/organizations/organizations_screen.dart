@@ -333,6 +333,7 @@ class _OrganizationMembersDialogState extends State<_OrganizationMembersDialog> 
         includeSubtree: false,
         permissions: const [
           OrganizationPermissions.view,
+          OrganizationPermissions.viewFinance,
           OrganizationPermissions.createTransactions,
           OrganizationPermissions.editTransactions,
           OrganizationPermissions.manageAccounts,

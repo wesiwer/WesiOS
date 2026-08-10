@@ -117,18 +117,18 @@ void main() {
 
     await OrganizationMigrationService.runV1();
 
-    expect(accounts.get('main')!.organizationId, OrganizationModel.wesiBeatsId);
-    expect(treasury.get('legacy-tx')!.organizationId, OrganizationModel.wesiBeatsId);
-    expect(tasks.get('legacy-task')!.organizationId, OrganizationModel.wesiBeatsId);
+    expect(accounts.get('main')!.organizationId, OrganizationModel.rootId);
+    expect(treasury.get('legacy-tx')!.organizationId, OrganizationModel.rootId);
+    expect(tasks.get('legacy-task')!.organizationId, OrganizationModel.rootId);
     expect(
       tasks.get('legacy-task')!.tags,
-      contains('${TaskModel.organizationTagPrefix}${OrganizationModel.wesiBeatsId}'),
+      contains('${TaskModel.organizationTagPrefix}${OrganizationModel.rootId}'),
     );
 
     final clientJson = (jsonDecode('${crm.get('clients_v1')}') as List).single as Map;
     final dealJson = (jsonDecode('${crm.get('deals_v1')}') as List).single as Map;
-    expect(clientJson['organizationId'], OrganizationModel.wesiBeatsId);
-    expect(dealJson['organizationId'], OrganizationModel.wesiBeatsId);
+    expect(clientJson['organizationId'], OrganizationModel.rootId);
+    expect(dealJson['organizationId'], OrganizationModel.rootId);
 
     final log = Hive.box<dynamic>(OrganizationMigrationService.logBoxName);
     final first = Map<String, dynamic>.from(
@@ -143,7 +143,7 @@ void main() {
       log.get(OrganizationMigrationService.migrationKey) as Map,
     );
     expect(second['completedAt'], first['completedAt']);
-    expect(accounts.get('main')!.organizationId, OrganizationModel.wesiBeatsId);
+    expect(accounts.get('main')!.organizationId, OrganizationModel.rootId);
   });
 
   test('only and subtree select different Treasury sets', () async {

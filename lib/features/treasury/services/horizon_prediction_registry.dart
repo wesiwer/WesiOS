@@ -65,7 +65,7 @@ class HorizonPredictionRecord {
     required this.startingBalance,
     required this.calibrationSource,
     required this.predictions,
-    this.organizationId = OrganizationModel.wesiBeatsId,
+    this.organizationId = OrganizationModel.rootId,
     this.organizationScope = 'only',
   });
 
@@ -92,7 +92,7 @@ class HorizonPredictionRecord {
               HorizonIssuedPrediction.fromJson(Map<String, dynamic>.from(raw)),
         ],
         organizationId:
-            '${json['organizationId'] ?? OrganizationModel.wesiBeatsId}',
+            '${json['organizationId'] ?? OrganizationModel.rootId}',
         organizationScope: '${json['organizationScope'] ?? 'only'}',
       );
 }
@@ -183,10 +183,10 @@ class HorizonPredictionRegistry {
   }) async {
     if (forecast.insufficientData || forecast.p50.isEmpty) return;
     final issued = _day(now ?? DateTime.now());
-    final orgId = organizationId ?? OrganizationModel.wesiBeatsId;
+    final orgId = organizationId ?? OrganizationModel.rootId;
     final existing = await records();
     final legacyIdentity =
-        orgId == OrganizationModel.wesiBeatsId && organizationScope == 'only';
+        orgId == OrganizationModel.rootId && organizationScope == 'only';
     final id = legacyIdentity
         ? _dayId(issued)
         : '$orgId:$organizationScope:${_dayId(issued)}';
