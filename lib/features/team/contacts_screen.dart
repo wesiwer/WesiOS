@@ -16,6 +16,7 @@ import '../organizations/widgets/organization_switcher.dart';
 import 'deleted_employees_screen.dart';
 import 'employee_editor_screen.dart';
 import 'models/employee_model.dart';
+import 'models/team_permissions.dart';
 import 'services/contact_actions.dart';
 import 'services/employee_admin_service.dart';
 import 'services/team_service.dart';

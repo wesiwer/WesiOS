@@ -1862,15 +1862,6 @@ class _ClientEditorSheetState extends State<_ClientEditorSheet> {
               onChanged: (value) => _owner.text = value ?? '',
             ),
             const SizedBox(height: 10),
-            EmployeeOrCustomField(
-              label: _ru ? 'Ответственный сотрудник' : 'Responsible employee',
-              value: _responsibleEmployeeId,
-              storeEmployeeId: true,
-              allowCustom: false,
-              onChanged: (value) =>
-                  setState(() => _responsibleEmployeeId = value),
-            ),
-            const SizedBox(height: 10),
             _field(_tags, _ru ? 'Теги через запятую' : 'Comma-separated tags'),
             DropdownButtonFormField<CrmClientStatus>(
               value: _status,
@@ -2131,6 +2122,15 @@ class _DealEditorSheetState extends State<_DealEditorSheet> {
               label: _ru ? 'Плановая дата закрытия' : 'Expected close date',
               value: _expectedClose,
               onChanged: (value) => setState(() => _expectedClose = value),
+            ),
+            const SizedBox(height: 10),
+            EmployeeOrCustomField(
+              label: _ru ? 'Ответственный сотрудник' : 'Responsible employee',
+              value: _responsibleEmployeeId,
+              storeEmployeeId: true,
+              allowCustom: false,
+              onChanged: (value) =>
+                  setState(() => _responsibleEmployeeId = value),
             ),
             const SizedBox(height: 10),
             _field(_tags, _ru ? 'Теги через запятую' : 'Comma-separated tags'),
