@@ -41,22 +41,69 @@ class _OrganizationSwitcherState extends State<OrganizationSwitcher> {
   void _reload() => _load();
 
   Future<void> _load() async {
-    final org = await OrganizationContext.currentOrganization();
-    if (mounted) setState(() => _current = org);
+    try {
+      final org = await OrganizationContext.currentOrganization();
+      if (mounted) setState(() => _current = org);
+    } catch (_) {
+      // The switcher can be built during early bootstrap before organization
+      // Hive adapters are available. Keep the UI usable and let the context
+      // reload itself when initialization completes.
+      if (mounted) setState(() => _current = null);
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final org = _current;
+    final scopeLabel = OrganizationContext.scope == OrganizationScope.only
+        ? 'Только эта'
+        : 'С дочерними';
+    final orgName = org?.name ?? 'Wesi Inc';
+
+    if (widget.compact) {
+      return Tooltip(
+        message: '$orgName • $scopeLabel',
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: _open,
+          child: Container(
+            width: 44,
+            height: 40,
+            decoration: BoxDecoration(
+              color: AppTheme.surface.withOpacity(.55),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppTheme.glassBorder),
+            ),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Icon(
+                  Icons.account_tree_outlined,
+                  size: 18,
+                  color: AppTheme.accent,
+                ),
+                Positioned(
+                  right: 2,
+                  bottom: 2,
+                  child: Icon(
+                    Icons.expand_more,
+                    size: 13,
+                    color: AppTheme.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: _open,
       child: Container(
-        constraints: BoxConstraints(maxWidth: widget.compact ? 190 : 270),
-        padding: EdgeInsets.symmetric(
-          horizontal: widget.compact ? 9 : 12,
-          vertical: 8,
-        ),
+        constraints: const BoxConstraints(maxWidth: 270),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(.55),
           borderRadius: BorderRadius.circular(12),
@@ -65,8 +112,11 @@ class _OrganizationSwitcherState extends State<OrganizationSwitcher> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.account_tree_outlined,
-                size: 17, color: AppTheme.accent),
+            Icon(
+              Icons.account_tree_outlined,
+              size: 17,
+              color: AppTheme.accent,
+            ),
             const SizedBox(width: 7),
             Flexible(
               child: Column(
@@ -74,7 +124,7 @@ class _OrganizationSwitcherState extends State<OrganizationSwitcher> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    org?.name ?? 'Wesi Beats',
+                    orgName,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -84,9 +134,7 @@ class _OrganizationSwitcherState extends State<OrganizationSwitcher> {
                     ),
                   ),
                   Text(
-                    OrganizationContext.scope == OrganizationScope.only
-                        ? 'Только эта'
-                        : 'С дочерними',
+                    scopeLabel,
                     maxLines: 1,
                     style: TextStyle(
                       color: AppTheme.textSecondary,
@@ -98,7 +146,11 @@ class _OrganizationSwitcherState extends State<OrganizationSwitcher> {
               ),
             ),
             const SizedBox(width: 5),
-            Icon(Icons.expand_more, size: 17, color: AppTheme.textSecondary),
+            Icon(
+              Icons.expand_more,
+              size: 17,
+              color: AppTheme.textSecondary,
+            ),
           ],
         ),
       ),
@@ -120,7 +172,8 @@ class _OrganizationPickerSheet extends StatefulWidget {
   const _OrganizationPickerSheet();
 
   @override
-  State<_OrganizationPickerSheet> createState() => _OrganizationPickerSheetState();
+  State<_OrganizationPickerSheet> createState() =>
+      _OrganizationPickerSheetState();
 }
 
 class _OrganizationPickerSheetState extends State<_OrganizationPickerSheet> {
@@ -186,11 +239,14 @@ class _OrganizationPickerSheetState extends State<_OrganizationPickerSheet> {
               Row(
                 children: [
                   Expanded(
-                    child: Text('Организация',
-                        style: TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w900)),
+                    child: Text(
+                      'Организация',
+                      style: TextStyle(
+                        color: AppTheme.textPrimary,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
                   ),
                   IconButton(
                     onPressed: () => Navigator.pop(context),
@@ -226,22 +282,31 @@ class _OrganizationPickerSheetState extends State<_OrganizationPickerSheet> {
                           for (final org in _orgs)
                             if (_allowed.contains(org.id))
                               Padding(
-                                padding: EdgeInsets.only(left: _depth(org) * 18.0),
+                                padding:
+                                    EdgeInsets.only(left: _depth(org) * 18.0),
                                 child: ListTile(
                                   dense: true,
-                                  selected: org.id == OrganizationContext.currentOrganizationId,
+                                  selected: org.id ==
+                                      OrganizationContext.currentOrganizationId,
                                   leading: Icon(
                                     org.isRoot
                                         ? Icons.hub_outlined
                                         : Icons.business_outlined,
-                                    color: org.id == OrganizationContext.currentOrganizationId
+                                    color: org.id ==
+                                            OrganizationContext
+                                                .currentOrganizationId
                                         ? AppTheme.accent
                                         : AppTheme.textSecondary,
                                   ),
                                   title: Text(org.name),
                                   subtitle: Text(org.baseCurrency),
-                                  trailing: org.id == OrganizationContext.currentOrganizationId
-                                      ? Icon(Icons.check, color: AppTheme.accentGreen)
+                                  trailing: org.id ==
+                                          OrganizationContext
+                                              .currentOrganizationId
+                                      ? Icon(
+                                          Icons.check,
+                                          color: AppTheme.accentGreen,
+                                        )
                                       : null,
                                   onTap: () => _select(org.id),
                                 ),
@@ -255,7 +320,8 @@ class _OrganizationPickerSheetState extends State<_OrganizationPickerSheet> {
                   OrganizationPermissions.manageOrgSettings,
                 ),
                 builder: (context, snapshot) {
-                  if (snapshot.data != true && TeamService.current?.isOwner != true) {
+                  if (snapshot.data != true &&
+                      TeamService.current?.isOwner != true) {
                     return const SizedBox.shrink();
                   }
                   return SizedBox(
