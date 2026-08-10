@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/features/organizations/models/organization_access_grant.dart';
 import 'package:wesios/features/organizations/models/organization_model.dart';
+import 'package:wesios/features/organizations/services/organization_access_service.dart';
 import 'package:wesios/features/organizations/services/organization_context.dart';
 import 'package:wesios/features/organizations/services/organization_migration_service.dart';
 import 'package:wesios/features/organizations/services/organization_service.dart';
@@ -14,7 +15,6 @@ import 'package:wesios/features/team/models/team_permissions.dart';
 import 'package:wesios/features/team/services/team_service.dart';
 import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
-import 'package:wesios/features/treasury/services/account_service.dart';
 import 'package:wesios/features/treasury/services/treasury_service.dart';
 
 void main() {
@@ -39,26 +39,28 @@ void main() {
     if (!Hive.isAdapterRegistered(81)) Hive.registerAdapter(OrganizationModelAdapter());
     if (!Hive.isAdapterRegistered(82)) Hive.registerAdapter(OrganizationAccessGrantAdapter());
     if (!Hive.isAdapterRegistered(86)) Hive.registerAdapter(TransactionSourceAdapter());
+
+    await Hive.openBox('wesios_settings');
+    await Hive.openBox<EmployeeModel>(TeamService.boxName);
+    await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
+    await Hive.openBox<OrganizationAccessGrant>(OrganizationAccessService.boxName);
+    await Hive.openBox<AccountModel>('wesios_accounts');
+    await Hive.openBox<TransactionModel>('wesios_treasury');
+    await Hive.openBox<TaskModel>('wesios_tasks');
+    await Hive.openBox<dynamic>('wesios_crm');
+    await Hive.openBox<dynamic>(OrganizationMigrationService.logBoxName);
   });
 
   setUp(() async {
-    for (final name in [
-      OrganizationService.boxName,
-      'wesios_org_access_grants',
-      OrganizationMigrationService.logBoxName,
-      'wesios_accounts',
-      'wesios_treasury',
-      'wesios_tasks',
-      'wesios_crm',
-      TeamService.boxName,
-      'wesios_settings',
-    ]) {
-      final box = await Hive.openBox<dynamic>(name);
-      await box.clear();
-      await box.close();
-    }
-    await Hive.openBox('wesios_settings');
-    await Hive.openBox<EmployeeModel>(TeamService.boxName);
+    await Hive.box('wesios_settings').clear();
+    await Hive.box<EmployeeModel>(TeamService.boxName).clear();
+    await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
+    await Hive.box<OrganizationAccessGrant>(OrganizationAccessService.boxName).clear();
+    await Hive.box<AccountModel>('wesios_accounts').clear();
+    await Hive.box<TransactionModel>('wesios_treasury').clear();
+    await Hive.box<TaskModel>('wesios_tasks').clear();
+    await Hive.box<dynamic>('wesios_crm').clear();
+    await Hive.box<dynamic>(OrganizationMigrationService.logBoxName).clear();
   });
 
   tearDownAll(() async {
@@ -67,7 +69,7 @@ void main() {
   });
 
   test('legacy money/tasks/CRM are physically backfilled to Wesi Beats once', () async {
-    final accounts = await Hive.openBox<AccountModel>('wesios_accounts');
+    final accounts = Hive.box<AccountModel>('wesios_accounts');
     await accounts.put(
       'main',
       AccountModel(
@@ -76,7 +78,7 @@ void main() {
         createdAt: DateTime(2026, 1, 1),
       ),
     );
-    final treasury = await Hive.openBox<TransactionModel>('wesios_treasury');
+    final treasury = Hive.box<TransactionModel>('wesios_treasury');
     await treasury.put(
       'legacy-tx',
       TransactionModel(
@@ -87,7 +89,7 @@ void main() {
         date: DateTime(2026, 1, 2),
       ),
     );
-    final tasks = await Hive.openBox<TaskModel>('wesios_tasks');
+    final tasks = Hive.box<TaskModel>('wesios_tasks');
     await tasks.put(
       'legacy-task',
       TaskModel(
@@ -96,7 +98,7 @@ void main() {
         createdAt: DateTime(2026, 1, 3),
       ),
     );
-    final crm = await Hive.openBox<dynamic>('wesios_crm');
+    final crm = Hive.box<dynamic>('wesios_crm');
     await crm.put('clients_v1', jsonEncode([
       {
         'id': 'client-1',
@@ -118,22 +120,28 @@ void main() {
     expect(accounts.get('main')!.organizationId, OrganizationModel.wesiBeatsId);
     expect(treasury.get('legacy-tx')!.organizationId, OrganizationModel.wesiBeatsId);
     expect(tasks.get('legacy-task')!.organizationId, OrganizationModel.wesiBeatsId);
-    expect(tasks.get('legacy-task')!.tags,
-        contains('${TaskModel.organizationTagPrefix}${OrganizationModel.wesiBeatsId}'));
+    expect(
+      tasks.get('legacy-task')!.tags,
+      contains('${TaskModel.organizationTagPrefix}${OrganizationModel.wesiBeatsId}'),
+    );
 
     final clientJson = (jsonDecode('${crm.get('clients_v1')}') as List).single as Map;
     final dealJson = (jsonDecode('${crm.get('deals_v1')}') as List).single as Map;
     expect(clientJson['organizationId'], OrganizationModel.wesiBeatsId);
     expect(dealJson['organizationId'], OrganizationModel.wesiBeatsId);
 
-    final log = await Hive.openBox<dynamic>(OrganizationMigrationService.logBoxName);
-    final first = Map<String, dynamic>.from(log.get(OrganizationMigrationService.migrationKey) as Map);
+    final log = Hive.box<dynamic>(OrganizationMigrationService.logBoxName);
+    final first = Map<String, dynamic>.from(
+      log.get(OrganizationMigrationService.migrationKey) as Map,
+    );
     expect(first['completed'], isTrue);
     expect(first['accountsUpdated'], 1);
     expect(first['transactionsUpdated'], 1);
 
     await OrganizationMigrationService.runV1();
-    final second = Map<String, dynamic>.from(log.get(OrganizationMigrationService.migrationKey) as Map);
+    final second = Map<String, dynamic>.from(
+      log.get(OrganizationMigrationService.migrationKey) as Map,
+    );
     expect(second['completedAt'], first['completedAt']);
     expect(accounts.get('main')!.organizationId, OrganizationModel.wesiBeatsId);
   });
