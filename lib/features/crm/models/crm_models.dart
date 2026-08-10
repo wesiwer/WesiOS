@@ -39,7 +39,7 @@ class CrmClient {
     required this.createdAt,
     required this.updatedAt,
     this.nextContactAt,
-    this.organizationId = OrganizationModel.wesiBeatsId,
+    this.organizationId = '',
     this.ownerEmployeeId,
   });
 
@@ -183,7 +183,7 @@ class CrmDeal {
     required this.updatedAt,
     this.expectedCloseAt,
     this.closedAt,
-    this.organizationId = OrganizationModel.wesiBeatsId,
+    this.organizationId = '',
     this.responsibleEmployeeId,
   });
 
