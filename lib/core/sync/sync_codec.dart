@@ -10,53 +10,34 @@ import '../../features/chats/models/chat_policy.dart';
 import '../../features/chats/models/chat_thread.dart';
 import '../../features/chats/services/chat_service.dart';
 import '../../features/chats/services/message_store.dart';
-import '../../features/knowledge/services/knowledge_service.dart';
-import '../../features/tasks/services/task_service.dart';
-import '../../features/team/services/team_service.dart';
-import '../../features/treasury/services/account_service.dart';
-import '../../features/treasury/services/treasury_service.dart';
 import '../../features/knowledge/models/article_model.dart';
+import '../../features/knowledge/services/knowledge_service.dart';
+import '../../features/organizations/models/inter_org_transfer_model.dart';
+import '../../features/organizations/models/organization_access_grant.dart';
+import '../../features/organizations/models/organization_model.dart';
+import '../../features/organizations/models/transaction_audit_model.dart';
+import '../../features/organizations/services/inter_org_transfer_service.dart';
+import '../../features/organizations/services/organization_access_service.dart';
+import '../../features/organizations/services/organization_service.dart';
 import '../../features/tasks/models/task_model.dart';
+import '../../features/tasks/services/task_service.dart';
 import '../../features/team/models/employee_model.dart';
 import '../../features/team/models/team_permissions.dart';
+import '../../features/team/services/team_service.dart';
 import '../../features/treasury/models/account_model.dart';
 import '../../features/treasury/models/transaction_model.dart';
+import '../../features/treasury/services/account_service.dart';
+import '../../features/treasury/services/treasury_service.dart';
 import 'sync_journal.dart';
 
-/// Описание одной синхронизируемой коллекции.
-///
-/// Перевод модели в поля и обратно вынесен из движка намеренно: движок не
-/// должен ничего знать про транзакции и задачи, а модели — про синхронизацию.
-/// Добавить шестую коллекцию — значит дописать сюда один класс и одну строку
-/// в [SyncCodec.collections], больше нигде.
 abstract class SyncCollection<T> {
-  /// Имя на сервере. Меняться не должно: по нему лежат уже загруженные
-  /// записи.
   String get name;
-
-  /// Имя бокса Hive.
   String get boxName;
-
   String idOf(T value);
-
   Map<String, dynamic> encode(T value);
-
-  /// null — запись не разобралась. Такую пропускаем, а не подставляем
-  /// значения по умолчанию: наполовину разобранная операция с нулевой суммой
-  /// хуже, чем её отсутствие.
   T? decode(Map<String, dynamic> fields);
-
-  /// Участвует ли запись в обмене вообще.
-  ///
-  /// По умолчанию — да. Исключение одно, и оно объяснено в [ArticlesSync].
   bool shouldSync(T value) => true;
 
-  /// Бокс со своим настоящим типом значений.
-  ///
-  /// `Hive.box<dynamic>` здесь не работает: Hive сверяет тип и на боксе,
-  /// открытом как `Box<TransactionModel>`, бросает «already open and of
-  /// type». В коде, обёрнутом в `try`, это выглядит как «синхронизация
-  /// прошла, но ничего не нашла» — то есть как молчаливая пустота.
   Box<T>? box() {
     if (!Hive.isBoxOpen(boxName)) return null;
     try {
@@ -66,30 +47,20 @@ abstract class SyncCollection<T> {
     }
   }
 
-  /// Открывает бокс, если он ещё не открыт.
-  ///
-  /// Сервисы открывают свои боксы лениво — при первом обращении к модулю.
-  /// Журналу это не подходит: подписка, поставленная после первой правки,
-  /// эту правку уже не увидит, и запись выглядела бы как «не менялась
-  /// никогда».
   Future<Box<T>> ensureBox() async => Hive.isBoxOpen(boxName)
       ? Hive.box<T>(boxName)
       : await Hive.openBox<T>(boxName);
 
-  /// Все записи бокса, кроме исключённых [shouldSync]. Ключ — наш
-  /// идентификатор.
   Map<String, T> local() {
     final b = box();
     if (b == null) return const {};
     final out = <String, T>{};
-    for (final v in b.values) {
-      if (!shouldSync(v)) continue;
-      out[idOf(v)] = v;
+    for (final value in b.values) {
+      if (shouldSync(value)) out[idOf(value)] = value;
     }
     return out;
   }
 
-  /// Кладёт запись, разобранную из полей. false — не разобралась.
   Future<bool> applyFields(Map<String, dynamic> fields) async {
     final b = box();
     if (b == null) return false;
@@ -100,31 +71,15 @@ abstract class SyncCollection<T> {
   }
 
   Future<void> removeById(String id) async => box()?.delete(id);
-
-  /// Записи только что успешно уехали на сервер.
-  ///
-  /// По умолчанию не делает ничего. Нужно там, где у записи есть состояние
-  /// «дошло ли» — у сообщений. Движок про такие состояния знать не должен,
-  /// поэтому крючок здесь, а не в нём.
   Future<void> afterUpload(Iterable<String> ids) async {}
-
-  /// Сообщить открытому интерфейсу, что чужие данные уже применены.
-  /// Вызывается один раз на коллекцию за проход, а не на каждую запись.
   void notifyChanged() {}
 }
 
-// ------------------------------------------------------------------ помощники
-
-/// Разбор значения перечисления по имени.
-///
-/// Неизвестное имя — это запись от более новой версии приложения. Возвращаем
-/// [fallback], а не бросаем: одно незнакомое значение не должно ронять весь
-/// проход синхронизации.
 T _enumByName<T extends Enum>(List<T> values, Object? raw, T fallback) {
   final name = raw is String ? raw : null;
   if (name == null) return fallback;
-  for (final v in values) {
-    if (v.name == name) return v;
+  for (final value in values) {
+    if (value.name == name) return value;
   }
   return fallback;
 }
@@ -145,14 +100,10 @@ int _int(Object? raw, [int fallback = 0]) {
 
 String _str(Object? raw, [String fallback = '']) =>
     raw is String ? raw : fallback;
-
 String? _strOrNull(Object? raw) => raw is String ? raw : null;
-
 List<String> _strings(Object? raw) =>
     raw is List ? [for (final e in raw) '$e'] : const [];
 
-/// Снимок из base64. Испорченная строка — не повод ронять разбор всей
-/// карточки: человек важнее его фотографии.
 Uint8List? _decodePhoto(String raw) {
   try {
     return base64Decode(raw);
@@ -161,20 +112,104 @@ Uint8List? _decodePhoto(String raw) {
   }
 }
 
-// ---------------------------------------------------------------- коллекции
+class OrganizationsSync extends SyncCollection<OrganizationModel> {
+  @override
+  String get name => 'organizations';
+  @override
+  String get boxName => OrganizationService.boxName;
+  @override
+  String idOf(OrganizationModel value) => value.id;
+  @override
+  void notifyChanged() => OrganizationService.revision.value++;
+
+  @override
+  Map<String, dynamic> encode(OrganizationModel value) => value.toJson();
+
+  @override
+  OrganizationModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final name = _strOrNull(fields['name']);
+    final createdAt = _date(fields['createdAt']);
+    if (id == null || name == null || createdAt == null) return null;
+    return OrganizationModel(
+      id: id,
+      name: name,
+      parentId: _strOrNull(fields['parentId']),
+      isRoot: fields['isRoot'] == true,
+      baseCurrency: _str(fields['baseCurrency'], 'RUB'),
+      status: _enumByName(
+        OrganizationStatus.values,
+        fields['status'],
+        OrganizationStatus.active,
+      ),
+      createdAt: createdAt,
+      updatedAt: _date(fields['updatedAt']) ?? createdAt,
+      createdBy: _str(fields['createdBy'], 'sync'),
+      code: _strOrNull(fields['code']),
+      description: _strOrNull(fields['description']),
+      colorValue: fields['colorValue'] == null ? null : _int(fields['colorValue']),
+      sortOrder: _int(fields['sortOrder']),
+    );
+  }
+}
+
+class AccountsSync extends SyncCollection<AccountModel> {
+  @override
+  String get name => 'accounts';
+  @override
+  String get boxName => 'wesios_accounts';
+  @override
+  String idOf(AccountModel value) => value.id;
+  @override
+  void notifyChanged() => AccountService.revision.value++;
+
+  @override
+  Map<String, dynamic> encode(AccountModel value) => {
+        'id': value.id,
+        'name': value.name,
+        'kind': value.kind.name,
+        'openingBalance': value.openingBalance,
+        'colorValue': value.colorValue,
+        'createdAt': value.createdAt.toIso8601String(),
+        'archived': value.archived,
+        'note': value.note,
+        'organizationId': value.organizationId,
+        'minimumBalance': value.minimumBalance,
+        'allowNetting': value.allowNetting,
+        'currency': value.currency,
+      };
+
+  @override
+  AccountModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final createdAt = _date(fields['createdAt']);
+    if (id == null || createdAt == null) return null;
+    return AccountModel(
+      id: id,
+      name: _str(fields['name']),
+      kind: _enumByName(AccountKind.values, fields['kind'], AccountKind.cash),
+      openingBalance: _double(fields['openingBalance']) ?? 0,
+      colorValue: _int(fields['colorValue']),
+      createdAt: createdAt,
+      archived: fields['archived'] == true,
+      note: _strOrNull(fields['note']),
+      organizationId: _strOrNull(fields['organizationId']),
+      minimumBalance: _double(fields['minimumBalance']) ?? 0,
+      allowNetting: fields['allowNetting'] != false,
+      currency: _str(fields['currency'], 'RUB'),
+    );
+  }
+}
 
 class TransactionsSync extends SyncCollection<TransactionModel> {
   @override
-  void notifyChanged() => TreasuryService.revision.value++;
-
-  @override
   String get name => 'transactions';
-
   @override
   String get boxName => 'wesios_treasury';
-
   @override
   String idOf(TransactionModel value) => value.id;
+  @override
+  void notifyChanged() => TreasuryService.revision.value++;
 
   @override
   Map<String, dynamic> encode(TransactionModel value) => value.toJson()
@@ -192,77 +227,51 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
       title: _str(fields['title']),
       amount: amount,
       type: _enumByName(
-          TransactionType.values, fields['type'], TransactionType.expense),
+        TransactionType.values,
+        fields['type'],
+        TransactionType.expense,
+      ),
       date: date,
       category: _strOrNull(fields['category']),
       description: _strOrNull(fields['description']),
       isRecurring: fields['isRecurring'] == true,
       recurringPeriod: fields['recurringPeriod'] == null
           ? null
-          : _enumByName(RecurringPeriod.values, fields['recurringPeriod'],
-              RecurringPeriod.monthly),
+          : _enumByName(
+              RecurringPeriod.values,
+              fields['recurringPeriod'],
+              RecurringPeriod.monthly,
+            ),
       isAnomaly: fields['isAnomaly'] == true,
       zScore: _double(fields['zScore']),
       accountId: _strOrNull(fields['accountId']),
-    );
-  }
-}
-
-class AccountsSync extends SyncCollection<AccountModel> {
-  @override
-  void notifyChanged() => AccountService.revision.value++;
-
-  @override
-  String get name => 'accounts';
-
-  @override
-  String get boxName => 'wesios_accounts';
-
-  @override
-  String idOf(AccountModel value) => value.id;
-
-  @override
-  Map<String, dynamic> encode(AccountModel value) => {
-        'id': value.id,
-        'name': value.name,
-        'kind': value.kind.name,
-        'openingBalance': value.openingBalance,
-        'colorValue': value.colorValue,
-        'createdAt': value.createdAt.toIso8601String(),
-        'archived': value.archived,
-        'note': value.note,
-      };
-
-  @override
-  AccountModel? decode(Map<String, dynamic> fields) {
-    final id = _strOrNull(fields['id']);
-    final createdAt = _date(fields['createdAt']);
-    if (id == null || createdAt == null) return null;
-    return AccountModel(
-      id: id,
-      name: _str(fields['name']),
-      kind: _enumByName(AccountKind.values, fields['kind'], AccountKind.cash),
-      openingBalance: _double(fields['openingBalance']) ?? 0,
-      colorValue: _int(fields['colorValue']),
-      createdAt: createdAt,
-      archived: fields['archived'] == true,
-      note: _strOrNull(fields['note']),
+      organizationId: _strOrNull(fields['organizationId']),
+      projectId: _strOrNull(fields['projectId']),
+      counterpartyId: _strOrNull(fields['counterpartyId']),
+      source: _enumByName(
+        TransactionSource.values,
+        fields['source'],
+        TransactionSource.manual,
+      ),
+      createdBy: _strOrNull(fields['createdBy']),
+      updatedBy: _strOrNull(fields['updatedBy']),
+      updatedAt: _date(fields['updatedAt']),
+      ownerEmployeeId: _strOrNull(fields['ownerEmployeeId']),
+      interOrgTransferId: _strOrNull(fields['interOrgTransferId']),
+      createdByEmployeeId: _strOrNull(fields['createdByEmployeeId']),
     );
   }
 }
 
 class TasksSync extends SyncCollection<TaskModel> {
   @override
-  void notifyChanged() => TaskService.revision.value++;
-
-  @override
   String get name => 'tasks';
-
   @override
   String get boxName => 'wesios_tasks';
-
   @override
   String idOf(TaskModel value) => value.id;
+  @override
+  void notifyChanged() => TaskService.revision.value++;
 
   @override
   Map<String, dynamic> encode(TaskModel value) => {
@@ -291,10 +300,12 @@ class TasksSync extends SyncCollection<TaskModel> {
       id: id,
       title: _str(fields['title']),
       description: _strOrNull(fields['description']),
-      status:
-          _enumByName(TaskStatus.values, fields['status'], TaskStatus.backlog),
+      status: _enumByName(TaskStatus.values, fields['status'], TaskStatus.backlog),
       priority: _enumByName(
-          TaskPriority.values, fields['priority'], TaskPriority.normal),
+        TaskPriority.values,
+        fields['priority'],
+        TaskPriority.normal,
+      ),
       createdAt: createdAt,
       dueDate: _date(fields['dueDate']),
       assignee: _strOrNull(fields['assignee']),
@@ -311,84 +322,18 @@ class TasksSync extends SyncCollection<TaskModel> {
   }
 }
 
-class ArticlesSync extends SyncCollection<ArticleModel> {
-  @override
-  void notifyChanged() => KnowledgeService.revision.value++;
-
-  @override
-  String get name => 'articles';
-
-  @override
-  String get boxName => 'wesios_knowledge';
-
-  @override
-  String idOf(ArticleModel value) => value.id;
-
-  /// Встроенные статьи не синхронизируются.
-  ///
-  /// Они живут в коде и заново раскладываются при каждом запуске, поэтому на
-  /// сервере оказались бы просто копией того, что и так приезжает с
-  /// обновлением. Хуже того: устройство со старой сборкой отправляло бы
-  /// туда старый текст, а новое — новый, и справка начала бы спорить сама с
-  /// собой. Редактировать и удалять их и так нельзя.
-  @override
-  bool shouldSync(ArticleModel value) => !value.builtIn;
-
-  @override
-  Map<String, dynamic> encode(ArticleModel value) => {
-        'id': value.id,
-        'title': value.title,
-        'body': value.body,
-        'section': value.section.name,
-        'tags': value.tags,
-        'createdAt': value.createdAt.toIso8601String(),
-        'updatedAt': value.updatedAt.toIso8601String(),
-        'builtIn': value.builtIn,
-        'pinned': value.pinned,
-        'parentId': value.parentId,
-        'isFolder': value.isFolder,
-      };
-
-  @override
-  ArticleModel? decode(Map<String, dynamic> fields) {
-    final id = _strOrNull(fields['id']);
-    final createdAt = _date(fields['createdAt']);
-    if (id == null || createdAt == null) return null;
-    return ArticleModel(
-      id: id,
-      title: _str(fields['title']),
-      body: _str(fields['body']),
-      section: _enumByName(
-          ArticleSection.values, fields['section'], ArticleSection.guide),
-      tags: _strings(fields['tags']),
-      createdAt: createdAt,
-      updatedAt: _date(fields['updatedAt']) ?? createdAt,
-      builtIn: fields['builtIn'] == true,
-      pinned: fields['pinned'] == true,
-      parentId: _strOrNull(fields['parentId']),
-      isFolder: fields['isFolder'] == true,
-    );
-  }
-}
-
-/// Собственные события Calendar синхронизируются между устройствами.
-/// Time Center (будильники/таймер/секундомер) остаётся device-local, чтобы
-/// одно и то же локальное действие не срабатывало одновременно везде.
 class CalendarEventsSync extends SyncCollection<dynamic> {
+  @override
+  String get name => 'calendar_events';
+  @override
+  String get boxName => CalendarEventService.boxName;
+  @override
+  String idOf(dynamic value) => value is Map ? '${value['id'] ?? ''}' : '';
   @override
   void notifyChanged() {
     CalendarEventService.revision.value++;
     CalendarEventService().restoreSchedules();
   }
-
-  @override
-  String get name => 'calendar_events';
-
-  @override
-  String get boxName => CalendarEventService.boxName;
-
-  @override
-  String idOf(dynamic value) => value is Map ? '${value['id'] ?? ''}' : '';
 
   @override
   Map<String, dynamic> encode(dynamic value) {
@@ -452,32 +397,69 @@ class CalendarEventsSync extends SyncCollection<dynamic> {
     await b.put(event.id, event.toJson());
     return true;
   }
-
-  @override
-  Future<void> removeById(String id) async => box()?.delete(id);
 }
 
-/// Состав.
-///
-/// Хеш и соль пароля **уезжают вместе с человеком**. Это не оплошность:
-/// сотрудник, заведённый на компьютере, должен войти с телефона, а проверять
-/// пароль без хеша нечем. Хеш для того и нужен — по нему пароль не
-/// восстанавливается, а PBKDF2 со 60 000 итераций делает перебор дорогим.
-///
-/// [EmployeeModel.toPublicJson] здесь не годится по той же причине: он
-/// сделан для показа карточки, а не для переноса учётной записи.
+class ArticlesSync extends SyncCollection<ArticleModel> {
+  @override
+  String get name => 'articles';
+  @override
+  String get boxName => 'wesios_knowledge';
+  @override
+  String idOf(ArticleModel value) => value.id;
+  @override
+  void notifyChanged() => KnowledgeService.revision.value++;
+  @override
+  bool shouldSync(ArticleModel value) => !value.builtIn;
+
+  @override
+  Map<String, dynamic> encode(ArticleModel value) => {
+        'id': value.id,
+        'title': value.title,
+        'body': value.body,
+        'section': value.section.name,
+        'tags': value.tags,
+        'createdAt': value.createdAt.toIso8601String(),
+        'updatedAt': value.updatedAt.toIso8601String(),
+        'builtIn': value.builtIn,
+        'pinned': value.pinned,
+        'parentId': value.parentId,
+        'isFolder': value.isFolder,
+      };
+
+  @override
+  ArticleModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final createdAt = _date(fields['createdAt']);
+    if (id == null || createdAt == null) return null;
+    return ArticleModel(
+      id: id,
+      title: _str(fields['title']),
+      body: _str(fields['body']),
+      section: _enumByName(
+        ArticleSection.values,
+        fields['section'],
+        ArticleSection.guide,
+      ),
+      tags: _strings(fields['tags']),
+      createdAt: createdAt,
+      updatedAt: _date(fields['updatedAt']) ?? createdAt,
+      builtIn: fields['builtIn'] == true,
+      pinned: fields['pinned'] == true,
+      parentId: _strOrNull(fields['parentId']),
+      isFolder: fields['isFolder'] == true,
+    );
+  }
+}
+
 class EmployeesSync extends SyncCollection<EmployeeModel> {
   @override
-  void notifyChanged() => TeamService.revision.value++;
-
-  @override
   String get name => 'employees';
-
   @override
   String get boxName => 'wesios_team';
-
   @override
   String idOf(EmployeeModel value) => value.id;
+  @override
+  void notifyChanged() => TeamService.revision.value++;
 
   @override
   Map<String, dynamic> encode(EmployeeModel value) => {
@@ -497,9 +479,6 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
         'createdAt': value.createdAt.toIso8601String(),
         'isOwner': value.isOwner,
         'demoStats': value.demoStats,
-        // Снимок — в base64: JSON не умеет байты, а без снимка «аватарки
-        // видны другим» перестаёт работать ровно там, где и должно —
-        // на втором устройстве.
         'photo': value.photo == null ? null : base64Encode(value.photo!),
       };
 
@@ -544,43 +523,197 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
   }
 }
 
-/// Разговоры.
-///
-/// Уезжают **только рабочие** — см. [ChatEnvelopePolicy.travels], там же
-/// написано, почему личные остаются на устройстве и что должно появиться,
-/// чтобы это изменилось.
+class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
+  @override
+  String get name => 'organization_grants';
+  @override
+  String get boxName => OrganizationAccessService.boxName;
+  @override
+  String idOf(OrganizationAccessGrant value) => value.id;
+  @override
+  void notifyChanged() => OrganizationAccessService.revision.value++;
+
+  @override
+  Map<String, dynamic> encode(OrganizationAccessGrant value) => {
+        'id': value.id,
+        'employeeId': value.employeeId,
+        'organizationId': value.organizationId,
+        'includeSubtree': value.includeSubtree,
+        'canViewTeamFinance': value.canViewTeamFinance,
+        'canViewSelfFinance': value.canViewSelfFinance,
+        'permissions': value.permissions,
+        'createdAt': value.createdAt.toIso8601String(),
+        'updatedAt': value.updatedAt.toIso8601String(),
+        'createdBy': value.createdBy,
+      };
+
+  @override
+  OrganizationAccessGrant? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final employeeId = _strOrNull(fields['employeeId']);
+    final organizationId = _strOrNull(fields['organizationId']);
+    final createdAt = _date(fields['createdAt']);
+    if (id == null || employeeId == null || organizationId == null || createdAt == null) {
+      return null;
+    }
+    return OrganizationAccessGrant(
+      id: id,
+      employeeId: employeeId,
+      organizationId: organizationId,
+      includeSubtree: fields['includeSubtree'] == true,
+      canViewTeamFinance: fields['canViewTeamFinance'] == true,
+      canViewSelfFinance: fields['canViewSelfFinance'] != false,
+      permissions: _strings(fields['permissions']),
+      createdAt: createdAt,
+      updatedAt: _date(fields['updatedAt']) ?? createdAt,
+      createdBy: _str(fields['createdBy'], 'sync'),
+    );
+  }
+}
+
+class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
+  @override
+  String get name => 'inter_org_transfers';
+  @override
+  String get boxName => InterOrgTransferService.boxName;
+  @override
+  String idOf(InterOrgTransferModel value) => value.id;
+  @override
+  void notifyChanged() => InterOrgTransferService.revision.value++;
+
+  @override
+  Map<String, dynamic> encode(InterOrgTransferModel value) => {
+        'id': value.id,
+        'fromOrganizationId': value.fromOrganizationId,
+        'toOrganizationId': value.toOrganizationId,
+        'fromAccountId': value.fromAccountId,
+        'toAccountId': value.toAccountId,
+        'amount': value.amount,
+        'currency': value.currency,
+        'amountInFromOrgBase': value.amountInFromOrgBase,
+        'amountInToOrgBase': value.amountInToOrgBase,
+        'type': value.type.name,
+        'note': value.note,
+        'date': value.date.toIso8601String(),
+        'createdBy': value.createdBy,
+        'createdAt': value.createdAt.toIso8601String(),
+        'linkedDebitTransactionId': value.linkedDebitTransactionId,
+        'linkedCreditTransactionId': value.linkedCreditTransactionId,
+        'cancelled': value.cancelled,
+        'cancelledAt': value.cancelledAt?.toIso8601String(),
+        'cancelledBy': value.cancelledBy,
+      };
+
+  @override
+  InterOrgTransferModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final fromOrg = _strOrNull(fields['fromOrganizationId']);
+    final toOrg = _strOrNull(fields['toOrganizationId']);
+    final fromAccount = _strOrNull(fields['fromAccountId']);
+    final toAccount = _strOrNull(fields['toAccountId']);
+    final amount = _double(fields['amount']);
+    final date = _date(fields['date']);
+    final createdAt = _date(fields['createdAt']);
+    final debit = _strOrNull(fields['linkedDebitTransactionId']);
+    final credit = _strOrNull(fields['linkedCreditTransactionId']);
+    if (id == null ||
+        fromOrg == null ||
+        toOrg == null ||
+        fromAccount == null ||
+        toAccount == null ||
+        amount == null ||
+        date == null ||
+        createdAt == null ||
+        debit == null ||
+        credit == null) {
+      return null;
+    }
+    return InterOrgTransferModel(
+      id: id,
+      fromOrganizationId: fromOrg,
+      toOrganizationId: toOrg,
+      fromAccountId: fromAccount,
+      toAccountId: toAccount,
+      amount: amount,
+      currency: _str(fields['currency'], 'RUB'),
+      amountInFromOrgBase: _double(fields['amountInFromOrgBase']) ?? amount,
+      amountInToOrgBase: _double(fields['amountInToOrgBase']) ?? amount,
+      type: _enumByName(
+        InterOrgTransferType.values,
+        fields['type'],
+        InterOrgTransferType.other,
+      ),
+      note: _strOrNull(fields['note']),
+      date: date,
+      createdBy: _str(fields['createdBy'], 'sync'),
+      createdAt: createdAt,
+      linkedDebitTransactionId: debit,
+      linkedCreditTransactionId: credit,
+      cancelled: fields['cancelled'] == true,
+      cancelledAt: _date(fields['cancelledAt']),
+      cancelledBy: _strOrNull(fields['cancelledBy']),
+    );
+  }
+}
+
+class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
+  @override
+  String get name => 'transaction_audit';
+  @override
+  String get boxName => 'wesios_transaction_audit';
+  @override
+  String idOf(TransactionAuditModel value) => value.id;
+
+  @override
+  Map<String, dynamic> encode(TransactionAuditModel value) => {
+        'id': value.id,
+        'transactionId': value.transactionId,
+        'changedBy': value.changedBy,
+        'changedAt': value.changedAt.toIso8601String(),
+        'beforeJson': value.beforeJson,
+        'afterJson': value.afterJson,
+        'reason': value.reason,
+        'organizationId': value.organizationId,
+      };
+
+  @override
+  TransactionAuditModel? decode(Map<String, dynamic> fields) {
+    final id = _strOrNull(fields['id']);
+    final transactionId = _strOrNull(fields['transactionId']);
+    final changedAt = _date(fields['changedAt']);
+    if (id == null || transactionId == null || changedAt == null) return null;
+    return TransactionAuditModel(
+      id: id,
+      transactionId: transactionId,
+      changedBy: _str(fields['changedBy'], 'sync'),
+      changedAt: changedAt,
+      beforeJson: _strOrNull(fields['beforeJson']),
+      afterJson: _strOrNull(fields['afterJson']),
+      reason: _strOrNull(fields['reason']),
+      organizationId: _str(
+        fields['organizationId'],
+        OrganizationModel.wesiBeatsId,
+      ),
+    );
+  }
+}
+
 class ChatsSync extends SyncCollection<ChatThread> {
   @override
-  void notifyChanged() => ChatService.revision.value++;
-
-  @override
   String get name => 'chats';
-
   @override
   String get boxName => 'wesios_chats';
-
   @override
   String idOf(ChatThread value) => value.id;
-
+  @override
+  void notifyChanged() => ChatService.revision.value++;
   @override
   bool shouldSync(ChatThread value) => ChatEnvelopePolicy.travels(value.kind);
-
-  /// `lastOpenedAt` в [ChatThread.toJson] намеренно нет: «докуда я дочитал» —
-  /// это про устройство, а не про разговор. Уехав на сервер, эта отметка
-  /// обнуляла бы непрочитанное на телефоне каждый раз, когда человек
-  /// заглядывает в тот же чат с компьютера.
   @override
   Map<String, dynamic> encode(ChatThread value) => value.toJson();
-
   @override
-  ChatThread? decode(Map<String, dynamic> fields) =>
-      ChatThread.tryParse(fields);
+  ChatThread? decode(Map<String, dynamic> fields) => ChatThread.tryParse(fields);
 
-  /// Своя отметка о прочтении переживает приезд чужой правки.
-  ///
-  /// Без этого достаточно было бы, чтобы кто-то переименовал группу, — и всё
-  /// непрочитанное во всех разговорах на этом устройстве обнулилось бы разом,
-  /// потому что запись легла бы поверх местной целиком.
   @override
   Future<bool> applyFields(Map<String, dynamic> fields) async {
     final b = box();
@@ -590,27 +723,19 @@ class ChatsSync extends SyncCollection<ChatThread> {
     final mine = b.get(incoming.id);
     await b.put(
       incoming.id,
-      mine == null
-          ? incoming
-          : incoming.copyWith(lastOpenedAt: mine.lastOpenedAt),
+      mine == null ? incoming : incoming.copyWith(lastOpenedAt: mine.lastOpenedAt),
     );
     return true;
   }
 }
 
-/// Сообщения.
-///
-/// Две вещи, которые здесь важнее самого переноса.
-///
-/// **Архивное не уезжает и не удаляется чужим надгробием.** Архив — это то,
-/// что человек решил сохранить у себя навсегда; он и заведён как местное
-/// решение. Отправлять его на сервер незачем, а позволить удалению с чужого
-/// устройства до него дотянуться — значит сломать единственное обещание,
-/// которое архив даёт.
-///
-/// **Личная переписка не уезжает вовсе**, пока нет конвертного шифрования, —
-/// по той же причине, что и сами личные чаты.
 class MessagesSync extends SyncCollection<ChatMessage> {
+  @override
+  String get name => 'messages';
+  @override
+  String get boxName => 'wesios_messages';
+  @override
+  String idOf(ChatMessage value) => value.id;
   @override
   void notifyChanged() {
     MessageStore.revision.value++;
@@ -618,71 +743,35 @@ class MessagesSync extends SyncCollection<ChatMessage> {
   }
 
   @override
-  String get name => 'messages';
-
-  @override
-  String get boxName => 'wesios_messages';
-
-  @override
-  String idOf(ChatMessage value) => value.id;
-
-  @override
   bool shouldSync(ChatMessage value) {
     if (value.archived) return false;
     final chat = _chatOf(value.chatId);
-    // Сообщение без разговора — либо мусор, либо приехало вперёд своего
-    // чата. И то и другое лучше пропустить: отправлять переписку, про
-    // которую неизвестно, личная она или рабочая, нельзя.
     return chat != null && ChatEnvelopePolicy.travels(chat.kind);
   }
 
-  /// Состояние доставки наружу **не уезжает**.
-  ///
-  /// «Моё сообщение ушло с этого телефона» — факт про этот телефон, и
-  /// собеседнику он не сообщает ничего. Уехав, он бы ещё и перетирал
-  /// местное состояние на других устройствах владельца.
-  ///
-  /// Приехавшее сообщение получает [DeliveryState.sent] по умолчанию — и
-  /// это правда: раз оно приехало, оно точно было отправлено.
   @override
   Map<String, dynamic> encode(ChatMessage value) =>
       value.toJson()..remove('state');
-
   @override
-  ChatMessage? decode(Map<String, dynamic> fields) =>
-      ChatMessage.tryParse(fields);
+  ChatMessage? decode(Map<String, dynamic> fields) => ChatMessage.tryParse(fields);
 
-  /// Сообщение уехало — значит оно отправлено, и человеку пора это увидеть.
-  ///
-  /// До этого крючка состояние не менялось никогда: `markState` существовал,
-  /// но его никто не вызывал, и галочка под своим сообщением оставалась
-  /// «часиками» навсегда.
-  ///
-  /// **Отметка в журнале сохраняется прежней.** Иначе получилась бы качель:
-  /// пометили «отправлено» → журнал увидел правку → на следующем проходе
-  /// сообщение уехало снова → снова пометили. И так до бесконечности.
   @override
   Future<void> afterUpload(Iterable<String> ids) async {
     final b = box();
     if (b == null) return;
     for (final id in ids) {
-      final m = b.get(id);
-      if (m == null || m.state != DeliveryState.pending) continue;
+      final message = b.get(id);
+      if (message == null || message.state != DeliveryState.pending) continue;
       final stamp = SyncJournal.stampOf(name, id);
       if (stamp != null) SyncJournal.expect(name, id, stamp);
-      await b.put(id, m.copyWith(state: DeliveryState.sent));
+      await b.put(id, message.copyWith(state: DeliveryState.sent));
     }
   }
 
-  /// Надгробие не дотягивается до архива.
-  ///
-  /// Проверка стоит здесь, а не только в [MessageStore.remove]: удаление,
-  /// приехавшее с другого устройства, идёт мимо неё — прямо в бокс.
   @override
   Future<void> removeById(String id) async {
     final b = box();
-    if (b == null) return;
-    if (b.get(id)?.archived == true) return;
+    if (b == null || b.get(id)?.archived == true) return;
     await b.delete(id);
   }
 
@@ -696,34 +785,31 @@ class MessagesSync extends SyncCollection<ChatMessage> {
   }
 }
 
-/// Что синхронизируется.
 class SyncCodec {
-  /// Порядок важен: счета приезжают раньше операций, чтобы операция не
-  /// провела в интерфейсе ни одного кадра, ссылаясь на ещё не приехавший
-  /// счёт.
-  ///
-  /// По той же причине состав идёт раньше разговоров, а разговоры — раньше
-  /// сообщений: сообщение без своего чата не пройдёт даже отбор
-  /// ([MessagesSync.shouldSync]), а чат без людей показался бы разговором с
-  /// пустым именем.
+  /// Referential parents are synchronized before their children. In
+  /// particular an organization arrives before accounts/transactions, and an
+  /// employee arrives before access grants.
   static final List<SyncCollection<dynamic>> collections = [
+    OrganizationsSync(),
     AccountsSync(),
     TransactionsSync(),
     TasksSync(),
     CalendarEventsSync(),
     ArticlesSync(),
     EmployeesSync(),
+    OrganizationGrantsSync(),
+    InterOrgTransfersSync(),
+    TransactionAuditsSync(),
     ChatsSync(),
     MessagesSync(),
   ];
 
   static SyncCollection<dynamic>? byName(String name) {
-    for (final c in collections) {
-      if (c.name == name) return c;
+    for (final collection in collections) {
+      if (collection.name == name) return collection;
     }
     return null;
   }
 
-  /// Боксы, за которыми должен следить журнал.
   static List<String> get boxNames => [for (final c in collections) c.boxName];
 }
