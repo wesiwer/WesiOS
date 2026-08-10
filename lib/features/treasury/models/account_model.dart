@@ -1,10 +1,11 @@
 import 'package:hive/hive.dart';
 
+import '../../organizations/models/organization_model.dart';
+
 part 'account_model.g.dart';
 
-/// Назначение счёта. Влияет только на иконку и подпись — деньги везде
-/// считаются одинаково, а вот «карта» и «наличные» в списке различаются
-/// с одного взгляда.
+/// Purpose of an account inside one organization.
+/// Existing byte values are immutable because old Hive data uses them.
 @HiveType(typeId: 14)
 enum AccountKind {
   @HiveField(0)
@@ -14,48 +15,46 @@ enum AccountKind {
   @HiveField(2)
   cash,
   @HiveField(3)
-  savings,
+  savings, // legacy value; retained for backward compatibility
   @HiveField(4)
   project,
+  @HiveField(5)
+  reserve,
+  @HiveField(6)
+  other,
 }
 
-/// Отдельный счёт внутри Wesi Inc.
-///
-/// Раньше баланс был один на всё, и разделить направления бизнеса было
-/// нечем: деньги проекта, резерв и операционка лежали в одной куче. Теперь
-/// операция принадлежит счёту, а общий баланс — это сумма по всем счетам.
 @HiveType(typeId: 15)
 class AccountModel {
   @HiveField(0)
   final String id;
-
   @HiveField(1)
   final String name;
-
   @HiveField(2)
   final AccountKind kind;
-
-  /// Стартовая сумма на счёте — то, что уже лежало там до первой операции.
-  /// Хранится в рублёвом эквиваленте, как и суммы операций.
   @HiveField(3)
   final double openingBalance;
-
-  /// Цвет карточки — ARGB. Нужен, чтобы счета отличались в списке и на
-  /// диаграммах.
   @HiveField(4)
   final int colorValue;
-
   @HiveField(5)
   final DateTime createdAt;
-
-  /// Архивный счёт не показывается в выборе при добавлении операции, но его
-  /// история никуда не девается — удаление счёта с операциями потеряло бы
-  /// часть прошлого.
   @HiveField(6)
   final bool archived;
-
   @HiveField(7)
   final String? note;
+
+  /// Null only for records written before organization hierarchy v1.
+  @HiveField(8)
+  final String? organizationId;
+
+  @HiveField(9)
+  final double minimumBalance;
+
+  @HiveField(10)
+  final bool allowNetting;
+
+  @HiveField(11)
+  final String currency;
 
   const AccountModel({
     required this.id,
@@ -66,14 +65,22 @@ class AccountModel {
     required this.createdAt,
     this.archived = false,
     this.note,
+    this.organizationId,
+    this.minimumBalance = 0,
+    this.allowNetting = true,
+    this.currency = 'RUB',
   });
 
-  /// Идентификатор счёта по умолчанию.
-  ///
-  /// Операции, созданные до появления счетов, не имеют `accountId` — они
-  /// считаются принадлежащими основному счёту, иначе после обновления
-  /// приложения баланс обнулился бы на глазах у пользователя.
+  /// Legacy main account id. It remains the Wesi Beats main account forever.
   static const String mainId = 'main';
+
+  static String mainIdFor(String organizationId) =>
+      organizationId == OrganizationModel.wesiBeatsId
+          ? mainId
+          : 'main:$organizationId';
+
+  String get effectiveOrganizationId =>
+      organizationId ?? OrganizationModel.wesiBeatsId;
 
   AccountModel copyWith({
     String? name,
@@ -83,6 +90,10 @@ class AccountModel {
     bool? archived,
     String? note,
     bool clearNote = false,
+    String? organizationId,
+    double? minimumBalance,
+    bool? allowNetting,
+    String? currency,
   }) =>
       AccountModel(
         id: id,
@@ -93,5 +104,9 @@ class AccountModel {
         createdAt: createdAt,
         archived: archived ?? this.archived,
         note: clearNote ? null : (note ?? this.note),
+        organizationId: organizationId ?? this.organizationId,
+        minimumBalance: minimumBalance ?? this.minimumBalance,
+        allowNetting: allowNetting ?? this.allowNetting,
+        currency: currency ?? this.currency,
       );
 }
