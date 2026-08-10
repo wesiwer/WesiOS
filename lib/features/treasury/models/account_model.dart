@@ -44,6 +44,7 @@ class AccountModel {
   final String? note;
 
   /// Null only for records written before organization hierarchy v1.
+  /// Legacy records belong to Wesi Inc.
   @HiveField(8)
   final String? organizationId;
 
@@ -71,16 +72,17 @@ class AccountModel {
     this.currency = 'RUB',
   });
 
-  /// Legacy main account id. It remains the Wesi Beats main account forever.
+  /// Legacy main account id. Existing WesiOS financial history belongs to
+  /// Wesi Inc, so the historical `main` id remains the root main account.
   static const String mainId = 'main';
 
   static String mainIdFor(String organizationId) =>
-      organizationId == OrganizationModel.wesiBeatsId
+      organizationId == OrganizationModel.rootId
           ? mainId
           : 'main:$organizationId';
 
   String get effectiveOrganizationId =>
-      organizationId ?? OrganizationModel.wesiBeatsId;
+      organizationId ?? OrganizationModel.rootId;
 
   AccountModel copyWith({
     String? name,
