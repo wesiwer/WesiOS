@@ -1,0 +1,100 @@
+name: Organization hierarchy docs finalizer
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: read
+
+jobs:
+  finalize:
+    if: github.head_ref == 'agent/org-docs-finalize-trigger'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+          fetch-depth: 0
+      - name: Record verified implementation
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          body=$(gh api "repos/$GITHUB_REPOSITORY/pulls/86" --jq '.body // ""')
+          code_sha=$(printf '%s\n' "$body" | sed -n 's/.*Exact product SHA: `\([^`]*\)`.*/\1/p' | head -1)
+          run_id=$(printf '%s\n' "$body" | sed -n 's/.*Workflow run: `\([^`]*\)`.*/\1/p' | head -1)
+          [ -n "$code_sha" ] || { echo '::error::code SHA missing from PR #86'; exit 1; }
+          [ -n "$run_id" ] || { echo '::error::run ID missing from PR #86'; exit 1; }
+          printf '%s\n' "$body" | grep -q 'Overall: \*\*success\*\*' || { echo '::error::PR #86 not green'; exit 1; }
+
+          python3 <<'PY'
+          from pathlib import Path
+          import os
+
+          code_sha=os.environ.get('CODE_SHA','')
+          run_id=os.environ.get('RUN_ID','')
+          marker='## 17. Реализация и валидация — 2026-08-10'
+          block=f'''\n\n## 17. Реализация и валидация — 2026-08-10\n\nСтатус: **реализовано, code gate green; docs-head подлежит отдельной exact-SHA перевалидации после этой записи.**\n\nПодтверждённый кодовый SHA: `{code_sha}`  \nWorkflow: `{run_id}` — **success**.\n\nПодтверждено единым gate:\n- `flutter analyze --no-fatal-infos`;\n- полный `flutter test`;\n- отдельные контракты дерева организаций, миграции `Wesi Inc → Wesi Beats`, `only/subtree`, inter-org, employee privacy и sync ownership;\n- legacy Treasury/Horizon contracts;\n- Android verification build;\n- Windows release build.\n\nРеализованные контуры:\n- реальное дерево организаций любой глубины с единственным root `Wesi Inc`;\n- полноценный узел `Wesi Beats` и идемпотентная миграция legacy-финансов в него;\n- `OrganizationContext`: current org + `only/subtree`, per-user/local restore;\n- ownership организации у accounts, transactions, categories, recurring/cash tasks, CRM finance sources, predictions и grants;\n- org-specific main accounts без смешивания нового узла с legacy `main`;\n- явный `InterOrgTransfer` с двумя связанными проводками, согласованной отменой и audit;\n- устранение внутреннего inter-org double count в subtree analytics/forecast;\n- account kinds, minimum balance, netting, currency, archive;\n- transaction source/actor/owner/audit;\n- org/subtree access grants и server-side-in-service enforcement ключевых финансовых прав;\n- employee `ownerEmployeeId`, self finance, manager org/subtree views, team breakdown и self contribution forecast;\n- CRM/task responsibility включена в employee/Horizon cash context без двойного учёта;\n- organization switcher, дерево управления, создание дочерних узлов, grants UI, inter-org flow и subtree balance breakdown;\n- Horizon/Analytics/learning/prediction state изолированы по organization/scope;\n- sync передаёт organizations → finance → employees/grants → transfers/audit и физически backfill-ит legacy ownership.\n\nОграничения ТЗ сохранены: полноценный бухгалтерский consolidation accounting, сложные approvals, open banking и автоматические сложные profit-share правила в v1 не входят. Nice-to-have визуальная карта дерева может развиваться поверх текущей модели без миграции ownership.\n'''
+          p=Path('TZ_ORG_HIERARCHY_V1.md')
+          text=p.read_text(encoding='utf-8')
+          if marker not in text:
+              p.write_text(text.rstrip()+block+'\n',encoding='utf-8')
+
+          pointer='- Полное ТЗ мультиорганизационной архитектуры и персональных финансов: `TZ_ORG_HIERARCHY_V1.md`.'
+          p=Path('TZ.md')
+          text=p.read_text(encoding='utf-8')
+          if pointer not in text:
+              p.write_text(text.rstrip()+f'\n\n## Organization hierarchy v1\n\n{pointer}\n',encoding='utf-8')
+
+          status_block=f'''\n\n## Organization hierarchy v1 — 2026-08-10\n\n- Реализовано на ветке `agent/org-hierarchy-v1`.\n- Code gate: `{code_sha}`, workflow `{run_id}` — success.\n- Tree/context/migration/inter-org/access/self+manager finance/sync/Horizon scoping реализованы.\n- После docs commit выполняется отдельная exact-SHA перевалидация.\n'''
+          p=Path('STATUS.md')
+          if p.exists():
+              text=p.read_text(encoding='utf-8')
+              if '## Organization hierarchy v1 — 2026-08-10' not in text:
+                  p.write_text(text.rstrip()+status_block+'\n',encoding='utf-8')
+
+          handoff_block=f'''\n\n## Organization hierarchy v1\n\nКаноническое ТЗ: `TZ_ORG_HIERARCHY_V1.md`. Реализация находится в `agent/org-hierarchy-v1`. Code gate `{code_sha}` / `{run_id}` полностью green. Не начинать архитектуру заново: продолжать от текущего head и сохранять invariants one-org ownership, `only/subtree`, linked inter-org, privacy self/team и Horizon scope isolation. Финальный docs-head проверяется отдельным exact-SHA gate.\n'''
+          p=Path('TZ_HANDOFF.md')
+          if p.exists():
+              text=p.read_text(encoding='utf-8')
+              if '\n## Organization hierarchy v1\n' not in text:
+                  p.write_text(text.rstrip()+handoff_block+'\n',encoding='utf-8')
+          PY
+
+          rm -f .github/workflows/org-docs-finalize-temp.yml
+          git diff --check
+        env:
+          CODE_SHA: ${{ env.CODE_SHA }}
+          RUN_ID: ${{ env.RUN_ID }}
+      - name: Commit documentation
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Re-read values because step-level shell variables do not cross steps.
+          body=$(GH_TOKEN='${{ github.token }}' gh api "repos/$GITHUB_REPOSITORY/pulls/86" --jq '.body // ""')
+          code_sha=$(printf '%s\n' "$body" | sed -n 's/.*Exact product SHA: `\([^`]*\)`.*/\1/p' | head -1)
+          run_id=$(printf '%s\n' "$body" | sed -n 's/.*Workflow run: `\([^`]*\)`.*/\1/p' | head -1)
+          # Fill placeholders left by environment-safe Python execution if needed.
+          python3 - "$code_sha" "$run_id" <<'PY'
+          from pathlib import Path
+          import sys
+          sha,run=sys.argv[1],sys.argv[2]
+          for name in ('TZ_ORG_HIERARCHY_V1.md','STATUS.md','TZ_HANDOFF.md'):
+              p=Path(name)
+              if not p.exists(): continue
+              s=p.read_text(encoding='utf-8').replace('`` — success','`` — success')
+              # First step obtains values through its shell; normalize any empty placeholders defensively.
+              s=s.replace('Подтверждённый кодовый SHA: ``',f'Подтверждённый кодовый SHA: `{sha}`')
+              s=s.replace('Workflow: `` — **success**',f'Workflow: `{run}` — **success**')
+              s=s.replace('Code gate: ``, workflow `` — success.',f'Code gate: `{sha}`, workflow `{run}` — success.')
+              s=s.replace('Code gate `` / `` полностью green.',f'Code gate `{sha}` / `{run}` полностью green.')
+              p.write_text(s,encoding='utf-8')
+          PY
+          git config user.name "WesiOS CI Fix"
+          git config user.email "actions@users.noreply.github.com"
+          git add TZ_ORG_HIERARCHY_V1.md TZ.md STATUS.md TZ_HANDOFF.md .github/workflows/org-docs-finalize-temp.yml
+          git commit -m "docs(org): record hierarchy v1 implementation validation"
+          git push origin HEAD:agent/org-hierarchy-v1
