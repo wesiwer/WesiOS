@@ -39,4 +39,13 @@ void main() {
     expect(screen, contains('ownerEmployeeId: ownerEmployee?.id'));
     expect(screen, contains('responsibleEmployeeId: _responsibleEmployeeId'));
   });
+
+  test('Contacts follows organization context and grants new members to current org', () {
+    final screen = source('lib/features/team/contacts_screen.dart');
+    expect(screen, contains('OrganizationContext.revision.addListener'));
+    expect(screen, contains('OrganizationContext.effectiveOrganizationIds'));
+    expect(screen, contains('OrganizationSwitcher(compact: true)'));
+    expect(screen, contains('OrganizationAccessService.grant'));
+    expect(screen, contains('OrganizationPermissions.manageMembers'));
+  });
 }
