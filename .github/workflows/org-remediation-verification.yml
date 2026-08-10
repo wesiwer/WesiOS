@@ -43,6 +43,7 @@ jobs:
           test/organization_scope_isolation_test.dart
           test/task_crm_organization_scope_test.dart
           test/organization_finance_negative_test.dart
+          test/organization_forecast_permission_test.dart
           test/inter_org_fault_injection_test.dart
           test/multi_currency_org_test.dart
           test/background_org_processing_test.dart
