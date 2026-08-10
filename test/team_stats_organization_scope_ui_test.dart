@@ -146,4 +146,61 @@ void main() {
     expect(find.text('Child Worker'), findsOneWidget,
         reason: 'the same manager may see child stats only after subtree context is active');
   });
+
+  testWidgets('revoking current manager grant removes sensitive rows immediately',
+      (tester) async {
+    final child = await OrganizationService.create(
+      name: 'Studio B',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'test',
+    );
+    final manager = await addEmployee('manager-revoke', 'Manager Revoke', seeOthers: true);
+    final childWorker = await addEmployee('child-revoke', 'Sensitive Child Worker');
+
+    await OrganizationAccessService.grant(
+      employeeId: manager.id,
+      organizationId: OrganizationModel.rootId,
+      includeSubtree: true,
+      permissions: const [OrganizationPermissions.view],
+      enforceActor: false,
+    );
+    await OrganizationAccessService.grant(
+      employeeId: childWorker.id,
+      organizationId: child.id,
+      includeSubtree: false,
+      permissions: const [OrganizationPermissions.view],
+      enforceActor: false,
+    );
+    await Hive.box<TaskModel>('wesios_tasks').put(
+      'sensitive-child-task',
+      TaskModel(
+        id: 'sensitive-child-task',
+        title: 'Sensitive Child Task',
+        createdAt: DateTime(2026, 8, 1),
+        assignee: childWorker.id,
+        responsibleEmployeeId: childWorker.id,
+        organizationId: child.id,
+      ),
+    );
+
+    await Hive.box<dynamic>('wesios_settings')
+        .put('team_current_employee', manager.id);
+    await OrganizationContext.initialize();
+    await OrganizationContext.selectOrganization(OrganizationModel.rootId);
+    await OrganizationContext.setScope(OrganizationScope.subtree);
+
+    await tester.pumpWidget(const MaterialApp(home: TeamStatsScreen()));
+    await tester.pumpAndSettle();
+    expect(find.text('Sensitive Child Worker'), findsOneWidget);
+
+    await OrganizationAccessService.revoke(
+      manager.id,
+      OrganizationModel.rootId,
+      enforceActor: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Sensitive Child Worker'), findsNothing,
+        reason: 'an open TeamStats screen must react to grant revocation without reopen');
+  });
 }
