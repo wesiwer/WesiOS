@@ -1,0 +1,146 @@
+name: Org Inc legacy finalize temp
+
+on:
+  push:
+    paths:
+      - '.github/workflows/org-inc-legacy-finalize-temp.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+          fetch-depth: 0
+      - name: Apply Wesi Inc legacy ownership corrections
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace(path, old, new, count=None):
+              p = Path(path)
+              text = p.read_text()
+              found = text.count(old)
+              if found == 0:
+                  raise SystemExit(f'missing pattern in {path}: {old[:120]!r}')
+              if count is not None and found != count:
+                  raise SystemExit(f'unexpected count in {path}: {found} != {count} for {old[:120]!r}')
+              p.write_text(text.replace(old, new))
+
+          # Canonical TZ: existing data belongs to Wesi Inc, while Wesi Beats is
+          # a child contour created empty. Self finance is always independent of
+          # management scope.
+          tz = Path('TZ_ORG_HIERARCHY_V1.md')
+          text = tz.read_text()
+          text = text.replace('**Версия ТЗ:** 1.0', '**Версия ТЗ:** 1.1')
+          text = text.replace(
+              '3. Текущие рабочие финансы битов живут в `Wesi Beats`.',
+              '3. Все данные, уже существующие в WesiOS до внедрения дерева организаций, принадлежат `Wesi Inc`. `Wesi Beats` создаётся дочерней организацией без автоматического переноса туда старой истории.'
+          )
+          text = text.replace(
+              '3. Все существующие счета / операции без `organizationId` привязать к `Wesi Beats`.',
+              '3. Все существующие счета / операции без `organizationId` привязать к `Wesi Inc`.'
+          )
+          text = text.replace(
+              '- старые данные мигрированы в `Wesi Beats`;',
+              '- старые данные мигрированы в `Wesi Inc`;'
+          )
+          text = text.replace(
+              '> Можно построить дерево `Wesi Inc → IT → Studio A`, вести у каждой свои деньги, переключаться между ними, делать инвестиции / выводы между узлами, смотреть либо один узел, либо поддерево — и при этом текущий рабочий контур `Wesi Beats` продолжает жить без потери истории.',
+              '> Можно построить дерево `Wesi Inc → IT → Studio A`, вести у каждой свои деньги, переключаться между ними, делать инвестиции / выводы между узлами, смотреть либо один узел, либо поддерево — и при этом вся существовавшая до миграции история остаётся в `Wesi Inc`, а `Wesi Beats` доступна как отдельная дочерняя организация.'
+          )
+          text = text.replace(
+              'Все прежние финансы без org ownership переходят в `Wesi Beats`. `Wesi Inc` создаётся как реальный полноценный root с возможностью собственных счетов и операций.',
+              'Все прежние данные без org ownership переходят в `Wesi Inc`. `Wesi Inc` является реальным полноценным root и сохраняет существующие счета, операции, CRM, задачи, категории и Horizon-history. `Wesi Beats` создаётся дочерним контуром и не получает старые данные автоматически.'
+          )
+          text = text.replace(
+              '14. текущий `Wesi Beats` продолжает работать без потери истории.',
+              '14. существующие данные `Wesi Inc` продолжают работать без потери истории, а `Wesi Beats` существует как отдельный дочерний контур.'
+          )
+          marker = "- `Ветка` — если есть право на subtree."
+          addition = marker + "\n\n**Обязательное правило:** режим `Мои` не заменяется руководящим доступом и не исчезает при повышении роли. CEO / root owner, руководитель ветки и обычный сотрудник всегда сохраняют личный финансовый контур (`self`) в пределах доступных им организаций. Руководящий доступ лишь добавляет `Организация` / `Ветка` поверх `Мои`."
+          if addition not in text:
+              if marker not in text:
+                  raise SystemExit('TZ self-view marker missing')
+              text = text.replace(marker, addition, 1)
+          text = text.replace(
+              '- `view`;\n- `create_transactions`;',
+              '- `view`;\n- `view_finance` — агрегированные финансы org/subtree без автоматического доступа к персональным строкам сотрудников;\n- `create_transactions`;'
+          )
+          acceptance_marker = '- у сотрудника есть экран личных финансовых показателей;'
+          acceptance_add = acceptance_marker + '\n- CEO / root owner также имеет отдельный режим `Мои`, несмотря на полный управленческий доступ;\n- сотрудник с правом `view_finance` может переключаться между `Мои` и доступной ему организацией; `Ветка` появляется только при subtree-праве;'
+          if acceptance_add not in text:
+              text = text.replace(acceptance_marker, acceptance_add, 1)
+          tz.write_text(text)
+
+          # Legacy fallbacks in parsed/synced data belong to Wesi Inc.
+          for path in [
+              'lib/features/crm/models/crm_models.dart',
+              'lib/features/treasury/services/horizon_business_context.dart',
+              'lib/features/treasury/services/horizon_prediction_registry.dart',
+              'lib/core/sync/sync_codec.dart',
+          ]:
+              p = Path(path)
+              p.write_text(p.read_text().replace('OrganizationModel.wesiBeatsId', 'OrganizationModel.rootId'))
+
+          # Sync must physically recover ownership, not leave nullable legacy
+          # values until some later read.
+          p = Path('lib/core/sync/sync_codec.dart')
+          s = p.read_text()
+          s = s.replace(
+              "organizationId: _strOrNull(fields['organizationId']),",
+              "organizationId: _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId,",
+              2,
+          )
+          task_encode = "        'tags': value.tags,\n        'order': value.order,"
+          task_encode_new = "        'tags': value.tags,\n        'order': value.order,\n        'organizationId': value.effectiveOrganizationId,\n        'responsibleEmployeeId': value.effectiveResponsibleEmployeeId,"
+          if task_encode not in s:
+              raise SystemExit('TasksSync encode marker missing')
+          s = s.replace(task_encode, task_encode_new, 1)
+          task_decode = "      tags: _strings(fields['tags']),\n      order: _int(fields['order']),"
+          task_decode_new = "      tags: _strings(fields['tags']),\n      order: _int(fields['order']),\n      organizationId: _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId,\n      responsibleEmployeeId: _strOrNull(fields['responsibleEmployeeId']),"
+          if task_decode not in s:
+              raise SystemExit('TasksSync decode marker missing')
+          s = s.replace(task_decode, task_decode_new, 1)
+          p.write_text(s)
+
+          # New org grants created from the UI include aggregate finance view;
+          # team-person rows remain controlled separately.
+          p = Path('lib/features/organizations/organizations_screen.dart')
+          s = p.read_text()
+          marker = '          OrganizationPermissions.view,\n          OrganizationPermissions.createTransactions,'
+          if marker not in s:
+              raise SystemExit('organization grant marker missing')
+          s = s.replace(
+              marker,
+              '          OrganizationPermissions.view,\n          OrganizationPermissions.viewFinance,\n          OrganizationPermissions.createTransactions,',
+              1,
+          )
+          p.write_text(s)
+
+          # Migration regression expectations now lock Wesi Inc as legacy owner.
+          p = Path('test/organization_migration_context_test.dart')
+          p.write_text(p.read_text().replace('OrganizationModel.wesiBeatsId', 'OrganizationModel.rootId'))
+
+          # Sync regression expectations also lock root ownership for payloads
+          # that predate organizationId.
+          sync_test = Path('test/organization_tz_contract_test.dart')
+          if sync_test.exists():
+              s = sync_test.read_text().replace('OrganizationModel.wesiBeatsId', 'OrganizationModel.rootId')
+              sync_test.write_text(s)
+          PY
+
+      - name: Commit corrections and remove temporary workflow
+        shell: bash
+        run: |
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/org-inc-legacy-finalize-temp.yml
+          git add TZ_ORG_HIERARCHY_V1.md lib test
+          git commit -m 'fix(org): make Wesi Inc the legacy data owner'
+          git push origin HEAD:agent/org-hierarchy-v1
