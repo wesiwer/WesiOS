@@ -21,6 +21,8 @@ class OrganizationsScreen extends StatefulWidget {
 class _OrganizationsScreenState extends State<OrganizationsScreen> {
   List<OrganizationModel> _orgs = const [];
   Set<String> _allowed = const {};
+  Set<String> _manageSettings = const {};
+  Set<String> _manageMembers = const {};
   bool _loading = true;
   String? _error;
 
@@ -36,10 +38,31 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
       final allowed = TeamService.current == null
           ? orgs.map((e) => e.id).toSet()
           : await OrganizationAccessService.visibleOrganizationIds();
+      final manageSettings = <String>{};
+      final manageMembers = <String>{};
+      final employee = TeamService.current;
+      for (final org in orgs) {
+        if (employee == null || employee.isOwner ||
+            await OrganizationAccessService.can(
+              org.id,
+              OrganizationPermissions.manageOrgSettings,
+            )) {
+          manageSettings.add(org.id);
+        }
+        if (employee == null || employee.isOwner ||
+            await OrganizationAccessService.can(
+              org.id,
+              OrganizationPermissions.manageMembers,
+            )) {
+          manageMembers.add(org.id);
+        }
+      }
       if (!mounted) return;
       setState(() {
         _orgs = orgs;
         _allowed = allowed;
+        _manageSettings = manageSettings;
+        _manageMembers = manageMembers;
         _loading = false;
         _error = null;
       });
@@ -76,11 +99,13 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _create,
-        icon: const Icon(Icons.add_business_outlined),
-        label: const Text('Создать'),
-      ),
+      floatingActionButton: _manageSettings.isEmpty
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: _create,
+              icon: const Icon(Icons.add_business_outlined),
+              label: const Text('Создать'),
+            ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
@@ -154,10 +179,13 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
             itemBuilder: (_) => [
               if (!org.archived)
                 const PopupMenuItem(value: 'open', child: Text('Открыть Treasury')),
-              if (!org.archived)
+              if (!org.archived && _manageSettings.contains(org.id))
+                const PopupMenuItem(value: 'edit', child: Text('Редактировать')),
+              if (!org.archived && _manageSettings.contains(org.id))
                 const PopupMenuItem(value: 'child', child: Text('Создать дочернюю')),
-              const PopupMenuItem(value: 'members', child: Text('Участники и права')),
-              if (!org.isRoot)
+              if (_manageMembers.contains(org.id))
+                const PopupMenuItem(value: 'members', child: Text('Участники и права')),
+              if (!org.isRoot && _manageSettings.contains(org.id))
                 PopupMenuItem(
                   value: org.archived ? 'restore' : 'archive',
                   child: Text(org.archived ? 'Восстановить' : 'Архивировать'),
@@ -173,9 +201,17 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
   Future<void> _action(OrganizationModel org, String action) async {
     switch (action) {
       case 'open': await _openOrg(org); break;
-      case 'child': await _create(parent: org); break;
-      case 'members': await _members(org); break;
+      case 'edit':
+        if (_manageSettings.contains(org.id)) await _edit(org);
+        break;
+      case 'child':
+        if (_manageSettings.contains(org.id)) await _create(parent: org);
+        break;
+      case 'members':
+        if (_manageMembers.contains(org.id)) await _members(org);
+        break;
       case 'archive':
+        if (!_manageSettings.contains(org.id)) return;
         final ok = await OrganizationService.archive(org.id);
         if (!ok && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -185,6 +221,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         await _load();
         break;
       case 'restore':
+        if (!_manageSettings.contains(org.id)) return;
         await OrganizationService.restore(org.id);
         await _load();
         break;
@@ -200,7 +237,9 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
   }
 
   Future<void> _create({OrganizationModel? parent}) async {
-    final parentCandidates = _orgs.where((o) => !o.archived).toList();
+    final parentCandidates = _orgs
+        .where((o) => !o.archived && _manageSettings.contains(o.id))
+        .toList();
     final defaultParent = parent ??
         parentCandidates.where((o) => o.id == OrganizationContext.currentOrganizationId).firstOrNull ??
         parentCandidates.firstOrNull;
@@ -259,15 +298,34 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         createdBy: employee?.id ?? 'local',
       );
       if (employee != null && !employee.isOwner) {
-        await OrganizationAccessService.grant(
-          employeeId: employee.id,
-          organizationId: org.id,
-          includeSubtree: true,
-          permissions: OrganizationPermissions.all,
-          canViewTeamFinance: true,
-          createdBy: employee.id,
-          enforceActor: false,
-        );
+        final grants = await OrganizationAccessService.grantsFor(employee.id);
+        OrganizationAccessGrant? template;
+        for (final grant in grants) {
+          if (grant.organizationId == parentId) {
+            template = grant;
+            break;
+          }
+          if (grant.includeSubtree &&
+              (grant.organizationId == parentId ||
+                  await OrganizationService.isDescendant(
+                    parentId,
+                    grant.organizationId,
+                  ))) {
+            template = grant;
+          }
+        }
+        if (template != null && !template.includeSubtree) {
+          await OrganizationAccessService.grant(
+            employeeId: employee.id,
+            organizationId: org.id,
+            includeSubtree: false,
+            permissions: template.permissions,
+            canViewTeamFinance: template.canViewTeamFinance,
+            canViewSelfFinance: template.canViewSelfFinance,
+            createdBy: employee.id,
+            enforceActor: false,
+          );
+        }
       }
       await AccountService.ensureMain(organizationId: org.id);
       if (reserve) {
@@ -281,6 +339,70 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
       await _load();
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    }
+  }
+
+  Future<void> _edit(OrganizationModel org) async {
+    if (!_manageSettings.contains(org.id)) return;
+    final name = TextEditingController(text: org.name);
+    final currency = TextEditingController(text: org.baseCurrency);
+    final code = TextEditingController(text: org.code ?? '');
+    final description = TextEditingController(text: org.description ?? '');
+    var parentId = org.parentId;
+    final candidates = _orgs.where((o) => !o.archived && o.id != org.id).toList();
+    final save = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: Text('Редактировать ${org.name}'),
+          content: SizedBox(
+            width: 440,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(controller: name, decoration: const InputDecoration(labelText: 'Название')),
+                const SizedBox(height: 10),
+                if (!org.isRoot)
+                  DropdownButtonFormField<String>(
+                    value: parentId,
+                    decoration: const InputDecoration(labelText: 'Родитель'),
+                    items: [
+                      for (final item in candidates)
+                        DropdownMenuItem(value: item.id, child: Text(item.name)),
+                    ],
+                    onChanged: (value) => setLocal(() => parentId = value),
+                  ),
+                const SizedBox(height: 10),
+                TextField(controller: currency, decoration: const InputDecoration(labelText: 'Базовая валюта')),
+                const SizedBox(height: 10),
+                TextField(controller: code, decoration: const InputDecoration(labelText: 'Код')),
+                const SizedBox(height: 10),
+                TextField(controller: description, decoration: const InputDecoration(labelText: 'Описание')),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Отмена')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Сохранить')),
+          ],
+        ),
+      ),
+    );
+    if (save != true || name.text.trim().isEmpty) return;
+    try {
+      await OrganizationService.update(
+        org,
+        name: name.text,
+        parentId: org.isRoot ? null : parentId,
+        baseCurrency: currency.text,
+        code: code.text.trim().isEmpty ? null : code.text.trim(),
+        description: description.text.trim().isEmpty ? null : description.text.trim(),
+      );
+      await _load();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
     }
   }
 

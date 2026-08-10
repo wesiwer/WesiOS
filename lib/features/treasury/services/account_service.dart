@@ -76,7 +76,13 @@ class AccountService {
   }
 
   static Future<List<AccountModel>> getAll({bool includeArchived = true}) async {
-    final ids = await OrganizationContext.effectiveOrganizationIds();
+    var ids = await OrganizationContext.effectiveOrganizationIds();
+    if (TeamService.current != null) {
+      final financeIds = await OrganizationAccessService.organizationIdsFor(
+        OrganizationPermissions.viewFinance,
+      );
+      ids = ids.intersection(financeIds);
+    }
     for (final id in ids) {
       await ensureMain(organizationId: id);
     }
@@ -98,6 +104,10 @@ class AccountService {
     String organizationId, {
     bool includeArchived = true,
   }) async {
+    if (TeamService.current != null &&
+        !await OrganizationAccessService.canViewOrganizationFinance(organizationId)) {
+      return const <AccountModel>[];
+    }
     await ensureMain(organizationId: organizationId);
     final box = await _accountsBox;
     return box.values

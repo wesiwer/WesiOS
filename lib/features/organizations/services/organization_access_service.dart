@@ -45,6 +45,30 @@ class OrganizationAccessService {
     return visible;
   }
 
+  static Future<Set<String>> organizationIdsFor(
+    String permission, {
+    String? employeeId,
+  }) async {
+    final employee = employeeId == null
+        ? TeamService.current
+        : TeamService.byId(employeeId);
+    if (employee == null) return <String>{};
+    if (employee.isOwner) {
+      final root = await OrganizationService.root();
+      return OrganizationService.subtreeIds(root.id);
+    }
+    final result = <String>{};
+    for (final grant in await grantsFor(employee.id)) {
+      if (!grant.allows(permission)) continue;
+      if (grant.includeSubtree) {
+        result.addAll(await OrganizationService.subtreeIds(grant.organizationId));
+      } else {
+        result.add(grant.organizationId);
+      }
+    }
+    return result;
+  }
+
   static Future<bool> can(
     String organizationId,
     String permission, {

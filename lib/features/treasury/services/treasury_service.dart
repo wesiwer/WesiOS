@@ -167,7 +167,13 @@ class TreasuryService {
   }
 
   Future<List<TransactionModel>> getAllTransactions() async {
-    final ids = await OrganizationContext.effectiveOrganizationIds();
+    var ids = await OrganizationContext.effectiveOrganizationIds();
+    if (TeamService.current != null) {
+      final financeIds = await OrganizationAccessService.organizationIdsFor(
+        OrganizationPermissions.viewFinance,
+      );
+      ids = ids.intersection(financeIds);
+    }
     final all = await getAllTransactionsRaw();
     return all.where((t) => ids.contains(t.effectiveOrganizationId)).toList();
   }
@@ -300,6 +306,13 @@ class TreasuryService {
     WhatIfScenario whatIf = WhatIfScenario.none,
     double annualDiscountRate = 0.0,
   }) async {
+    if (TeamService.current != null &&
+        !await OrganizationAccessService.can(
+          OrganizationContext.currentOrganizationId,
+          OrganizationPermissions.viewForecast,
+        )) {
+      throw StateError('view_forecast permission required');
+    }
     final scoped = await getAllTransactions();
     final all = OrganizationContext.scope == OrganizationScope.subtree
         ? eliminateInternalTransfers(scoped)
