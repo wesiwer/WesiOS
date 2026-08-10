@@ -90,7 +90,9 @@ class InterOrgTransferService {
   static Future<TransactionModel> _debit(InterOrgTransferModel transfer) async {
     final toOrg = await OrganizationService.byId(transfer.toOrganizationId);
     final fromOrg = await OrganizationService.byId(transfer.fromOrganizationId);
-    if (toOrg == null || fromOrg == null) throw StateError('transfer organization missing');
+    if (toOrg == null || fromOrg == null) {
+      throw StateError('transfer organization missing');
+    }
     final rate = CurrencyService.rateToRub(transfer.currency.toLowerCase());
     final reporting = transfer.amount * rate;
     return TransactionModel(
@@ -120,7 +122,9 @@ class InterOrgTransferService {
   static Future<TransactionModel> _credit(InterOrgTransferModel transfer) async {
     final fromOrg = await OrganizationService.byId(transfer.fromOrganizationId);
     final toOrg = await OrganizationService.byId(transfer.toOrganizationId);
-    if (fromOrg == null || toOrg == null) throw StateError('transfer organization missing');
+    if (fromOrg == null || toOrg == null) {
+      throw StateError('transfer organization missing');
+    }
     final rate = CurrencyService.rateToRub(transfer.currency.toLowerCase());
     final reporting = transfer.amount * rate;
     return TransactionModel(
@@ -297,8 +301,10 @@ class InterOrgTransferService {
     await recoverPending();
     var ids = await OrganizationContext.effectiveOrganizationIds();
     if (TeamService.current != null) {
-      final visible = await OrganizationAccessService.visibleOrganizationIds();
-      ids = ids.intersection(visible);
+      final financeIds = await OrganizationAccessService.organizationIdsFor(
+        OrganizationPermissions.viewFinance,
+      );
+      ids = ids.intersection(financeIds);
     }
     final list = (await _open())
         .values
