@@ -1,9 +1,9 @@
 name: One-shot safe migration grant sync patch
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/org-hierarchy-remediation-1
+      - agent/org-hierarchy-v1
 
 permissions:
   contents: write
