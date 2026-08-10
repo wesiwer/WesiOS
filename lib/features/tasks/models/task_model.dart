@@ -43,6 +43,9 @@ class SubTask {
 
 @HiveType(typeId: 13)
 class TaskModel {
+  static const String organizationTagPrefix = 'wesios:org:';
+  static const String employeeTagPrefix = 'wesios:employee:';
+
   @HiveField(0)
   final String id;
   @HiveField(1)
@@ -65,13 +68,8 @@ class TaskModel {
   final List<String> tags;
   @HiveField(10)
   final int order;
-
-  /// Null only for tasks created before organization hierarchy v1.
   @HiveField(11)
   final String? organizationId;
-
-  /// Stable employee id used by finance/Horizon. Legacy free-form assignee is
-  /// retained independently so old tasks are still readable.
   @HiveField(12)
   final String? responsibleEmployeeId;
 
@@ -91,8 +89,40 @@ class TaskModel {
     this.responsibleEmployeeId,
   });
 
-  String get effectiveOrganizationId =>
-      organizationId ?? OrganizationModel.wesiBeatsId;
+  String? _machineTagValue(String prefix) {
+    for (final tag in tags) {
+      if (tag.startsWith(prefix) && tag.length > prefix.length) {
+        return tag.substring(prefix.length);
+      }
+    }
+    return null;
+  }
+
+  String get effectiveOrganizationId => organizationId ??
+      _machineTagValue(organizationTagPrefix) ??
+      OrganizationModel.wesiBeatsId;
+
+  String? get effectiveResponsibleEmployeeId =>
+      responsibleEmployeeId ??
+      _machineTagValue(employeeTagPrefix) ??
+      (assignee != null && assignee!.trim().isNotEmpty ? assignee : null);
+
+  static List<String> withOwnershipTags(
+    List<String> source, {
+    required String organizationId,
+    String? employeeId,
+  }) {
+    final clean = source
+        .where((tag) =>
+            !tag.startsWith(organizationTagPrefix) &&
+            !tag.startsWith(employeeTagPrefix))
+        .toList();
+    clean.add('$organizationTagPrefix$organizationId');
+    if (employeeId != null && employeeId.trim().isNotEmpty) {
+      clean.add('$employeeTagPrefix$employeeId');
+    }
+    return clean;
+  }
 
   bool get isOverdue {
     if (dueDate == null || status == TaskStatus.done) return false;
