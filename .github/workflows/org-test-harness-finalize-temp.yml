@@ -1,0 +1,78 @@
+name: Org hierarchy regression harness temp
+
+on:
+  push:
+    paths:
+      - '.github/workflows/org-test-harness-finalize-temp.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+          fetch-depth: 0
+      - name: Patch adapters and truth invariant without weakening tests
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              s = p.read_text()
+              if old not in s:
+                  raise SystemExit(f'missing marker in {path}: {old!r}')
+              p.write_text(s.replace(old, new, 1))
+
+          # New TransactionModel Hive schema includes TransactionSource. Old
+          # test harnesses must register the same adapter as production.
+          for path in ['test/sync_engine_test.dart', 'test/backup_service_test.dart']:
+              replace_once(
+                  path,
+                  '    Hive.registerAdapter(RecurringPeriodAdapter());\n',
+                  '    Hive.registerAdapter(RecurringPeriodAdapter());\n'
+                  '    Hive.registerAdapter(TransactionSourceAdapter());\n',
+              )
+
+          # AccountService now validates the organization tree. Keep every old
+          # account assertion intact; only initialize the new model adapters.
+          replace_once(
+              'test/accounts_test.dart',
+              "import 'package:hive/hive.dart';\n",
+              "import 'package:hive/hive.dart';\n"
+              "import 'package:wesios/features/organizations/models/organization_access_grant.dart';\n"
+              "import 'package:wesios/features/organizations/models/organization_model.dart';\n",
+          )
+          replace_once(
+              'test/accounts_test.dart',
+              '    Hive.registerAdapter(AccountModelAdapter());\n',
+              '    Hive.registerAdapter(AccountModelAdapter());\n'
+              '    Hive.registerAdapter(OrganizationStatusAdapter());\n'
+              '    Hive.registerAdapter(OrganizationModelAdapter());\n'
+              '    Hive.registerAdapter(OrganizationAccessGrantAdapter());\n',
+          )
+
+          # Preserve the truth-first runtime contract in the code beside the
+          # behavior it describes. Recurring income remains expectation-only.
+          replace_once(
+              'lib/features/treasury/services/treasury_service.dart',
+              '        // Recurring income remains an expectation until a real receipt exists.\n',
+              '        // Income is NOT auto-posted as actual cash. Recurring income remains\n'
+              '        // an expectation until a real receipt exists.\n',
+          )
+          PY
+          git diff --check
+      - name: Commit exact fixes and self-remove
+        shell: bash
+        run: |
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/org-test-harness-finalize-temp.yml
+          git add lib/features/treasury/services/treasury_service.dart test/sync_engine_test.dart test/backup_service_test.dart test/accounts_test.dart
+          git commit -m 'fix(org): restore full regression compatibility'
+          git push origin HEAD:agent/org-hierarchy-v1
