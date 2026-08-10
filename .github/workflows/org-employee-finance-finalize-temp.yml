@@ -1,0 +1,27 @@
+name: Org employee finance finalize temp
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    if: github.event.pull_request.base.ref == 'agent/org-hierarchy-v1'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+          fetch-depth: 0
+      - run: python3 .github/scripts/org_employee_finance_patch_temp.py
+      - name: Commit and self-remove
+        shell: bash
+        run: |
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/org-employee-finance-finalize-temp.yml .github/scripts/org_employee_finance_patch_temp.py
+          git add lib/features/crm lib/features/organizations
+          git commit -m 'feat(org): complete CRM attribution and personal finance dynamics'
+          git push origin HEAD:agent/org-hierarchy-v1
