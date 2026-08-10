@@ -10,6 +10,7 @@ import '../../team/models/employee_model.dart';
 import '../../team/services/team_service.dart';
 import '../../treasury/models/transaction_model.dart';
 import '../../treasury/services/forecast_engine.dart';
+import '../../treasury/services/anomaly_engine.dart';
 import '../../treasury/services/treasury_service.dart';
 import 'organization_access_service.dart';
 import 'organization_context.dart';
@@ -27,6 +28,8 @@ class EmployeeFinanceMetrics {
   final double recurringObligations;
   final int operations;
   final int overdueEvents;
+  final int missedDealExpectations;
+  final int anomalousExpenses;
   final List<TransactionModel> upcoming;
 
   const EmployeeFinanceMetrics({
@@ -39,6 +42,8 @@ class EmployeeFinanceMetrics {
     required this.recurringObligations,
     required this.operations,
     required this.overdueEvents,
+    required this.missedDealExpectations,
+    required this.anomalousExpenses,
     required this.upcoming,
   });
 
@@ -57,6 +62,8 @@ class EmployeeFinanceMetrics {
         recurringObligations: 0,
         operations: 0,
         overdueEvents: 0,
+        missedDealExpectations: 0,
+        anomalousExpenses: 0,
         upcoming: const [],
       );
 }
@@ -93,6 +100,16 @@ class OrganizationFinanceMetrics {
         recurringObligations: 0,
         operations: 0,
       );
+}
+
+class EmployeeFinanceComparison {
+  final EmployeeFinanceMetrics current;
+  final EmployeeFinanceMetrics previous;
+
+  const EmployeeFinanceComparison({
+    required this.current,
+    required this.previous,
+  });
 }
 
 class EmployeeFinanceRow {
@@ -141,6 +158,9 @@ class EmployeeFinanceService {
     var expense = 0.0;
     var recurring = 0.0;
     var overdue = 0;
+    var missedDeals = 0;
+    var anomalousExpenses = 0;
+    final anomalyIds = AnomalyEngine.detect(transactions).map((e) => e.id).toSet();
     final now = DateTime.now();
     final upcoming = <TransactionModel>[];
 
@@ -154,6 +174,7 @@ class EmployeeFinanceService {
           income += tx.amount;
         } else {
           expense += tx.amount;
+          if (anomalyIds.contains(tx.id)) anomalousExpenses++;
         }
       }
       if (tx.date.isAfter(now) &&
@@ -169,10 +190,13 @@ class EmployeeFinanceService {
 
     final transactionIds = transactions.map((t) => t.id).toSet();
     for (final deal in deals) {
-      if (deal.responsibleEmployeeId != employeeId ||
-          deal.stage != DealStage.won) {
-        continue;
+      if (deal.responsibleEmployeeId != employeeId) continue;
+      if (deal.isOpen &&
+          deal.expectedCloseAt != null &&
+          deal.expectedCloseAt!.isBefore(now)) {
+        missedDeals++;
       }
+      if (deal.stage != DealStage.won) continue;
       final closed = deal.closedAt ?? deal.updatedAt;
       if (closed.isBefore(from) || closed.isAfter(to)) continue;
       if (deal.transactionId.isNotEmpty &&
@@ -211,18 +235,32 @@ class EmployeeFinanceService {
               !t.date.isAfter(to))
           .length,
       overdueEvents: overdue,
+      missedDealExpectations: missedDeals,
+      anomalousExpenses: anomalousExpenses,
       upcoming: upcoming,
     );
   }
 
-  static Future<EmployeeFinanceMetrics> self({int periodDays = 30}) async {
+  static Future<EmployeeFinanceComparison> selfComparison({
+    int periodDays = 30,
+  }) async {
     final employee = TeamService.current;
     final now = DateTime.now();
-    final from = now.subtract(Duration(days: periodDays - 1));
-    if (employee == null) return EmployeeFinanceMetrics.empty('', from, now);
+    final currentFrom = now.subtract(Duration(days: periodDays - 1));
+    final previousTo = currentFrom.subtract(const Duration(microseconds: 1));
+    final previousFrom = previousTo.subtract(Duration(days: periodDays - 1));
+    if (employee == null) {
+      return EmployeeFinanceComparison(
+        current: EmployeeFinanceMetrics.empty('', currentFrom, now),
+        previous: EmployeeFinanceMetrics.empty('', previousFrom, previousTo),
+      );
+    }
     final orgId = OrganizationContext.currentOrganizationId;
     if (!await OrganizationAccessService.canViewSelfFinance(orgId)) {
-      return EmployeeFinanceMetrics.empty(employee.id, from, now);
+      return EmployeeFinanceComparison(
+        current: EmployeeFinanceMetrics.empty(employee.id, currentFrom, now),
+        previous: EmployeeFinanceMetrics.empty(employee.id, previousFrom, previousTo),
+      );
     }
     final ids = await OrganizationContext.effectiveOrganizationIds();
     final all = (await TreasuryService().getAllTransactionsRaw())
@@ -230,15 +268,28 @@ class EmployeeFinanceService {
         .toList();
     final deals = await CrmService.dealsForOrganizations(ids);
     final tasks = await TaskService().getForOrganizations(ids);
-    return _calculate(
-      employeeId: employee.id,
-      transactions: all,
-      deals: deals,
-      tasks: tasks,
-      from: from,
-      to: now,
+    return EmployeeFinanceComparison(
+      current: _calculate(
+        employeeId: employee.id,
+        transactions: all,
+        deals: deals,
+        tasks: tasks,
+        from: currentFrom,
+        to: now,
+      ),
+      previous: _calculate(
+        employeeId: employee.id,
+        transactions: all,
+        deals: deals,
+        tasks: tasks,
+        from: previousFrom,
+        to: previousTo,
+      ),
     );
   }
+
+  static Future<EmployeeFinanceMetrics> self({int periodDays = 30}) async =>
+      (await selfComparison(periodDays: periodDays)).current;
 
   /// Aggregate finance for the selected organization or authorized subtree.
   /// This does not expose any employee attribution and therefore remains

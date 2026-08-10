@@ -6,6 +6,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
 import '../team/widgets/employee_or_custom_field.dart';
+import '../team/services/team_service.dart';
 import 'models/crm_models.dart';
 import 'services/crm_service.dart';
 
@@ -1795,7 +1796,9 @@ class _ClientEditorSheetState extends State<_ClientEditorSheet> {
     _website = TextEditingController(text: value?.website ?? '');
     _address = TextEditingController(text: value?.address ?? '');
     _source = TextEditingController(text: value?.source ?? '');
-    _owner = TextEditingController(text: value?.owner ?? '');
+    _owner = TextEditingController(
+      text: value?.ownerEmployeeId ?? value?.owner ?? TeamService.current?.id ?? '',
+    );
     _notes = TextEditingController(text: value?.notes ?? '');
     _tags = TextEditingController(text: value?.tags.join(', ') ?? '');
     _status = value?.status ?? CrmClientStatus.lead;
@@ -1853,10 +1856,19 @@ class _ClientEditorSheetState extends State<_ClientEditorSheet> {
             EmployeeOrCustomField(
               label: _ru ? 'Ответственный' : 'Owner',
               value: _owner.text,
-              storeEmployeeId: false,
+              storeEmployeeId: true,
               allowCustom: true,
               customLabel: _ru ? 'Другой ответственный' : 'Other owner',
               onChanged: (value) => _owner.text = value ?? '',
+            ),
+            const SizedBox(height: 10),
+            EmployeeOrCustomField(
+              label: _ru ? 'Ответственный сотрудник' : 'Responsible employee',
+              value: _responsibleEmployeeId,
+              storeEmployeeId: true,
+              allowCustom: false,
+              onChanged: (value) =>
+                  setState(() => _responsibleEmployeeId = value),
             ),
             const SizedBox(height: 10),
             _field(_tags, _ru ? 'Теги через запятую' : 'Comma-separated tags'),
@@ -1901,6 +1913,8 @@ class _ClientEditorSheetState extends State<_ClientEditorSheet> {
     if (!_form.currentState!.validate()) return;
     final now = DateTime.now();
     final existing = widget.existing;
+    final ownerValue = _owner.text.trim();
+    final ownerEmployee = TeamService.byId(ownerValue);
     Navigator.pop(
       context,
       CrmClient(
@@ -1912,7 +1926,8 @@ class _ClientEditorSheetState extends State<_ClientEditorSheet> {
         website: _website.text.trim(),
         address: _address.text.trim(),
         source: _source.text.trim(),
-        owner: _owner.text.trim(),
+        owner: ownerEmployee?.displayName ?? ownerValue,
+        ownerEmployeeId: ownerEmployee?.id,
         notes: _notes.text.trim(),
         status: _status,
         tags: _tags.text
@@ -1976,6 +1991,7 @@ class _DealEditorSheetState extends State<_DealEditorSheet> {
   late String _currency;
   late DealStage _stage;
   late double _probability;
+  String? _responsibleEmployeeId;
   DateTime? _expectedClose;
 
   bool get _ru => WesiLocale.isRussian;
@@ -2001,6 +2017,8 @@ class _DealEditorSheetState extends State<_DealEditorSheet> {
     _stage = value?.stage ?? widget.initialStage ?? DealStage.newLead;
     _probability =
         (value?.probability ?? _defaultProbability(_stage)).toDouble();
+    _responsibleEmployeeId =
+        value?.responsibleEmployeeId ?? TeamService.current?.id;
     _expectedClose = value?.expectedCloseAt;
   }
 
@@ -2178,6 +2196,13 @@ class _DealEditorSheetState extends State<_DealEditorSheet> {
         updatedAt: now,
         expectedCloseAt: _expectedClose,
         closedAt: existing?.closedAt,
+        organizationId: existing?.organizationId ??
+            widget.clients
+                .where((client) => client.id == _clientId)
+                .map((client) => client.organizationId)
+                .firstOrNull ??
+            '',
+        responsibleEmployeeId: _responsibleEmployeeId,
       ),
     );
   }
@@ -2639,3 +2664,8 @@ Color _interactionColor(InteractionKind kind) => switch (kind) {
       InteractionKind.meeting => AppTheme.accent,
       InteractionKind.message => const Color(0xFF22D3EE),
     };
+
+
+extension _CrmFirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
+}

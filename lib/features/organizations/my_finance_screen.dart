@@ -17,7 +17,9 @@ class MyFinanceScreen extends StatefulWidget {
 
 class _MyFinanceScreenState extends State<MyFinanceScreen> {
   EmployeeFinanceView _view = EmployeeFinanceView.self;
+  int _periodDays = 30;
   EmployeeFinanceMetrics? _self;
+  EmployeeFinanceMetrics? _previousSelf;
   OrganizationFinanceMetrics? _organization;
   List<EmployeeFinanceRow> _team = const [];
   ForecastResult _forecast = ForecastResult.empty();
@@ -60,7 +62,11 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
           : EmployeeFinanceView.self;
     }
 
-    final self = await EmployeeFinanceService.self(periodDays: 30);
+    final comparison = await EmployeeFinanceService.selfComparison(
+      periodDays: _periodDays,
+    );
+    final self = comparison.current;
+    final previousSelf = comparison.previous;
     final forecast = await EmployeeFinanceService.selfForecast(days: 30);
     OrganizationFinanceMetrics? organization;
     var team = <EmployeeFinanceRow>[];
@@ -68,13 +74,13 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
       organization = await EmployeeFinanceService.organizationFinance(
         organizationId: orgId,
         view: effectiveView,
-        periodDays: 30,
+        periodDays: _periodDays,
       );
       if (canTeam) {
         team = await EmployeeFinanceService.teamBreakdown(
           organizationId: orgId,
           view: effectiveView,
-          periodDays: 30,
+          periodDays: _periodDays,
         );
       }
     }
@@ -85,6 +91,7 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
       _canSubtree = canSubtree;
       _canTeam = canTeam;
       _self = self;
+      _previousSelf = previousSelf;
       _organization = organization;
       _forecast = forecast;
       _team = team;
@@ -116,6 +123,8 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 40),
                 children: [
+                  _periodSelector(),
+                  const SizedBox(height: 12),
                   _viewSelector(),
                   const SizedBox(height: 16),
                   if (_view == EmployeeFinanceView.self)
@@ -127,6 +136,22 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
             ),
     );
   }
+
+  Widget _periodSelector() => Wrap(
+        spacing: 8,
+        children: [
+          for (final days in const [7, 30, 90])
+            ChoiceChip(
+              label: Text('$days дн.'),
+              selected: _periodDays == days,
+              onSelected: (_) async {
+                if (_periodDays == days) return;
+                setState(() => _periodDays = days);
+                await _load();
+              },
+            ),
+        ],
+      );
 
   Widget _viewSelector() {
     final segments = <ButtonSegment<EmployeeFinanceView>>[
@@ -180,6 +205,16 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
             _metric('Мой net', _money(m.net), Icons.balance_outlined, AppTheme.accent),
             _metric('Регулярные обязательства', _money(m.recurringObligations), Icons.repeat_rounded, AppTheme.textSecondary),
           ],
+        ),
+        const SizedBox(height: 18),
+        _section(
+          'Динамика к предыдущим $_periodDays дням',
+          _comparisonText(m, _previousSelf),
+        ),
+        const SizedBox(height: 12),
+        _section(
+          'Личные риски',
+          _riskText(m),
         ),
         const SizedBox(height: 18),
         _section(
@@ -264,6 +299,40 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
             ),
       ],
     );
+  }
+
+  String _delta(double current, double previous) {
+    if (previous == 0) {
+      if (current == 0) return '0%';
+      return current > 0 ? '+новое' : '-новое';
+    }
+    final value = (current - previous) / previous.abs() * 100;
+    final sign = value > 0 ? '+' : '';
+    return '$sign${value.toStringAsFixed(0)}%';
+  }
+
+  String _comparisonText(
+    EmployeeFinanceMetrics current,
+    EmployeeFinanceMetrics? previous,
+  ) {
+    if (previous == null) return 'Нет базы для сравнения.';
+    return 'Вклад ${_delta(current.contribution, previous.contribution)} • '
+        'расходы ${_delta(current.expenses, previous.expenses)} • '
+        'net ${_delta(current.net, previous.net)}.';
+  }
+
+  String _riskText(EmployeeFinanceMetrics metrics) {
+    final risks = <String>[];
+    if (metrics.overdueEvents > 0) {
+      risks.add('просроченные денежные задачи: ${metrics.overdueEvents}');
+    }
+    if (metrics.missedDealExpectations > 0) {
+      risks.add('сделки позже ожидаемой даты: ${metrics.missedDealExpectations}');
+    }
+    if (metrics.anomalousExpenses > 0) {
+      risks.add('аномальные расходы: ${metrics.anomalousExpenses}');
+    }
+    return risks.isEmpty ? 'Активных персональных финансовых рисков не найдено.' : risks.join(' • ');
   }
 
   Widget _metric(String label, String value, IconData icon, Color color) =>

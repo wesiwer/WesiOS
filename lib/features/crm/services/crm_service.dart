@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../../organizations/services/organization_context.dart';
-import '../../team/services/team_service.dart';
 import '../models/crm_models.dart';
 
 class CrmService {
@@ -97,14 +96,16 @@ class CrmService {
   static Future<void> saveClient(CrmClient client) async {
     final all = await clients();
     final now = DateTime.now();
+    final index = all.indexWhere((value) => value.id == client.id);
+    final previous = index < 0 ? null : all[index];
     final normalized = client.copyWith(
       updatedAt: now,
       organizationId: client.organizationId.isEmpty
-          ? OrganizationContext.currentOrganizationId
+          ? (previous?.organizationId ?? OrganizationContext.currentOrganizationId)
           : client.organizationId,
-      ownerEmployeeId: client.ownerEmployeeId ?? TeamService.current?.id,
+      ownerEmployeeId: client.ownerEmployeeId,
+      clearOwnerEmployee: client.ownerEmployeeId == null,
     );
-    final index = all.indexWhere((value) => value.id == client.id);
     if (index < 0) {
       all.add(normalized);
     } else {
@@ -149,20 +150,21 @@ class CrmService {
   static Future<void> saveDeal(CrmDeal deal) async {
     final all = await deals();
     final now = DateTime.now();
+    final index = all.indexWhere((value) => value.id == deal.id);
+    final previous = index < 0 ? null : all[index];
     var next = deal.copyWith(
       updatedAt: now,
       organizationId: deal.organizationId.isEmpty
-          ? OrganizationContext.currentOrganizationId
+          ? (previous?.organizationId ?? OrganizationContext.currentOrganizationId)
           : deal.organizationId,
-      responsibleEmployeeId:
-          deal.responsibleEmployeeId ?? TeamService.current?.id,
+      responsibleEmployeeId: deal.responsibleEmployeeId,
+      clearResponsibleEmployee: deal.responsibleEmployeeId == null,
     );
     if (next.stage == DealStage.won || next.stage == DealStage.lost) {
       next = next.copyWith(closedAt: next.closedAt ?? now);
     } else if (next.closedAt != null) {
       next = next.copyWith(clearClosedAt: true);
     }
-    final index = all.indexWhere((value) => value.id == deal.id);
     if (index < 0) {
       all.add(next);
     } else {
