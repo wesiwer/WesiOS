@@ -65,6 +65,7 @@ void main() {
     required List<String> permissions,
     required bool includeSubtree,
     required bool canViewTeamFinance,
+    bool canViewSelfFinance = true,
     String createdBy = 'migration',
   }) {
     final now = DateTime(2026, 8, 10);
@@ -74,7 +75,7 @@ void main() {
       'organizationId': OrganizationModel.rootId,
       'includeSubtree': includeSubtree,
       'canViewTeamFinance': canViewTeamFinance,
-      'canViewSelfFinance': true,
+      'canViewSelfFinance': canViewSelfFinance,
       'permissions': permissions,
       'createdAt': now.toIso8601String(),
       'updatedAt': now.toIso8601String(),
@@ -137,7 +138,7 @@ void main() {
     expect(grant.canViewTeamFinance, isTrue);
   });
 
-  test('migration label cannot mint subtree or admin privileges for non-owner',
+  test('migration label cannot mint subtree, admin, or incomplete grants for non-owner',
       () async {
     final employee = await addEmployee(
       'worker',
@@ -164,6 +165,18 @@ void main() {
           permissions: const [OrganizationPermissions.view],
           includeSubtree: true,
           canViewTeamFinance: false,
+        ),
+      ),
+      isFalse,
+    );
+    expect(
+      await OrganizationGrantsSync().applyFields(
+        grantFields(
+          employee: employee,
+          permissions: const [OrganizationPermissions.view],
+          includeSubtree: false,
+          canViewTeamFinance: false,
+          canViewSelfFinance: false,
         ),
       ),
       isFalse,
