@@ -4,8 +4,6 @@ import '../../organizations/models/organization_model.dart';
 
 part 'account_model.g.dart';
 
-/// Purpose of an account inside one organization.
-/// Existing byte values are immutable because old Hive data uses them.
 @HiveType(typeId: 14)
 enum AccountKind {
   @HiveField(0)
@@ -15,7 +13,7 @@ enum AccountKind {
   @HiveField(2)
   cash,
   @HiveField(3)
-  savings, // legacy value; retained for backward compatibility
+  savings,
   @HiveField(4)
   project,
   @HiveField(5)
@@ -57,7 +55,6 @@ class AccountModel {
   /// Canonical reporting-currency equivalent, matching [openingBalance].
   @HiveField(9)
   final double minimumBalance;
-
   @HiveField(10)
   final bool allowNetting;
 
@@ -91,8 +88,6 @@ class AccountModel {
     this.transferDelayDays = 0,
   });
 
-  /// Legacy main account id. Existing WesiOS financial history belongs to
-  /// Wesi Inc, so the historical `main` id remains the root main account.
   static const String mainId = 'main';
 
   static String mainIdFor(String organizationId) =>
@@ -131,8 +126,9 @@ class AccountModel {
         minimumBalance: minimumBalance ?? this.minimumBalance,
         allowNetting: allowNetting ?? this.allowNetting,
         currency: (currency ?? this.currency).toUpperCase(),
-        fxHaircut: (fxHaircut ?? this.fxHaircut).clamp(0.0, 0.25).toDouble(),
+        fxHaircut:
+            (fxHaircut ?? this.fxHaircut).clamp(0.0, 0.25).toDouble(),
         transferDelayDays:
-            (transferDelayDays ?? this.transferDelayDays).clamp(0, 14),
+            (transferDelayDays ?? this.transferDelayDays).clamp(0, 14).toInt(),
       );
 }
