@@ -61,6 +61,40 @@ class EmployeeFinanceMetrics {
       );
 }
 
+class OrganizationFinanceMetrics {
+  final Set<String> organizationIds;
+  final DateTime from;
+  final DateTime to;
+  final double income;
+  final double expenses;
+  final double net;
+  final double recurringObligations;
+  final int operations;
+
+  const OrganizationFinanceMetrics({
+    required this.organizationIds,
+    required this.from,
+    required this.to,
+    required this.income,
+    required this.expenses,
+    required this.net,
+    required this.recurringObligations,
+    required this.operations,
+  });
+
+  static OrganizationFinanceMetrics empty(DateTime from, DateTime to) =>
+      OrganizationFinanceMetrics(
+        organizationIds: const <String>{},
+        from: from,
+        to: to,
+        income: 0,
+        expenses: 0,
+        net: 0,
+        recurringObligations: 0,
+        operations: 0,
+      );
+}
+
 class EmployeeFinanceRow {
   final EmployeeModel employee;
   final EmployeeFinanceMetrics metrics;
@@ -141,8 +175,6 @@ class EmployeeFinanceService {
       }
       final closed = deal.closedAt ?? deal.updatedAt;
       if (closed.isBefore(from) || closed.isAfter(to)) continue;
-      // If CRM already points to a Treasury fact, the Treasury fact is the
-      // source of truth and must not be counted twice.
       if (deal.transactionId.isNotEmpty &&
           transactionIds.contains(deal.transactionId)) {
         continue;
@@ -208,6 +240,63 @@ class EmployeeFinanceService {
     );
   }
 
+  /// Aggregate finance for the selected organization or authorized subtree.
+  /// This does not expose any employee attribution and therefore remains
+  /// separate from [teamBreakdown].
+  static Future<OrganizationFinanceMetrics> organizationFinance({
+    required String organizationId,
+    EmployeeFinanceView view = EmployeeFinanceView.organization,
+    int periodDays = 30,
+  }) async {
+    final now = DateTime.now();
+    final from = now.subtract(Duration(days: periodDays - 1));
+    if (!await OrganizationAccessService.canViewOrganizationFinance(
+      organizationId,
+    )) {
+      return OrganizationFinanceMetrics.empty(from, now);
+    }
+    if (view == EmployeeFinanceView.subtree &&
+        !await OrganizationAccessService.canUseSubtreeFinance(organizationId)) {
+      return OrganizationFinanceMetrics.empty(from, now);
+    }
+    final ids = await _authorizedIds(organizationId, view);
+    if (ids.isEmpty) return OrganizationFinanceMetrics.empty(from, now);
+    var transactions = (await TreasuryService().getAllTransactionsRaw())
+        .where((t) => ids.contains(t.effectiveOrganizationId))
+        .toList();
+    if (view == EmployeeFinanceView.subtree) {
+      transactions = TreasuryService.eliminateInternalTransfers(transactions);
+    }
+
+    var income = 0.0;
+    var expenses = 0.0;
+    var recurring = 0.0;
+    var operations = 0;
+    for (final tx in transactions) {
+      if (tx.isRecurring) {
+        if (tx.type == TransactionType.expense) recurring += tx.amount;
+        continue;
+      }
+      if (tx.date.isBefore(from) || tx.date.isAfter(now)) continue;
+      operations++;
+      if (tx.type == TransactionType.income) {
+        income += tx.amount;
+      } else {
+        expenses += tx.amount;
+      }
+    }
+    return OrganizationFinanceMetrics(
+      organizationIds: ids,
+      from: from,
+      to: now,
+      income: income,
+      expenses: expenses,
+      net: income - expenses,
+      recurringObligations: recurring,
+      operations: operations,
+    );
+  }
+
   static Future<List<EmployeeFinanceRow>> teamBreakdown({
     required String organizationId,
     EmployeeFinanceView view = EmployeeFinanceView.organization,
@@ -215,6 +304,10 @@ class EmployeeFinanceService {
   }) async {
     if (TeamService.current != null &&
         !await OrganizationAccessService.canViewTeamFinance(organizationId)) {
+      return const [];
+    }
+    if (view == EmployeeFinanceView.subtree &&
+        !await OrganizationAccessService.canUseSubtreeFinance(organizationId)) {
       return const [];
     }
     final ids = await _authorizedIds(organizationId, view);
