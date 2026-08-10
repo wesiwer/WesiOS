@@ -15,9 +15,6 @@ class TaskService {
     return _box!;
   }
 
-  /// Tasks remain globally browsable by the Tasks module for backward
-  /// compatibility. Finance/Horizon use [getForOrganizations] so cash events
-  /// never leak across organization contours.
   Future<List<TaskModel>> getAll() async {
     final box = await _tasksBox;
     final list = box.values.toList();
@@ -44,14 +41,25 @@ class TaskService {
     final box = await _tasksBox;
     final allowed = TaskAssignment.coerce(task.assignee);
     final employee = allowed == null ? null : TeamService.byId(allowed);
+    final orgId = task.organizationId ??
+        (task.effectiveOrganizationId != 'org_wesi_beats'
+            ? task.effectiveOrganizationId
+            : OrganizationContext.currentOrganizationId);
+    final responsible = task.responsibleEmployeeId ??
+        task.effectiveResponsibleEmployeeId ??
+        employee?.id;
+    final tags = TaskModel.withOwnershipTags(
+      task.tags,
+      organizationId: orgId,
+      employeeId: responsible,
+    );
     final normalized = task.copyWith(
       assignee: allowed,
       clearAssignee: allowed == null,
-      organizationId: task.organizationId ?? OrganizationContext.currentOrganizationId,
-      responsibleEmployeeId:
-          task.responsibleEmployeeId ?? employee?.id,
-      clearResponsibleEmployee:
-          task.responsibleEmployeeId == null && employee == null,
+      organizationId: orgId,
+      responsibleEmployeeId: responsible,
+      clearResponsibleEmployee: responsible == null,
+      tags: tags,
     );
     await box.put(task.id, normalized);
     revision.value++;
