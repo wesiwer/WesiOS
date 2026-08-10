@@ -77,7 +77,9 @@ class OrganizationContext {
 
   static Future<void> selectOrganization(String organizationId) async {
     final org = await OrganizationService.byId(organizationId);
-    if (org == null || org.archived) throw StateError('organization unavailable');
+    if (org == null || org.archived) {
+      throw StateError('organization unavailable');
+    }
     if (TeamService.current != null &&
         !await OrganizationAccessService.can(
           organizationId,
@@ -94,15 +96,29 @@ class OrganizationContext {
     revision.value++;
   }
 
+  static Set<String> _failClosedFallback() {
+    final employee = TeamService.current;
+    if (employee == null || employee.isOwner) {
+      return <String>{OrganizationModel.rootId};
+    }
+    return <String>{};
+  }
+
   static Future<Set<String>> effectiveOrganizationIds() async {
-    await initialize();
-    final current = currentOrganizationId;
-    final requested = scope == OrganizationScope.subtree
-        ? await OrganizationService.subtreeIds(current)
-        : <String>{current};
-    if (TeamService.current == null) return requested;
-    final allowed = await OrganizationAccessService.visibleOrganizationIds();
-    return requested.intersection(allowed);
+    try {
+      await initialize();
+      final current = currentOrganizationId;
+      final requested = scope == OrganizationScope.subtree
+          ? await OrganizationService.subtreeIds(current)
+          : <String>{current};
+      if (TeamService.current == null) return requested;
+      final allowed = await OrganizationAccessService.visibleOrganizationIds();
+      return requested.intersection(allowed);
+    } catch (_) {
+      // During early UI bootstrap/tests organization Hive adapters may not yet
+      // be available. Never broaden a normal employee's access on that path.
+      return _failClosedFallback();
+    }
   }
 
   static Future<OrganizationModel> currentOrganization() async {
