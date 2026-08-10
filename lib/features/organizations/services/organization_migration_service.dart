@@ -21,6 +21,9 @@ class OrganizationMigrationService {
   static const String taskBoxName = 'wesios_tasks';
   static const String crmBoxName = 'wesios_crm';
 
+  /// Existing WesiOS data predates the organization tree and belongs to the
+  /// root operating contour, Wesi Inc. Wesi Beats is created as an empty child
+  /// and receives data only when the user explicitly creates/moves data there.
   static Future<void> runV1() async {
     await OrganizationService.ensureBaseline(createdBy: 'migration:v1');
     final log = await Hive.openBox<dynamic>(logBoxName);
@@ -40,7 +43,7 @@ class OrganizationMigrationService {
         if (account == null || account.organizationId != null) continue;
         await accounts.put(
           key,
-          account.copyWith(organizationId: OrganizationModel.wesiBeatsId),
+          account.copyWith(organizationId: OrganizationModel.rootId),
         );
         accountsUpdated++;
       }
@@ -51,7 +54,7 @@ class OrganizationMigrationService {
         if (tx == null || tx.organizationId != null) continue;
         await treasury.put(
           key,
-          tx.copyWith(organizationId: OrganizationModel.wesiBeatsId),
+          tx.copyWith(organizationId: OrganizationModel.rootId),
         );
         transactionsUpdated++;
       }
@@ -67,11 +70,11 @@ class OrganizationMigrationService {
         await tasks.put(
           key,
           task.copyWith(
-            organizationId: OrganizationModel.wesiBeatsId,
+            organizationId: OrganizationModel.rootId,
             responsibleEmployeeId: task.responsibleEmployeeId ?? assigneeId,
             tags: TaskModel.withOwnershipTags(
               task.tags,
-              organizationId: OrganizationModel.wesiBeatsId,
+              organizationId: OrganizationModel.rootId,
               employeeId: task.responsibleEmployeeId ?? assigneeId,
             ),
           ),
@@ -101,7 +104,8 @@ class OrganizationMigrationService {
         'completed': true,
         'completedAt': DateTime.now().toIso8601String(),
         'rootId': OrganizationModel.rootId,
-        'legacyOrganizationId': OrganizationModel.wesiBeatsId,
+        'legacyOrganizationId': OrganizationModel.rootId,
+        'legacyOrganizationName': 'Wesi Inc',
         'accountsUpdated': accountsUpdated,
         'transactionsUpdated': transactionsUpdated,
         'tasksUpdated': tasksUpdated,
@@ -136,7 +140,7 @@ class OrganizationMigrationService {
         final map = Map<String, dynamic>.from(item);
         final org = '${map['organizationId'] ?? ''}'.trim();
         if (org.isEmpty) {
-          map['organizationId'] = OrganizationModel.wesiBeatsId;
+          map['organizationId'] = OrganizationModel.rootId;
           changed++;
         }
         // Responsibility is never guessed from a display name. Existing
