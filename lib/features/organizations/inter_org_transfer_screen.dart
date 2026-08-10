@@ -153,13 +153,13 @@ class _InterOrgTransferScreenState extends State<InterOrgTransferScreen> {
             TextField(
               controller: _fromBase,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: 'В базе ${from!.name} (${from.baseCurrency})'),
+              decoration: InputDecoration(labelText: 'В базе ${from.name} (${from.baseCurrency})'),
             ),
             const SizedBox(height: 10),
             TextField(
               controller: _toBase,
               keyboardType: const TextInputType.numberWithOptions(decimal: true),
-              decoration: InputDecoration(labelText: 'В базе ${to!.name} (${to.baseCurrency})'),
+              decoration: InputDecoration(labelText: 'В базе ${to.name} (${to.baseCurrency})'),
             ),
           ],
           const SizedBox(height: 10),
