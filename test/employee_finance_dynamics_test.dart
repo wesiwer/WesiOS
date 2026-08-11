@@ -68,6 +68,7 @@ void main() {
       login: 'employee-a',
       fullName: 'Employee A',
       createdAt: DateTime(2026, 1, 1),
+      permissions: const TeamPermissions(moduleList: [TeamModules.crm]),
     );
     await Hive.box<EmployeeModel>(TeamService.boxName).put(employee.id, employee);
     await Hive.box('wesios_settings').put('team_current_employee', employee.id);
@@ -141,6 +142,14 @@ void main() {
     );
     await Hive.box<TransactionModel>('wesios_treasury').putAll(rows);
 
+    await CrmService.saveClient(CrmClient(
+      id: 'client-a',
+      name: 'Client A',
+      ownerEmployeeId: employee.id,
+      organizationId: OrganizationModel.rootId,
+      createdAt: now.subtract(const Duration(days: 30)),
+      updatedAt: now,
+    ));
     await CrmService.saveDeal(CrmDeal(
       id: 'late-deal',
       clientId: 'client-a',
