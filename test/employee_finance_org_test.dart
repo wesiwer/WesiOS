@@ -12,6 +12,7 @@ import 'package:wesios/features/tasks/models/task_model.dart';
 import 'package:wesios/features/team/models/employee_model.dart';
 import 'package:wesios/features/team/models/team_permissions.dart';
 import 'package:wesios/features/team/services/team_service.dart';
+import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 import 'package:wesios/features/treasury/services/treasury_service.dart';
 
@@ -39,6 +40,8 @@ void main() {
     if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(TaskPriorityAdapter());
     if (!Hive.isAdapterRegistered(12)) Hive.registerAdapter(SubTaskAdapter());
     if (!Hive.isAdapterRegistered(13)) Hive.registerAdapter(TaskModelAdapter());
+    if (!Hive.isAdapterRegistered(14)) Hive.registerAdapter(AccountKindAdapter());
+    if (!Hive.isAdapterRegistered(15)) Hive.registerAdapter(AccountModelAdapter());
     if (!Hive.isAdapterRegistered(20)) Hive.registerAdapter(TeamPermissionsAdapter());
     if (!Hive.isAdapterRegistered(21)) Hive.registerAdapter(EmployeeModelAdapter());
     if (!Hive.isAdapterRegistered(80)) Hive.registerAdapter(OrganizationStatusAdapter());
@@ -51,6 +54,7 @@ void main() {
     await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
     await Hive.openBox<OrganizationAccessGrant>(OrganizationAccessService.boxName);
     await Hive.openBox<TransactionModel>('wesios_treasury');
+    await Hive.openBox<AccountModel>('wesios_accounts');
     await Hive.openBox<TaskModel>('wesios_tasks');
     await Hive.openBox<dynamic>('wesios_crm');
   });
@@ -61,6 +65,7 @@ void main() {
     await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
     await Hive.box<OrganizationAccessGrant>(OrganizationAccessService.boxName).clear();
     await Hive.box<TransactionModel>('wesios_treasury').clear();
+    await Hive.box<AccountModel>('wesios_accounts').clear();
     await Hive.box<TaskModel>('wesios_tasks').clear();
     await Hive.box<dynamic>('wesios_crm').clear();
     await OrganizationService.ensureBaseline();
@@ -202,7 +207,6 @@ void main() {
   test('subtree finance is additive to self and requires explicit subtree grant', () async {
     final lead = employee('it-lead');
     await Hive.box<EmployeeModel>(TeamService.boxName).put(lead.id, lead);
-    await Hive.box('wesios_settings').put('team_current_employee', lead.id);
 
     final it = await OrganizationService.create(
       name: 'IT',
@@ -214,6 +218,7 @@ void main() {
       parentId: it.id,
       createdBy: 'test',
     );
+    await Hive.box('wesios_settings').put('team_current_employee', lead.id);
     await OrganizationAccessService.grant(
       employeeId: lead.id,
       organizationId: it.id,
