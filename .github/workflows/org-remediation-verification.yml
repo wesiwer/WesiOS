@@ -66,6 +66,7 @@ jobs:
           test/inter_org_visibility_test.dart
           test/inter_org_fault_injection_test.dart
           test/multi_currency_org_test.dart
+          test/account_liquidity_migration_test.dart
           test/background_org_processing_test.dart
           test/sync_corruption_guard_test.dart
           test/sync_migration_grant_test.dart
