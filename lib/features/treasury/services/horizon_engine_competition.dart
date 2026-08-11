@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../organizations/models/organization_model.dart';
+import '../../organizations/services/organization_context.dart';
 import '../models/transaction_model.dart';
 import 'forecast_backtest.dart';
 import 'forecast_engine.dart';
@@ -86,7 +88,6 @@ class EngineChampionship {
           ..sort((a, b) {
             final byScore = a.score.compareTo(b.score);
             if (byScore != 0) return byScore;
-            // Equal averaging must earn a real improvement, not win a tie.
             if (a.engine == ForecastEngineKind.combined &&
                 b.engine != ForecastEngineKind.combined) return 1;
             if (b.engine == ForecastEngineKind.combined &&
@@ -158,18 +159,11 @@ class _EnginePoint {
   });
 }
 
-/// Historical, horizon-specific engine competition.
-///
-/// Every candidate is evaluated on the SAME origins and target days. Horizon
-/// averages several seeds because it is stochastic; Prophet/SARIMAX are
-/// deterministic. Combined is admitted only when at least two real engines
-/// were available at that origin, so “Combined = Horizon” can never win by a
-/// bookkeeping tie.
 class HorizonEngineCompetitionService {
   HorizonEngineCompetitionService._();
 
   static const String boxName = 'wesios_horizon_engine_competition';
-  static const String _key = 'championship_v2';
+  static const String _legacyKey = 'championship_v2';
   static const List<int> horizons = [14, 30, 90, 180];
   static const List<int> _nativeSeeds = [11, 29, 47];
   static const int _originsPerHorizon = 2;
@@ -179,9 +173,23 @@ class HorizonEngineCompetitionService {
     return Hive.openBox<dynamic>(boxName);
   }
 
-  static Future<EngineChampionship?> load() async {
+  static String _key({String? organizationId, String? organizationScope}) {
+    final org = organizationId ?? OrganizationContext.currentOrganizationId;
+    final scope = organizationScope ?? OrganizationContext.scope.name;
+    return org == OrganizationModel.rootId && scope == 'only'
+        ? _legacyKey
+        : '$_legacyKey.$org.$scope';
+  }
+
+  static Future<EngineChampionship?> load({
+    String? organizationId,
+    String? organizationScope,
+  }) async {
     try {
-      final raw = (await _open()).get(_key);
+      final raw = (await _open()).get(_key(
+        organizationId: organizationId,
+        organizationScope: organizationScope,
+      ));
       if (raw is! String || raw.isEmpty) return null;
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
@@ -199,9 +207,14 @@ class HorizonEngineCompetitionService {
     required double currentBalance,
     DateTime? now,
     bool force = false,
+    String? organizationId,
+    String? organizationScope,
   }) async {
     final today = now ?? DateTime.now();
-    final stored = await load();
+    final stored = await load(
+      organizationId: organizationId,
+      organizationScope: organizationScope,
+    );
     if (!force && stored != null && _sameMonth(stored.evaluatedAt, today)) {
       return stored;
     }
@@ -296,7 +309,13 @@ class HorizonEngineCompetitionService {
       metrics: metrics,
     );
     try {
-      await (await _open()).put(_key, jsonEncode(championship.toJson()));
+      await (await _open()).put(
+        _key(
+          organizationId: organizationId,
+          organizationScope: organizationScope,
+        ),
+        jsonEncode(championship.toJson()),
+      );
     } catch (_) {}
     return championship;
   }
@@ -337,7 +356,7 @@ class HorizonEngineCompetitionService {
           .toList();
       return values.isEmpty
           ? (p10[i] < 0 ? 0.10 : 0.0)
-          : values.fold<double>(0, (a, b) => a + b) / values.length;
+          : values.fold<double>(0, (a, b) => a + b) / results.length;
     });
     int? firstWhereRisk(double threshold) {
       for (var i = 0; i < risk.length; i++) {
@@ -423,8 +442,13 @@ class HorizonEngineCompetitionService {
   static Future<SmartCombinedResult> smartCombined({
     required int horizon,
     required Map<ForecastEngineKind, ForecastResult?> live,
+    String? organizationId,
+    String? organizationScope,
   }) async {
-    final championship = await load();
+    final championship = await load(
+      organizationId: organizationId,
+      organizationScope: organizationScope,
+    );
     final champion =
         championship?.championFor(horizon) ?? ForecastEngineKind.wesiHorizon;
 

@@ -35,13 +35,20 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       ownerEmployeeId: fields[19] as String?,
       interOrgTransferId: fields[20] as String?,
       createdByEmployeeId: fields[21] as String?,
+      originalAmount: (fields[22] as num?)?.toDouble(),
+      originalCurrency: fields[23] as String? ?? 'RUB',
+      organizationBaseAmount: (fields[24] as num?)?.toDouble(),
+      organizationBaseCurrency: fields[25] as String? ?? 'RUB',
+      fxRateToReporting: (fields[26] as num?)?.toDouble() ?? 1.0,
+      fxRateAt: fields[27] as DateTime?,
+      fxSource: fields[28] as String? ?? 'legacy',
     );
   }
 
   @override
   void write(BinaryWriter writer, TransactionModel obj) {
     writer
-      ..writeByte(22)
+      ..writeByte(29)
       ..writeByte(0)..write(obj.id)
       ..writeByte(1)..write(obj.title)
       ..writeByte(2)..write(obj.amount)
@@ -63,7 +70,14 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       ..writeByte(18)..write(obj.updatedAt)
       ..writeByte(19)..write(obj.ownerEmployeeId)
       ..writeByte(20)..write(obj.interOrgTransferId)
-      ..writeByte(21)..write(obj.createdByEmployeeId);
+      ..writeByte(21)..write(obj.createdByEmployeeId)
+      ..writeByte(22)..write(obj.originalAmount)
+      ..writeByte(23)..write(obj.originalCurrency)
+      ..writeByte(24)..write(obj.organizationBaseAmount)
+      ..writeByte(25)..write(obj.organizationBaseCurrency)
+      ..writeByte(26)..write(obj.fxRateToReporting)
+      ..writeByte(27)..write(obj.fxRateAt)
+      ..writeByte(28)..write(obj.fxSource);
   }
 
   @override
@@ -103,6 +117,7 @@ class RecurringPeriodAdapter extends TypeAdapter<RecurringPeriod> {
       default: return RecurringPeriod.daily;
     }
   }
+
   @override
   void write(BinaryWriter writer, RecurringPeriod obj) {
     switch (obj) {

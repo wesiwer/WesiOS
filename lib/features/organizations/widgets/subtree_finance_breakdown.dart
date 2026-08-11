@@ -2,29 +2,37 @@ import 'package:flutter/material.dart';
 
 import '../../../core/services/currency_service.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../team/services/team_service.dart';
+import '../../treasury/models/account_model.dart';
 import '../../treasury/services/account_service.dart';
 import '../../treasury/services/treasury_service.dart';
-import '../../team/services/team_service.dart';
 import '../models/organization_access_grant.dart';
-import '../services/organization_access_service.dart';
 import '../models/organization_model.dart';
+import '../services/organization_access_service.dart';
 import '../services/organization_context.dart';
 import '../services/organization_service.dart';
+
+class _AccountBalanceRow {
+  final AccountModel account;
+  final double balance;
+  const _AccountBalanceRow(this.account, this.balance);
+}
 
 class _OrganizationBalanceRow {
   final OrganizationModel organization;
   final double balance;
-  final double income;
-  final double expense;
+  final List<_AccountBalanceRow> accounts;
 
   const _OrganizationBalanceRow({
     required this.organization,
     required this.balance,
-    required this.income,
-    required this.expense,
+    required this.accounts,
   });
 }
 
+/// Canonical subtree breakdown semantics:
+/// Organization -> Accounts. Transactions remain available through Treasury
+/// operations/account filtering; employee rows belong exclusively to My Finance.
 class SubtreeFinanceBreakdown extends StatefulWidget {
   const SubtreeFinanceBreakdown({super.key});
 
@@ -66,38 +74,42 @@ class _SubtreeFinanceBreakdownState extends State<SubtreeFinanceBreakdown> {
       ids = ids.intersection(financeIds);
     }
     if (ids.length <= 1) return const [];
+
     final transactions = await TreasuryService().getAllTransactions();
-    final summaries = await AccountService.summaries(transactions);
+    final summaries = await AccountService.summaries(
+      transactions,
+      organizationIds: ids,
+    );
     final organizations = {
       for (final org in await OrganizationService.all()) org.id: org,
     };
-    final balance = <String, double>{};
-    final income = <String, double>{};
-    final expense = <String, double>{};
+    final byOrg = <String, List<_AccountBalanceRow>>{};
     for (final summary in summaries) {
-      final id = summary.account.effectiveOrganizationId;
-      if (!ids.contains(id)) continue;
-      balance[id] = (balance[id] ?? 0) + summary.balance;
-      income[id] = (income[id] ?? 0) + summary.income;
-      expense[id] = (expense[id] ?? 0) + summary.expense;
+      final orgId = summary.account.effectiveOrganizationId;
+      if (!ids.contains(orgId)) continue;
+      (byOrg[orgId] ??= []).add(
+        _AccountBalanceRow(summary.account, summary.balance),
+      );
     }
+
     final rows = <_OrganizationBalanceRow>[];
     for (final id in ids) {
       final org = organizations[id];
       if (org == null) continue;
+      final accounts = byOrg[id] ?? <_AccountBalanceRow>[];
+      accounts.sort((a, b) => a.account.createdAt.compareTo(b.account.createdAt));
       rows.add(_OrganizationBalanceRow(
         organization: org,
-        balance: balance[id] ?? 0,
-        income: income[id] ?? 0,
-        expense: expense[id] ?? 0,
+        balance: accounts.fold(0, (sum, row) => sum + row.balance),
+        accounts: accounts,
       ));
     }
     rows.sort((a, b) {
       if (a.organization.id == OrganizationContext.currentOrganizationId) return -1;
       if (b.organization.id == OrganizationContext.currentOrganizationId) return 1;
-      final byOrder = a.organization.sortOrder.compareTo(b.organization.sortOrder);
-      return byOrder != 0
-          ? byOrder
+      final order = a.organization.sortOrder.compareTo(b.organization.sortOrder);
+      return order != 0
+          ? order
           : a.organization.name.compareTo(b.organization.name);
     });
     return rows;
@@ -129,10 +141,11 @@ class _SubtreeFinanceBreakdownState extends State<SubtreeFinanceBreakdown> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.account_tree_outlined, size: 18, color: AppTheme.accent),
+                  Icon(Icons.account_tree_outlined,
+                      size: 18, color: AppTheme.accent),
                   const SizedBox(width: 8),
                   Text(
-                    'По организациям',
+                    'Организации → счета',
                     style: TextStyle(
                       color: AppTheme.textPrimary,
                       fontWeight: FontWeight.w800,
@@ -141,49 +154,21 @@ class _SubtreeFinanceBreakdownState extends State<SubtreeFinanceBreakdown> {
                   ),
                 ],
               ),
+              const SizedBox(height: 4),
+              Text(
+                'Персональные строки сотрудников находятся только в «Мои финансы». Операции открываются через фильтр счёта/список операций.',
+                style: TextStyle(
+                    color: AppTheme.textMuted, fontSize: 10.5, height: 1.35),
+              ),
               const SizedBox(height: 10),
-              for (final row in rows)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        flex: 3,
-                        child: Text(
-                          row.organization.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppTheme.textPrimary,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        flex: 2,
-                        child: Text(
-                          CurrencyService.format(row.balance),
-                          textAlign: TextAlign.right,
-                          style: TextStyle(
-                            color: row.balance >= 0
-                                ? AppTheme.accentGreen
-                                : AppTheme.accentRed,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Text(
-                  'Межорганизационные переводы отражаются в каждом узле, но не удваивают консолидированный прогноз и KPI поддерева.',
-                  style: TextStyle(
-                    color: AppTheme.textMuted,
-                    fontSize: 10,
-                    height: 1.35,
-                  ),
+              for (final row in rows) _row(row),
+              const SizedBox(height: 8),
+              Text(
+                'Внутренние межорганизационные переводы видны локально в узлах, но исключаются из консолидированных gross KPI и forecast поддерева.',
+                style: TextStyle(
+                  color: AppTheme.textMuted,
+                  fontSize: 10,
+                  height: 1.35,
                 ),
               ),
             ],
@@ -192,4 +177,54 @@ class _SubtreeFinanceBreakdownState extends State<SubtreeFinanceBreakdown> {
       },
     );
   }
+
+  Widget _row(_OrganizationBalanceRow row) => ExpansionTile(
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(left: 22, bottom: 6),
+        title: Text(
+          row.organization.name,
+          style: TextStyle(
+            color: AppTheme.textPrimary,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        trailing: Text(
+          CurrencyService.format(row.balance),
+          style: TextStyle(
+            color: row.balance >= 0 ? AppTheme.accentGreen : AppTheme.accentRed,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+        children: row.accounts.isEmpty
+            ? [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Счетов нет',
+                      style: TextStyle(color: AppTheme.textMuted, fontSize: 11)),
+                ),
+              ]
+            : [
+                for (final account in row.accounts)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            '${account.account.name} • ${account.account.currency}',
+                            style: TextStyle(
+                                color: AppTheme.textSecondary, fontSize: 11.5),
+                          ),
+                        ),
+                        Text(
+                          CurrencyService.format(account.balance),
+                          style: TextStyle(
+                              color: AppTheme.textPrimary,
+                              fontWeight: FontWeight.w700),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+      );
 }
