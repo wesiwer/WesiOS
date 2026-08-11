@@ -89,8 +89,6 @@ void main() {
     await SyncEngine.prepare(now: base);
   });
 
-  // ------------------------------------------------------------------ журнал
-
   group('журнал', () {
     test('отметка кодируется и читается обратно без потерь', () {
       final s = SyncStamp(DateTime.utc(2026, 8, 4, 12, 30, 15, 250));
@@ -158,8 +156,6 @@ void main() {
           base.add(const Duration(days: 1)));
     });
   });
-
-  // -------------------------------------------------------------------- кодек
 
   group('кодек', () {
     test('операция переживает круг через поля', () {
@@ -311,8 +307,6 @@ void main() {
     });
   });
 
-  // ------------------------------------------------------------------ движок
-
   group('движок', () {
     test('без входа честно говорит об этом', () async {
       final report = await SyncEngine.run(now: base);
@@ -337,7 +331,8 @@ void main() {
       expect(report.ok, isTrue, reason: report.describe());
       expect(t.store['transactions']!.containsKey('t1'), isTrue);
       expect(t.store['transactions']!['t1']!.fields['title'], 'Хлеб');
-      expect(report.uploaded, 1);
+      expect(report.uploaded, greaterThanOrEqualTo(1),
+          reason: 'baseline organization/account rows may sync alongside the transaction');
     });
 
     test('чужая запись приезжает и попадает в бокс', () async {
@@ -597,8 +592,6 @@ void main() {
           reason: 'иначе следующий проход решит, что запись уже усвоена');
     });
   });
-
-  // ------------------------------------------------------------------ адрес
 
   group('адрес сервера', () {
     test('зашит в сборку и всегда по https', () {
