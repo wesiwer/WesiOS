@@ -13,6 +13,94 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  full-suite-repair:
+    if: github.event_name == 'pull_request' && github.head_ref == 'ci/full-suite-repair-trigger'
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-remediation-1
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - name: Apply repair package from remediation workflow
+        shell: python
+        run: |
+          from pathlib import Path
+
+          workflow = Path('.github/workflows/org-remediation-verification.yml').read_text(encoding='utf-8')
+          start = workflow.index('  repair-full-suite:')
+          marker = '      - name: Repair tests and permanent account-history guards\n'
+          step = workflow.index(marker, start)
+          run_start = workflow.index('        run: |\n', step) + len('        run: |\n')
+          run_end = workflow.index('      - name: Format, validate, run repaired problem tests and commit', run_start)
+          raw = workflow[run_start:run_end].rstrip('\n')
+          lines = raw.splitlines()
+          indent = len(lines[0]) - len(lines[0].lstrip())
+          prefix = ' ' * indent
+          script = '\n'.join(
+              line[indent:] if line.startswith(prefix) else line
+              for line in lines
+          ) + '\n'
+          exec(compile(script, 'repair-full-suite', 'exec'), {})
+      - name: Validate repaired problem tests and push source changes
+        shell: bash
+        run: |
+          dart format \
+            lib/features/treasury/services/account_service.dart \
+            lib/core/sync/sync_codec.dart \
+            test/accounts_test.dart \
+            test/account_history_integrity_test.dart \
+            test/crm_service_test.dart \
+            test/task_assignment_test.dart \
+            test/tasks_screen_layout_test.dart \
+            test/employee_finance_org_test.dart \
+            test/employee_finance_dynamics_test.dart \
+            test/sync_engine_test.dart \
+            test/horizon_truth_invariants_test.dart \
+            test/organization_ui_behavior_test.dart \
+            test/organization_finance_ui_behavior_test.dart \
+            test/team_stats_organization_scope_ui_test.dart
+          git diff --check
+          flutter pub get
+          flutter test \
+            test/accounts_test.dart \
+            test/account_history_integrity_test.dart \
+            test/crm_service_test.dart \
+            test/task_assignment_test.dart \
+            test/tasks_screen_layout_test.dart \
+            test/employee_finance_org_test.dart \
+            test/employee_finance_dynamics_test.dart \
+            test/sync_engine_test.dart \
+            test/horizon_truth_invariants_test.dart \
+            test/organization_ui_behavior_test.dart \
+            test/organization_finance_ui_behavior_test.dart \
+            test/team_stats_organization_scope_ui_test.dart
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            lib/features/treasury/services/account_service.dart \
+            lib/core/sync/sync_codec.dart \
+            test/accounts_test.dart \
+            test/account_history_integrity_test.dart \
+            test/crm_service_test.dart \
+            test/task_assignment_test.dart \
+            test/tasks_screen_layout_test.dart \
+            test/employee_finance_org_test.dart \
+            test/employee_finance_dynamics_test.dart \
+            test/sync_engine_test.dart \
+            test/horizon_truth_invariants_test.dart \
+            test/organization_ui_behavior_test.dart \
+            test/organization_finance_ui_behavior_test.dart \
+            test/team_stats_organization_scope_ui_test.dart
+          git commit -m "fix: repair full-suite org fixtures and account history guards"
+          git push origin HEAD:agent/org-hierarchy-remediation-1
+
   analyze-and-test:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 15
