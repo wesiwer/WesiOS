@@ -320,9 +320,6 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
       }
     }
 
-    // Generic dataset sync is not an identity authority. Trusted login/server
-    // identity bootstrap must establish the owner locally first. Sync may only
-    // refresh that same owner record; it cannot mint, replace or demote owner.
     if (incoming.isOwner) {
       if (existing?.isOwner != true) return false;
       if (localOwner != null && localOwner.id != incoming.id) return false;
@@ -338,8 +335,6 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
     final b = box();
     final existing = b?.get(id);
     if (b == null || existing == null || existing.isOwner) return;
-    // TeamService.remove() archives the employee before removing the active
-    // card. A synced tombstone must preserve the same stable historical id.
     await EmployeeAdminService.archive(
       existing,
       reason: 'Synced employee removal',
@@ -444,8 +439,9 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
       if (incomingSet.length != expected.length ||
           !incomingSet.containsAll(expected)) return false;
       if (incoming.canViewTeamFinance !=
-          (financeVisible && target.permissions.canSeeOthersStats))
+          (financeVisible && target.permissions.canSeeOthersStats)) {
         return false;
+      }
       return true;
     }
 
@@ -569,12 +565,12 @@ class AccountsSync extends SyncCollection<AccountModel> {
     final b = box();
     final incoming = decode(fields);
     if (b == null || incoming == null) return false;
-    if (!_organizationExistsActive(incoming.effectiveOrganizationId))
+    if (!_organizationExistsActive(incoming.effectiveOrganizationId)) {
       return false;
+    }
     final before = b.get(incoming.id);
     if (before != null &&
-        before.effectiveOrganizationId != incoming.effectiveOrganizationId &&
-        await AccountService.hasLinkedTransactions(incoming.id)) {
+        before.effectiveOrganizationId != incoming.effectiveOrganizationId) {
       return false;
     }
     await b.put(incoming.id, incoming);
@@ -583,12 +579,8 @@ class AccountsSync extends SyncCollection<AccountModel> {
 
   @override
   Future<void> removeById(String id) async {
-    final b = box();
-    final existing = b?.get(id);
-    if (b == null || existing == null) return;
-    if (existing.kind == AccountKind.main) return;
-    if (await AccountService.hasLinkedTransactions(id)) return;
-    await b.delete(id);
+    // Financial account ids are durable. Deletion is represented by archival;
+    // a generic sync tombstone must never erase the identity or its history.
   }
 }
 
@@ -681,8 +673,9 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
     final b = box();
     final incoming = decode(fields);
     if (b == null || incoming == null) return false;
-    if (!_organizationExistsActive(incoming.effectiveOrganizationId))
+    if (!_organizationExistsActive(incoming.effectiveOrganizationId)) {
       return false;
+    }
     final account = _account(incoming.effectiveAccountId);
     if (account == null ||
         account.archived ||
@@ -700,9 +693,6 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
     final b = box();
     final existing = b?.get(id);
     if (b == null || existing == null) return;
-    // A linked inter-org leg is part of a journaled logical transfer. Remote
-    // tombstones cannot delete one side independently; cancellation/recovery
-    // must go through InterOrgTransferService.
     if (existing.interOrgTransferId != null ||
         existing.source == TransactionSource.interorg) return;
     await b.delete(id);
@@ -798,14 +788,16 @@ class TasksSync extends SyncCollection<TaskModel> {
     final b = box();
     final incoming = decode(fields);
     if (b == null || incoming == null) return false;
-    if (!_organizationExistsActive(incoming.effectiveOrganizationId))
+    if (!_organizationExistsActive(incoming.effectiveOrganizationId)) {
       return false;
+    }
     if (incoming.assignee != null && !_employeeExists(incoming.assignee!)) {
       return false;
     }
     if (incoming.effectiveResponsibleEmployeeId != null &&
-        !_employeeExists(incoming.effectiveResponsibleEmployeeId!))
+        !_employeeExists(incoming.effectiveResponsibleEmployeeId!)) {
       return false;
+    }
     await b.put(incoming.id, incoming);
     return true;
   }
@@ -1023,8 +1015,6 @@ class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
         !_organizationExistsActive(incoming.organizationId)) return false;
     final existing = b.get(incoming.id);
     if (existing != null) {
-      // Transaction audit ids are append-only events. The same event may be
-      // replayed idempotently, but its payload can never be rewritten.
       if (jsonEncode(encode(existing)) != jsonEncode(encode(incoming))) {
         return false;
       }
