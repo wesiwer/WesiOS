@@ -28,7 +28,7 @@ jobs:
           flutter-version: '3.24.0'
           channel: stable
           cache: true
-      - name: Apply pending sync lifecycle hardening and remove patch job
+      - name: Apply pending sync lifecycle hardening
         shell: python
         run: |
           from pathlib import Path
@@ -36,8 +36,6 @@ jobs:
           verifier = Path('.github/workflows/org-remediation-verification.yml')
           workflow = verifier.read_text(encoding='utf-8')
           start = workflow.index('  sync-lifecycle-hardening:')
-          end = workflow.index('  analysis:', start)
-
           marker = '      - name: Harden employee, InterOrg and audit tombstones\n'
           step = workflow.index(marker, start)
           run_start = workflow.index('        run: |\n', step) + len('        run: |\n')
@@ -51,20 +49,14 @@ jobs:
               for line in lines
           ) + '\n'
           exec(compile(patch_body, 'sync-lifecycle-hardening', 'exec'), {})
-
-          # Final branch must contain only permanent verification jobs.
-          workflow = verifier.read_text(encoding='utf-8')
-          start = workflow.index('  sync-lifecycle-hardening:')
-          end = workflow.index('  analysis:', start)
-          verifier.write_text(workflow[:start] + workflow[end:], encoding='utf-8')
-      - name: Format, validate and commit remediation head
+      - name: Format, validate and commit remediation source
         shell: bash
         run: |
           dart format lib/core/sync/sync_codec.dart test/sync_repeat_audit_security_test.dart
-          git diff --check
+          git diff --check lib/core/sync/sync_codec.dart test/sync_repeat_audit_security_test.dart
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add lib/core/sync/sync_codec.dart test/sync_repeat_audit_security_test.dart
           git commit -m "fix: preserve lifecycle and financial audit across sync"
           git push origin HEAD:agent/org-hierarchy-remediation-1
 
