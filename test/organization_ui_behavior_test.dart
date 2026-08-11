@@ -130,6 +130,12 @@ void main() {
     await tester.tap(find.text('Только эта'));
     await pumpUiFrames(tester);
     expect(OrganizationContext.scope, OrganizationScope.only);
+
+    // _open() awaits the bottom sheet. Leaving it mounted keeps an unfinished
+    // UI future alive after the test body. Close it explicitly before teardown.
+    await tester.tap(find.byIcon(Icons.close));
+    await pumpUiFrames(tester);
+    expect(find.text('Организация'), findsNothing);
   });
 
   testWidgets('subtree account shown by AccountsBar is actually selectable',
