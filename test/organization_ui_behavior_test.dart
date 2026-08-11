@@ -21,6 +21,12 @@ import 'package:wesios/features/treasury/models/transaction_model.dart';
 import 'package:wesios/features/treasury/services/account_service.dart';
 import 'package:wesios/features/treasury/widgets/accounts_bar.dart';
 
+Future<void> pumpUiFrames(WidgetTester tester) async {
+  for (var i = 0; i < 20; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temp;
@@ -94,25 +100,25 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     expect(find.text('Wesi Inc'), findsOneWidget);
     expect(find.text('Только эта'), findsOneWidget);
     await tester.tap(find.text('Wesi Inc'));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     expect(find.text('Организация'), findsOneWidget);
     expect(find.text('Studio A'), findsOneWidget);
     await tester.tap(find.text('Studio A'));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
     expect(OrganizationContext.currentOrganizationId, studio.id);
 
     await tester.tap(find.text('С дочерними'));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
     expect(OrganizationContext.scope, OrganizationScope.subtree);
 
     await tester.tap(find.text('Только эта'));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
     expect(OrganizationContext.scope, OrganizationScope.only);
   });
 
@@ -143,11 +149,11 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     expect(find.text('Studio Wallet'), findsOneWidget);
     await tester.tap(find.text('Studio Wallet'));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
     expect(selected, childAccount.id);
     expect(AccountService.selectedId, childAccount.id);
   });
@@ -163,7 +169,7 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: InterOrgTransferScreen()),
     );
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     final amountField = find.byWidgetPredicate(
       (widget) => widget is TextField &&
@@ -176,12 +182,12 @@ void main() {
     final reviewButton = find.text('Проверить и провести');
     await tester.ensureVisible(reviewButton);
     await tester.tap(reviewButton);
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     expect(find.text('Подтверждение перевода'), findsOneWidget);
     expect(find.text('Провести'), findsOneWidget);
     await tester.tap(find.text('Провести'));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     final transfers = Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
         .values
@@ -198,10 +204,10 @@ void main() {
     final cancelButton = find.text('Отменить');
     await tester.ensureVisible(cancelButton);
     await tester.tap(cancelButton);
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
     expect(find.text('Отменить перевод?'), findsOneWidget);
     await tester.tap(find.text('Отменить обе проводки'));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     final cancelled = Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
         .get(transfer.id);
