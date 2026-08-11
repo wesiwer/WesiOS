@@ -39,7 +39,7 @@ jobs:
 
   remediation-tests:
     runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -53,35 +53,42 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Security, scope, money, sync, migration, UI and fault-injection suite
-        run: >-
-          flutter test
-          test/organization_privilege_escalation_test.dart
-          test/organization_domain_permission_test.dart
-          test/organization_service_authorization_test.dart
-          test/organization_scope_isolation_test.dart
-          test/task_crm_organization_scope_test.dart
-          test/crm_interaction_integrity_test.dart
-          test/organization_finance_negative_test.dart
-          test/organization_forecast_permission_test.dart
-          test/inter_org_visibility_test.dart
-          test/inter_org_fault_injection_test.dart
-          test/multi_currency_org_test.dart
-          test/account_liquidity_migration_test.dart
-          test/background_org_processing_test.dart
-          test/sync_corruption_guard_test.dart
-          test/sync_migration_grant_test.dart
-          test/sync_repeat_audit_security_test.dart
-          test/employee_sync_lifecycle_test.dart
-          test/account_history_integrity_test.dart
-          test/org_physical_ownership_test.dart
-          test/organization_legacy_migration_rehearsal_test.dart
-          test/organization_access_revocation_test.dart
-          test/organization_finance_access_test.dart
-          test/organization_sync_integrity_test.dart
-          test/inter_org_transfer_test.dart
-          test/organization_ui_behavior_test.dart
-          test/organization_finance_ui_behavior_test.dart
-          test/team_stats_organization_scope_ui_test.dart
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            test/organization_privilege_escalation_test.dart
+            test/organization_domain_permission_test.dart
+            test/organization_service_authorization_test.dart
+            test/organization_scope_isolation_test.dart
+            test/task_crm_organization_scope_test.dart
+            test/crm_interaction_integrity_test.dart
+            test/organization_finance_negative_test.dart
+            test/organization_forecast_permission_test.dart
+            test/inter_org_visibility_test.dart
+            test/inter_org_fault_injection_test.dart
+            test/multi_currency_org_test.dart
+            test/account_liquidity_migration_test.dart
+            test/background_org_processing_test.dart
+            test/sync_corruption_guard_test.dart
+            test/sync_migration_grant_test.dart
+            test/sync_repeat_audit_security_test.dart
+            test/employee_sync_lifecycle_test.dart
+            test/account_history_integrity_test.dart
+            test/org_physical_ownership_test.dart
+            test/organization_legacy_migration_rehearsal_test.dart
+            test/organization_access_revocation_test.dart
+            test/organization_finance_access_test.dart
+            test/organization_sync_integrity_test.dart
+            test/inter_org_transfer_test.dart
+            test/organization_ui_behavior_test.dart
+            test/organization_finance_ui_behavior_test.dart
+            test/team_stats_organization_scope_ui_test.dart
+          )
+          for file in "${files[@]}"; do
+            echo "===== RUNNING $file ====="
+            timeout 180s flutter test "$file"
+          done
 
   full-tests:
     runs-on: ubuntu-24.04
