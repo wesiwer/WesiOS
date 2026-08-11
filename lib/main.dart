@@ -24,6 +24,7 @@ import 'core/services/secrets_service.dart';
 import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_endpoint.dart';
 import 'core/sync/sync_engine.dart';
+import 'core/sync/sync_feature_extensions.dart';
 import 'core/theme/app_theme.dart';
 import 'features/chats/models/chat_message.dart';
 import 'features/chats/models/chat_thread.dart';
@@ -127,15 +128,15 @@ void main(List<String> arguments) async {
 
   await SyncEndpoint.initializeSession();
   await TeamService.forgetUnrememberedSession();
+  await SyncFeatureExtensions.install();
 
   if (TeamService.current != null && SyncEndpoint.isConnected) {
     SessionService.startHeartbeat();
-    if (TeamService.isOwnerSession) {
-      unawaited(SyncEngine.runOnLaunch());
-      SyncAuto.start();
-    } else {
-      SyncAuto.stop();
-    }
+    // Every authenticated employee participates in synchronization. The
+    // server gateway applies module/org/row permissions; owner-only sync here
+    // previously made Tasks/Profile/avatars appear local on employee devices.
+    unawaited(SyncEngine.runOnLaunch());
+    SyncAuto.start();
   } else {
     SessionService.stopHeartbeat();
     SyncAuto.stop();
