@@ -73,6 +73,16 @@ void main() {
       await Hive.box<String>('wesios_critical_audit').clear();
     }
     await OrganizationService.ensureBaseline();
+    final owner = EmployeeModel(
+      id: 'owner-ui',
+      login: 'owner-ui',
+      fullName: 'Owner',
+      createdAt: DateTime(2026, 1, 1),
+      isOwner: true,
+      permissions: TeamPermissions.owner,
+    );
+    await Hive.box<EmployeeModel>(TeamService.boxName).put(owner.id, owner);
+    await Hive.box<dynamic>('wesios_settings').put('team_current_employee', owner.id);
     await OrganizationContext.initialize();
     await OrganizationContext.selectOrganization(OrganizationModel.rootId);
     await OrganizationContext.setScope(OrganizationScope.only);
