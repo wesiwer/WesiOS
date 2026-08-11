@@ -26,6 +26,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
   Set<String> _manageMembers = const {};
   bool _loading = true;
   String? _error;
+  int _loadEpoch = 0;
 
   @override
   void initState() {
@@ -45,6 +46,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
   void _reload() => _load();
 
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
     try {
       final orgs = await OrganizationService.all(includeArchived: true);
       final allowed = TeamService.current == null
@@ -71,7 +73,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
           manageMembers.add(org.id);
         }
       }
-      if (!mounted) return;
+      if (!mounted || epoch != _loadEpoch) return;
       setState(() {
         _orgs = orgs;
         _allowed = allowed;
@@ -81,7 +83,7 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) {
+      if (mounted && epoch == _loadEpoch) {
         setState(() {
           _loading = false;
           _error = '$e';
@@ -480,7 +482,8 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -562,14 +565,14 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         parentId: org.isRoot ? null : parentId,
         baseCurrency: currency.text,
         code: code.text.trim().isEmpty ? null : code.text.trim(),
-        description: description.text.trim().isEmpty
-            ? null
-            : description.text.trim(),
+        description:
+            description.text.trim().isEmpty ? null : description.text.trim(),
       );
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -649,7 +652,8 @@ class _OrganizationMembersDialogState
         actorSubtree = actorSubtree || grant.includeSubtree;
         actorTeamFinance = actorTeamFinance ||
             (grant.canViewTeamFinance &&
-                grant.permissions.contains(OrganizationPermissions.viewFinance));
+                grant.permissions
+                    .contains(OrganizationPermissions.viewFinance));
       }
     }
 
@@ -782,7 +786,8 @@ class _OrganizationMembersDialogState
                   color: AppTheme.accentRed.withOpacity(.10),
                   borderRadius: BorderRadius.circular(10),
                 ),
-                child: Text(_error!, style: TextStyle(color: AppTheme.accentRed)),
+                child:
+                    Text(_error!, style: TextStyle(color: AppTheme.accentRed)),
               ),
             Text(
               'Интерфейс показывает только права, которые текущая роль сама может делегировать. Service layer повторно проверяет это при сохранении.',
@@ -820,8 +825,7 @@ class _OrganizationMembersDialogState
                                   _actorPermissions.contains(
                                     OrganizationPermissions.viewFinance,
                                   )
-                              ? (v) =>
-                                  _teamFinance(employee.id, v ?? false)
+                              ? (v) => _teamFinance(employee.id, v ?? false)
                               : null,
                           title: const Text('Персональные финансы команды'),
                         ),

@@ -176,7 +176,10 @@ class OrganizationsSync extends SyncCollection<OrganizationModel> {
     final id = _strOrNull(fields['id']);
     final name = _strOrNull(fields['name']);
     final createdAt = _date(fields['createdAt']);
-    if (id == null || name == null || name.trim().isEmpty || createdAt == null) {
+    if (id == null ||
+        name == null ||
+        name.trim().isEmpty ||
+        createdAt == null) {
       return null;
     }
     final isRoot = fields['isRoot'] == true;
@@ -368,7 +371,8 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
     final employeeId = _strOrNull(fields['employeeId']);
     final organizationId = _strOrNull(fields['organizationId']);
     final createdAt = _date(fields['createdAt']);
-    final permissions = _strings(fields['permissions']).toSet().toList()..sort();
+    final permissions = _strings(fields['permissions']).toSet().toList()
+      ..sort();
     if (id == null ||
         employeeId == null ||
         organizationId == null ||
@@ -394,15 +398,16 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
   }
 
   bool _actorMayHaveIssued(OrganizationAccessGrant incoming) {
-    if (incoming.createdBy == 'untrusted-sync' || incoming.createdBy == 'sync') {
+    if (incoming.createdBy == 'untrusted-sync' ||
+        incoming.createdBy == 'sync') {
       return false;
     }
 
     if (incoming.createdBy == 'migration/internal' ||
         incoming.createdBy == 'migration') {
       if (incoming.organizationId != OrganizationModel.rootId) return false;
-      final target = Hive.box<EmployeeModel>(TeamService.boxName)
-          .get(incoming.employeeId);
+      final target =
+          Hive.box<EmployeeModel>(TeamService.boxName).get(incoming.employeeId);
       if (target == null) return false;
       if (target.isOwner) {
         final incomingSet = incoming.permissions.toSet();
@@ -432,18 +437,19 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
       if (incomingSet.length != expected.length ||
           !incomingSet.containsAll(expected)) return false;
       if (incoming.canViewTeamFinance !=
-          (financeVisible && target.permissions.canSeeOthersStats)) return false;
+          (financeVisible && target.permissions.canSeeOthersStats))
+        return false;
       return true;
     }
 
     if (!_employeeExists(incoming.createdBy)) return false;
-    final actor = Hive.box<EmployeeModel>(TeamService.boxName).get(incoming.createdBy);
+    final actor =
+        Hive.box<EmployeeModel>(TeamService.boxName).get(incoming.createdBy);
     if (actor?.isOwner == true) return true;
     final grants = box();
     if (grants == null) return false;
-    final actorGrants = grants.values
-        .where((g) => g.employeeId == incoming.createdBy)
-        .toList();
+    final actorGrants =
+        grants.values.where((g) => g.employeeId == incoming.createdBy).toList();
     bool covers(OrganizationAccessGrant g) {
       if (g.organizationId == incoming.organizationId) return true;
       if (!g.includeSubtree || !Hive.isBoxOpen(OrganizationService.boxName)) {
@@ -457,13 +463,16 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
       }
       return false;
     }
+
     final applicable = actorGrants.where(covers).toList();
-    if (!applicable.any((g) => g.allows(OrganizationPermissions.manageMembers))) {
+    if (!applicable
+        .any((g) => g.allows(OrganizationPermissions.manageMembers))) {
       return false;
     }
     for (final permission in incoming.permissions) {
       final permitted = applicable.any((g) =>
-          g.allows(permission) && (!incoming.includeSubtree || g.includeSubtree));
+          g.allows(permission) &&
+          (!incoming.includeSubtree || g.includeSubtree));
       if (!permitted) return false;
     }
     if (incoming.canViewTeamFinance &&
@@ -521,7 +530,8 @@ class AccountsSync extends SyncCollection<AccountModel> {
   AccountModel? decode(Map<String, dynamic> fields) {
     final id = _strOrNull(fields['id']);
     final createdAt = _date(fields['createdAt']);
-    final orgId = _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId;
+    final orgId =
+        _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId;
     final opening = _double(fields['openingBalance']) ?? 0;
     final minimum = _double(fields['minimumBalance']) ?? 0;
     if (id == null ||
@@ -552,7 +562,8 @@ class AccountsSync extends SyncCollection<AccountModel> {
     final b = box();
     final incoming = decode(fields);
     if (b == null || incoming == null) return false;
-    if (!_organizationExistsActive(incoming.effectiveOrganizationId)) return false;
+    if (!_organizationExistsActive(incoming.effectiveOrganizationId))
+      return false;
     final before = b.get(incoming.id);
     if (before != null &&
         before.effectiveOrganizationId != incoming.effectiveOrganizationId &&
@@ -594,7 +605,8 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
     final id = _strOrNull(fields['id']);
     final amount = _double(fields['amount']);
     final date = _date(fields['date']);
-    final orgId = _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId;
+    final orgId =
+        _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId;
     final accountId =
         _strOrNull(fields['accountId']) ?? AccountModel.mainIdFor(orgId);
     if (id == null ||
@@ -662,7 +674,8 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
     final b = box();
     final incoming = decode(fields);
     if (b == null || incoming == null) return false;
-    if (!_organizationExistsActive(incoming.effectiveOrganizationId)) return false;
+    if (!_organizationExistsActive(incoming.effectiveOrganizationId))
+      return false;
     final account = _account(incoming.effectiveAccountId);
     if (account == null ||
         account.archived ||
@@ -673,6 +686,19 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
         !_employeeExists(incoming.ownerEmployeeId!)) return false;
     await b.put(incoming.id, incoming);
     return true;
+  }
+
+  @override
+  Future<void> removeById(String id) async {
+    final b = box();
+    final existing = b?.get(id);
+    if (b == null || existing == null) return;
+    // A linked inter-org leg is part of a journaled logical transfer. Remote
+    // tombstones cannot delete one side independently; cancellation/recovery
+    // must go through InterOrgTransferService.
+    if (existing.interOrgTransferId != null ||
+        existing.source == TransactionSource.interorg) return;
+    await b.delete(id);
   }
 }
 
@@ -720,12 +746,12 @@ class TasksSync extends SyncCollection<TaskModel> {
       }
       return null;
     }
+
     final assignee = _strOrNull(fields['assignee']);
     final organizationId = _strOrNull(fields['organizationId']) ??
         ownershipTag(TaskModel.organizationTagPrefix) ??
         OrganizationModel.rootId;
-    final responsibleEmployeeId =
-        _strOrNull(fields['responsibleEmployeeId']) ??
+    final responsibleEmployeeId = _strOrNull(fields['responsibleEmployeeId']) ??
         ownershipTag(TaskModel.employeeTagPrefix) ??
         assignee;
     return TaskModel(
@@ -765,12 +791,14 @@ class TasksSync extends SyncCollection<TaskModel> {
     final b = box();
     final incoming = decode(fields);
     if (b == null || incoming == null) return false;
-    if (!_organizationExistsActive(incoming.effectiveOrganizationId)) return false;
+    if (!_organizationExistsActive(incoming.effectiveOrganizationId))
+      return false;
     if (incoming.assignee != null && !_employeeExists(incoming.assignee!)) {
       return false;
     }
     if (incoming.effectiveResponsibleEmployeeId != null &&
-        !_employeeExists(incoming.effectiveResponsibleEmployeeId!)) return false;
+        !_employeeExists(incoming.effectiveResponsibleEmployeeId!))
+      return false;
     await b.put(incoming.id, incoming);
     return true;
   }
@@ -977,7 +1005,8 @@ class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
   Future<bool> applyFields(Map<String, dynamic> fields) async {
     final b = box();
     final incoming = decode(fields);
-    if (b == null || incoming == null ||
+    if (b == null ||
+        incoming == null ||
         !_organizationExistsActive(incoming.organizationId)) return false;
     await b.put(incoming.id, incoming);
     return true;
@@ -1186,7 +1215,8 @@ class ChatsSync extends SyncCollection<ChatThread> {
   @override
   Map<String, dynamic> encode(ChatThread value) => value.toJson();
   @override
-  ChatThread? decode(Map<String, dynamic> fields) => ChatThread.tryParse(fields);
+  ChatThread? decode(Map<String, dynamic> fields) =>
+      ChatThread.tryParse(fields);
 
   @override
   Future<bool> applyFields(Map<String, dynamic> fields) async {
@@ -1197,7 +1227,9 @@ class ChatsSync extends SyncCollection<ChatThread> {
     final mine = b.get(incoming.id);
     await b.put(
       incoming.id,
-      mine == null ? incoming : incoming.copyWith(lastOpenedAt: mine.lastOpenedAt),
+      mine == null
+          ? incoming
+          : incoming.copyWith(lastOpenedAt: mine.lastOpenedAt),
     );
     return true;
   }
@@ -1227,7 +1259,8 @@ class MessagesSync extends SyncCollection<ChatMessage> {
   Map<String, dynamic> encode(ChatMessage value) =>
       value.toJson()..remove('state');
   @override
-  ChatMessage? decode(Map<String, dynamic> fields) => ChatMessage.tryParse(fields);
+  ChatMessage? decode(Map<String, dynamic> fields) =>
+      ChatMessage.tryParse(fields);
 
   @override
   Future<void> afterUpload(Iterable<String> ids) async {

@@ -295,6 +295,19 @@ Remote delete не может разрушить referential integrity.
 
 Исторические финансовые/organizational entities должны архивироваться либо проходить отдельный согласованный migration flow.
 
+
+### I4. Owner identity sync boundary — IMPLEMENTED/PENDING FINAL EVIDENCE
+Generic employee dataset sync cannot mint, replace, demote or tombstone owner identity. Trusted server-identity bootstrap remains separate.
+
+### I5. InterOrg sync lifecycle immutability — IMPLEMENTED/PENDING FINAL EVIDENCE
+Transfer core is immutable after creation; cancellation is one-way and linked ledger legs cannot be tombstoned independently.
+
+### I6. CRM interaction parent integrity — IMPLEMENTED/PENDING FINAL EVIDENCE
+Interaction deal must belong to the same client/org, and an existing hidden interaction cannot be seized by re-parenting its id.
+
+### I7. Stale async UI revoke safety — IMPLEMENTED/PENDING FINAL EVIDENCE
+Access-sensitive loaders use generation guards; organization picker refreshes on access changes and rejects stale selection after revoke.
+
 ---
 
 ## J. Physical ownership / migration

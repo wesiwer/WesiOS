@@ -30,6 +30,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
   bool get _ru => WesiLocale.isRussian;
   List<TaskModel> _tasks = const [];
   List<EmployeeModel> _people = const [];
+  int _loadEpoch = 0;
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
   void _changed() => _load();
 
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
     final tasks = await TaskService().getAll();
     final me = TeamService.current;
     var people = <EmployeeModel>[];
@@ -62,7 +64,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
       } else {
         final scopeIds = await OrganizationContext.effectiveOrganizationIds();
         for (final employee in TeamService.all) {
-          final employeeIds = await OrganizationAccessService.visibleOrganizationIds(
+          final employeeIds =
+              await OrganizationAccessService.visibleOrganizationIds(
             employeeId: employee.id,
           );
           if (employeeIds.intersection(scopeIds).isNotEmpty) {
@@ -71,7 +74,7 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
         }
       }
     }
-    if (mounted) {
+    if (mounted && epoch == _loadEpoch) {
       setState(() {
         _tasks = tasks;
         _people = people;
@@ -81,8 +84,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final everyone = TeamService.currentPermissions.canSeeOthersStats &&
-        _people.length > 1;
+    final everyone =
+        TeamService.currentPermissions.canSeeOthersStats && _people.length > 1;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -113,7 +116,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                               : (_ru
                                   ? 'Только ваши реальные данные'
                                   : 'Your real data only'),
-                          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textMuted),
                         ),
                       ],
                     ),
@@ -165,8 +169,10 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
   }
 
   Widget _card(EmployeeModel employee) {
-    final assigned = _tasks.where((task) => task.assignee == employee.id).toList();
-    final done = assigned.where((task) => task.status == TaskStatus.done).length;
+    final assigned =
+        _tasks.where((task) => task.assignee == employee.id).toList();
+    final done =
+        assigned.where((task) => task.status == TaskStatus.done).length;
     final open = assigned.length - done;
     final overdue = assigned.where((task) => task.isOverdue).length;
     final completion = assigned.isEmpty ? 0.0 : done / assigned.length;
@@ -239,7 +245,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                         value: completion.clamp(0.0, 1.0),
                         minHeight: 5,
                         backgroundColor: AppTheme.surfaceLight,
-                        valueColor: AlwaysStoppedAnimation(AppTheme.accentGreen),
+                        valueColor:
+                            AlwaysStoppedAnimation(AppTheme.accentGreen),
                       ),
                     ),
                   ),

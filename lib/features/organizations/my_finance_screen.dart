@@ -27,6 +27,7 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
   bool _canSubtree = false;
   bool _canTeam = false;
   bool _loading = true;
+  int _loadEpoch = 0;
 
   @override
   void initState() {
@@ -46,6 +47,7 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
   void _reload() => _load();
 
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
     if (mounted) setState(() => _loading = true);
     final orgId = OrganizationContext.currentOrganizationId;
     final canOrganization =
@@ -86,7 +88,7 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
         );
       }
     }
-    if (!mounted) return;
+    if (!mounted || epoch != _loadEpoch) return;
     setState(() {
       _view = effectiveView;
       _canOrganization = canOrganization;
@@ -208,11 +210,8 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
                 AppTheme.accentRed),
             _metric('Мой net', _money(m.net), Icons.balance_outlined,
                 AppTheme.accent),
-            _metric(
-                'Регулярные обязательства',
-                _money(m.recurringObligations),
-                Icons.repeat_rounded,
-                AppTheme.textSecondary),
+            _metric('Регулярные обязательства', _money(m.recurringObligations),
+                Icons.repeat_rounded, AppTheme.textSecondary),
           ],
         ),
         const SizedBox(height: 18),
@@ -272,8 +271,8 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
           spacing: 10,
           runSpacing: 10,
           children: [
-            _metric('Доходы контура', _money(metrics.income),
-                Icons.trending_up, AppTheme.accentGreen),
+            _metric('Доходы контура', _money(metrics.income), Icons.trending_up,
+                AppTheme.accentGreen),
             _metric('Расходы контура', _money(metrics.expenses),
                 Icons.trending_down, AppTheme.accentRed),
             _metric('Net контура', _money(metrics.net), Icons.balance_outlined,
@@ -362,8 +361,8 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
                 _dialogLine('Вклад', _money(m.contribution)),
                 _dialogLine('Расходы', _money(m.expenses)),
                 _dialogLine('Net', _money(m.net)),
-                _dialogLine('Регулярные обязательства',
-                    _money(m.recurringObligations)),
+                _dialogLine(
+                    'Регулярные обязательства', _money(m.recurringObligations)),
                 _dialogLine('Операций', '${m.operations}'),
                 _dialogLine('Просроченных событий', '${m.overdueEvents}'),
                 _dialogLine(
@@ -483,8 +482,7 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
                     color: AppTheme.textPrimary, fontWeight: FontWeight.w800)),
             const SizedBox(height: 6),
             Text(body,
-                style: TextStyle(
-                    color: AppTheme.textSecondary, height: 1.45)),
+                style: TextStyle(color: AppTheme.textSecondary, height: 1.45)),
           ],
         ),
       );

@@ -23,24 +23,38 @@ void main() {
   setUpAll(() async {
     temp = await Directory.systemTemp.createTemp('wesios-sync-corruption-');
     Hive.init(temp.path);
-    if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(TransactionModelAdapter());
-    if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(TransactionTypeAdapter());
-    if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(RecurringPeriodAdapter());
-    if (!Hive.isAdapterRegistered(14)) Hive.registerAdapter(AccountKindAdapter());
-    if (!Hive.isAdapterRegistered(15)) Hive.registerAdapter(AccountModelAdapter());
-    if (!Hive.isAdapterRegistered(20)) Hive.registerAdapter(TeamPermissionsAdapter());
-    if (!Hive.isAdapterRegistered(21)) Hive.registerAdapter(EmployeeModelAdapter());
-    if (!Hive.isAdapterRegistered(80)) Hive.registerAdapter(OrganizationStatusAdapter());
-    if (!Hive.isAdapterRegistered(81)) Hive.registerAdapter(OrganizationModelAdapter());
-    if (!Hive.isAdapterRegistered(82)) Hive.registerAdapter(OrganizationAccessGrantAdapter());
-    if (!Hive.isAdapterRegistered(83)) Hive.registerAdapter(InterOrgTransferTypeAdapter());
-    if (!Hive.isAdapterRegistered(84)) Hive.registerAdapter(InterOrgTransferModelAdapter());
-    if (!Hive.isAdapterRegistered(86)) Hive.registerAdapter(TransactionSourceAdapter());
+    if (!Hive.isAdapterRegistered(1))
+      Hive.registerAdapter(TransactionModelAdapter());
+    if (!Hive.isAdapterRegistered(2))
+      Hive.registerAdapter(TransactionTypeAdapter());
+    if (!Hive.isAdapterRegistered(3))
+      Hive.registerAdapter(RecurringPeriodAdapter());
+    if (!Hive.isAdapterRegistered(14))
+      Hive.registerAdapter(AccountKindAdapter());
+    if (!Hive.isAdapterRegistered(15))
+      Hive.registerAdapter(AccountModelAdapter());
+    if (!Hive.isAdapterRegistered(20))
+      Hive.registerAdapter(TeamPermissionsAdapter());
+    if (!Hive.isAdapterRegistered(21))
+      Hive.registerAdapter(EmployeeModelAdapter());
+    if (!Hive.isAdapterRegistered(80))
+      Hive.registerAdapter(OrganizationStatusAdapter());
+    if (!Hive.isAdapterRegistered(81))
+      Hive.registerAdapter(OrganizationModelAdapter());
+    if (!Hive.isAdapterRegistered(82))
+      Hive.registerAdapter(OrganizationAccessGrantAdapter());
+    if (!Hive.isAdapterRegistered(83))
+      Hive.registerAdapter(InterOrgTransferTypeAdapter());
+    if (!Hive.isAdapterRegistered(84))
+      Hive.registerAdapter(InterOrgTransferModelAdapter());
+    if (!Hive.isAdapterRegistered(86))
+      Hive.registerAdapter(TransactionSourceAdapter());
 
     await Hive.openBox('wesios_settings');
     await Hive.openBox<EmployeeModel>(TeamService.boxName);
     await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
-    await Hive.openBox<OrganizationAccessGrant>(OrganizationAccessService.boxName);
+    await Hive.openBox<OrganizationAccessGrant>(
+        OrganizationAccessService.boxName);
     await Hive.openBox<AccountModel>('wesios_accounts');
     await Hive.openBox<TransactionModel>('wesios_treasury');
     await Hive.openBox<InterOrgTransferModel>(InterOrgTransferService.boxName);
@@ -50,10 +64,12 @@ void main() {
     await Hive.box('wesios_settings').clear();
     await Hive.box<EmployeeModel>(TeamService.boxName).clear();
     await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
-    await Hive.box<OrganizationAccessGrant>(OrganizationAccessService.boxName).clear();
+    await Hive.box<OrganizationAccessGrant>(OrganizationAccessService.boxName)
+        .clear();
     await Hive.box<AccountModel>('wesios_accounts').clear();
     await Hive.box<TransactionModel>('wesios_treasury').clear();
-    await Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName).clear();
+    await Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
+        .clear();
     await OrganizationService.ensureBaseline();
   });
 
@@ -62,12 +78,15 @@ void main() {
     if (await temp.exists()) await temp.delete(recursive: true);
   });
 
-  Map<String, dynamic> organizationFields(OrganizationModel org, {String? parentId}) => {
+  Map<String, dynamic> organizationFields(OrganizationModel org,
+          {String? parentId}) =>
+      {
         ...org.toJson(),
         'parentId': parentId ?? org.parentId,
       };
 
-  test('organization sync rejects dangling parents, fake roots and cycles', () async {
+  test('organization sync rejects dangling parents, fake roots and cycles',
+      () async {
     final organizations = OrganizationsSync();
     final now = DateTime(2026, 8, 1).toIso8601String();
 
@@ -86,7 +105,10 @@ void main() {
       }),
       isFalse,
     );
-    expect(Hive.box<OrganizationModel>(OrganizationService.boxName).containsKey('org-dangling'), isFalse);
+    expect(
+        Hive.box<OrganizationModel>(OrganizationService.boxName)
+            .containsKey('org-dangling'),
+        isFalse);
 
     expect(
       await organizations.applyFields({
@@ -118,10 +140,12 @@ void main() {
       await organizations.applyFields(organizationFields(a, parentId: b.id)),
       isFalse,
     );
-    expect((await OrganizationService.byId(a.id))!.parentId, OrganizationModel.rootId);
+    expect((await OrganizationService.byId(a.id))!.parentId,
+        OrganizationModel.rootId);
   });
 
-  test('grant sync rejects malformed and unauthenticated privilege grants', () async {
+  test('grant sync rejects malformed and unauthenticated privilege grants',
+      () async {
     final employee = EmployeeModel(
       id: 'target',
       login: 'target',
@@ -129,7 +153,8 @@ void main() {
       createdAt: DateTime(2026, 1, 1),
       permissions: const TeamPermissions(),
     );
-    await Hive.box<EmployeeModel>(TeamService.boxName).put(employee.id, employee);
+    await Hive.box<EmployeeModel>(TeamService.boxName)
+        .put(employee.id, employee);
     final sync = OrganizationGrantsSync();
     final now = DateTime(2026, 8, 1).toIso8601String();
 
@@ -173,7 +198,8 @@ void main() {
     expect(await OrganizationAccessService.grantsFor(employee.id), isEmpty);
   });
 
-  test('transaction sync rejects cross-organization account ownership', () async {
+  test('transaction sync rejects cross-organization account ownership',
+      () async {
     final a = await OrganizationService.create(
       name: 'A',
       parentId: OrganizationModel.rootId,
@@ -199,7 +225,8 @@ void main() {
       }),
       isFalse,
     );
-    expect(Hive.box<TransactionModel>('wesios_treasury').containsKey('bad-tx'), isFalse);
+    expect(Hive.box<TransactionModel>('wesios_treasury').containsKey('bad-tx'),
+        isFalse);
   });
 
   test('inter-org sync rejects dangling or forged linked references', () async {
@@ -244,7 +271,9 @@ void main() {
     );
   });
 
-  test('organization sync tombstone cannot hard-delete an existing organization', () async {
+  test(
+      'organization sync tombstone cannot hard-delete an existing organization',
+      () async {
     final child = await OrganizationService.create(
       name: 'Protected child',
       parentId: OrganizationModel.rootId,
@@ -254,7 +283,9 @@ void main() {
     expect(await OrganizationService.byId(child.id), isNotNull);
   });
 
-  test('account sync cannot re-own or delete an account that has ledger history', () async {
+  test(
+      'account sync cannot re-own or delete an account that has ledger history',
+      () async {
     final child = await OrganizationService.create(
       name: 'Target org',
       parentId: OrganizationModel.rootId,
@@ -276,7 +307,8 @@ void main() {
         organizationId: OrganizationModel.rootId,
       ),
     );
-    final moved = AccountsSync().encode(account.copyWith(organizationId: child.id));
+    final moved =
+        AccountsSync().encode(account.copyWith(organizationId: child.id));
     expect(await AccountsSync().applyFields(moved), isFalse);
     expect(
       (await AccountService.byId(account.id))!.effectiveOrganizationId,
@@ -284,5 +316,112 @@ void main() {
     );
     await AccountsSync().removeById(account.id);
     expect(await AccountService.byId(account.id), isNotNull);
+  });
+
+  test('employee sync cannot mint, demote or tombstone owner identity',
+      () async {
+    final employees = Hive.box<EmployeeModel>(TeamService.boxName);
+    final owner = EmployeeModel(
+      id: 'owner-secure',
+      login: 'owner-secure',
+      fullName: 'Owner',
+      createdAt: DateTime(2026, 1, 1),
+      permissions: TeamPermissions.owner,
+      isOwner: true,
+    );
+    final employee = EmployeeModel(
+      id: 'ordinary',
+      login: 'ordinary',
+      fullName: 'Ordinary',
+      createdAt: DateTime(2026, 1, 2),
+      permissions: const TeamPermissions(),
+    );
+    await employees.put(owner.id, owner);
+    await employees.put(employee.id, employee);
+    final sync = EmployeesSync();
+
+    final forgedOwner = sync.encode(employee)..['isOwner'] = true;
+    expect(await sync.applyFields(forgedOwner), isFalse);
+    expect(TeamService.byId(employee.id)!.isOwner, isFalse);
+
+    final forgedNewOwner = sync.encode(employee)
+      ..['id'] = 'remote-owner'
+      ..['login'] = 'remote-owner'
+      ..['isOwner'] = true;
+    expect(await sync.applyFields(forgedNewOwner), isFalse);
+    expect(TeamService.byId('remote-owner'), isNull);
+
+    final demotedOwner = sync.encode(owner)..['isOwner'] = false;
+    expect(await sync.applyFields(demotedOwner), isFalse);
+    expect(TeamService.byId(owner.id)!.isOwner, isTrue);
+
+    await sync.removeById(owner.id);
+    expect(TeamService.byId(owner.id), isNotNull);
+  });
+
+  test('sync tombstone cannot delete one linked inter-org ledger leg',
+      () async {
+    final account = await AccountService.ensureMain(
+      organizationId: OrganizationModel.rootId,
+    );
+    final leg = TransactionModel(
+      id: 'transfer-1_debit',
+      title: 'Inter-org debit',
+      amount: 100,
+      type: TransactionType.expense,
+      date: DateTime(2026, 8, 1),
+      accountId: account.id,
+      organizationId: OrganizationModel.rootId,
+      source: TransactionSource.interorg,
+      interOrgTransferId: 'transfer-1',
+    );
+    await Hive.box<TransactionModel>('wesios_treasury').put(leg.id, leg);
+    await TransactionsSync().removeById(leg.id);
+    expect(Hive.box<TransactionModel>('wesios_treasury').containsKey(leg.id),
+        isTrue);
+  });
+
+  test('inter-org sync cannot rewrite immutable transfer core', () async {
+    final a = await OrganizationService.create(
+      name: 'Immutable A',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final b = await OrganizationService.create(
+      name: 'Immutable B',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final accountA = await AccountService.ensureMain(organizationId: a.id);
+    final accountB = await AccountService.ensureMain(organizationId: b.id);
+    final now = DateTime(2026, 8, 1);
+    final transfer = InterOrgTransferModel(
+      id: 'immutable-transfer',
+      fromOrganizationId: a.id,
+      toOrganizationId: b.id,
+      fromAccountId: accountA.id,
+      toAccountId: accountB.id,
+      amount: 100,
+      currency: 'RUB',
+      amountInFromOrgBase: 100,
+      amountInToOrgBase: 100,
+      type: InterOrgTransferType.internalTransfer,
+      date: now,
+      createdBy: 'owner',
+      createdAt: now,
+      linkedDebitTransactionId: 'immutable-transfer_debit',
+      linkedCreditTransactionId: 'immutable-transfer_credit',
+    );
+    await Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
+        .put(transfer.id, transfer);
+
+    final forged = InterOrgTransfersSync().encode(transfer)..['amount'] = 999;
+    expect(await InterOrgTransfersSync().applyFields(forged), isFalse);
+    expect(
+      Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
+          .get(transfer.id)!
+          .amount,
+      100,
+    );
   });
 }
