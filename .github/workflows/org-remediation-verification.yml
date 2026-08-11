@@ -1,6 +1,9 @@
 name: Organization remediation verification
 
 on:
+  push:
+    branches:
+      - agent/org-hierarchy-remediation-1
   pull_request:
     branches:
       - agent/org-hierarchy-v1
