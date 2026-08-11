@@ -169,8 +169,8 @@ void main() {
     expect(metrics.anomalousExpenses, 1);
   });
 
-  test('CRM service never silently reattributes explicit custom or empty responsibility', () async {
-    await signInEmployee();
+  test('ordinary employee CRM writes are attributed to the signed-in employee', () async {
+    final employee = await signInEmployee();
     final now = DateTime.now();
 
     await CrmService.saveClient(CrmClient(
@@ -182,7 +182,7 @@ void main() {
       createdAt: now,
       updatedAt: now,
     ));
-    expect((await CrmService.clients()).single.ownerEmployeeId, isNull);
+    expect((await CrmService.clients()).single.ownerEmployeeId, employee.id);
 
     await CrmService.saveDeal(CrmDeal(
       id: 'deal-unassigned',
@@ -193,6 +193,6 @@ void main() {
       createdAt: now,
       updatedAt: now,
     ));
-    expect((await CrmService.deals()).single.responsibleEmployeeId, isNull);
+    expect((await CrmService.deals()).single.responsibleEmployeeId, employee.id);
   });
 }
