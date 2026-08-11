@@ -71,6 +71,7 @@ jobs:
           test/sync_corruption_guard_test.dart
           test/sync_migration_grant_test.dart
           test/sync_repeat_audit_security_test.dart
+          test/employee_sync_lifecycle_test.dart
           test/org_physical_ownership_test.dart
           test/organization_legacy_migration_rehearsal_test.dart
           test/organization_access_revocation_test.dart
