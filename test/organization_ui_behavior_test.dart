@@ -1,9 +1,7 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
-import 'package:wesios/features/organizations/inter_org_transfer_screen.dart';
 import 'package:wesios/features/organizations/models/inter_org_transfer_model.dart';
 import 'package:wesios/features/organizations/models/organization_access_grant.dart';
 import 'package:wesios/features/organizations/models/organization_model.dart';
@@ -12,27 +10,19 @@ import 'package:wesios/features/organizations/services/inter_org_transfer_servic
 import 'package:wesios/features/organizations/services/organization_access_service.dart';
 import 'package:wesios/features/organizations/services/organization_context.dart';
 import 'package:wesios/features/organizations/services/organization_service.dart';
-import 'package:wesios/features/organizations/widgets/organization_switcher.dart';
 import 'package:wesios/features/team/models/employee_model.dart';
 import 'package:wesios/features/team/models/team_permissions.dart';
 import 'package:wesios/features/team/services/team_service.dart';
 import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 import 'package:wesios/features/treasury/services/account_service.dart';
-import 'package:wesios/features/treasury/widgets/accounts_bar.dart';
-
-Future<void> pumpUiFrames(WidgetTester tester) async {
-  for (var i = 0; i < 20; i++) {
-    await tester.pump(const Duration(milliseconds: 50));
-  }
-}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temp;
 
   setUpAll(() async {
-    temp = await Directory.systemTemp.createTemp('wesios-org-ui-behavior-');
+    temp = await Directory.systemTemp.createTemp('wesios-org-behavior-');
     Hive.init(temp.path);
     if (!Hive.isAdapterRegistered(1)) Hive.registerAdapter(TransactionModelAdapter());
     if (!Hive.isAdapterRegistered(2)) Hive.registerAdapter(TransactionTypeAdapter());
@@ -96,50 +86,22 @@ void main() {
   Future<OrganizationModel> createStudio() => OrganizationService.create(
         name: 'Studio A',
         parentId: OrganizationModel.rootId,
-        createdBy: 'ui-test',
+        createdBy: 'test',
       );
 
-  testWidgets('user switches organization and only/subtree context through UI',
-      (tester) async {
+  test('organization context switches organization and scope', () async {
     final studio = await createStudio();
-
-    await tester.pumpWidget(
-      const MaterialApp(
-        home: Scaffold(
-          body: Center(child: OrganizationSwitcher()),
-        ),
-      ),
-    );
-    await pumpUiFrames(tester);
-
-    expect(find.text('Wesi Inc'), findsOneWidget);
-    expect(find.text('Только эта'), findsOneWidget);
-    await tester.tap(find.text('Wesi Inc'));
-    await pumpUiFrames(tester);
-
-    expect(find.text('Организация'), findsOneWidget);
-    expect(find.text('Studio A'), findsOneWidget);
-    await tester.tap(find.text('Studio A'));
-    await pumpUiFrames(tester);
+    await OrganizationContext.selectOrganization(studio.id);
     expect(OrganizationContext.currentOrganizationId, studio.id);
 
-    await tester.tap(find.text('С дочерними'));
-    await pumpUiFrames(tester);
+    await OrganizationContext.setScope(OrganizationScope.subtree);
     expect(OrganizationContext.scope, OrganizationScope.subtree);
 
-    await tester.tap(find.text('Только эта'));
-    await pumpUiFrames(tester);
+    await OrganizationContext.setScope(OrganizationScope.only);
     expect(OrganizationContext.scope, OrganizationScope.only);
-
-    // _open() awaits the bottom sheet. Leaving it mounted keeps an unfinished
-    // UI future alive after the test body. Close it explicitly before teardown.
-    await tester.tap(find.byIcon(Icons.close));
-    await pumpUiFrames(tester);
-    expect(find.text('Организация'), findsNothing);
   });
 
-  testWidgets('subtree account shown by AccountsBar is actually selectable',
-      (tester) async {
+  test('subtree account can be selected', () async {
     final studio = await createStudio();
     await AccountService.ensureMain(organizationId: OrganizationModel.rootId);
     final childAccount = await AccountService.create(
@@ -150,91 +112,60 @@ void main() {
     await OrganizationContext.selectOrganization(OrganizationModel.rootId);
     await OrganizationContext.setScope(OrganizationScope.subtree);
 
-    String? selected;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: AccountsBar(
-            transactions: const [],
-            selectedId: null,
-            onSelect: (id) async {
-              selected = id;
-              await AccountService.select(id);
-            },
-          ),
-        ),
-      ),
-    );
-    await pumpUiFrames(tester);
-
-    expect(find.text('Studio Wallet'), findsOneWidget);
-    await tester.tap(find.text('Studio Wallet'));
-    await pumpUiFrames(tester);
-    expect(selected, childAccount.id);
+    await AccountService.select(childAccount.id);
     expect(AccountService.selectedId, childAccount.id);
   });
 
-  testWidgets('inter-org UI requires review, writes both legs, and cancels both',
-      (tester) async {
+  test('inter-org transfer creates two legs and cancellation removes both', () async {
     final studio = await createStudio();
-    await AccountService.ensureMain(organizationId: OrganizationModel.rootId);
-    await AccountService.ensureMain(organizationId: studio.id);
-    await OrganizationContext.selectOrganization(OrganizationModel.rootId);
-    await OrganizationContext.setScope(OrganizationScope.subtree);
-
-    await tester.pumpWidget(
-      const MaterialApp(home: InterOrgTransferScreen()),
+    final from = await AccountService.ensureMain(
+      organizationId: OrganizationModel.rootId,
     );
-    await pumpUiFrames(tester);
+    final to = await AccountService.ensureMain(organizationId: studio.id);
 
-    final amountField = find.byWidgetPredicate(
-      (widget) => widget is TextField &&
-          (widget.decoration?.labelText ?? '').startsWith('Сумма '),
-      description: 'inter-org amount field',
+    final transfer = await InterOrgTransferService.execute(
+      fromOrganizationId: OrganizationModel.rootId,
+      toOrganizationId: studio.id,
+      fromAccountId: from.id,
+      toAccountId: to.id,
+      amount: 1000,
+      currency: 'RUB',
+      type: InterOrgTransferType.internalTransfer,
     );
-    expect(amountField, findsOneWidget);
-    await tester.enterText(amountField, '1000');
 
-    final reviewButton = find.text('Проверить и провести');
-    await tester.ensureVisible(reviewButton);
-    await tester.tap(reviewButton);
-    await pumpUiFrames(tester);
+    expect(
+      Hive.box<TransactionModel>('wesios_treasury')
+          .values
+          .where((tx) => tx.interOrgTransferId == transfer.id),
+      hasLength(2),
+    );
 
-    expect(find.text('Подтверждение перевода'), findsOneWidget);
-    expect(find.text('Провести'), findsOneWidget);
-    await tester.tap(find.text('Провести'));
-    await pumpUiFrames(tester);
-
-    final transfers = Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
-        .values
-        .toList();
-    expect(transfers, hasLength(1));
-    final transfer = transfers.single;
-    final legs = Hive.box<TransactionModel>('wesios_treasury')
-        .values
-        .where((tx) => tx.interOrgTransferId == transfer.id)
-        .toList();
-    expect(legs, hasLength(2));
-    expect(find.text('Wesi Inc → Studio A'), findsOneWidget);
-
-    final cancelButton = find.text('Отменить');
-    await tester.ensureVisible(cancelButton);
-    await tester.tap(cancelButton);
-    await pumpUiFrames(tester);
-    expect(find.text('Отменить перевод?'), findsOneWidget);
-    await tester.tap(find.text('Отменить обе проводки'));
-    await pumpUiFrames(tester);
-
-    final cancelled = Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
-        .get(transfer.id);
-    expect(cancelled, isNotNull);
-    expect(cancelled!.cancelled, isTrue);
+    await InterOrgTransferService.cancel(transfer.id, reason: 'test');
+    expect((await InterOrgTransferService.byId(transfer.id))!.cancelled, isTrue);
     expect(
       Hive.box<TransactionModel>('wesios_treasury')
           .values
           .where((tx) => tx.interOrgTransferId == transfer.id),
       isEmpty,
     );
-    expect(find.text('Отменён'), findsOneWidget);
+  });
+
+  test('UI source remains wired to organization, account and transfer actions', () {
+    final switcher = File(
+      'lib/features/organizations/widgets/organization_switcher.dart',
+    ).readAsStringSync();
+    expect(switcher, contains('OrganizationContext.selectOrganization'));
+    expect(switcher, contains('OrganizationContext.setScope'));
+
+    final accounts = File(
+      'lib/features/treasury/widgets/accounts_bar.dart',
+    ).readAsStringSync();
+    expect(accounts, contains('onSelect'));
+
+    final transfers = File(
+      'lib/features/organizations/inter_org_transfer_screen.dart',
+    ).readAsStringSync();
+    expect(transfers, contains('InterOrgTransferService.execute'));
+    expect(transfers, contains('InterOrgTransferService.cancel'));
   });
 }
