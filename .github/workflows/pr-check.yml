@@ -13,44 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  remediation-finalizer:
-    if: github.event_name == 'pull_request' && github.head_ref == 'ci/remediation-finalizer-main-trigger'
-    permissions:
-      contents: write
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/org-hierarchy-remediation-1
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.0'
-          channel: stable
-          cache: true
-      - name: Apply final organization remediation patch
-        shell: bash
-        run: |
-          python tools/repair_finalize_org_remediation.py
-          python tools/finalize_org_remediation.py
-      - name: Format, validate and commit remediation head
-        shell: bash
-        run: |
-          dart format \
-            lib/core/sync/sync_codec.dart \
-            lib/features/treasury/services/horizon_engine_competition.dart \
-            lib/features/team/team_stats_screen.dart \
-            lib/features/organizations/my_finance_screen.dart \
-            lib/features/organizations/organizations_screen.dart \
-            lib/features/organizations/widgets/organization_switcher.dart \
-            test/sync_corruption_guard_test.dart
-          git diff --check
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "fix: finalize organization remediation hardening"
-          git push origin HEAD:agent/org-hierarchy-remediation-1
-
   analyze-and-test:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 15
