@@ -59,6 +59,16 @@ void main() {
     await Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName).clear();
     await Hive.box<TransactionAuditModel>('wesios_transaction_audit').clear();
     await OrganizationService.ensureBaseline();
+    final owner = EmployeeModel(
+      id: 'owner-visibility',
+      login: 'owner-visibility',
+      fullName: 'Owner',
+      createdAt: DateTime(2026, 1, 1),
+      isOwner: true,
+      permissions: TeamPermissions.owner,
+    );
+    await Hive.box<EmployeeModel>(TeamService.boxName).put(owner.id, owner);
+    await Hive.box('wesios_settings').put('team_current_employee', owner.id);
   });
 
   tearDownAll(() async {
