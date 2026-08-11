@@ -13,53 +13,6 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  remediation-sync-finalizer:
-    if: github.event_name == 'pull_request' && github.head_ref == 'ci/remediation-sync-lifecycle-trigger'
-    permissions:
-      contents: write
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: agent/org-hierarchy-remediation-1
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.0'
-          channel: stable
-          cache: true
-      - name: Apply pending sync lifecycle hardening
-        shell: python
-        run: |
-          from pathlib import Path
-
-          verifier = Path('.github/workflows/org-remediation-verification.yml')
-          workflow = verifier.read_text(encoding='utf-8')
-          start = workflow.index('  sync-lifecycle-hardening:')
-          marker = '      - name: Harden employee, InterOrg and audit tombstones\n'
-          step = workflow.index(marker, start)
-          run_start = workflow.index('        run: |\n', step) + len('        run: |\n')
-          run_end = workflow.index('      - name: Format and commit', run_start)
-          raw = workflow[run_start:run_end].rstrip('\n')
-          lines = raw.splitlines()
-          indent = len(lines[0]) - len(lines[0].lstrip())
-          prefix = ' ' * indent
-          patch_body = '\n'.join(
-              line[indent:] if line.startswith(prefix) else line
-              for line in lines
-          ) + '\n'
-          exec(compile(patch_body, 'sync-lifecycle-hardening', 'exec'), {})
-      - name: Format, validate and commit remediation source
-        shell: bash
-        run: |
-          dart format lib/core/sync/sync_codec.dart test/sync_repeat_audit_security_test.dart
-          git diff --check lib/core/sync/sync_codec.dart test/sync_repeat_audit_security_test.dart
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add lib/core/sync/sync_codec.dart test/sync_repeat_audit_security_test.dart
-          git commit -m "fix: preserve lifecycle and financial audit across sync"
-          git push origin HEAD:agent/org-hierarchy-remediation-1
-
   analyze-and-test:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 15
