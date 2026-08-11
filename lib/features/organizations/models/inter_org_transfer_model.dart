@@ -16,6 +16,9 @@ enum InterOrgTransferType {
   other,
 }
 
+/// Write-ahead journal record for one transfer between two organizations.
+/// It is persisted before either ledger leg so recovery can deterministically
+/// reconstruct a complete transfer after any interrupted write.
 @HiveType(typeId: 84)
 class InterOrgTransferModel {
   @HiveField(0)
@@ -56,6 +59,8 @@ class InterOrgTransferModel {
   final DateTime? cancelledAt;
   @HiveField(18)
   final String? cancelledBy;
+  @HiveField(19)
+  final String? ownerEmployeeId;
 
   const InterOrgTransferModel({
     required this.id,
@@ -77,6 +82,7 @@ class InterOrgTransferModel {
     this.cancelled = false,
     this.cancelledAt,
     this.cancelledBy,
+    this.ownerEmployeeId,
   });
 
   InterOrgTransferModel cancel({required String by, DateTime? at}) =>
@@ -100,5 +106,6 @@ class InterOrgTransferModel {
         cancelled: true,
         cancelledAt: at ?? DateTime.now(),
         cancelledBy: by,
+        ownerEmployeeId: ownerEmployeeId,
       );
 }

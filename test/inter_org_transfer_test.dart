@@ -136,6 +136,27 @@ void main() {
     expect(updated!.cancelled, isTrue);
     final raw = await TreasuryService().getAllTransactionsRaw();
     expect(raw.any((t) => t.interOrgTransferId == transfer.id), isFalse);
-    expect(Hive.box<TransactionAuditModel>('wesios_transaction_audit').values.length, 2);
+
+    final audits = Hive.box<TransactionAuditModel>('wesios_transaction_audit')
+        .values
+        .where((a) =>
+            a.transactionId == transfer.linkedDebitTransactionId ||
+            a.transactionId == transfer.linkedCreditTransactionId)
+        .toList();
+    expect(audits, hasLength(4));
+    for (final legId in [
+      transfer.linkedDebitTransactionId,
+      transfer.linkedCreditTransactionId,
+    ]) {
+      final legAudits = audits.where((a) => a.transactionId == legId).toList();
+      expect(legAudits, hasLength(2));
+      expect(
+        legAudits.map((a) => a.reason).toSet(),
+        containsAll(<String?>{
+          'inter-org recovery restore',
+          'inter-org recovery delete',
+        }),
+      );
+    }
   });
 }
