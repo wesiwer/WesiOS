@@ -16,6 +16,12 @@ import 'package:wesios/features/team/models/team_permissions.dart';
 import 'package:wesios/features/team/services/team_service.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 
+Future<void> pumpUiFrames(WidgetTester tester) async {
+  for (var i = 0; i < 20; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temp;
@@ -126,11 +132,11 @@ void main() {
     await tester.pumpWidget(
       const MaterialApp(home: MyFinanceScreen()),
     );
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     expect(find.text('Организация'), findsOneWidget);
     await tester.tap(find.text('Организация'));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
     expect(find.text('Персональная разбивка скрыта'), findsOneWidget);
     expect(find.text('Worker'), findsNothing);
 
@@ -147,14 +153,14 @@ void main() {
       createdBy: 'test',
       enforceActor: false,
     );
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     expect(find.text('Worker'), findsOneWidget);
     final workerTile = find.widgetWithText(ListTile, 'Worker');
     expect(workerTile, findsOneWidget);
     await tester.ensureVisible(workerTile);
     await tester.tap(workerTile);
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     expect(find.text('Worker'), findsWidgets);
     expect(find.text('Вклад'), findsOneWidget);
@@ -164,7 +170,7 @@ void main() {
     expect(find.text('Закрыть'), findsOneWidget);
 
     await tester.tap(find.text('Закрыть'));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     await OrganizationAccessService.grant(
       employeeId: manager.id,
@@ -179,7 +185,7 @@ void main() {
       createdBy: 'test',
       enforceActor: false,
     );
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
     expect(find.text('Worker'), findsNothing);
     expect(find.text('Персональная разбивка скрыта'), findsOneWidget);
   });
