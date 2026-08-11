@@ -14,6 +14,12 @@ import 'package:wesios/features/team/models/team_permissions.dart';
 import 'package:wesios/features/team/services/team_service.dart';
 import 'package:wesios/features/team/team_stats_screen.dart';
 
+Future<void> pumpUiFrames(WidgetTester tester) async {
+  for (var i = 0; i < 20; i++) {
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temp;
@@ -134,7 +140,7 @@ void main() {
     await OrganizationContext.setScope(OrganizationScope.only);
 
     await tester.pumpWidget(const MaterialApp(home: TeamStatsScreen()));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     expect(find.text('Manager'), findsOneWidget);
     expect(find.text('Root Worker'), findsOneWidget);
@@ -142,7 +148,7 @@ void main() {
         reason: 'legacy canSeeOthersStats must not escape root-only context');
 
     await OrganizationContext.setScope(OrganizationScope.subtree);
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
     expect(find.text('Child Worker'), findsOneWidget,
         reason: 'the same manager may see child stats only after subtree context is active');
   });
@@ -190,7 +196,7 @@ void main() {
     await OrganizationContext.setScope(OrganizationScope.subtree);
 
     await tester.pumpWidget(const MaterialApp(home: TeamStatsScreen()));
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
     expect(find.text('Sensitive Child Worker'), findsOneWidget);
 
     await OrganizationAccessService.revoke(
@@ -198,7 +204,7 @@ void main() {
       OrganizationModel.rootId,
       enforceActor: false,
     );
-    await tester.pumpAndSettle();
+    await pumpUiFrames(tester);
 
     expect(find.text('Sensitive Child Worker'), findsNothing,
         reason: 'an open TeamStats screen must react to grant revocation without reopen');
