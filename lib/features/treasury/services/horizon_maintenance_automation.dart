@@ -2,6 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
+import '../../organizations/models/organization_access_grant.dart';
+import '../../organizations/services/organization_access_service.dart';
+import '../../organizations/services/organization_service.dart';
+import '../../team/services/team_service.dart';
+import 'account_service.dart';
 import 'forecast_engine.dart';
 import 'horizon_business_context.dart';
 import 'horizon_engine_competition.dart';
@@ -11,9 +16,9 @@ import 'treasury_service.dart';
 
 /// Background production maintenance for Wesi Horizon.
 ///
-/// Called from the existing lifecycle automation after recurring cash has been
-/// reconciled. It is single-flight, throttled, fail-soft and does not require
-/// the Forecast screen to be opened.
+/// Maintenance is intentionally independent from the visual OrganizationContext:
+/// each permitted organization gets its own `only` contour, prediction tags,
+/// learning profile and engine championship.
 class HorizonMaintenanceAutomation {
   HorizonMaintenanceAutomation({
     TreasuryService? treasury,
@@ -43,48 +48,83 @@ class HorizonMaintenanceAutomation {
     return future;
   }
 
+  Future<Set<String>> _organizationIds() async {
+    final current = TeamService.current;
+    if (current == null || current.isOwner) {
+      return (await OrganizationService.all())
+          .where((o) => !o.archived)
+          .map((o) => o.id)
+          .toSet();
+    }
+    return OrganizationAccessService.organizationIdsFor(
+      OrganizationPermissions.viewForecast,
+      employeeId: current.id,
+    );
+  }
+
   Future<void> _run() async {
     try {
       final now = _now();
       final today = DateTime(now.year, now.month, now.day);
-      final transactions = await _treasury.getAllTransactions();
-      final balance = await _treasury.getCurrentBalance();
-      final calibration = await HorizonLearningService.load();
-      const auditDays = 180;
-      final context = await HorizonBusinessContextService.load(
-        transactions: transactions,
-        days: auditDays,
-        now: today,
-      );
-      final audit = ForecastEngine.generate(
-        transactions: transactions,
-        currentBalance: balance,
-        days: auditDays,
-        paths: ForecastEngine.pathsForHorizon(auditDays, 1600),
-        seed: 42,
-        asOf: today,
-        calibration: calibration,
-        businessEvents: context.events,
-        accounts: context.accounts,
-      );
-      if (!audit.insufficientData && audit.p50.isNotEmpty) {
-        await HorizonPredictionRegistry.recordBaseForecast(
-          forecast: audit,
-          currentBalance: balance,
-          calibration: calibration,
+      final raw = await _treasury.getAllTransactionsRaw();
+      for (final orgId in await _organizationIds()) {
+        final org = await OrganizationService.byId(orgId);
+        if (org == null || org.archived) continue;
+        const scope = 'only';
+        final transactions = raw
+            .where((t) => t.effectiveOrganizationId == orgId)
+            .toList();
+        final balance = await AccountService.reportingBalanceForOrganizations(
+          {orgId},
+          transactions,
+        );
+        final calibration = await HorizonLearningService.load(
+          organizationId: orgId,
+          organizationScope: scope,
+        );
+        const auditDays = 180;
+        final context = await HorizonBusinessContextService.load(
+          transactions: transactions,
+          days: auditDays,
           now: today,
+          organizationIds: {orgId},
+        );
+        final audit = ForecastEngine.generate(
+          transactions: transactions,
+          currentBalance: balance,
+          days: auditDays,
+          paths: ForecastEngine.pathsForHorizon(auditDays, 1600),
+          seed: 42,
+          asOf: today,
+          calibration: calibration,
+          businessEvents: context.events,
+          accounts: context.accounts,
+        );
+        if (!audit.insufficientData && audit.p50.isNotEmpty) {
+          await HorizonPredictionRegistry.recordBaseForecast(
+            forecast: audit,
+            currentBalance: balance,
+            calibration: calibration,
+            now: today,
+            organizationId: orgId,
+            organizationScope: scope,
+          );
+        }
+        await HorizonLearningService.updateIfDue(
+          transactions: transactions,
+          currentBalance: balance,
+          now: today,
+          organizationId: orgId,
+          organizationScope: scope,
+        );
+        await HorizonEngineCompetitionService.evaluateIfDue(
+          transactions: transactions,
+          currentBalance: balance,
+          now: today,
+          organizationId: orgId,
+          organizationScope: scope,
         );
       }
-      await HorizonLearningService.updateIfDue(
-        transactions: transactions,
-        currentBalance: balance,
-        now: today,
-      );
-      await HorizonEngineCompetitionService.evaluateIfDue(
-        transactions: transactions,
-        currentBalance: balance,
-        now: today,
-      );
       _lastCompletedAt = now;
     } catch (error, stackTrace) {
       debugPrint('Horizon maintenance failed: $error');

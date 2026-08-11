@@ -108,17 +108,43 @@ class _OperationsScreenState extends State<OperationsScreen> {
       ),
     );
     if (result != null) {
-      final updated = tx.copyWith(
+      final reportingAmount = result['amount'] as double;
+      final editedDate = result['date'] as DateTime? ?? tx.date;
+      // An edit is a new monetary observation in the currency currently shown
+      // by the dialog. Rebuild the normalized money metadata instead of
+      // carrying stale original/base values from the old amount.
+      final updated = TransactionModel(
+        id: tx.id,
         title: result['title'] as String,
-        amount: result['amount'] as double,
-        date: result['date'] as DateTime?,
+        amount: reportingAmount,
+        type: tx.type,
+        date: editedDate,
         category: result['category'] as String?,
         description: result['description'] as String?,
-        isRecurring: result['isRecurring'] as bool?,
-        recurringPeriod: result['recurringPeriod'] as RecurringPeriod?,
-        clearRecurringPeriod: result['isRecurring'] != true,
+        isRecurring: result['isRecurring'] as bool? ?? false,
+        recurringPeriod: result['isRecurring'] == true
+            ? result['recurringPeriod'] as RecurringPeriod?
+            : null,
+        isAnomaly: tx.isAnomaly,
+        zScore: tx.zScore,
+        accountId: tx.accountId,
+        organizationId: tx.organizationId,
+        projectId: tx.projectId,
+        counterpartyId: tx.counterpartyId,
+        source: tx.source,
+        createdBy: tx.createdBy,
+        updatedBy: tx.updatedBy,
+        updatedAt: tx.updatedAt,
         ownerEmployeeId: result['ownerEmployeeId'] as String?,
-        clearOwnerEmployeeId: result['ownerEmployeeId'] == null,
+        interOrgTransferId: tx.interOrgTransferId,
+        createdByEmployeeId: tx.createdByEmployeeId,
+        originalAmount: CurrencyService.fromRub(reportingAmount),
+        originalCurrency: CurrencyService.current.toUpperCase(),
+        organizationBaseAmount: null,
+        organizationBaseCurrency: tx.organizationBaseCurrency,
+        fxRateToReporting: CurrencyService.rateToRub(CurrencyService.current),
+        fxRateAt: editedDate,
+        fxSource: 'CurrencyService',
       );
       await _service.updateTransaction(updated, reason: 'manual edit');
       await _loadData();

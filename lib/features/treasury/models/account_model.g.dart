@@ -25,13 +25,15 @@ class AccountModelAdapter extends TypeAdapter<AccountModel> {
       minimumBalance: (fields[9] as num?)?.toDouble() ?? 0,
       allowNetting: fields[10] as bool? ?? true,
       currency: fields[11] as String? ?? 'RUB',
+      fxHaircut: (fields[12] as num?)?.toDouble() ?? 0.03,
+      transferDelayDays: (fields[13] as num?)?.toInt() ?? 0,
     );
   }
 
   @override
   void write(BinaryWriter writer, AccountModel obj) {
     writer
-      ..writeByte(12)
+      ..writeByte(14)
       ..writeByte(0)..write(obj.id)
       ..writeByte(1)..write(obj.name)
       ..writeByte(2)..write(obj.kind)
@@ -43,7 +45,9 @@ class AccountModelAdapter extends TypeAdapter<AccountModel> {
       ..writeByte(8)..write(obj.organizationId)
       ..writeByte(9)..write(obj.minimumBalance)
       ..writeByte(10)..write(obj.allowNetting)
-      ..writeByte(11)..write(obj.currency);
+      ..writeByte(11)..write(obj.currency)
+      ..writeByte(12)..write(obj.fxHaircut)
+      ..writeByte(13)..write(obj.transferDelayDays);
   }
 
   @override
