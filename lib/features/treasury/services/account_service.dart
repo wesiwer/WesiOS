@@ -57,10 +57,12 @@ class AccountService {
         'transferDelayDays': a.transferDelayDays,
       };
 
-  static Future<Box<TransactionModel>> _transactionsBox() async =>
-      Hive.isBoxOpen(_treasuryBoxName)
-          ? Hive.box<TransactionModel>(_treasuryBoxName)
-          : Hive.openBox<TransactionModel>(_treasuryBoxName);
+  static Future<Box<TransactionModel>> _transactionsBox() async {
+    if (Hive.isBoxOpen(_treasuryBoxName)) {
+      return Hive.box<TransactionModel>(_treasuryBoxName);
+    }
+    return await Hive.openBox<TransactionModel>(_treasuryBoxName);
+  }
 
   static Future<bool> hasLinkedTransactions(String accountId) async =>
       (await _transactionsBox())
