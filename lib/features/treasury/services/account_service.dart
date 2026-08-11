@@ -180,11 +180,9 @@ class AccountService {
       }
     }
     if (before != null && before.effectiveOrganizationId != orgId) {
-      if (await hasLinkedTransactions(before.id)) {
-        throw StateError(
-          'cannot move account with existing transactions to another organization',
-        );
-      }
+      throw StateError(
+        'cannot move an existing account to another organization',
+      );
     }
     final normalized = account.copyWith(
       organizationId: orgId,
@@ -250,25 +248,11 @@ class AccountService {
         )) {
       return false;
     }
-    // Never trust the caller's cached operation count as the integrity source.
-    // A stale UI or direct service invocation must not orphan ledger rows.
-    final actualHasOperations =
-        hasOperations || await hasLinkedTransactions(account.id);
-    if (actualHasOperations) {
-      await save(account.copyWith(archived: true));
-      return true;
-    }
-    await CriticalAuditService.record(
-      event: 'account.delete',
-      entityType: 'account',
-      entityId: account.id,
-      organizationId: account.effectiveOrganizationId,
-      before: _auditJson(account),
-      after: null,
-    );
-    await box.delete(id);
+    // Accounts are durable financial identities. Even an account with no
+    // current ledger rows may already be referenced by audit/sync history, so
+    // deletion is represented by archival rather than physical erasure.
+    await save(account.copyWith(archived: true));
     if (selectedId == id) await select(null);
-    revision.value++;
     return true;
   }
 
