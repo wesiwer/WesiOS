@@ -1,0 +1,255 @@
+name: One-shot final organization integrity hardening
+
+on:
+  pull_request:
+    branches:
+      - agent/org-hierarchy-v1
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-remediation-1
+      - name: Apply final integrity fixes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, got {count}')
+              return text.replace(old, new, 1)
+
+          # Fix Dart conditional Future/Box inference on Flutter 3.24.
+          p = Path('lib/features/treasury/services/account_service.dart')
+          text = p.read_text(encoding='utf-8')
+          old = """  static Future<Box<TransactionModel>> _transactionsBox() async =>
+      Hive.isBoxOpen(_treasuryBoxName)
+          ? Hive.box<TransactionModel>(_treasuryBoxName)
+          : Hive.openBox<TransactionModel>(_treasuryBoxName);
+"""
+          new = """  static Future<Box<TransactionModel>> _transactionsBox() async {
+    if (Hive.isBoxOpen(_treasuryBoxName)) {
+      return Hive.box<TransactionModel>(_treasuryBoxName);
+    }
+    return await Hive.openBox<TransactionModel>(_treasuryBoxName);
+  }
+"""
+          text = replace_once(text, old, new, 'AccountService._transactionsBox')
+          p.write_text(text, encoding='utf-8')
+
+          # Harden referential integrity at the remote sync boundary.
+          p = Path('lib/core/sync/sync_codec.dart')
+          text = p.read_text(encoding='utf-8')
+          old_snapshot = """bool _organizationSnapshotValid(Iterable<OrganizationModel> values) {
+  final nodes = values.toList();
+  if (nodes.isEmpty) return false;
+  final ids = nodes.map((e) => e.id).toSet();
+  if (ids.length != nodes.length) return false;
+  final roots = nodes.where((o) => o.isRoot).toList();
+  if (roots.length != 1) return false;
+  if (roots.single.parentId != null) return false;
+  if (roots.single.id != OrganizationModel.rootId) return false;
+  for (final node in nodes) {
+    if (!node.isRoot &&
+        (node.parentId == null || !ids.contains(node.parentId))) return false;
+    final seen = <String>{node.id};
+    var parent = node.parentId;
+    while (parent != null) {
+      if (!seen.add(parent)) return false;
+      OrganizationModel? parentNode;
+      for (final candidate in nodes) {
+        if (candidate.id == parent) {
+          parentNode = candidate;
+          break;
+        }
+      }
+      if (parentNode == null) return false;
+      parent = parentNode.parentId;
+    }
+  }
+  return true;
+}
+"""
+          new_snapshot = """bool _organizationSnapshotValid(Iterable<OrganizationModel> values) {
+  final nodes = values.toList();
+  if (nodes.isEmpty) return false;
+  final byId = {for (final node in nodes) node.id: node};
+  if (byId.length != nodes.length) return false;
+  final roots = nodes.where((o) => o.isRoot).toList();
+  if (roots.length != 1) return false;
+  if (roots.single.parentId != null) return false;
+  if (roots.single.id != OrganizationModel.rootId) return false;
+  if (roots.single.archived) return false;
+  for (final node in nodes) {
+    if (!node.isRoot) {
+      final parentId = node.parentId;
+      final parentNode = parentId == null ? null : byId[parentId];
+      if (parentNode == null) return false;
+      if (!node.archived && parentNode.archived) return false;
+    }
+    final seen = <String>{node.id};
+    var parent = node.parentId;
+    while (parent != null) {
+      if (!seen.add(parent)) return false;
+      final parentNode = byId[parent];
+      if (parentNode == null) return false;
+      parent = parentNode.parentId;
+    }
+  }
+  return true;
+}
+"""
+          text = replace_once(text, old_snapshot, new_snapshot, 'organization snapshot')
+
+          old_org_remove = """  @override
+  Future<void> removeById(String id) async {
+    final b = box();
+    if (b == null || id == OrganizationModel.rootId) return;
+    final next = b.values.where((o) => o.id != id).toList();
+    if (!_organizationSnapshotValid(next)) return;
+    await b.delete(id);
+  }
+"""
+          new_org_remove = """  @override
+  Future<void> removeById(String id) async {
+    // Organization lifecycle is archive/restore. Remote tombstones are ignored
+    // so they cannot orphan accounts, money, tasks, grants or child nodes.
+  }
+"""
+          text = replace_once(text, old_org_remove, new_org_remove, 'organization tombstone')
+
+          old_account_apply = """  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    final incoming = decode(fields);
+    if (b == null || incoming == null) return false;
+    if (!_organizationExistsActive(incoming.effectiveOrganizationId)) return false;
+    await b.put(incoming.id, incoming);
+    return true;
+  }
+}
+
+class TransactionsSync extends SyncCollection<TransactionModel> {
+"""
+          new_account_apply = """  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    final incoming = decode(fields);
+    if (b == null || incoming == null) return false;
+    if (!_organizationExistsActive(incoming.effectiveOrganizationId)) return false;
+    final before = b.get(incoming.id);
+    if (before != null &&
+        before.effectiveOrganizationId != incoming.effectiveOrganizationId &&
+        await AccountService.hasLinkedTransactions(incoming.id)) {
+      return false;
+    }
+    await b.put(incoming.id, incoming);
+    return true;
+  }
+
+  @override
+  Future<void> removeById(String id) async {
+    final b = box();
+    final existing = b?.get(id);
+    if (b == null || existing == null) return;
+    if (existing.kind == AccountKind.main) return;
+    if (await AccountService.hasLinkedTransactions(id)) return;
+    await b.delete(id);
+  }
+}
+
+class TransactionsSync extends SyncCollection<TransactionModel> {
+"""
+          text = replace_once(text, old_account_apply, new_account_apply, 'AccountsSync integrity')
+          p.write_text(text, encoding='utf-8')
+
+          # Add negative sync tests for the new destructive boundaries.
+          p = Path('test/sync_corruption_guard_test.dart')
+          text = p.read_text(encoding='utf-8')
+          insert = r'''
+
+  test('organization sync tombstone cannot hard-delete an existing organization', () async {
+    final child = await OrganizationService.create(
+      name: 'Protected child',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    await OrganizationsSync().removeById(child.id);
+    expect(await OrganizationService.byId(child.id), isNotNull);
+  });
+
+  test('account sync cannot re-own or delete an account that has ledger history', () async {
+    final child = await OrganizationService.create(
+      name: 'Target org',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final account = await AccountService.create(
+      name: 'Historical account',
+      organizationId: OrganizationModel.rootId,
+    );
+    await Hive.box<TransactionModel>('wesios_treasury').put(
+      'historical-account-tx',
+      TransactionModel(
+        id: 'historical-account-tx',
+        title: 'History',
+        amount: 100,
+        type: TransactionType.income,
+        date: DateTime(2026, 8, 1),
+        accountId: account.id,
+        organizationId: OrganizationModel.rootId,
+      ),
+    );
+
+    final moved = AccountsSync().encode(account.copyWith(organizationId: child.id));
+    expect(await AccountsSync().applyFields(moved), isFalse);
+    expect(
+      (await AccountService.byId(account.id))!.effectiveOrganizationId,
+      OrganizationModel.rootId,
+    );
+
+    await AccountsSync().removeById(account.id);
+    expect(await AccountService.byId(account.id), isNotNull);
+  });
+'''
+          pos = text.rfind('\n}')
+          if pos < 0:
+              raise SystemExit('sync corruption test closing brace not found')
+          if 'account sync cannot re-own or delete an account that has ledger history' not in text:
+              text = text[:pos] + insert + text[pos:]
+          p.write_text(text, encoding='utf-8')
+
+          # Remove the failed predecessor one-shot job from the main verifier.
+          p = Path('.github/workflows/org-remediation-verification.yml')
+          text = p.read_text(encoding='utf-8')
+          begin = '  # BEGIN ONE_SHOT_SYNC_PATCH\n'
+          end = '  # END ONE_SHOT_SYNC_PATCH\n'
+          if begin in text:
+              a = text.index(begin)
+              b = text.index(end, a) + len(end)
+              text = text[:a] + text[b:]
+          p.write_text(text, encoding='utf-8')
+
+          # Self-remove so final PR contains only the permanent verifier.
+          self_path = Path('.github/workflows/org-final-integrity-patch.yml')
+          if self_path.exists():
+              self_path.unlink()
+
+      - name: Format, validate and commit
+        shell: bash
+        run: |
+          dart format lib/core/sync/sync_codec.dart lib/features/treasury/services/account_service.dart test/sync_corruption_guard_test.dart
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: harden organization referential integrity"
+          git push origin HEAD:agent/org-hierarchy-remediation-1
