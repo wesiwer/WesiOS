@@ -116,26 +116,25 @@ Uint8List? _decodePhoto(String raw) {
 bool _organizationSnapshotValid(Iterable<OrganizationModel> values) {
   final nodes = values.toList();
   if (nodes.isEmpty) return false;
-  final ids = nodes.map((e) => e.id).toSet();
-  if (ids.length != nodes.length) return false;
+  final byId = {for (final node in nodes) node.id: node};
+  if (byId.length != nodes.length) return false;
   final roots = nodes.where((o) => o.isRoot).toList();
   if (roots.length != 1) return false;
   if (roots.single.parentId != null) return false;
   if (roots.single.id != OrganizationModel.rootId) return false;
+  if (roots.single.archived) return false;
   for (final node in nodes) {
-    if (!node.isRoot &&
-        (node.parentId == null || !ids.contains(node.parentId))) return false;
+    if (!node.isRoot) {
+      final parentId = node.parentId;
+      final parentNode = parentId == null ? null : byId[parentId];
+      if (parentNode == null) return false;
+      if (!node.archived && parentNode.archived) return false;
+    }
     final seen = <String>{node.id};
     var parent = node.parentId;
     while (parent != null) {
       if (!seen.add(parent)) return false;
-      OrganizationModel? parentNode;
-      for (final candidate in nodes) {
-        if (candidate.id == parent) {
-          parentNode = candidate;
-          break;
-        }
-      }
+      final parentNode = byId[parent];
       if (parentNode == null) return false;
       parent = parentNode.parentId;
     }
@@ -229,11 +228,8 @@ class OrganizationsSync extends SyncCollection<OrganizationModel> {
 
   @override
   Future<void> removeById(String id) async {
-    final b = box();
-    if (b == null || id == OrganizationModel.rootId) return;
-    final next = b.values.where((o) => o.id != id).toList();
-    if (!_organizationSnapshotValid(next)) return;
-    await b.delete(id);
+    // Organization lifecycle is archive/restore. Remote tombstones are ignored
+    // so they cannot orphan accounts, money, tasks, grants or child nodes.
   }
 }
 
@@ -528,8 +524,24 @@ class AccountsSync extends SyncCollection<AccountModel> {
     final incoming = decode(fields);
     if (b == null || incoming == null) return false;
     if (!_organizationExistsActive(incoming.effectiveOrganizationId)) return false;
+    final before = b.get(incoming.id);
+    if (before != null &&
+        before.effectiveOrganizationId != incoming.effectiveOrganizationId &&
+        await AccountService.hasLinkedTransactions(incoming.id)) {
+      return false;
+    }
     await b.put(incoming.id, incoming);
     return true;
+  }
+
+  @override
+  Future<void> removeById(String id) async {
+    final b = box();
+    final existing = b?.get(id);
+    if (b == null || existing == null) return;
+    if (existing.kind == AccountKind.main) return;
+    if (await AccountService.hasLinkedTransactions(id)) return;
+    await b.delete(id);
   }
 }
 
