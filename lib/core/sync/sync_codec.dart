@@ -215,8 +215,6 @@ class OrganizationsSync extends SyncCollection<OrganizationModel> {
         if (row.id != incoming.id) row,
       incoming,
     ];
-    // During a fresh bootstrap the very first root is allowed; every later
-    // write must already form a complete, acyclic, single-root tree.
     if (next.length == 1 && incoming.isRoot) {
       await b.put(incoming.id, incoming);
       return true;
@@ -303,6 +301,41 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
           : const {},
     );
   }
+
+  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    final incoming = decode(fields);
+    if (b == null || incoming == null) return false;
+    final existing = b.get(incoming.id);
+    EmployeeModel? localOwner;
+    for (final row in b.values) {
+      if (row.isOwner) {
+        localOwner = row;
+        break;
+      }
+    }
+
+    // Generic dataset sync is not an identity authority. Trusted login/server
+    // identity bootstrap must establish the owner locally first. Sync may only
+    // refresh that same owner record; it cannot mint, replace or demote owner.
+    if (incoming.isOwner) {
+      if (existing?.isOwner != true) return false;
+      if (localOwner != null && localOwner.id != incoming.id) return false;
+    }
+    if (existing?.isOwner == true && !incoming.isOwner) return false;
+
+    await b.put(incoming.id, incoming);
+    return true;
+  }
+
+  @override
+  Future<void> removeById(String id) async {
+    final b = box();
+    final existing = b?.get(id);
+    if (b == null || existing == null || existing.isOwner) return;
+    await b.delete(id);
+  }
 }
 
 class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
@@ -361,14 +394,10 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
   }
 
   bool _actorMayHaveIssued(OrganizationAccessGrant incoming) {
-    // Transport metadata is never a trusted authorization principal.
     if (incoming.createdBy == 'untrusted-sync' || incoming.createdBy == 'sync') {
       return false;
     }
 
-    // Legacy migration grants are deterministic. Accept them only in the exact
-    // shape that OrganizationAccessService.ensureLegacyGrants() could create
-    // from the target employee's already-synchronized legacy permissions.
     if (incoming.createdBy == 'migration/internal' ||
         incoming.createdBy == 'migration') {
       if (incoming.organizationId != OrganizationModel.rootId) return false;
@@ -566,7 +595,8 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
     final amount = _double(fields['amount']);
     final date = _date(fields['date']);
     final orgId = _strOrNull(fields['organizationId']) ?? OrganizationModel.rootId;
-    final accountId = _strOrNull(fields['accountId']) ?? AccountModel.mainIdFor(orgId);
+    final accountId =
+        _strOrNull(fields['accountId']) ?? AccountModel.mainIdFor(orgId);
     if (id == null ||
         amount == null ||
         !amount.isFinite ||
@@ -835,6 +865,27 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
     );
   }
 
+  bool _sameImmutableCore(
+    InterOrgTransferModel a,
+    InterOrgTransferModel b,
+  ) =>
+      a.fromOrganizationId == b.fromOrganizationId &&
+      a.toOrganizationId == b.toOrganizationId &&
+      a.fromAccountId == b.fromAccountId &&
+      a.toAccountId == b.toAccountId &&
+      a.amount == b.amount &&
+      a.currency == b.currency &&
+      a.amountInFromOrgBase == b.amountInFromOrgBase &&
+      a.amountInToOrgBase == b.amountInToOrgBase &&
+      a.type == b.type &&
+      a.note == b.note &&
+      a.date == b.date &&
+      a.createdBy == b.createdBy &&
+      a.createdAt == b.createdAt &&
+      a.linkedDebitTransactionId == b.linkedDebitTransactionId &&
+      a.linkedCreditTransactionId == b.linkedCreditTransactionId &&
+      a.ownerEmployeeId == b.ownerEmployeeId;
+
   @override
   Future<bool> applyFields(Map<String, dynamic> fields) async {
     final b = box();
@@ -852,6 +903,31 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
         to.effectiveOrganizationId != incoming.toOrganizationId) return false;
     if (incoming.ownerEmployeeId != null &&
         !_employeeExists(incoming.ownerEmployeeId!)) return false;
+
+    final existing = b.get(incoming.id);
+    if (existing != null) {
+      if (!_sameImmutableCore(existing, incoming)) return false;
+      if (existing.cancelled) {
+        if (!incoming.cancelled ||
+            incoming.cancelledAt != existing.cancelledAt ||
+            incoming.cancelledBy != existing.cancelledBy) return false;
+      } else if (incoming.cancelled) {
+        if (incoming.cancelledAt == null ||
+            incoming.cancelledBy == null ||
+            incoming.cancelledBy!.trim().isEmpty) return false;
+      } else if (incoming.cancelledAt != null || incoming.cancelledBy != null) {
+        return false;
+      }
+    } else {
+      if (incoming.cancelled) {
+        if (incoming.cancelledAt == null ||
+            incoming.cancelledBy == null ||
+            incoming.cancelledBy!.trim().isEmpty) return false;
+      } else if (incoming.cancelledAt != null || incoming.cancelledBy != null) {
+        return false;
+      }
+    }
+
     await b.put(incoming.id, incoming);
     await InterOrgTransferService.recoverPending();
     return true;
@@ -908,8 +984,6 @@ class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
   }
 }
 
-/// Syncs the append-only critical audit JSON rows. Existing rows cannot be
-/// overwritten with different content and remote deletion is ignored.
 class CriticalAuditsSync extends SyncCollection<String> {
   @override
   String get name => 'critical_audit';
@@ -1186,9 +1260,6 @@ class MessagesSync extends SyncCollection<ChatMessage> {
 }
 
 class SyncCodec {
-  /// Referential parents arrive before their children so validation can reject
-  /// dangling or cross-organization references instead of silently persisting
-  /// corrupt state.
   static final List<SyncCollection<dynamic>> collections = [
     OrganizationsSync(),
     EmployeesSync(),
