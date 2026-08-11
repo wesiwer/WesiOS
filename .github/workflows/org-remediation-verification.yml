@@ -16,8 +16,8 @@ permissions:
   contents: read
 
 jobs:
-  # BEGIN OWNER_SYNC_PATCH
-  owner-sync-patch:
+  # BEGIN REPEAT_AUDIT_PATCH
+  repeat-audit-patch:
     if: github.actor != 'github-actions[bot]'
     permissions:
       contents: write
@@ -26,14 +26,22 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/org-hierarchy-remediation-1
-      - name: Protect owner identity at sync boundary
+      - name: Apply repeat-audit integrity hardening
         shell: python
         run: |
           from pathlib import Path
 
+          def replace_once(text, old, new, label):
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, got {count}')
+              return text.replace(old, new, 1)
+
+          # 1) Generic employee sync must never become owner identity authority.
           p = Path('lib/core/sync/sync_codec.dart')
           text = p.read_text(encoding='utf-8')
-          old = """      demoStats: stats is Map
+          if 'Generic dataset sync is not an identity authority' not in text:
+              old = """      demoStats: stats is Map
           ? {
               for (final e in stats.entries)
                 if (_double(e.value) != null) '${e.key}': _double(e.value)!,
@@ -45,7 +53,7 @@ jobs:
 
 class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
 """
-          new = """      demoStats: stats is Map
+              new = """      demoStats: stats is Map
           ? {
               for (final e in stats.entries)
                 if (_double(e.value) != null) '${e.key}': _double(e.value)!,
@@ -93,14 +101,250 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
 
 class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
 """
-          if text.count(old) != 1:
-              raise SystemExit(f'EmployeesSync tail count={text.count(old)}')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+              text = replace_once(text, old, new, 'EmployeesSync owner boundary')
 
+          # 2) InterOrg journal core fields are immutable after creation. Sync may
+          # only carry the one-way active -> cancelled lifecycle transition.
+          old = """  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    final incoming = decode(fields);
+    if (b == null || incoming == null) return false;
+    if (!_organizationExistsActive(incoming.fromOrganizationId) ||
+        !_organizationExistsActive(incoming.toOrganizationId)) return false;
+    final from = _account(incoming.fromAccountId);
+    final to = _account(incoming.toAccountId);
+    if (from == null ||
+        to == null ||
+        from.archived ||
+        to.archived ||
+        from.effectiveOrganizationId != incoming.fromOrganizationId ||
+        to.effectiveOrganizationId != incoming.toOrganizationId) return false;
+    if (incoming.ownerEmployeeId != null &&
+        !_employeeExists(incoming.ownerEmployeeId!)) return false;
+    await b.put(incoming.id, incoming);
+    await InterOrgTransferService.recoverPending();
+    return true;
+  }
+}
+
+class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
+"""
+          new = """  bool _sameImmutableCore(
+    InterOrgTransferModel a,
+    InterOrgTransferModel b,
+  ) =>
+      a.fromOrganizationId == b.fromOrganizationId &&
+      a.toOrganizationId == b.toOrganizationId &&
+      a.fromAccountId == b.fromAccountId &&
+      a.toAccountId == b.toAccountId &&
+      a.amount == b.amount &&
+      a.currency == b.currency &&
+      a.amountInFromOrgBase == b.amountInFromOrgBase &&
+      a.amountInToOrgBase == b.amountInToOrgBase &&
+      a.type == b.type &&
+      a.note == b.note &&
+      a.date == b.date &&
+      a.createdBy == b.createdBy &&
+      a.createdAt == b.createdAt &&
+      a.linkedDebitTransactionId == b.linkedDebitTransactionId &&
+      a.linkedCreditTransactionId == b.linkedCreditTransactionId &&
+      a.ownerEmployeeId == b.ownerEmployeeId;
+
+  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    final incoming = decode(fields);
+    if (b == null || incoming == null) return false;
+    if (!_organizationExistsActive(incoming.fromOrganizationId) ||
+        !_organizationExistsActive(incoming.toOrganizationId)) return false;
+    final from = _account(incoming.fromAccountId);
+    final to = _account(incoming.toAccountId);
+    if (from == null ||
+        to == null ||
+        from.archived ||
+        to.archived ||
+        from.effectiveOrganizationId != incoming.fromOrganizationId ||
+        to.effectiveOrganizationId != incoming.toOrganizationId) return false;
+    if (incoming.ownerEmployeeId != null &&
+        !_employeeExists(incoming.ownerEmployeeId!)) return false;
+
+    final existing = b.get(incoming.id);
+    if (existing != null) {
+      if (!_sameImmutableCore(existing, incoming)) return false;
+      // Cancellation is one-way and its evidence is immutable once written.
+      if (existing.cancelled) {
+        if (!incoming.cancelled ||
+            incoming.cancelledAt != existing.cancelledAt ||
+            incoming.cancelledBy != existing.cancelledBy) return false;
+      } else if (incoming.cancelled) {
+        if (incoming.cancelledAt == null ||
+            incoming.cancelledBy == null ||
+            incoming.cancelledBy!.trim().isEmpty) return false;
+      } else if (incoming.cancelledAt != null || incoming.cancelledBy != null) {
+        return false;
+      }
+    } else {
+      if (incoming.cancelled) {
+        if (incoming.cancelledAt == null ||
+            incoming.cancelledBy == null ||
+            incoming.cancelledBy!.trim().isEmpty) return false;
+      } else if (incoming.cancelledAt != null || incoming.cancelledBy != null) {
+        return false;
+      }
+    }
+
+    await b.put(incoming.id, incoming);
+    await InterOrgTransferService.recoverPending();
+    return true;
+  }
+}
+
+class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
+"""
+          text = replace_once(text, old, new, 'InterOrgTransfersSync immutability')
+          p.write_text(text, encoding='utf-8')
+
+          # 3) CRM interaction deal must belong to the same client/org, and an
+          # existing hidden interaction cannot be stolen by changing its parent.
+          p = Path('lib/features/crm/services/crm_service.dart')
+          text = p.read_text(encoding='utf-8')
+          old = """  static Future<void> saveInteraction(CrmInteraction interaction) async {
+    final clients = {for (final c in await clientsRaw()) c.id: c};
+    final client = clients[interaction.clientId];
+    if (client == null) throw StateError('CRM client does not exist');
+    await _requireOrgWrite(client.organizationId);
+    if (!_clientOwnedByCurrent(client)) {
+      final deals = {for (final d in await dealsRaw()) d.id: d};
+      final linked = interaction.dealId == null ? null : deals[interaction.dealId!];
+      if (linked == null || !_dealOwnedByCurrent(linked, clients)) {
+        throw StateError('CRM interaction parent is outside employee scope');
+      }
+    }
+
+    final all = await interactionsRaw();
+    final index = all.indexWhere((value) => value.id == interaction.id);
+    if (index < 0) {
+      all.add(interaction);
+    } else {
+      all[index] = interaction;
+    }
+    await _write(_interactionsKey, all, (value) => value.toJson());
+
+    if (interaction.nextActionAt != null) {
+      final allClients = await clientsRaw();
+      final clientIndex =
+          allClients.indexWhere((value) => value.id == interaction.clientId);
+      if (clientIndex >= 0) {
+        allClients[clientIndex] = allClients[clientIndex].copyWith(
+          nextContactAt: interaction.nextActionAt,
+          updatedAt: DateTime.now(),
+        );
+        await _write(_clientsKey, allClients, (value) => value.toJson());
+      }
+    }
+  }
+
+  static Future<void> deleteInteraction(String id) async {
+    final all = await interactionsRaw();
+    final target = all.where((value) => value.id == id).firstOrNull;
+    if (target == null) return;
+    final clients = {for (final c in await clientsRaw()) c.id: c};
+    final client = clients[target.clientId];
+    if (client == null) return;
+    await _requireOrgWrite(client.organizationId);
+    if (!_clientOwnedByCurrent(client)) {
+      final deals = {for (final d in await dealsRaw()) d.id: d};
+      final linked = target.dealId == null ? null : deals[target.dealId!];
+      if (linked == null || !_dealOwnedByCurrent(linked, clients)) {
+        throw StateError('CRM interaction is outside employee scope');
+      }
+    }
+    await _write(
+      _interactionsKey,
+      all.where((value) => value.id != id).toList(),
+      (value) => value.toJson(),
+    );
+  }
+"""
+          new = """  static Future<void> _requireInteractionWrite(
+    CrmInteraction interaction,
+    Map<String, CrmClient> clients,
+    Map<String, CrmDeal> deals,
+  ) async {
+    final client = clients[interaction.clientId];
+    if (client == null) throw StateError('CRM client does not exist');
+    await _requireOrgWrite(client.organizationId);
+
+    CrmDeal? linked;
+    if (interaction.dealId != null) {
+      linked = deals[interaction.dealId!];
+      if (linked == null ||
+          linked.clientId != client.id ||
+          linked.organizationId != client.organizationId) {
+        throw StateError('CRM interaction deal/client mismatch');
+      }
+    }
+
+    if (!_clientOwnedByCurrent(client) &&
+        (linked == null || !_dealOwnedByCurrent(linked, clients))) {
+      throw StateError('CRM interaction parent is outside employee scope');
+    }
+  }
+
+  static Future<void> saveInteraction(CrmInteraction interaction) async {
+    final clients = {for (final c in await clientsRaw()) c.id: c};
+    final deals = {for (final d in await dealsRaw()) d.id: d};
+    await _requireInteractionWrite(interaction, clients, deals);
+
+    final all = await interactionsRaw();
+    final index = all.indexWhere((value) => value.id == interaction.id);
+    if (index < 0) {
+      all.add(interaction);
+    } else {
+      // Updating an existing id also requires authority over its old parent;
+      // otherwise an attacker could re-parent a hidden interaction to an owned
+      // client and overwrite it by id.
+      await _requireInteractionWrite(all[index], clients, deals);
+      all[index] = interaction;
+    }
+    await _write(_interactionsKey, all, (value) => value.toJson());
+
+    if (interaction.nextActionAt != null) {
+      final allClients = await clientsRaw();
+      final clientIndex =
+          allClients.indexWhere((value) => value.id == interaction.clientId);
+      if (clientIndex >= 0) {
+        allClients[clientIndex] = allClients[clientIndex].copyWith(
+          nextContactAt: interaction.nextActionAt,
+          updatedAt: DateTime.now(),
+        );
+        await _write(_clientsKey, allClients, (value) => value.toJson());
+      }
+    }
+  }
+
+  static Future<void> deleteInteraction(String id) async {
+    final all = await interactionsRaw();
+    final target = all.where((value) => value.id == id).firstOrNull;
+    if (target == null) return;
+    final clients = {for (final c in await clientsRaw()) c.id: c};
+    final deals = {for (final d in await dealsRaw()) d.id: d};
+    await _requireInteractionWrite(target, clients, deals);
+    await _write(
+      _interactionsKey,
+      all.where((value) => value.id != id).toList(),
+      (value) => value.toJson(),
+    );
+  }
+"""
+          text = replace_once(text, old, new, 'CRM interaction parent integrity')
+          p.write_text(text, encoding='utf-8')
+
+          # Security regression tests.
           p = Path('test/sync_corruption_guard_test.dart')
           text = p.read_text(encoding='utf-8')
-          marker = 'employee sync cannot mint, demote or tombstone owner identity'
-          if marker not in text:
+          if 'employee sync cannot mint, demote or tombstone owner identity' not in text:
               insert = r'''
 
   test('employee sync cannot mint, demote or tombstone owner identity', () async {
@@ -122,71 +366,202 @@ class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
     );
     await employees.put(owner.id, owner);
     await employees.put(employee.id, employee);
-
     final sync = EmployeesSync();
     final forgedOwner = sync.encode(employee)..['isOwner'] = true;
     expect(await sync.applyFields(forgedOwner), isFalse);
     expect(TeamService.byId(employee.id)!.isOwner, isFalse);
-
     final forgedNewOwner = sync.encode(employee)
       ..['id'] = 'remote-owner'
       ..['login'] = 'remote-owner'
       ..['isOwner'] = true;
     expect(await sync.applyFields(forgedNewOwner), isFalse);
     expect(TeamService.byId('remote-owner'), isNull);
-
     final demotedOwner = sync.encode(owner)..['isOwner'] = false;
     expect(await sync.applyFields(demotedOwner), isFalse);
     expect(TeamService.byId(owner.id)!.isOwner, isTrue);
-
     await sync.removeById(owner.id);
     expect(TeamService.byId(owner.id), isNotNull);
   });
 '''
               pos = text.rfind('\n}')
-              if pos < 0:
-                  raise SystemExit('sync corruption test closing brace not found')
+              text = text[:pos] + insert + text[pos:]
+
+          if 'inter-org sync cannot rewrite immutable transfer core' not in text:
+              insert = r'''
+
+  test('inter-org sync cannot rewrite immutable transfer core', () async {
+    final a = await OrganizationService.create(
+      name: 'Immutable A',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final b = await OrganizationService.create(
+      name: 'Immutable B',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final accountA = await AccountService.ensureMain(organizationId: a.id);
+    final accountB = await AccountService.ensureMain(organizationId: b.id);
+    final now = DateTime(2026, 8, 1);
+    final transfer = InterOrgTransferModel(
+      id: 'immutable-transfer',
+      fromOrganizationId: a.id,
+      toOrganizationId: b.id,
+      fromAccountId: accountA.id,
+      toAccountId: accountB.id,
+      amount: 100,
+      currency: 'RUB',
+      amountInFromOrgBase: 100,
+      amountInToOrgBase: 100,
+      type: InterOrgTransferType.internalTransfer,
+      date: now,
+      createdBy: 'owner',
+      createdAt: now,
+      linkedDebitTransactionId: 'immutable-transfer_debit',
+      linkedCreditTransactionId: 'immutable-transfer_credit',
+    );
+    await Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
+        .put(transfer.id, transfer);
+    final forged = InterOrgTransfersSync().encode(transfer)..['amount'] = 999;
+    expect(await InterOrgTransfersSync().applyFields(forged), isFalse);
+    expect(
+      Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
+          .get(transfer.id)!
+          .amount,
+      100,
+    );
+  });
+'''
+              pos = text.rfind('\n}')
               text = text[:pos] + insert + text[pos:]
           p.write_text(text, encoding='utf-8')
 
+          p = Path('test/task_crm_organization_scope_test.dart')
+          text = p.read_text(encoding='utf-8')
+          if 'CRM interaction cannot use an owned deal as a bridge to another client' not in text:
+              insert = r'''
+
+  test('CRM interaction cannot use an owned deal as a bridge to another client', () async {
+    final alice = await addEmployee('alice');
+    final bob = await addEmployee('bob');
+    await OrganizationAccessService.grant(
+      employeeId: alice.id,
+      organizationId: OrganizationModel.rootId,
+      includeSubtree: false,
+      permissions: const [OrganizationPermissions.view],
+      enforceActor: false,
+    );
+    final now = DateTime(2026, 8, 1);
+    await CrmService.saveClient(CrmClient(
+      id: 'alice-client',
+      name: 'Alice client',
+      createdAt: now,
+      updatedAt: now,
+      organizationId: OrganizationModel.rootId,
+      ownerEmployeeId: alice.id,
+    ));
+    await CrmService.saveClient(CrmClient(
+      id: 'bob-client',
+      name: 'Bob client',
+      createdAt: now,
+      updatedAt: now,
+      organizationId: OrganizationModel.rootId,
+      ownerEmployeeId: bob.id,
+    ));
+    await CrmService.saveDeal(CrmDeal(
+      id: 'alice-deal',
+      clientId: 'alice-client',
+      title: 'Alice deal',
+      createdAt: now,
+      updatedAt: now,
+      organizationId: OrganizationModel.rootId,
+      responsibleEmployeeId: alice.id,
+    ));
+    await signIn(alice.id);
+    await OrganizationContext.selectOrganization(OrganizationModel.rootId);
+    await OrganizationContext.setScope(OrganizationScope.only);
+
+    await expectLater(
+      CrmService.saveInteraction(CrmInteraction(
+        id: 'bridge',
+        clientId: 'bob-client',
+        dealId: 'alice-deal',
+        type: CrmInteractionType.note,
+        at: now,
+        note: 'forbidden bridge',
+      )),
+      throwsA(isA<StateError>()),
+    );
+    expect((await CrmService.interactionsRaw()).where((e) => e.id == 'bridge'), isEmpty);
+  });
+'''
+              pos = text.rfind('\n}')
+              text = text[:pos] + insert + text[pos:]
+          p.write_text(text, encoding='utf-8')
+
+          # Document newly discovered repeat-audit invariants.
           p = Path('TZ_ORG_HIERARCHY_V1_REMEDIATION_STATUS.md')
           text = p.read_text(encoding='utf-8')
-          anchor = '### I3. Destructive sync / tombstones — NEW RE-AUDIT REQUIREMENT, IMPLEMENTED/PENDING FINAL EVIDENCE\n'
+          insert_point = text.index('\n---\n\n## J. Physical ownership / migration')
+          additions = ''
           if '### I4. Owner identity sync boundary' not in text:
-              pos = text.index('\n---\n\n## J. Physical ownership / migration')
-              section = """
+              additions += """
 
 ### I4. Owner identity sync boundary — NEW RE-AUDIT HARDENING, IMPLEMENTED/PENDING FINAL EVIDENCE
 
-Generic dataset sync не является identity authority:
-
-- `isOwner=true` не может повысить обычного сотрудника до owner;
-- новый owner не может появиться только из employee sync record;
-- существующий owner не может быть понижен или удалён remote tombstone;
-- owner сначала устанавливается доверенным login/server-identity bootstrap, после чего sync может обновлять только ту же owner identity.
+Generic dataset sync не является identity authority: owner нельзя создать, повысить, понизить или удалить через обычный employee sync. Owner сначала устанавливается доверенным login/server-identity bootstrap.
 """
-              text = text[:pos] + section + text[pos:]
+          if '### I5. InterOrg sync lifecycle immutability' not in text:
+              additions += """
+
+### I5. InterOrg sync lifecycle immutability — NEW RE-AUDIT HARDENING, IMPLEMENTED/PENDING FINAL EVIDENCE
+
+После создания transfer его organizations/accounts/amount/currency/base amounts/type/date/creator/linked ids/owner immutable. Sync разрешает только однонаправленный переход active -> cancelled с валидным cancellation evidence; uncancel и переписывание core запрещены.
+"""
+          if additions:
+              text = text[:insert_point] + additions + text[insert_point:]
+          if '## R6. CRM interaction parent integrity' not in text:
+              rpos = text.index('\n## R5. Temporary verification workflows are not product code')
+              # append after R5 section by placing before test matrix separator
+              end = text.index('\n---\n\n# 4. Обязательная тестовая матрица')
+              extra = """
+
+## R6. CRM interaction parent integrity
+
+`CrmInteraction.dealId`, если задан, обязан ссылаться на Deal того же `clientId` и той же organization. Update существующего interaction повторно авторизует старый parent, чтобы re-parent по id не был способом захватить скрытую запись.
+
+## R7. Generic employee sync cannot mint owner
+
+Поле `EmployeeModel.isOwner` является identity-sensitive и не доверяется обычному dataset sync.
+"""
+              text = text[:end] + extra + text[end:]
           p.write_text(text, encoding='utf-8')
 
-          # Self-remove this temporary patch section before final exact-head CI.
+          # Remove temporary trigger markers and this patch section from final diff.
+          for helper in [
+              Path('.github/repeat-audit-trigger.txt'),
+              Path('.github/org-remediation-trigger.txt'),
+          ]:
+              if helper.exists():
+                  helper.unlink()
           p = Path('.github/workflows/org-remediation-verification.yml')
           text = p.read_text(encoding='utf-8')
-          begin = '  # BEGIN OWNER_SYNC_PATCH\n'
-          end = '  # END OWNER_SYNC_PATCH\n'
+          begin = '  # BEGIN REPEAT_AUDIT_PATCH\n'
+          end = '  # END REPEAT_AUDIT_PATCH\n'
           a = text.index(begin)
           b = text.index(end, a) + len(end)
           p.write_text(text[:a] + text[b:], encoding='utf-8')
-      - name: Format and commit hardening
+      - name: Format, validate and commit hardening
         shell: bash
         run: |
-          dart format lib/core/sync/sync_codec.dart test/sync_corruption_guard_test.dart
+          dart format lib/core/sync/sync_codec.dart lib/features/crm/services/crm_service.dart test/sync_corruption_guard_test.dart test/task_crm_organization_scope_test.dart
           git diff --check
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "fix: protect owner identity from generic sync"
+          git commit -m "fix: close repeat-audit sync and CRM integrity gaps"
           git push origin HEAD:agent/org-hierarchy-remediation-1
-  # END OWNER_SYNC_PATCH
+  # END REPEAT_AUDIT_PATCH
 
   analysis:
     runs-on: ubuntu-24.04
