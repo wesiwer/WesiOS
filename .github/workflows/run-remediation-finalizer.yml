@@ -1,0 +1,309 @@
+name: Run organization remediation finalizer
+
+on:
+  pull_request:
+    branches:
+      - agent/org-hierarchy-remediation-1
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-remediation-1
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - name: Apply registered repeat-audit patch and final UI/sync guards
+        shell: python
+        run: |
+          from pathlib import Path
+          import textwrap
+
+          verifier = Path('.github/workflows/org-remediation-verification.yml')
+          workflow = verifier.read_text(encoding='utf-8')
+
+          # Reuse the already-reviewed deterministic patch body from the
+          # registered verifier instead of maintaining a second divergent copy.
+          job = workflow.index('  repeat-audit-hardening:')
+          marker = '      - name: Apply repeat-audit source fixes\n'
+          step = workflow.index(marker, job)
+          run_start = workflow.index('        run: |\n', step) + len('        run: |\n')
+          run_end = workflow.index('      - name: Format and commit repeat-audit fixes', run_start)
+          patch_body = textwrap.dedent(workflow[run_start:run_end])
+          exec(compile(patch_body, 'registered-repeat-audit-patch', 'exec'), {})
+
+          # Remote tombstones may not delete a single linked InterOrg ledger leg.
+          p = Path('lib/core/sync/sync_codec.dart')
+          text = p.read_text(encoding='utf-8')
+          tx_start = text.index('class TransactionsSync extends SyncCollection<TransactionModel> {')
+          tx_end = text.index('\nclass TasksSync', tx_start)
+          block = text[tx_start:tx_end]
+          if 'linked inter-org leg is part of a journaled logical transfer' not in block:
+              addition = r'''
+
+  @override
+  Future<void> removeById(String id) async {
+    final b = box();
+    final existing = b?.get(id);
+    if (b == null || existing == null) return;
+    // A linked inter-org leg is part of a journaled logical transfer. Remote
+    // tombstones cannot delete one side independently; cancellation/recovery
+    // must go through InterOrgTransferService.
+    if (existing.interOrgTransferId != null ||
+        existing.source == TransactionSource.interorg) return;
+    await b.delete(id);
+  }
+'''
+              close = block.rfind('\n}')
+              if close < 0:
+                  raise SystemExit('TransactionsSync closing brace missing')
+              block = block[:close] + addition + block[close:]
+              text = text[:tx_start] + block + text[tx_end:]
+          p.write_text(text, encoding='utf-8')
+
+          def replace_once(path, old, new, label):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if new in text:
+                  return
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected one match, got {count}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          # Generation tokens prevent a pre-revoke Future from committing stale
+          # access-sensitive data after a newer access-revision reload.
+          team = 'lib/features/team/team_stats_screen.dart'
+          replace_once(team,
+              '  List<EmployeeModel> _people = const [];\n',
+              '  List<EmployeeModel> _people = const [];\n  int _loadEpoch = 0;\n',
+              'TeamStats epoch field')
+          replace_once(team,
+              '  Future<void> _load() async {\n    final tasks = await TaskService().getAll();\n',
+              '  Future<void> _load() async {\n    final epoch = ++_loadEpoch;\n    final tasks = await TaskService().getAll();\n',
+              'TeamStats epoch start')
+          replace_once(team,
+              '    if (mounted) {\n      setState(() {\n',
+              '    if (mounted && epoch == _loadEpoch) {\n      setState(() {\n',
+              'TeamStats stale commit')
+
+          finance = 'lib/features/organizations/my_finance_screen.dart'
+          replace_once(finance,
+              '  bool _loading = true;\n',
+              '  bool _loading = true;\n  int _loadEpoch = 0;\n',
+              'MyFinance epoch field')
+          replace_once(finance,
+              '  Future<void> _load() async {\n    if (mounted) setState(() => _loading = true);\n',
+              '  Future<void> _load() async {\n    final epoch = ++_loadEpoch;\n    if (mounted) setState(() => _loading = true);\n',
+              'MyFinance epoch start')
+          replace_once(finance,
+              '    if (!mounted) return;\n    setState(() {\n',
+              '    if (!mounted || epoch != _loadEpoch) return;\n    setState(() {\n',
+              'MyFinance stale commit')
+
+          orgs = 'lib/features/organizations/organizations_screen.dart'
+          replace_once(orgs,
+              '  String? _error;\n',
+              '  String? _error;\n  int _loadEpoch = 0;\n',
+              'Organizations epoch field')
+          replace_once(orgs,
+              '  Future<void> _load() async {\n    try {\n',
+              '  Future<void> _load() async {\n    final epoch = ++_loadEpoch;\n    try {\n',
+              'Organizations epoch start')
+          replace_once(orgs,
+              '      if (!mounted) return;\n      setState(() {\n',
+              '      if (!mounted || epoch != _loadEpoch) return;\n      setState(() {\n',
+              'Organizations success guard')
+          replace_once(orgs,
+              '    } catch (e) {\n      if (mounted) {\n',
+              '    } catch (e) {\n      if (mounted && epoch == _loadEpoch) {\n',
+              'Organizations error guard')
+
+          switcher = Path('lib/features/organizations/widgets/organization_switcher.dart')
+          text = switcher.read_text(encoding='utf-8')
+          if 'class _OrganizationSwitcherState' in text and 'OrganizationModel? _current;\n  int _loadEpoch = 0;' not in text:
+              text = text.replace(
+                  '  OrganizationModel? _current;\n',
+                  '  OrganizationModel? _current;\n  int _loadEpoch = 0;\n', 1)
+              text = text.replace(
+                  '  Future<void> _load() async {\n    try {\n      final org = await OrganizationContext.currentOrganization();\n      if (mounted) setState(() => _current = org);\n',
+                  '  Future<void> _load() async {\n    final epoch = ++_loadEpoch;\n    try {\n      final org = await OrganizationContext.currentOrganization();\n      if (mounted && epoch == _loadEpoch) setState(() => _current = org);\n', 1)
+              text = text.replace(
+                  '      if (mounted) setState(() => _current = null);\n',
+                  '      if (mounted && epoch == _loadEpoch) {\n        setState(() => _current = null);\n      }\n', 1)
+
+          # The picker itself also stays live while open; revoke/archival updates
+          # its list and failed stale selections are handled rather than thrown.
+          if 'class _OrganizationPickerSheetState' in text and 'int _pickerLoadEpoch = 0;' not in text:
+              text = text.replace(
+                  '  bool _loading = true;\n\n  @override\n  void initState() {\n    super.initState();\n    _load();\n  }\n',
+                  '  bool _loading = true;\n  int _pickerLoadEpoch = 0;\n\n  @override\n  void initState() {\n    super.initState();\n    OrganizationAccessService.revision.addListener(_reload);\n    OrganizationService.revision.addListener(_reload);\n    _load();\n  }\n\n  @override\n  void dispose() {\n    OrganizationAccessService.revision.removeListener(_reload);\n    OrganizationService.revision.removeListener(_reload);\n    super.dispose();\n  }\n\n  void _reload() => _load();\n', 1)
+              text = text.replace(
+                  '  Future<void> _load() async {\n    final all = await OrganizationService.all();\n',
+                  '  Future<void> _load() async {\n    final epoch = ++_pickerLoadEpoch;\n    final all = await OrganizationService.all();\n', 1)
+              text = text.replace(
+                  '    if (!mounted) return;\n    setState(() {\n      _orgs = all;\n',
+                  '    if (!mounted || epoch != _pickerLoadEpoch) return;\n    setState(() {\n      _orgs = all;\n', 1)
+              text = text.replace(
+                  '  Future<void> _select(String id) async {\n    await OrganizationContext.selectOrganization(id);\n',
+                  '  Future<void> _select(String id) async {\n    try {\n      await OrganizationContext.selectOrganization(id);\n    } on StateError {\n      await _load();\n      return;\n    }\n', 1)
+          switcher.write_text(text, encoding='utf-8')
+
+          # Add missing tombstone and hidden-reparent regression coverage.
+          p = Path('test/sync_corruption_guard_test.dart')
+          text = p.read_text(encoding='utf-8')
+          if 'sync tombstone cannot delete one linked inter-org ledger leg' not in text:
+              addition = r'''
+
+  test('sync tombstone cannot delete one linked inter-org ledger leg', () async {
+    final account = await AccountService.ensureMain(
+      organizationId: OrganizationModel.rootId,
+    );
+    final leg = TransactionModel(
+      id: 'transfer-1_debit',
+      title: 'Inter-org debit',
+      amount: 100,
+      type: TransactionType.expense,
+      date: DateTime(2026, 8, 1),
+      accountId: account.id,
+      organizationId: OrganizationModel.rootId,
+      source: TransactionSource.interorg,
+      interOrgTransferId: 'transfer-1',
+    );
+    await Hive.box<TransactionModel>('wesios_treasury').put(leg.id, leg);
+    await TransactionsSync().removeById(leg.id);
+    expect(Hive.box<TransactionModel>('wesios_treasury').containsKey(leg.id), isTrue);
+  });
+'''
+              pos = text.rfind('\n}')
+              text = text[:pos] + addition + text[pos:]
+              p.write_text(text, encoding='utf-8')
+
+          p = Path('test/task_crm_organization_scope_test.dart')
+          text = p.read_text(encoding='utf-8')
+          if 'CRM hidden interaction cannot be seized by re-parenting its id' not in text:
+              addition = r'''
+
+  test('CRM hidden interaction cannot be seized by re-parenting its id', () async {
+    final alice = await addEmployee('alice');
+    final bob = await addEmployee('bob');
+    await OrganizationAccessService.grant(
+      employeeId: alice.id,
+      organizationId: OrganizationModel.rootId,
+      includeSubtree: false,
+      permissions: const [OrganizationPermissions.view],
+      enforceActor: false,
+    );
+    final now = DateTime(2026, 8, 1);
+    await CrmService.saveClient(CrmClient(
+      id: 'alice-client-reparent',
+      name: 'Alice client',
+      createdAt: now,
+      updatedAt: now,
+      organizationId: OrganizationModel.rootId,
+      ownerEmployeeId: alice.id,
+    ));
+    await CrmService.saveClient(CrmClient(
+      id: 'bob-client-reparent',
+      name: 'Bob client',
+      createdAt: now,
+      updatedAt: now,
+      organizationId: OrganizationModel.rootId,
+      ownerEmployeeId: bob.id,
+    ));
+    await CrmService.saveInteraction(CrmInteraction(
+      id: 'hidden-interaction',
+      clientId: 'bob-client-reparent',
+      title: 'Hidden',
+      at: now,
+    ));
+
+    await signIn(alice.id);
+    await OrganizationContext.selectOrganization(OrganizationModel.rootId);
+    await OrganizationContext.setScope(OrganizationScope.only);
+    await expectLater(
+      CrmService.saveInteraction(CrmInteraction(
+        id: 'hidden-interaction',
+        clientId: 'alice-client-reparent',
+        title: 'Stolen',
+        at: now,
+      )),
+      throwsA(isA<StateError>()),
+    );
+    final raw = await CrmService.interactionsRaw();
+    expect(
+      raw.singleWhere((e) => e.id == 'hidden-interaction').clientId,
+      'bob-client-reparent',
+    );
+  });
+'''
+              pos = text.rfind('\n}')
+              text = text[:pos] + addition + text[pos:]
+              p.write_text(text, encoding='utf-8')
+
+          # Record the repeat-audit additions.
+          p = Path('TZ_ORG_HIERARCHY_V1_REMEDIATION_STATUS.md')
+          text = p.read_text(encoding='utf-8')
+          if '### I4. Owner identity sync boundary' not in text:
+              marker = '\n---\n\n## J. Physical ownership / migration'
+              pos = text.index(marker)
+              extra = r'''
+
+### I4. Owner identity sync boundary — IMPLEMENTED/PENDING FINAL EVIDENCE
+Generic employee dataset sync cannot mint, replace, demote or tombstone owner identity. Trusted server-identity bootstrap remains separate.
+
+### I5. InterOrg sync lifecycle immutability — IMPLEMENTED/PENDING FINAL EVIDENCE
+Transfer core is immutable after creation; cancellation is one-way and linked ledger legs cannot be tombstoned independently.
+
+### I6. CRM interaction parent integrity — IMPLEMENTED/PENDING FINAL EVIDENCE
+Interaction deal must belong to the same client/org, and an existing hidden interaction cannot be seized by re-parenting its id.
+
+### I7. Stale async UI revoke safety — IMPLEMENTED/PENDING FINAL EVIDENCE
+Access-sensitive loaders use generation guards; organization picker refreshes on access changes and rejects stale selection after revoke.
+'''
+              text = text[:pos] + extra + text[pos:]
+              p.write_text(text, encoding='utf-8')
+
+          # Leave only the permanent verifier; all one-shot machinery disappears
+          # in the same commit that applies the hardening.
+          workflow = verifier.read_text(encoding='utf-8')
+          start = workflow.index('  repeat-audit-hardening:')
+          end = workflow.index('  analysis:', start)
+          verifier.write_text(workflow[:start] + workflow[end:], encoding='utf-8')
+
+          for helper in [
+              Path('.github/workflows/run-remediation-finalizer.yml'),
+              Path('.github/workflows/org-repeat-audit-fix.yml'),
+              Path('.github/repeat-audit-trigger.txt'),
+              Path('.github/org-remediation-trigger.txt'),
+          ]:
+              if helper.exists():
+                  helper.unlink()
+
+      - name: Format, validate and commit final hardening
+        shell: bash
+        run: |
+          dart format \
+            lib/core/sync/sync_codec.dart \
+            lib/features/crm/services/crm_service.dart \
+            lib/features/treasury/services/horizon_engine_competition.dart \
+            lib/features/team/team_stats_screen.dart \
+            lib/features/organizations/my_finance_screen.dart \
+            lib/features/organizations/organizations_screen.dart \
+            lib/features/organizations/widgets/organization_switcher.dart \
+            test/sync_corruption_guard_test.dart \
+            test/task_crm_organization_scope_test.dart
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: finalize organization repeat-audit hardening"
+          git push origin HEAD:agent/org-hierarchy-remediation-1
