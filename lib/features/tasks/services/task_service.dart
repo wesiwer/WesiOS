@@ -148,11 +148,10 @@ class TaskService {
         task.effectiveResponsibleEmployeeId ??
         employee?.id ??
         before?.effectiveResponsibleEmployeeId;
-    if (before == null &&
-        current != null &&
-        !current.isOwner &&
-        !_canManagePeople()) {
-      responsible ??= current.id;
+    if (current != null && !current.isOwner && !_canManagePeople()) {
+      // Ordinary employees cannot smuggle a different responsible employee
+      // through legacy/sync fields after the assignee itself was coerced.
+      responsible = current.id;
     }
 
     final tags = TaskModel.withOwnershipTags(
