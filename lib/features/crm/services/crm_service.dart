@@ -399,24 +399,44 @@ class CrmService {
     );
   }
 
-  static Future<void> saveInteraction(CrmInteraction interaction) async {
-    final clients = {for (final c in await clientsRaw()) c.id: c};
+  static Future<void> _requireInteractionWrite(
+    CrmInteraction interaction,
+    Map<String, CrmClient> clients,
+    Map<String, CrmDeal> deals,
+  ) async {
     final client = clients[interaction.clientId];
     if (client == null) throw StateError('CRM client does not exist');
     await _requireOrgWrite(client.organizationId);
-    if (!_clientOwnedByCurrent(client)) {
-      final deals = {for (final d in await dealsRaw()) d.id: d};
-      final linked = interaction.dealId == null ? null : deals[interaction.dealId!];
-      if (linked == null || !_dealOwnedByCurrent(linked, clients)) {
-        throw StateError('CRM interaction parent is outside employee scope');
+
+    CrmDeal? linked;
+    if (interaction.dealId != null) {
+      linked = deals[interaction.dealId!];
+      if (linked == null ||
+          linked.clientId != client.id ||
+          linked.organizationId != client.organizationId) {
+        throw StateError('CRM interaction deal/client mismatch');
       }
     }
+
+    if (!_clientOwnedByCurrent(client) &&
+        (linked == null || !_dealOwnedByCurrent(linked, clients))) {
+      throw StateError('CRM interaction parent is outside employee scope');
+    }
+  }
+
+  static Future<void> saveInteraction(CrmInteraction interaction) async {
+    final clients = {for (final c in await clientsRaw()) c.id: c};
+    final deals = {for (final d in await dealsRaw()) d.id: d};
+    await _requireInteractionWrite(interaction, clients, deals);
 
     final all = await interactionsRaw();
     final index = all.indexWhere((value) => value.id == interaction.id);
     if (index < 0) {
       all.add(interaction);
     } else {
+      // Re-authorize the old parent before replacing by id. Re-parenting an
+      // inaccessible row must never become an ownership bypass.
+      await _requireInteractionWrite(all[index], clients, deals);
       all[index] = interaction;
     }
     await _write(_interactionsKey, all, (value) => value.toJson());
@@ -440,16 +460,8 @@ class CrmService {
     final target = all.where((value) => value.id == id).firstOrNull;
     if (target == null) return;
     final clients = {for (final c in await clientsRaw()) c.id: c};
-    final client = clients[target.clientId];
-    if (client == null) return;
-    await _requireOrgWrite(client.organizationId);
-    if (!_clientOwnedByCurrent(client)) {
-      final deals = {for (final d in await dealsRaw()) d.id: d};
-      final linked = target.dealId == null ? null : deals[target.dealId!];
-      if (linked == null || !_dealOwnedByCurrent(linked, clients)) {
-        throw StateError('CRM interaction is outside employee scope');
-      }
-    }
+    final deals = {for (final d in await dealsRaw()) d.id: d};
+    await _requireInteractionWrite(target, clients, deals);
     await _write(
       _interactionsKey,
       all.where((value) => value.id != id).toList(),
