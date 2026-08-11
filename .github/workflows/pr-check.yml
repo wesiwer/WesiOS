@@ -29,7 +29,10 @@ jobs:
           channel: stable
           cache: true
       - name: Apply final organization remediation patch
-        run: python tools/finalize_org_remediation.py
+        shell: bash
+        run: |
+          python tools/repair_finalize_org_remediation.py
+          python tools/finalize_org_remediation.py
       - name: Format, validate and commit remediation head
         shell: bash
         run: |
