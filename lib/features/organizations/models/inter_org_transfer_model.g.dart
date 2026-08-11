@@ -32,13 +32,14 @@ class InterOrgTransferModelAdapter extends TypeAdapter<InterOrgTransferModel> {
       cancelled: fields[16] as bool? ?? false,
       cancelledAt: fields[17] as DateTime?,
       cancelledBy: fields[18] as String?,
+      ownerEmployeeId: fields[19] as String?,
     );
   }
 
   @override
   void write(BinaryWriter writer, InterOrgTransferModel obj) {
     writer
-      ..writeByte(19)
+      ..writeByte(20)
       ..writeByte(0)..write(obj.id)
       ..writeByte(1)..write(obj.fromOrganizationId)
       ..writeByte(2)..write(obj.toOrganizationId)
@@ -57,7 +58,8 @@ class InterOrgTransferModelAdapter extends TypeAdapter<InterOrgTransferModel> {
       ..writeByte(15)..write(obj.linkedCreditTransactionId)
       ..writeByte(16)..write(obj.cancelled)
       ..writeByte(17)..write(obj.cancelledAt)
-      ..writeByte(18)..write(obj.cancelledBy);
+      ..writeByte(18)..write(obj.cancelledBy)
+      ..writeByte(19)..write(obj.ownerEmployeeId);
   }
 
   @override

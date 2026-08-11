@@ -34,27 +34,39 @@ class HorizonLearningService {
   static const String _legacyLastMonthKey = 'last_learning_month_v1';
   static const String _legacyHistoryKey = 'learning_history_v1';
 
-  static bool get _legacyContext =>
-      OrganizationContext.currentOrganizationId == OrganizationModel.rootId &&
-      OrganizationContext.scope == OrganizationScope.only;
+  static String _org(String? value) =>
+      value ?? OrganizationContext.currentOrganizationId;
+  static String _scope(String? value) =>
+      value ?? OrganizationContext.scope.name;
 
-  static String _scoped(String base) => _legacyContext
-      ? base
-      : '$base.${OrganizationContext.currentOrganizationId}.${OrganizationContext.scope.name}';
-
-  static String get _profileKey => _scoped(_legacyProfileKey);
-  static String get _lastMonthKey => _scoped(_legacyLastMonthKey);
-  static String get _historyKey => _scoped(_legacyHistoryKey);
+  static String _scoped(
+    String base, {
+    String? organizationId,
+    String? organizationScope,
+  }) {
+    final org = _org(organizationId);
+    final scope = _scope(organizationScope);
+    return org == OrganizationModel.rootId && scope == 'only'
+        ? base
+        : '$base.$org.$scope';
+  }
 
   static Future<Box<dynamic>> _open() async {
     if (Hive.isBoxOpen(boxName)) return Hive.box<dynamic>(boxName);
     return Hive.openBox<dynamic>(boxName);
   }
 
-  static Future<HorizonCalibrationProfile> load() async {
+  static Future<HorizonCalibrationProfile> load({
+    String? organizationId,
+    String? organizationScope,
+  }) async {
     try {
       final box = await _open();
-      final raw = box.get(_profileKey);
+      final raw = box.get(_scoped(
+        _legacyProfileKey,
+        organizationId: organizationId,
+        organizationScope: organizationScope,
+      ));
       if (raw is! String || raw.isEmpty) {
         return HorizonCalibrationProfile.identity;
       }
@@ -71,11 +83,20 @@ class HorizonLearningService {
   static String _monthId(DateTime d) =>
       '${d.year}-${d.month.toString().padLeft(2, '0')}';
 
-  static Future<bool> isDue([DateTime? now]) async {
+  static Future<bool> isDue(
+    DateTime? now, {
+    String? organizationId,
+    String? organizationScope,
+  }) async {
     final date = now ?? DateTime.now();
     try {
       final box = await _open();
-      return box.get(_lastMonthKey) != _monthId(date);
+      return box.get(_scoped(
+            _legacyLastMonthKey,
+            organizationId: organizationId,
+            organizationScope: organizationScope,
+          )) !=
+          _monthId(date);
     } catch (_) {
       return false;
     }
@@ -86,10 +107,22 @@ class HorizonLearningService {
     required double currentBalance,
     DateTime? now,
     bool force = false,
+    String? organizationId,
+    String? organizationScope,
   }) async {
     final date = now ?? DateTime.now();
-    final previous = await load();
-    if (!force && !await isDue(date)) return null;
+    final org = _org(organizationId);
+    final scope = _scope(organizationScope);
+    final previous = await load(
+      organizationId: org,
+      organizationScope: scope,
+    );
+    if (!force &&
+        !await isDue(
+          date,
+          organizationId: org,
+          organizationScope: scope,
+        )) return null;
     if (transactions.length < 20) return null;
 
     try {
@@ -103,8 +136,8 @@ class HorizonLearningService {
         transactions: transactions,
         currentBalance: currentBalance,
         now: date,
-        organizationId: OrganizationContext.currentOrganizationId,
-        organizationScope: OrganizationContext.scope.name,
+        organizationId: org,
+        organizationScope: scope,
       );
       final evaluation = HorizonPredictionRegistry.blendWithBacktest(
         backtest: backtest,
@@ -126,17 +159,32 @@ class HorizonLearningService {
       );
 
       final box = await _open();
-      await box.put(_profileKey, jsonEncode(profile.toJson()));
-      await box.put(_lastMonthKey, _monthId(date));
+      final profileKey = _scoped(
+        _legacyProfileKey,
+        organizationId: org,
+        organizationScope: scope,
+      );
+      final lastMonthKey = _scoped(
+        _legacyLastMonthKey,
+        organizationId: org,
+        organizationScope: scope,
+      );
+      final historyKey = _scoped(
+        _legacyHistoryKey,
+        organizationId: org,
+        organizationScope: scope,
+      );
+      await box.put(profileKey, jsonEncode(profile.toJson()));
+      await box.put(lastMonthKey, _monthId(date));
 
-      final oldHistory = box.get(_historyKey);
+      final oldHistory = box.get(historyKey);
       final history = oldHistory is List
           ? oldHistory.map((e) => '$e').toList()
           : <String>[];
       history.add(jsonEncode({
         'updatedAt': date.toIso8601String(),
-        'organizationId': OrganizationContext.currentOrganizationId,
-        'organizationScope': OrganizationContext.scope.name,
+        'organizationId': org,
+        'organizationScope': scope,
         'previousSource': previous.source,
         'profile': profile.toJson(),
         'tuningObjective': optimized.objective,
@@ -166,7 +214,7 @@ class HorizonLearningService {
         ],
       }));
       if (history.length > 24) history.removeRange(0, history.length - 24);
-      await box.put(_historyKey, history);
+      await box.put(historyKey, history);
 
       return HorizonLearningSnapshot(
         updatedAt: date,
@@ -180,9 +228,16 @@ class HorizonLearningService {
     }
   }
 
-  static Future<List<String>> history() async {
+  static Future<List<String>> history({
+    String? organizationId,
+    String? organizationScope,
+  }) async {
     try {
-      final raw = (await _open()).get(_historyKey);
+      final raw = (await _open()).get(_scoped(
+        _legacyHistoryKey,
+        organizationId: organizationId,
+        organizationScope: organizationScope,
+      ));
       return raw is List ? raw.map((e) => '$e').toList() : const [];
     } catch (_) {
       return const [];

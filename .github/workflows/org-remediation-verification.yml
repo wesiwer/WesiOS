@@ -1,0 +1,369 @@
+name: Organization remediation verification
+
+on:
+  push:
+    branches:
+      - agent/org-hierarchy-remediation-1
+  pull_request:
+    branches:
+      - agent/org-hierarchy-v1
+
+concurrency:
+  group: org-remediation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  VERIFY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  sync-lifecycle-hardening:
+    if: github.actor != 'github-actions[bot]'
+    permissions:
+      contents: write
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-remediation-1
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - name: Harden employee, InterOrg and audit tombstones
+        shell: python
+        run: |
+          from pathlib import Path
+
+          p = Path('lib/core/sync/sync_codec.dart')
+          text = p.read_text(encoding='utf-8')
+
+          import_anchor = "import '../../features/team/models/team_permissions.dart';\n"
+          admin_import = "import '../../features/team/services/employee_admin_service.dart';\n"
+          if admin_import not in text:
+              if import_anchor not in text:
+                  raise SystemExit('team import anchor missing')
+              text = text.replace(import_anchor, import_anchor + admin_import, 1)
+
+          old_employee = """  @override
+  Future<void> removeById(String id) async {
+    final b = box();
+    final existing = b?.get(id);
+    if (b == null || existing == null || existing.isOwner) return;
+    await b.delete(id);
+  }
+}
+
+class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
+"""
+          new_employee = """  @override
+  Future<void> removeById(String id) async {
+    final b = box();
+    final existing = b?.get(id);
+    if (b == null || existing == null || existing.isOwner) return;
+    // TeamService.remove() archives the employee before removing the active
+    // card. A synced tombstone must preserve the same stable historical id.
+    await EmployeeAdminService.archive(
+      existing,
+      reason: 'Synced employee removal',
+    );
+    await b.delete(id);
+  }
+}
+
+class OrganizationGrantsSync extends SyncCollection<OrganizationAccessGrant> {
+"""
+          if old_employee not in text:
+              raise SystemExit('EmployeesSync remove block missing')
+          text = text.replace(old_employee, new_employee, 1)
+
+          interorg_tail = """    await b.put(incoming.id, incoming);
+    await InterOrgTransferService.recoverPending();
+    return true;
+  }
+}
+
+class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
+"""
+          interorg_new = """    await b.put(incoming.id, incoming);
+    await InterOrgTransferService.recoverPending();
+    return true;
+  }
+
+  @override
+  Future<void> removeById(String id) async {
+    // InterOrgTransfer is a durable journal. Cancellation is represented by
+    // its lifecycle fields; a remote tombstone must never erase recovery truth.
+  }
+}
+
+class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
+"""
+          if interorg_tail not in text:
+              raise SystemExit('InterOrgTransfersSync tail missing')
+          text = text.replace(interorg_tail, interorg_new, 1)
+
+          old_audit = """  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    final incoming = decode(fields);
+    if (b == null ||
+        incoming == null ||
+        !_organizationExistsActive(incoming.organizationId)) return false;
+    await b.put(incoming.id, incoming);
+    return true;
+  }
+}
+
+class CriticalAuditsSync extends SyncCollection<String> {
+"""
+          new_audit = """  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final b = box();
+    final incoming = decode(fields);
+    if (b == null ||
+        incoming == null ||
+        !_organizationExistsActive(incoming.organizationId)) return false;
+    final existing = b.get(incoming.id);
+    if (existing != null) {
+      // Transaction audit ids are append-only events. The same event may be
+      // replayed idempotently, but its payload can never be rewritten.
+      if (jsonEncode(encode(existing)) != jsonEncode(encode(incoming))) {
+        return false;
+      }
+      return true;
+    }
+    await b.put(incoming.id, incoming);
+    return true;
+  }
+
+  @override
+  Future<void> removeById(String id) async {
+    // Financial audit history is append-only and ignores remote tombstones.
+  }
+}
+
+class CriticalAuditsSync extends SyncCollection<String> {
+"""
+          if old_audit not in text:
+              raise SystemExit('TransactionAuditsSync apply block missing')
+          text = text.replace(old_audit, new_audit, 1)
+          p.write_text(text, encoding='utf-8')
+
+          p = Path('test/sync_repeat_audit_security_test.dart')
+          text = p.read_text(encoding='utf-8')
+          # Imports/adapters/boxes for transaction audit.
+          audit_import = "import 'package:wesios/features/organizations/models/transaction_audit_model.dart';\n"
+          anchor = "import 'package:wesios/features/organizations/models/organization_model.dart';\n"
+          if audit_import not in text:
+              text = text.replace(anchor, anchor + audit_import, 1)
+          if 'Hive.registerAdapter(TransactionAuditModelAdapter())' not in text:
+              adapter_anchor = "    if (!Hive.isAdapterRegistered(84)) Hive.registerAdapter(InterOrgTransferModelAdapter());\n"
+              text = text.replace(adapter_anchor, adapter_anchor + "    if (!Hive.isAdapterRegistered(85)) Hive.registerAdapter(TransactionAuditModelAdapter());\n", 1)
+          if "await Hive.openBox<TransactionAuditModel>('wesios_transaction_audit');" not in text:
+              box_anchor = "    await Hive.openBox<InterOrgTransferModel>(InterOrgTransferService.boxName);\n"
+              text = text.replace(box_anchor, box_anchor + "    await Hive.openBox<TransactionAuditModel>('wesios_transaction_audit');\n", 1)
+          if "await Hive.box<TransactionAuditModel>('wesios_transaction_audit').clear();" not in text:
+              clear_anchor = "    await Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName).clear();\n"
+              text = text.replace(clear_anchor, clear_anchor + "    await Hive.box<TransactionAuditModel>('wesios_transaction_audit').clear();\n", 1)
+
+          if 'transaction audit sync is append-only and tombstone-resistant' not in text:
+              addition = r'''
+
+  test('transaction audit sync is append-only and tombstone-resistant', () async {
+    final audit = TransactionAuditModel(
+      id: 'audit-immutable',
+      transactionId: 'tx-1',
+      changedBy: 'owner-secure',
+      changedAt: DateTime(2026, 8, 1),
+      beforeJson: null,
+      afterJson: '{"amount":100}',
+      organizationId: OrganizationModel.rootId,
+    );
+    final box = Hive.box<TransactionAuditModel>('wesios_transaction_audit');
+    await box.put(audit.id, audit);
+    final sync = TransactionAuditsSync();
+
+    final forged = sync.encode(audit)..['afterJson'] = '{"amount":999}';
+    expect(await sync.applyFields(forged), isFalse);
+    expect(box.get(audit.id)!.afterJson, '{"amount":100}');
+
+    await sync.removeById(audit.id);
+    expect(box.get(audit.id), isNotNull);
+  });
+
+  test('inter-org journal ignores remote tombstones', () async {
+    final a = await OrganizationService.create(
+      name: 'Journal A',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final b = await OrganizationService.create(
+      name: 'Journal B',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final accountA = await AccountService.ensureMain(organizationId: a.id);
+    final accountB = await AccountService.ensureMain(organizationId: b.id);
+    final at = DateTime(2026, 8, 1);
+    final transfer = InterOrgTransferModel(
+      id: 'journal-transfer',
+      fromOrganizationId: a.id,
+      toOrganizationId: b.id,
+      fromAccountId: accountA.id,
+      toAccountId: accountB.id,
+      amount: 100,
+      currency: 'RUB',
+      amountInFromOrgBase: 100,
+      amountInToOrgBase: 100,
+      type: InterOrgTransferType.internalTransfer,
+      date: at,
+      createdBy: 'owner-secure',
+      createdAt: at,
+      linkedDebitTransactionId: 'journal-transfer_debit',
+      linkedCreditTransactionId: 'journal-transfer_credit',
+    );
+    final box = Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName);
+    await box.put(transfer.id, transfer);
+
+    await InterOrgTransfersSync().removeById(transfer.id);
+    expect(box.get(transfer.id), isNotNull);
+  });
+'''
+              pos = text.rfind('\n}')
+              if pos < 0:
+                  raise SystemExit('sync repeat-audit test closing brace missing')
+              text = text[:pos] + addition + text[pos:]
+          p.write_text(text, encoding='utf-8')
+
+      - name: Format and commit
+        shell: bash
+        run: |
+          dart format lib/core/sync/sync_codec.dart test/sync_repeat_audit_security_test.dart
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: preserve lifecycle and financial audit across sync"
+          git push origin HEAD:agent/org-hierarchy-remediation-1
+
+  analysis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+  remediation-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Security, scope, money, sync, migration, UI and fault-injection suite
+        run: >-
+          flutter test
+          test/organization_privilege_escalation_test.dart
+          test/organization_domain_permission_test.dart
+          test/organization_service_authorization_test.dart
+          test/organization_scope_isolation_test.dart
+          test/task_crm_organization_scope_test.dart
+          test/crm_interaction_integrity_test.dart
+          test/organization_finance_negative_test.dart
+          test/organization_forecast_permission_test.dart
+          test/inter_org_visibility_test.dart
+          test/inter_org_fault_injection_test.dart
+          test/multi_currency_org_test.dart
+          test/account_liquidity_migration_test.dart
+          test/background_org_processing_test.dart
+          test/sync_corruption_guard_test.dart
+          test/sync_migration_grant_test.dart
+          test/sync_repeat_audit_security_test.dart
+          test/org_physical_ownership_test.dart
+          test/organization_legacy_migration_rehearsal_test.dart
+          test/organization_access_revocation_test.dart
+          test/organization_finance_access_test.dart
+          test/organization_sync_integrity_test.dart
+          test/inter_org_transfer_test.dart
+          test/organization_ui_behavior_test.dart
+          test/organization_finance_ui_behavior_test.dart
+          test/team_stats_organization_scope_ui_test.dart
+
+  full-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+
+  android-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --debug
+
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:VERIFY_SHA) {
+            throw "Expected exact head $env:VERIFY_SHA but checked out $actual"
+          }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release

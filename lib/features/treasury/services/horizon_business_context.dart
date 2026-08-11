@@ -49,36 +49,28 @@ class HorizonBusinessContextService {
     required List<TransactionModel> transactions,
     required int days,
     DateTime? now,
+    Set<String>? organizationIds,
   }) async {
     final today = _day(now ?? DateTime.now());
     final end = today.add(Duration(days: days));
     final events = <HorizonCashEvent>[];
     final warnings = <ForecastActionPrompt>[];
     final exposure = <String, double>{};
-    final organizationIds = await OrganizationContext.effectiveOrganizationIds();
+    final ids = organizationIds ??
+        await OrganizationContext.effectiveOrganizationIds();
 
-    await _addCrm(
-      events,
-      exposure,
-      warnings,
-      today,
-      end,
-      organizationIds,
-    );
-    if (organizationIds.contains(OrganizationModel.rootId)) {
+    await _addCrm(events, exposure, warnings, today, end, ids);
+    if (ids.contains(OrganizationModel.rootId)) {
       await _addContracts(events, exposure, warnings, today, end);
     }
-    await _addTaskObligations(
-      events,
-      warnings,
-      today,
-      end,
-      organizationIds,
-    );
+    await _addTaskObligations(events, warnings, today, end, ids);
 
     List<AccountLiquiditySnapshot> accounts = const [];
     try {
-      accounts = await AccountLiquidityService.snapshots(transactions);
+      accounts = await AccountLiquidityService.snapshots(
+        transactions,
+        organizationIds: ids,
+      );
     } catch (_) {
       warnings.add(_sourceWarning(
         code: 'context-accounts-unavailable',
