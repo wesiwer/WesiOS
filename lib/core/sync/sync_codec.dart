@@ -24,6 +24,7 @@ import '../../features/tasks/models/task_model.dart';
 import '../../features/tasks/services/task_service.dart';
 import '../../features/team/models/employee_model.dart';
 import '../../features/team/models/team_permissions.dart';
+import '../../features/team/services/employee_admin_service.dart';
 import '../../features/team/services/team_service.dart';
 import '../../features/treasury/models/account_model.dart';
 import '../../features/treasury/models/transaction_model.dart';
@@ -337,6 +338,12 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
     final b = box();
     final existing = b?.get(id);
     if (b == null || existing == null || existing.isOwner) return;
+    // TeamService.remove() archives the employee before removing the active
+    // card. A synced tombstone must preserve the same stable historical id.
+    await EmployeeAdminService.archive(
+      existing,
+      reason: 'Synced employee removal',
+    );
     await b.delete(id);
   }
 }
@@ -960,6 +967,12 @@ class InterOrgTransfersSync extends SyncCollection<InterOrgTransferModel> {
     await InterOrgTransferService.recoverPending();
     return true;
   }
+
+  @override
+  Future<void> removeById(String id) async {
+    // InterOrgTransfer is a durable journal. Cancellation is represented by
+    // its lifecycle fields; a remote tombstone must never erase recovery truth.
+  }
 }
 
 class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
@@ -1008,8 +1021,22 @@ class TransactionAuditsSync extends SyncCollection<TransactionAuditModel> {
     if (b == null ||
         incoming == null ||
         !_organizationExistsActive(incoming.organizationId)) return false;
+    final existing = b.get(incoming.id);
+    if (existing != null) {
+      // Transaction audit ids are append-only events. The same event may be
+      // replayed idempotently, but its payload can never be rewritten.
+      if (jsonEncode(encode(existing)) != jsonEncode(encode(incoming))) {
+        return false;
+      }
+      return true;
+    }
     await b.put(incoming.id, incoming);
     return true;
+  }
+
+  @override
+  Future<void> removeById(String id) async {
+    // Financial audit history is append-only and ignores remote tombstones.
   }
 }
 

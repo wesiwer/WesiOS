@@ -5,6 +5,7 @@ import 'package:hive/hive.dart';
 import 'package:wesios/core/sync/sync_codec.dart';
 import 'package:wesios/features/organizations/models/inter_org_transfer_model.dart';
 import 'package:wesios/features/organizations/models/organization_model.dart';
+import 'package:wesios/features/organizations/models/transaction_audit_model.dart';
 import 'package:wesios/features/organizations/services/inter_org_transfer_service.dart';
 import 'package:wesios/features/organizations/services/organization_service.dart';
 import 'package:wesios/features/team/models/employee_model.dart';
@@ -20,26 +21,39 @@ void main() {
   setUpAll(() async {
     temp = await Directory.systemTemp.createTemp('wesios-sync-repeat-audit-');
     Hive.init(temp.path);
-    if (!Hive.isAdapterRegistered(14)) Hive.registerAdapter(AccountKindAdapter());
-    if (!Hive.isAdapterRegistered(15)) Hive.registerAdapter(AccountModelAdapter());
-    if (!Hive.isAdapterRegistered(20)) Hive.registerAdapter(TeamPermissionsAdapter());
-    if (!Hive.isAdapterRegistered(21)) Hive.registerAdapter(EmployeeModelAdapter());
-    if (!Hive.isAdapterRegistered(80)) Hive.registerAdapter(OrganizationStatusAdapter());
-    if (!Hive.isAdapterRegistered(81)) Hive.registerAdapter(OrganizationModelAdapter());
-    if (!Hive.isAdapterRegistered(83)) Hive.registerAdapter(InterOrgTransferTypeAdapter());
-    if (!Hive.isAdapterRegistered(84)) Hive.registerAdapter(InterOrgTransferModelAdapter());
+    if (!Hive.isAdapterRegistered(14))
+      Hive.registerAdapter(AccountKindAdapter());
+    if (!Hive.isAdapterRegistered(15))
+      Hive.registerAdapter(AccountModelAdapter());
+    if (!Hive.isAdapterRegistered(20))
+      Hive.registerAdapter(TeamPermissionsAdapter());
+    if (!Hive.isAdapterRegistered(21))
+      Hive.registerAdapter(EmployeeModelAdapter());
+    if (!Hive.isAdapterRegistered(80))
+      Hive.registerAdapter(OrganizationStatusAdapter());
+    if (!Hive.isAdapterRegistered(81))
+      Hive.registerAdapter(OrganizationModelAdapter());
+    if (!Hive.isAdapterRegistered(83))
+      Hive.registerAdapter(InterOrgTransferTypeAdapter());
+    if (!Hive.isAdapterRegistered(84))
+      Hive.registerAdapter(InterOrgTransferModelAdapter());
+    if (!Hive.isAdapterRegistered(85))
+      Hive.registerAdapter(TransactionAuditModelAdapter());
 
     await Hive.openBox<EmployeeModel>(TeamService.boxName);
     await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
     await Hive.openBox<AccountModel>('wesios_accounts');
     await Hive.openBox<InterOrgTransferModel>(InterOrgTransferService.boxName);
+    await Hive.openBox<TransactionAuditModel>('wesios_transaction_audit');
   });
 
   setUp(() async {
     await Hive.box<EmployeeModel>(TeamService.boxName).clear();
     await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
     await Hive.box<AccountModel>('wesios_accounts').clear();
-    await Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName).clear();
+    await Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName)
+        .clear();
+    await Hive.box<TransactionAuditModel>('wesios_transaction_audit').clear();
     await OrganizationService.ensureBaseline();
   });
 
@@ -91,7 +105,8 @@ void main() {
 
     final refreshed = sync.encode(owner)..['fullName'] = 'Owner refreshed';
     expect(await sync.applyFields(refreshed), isTrue,
-        reason: 'the already-established same owner may receive profile refreshes');
+        reason:
+            'the already-established same owner may receive profile refreshes');
     expect(employees.get(owner.id)!.fullName, 'Owner refreshed');
   });
 
@@ -148,5 +163,67 @@ void main() {
           .toOrganizationId,
       b.id,
     );
+  });
+
+  test('transaction audit sync is append-only and tombstone-resistant',
+      () async {
+    final audit = TransactionAuditModel(
+      id: 'audit-immutable',
+      transactionId: 'tx-1',
+      changedBy: 'owner-secure',
+      changedAt: DateTime(2026, 8, 1),
+      beforeJson: null,
+      afterJson: '{"amount":100}',
+      organizationId: OrganizationModel.rootId,
+    );
+    final box = Hive.box<TransactionAuditModel>('wesios_transaction_audit');
+    await box.put(audit.id, audit);
+    final sync = TransactionAuditsSync();
+
+    final forged = sync.encode(audit)..['afterJson'] = '{"amount":999}';
+    expect(await sync.applyFields(forged), isFalse);
+    expect(box.get(audit.id)!.afterJson, '{"amount":100}');
+
+    await sync.removeById(audit.id);
+    expect(box.get(audit.id), isNotNull);
+  });
+
+  test('inter-org journal ignores remote tombstones', () async {
+    final a = await OrganizationService.create(
+      name: 'Journal A',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final b = await OrganizationService.create(
+      name: 'Journal B',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final accountA = await AccountService.ensureMain(organizationId: a.id);
+    final accountB = await AccountService.ensureMain(organizationId: b.id);
+    final at = DateTime(2026, 8, 1);
+    final transfer = InterOrgTransferModel(
+      id: 'journal-transfer',
+      fromOrganizationId: a.id,
+      toOrganizationId: b.id,
+      fromAccountId: accountA.id,
+      toAccountId: accountB.id,
+      amount: 100,
+      currency: 'RUB',
+      amountInFromOrgBase: 100,
+      amountInToOrgBase: 100,
+      type: InterOrgTransferType.internalTransfer,
+      date: at,
+      createdBy: 'owner-secure',
+      createdAt: at,
+      linkedDebitTransactionId: 'journal-transfer_debit',
+      linkedCreditTransactionId: 'journal-transfer_credit',
+    );
+    final box =
+        Hive.box<InterOrgTransferModel>(InterOrgTransferService.boxName);
+    await box.put(transfer.id, transfer);
+
+    await InterOrgTransfersSync().removeById(transfer.id);
+    expect(box.get(transfer.id), isNotNull);
   });
 }
