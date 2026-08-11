@@ -243,4 +243,46 @@ void main() {
       isFalse,
     );
   });
+
+  test('organization sync tombstone cannot hard-delete an existing organization', () async {
+    final child = await OrganizationService.create(
+      name: 'Protected child',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    await OrganizationsSync().removeById(child.id);
+    expect(await OrganizationService.byId(child.id), isNotNull);
+  });
+
+  test('account sync cannot re-own or delete an account that has ledger history', () async {
+    final child = await OrganizationService.create(
+      name: 'Target org',
+      parentId: OrganizationModel.rootId,
+      createdBy: 'setup',
+    );
+    final account = await AccountService.create(
+      name: 'Historical account',
+      organizationId: OrganizationModel.rootId,
+    );
+    await Hive.box<TransactionModel>('wesios_treasury').put(
+      'historical-account-tx',
+      TransactionModel(
+        id: 'historical-account-tx',
+        title: 'History',
+        amount: 100,
+        type: TransactionType.income,
+        date: DateTime(2026, 8, 1),
+        accountId: account.id,
+        organizationId: OrganizationModel.rootId,
+      ),
+    );
+    final moved = AccountsSync().encode(account.copyWith(organizationId: child.id));
+    expect(await AccountsSync().applyFields(moved), isFalse);
+    expect(
+      (await AccountService.byId(account.id))!.effectiveOrganizationId,
+      OrganizationModel.rootId,
+    );
+    await AccountsSync().removeById(account.id);
+    expect(await AccountService.byId(account.id), isNotNull);
+  });
 }
