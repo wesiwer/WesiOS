@@ -356,7 +356,7 @@ class HorizonEngineCompetitionService {
           .toList();
       return values.isEmpty
           ? (p10[i] < 0 ? 0.10 : 0.0)
-          : values.fold<double>(0, (a, b) => a + b) / results.length;
+          : values.fold<double>(0, (a, b) => a + b) / values.length;
     });
     int? firstWhereRisk(double threshold) {
       for (var i = 0; i < risk.length; i++) {
