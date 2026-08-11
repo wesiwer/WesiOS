@@ -15,12 +15,19 @@ concurrency:
 permissions:
   contents: read
 
+env:
+  VERIFY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
 jobs:
   analysis:
     runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
@@ -35,6 +42,10 @@ jobs:
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
@@ -74,6 +85,10 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
@@ -87,6 +102,10 @@ jobs:
     timeout-minutes: 65
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
@@ -100,6 +119,15 @@ jobs:
     timeout-minutes: 85
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:VERIFY_SHA) {
+            throw "Expected exact head $env:VERIFY_SHA but checked out $actual"
+          }
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
