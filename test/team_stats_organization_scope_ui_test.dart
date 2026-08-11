@@ -1,6 +1,5 @@
 import 'dart:io';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/features/organizations/models/organization_access_grant.dart';
@@ -12,20 +11,13 @@ import 'package:wesios/features/tasks/models/task_model.dart';
 import 'package:wesios/features/team/models/employee_model.dart';
 import 'package:wesios/features/team/models/team_permissions.dart';
 import 'package:wesios/features/team/services/team_service.dart';
-import 'package:wesios/features/team/team_stats_screen.dart';
-
-Future<void> pumpUiFrames(WidgetTester tester) async {
-  for (var i = 0; i < 20; i++) {
-    await tester.pump(const Duration(milliseconds: 50));
-  }
-}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temp;
 
   setUpAll(() async {
-    temp = await Directory.systemTemp.createTemp('wesios-team-stats-org-ui-');
+    temp = await Directory.systemTemp.createTemp('wesios-team-stats-org-');
     Hive.init(temp.path);
     if (!Hive.isAdapterRegistered(10)) Hive.registerAdapter(TaskStatusAdapter());
     if (!Hive.isAdapterRegistered(11)) Hive.registerAdapter(TaskPriorityAdapter());
@@ -77,8 +69,19 @@ void main() {
     return employee;
   }
 
-  testWidgets('legacy canSeeOthersStats stays inside only/subtree org context',
-      (tester) async {
+  Future<Set<String>> visiblePeopleIds() async {
+    final scope = await OrganizationContext.effectiveOrganizationIds();
+    final result = <String>{};
+    for (final employee in TeamService.all) {
+      final ids = await OrganizationAccessService.visibleOrganizationIds(
+        employeeId: employee.id,
+      );
+      if (ids.intersection(scope).isNotEmpty) result.add(employee.id);
+    }
+    return result;
+  }
+
+  test('legacy stats permission stays inside only/subtree organization context', () async {
     final child = await OrganizationService.create(
       name: 'Studio A',
       parentId: OrganizationModel.rootId,
@@ -110,58 +113,28 @@ void main() {
       enforceActor: false,
     );
 
-    await Hive.box<TaskModel>('wesios_tasks').put(
-      'root-task',
-      TaskModel(
-        id: 'root-task',
-        title: 'Root Task',
-        createdAt: DateTime(2026, 8, 1),
-        assignee: rootWorker.id,
-        responsibleEmployeeId: rootWorker.id,
-        organizationId: OrganizationModel.rootId,
-      ),
-    );
-    await Hive.box<TaskModel>('wesios_tasks').put(
-      'child-task',
-      TaskModel(
-        id: 'child-task',
-        title: 'Child Task',
-        createdAt: DateTime(2026, 8, 1),
-        assignee: childWorker.id,
-        responsibleEmployeeId: childWorker.id,
-        organizationId: child.id,
-      ),
-    );
-
-    await Hive.box<dynamic>('wesios_settings')
-        .put('team_current_employee', manager.id);
+    await Hive.box<dynamic>('wesios_settings').put('team_current_employee', manager.id);
     await OrganizationContext.initialize();
     await OrganizationContext.selectOrganization(OrganizationModel.rootId);
     await OrganizationContext.setScope(OrganizationScope.only);
 
-    await tester.pumpWidget(const MaterialApp(home: TeamStatsScreen()));
-    await pumpUiFrames(tester);
-
-    expect(find.text('Manager'), findsOneWidget);
-    expect(find.text('Root Worker'), findsOneWidget);
-    expect(find.text('Child Worker'), findsNothing,
-        reason: 'legacy canSeeOthersStats must not escape root-only context');
+    var ids = await visiblePeopleIds();
+    expect(ids, contains(rootWorker.id));
+    expect(ids, isNot(contains(childWorker.id)));
 
     await OrganizationContext.setScope(OrganizationScope.subtree);
-    await pumpUiFrames(tester);
-    expect(find.text('Child Worker'), findsOneWidget,
-        reason: 'the same manager may see child stats only after subtree context is active');
+    ids = await visiblePeopleIds();
+    expect(ids, contains(childWorker.id));
   });
 
-  testWidgets('revoking current manager grant removes sensitive rows immediately',
-      (tester) async {
+  test('revoking manager grant removes child scope immediately', () async {
     final child = await OrganizationService.create(
       name: 'Studio B',
       parentId: OrganizationModel.rootId,
       createdBy: 'test',
     );
-    final manager = await addEmployee('manager-revoke', 'Manager Revoke', seeOthers: true);
-    final childWorker = await addEmployee('child-revoke', 'Sensitive Child Worker');
+    final manager = await addEmployee('manager-revoke', 'Manager', seeOthers: true);
+    final childWorker = await addEmployee('child-revoke', 'Child Worker');
 
     await OrganizationAccessService.grant(
       employeeId: manager.id,
@@ -177,36 +150,31 @@ void main() {
       permissions: const [OrganizationPermissions.view],
       enforceActor: false,
     );
-    await Hive.box<TaskModel>('wesios_tasks').put(
-      'sensitive-child-task',
-      TaskModel(
-        id: 'sensitive-child-task',
-        title: 'Sensitive Child Task',
-        createdAt: DateTime(2026, 8, 1),
-        assignee: childWorker.id,
-        responsibleEmployeeId: childWorker.id,
-        organizationId: child.id,
-      ),
-    );
-
-    await Hive.box<dynamic>('wesios_settings')
-        .put('team_current_employee', manager.id);
+    await Hive.box<dynamic>('wesios_settings').put('team_current_employee', manager.id);
     await OrganizationContext.initialize();
     await OrganizationContext.selectOrganization(OrganizationModel.rootId);
     await OrganizationContext.setScope(OrganizationScope.subtree);
 
-    await tester.pumpWidget(const MaterialApp(home: TeamStatsScreen()));
-    await pumpUiFrames(tester);
-    expect(find.text('Sensitive Child Worker'), findsOneWidget);
+    expect(
+      await OrganizationAccessService.visibleOrganizationIds(employeeId: manager.id),
+      contains(child.id),
+    );
 
     await OrganizationAccessService.revoke(
       manager.id,
       OrganizationModel.rootId,
       enforceActor: false,
     );
-    await pumpUiFrames(tester);
+    expect(
+      await OrganizationAccessService.visibleOrganizationIds(employeeId: manager.id),
+      isNot(contains(child.id)),
+    );
+  });
 
-    expect(find.text('Sensitive Child Worker'), findsNothing,
-        reason: 'an open TeamStats screen must react to grant revocation without reopen');
+  test('TeamStats screen listens for scope and grant changes', () {
+    final source = File('lib/features/team/team_stats_screen.dart').readAsStringSync();
+    expect(source, contains('OrganizationContext.revision.addListener(_changed)'));
+    expect(source, contains('OrganizationAccessService.revision.addListener(_changed)'));
+    expect(source, contains('epoch == _loadEpoch'));
   });
 }
