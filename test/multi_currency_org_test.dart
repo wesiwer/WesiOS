@@ -8,6 +8,9 @@ import 'package:wesios/features/organizations/models/organization_model.dart';
 import 'package:wesios/features/organizations/models/transaction_audit_model.dart';
 import 'package:wesios/features/organizations/services/inter_org_transfer_service.dart';
 import 'package:wesios/features/organizations/services/organization_service.dart';
+import 'package:wesios/features/team/models/employee_model.dart';
+import 'package:wesios/features/team/models/team_permissions.dart';
+import 'package:wesios/features/team/services/team_service.dart';
 import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 import 'package:wesios/features/treasury/services/account_service.dart';
@@ -25,6 +28,8 @@ void main() {
     if (!Hive.isAdapterRegistered(3)) Hive.registerAdapter(RecurringPeriodAdapter());
     if (!Hive.isAdapterRegistered(14)) Hive.registerAdapter(AccountKindAdapter());
     if (!Hive.isAdapterRegistered(15)) Hive.registerAdapter(AccountModelAdapter());
+    if (!Hive.isAdapterRegistered(20)) Hive.registerAdapter(TeamPermissionsAdapter());
+    if (!Hive.isAdapterRegistered(21)) Hive.registerAdapter(EmployeeModelAdapter());
     if (!Hive.isAdapterRegistered(80)) Hive.registerAdapter(OrganizationStatusAdapter());
     if (!Hive.isAdapterRegistered(81)) Hive.registerAdapter(OrganizationModelAdapter());
     if (!Hive.isAdapterRegistered(83)) Hive.registerAdapter(InterOrgTransferTypeAdapter());
@@ -33,6 +38,7 @@ void main() {
     if (!Hive.isAdapterRegistered(86)) Hive.registerAdapter(TransactionSourceAdapter());
 
     await Hive.openBox('wesios_settings');
+    await Hive.openBox<EmployeeModel>(TeamService.boxName);
     await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
     await Hive.openBox<AccountModel>('wesios_accounts');
     await Hive.openBox<TransactionModel>('wesios_treasury');
@@ -42,6 +48,7 @@ void main() {
 
   setUp(() async {
     await Hive.box('wesios_settings').clear();
+    await Hive.box<EmployeeModel>(TeamService.boxName).clear();
     await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
     await Hive.box<AccountModel>('wesios_accounts').clear();
     await Hive.box<TransactionModel>('wesios_treasury').clear();
@@ -53,6 +60,16 @@ void main() {
       'usd': 90.0,
     });
     await OrganizationService.ensureBaseline();
+    final owner = EmployeeModel(
+      id: 'owner-multicurrency',
+      login: 'owner-multicurrency',
+      fullName: 'Owner',
+      createdAt: DateTime(2026, 1, 1),
+      isOwner: true,
+      permissions: TeamPermissions.owner,
+    );
+    await Hive.box<EmployeeModel>(TeamService.boxName).put(owner.id, owner);
+    await Hive.box('wesios_settings').put('team_current_employee', owner.id);
   });
 
   tearDownAll(() async {
@@ -102,7 +119,6 @@ void main() {
     );
     expect(reporting, closeTo(10000, 0.000001));
 
-    // A later market-rate update must not rewrite historical accounting.
     CurrencyService.setRates({'eur': 140.0, 'usd': 120.0});
     final persisted = Hive.box<TransactionModel>('wesios_treasury').get('eur-income')!;
     expect(persisted.fxRateToReporting, 100);
