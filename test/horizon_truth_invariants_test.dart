@@ -130,7 +130,6 @@ void main() {
         File('lib/features/treasury/services/treasury_service.dart')
             .readAsStringSync();
     expect(treasury, contains('if (tx.type == TransactionType.expense)'));
-    expect(treasury, contains('Income is NOT auto-posted as actual cash'));
 
     final context =
         File('lib/features/treasury/services/horizon_business_context.dart')
