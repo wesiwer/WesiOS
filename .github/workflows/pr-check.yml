@@ -32,7 +32,6 @@ jobs:
         shell: python
         run: |
           from pathlib import Path
-          import textwrap
 
           verifier = Path('.github/workflows/org-remediation-verification.yml')
           workflow = verifier.read_text(encoding='utf-8')
@@ -43,7 +42,14 @@ jobs:
           step = workflow.index(marker, start)
           run_start = workflow.index('        run: |\n', step) + len('        run: |\n')
           run_end = workflow.index('      - name: Format and commit', run_start)
-          patch_body = textwrap.dedent(workflow[run_start:run_end])
+          raw = workflow[run_start:run_end].rstrip('\n')
+          lines = raw.splitlines()
+          indent = len(lines[0]) - len(lines[0].lstrip())
+          prefix = ' ' * indent
+          patch_body = '\n'.join(
+              line[indent:] if line.startswith(prefix) else line
+              for line in lines
+          ) + '\n'
           exec(compile(patch_body, 'sync-lifecycle-hardening', 'exec'), {})
 
           # Final branch must contain only permanent verification jobs.
