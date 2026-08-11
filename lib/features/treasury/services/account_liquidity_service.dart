@@ -93,26 +93,47 @@ class AccountLiquidityService {
 
   static Future<void> _migrateLegacyRiskFields() async {
     if (_legacyMigrated) return;
-    _legacyMigrated = true;
     final legacy = await _legacyMeta();
-    if (legacy.isEmpty) return;
-    for (final account in await AccountService.getAllRaw()) {
-      final old = legacy[account.id];
-      if (old == null) continue;
-      // currency/minimumBalance/allowNetting already existed on AccountModel
-      // and therefore win any old conflict. Only formerly meta-only fields are
-      // migrated into the authoritative account record.
-      if ((account.fxHaircut - old.fxHaircut).abs() > 1e-12 ||
-          account.transferDelayDays != old.transferDelayDays) {
-        await AccountService.save(account.copyWith(
-          fxHaircut: old.fxHaircut,
-          transferDelayDays: old.transferDelayDays,
-        ));
-      }
+    if (legacy.isEmpty) {
+      _legacyMigrated = true;
+      return;
     }
+
+    // This is a one-time schema/data migration, not a user account edit.
+    // Running it through AccountService.save() would incorrectly require the
+    // currently signed-in employee to hold manage_accounts. The migration is
+    // deliberately narrow: it may only copy the two formerly meta-only fields
+    // onto the same existing account id; organization/currency/balances and
+    // all other ownership-sensitive fields remain untouched.
     try {
+      final accounts = await AccountService.getAllRaw();
+      final box = Hive.box<AccountModel>('wesios_accounts');
+      var changed = false;
+      for (final account in accounts) {
+        final old = legacy[account.id];
+        if (old == null) continue;
+        if ((account.fxHaircut - old.fxHaircut).abs() <= 1e-12 &&
+            account.transferDelayDays == old.transferDelayDays) {
+          continue;
+        }
+        await box.put(
+          account.id,
+          account.copyWith(
+            fxHaircut: old.fxHaircut,
+            transferDelayDays: old.transferDelayDays,
+          ),
+        );
+        changed = true;
+      }
+      if (changed) AccountService.revision.value++;
       await (await _openLegacy()).delete(_key);
-    } catch (_) {}
+      _legacyMigrated = true;
+    } catch (_) {
+      // Keep both the legacy payload and the retry flag intact. A transient
+      // storage/bootstrap failure must not turn into silent metadata loss.
+      _legacyMigrated = false;
+      rethrow;
+    }
   }
 
   static AccountLiquidityMeta _fromAccount(AccountModel account) =>
