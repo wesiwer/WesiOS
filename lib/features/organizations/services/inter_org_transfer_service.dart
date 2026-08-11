@@ -235,17 +235,19 @@ class InterOrgTransferService {
     if (fromOrg == null || toOrg == null || fromOrg.archived || toOrg.archived) {
       throw StateError('transfer organization unavailable');
     }
-    if (TeamService.current != null) {
-      if (!await OrganizationAccessService.can(
-            fromOrganizationId,
-            OrganizationPermissions.createTransactions,
-          ) ||
-          !await OrganizationAccessService.can(
-            toOrganizationId,
-            OrganizationPermissions.createTransactions,
-          )) {
-        throw StateError('create_transactions permission required on both organizations');
-      }
+    final current = TeamService.current;
+    if (current == null) {
+      throw StateError('authenticated employee required');
+    }
+    if (!await OrganizationAccessService.can(
+          fromOrganizationId,
+          OrganizationPermissions.createTransactions,
+        ) ||
+        !await OrganizationAccessService.can(
+          toOrganizationId,
+          OrganizationPermissions.createTransactions,
+        )) {
+      throw StateError('create_transactions permission required on both organizations');
     }
 
     final fromAccount = await AccountService.byId(fromAccountId);
@@ -261,7 +263,7 @@ class InterOrgTransferService {
 
     final now = DateTime.now();
     final transferDate = date ?? now;
-    final actor = TeamService.current?.id ?? 'system';
+    final actor = current.id;
     final id = 'interorg_${now.microsecondsSinceEpoch}';
     final fromRate = CurrencyService.rateToRub(fromOrg.baseCurrency.toLowerCase());
     final toRate = CurrencyService.rateToRub(toOrg.baseCurrency.toLowerCase());
@@ -290,7 +292,6 @@ class InterOrgTransferService {
       ownerEmployeeId: ownerEmployeeId,
     );
 
-    // WRITE-AHEAD: the journal exists before either ledger leg.
     await (await _open()).put(id, model);
     await CriticalAuditService.record(
       event: 'interorg.intent',
@@ -347,22 +348,23 @@ class InterOrgTransferService {
     final box = await _open();
     final transfer = box.get(id);
     if (transfer == null || transfer.cancelled) return;
-    if (TeamService.current != null &&
-        (!await OrganizationAccessService.can(
-              transfer.fromOrganizationId,
-              OrganizationPermissions.editTransactions,
-            ) ||
-            !await OrganizationAccessService.can(
-              transfer.toOrganizationId,
-              OrganizationPermissions.editTransactions,
-            ))) {
+    final current = TeamService.current;
+    if (current == null) {
+      throw StateError('authenticated employee required');
+    }
+    if (!await OrganizationAccessService.can(
+          transfer.fromOrganizationId,
+          OrganizationPermissions.editTransactions,
+        ) ||
+        !await OrganizationAccessService.can(
+          transfer.toOrganizationId,
+          OrganizationPermissions.editTransactions,
+        )) {
       throw StateError('edit_transactions permission required on both organizations');
     }
 
-    final actor = TeamService.current?.id ?? 'system';
+    final actor = current.id;
     final cancelled = transfer.cancel(by: actor);
-    // WRITE-AHEAD cancellation marker comes first. Recovery will finish any
-    // interrupted leg deletion.
     await box.put(id, cancelled);
     await CriticalAuditService.record(
       event: 'interorg.cancel.intent',
