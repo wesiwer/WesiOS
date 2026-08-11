@@ -4,7 +4,10 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../team/services/team_service.dart';
 import '../../treasury/models/transaction_model.dart';
+import '../models/organization_access_grant.dart';
+import '../models/organization_model.dart';
 import '../models/transaction_audit_model.dart';
+import 'organization_access_service.dart';
 
 class TransactionAuditService {
   TransactionAuditService._();
@@ -25,7 +28,8 @@ class TransactionAuditService {
     String? changedBy,
   }) async {
     final now = DateTime.now();
-    final orgId = (after ?? before)?.effectiveOrganizationId ?? 'org_wesi_beats';
+    final orgId =
+        (after ?? before)?.effectiveOrganizationId ?? OrganizationModel.rootId;
     final entry = TransactionAuditModel(
       id: 'audit_${now.microsecondsSinceEpoch}',
       transactionId: transactionId,
@@ -41,7 +45,32 @@ class TransactionAuditService {
 
   static Future<List<TransactionAuditModel>> forTransaction(String id) async {
     final box = await _open();
-    final list = box.values.where((a) => a.transactionId == id).toList()
+    final list = box.values.where((a) => a.transactionId == id).toList();
+    if (TeamService.current != null) {
+      final allowed = await OrganizationAccessService.organizationIdsFor(
+        OrganizationPermissions.viewFinance,
+      );
+      list.removeWhere((a) => !allowed.contains(a.organizationId));
+    }
+    list.sort((a, b) => b.changedAt.compareTo(a.changedAt));
+    return list;
+  }
+
+  static Future<List<TransactionAuditModel>> forOrganizations(
+    Set<String> organizationIds,
+  ) async {
+    var ids = organizationIds;
+    if (TeamService.current != null) {
+      ids = ids.intersection(
+        await OrganizationAccessService.organizationIdsFor(
+          OrganizationPermissions.viewFinance,
+        ),
+      );
+    }
+    final list = (await _open())
+        .values
+        .where((a) => ids.contains(a.organizationId))
+        .toList()
       ..sort((a, b) => b.changedAt.compareTo(a.changedAt));
     return list;
   }

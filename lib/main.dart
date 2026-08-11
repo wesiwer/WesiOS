@@ -35,6 +35,7 @@ import 'features/organizations/models/inter_org_transfer_model.dart';
 import 'features/organizations/models/organization_access_grant.dart';
 import 'features/organizations/models/organization_model.dart';
 import 'features/organizations/models/transaction_audit_model.dart';
+import 'features/organizations/services/inter_org_transfer_service.dart';
 import 'features/organizations/services/organization_migration_service.dart';
 import 'features/tasks/models/task_model.dart';
 import 'features/team/models/employee_model.dart';
@@ -116,6 +117,10 @@ void main(List<String> arguments) async {
   // backfills ownership missing on pre-org records; existing tagged data is
   // never rewritten.
   await OrganizationMigrationService.runV1();
+
+  // A transfer journal is written before either financial leg. Complete any
+  // interrupted create/cancel before recurring/Horizon can read the ledger.
+  await InterOrgTransferService.recoverPending();
 
   RecurringPaymentAutomation.shared.start();
   TimeScheduleAutomation.shared.start();

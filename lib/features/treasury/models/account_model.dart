@@ -4,8 +4,6 @@ import '../../organizations/models/organization_model.dart';
 
 part 'account_model.g.dart';
 
-/// Purpose of an account inside one organization.
-/// Existing byte values are immutable because old Hive data uses them.
 @HiveType(typeId: 14)
 enum AccountKind {
   @HiveField(0)
@@ -15,7 +13,7 @@ enum AccountKind {
   @HiveField(2)
   cash,
   @HiveField(3)
-  savings, // legacy value; retained for backward compatibility
+  savings,
   @HiveField(4)
   project,
   @HiveField(5)
@@ -32,6 +30,11 @@ class AccountModel {
   final String name;
   @HiveField(2)
   final AccountKind kind;
+
+  /// Canonical reporting-currency (RUB in org-v1) equivalent. Legacy WesiOS
+  /// already stored account balances in this unit, so keeping the canonical
+  /// ledger unit preserves history while [currency] describes where the
+  /// liquidity physically lives.
   @HiveField(3)
   final double openingBalance;
   @HiveField(4)
@@ -44,18 +47,29 @@ class AccountModel {
   final String? note;
 
   /// Null only for records written before organization hierarchy v1.
-  /// Legacy records belong to Wesi Inc.
+  /// Legacy records belong to Wesi Inc and are physically backfilled by
+  /// migration/service writes.
   @HiveField(8)
   final String? organizationId;
 
+  /// Canonical reporting-currency equivalent, matching [openingBalance].
   @HiveField(9)
   final double minimumBalance;
-
   @HiveField(10)
   final bool allowNetting;
 
+  /// Physical account currency (ISO-style uppercase code).
   @HiveField(11)
   final String currency;
+
+  /// Haircut applied when liquidity must be converted across currencies.
+  @HiveField(12)
+  final double fxHaircut;
+
+  /// Operational delay before this account can rescue another liquidity
+  /// location. This used to live in a second unsynchronized metadata box.
+  @HiveField(13)
+  final int transferDelayDays;
 
   const AccountModel({
     required this.id,
@@ -70,10 +84,10 @@ class AccountModel {
     this.minimumBalance = 0,
     this.allowNetting = true,
     this.currency = 'RUB',
+    this.fxHaircut = 0.03,
+    this.transferDelayDays = 0,
   });
 
-  /// Legacy main account id. Existing WesiOS financial history belongs to
-  /// Wesi Inc, so the historical `main` id remains the root main account.
   static const String mainId = 'main';
 
   static String mainIdFor(String organizationId) =>
@@ -96,6 +110,8 @@ class AccountModel {
     double? minimumBalance,
     bool? allowNetting,
     String? currency,
+    double? fxHaircut,
+    int? transferDelayDays,
   }) =>
       AccountModel(
         id: id,
@@ -109,6 +125,10 @@ class AccountModel {
         organizationId: organizationId ?? this.organizationId,
         minimumBalance: minimumBalance ?? this.minimumBalance,
         allowNetting: allowNetting ?? this.allowNetting,
-        currency: currency ?? this.currency,
+        currency: (currency ?? this.currency).toUpperCase(),
+        fxHaircut:
+            (fxHaircut ?? this.fxHaircut).clamp(0.0, 0.25).toDouble(),
+        transferDelayDays:
+            (transferDelayDays ?? this.transferDelayDays).clamp(0, 14).toInt(),
       );
 }

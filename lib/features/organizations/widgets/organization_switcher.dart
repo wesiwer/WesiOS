@@ -20,6 +20,7 @@ class OrganizationSwitcher extends StatefulWidget {
 
 class _OrganizationSwitcherState extends State<OrganizationSwitcher> {
   OrganizationModel? _current;
+  int _loadEpoch = 0;
 
   @override
   void initState() {
@@ -41,14 +42,17 @@ class _OrganizationSwitcherState extends State<OrganizationSwitcher> {
   void _reload() => _load();
 
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
     try {
       final org = await OrganizationContext.currentOrganization();
-      if (mounted) setState(() => _current = org);
+      if (mounted && epoch == _loadEpoch) setState(() => _current = org);
     } catch (_) {
       // The switcher can be built during early bootstrap before organization
       // Hive adapters are available. Keep the UI usable and let the context
       // reload itself when initialization completes.
-      if (mounted) setState(() => _current = null);
+      if (mounted && epoch == _loadEpoch) {
+        setState(() => _current = null);
+      }
     }
   }
 
@@ -180,19 +184,32 @@ class _OrganizationPickerSheetState extends State<_OrganizationPickerSheet> {
   List<OrganizationModel> _orgs = const [];
   Set<String> _allowed = const {};
   bool _loading = true;
+  int _pickerLoadEpoch = 0;
 
   @override
   void initState() {
     super.initState();
+    OrganizationAccessService.revision.addListener(_reload);
+    OrganizationService.revision.addListener(_reload);
     _load();
   }
 
+  @override
+  void dispose() {
+    OrganizationAccessService.revision.removeListener(_reload);
+    OrganizationService.revision.removeListener(_reload);
+    super.dispose();
+  }
+
+  void _reload() => _load();
+
   Future<void> _load() async {
+    final epoch = ++_pickerLoadEpoch;
     final all = await OrganizationService.all();
     final allowed = TeamService.current == null
         ? all.map((e) => e.id).toSet()
         : await OrganizationAccessService.visibleOrganizationIds();
-    if (!mounted) return;
+    if (!mounted || epoch != _pickerLoadEpoch) return;
     setState(() {
       _orgs = all;
       _allowed = allowed;
@@ -213,7 +230,12 @@ class _OrganizationPickerSheetState extends State<_OrganizationPickerSheet> {
   }
 
   Future<void> _select(String id) async {
-    await OrganizationContext.selectOrganization(id);
+    try {
+      await OrganizationContext.selectOrganization(id);
+    } on StateError {
+      await _load();
+      return;
+    }
     AccountService.revision.value++;
     TreasuryService.revision.value++;
     if (mounted) setState(() {});

@@ -9,9 +9,10 @@ import '../../tasks/services/task_service.dart';
 import '../../team/models/employee_model.dart';
 import '../../team/services/team_service.dart';
 import '../../treasury/models/transaction_model.dart';
-import '../../treasury/services/forecast_engine.dart';
 import '../../treasury/services/anomaly_engine.dart';
+import '../../treasury/services/forecast_engine.dart';
 import '../../treasury/services/treasury_service.dart';
+import '../models/organization_access_grant.dart';
 import 'organization_access_service.dart';
 import 'organization_context.dart';
 import 'organization_service.dart';
@@ -115,6 +116,7 @@ class EmployeeFinanceComparison {
 class EmployeeFinanceRow {
   final EmployeeModel employee;
   final EmployeeFinanceMetrics metrics;
+
   const EmployeeFinanceRow(this.employee, this.metrics);
 }
 
@@ -139,8 +141,41 @@ class EmployeeFinanceService {
   ) async {
     final requested = await _requestedIds(organizationId, view);
     if (TeamService.current == null) return requested;
-    final allowed = await OrganizationAccessService.visibleOrganizationIds();
-    return requested.intersection(allowed);
+    final financeAllowed = await OrganizationAccessService.organizationIdsFor(
+      OrganizationPermissions.viewFinance,
+    );
+    return requested.intersection(financeAllowed);
+  }
+
+  /// Personal team rows are more sensitive than aggregate finance. Each
+  /// effective organization is checked independently so a team-finance flag on
+  /// the selected parent cannot leak employee rows from descendants that are
+  /// visible only through a separate aggregate-finance grant.
+  static Future<Set<String>> _authorizedTeamIds(
+    String organizationId,
+    EmployeeFinanceView view,
+  ) async {
+    final aggregateIds = await _authorizedIds(organizationId, view);
+    if (TeamService.current == null) return aggregateIds;
+    final result = <String>{};
+    for (final id in aggregateIds) {
+      if (await OrganizationAccessService.canViewTeamFinance(id)) {
+        result.add(id);
+      }
+    }
+    return result;
+  }
+
+  static Future<Set<String>> _authorizedSelfIds() async {
+    final requested = await OrganizationContext.effectiveOrganizationIds();
+    if (TeamService.current == null) return requested;
+    final result = <String>{};
+    for (final id in requested) {
+      if (await OrganizationAccessService.canViewSelfFinance(id)) {
+        result.add(id);
+      }
+    }
+    return result;
   }
 
   static EmployeeFinanceMetrics _calculate({
@@ -203,8 +238,8 @@ class EmployeeFinanceService {
           transactionIds.contains(deal.transactionId)) {
         continue;
       }
-      income += deal.amount *
-          CurrencyService.rateToRub(deal.currency.toLowerCase());
+      income +=
+          deal.amount * CurrencyService.rateToRub(deal.currency.toLowerCase());
     }
 
     for (final task in tasks) {
@@ -255,14 +290,16 @@ class EmployeeFinanceService {
         previous: EmployeeFinanceMetrics.empty('', previousFrom, previousTo),
       );
     }
-    final orgId = OrganizationContext.currentOrganizationId;
-    if (!await OrganizationAccessService.canViewSelfFinance(orgId)) {
+
+    final ids = await _authorizedSelfIds();
+    if (ids.isEmpty) {
       return EmployeeFinanceComparison(
         current: EmployeeFinanceMetrics.empty(employee.id, currentFrom, now),
-        previous: EmployeeFinanceMetrics.empty(employee.id, previousFrom, previousTo),
+        previous:
+            EmployeeFinanceMetrics.empty(employee.id, previousFrom, previousTo),
       );
     }
-    final ids = await OrganizationContext.effectiveOrganizationIds();
+
     final all = (await TreasuryService().getAllTransactionsRaw())
         .where((t) => ids.contains(t.effectiveOrganizationId))
         .toList();
@@ -291,9 +328,6 @@ class EmployeeFinanceService {
   static Future<EmployeeFinanceMetrics> self({int periodDays = 30}) async =>
       (await selfComparison(periodDays: periodDays)).current;
 
-  /// Aggregate finance for the selected organization or authorized subtree.
-  /// This does not expose any employee attribution and therefore remains
-  /// separate from [teamBreakdown].
   static Future<OrganizationFinanceMetrics> organizationFinance({
     required String organizationId,
     EmployeeFinanceView view = EmployeeFinanceView.organization,
@@ -310,6 +344,7 @@ class EmployeeFinanceService {
         !await OrganizationAccessService.canUseSubtreeFinance(organizationId)) {
       return OrganizationFinanceMetrics.empty(from, now);
     }
+
     final ids = await _authorizedIds(organizationId, view);
     if (ids.isEmpty) return OrganizationFinanceMetrics.empty(from, now);
     var transactions = (await TreasuryService().getAllTransactionsRaw())
@@ -353,16 +388,13 @@ class EmployeeFinanceService {
     EmployeeFinanceView view = EmployeeFinanceView.organization,
     int periodDays = 30,
   }) async {
-    if (TeamService.current != null &&
-        !await OrganizationAccessService.canViewTeamFinance(organizationId)) {
-      return const [];
-    }
     if (view == EmployeeFinanceView.subtree &&
         !await OrganizationAccessService.canUseSubtreeFinance(organizationId)) {
       return const [];
     }
-    final ids = await _authorizedIds(organizationId, view);
+    final ids = await _authorizedTeamIds(organizationId, view);
     if (ids.isEmpty) return const [];
+
     final now = DateTime.now();
     final from = now.subtract(Duration(days: periodDays - 1));
     final all = (await TreasuryService().getAllTransactionsRaw())
@@ -374,7 +406,8 @@ class EmployeeFinanceService {
     final rows = <EmployeeFinanceRow>[];
     for (final employee in TeamService.all) {
       if (!employee.isOwner) {
-        final employeeOrgs = await OrganizationAccessService.visibleOrganizationIds(
+        final employeeOrgs =
+            await OrganizationAccessService.visibleOrganizationIds(
           employeeId: employee.id,
         );
         if (employeeOrgs.intersection(ids).isEmpty) continue;
@@ -398,7 +431,9 @@ class EmployeeFinanceService {
   static Future<ForecastResult> selfForecast({int days = 30}) async {
     final employee = TeamService.current;
     if (employee == null) return ForecastResult.empty();
-    final ids = await OrganizationContext.effectiveOrganizationIds();
+    final ids = await _authorizedSelfIds();
+    if (ids.isEmpty) return ForecastResult.empty();
+
     final allTransactions = await TreasuryService().getAllTransactionsRaw();
     final tx = allTransactions
         .where((t) =>
@@ -418,9 +453,8 @@ class EmployeeFinanceService {
       }
       final due = _day(deal.expectedCloseAt!);
       if (due.isAfter(end)) continue;
-      final effectiveDate = due.isAfter(today)
-          ? due
-          : today.add(const Duration(days: 1));
+      final effectiveDate =
+          due.isAfter(today) ? due : today.add(const Duration(days: 1));
       final probability =
           (deal.probability / 100.0).clamp(0.01, 0.99).toDouble();
       events.add(HorizonCashEvent(
