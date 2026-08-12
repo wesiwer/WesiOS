@@ -16,6 +16,7 @@ import '../organizations/services/organization_context.dart';
 import '../organizations/services/organization_service.dart';
 import '../organizations/widgets/organization_access_editor.dart';
 import '../organizations/widgets/organization_switcher.dart';
+import '../tasks/services/task_service.dart';
 import 'deleted_employees_screen.dart';
 import 'employee_editor_screen.dart';
 import 'models/employee_model.dart';
@@ -23,6 +24,7 @@ import 'models/team_permissions.dart';
 import 'services/contact_actions.dart';
 import 'services/employee_admin_service.dart';
 import 'services/team_service.dart';
+import 'services/team_workload_service.dart';
 import 'team_stats_screen.dart';
 import 'widgets/employee_notes_sheet.dart';
 
@@ -47,6 +49,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
   String? _selectedOrganizationId;
   String? _selectedPosition;
   _ContactSort _sort = _ContactSort.name;
+  List<TeamWorkloadAlert> _workloadAlerts = const [];
 
   bool get _ru => WesiLocale.isRussian;
   bool get _canManage =>
@@ -137,6 +140,21 @@ class _ContactsScreenState extends State<ContactsScreen> {
         }
       }
 
+      var workloadAlerts = const <TeamWorkloadAlert>[];
+      final viewer = TeamService.current ?? TeamService.owner;
+      if (viewer != null) {
+        try {
+          final taskOrgIds =
+              selected == null ? visibleOrgIds : <String>{selected};
+          final tasks = await TaskService().getForOrganizations(taskOrgIds);
+          workloadAlerts = TeamWorkloadService.alertsForViewer(
+            viewer: viewer,
+            employees: TeamService.all,
+            tasks: tasks,
+          );
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       setState(() {
         _organizations = organizations;
@@ -144,6 +162,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
         _manageableOrgIds = manageable;
         _selectedOrganizationId = selected;
         _contextEmployeeIds = contextEmployeeIds;
+        _workloadAlerts = workloadAlerts;
         _membersLoading = false;
       });
     } catch (_) {
@@ -624,6 +643,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
             _header(people.length),
             _searchField(),
             _filters(),
+            if (_workloadAlerts.isNotEmpty) _workloadAlertsBanner(),
             Expanded(
               child: _membersLoading
                   ? const Center(child: CircularProgressIndicator())
@@ -640,6 +660,73 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
     );
   }
+
+  Widget _workloadAlertsBanner() => Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: (_workloadAlerts.first.overloaded
+                  ? AppTheme.accentRed
+                  : AppTheme.accent)
+              .withOpacity(.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: (_workloadAlerts.first.overloaded
+                    ? AppTheme.accentRed
+                    : AppTheme.accent)
+                .withOpacity(.30),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              _workloadAlerts.first.overloaded
+                  ? Icons.warning_amber_rounded
+                  : Icons.hourglass_empty_rounded,
+              size: 18,
+              color: _workloadAlerts.first.overloaded
+                  ? AppTheme.accentRed
+                  : AppTheme.accent,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _ru ? 'Уведомления по нагрузке' : 'Workload alerts',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  for (final alert in _workloadAlerts.take(3))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        alert.message,
+                        style: TextStyle(
+                            fontSize: 11.5, color: AppTheme.textSecondary),
+                      ),
+                    ),
+                  if (_workloadAlerts.length > 3)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        '+${_workloadAlerts.length - 3}',
+                        style:
+                            TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _header(int count) => Padding(
         padding: EdgeInsets.fromLTRB(
