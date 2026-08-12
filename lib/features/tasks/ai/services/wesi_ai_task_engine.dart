@@ -52,7 +52,8 @@ class WesiAiTaskEngine {
       if (ranked.isEmpty) continue;
 
       final chosen = ranked.first;
-      final priority = _priorityFor(template, trigger.score, input.businessSignal);
+      final priority =
+          _priorityFor(template, trigger.score, input.businessSignal);
       final source = trigger.sourceTask;
       final fingerprint = [
         input.organizationId,
@@ -129,7 +130,8 @@ class WesiAiTaskEngine {
       }
     }
 
-    final text = _normalize('${task.title} ${task.description ?? ''} ${task.tags.join(' ')}');
+    final text = _normalize(
+        '${task.title} ${task.description ?? ''} ${task.tags.join(' ')}');
     AiTaskCategory? best;
     var bestScore = 0;
     for (final template in WesiAiTaskCatalog.all) {
@@ -152,7 +154,7 @@ class WesiAiTaskEngine {
   ) {
     if (template.organizationHints.isEmpty) return true;
     if (input.organizationId == 'org_wesi_beats' &&
-        template.organizationHints == WesiAiTaskCatalog.musicHints) {
+        template.organizationHints.any(WesiAiTaskCatalog.musicHints.contains)) {
       return true;
     }
     final descriptor = _normalize(
@@ -230,7 +232,8 @@ class WesiAiTaskEngine {
           return _TriggerNeed(
             needed: true,
             score: .84,
-            whyNow: 'Есть завершённый этап, после которого следующий шаг ещё не поставлен.',
+            whyNow:
+                'Есть завершённый этап, после которого следующий шаг ещё не поставлен.',
             evidence: [
               'Завершено: «${source.title}»',
               'Следующий этап ${template.category.ru.toLowerCase()} ещё не найден в задачах',
@@ -243,7 +246,8 @@ class WesiAiTaskEngine {
       case AiTaskTrigger.workloadGap:
         final lowLoadExists = input.employees.any((employee) {
           if (!input.eligibleEmployeeIds.contains(employee.id)) return false;
-          if (!input.canAssignToOthers && employee.id != input.currentEmployeeId) {
+          if (!input.canAssignToOthers &&
+              employee.id != input.currentEmployeeId) {
             return false;
           }
           return _workload(employee.id, tasks).openWeight <= 1.5;
@@ -254,7 +258,8 @@ class WesiAiTaskEngine {
         return _TriggerNeed(
           needed: true,
           score: .56,
-          whyNow: 'В команде есть свободная ёмкость, которую можно направить на полезное улучшение.',
+          whyNow:
+              'В команде есть свободная ёмкость, которую можно направить на полезное улучшение.',
           evidence: ['По этой категории давно не было активной работы'],
         );
 
@@ -262,9 +267,8 @@ class WesiAiTaskEngine {
       case AiTaskTrigger.cadence:
         if (gapDays < template.cadenceDays) return const _TriggerNeed.no();
         final ratio = gapDays / max(1, template.cadenceDays);
-        final score = (.50 + min(.42, (ratio - 1) * .28))
-            .clamp(0.0, 1.0)
-            .toDouble();
+        final score =
+            (.50 + min(.42, (ratio - 1) * .28)).clamp(0.0, 1.0).toDouble();
         final label = latest == null
             ? 'Таких задач ещё не было в истории организации'
             : 'Последняя похожая задача была $gapDays дн. назад';
@@ -315,10 +319,8 @@ class WesiAiTaskEngine {
           ? .65
           : (workload.done / workload.total).clamp(0.0, 1.0);
       final overduePenalty = min(.40, workload.overdue * .12);
-      final score = roleFit * .48 +
-          capacity * .34 +
-          health * .18 -
-          overduePenalty;
+      final score =
+          roleFit * .48 + capacity * .34 + health * .18 - overduePenalty;
       result.add(_RankedEmployee(employee, score, workload));
     }
     result.sort((a, b) {
@@ -386,7 +388,8 @@ class WesiAiTaskEngine {
         signal.pressureScore >= .70) {
       index++;
     }
-    return TaskPriority.values[index.clamp(0, TaskPriority.values.length - 1)];
+    return TaskPriority
+        .values[index.clamp(0, TaskPriority.values.length - 1).toInt()];
   }
 
   static AiForecastImpact _impactFor(
@@ -399,7 +402,7 @@ class WesiAiTaskEngine {
       index++;
     }
     return AiForecastImpact
-        .values[index.clamp(0, AiForecastImpact.values.length - 1)];
+        .values[index.clamp(0, AiForecastImpact.values.length - 1).toInt()];
   }
 
   static double _confidence(
@@ -457,15 +460,18 @@ class WesiAiTaskEngine {
   static List<String> _businessPressureEvidence(AiBusinessSignal signal) {
     final evidence = <String>[];
     if (signal.recentIncome <= 0) evidence.add('Доход за 30 дней: 0');
-    if (signal.recentNet <= 0) evidence.add('Чистый поток за 30 дней: не выше 0');
+    if (signal.recentNet <= 0)
+      evidence.add('Чистый поток за 30 дней: не выше 0');
     if (signal.incomeGrowth < -0.12) {
-      evidence.add('Изменение дохода к прошлым 30 дням: ${(signal.incomeGrowth * 100).round()}%');
+      evidence.add(
+          'Изменение дохода к прошлым 30 дням: ${(signal.incomeGrowth * 100).round()}%');
     }
     if (!signal.forecastInsufficient && signal.forecastTrendPerDay < 0) {
       evidence.add('Тренд Wesi Horizon направлен вниз');
     }
     if (signal.maximumCashRisk >= .25) {
-      evidence.add('Риск кассового разрыва: ${(signal.maximumCashRisk * 100).round()}%');
+      evidence.add(
+          'Риск кассового разрыва: ${(signal.maximumCashRisk * 100).round()}%');
     }
     if (signal.runwayDays != null && signal.runwayDays! <= 45) {
       evidence.add('Оценочный запас ликвидности: ${signal.runwayDays} дн.');

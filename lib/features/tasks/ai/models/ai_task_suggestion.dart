@@ -97,7 +97,8 @@ class AiBusinessSignal {
     this.forecastInsufficient = true,
   });
 
-  bool get salesPressure => financeAvailable &&
+  bool get salesPressure =>
+      financeAvailable &&
       (recentIncome <= 0 ||
           recentNet <= 0 ||
           incomeGrowth < -0.12 ||

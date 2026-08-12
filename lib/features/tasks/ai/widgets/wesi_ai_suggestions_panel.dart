@@ -19,8 +19,7 @@ class WesiAiSuggestionsPanel extends StatefulWidget {
   const WesiAiSuggestionsPanel({super.key, this.onTaskCreated});
 
   @override
-  State<WesiAiSuggestionsPanel> createState() =>
-      _WesiAiSuggestionsPanelState();
+  State<WesiAiSuggestionsPanel> createState() => _WesiAiSuggestionsPanelState();
 }
 
 class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
@@ -128,7 +127,8 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
     if (current == null) return;
     setState(() {
       _result = AiTaskAnalysisResult(
-        suggestions: current.suggestions.where((item) => item.id != id).toList(),
+        suggestions:
+            current.suggestions.where((item) => item.id != id).toList(),
         businessSignal: current.businessSignal,
         analyzedAt: current.analyzedAt,
       );
@@ -191,8 +191,8 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
                           _headerHint(),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style:
-                              TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
+                          style: TextStyle(
+                              color: AppTheme.textMuted, fontSize: 10.5),
                         ),
                       ],
                     ),
@@ -242,7 +242,8 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
                             color: AppTheme.textSecondary, fontSize: 11.5),
                       ),
                     ),
-                    TextButton(onPressed: _reload, child: const Text('Повторить')),
+                    TextButton(
+                        onPressed: _reload, child: const Text('Повторить')),
                   ],
                 ),
               )
@@ -283,7 +284,8 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
   }
 
   String _headerHint() {
-    if (_loading) return 'Анализирую задачи, загрузку команды и бизнес-сигналы…';
+    if (_loading)
+      return 'Анализирую задачи, загрузку команды и бизнес-сигналы…';
     final signal = _result?.businessSignal;
     if (signal?.salesPressure == true) {
       return 'Есть финансовый сигнал: приоритет получают действия, способные приблизить доход.';
@@ -418,9 +420,8 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
           color: (accent ? AppTheme.accent : AppTheme.surface).withOpacity(.55),
           borderRadius: BorderRadius.circular(20),
           border: Border.all(
-            color: accent
-                ? AppTheme.accent.withOpacity(.4)
-                : AppTheme.glassBorder,
+            color:
+                accent ? AppTheme.accent.withOpacity(.4) : AppTheme.glassBorder,
           ),
         ),
         child: Text(

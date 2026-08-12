@@ -83,7 +83,8 @@ void main() {
     ));
     final suggestion =
         result.firstWhere((item) => item.templateId == 'beat_create');
-    expect(suggestion.priority.index, greaterThanOrEqualTo(TaskPriority.high.index));
+    expect(suggestion.priority.index,
+        greaterThanOrEqualTo(TaskPriority.high.index));
     expect(suggestion.forecastImpact, AiForecastImpact.low);
   });
 
@@ -121,7 +122,8 @@ void main() {
         result.firstWhere((item) => item.templateId == 'beat_preview');
     expect(preview.assigneeId, designer.id);
     expect(preview.sourceTaskId, 'done-beat');
-    expect(preview.priority.index, greaterThanOrEqualTo(TaskPriority.high.index));
+    expect(
+        preview.priority.index, greaterThanOrEqualTo(TaskPriority.high.index));
   });
 
   test('zero income creates high-impact sales action', () {
@@ -145,8 +147,8 @@ void main() {
         result.firstWhere((item) => item.templateId == 'artist_outreach_20');
     expect(outreach.forecastImpact.index,
         greaterThanOrEqualTo(AiForecastImpact.high.index));
-    expect(outreach.priority.index,
-        greaterThanOrEqualTo(TaskPriority.high.index));
+    expect(
+        outreach.priority.index, greaterThanOrEqualTo(TaskPriority.high.index));
   });
 
   test('least loaded suitable employee is preferred', () {

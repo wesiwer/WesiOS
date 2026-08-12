@@ -22,8 +22,7 @@ class AiSuggestionEditDialog extends StatefulWidget {
       );
 
   @override
-  State<AiSuggestionEditDialog> createState() =>
-      _AiSuggestionEditDialogState();
+  State<AiSuggestionEditDialog> createState() => _AiSuggestionEditDialogState();
 }
 
 class _AiSuggestionEditDialogState extends State<AiSuggestionEditDialog> {
@@ -128,8 +127,8 @@ class _AiSuggestionEditDialogState extends State<AiSuggestionEditDialog> {
                   Expanded(
                     child: DropdownButtonFormField<AiForecastImpact>(
                       value: _impact,
-                      decoration:
-                          const InputDecoration(labelText: 'Влияние на прогноз'),
+                      decoration: const InputDecoration(
+                          labelText: 'Влияние на прогноз'),
                       items: AiForecastImpact.values
                           .map((impact) => DropdownMenuItem(
                                 value: impact,
@@ -179,7 +178,8 @@ class _AiSuggestionEditDialogState extends State<AiSuggestionEditDialog> {
                         onPressed: () => setState(() => _dueDate = null),
                         icon: const Icon(Icons.close_rounded),
                       ),
-                    TextButton(onPressed: _pickDate, child: const Text('Изменить')),
+                    TextButton(
+                        onPressed: _pickDate, child: const Text('Изменить')),
                   ],
                 ),
               ),

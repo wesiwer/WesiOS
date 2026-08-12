@@ -21,7 +21,8 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.production,
       trigger: AiTaskTrigger.cadence,
       title: 'Сделать новый бит',
-      description: 'Создать и довести до рабочего состояния новый бит для каталога.',
+      description:
+          'Создать и довести до рабочего состояния новый бит для каталога.',
       roleAliases: ['битмейкер', 'beatmaker', 'producer', 'продюсер'],
       taskKeywords: ['бит', 'beat', 'instrumental', 'инструментал'],
       organizationHints: musicHints,
@@ -37,9 +38,15 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.production,
       trigger: AiTaskTrigger.hygiene,
       title: 'Довести незавершённый бит до релизного состояния',
-      description: 'Выбрать перспективный незавершённый материал, закончить аранжировку и подготовить финальный экспорт.',
+      description:
+          'Выбрать перспективный незавершённый материал, закончить аранжировку и подготовить финальный экспорт.',
       roleAliases: ['битмейкер', 'beatmaker', 'producer', 'продюсер'],
-      taskKeywords: ['доделать бит', 'finish beat', 'аранжиров', 'finish instrumental'],
+      taskKeywords: [
+        'доделать бит',
+        'finish beat',
+        'аранжиров',
+        'finish instrumental'
+      ],
       organizationHints: musicHints,
       cadenceDays: 10,
       minRestDays: 1,
@@ -51,8 +58,16 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.quality,
       trigger: AiTaskTrigger.completionChain,
       title: 'Проверить качество готового бита',
-      description: 'Проверить уровни, клиппинг, начало/конец файла, теги и комплект экспортов перед публикацией.',
-      roleAliases: ['битмейкер', 'beatmaker', 'producer', 'продюсер', 'звукорежиссер', 'sound'],
+      description:
+          'Проверить уровни, клиппинг, начало/конец файла, теги и комплект экспортов перед публикацией.',
+      roleAliases: [
+        'битмейкер',
+        'beatmaker',
+        'producer',
+        'продюсер',
+        'звукорежиссер',
+        'sound'
+      ],
       taskKeywords: ['qc бит', 'проверить бит', 'quality beat', 'экспорт'],
       organizationHints: musicHints,
       cadenceDays: 4,
@@ -66,8 +81,16 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.design,
       trigger: AiTaskTrigger.completionChain,
       title: 'Сделать превью для готового бита',
-      description: 'Подготовить визуальное превью/обложку для нового бита в стиле бренда и нужных форматах.',
-      roleAliases: ['дизайнер', 'designer', 'graphic', 'art', 'motion', 'моушн'],
+      description:
+          'Подготовить визуальное превью/обложку для нового бита в стиле бренда и нужных форматах.',
+      roleAliases: [
+        'дизайнер',
+        'designer',
+        'graphic',
+        'art',
+        'motion',
+        'моушн'
+      ],
       taskKeywords: ['превью', 'preview', 'обложк', 'cover', 'визуал'],
       organizationHints: musicHints,
       cadenceDays: 3,
@@ -82,9 +105,23 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.operations,
       trigger: AiTaskTrigger.completionChain,
       title: 'Оформить карточку и метаданные бита',
-      description: 'Проверить название, BPM, тональность, теги, файлы лицензий и описание перед размещением.',
-      roleAliases: ['менеджер', 'manager', 'контент', 'content', 'битмейкер', 'beatmaker'],
-      taskKeywords: ['метадан', 'metadata', 'bpm', 'тональност', 'карточк бита'],
+      description:
+          'Проверить название, BPM, тональность, теги, файлы лицензий и описание перед размещением.',
+      roleAliases: [
+        'менеджер',
+        'manager',
+        'контент',
+        'content',
+        'битмейкер',
+        'beatmaker'
+      ],
+      taskKeywords: [
+        'метадан',
+        'metadata',
+        'bpm',
+        'тональност',
+        'карточк бита'
+      ],
       organizationHints: musicHints,
       cadenceDays: 4,
       effortPoints: .8,
@@ -96,9 +133,22 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.operations,
       trigger: AiTaskTrigger.completionChain,
       title: 'Опубликовать готовый бит',
-      description: 'Разместить подготовленный бит на используемых площадках, проверить ссылки и доступность файлов.',
-      roleAliases: ['менеджер', 'manager', 'контент', 'content', 'битмейкер', 'beatmaker'],
-      taskKeywords: ['опубликовать бит', 'upload beat', 'разместить бит', 'публикац бита'],
+      description:
+          'Разместить подготовленный бит на используемых площадках, проверить ссылки и доступность файлов.',
+      roleAliases: [
+        'менеджер',
+        'manager',
+        'контент',
+        'content',
+        'битмейкер',
+        'beatmaker'
+      ],
+      taskKeywords: [
+        'опубликовать бит',
+        'upload beat',
+        'разместить бит',
+        'публикац бита'
+      ],
       organizationHints: musicHints,
       cadenceDays: 4,
       effortPoints: 1,
@@ -110,9 +160,26 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.sales,
       trigger: AiTaskTrigger.businessPressure,
       title: 'Сделать 20 целевых рассылок артистам',
-      description: 'Собрать релевантных артистов, отправить персонализированные предложения с подходящими битами и зафиксировать ответы.',
-      roleAliases: ['sales', 'продаж', 'рассыл', 'outreach', 'a&r', 'ar', 'менеджер', 'manager'],
-      taskKeywords: ['рассыл', 'outreach', 'артист', 'artist', '20 сообщений', '20 рассылок'],
+      description:
+          'Собрать релевантных артистов, отправить персонализированные предложения с подходящими битами и зафиксировать ответы.',
+      roleAliases: [
+        'sales',
+        'продаж',
+        'рассыл',
+        'outreach',
+        'a&r',
+        'ar',
+        'менеджер',
+        'manager'
+      ],
+      taskKeywords: [
+        'рассыл',
+        'outreach',
+        'артист',
+        'artist',
+        '20 сообщений',
+        '20 рассылок'
+      ],
       organizationHints: musicHints,
       cadenceDays: 3,
       minRestDays: 1,
@@ -127,9 +194,16 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.sales,
       trigger: AiTaskTrigger.cadence,
       title: 'Сделать follow-up по прошлым рассылкам',
-      description: 'Вернуться к тёплым контактам, которые не ответили или отложили решение, и аккуратно продолжить диалог.',
+      description:
+          'Вернуться к тёплым контактам, которые не ответили или отложили решение, и аккуратно продолжить диалог.',
       roleAliases: ['sales', 'продаж', 'рассыл', 'outreach', 'a&r', 'менеджер'],
-      taskKeywords: ['follow-up', 'фоллоуап', 'повторн рассыл', 'дожим', 'follow up'],
+      taskKeywords: [
+        'follow-up',
+        'фоллоуап',
+        'повторн рассыл',
+        'дожим',
+        'follow up'
+      ],
       organizationHints: musicHints,
       cadenceDays: 5,
       effortPoints: 1.5,
@@ -140,9 +214,23 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.sales,
       trigger: AiTaskTrigger.hygiene,
       title: 'Собрать актуальный пакет битов для продаж',
-      description: 'Выбрать сильные позиции каталога под разные типы артистов и подготовить удобные ссылки/плейлисты для рассылки.',
-      roleAliases: ['sales', 'продаж', 'рассыл', 'outreach', 'a&r', 'менеджер', 'битмейкер'],
-      taskKeywords: ['пакет битов', 'pitch pack', 'плейлист битов', 'каталог для рассылки'],
+      description:
+          'Выбрать сильные позиции каталога под разные типы артистов и подготовить удобные ссылки/плейлисты для рассылки.',
+      roleAliases: [
+        'sales',
+        'продаж',
+        'рассыл',
+        'outreach',
+        'a&r',
+        'менеджер',
+        'битмейкер'
+      ],
+      taskKeywords: [
+        'пакет битов',
+        'pitch pack',
+        'плейлист битов',
+        'каталог для рассылки'
+      ],
       organizationHints: musicHints,
       cadenceDays: 14,
       effortPoints: 2,
@@ -153,8 +241,15 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.operations,
       trigger: AiTaskTrigger.hygiene,
       title: 'Провести ревизию каталога битов',
-      description: 'Проверить, какие биты готовы к продаже, где не хватает превью/файлов/метаданных и что стоит убрать или обновить.',
-      roleAliases: ['менеджер', 'manager', 'битмейкер', 'beatmaker', 'продюсер'],
+      description:
+          'Проверить, какие биты готовы к продаже, где не хватает превью/файлов/метаданных и что стоит убрать или обновить.',
+      roleAliases: [
+        'менеджер',
+        'manager',
+        'битмейкер',
+        'beatmaker',
+        'продюсер'
+      ],
       taskKeywords: ['ревизия каталога', 'catalog audit', 'каталог битов'],
       organizationHints: musicHints,
       cadenceDays: 21,
@@ -166,8 +261,17 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.content,
       trigger: AiTaskTrigger.cadence,
       title: 'Подготовить контент из свежих битов',
-      description: 'Сделать несколько коротких публикаций/роликов из актуальных битов и подготовить их к публикации.',
-      roleAliases: ['контент', 'content', 'smm', 'маркет', 'marketing', 'дизайнер', 'motion'],
+      description:
+          'Сделать несколько коротких публикаций/роликов из актуальных битов и подготовить их к публикации.',
+      roleAliases: [
+        'контент',
+        'content',
+        'smm',
+        'маркет',
+        'marketing',
+        'дизайнер',
+        'motion'
+      ],
       taskKeywords: ['контент', 'reels', 'shorts', 'клип', 'пост', 'ролик'],
       organizationHints: musicHints,
       cadenceDays: 5,
@@ -180,7 +284,8 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.sales,
       trigger: AiTaskTrigger.businessPressure,
       title: 'Собрать новую выборку целевых лидов',
-      description: 'Найти и квалифицировать потенциальных клиентов/партнёров для следующего цикла продаж.',
+      description:
+          'Найти и квалифицировать потенциальных клиентов/партнёров для следующего цикла продаж.',
       roleAliases: ['sales', 'продаж', 'менеджер', 'manager', 'business', 'bd'],
       taskKeywords: ['лид', 'lead', 'prospect', 'клиентская база'],
       cadenceDays: 7,
@@ -193,7 +298,8 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.sales,
       trigger: AiTaskTrigger.cadence,
       title: 'Разобрать и дожать тёплые лиды',
-      description: 'Проверить открытые диалоги и сделать следующий шаг по тем, где есть реальный шанс сделки.',
+      description:
+          'Проверить открытые диалоги и сделать следующий шаг по тем, где есть реальный шанс сделки.',
       roleAliases: ['sales', 'продаж', 'менеджер', 'manager', 'bd'],
       taskKeywords: ['тёплые лиды', 'pipeline', 'воронк', 'дожать лид'],
       cadenceDays: 4,
@@ -205,9 +311,22 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.customer,
       trigger: AiTaskTrigger.businessPressure,
       title: 'Вернуть неактивных клиентов',
-      description: 'Выбрать клиентов без недавних покупок/контакта, проверить контекст и отправить уместное предложение.',
-      roleAliases: ['sales', 'продаж', 'account', 'аккаунт', 'менеджер', 'manager'],
-      taskKeywords: ['реактивац', 'reactivat', 'старые клиенты', 'неактивные клиенты'],
+      description:
+          'Выбрать клиентов без недавних покупок/контакта, проверить контекст и отправить уместное предложение.',
+      roleAliases: [
+        'sales',
+        'продаж',
+        'account',
+        'аккаунт',
+        'менеджер',
+        'manager'
+      ],
+      taskKeywords: [
+        'реактивац',
+        'reactivat',
+        'старые клиенты',
+        'неактивные клиенты'
+      ],
       cadenceDays: 14,
       effortPoints: 2,
       forecastImpact: AiForecastImpact.high,
@@ -217,8 +336,16 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.sales,
       trigger: AiTaskTrigger.businessPressure,
       title: 'Пересмотреть оффер и сценарий продажи',
-      description: 'Проверить, где теряются ответы/сделки, и обновить оффер, аргументы или шаблон первого контакта.',
-      roleAliases: ['sales', 'продаж', 'маркет', 'marketing', 'manager', 'руковод'],
+      description:
+          'Проверить, где теряются ответы/сделки, и обновить оффер, аргументы или шаблон первого контакта.',
+      roleAliases: [
+        'sales',
+        'продаж',
+        'маркет',
+        'marketing',
+        'manager',
+        'руковод'
+      ],
       taskKeywords: ['оффер', 'offer', 'скрипт продаж', 'sales script'],
       cadenceDays: 21,
       effortPoints: 2,
@@ -229,9 +356,22 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.marketing,
       trigger: AiTaskTrigger.cadence,
       title: 'Собрать маркетинговый план на неделю',
-      description: 'Определить основные публикации, кампании, сообщения и измеримые цели на ближайшие 7 дней.',
-      roleAliases: ['маркет', 'marketing', 'smm', 'контент', 'content', 'manager'],
-      taskKeywords: ['маркетинговый план', 'marketing plan', 'контент план', 'план на неделю'],
+      description:
+          'Определить основные публикации, кампании, сообщения и измеримые цели на ближайшие 7 дней.',
+      roleAliases: [
+        'маркет',
+        'marketing',
+        'smm',
+        'контент',
+        'content',
+        'manager'
+      ],
+      taskKeywords: [
+        'маркетинговый план',
+        'marketing plan',
+        'контент план',
+        'план на неделю'
+      ],
       cadenceDays: 7,
       effortPoints: 1.5,
       forecastImpact: AiForecastImpact.medium,
@@ -241,9 +381,15 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.marketing,
       trigger: AiTaskTrigger.hygiene,
       title: 'Разобрать эффективность маркетинга',
-      description: 'Проверить, какие каналы и материалы дают результат, а какие потребляют время без отдачи.',
+      description:
+          'Проверить, какие каналы и материалы дают результат, а какие потребляют время без отдачи.',
       roleAliases: ['маркет', 'marketing', 'smm', 'аналит', 'manager'],
-      taskKeywords: ['эффективность маркетинга', 'campaign review', 'аналитика рекламы', 'маркетинг аналит'],
+      taskKeywords: [
+        'эффективность маркетинга',
+        'campaign review',
+        'аналитика рекламы',
+        'маркетинг аналит'
+      ],
       cadenceDays: 14,
       effortPoints: 2,
       forecastImpact: AiForecastImpact.high,
@@ -253,8 +399,16 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.content,
       trigger: AiTaskTrigger.cadence,
       title: 'Подготовить пакет контента',
-      description: 'Сделать запас контента на несколько публикаций, чтобы не работать в режиме ежедневного аврала.',
-      roleAliases: ['контент', 'content', 'smm', 'копирайт', 'дизайнер', 'marketing'],
+      description:
+          'Сделать запас контента на несколько публикаций, чтобы не работать в режиме ежедневного аврала.',
+      roleAliases: [
+        'контент',
+        'content',
+        'smm',
+        'копирайт',
+        'дизайнер',
+        'marketing'
+      ],
       taskKeywords: ['пакет контента', 'content batch', 'контент пачк'],
       cadenceDays: 7,
       minRestDays: 1,
@@ -266,9 +420,22 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.customer,
       trigger: AiTaskTrigger.cadence,
       title: 'Проверить незакрытые вопросы клиентов',
-      description: 'Просмотреть активные клиентские диалоги и закрыть зависшие ответы, обещания и следующие шаги.',
-      roleAliases: ['support', 'поддерж', 'account', 'аккаунт', 'менеджер', 'sales'],
-      taskKeywords: ['клиентские вопросы', 'customer followup', 'поддержка', 'ответить клиент'],
+      description:
+          'Просмотреть активные клиентские диалоги и закрыть зависшие ответы, обещания и следующие шаги.',
+      roleAliases: [
+        'support',
+        'поддерж',
+        'account',
+        'аккаунт',
+        'менеджер',
+        'sales'
+      ],
+      taskKeywords: [
+        'клиентские вопросы',
+        'customer followup',
+        'поддержка',
+        'ответить клиент'
+      ],
       cadenceDays: 3,
       effortPoints: 1.5,
       forecastImpact: AiForecastImpact.medium,
@@ -278,9 +445,22 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.finance,
       trigger: AiTaskTrigger.businessPressure,
       title: 'Проверить ожидаемые оплаты и дебиторку',
-      description: 'Проверить, какие оплаты должны прийти, и сделать необходимые напоминания по просроченным обязательствам.',
-      roleAliases: ['финанс', 'finance', 'бухгалтер', 'accountant', 'manager', 'руковод'],
-      taskKeywords: ['дебитор', 'receivable', 'ожидаемые оплаты', 'просроченные оплаты'],
+      description:
+          'Проверить, какие оплаты должны прийти, и сделать необходимые напоминания по просроченным обязательствам.',
+      roleAliases: [
+        'финанс',
+        'finance',
+        'бухгалтер',
+        'accountant',
+        'manager',
+        'руковод'
+      ],
+      taskKeywords: [
+        'дебитор',
+        'receivable',
+        'ожидаемые оплаты',
+        'просроченные оплаты'
+      ],
       cadenceDays: 7,
       effortPoints: 1.5,
       basePriority: TaskPriority.high,
@@ -291,9 +471,22 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.finance,
       trigger: AiTaskTrigger.businessPressure,
       title: 'Проверить расходы и найти безопасную экономию',
-      description: 'Разобрать заметные статьи расходов и найти сокращения, которые не ломают производство и продажи.',
-      roleAliases: ['финанс', 'finance', 'бухгалтер', 'accountant', 'manager', 'руковод'],
-      taskKeywords: ['аудит расходов', 'cost review', 'сократить расходы', 'экономия'],
+      description:
+          'Разобрать заметные статьи расходов и найти сокращения, которые не ломают производство и продажи.',
+      roleAliases: [
+        'финанс',
+        'finance',
+        'бухгалтер',
+        'accountant',
+        'manager',
+        'руковод'
+      ],
+      taskKeywords: [
+        'аудит расходов',
+        'cost review',
+        'сократить расходы',
+        'экономия'
+      ],
       cadenceDays: 14,
       effortPoints: 2,
       basePriority: TaskPriority.high,
@@ -304,9 +497,22 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.finance,
       trigger: AiTaskTrigger.hygiene,
       title: 'Разобрать финансовый прогноз и риски',
-      description: 'Проверить прогноз, запас ликвидности и ближайшие риски; определить конкретные действия по наиболее опасным точкам.',
-      roleAliases: ['финанс', 'finance', 'manager', 'руковод', 'founder', 'владелец'],
-      taskKeywords: ['финансовый прогноз', 'forecast review', 'ликвидност', 'cash risk'],
+      description:
+          'Проверить прогноз, запас ликвидности и ближайшие риски; определить конкретные действия по наиболее опасным точкам.',
+      roleAliases: [
+        'финанс',
+        'finance',
+        'manager',
+        'руковод',
+        'founder',
+        'владелец'
+      ],
+      taskKeywords: [
+        'финансовый прогноз',
+        'forecast review',
+        'ликвидност',
+        'cash risk'
+      ],
       cadenceDays: 10,
       effortPoints: 1.5,
       forecastImpact: AiForecastImpact.critical,
@@ -316,9 +522,21 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.operations,
       trigger: AiTaskTrigger.workloadGap,
       title: 'Разобрать операционный хвост задач',
-      description: 'Выбрать несколько небольших накопившихся задач и закрыть их одним блоком, не создавая новую очередь.',
-      roleAliases: ['operations', 'операц', 'manager', 'менеджер', 'assistant', 'ассистент'],
-      taskKeywords: ['операционный хвост', 'backlog cleanup', 'разобрать хвост'],
+      description:
+          'Выбрать несколько небольших накопившихся задач и закрыть их одним блоком, не создавая новую очередь.',
+      roleAliases: [
+        'operations',
+        'операц',
+        'manager',
+        'менеджер',
+        'assistant',
+        'ассистент'
+      ],
+      taskKeywords: [
+        'операционный хвост',
+        'backlog cleanup',
+        'разобрать хвост'
+      ],
       cadenceDays: 10,
       effortPoints: 2,
       forecastImpact: AiForecastImpact.low,
@@ -328,7 +546,8 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.operations,
       trigger: AiTaskTrigger.hygiene,
       title: 'Документировать повторяющийся процесс',
-      description: 'Выбрать часто повторяемую работу и зафиксировать понятный порядок действий, чтобы снизить ошибки и зависимость от памяти.',
+      description:
+          'Выбрать часто повторяемую работу и зафиксировать понятный порядок действий, чтобы снизить ошибки и зависимость от памяти.',
       roleAliases: ['operations', 'операц', 'manager', 'руковод', 'assistant'],
       taskKeywords: ['регламент', 'процесс', 'process doc', 'инструкция'],
       cadenceDays: 30,
@@ -340,9 +559,22 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.operations,
       trigger: AiTaskTrigger.cadence,
       title: 'Провести короткий разбор KPI и узких мест',
-      description: 'Сопоставить текущую загрузку, просрочки и бизнес-результаты; выбрать 1–3 главных узких места на следующий цикл.',
-      roleAliases: ['руковод', 'manager', 'lead', 'head', 'founder', 'владелец'],
-      taskKeywords: ['kpi', 'узкие места', 'разбор показателей', 'management review'],
+      description:
+          'Сопоставить текущую загрузку, просрочки и бизнес-результаты; выбрать 1–3 главных узких места на следующий цикл.',
+      roleAliases: [
+        'руковод',
+        'manager',
+        'lead',
+        'head',
+        'founder',
+        'владелец'
+      ],
+      taskKeywords: [
+        'kpi',
+        'узкие места',
+        'разбор показателей',
+        'management review'
+      ],
       cadenceDays: 7,
       effortPoints: 1.5,
       forecastImpact: AiForecastImpact.high,
@@ -352,10 +584,25 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.quality,
       trigger: AiTaskTrigger.cadence,
       title: 'Провести регрессионную проверку ключевого продукта',
-      description: 'Проверить основные пользовательские сценарии и зафиксировать найденные дефекты до следующего релиза.',
-      roleAliases: ['qa', 'test', 'тестиров', 'quality', 'разработ', 'developer'],
+      description:
+          'Проверить основные пользовательские сценарии и зафиксировать найденные дефекты до следующего релиза.',
+      roleAliases: [
+        'qa',
+        'test',
+        'тестиров',
+        'quality',
+        'разработ',
+        'developer'
+      ],
       taskKeywords: ['регресс', 'regression', 'qa', 'тестирование'],
-      organizationHints: ['software', 'app', 'прилож', 'разработ', 'it', 'tech'],
+      organizationHints: [
+        'software',
+        'app',
+        'прилож',
+        'разработ',
+        'it',
+        'tech'
+      ],
       cadenceDays: 10,
       effortPoints: 3,
       forecastImpact: AiForecastImpact.medium,
@@ -365,9 +612,22 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.product,
       trigger: AiTaskTrigger.hygiene,
       title: 'Разобрать обратную связь по продукту',
-      description: 'Собрать повторяющиеся жалобы и запросы пользователей, отделить симптомы от причин и предложить приоритеты.',
-      roleAliases: ['product', 'продукт', 'manager', 'руковод', 'support', 'аналит'],
-      taskKeywords: ['обратная связь', 'feedback review', 'отзывы', 'запросы пользователей'],
+      description:
+          'Собрать повторяющиеся жалобы и запросы пользователей, отделить симптомы от причин и предложить приоритеты.',
+      roleAliases: [
+        'product',
+        'продукт',
+        'manager',
+        'руковод',
+        'support',
+        'аналит'
+      ],
+      taskKeywords: [
+        'обратная связь',
+        'feedback review',
+        'отзывы',
+        'запросы пользователей'
+      ],
       organizationHints: ['software', 'app', 'прилож', 'product', 'сервис'],
       cadenceDays: 14,
       effortPoints: 2,
@@ -378,8 +638,16 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.technology,
       trigger: AiTaskTrigger.hygiene,
       title: 'Проверить резервное копирование и восстановление',
-      description: 'Убедиться, что критичные данные действительно резервируются и понятен путь восстановления при сбое.',
-      roleAliases: ['devops', 'sysadmin', 'админ', 'developer', 'разработ', 'it'],
+      description:
+          'Убедиться, что критичные данные действительно резервируются и понятен путь восстановления при сбое.',
+      roleAliases: [
+        'devops',
+        'sysadmin',
+        'админ',
+        'developer',
+        'разработ',
+        'it'
+      ],
       taskKeywords: ['backup', 'резервн коп', 'восстановлен', 'recovery'],
       organizationHints: ['software', 'app', 'it', 'tech', 'сервис'],
       cadenceDays: 30,
@@ -391,9 +659,23 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.technology,
       trigger: AiTaskTrigger.hygiene,
       title: 'Провести ревизию доступов',
-      description: 'Проверить критичные доступы, лишние права и актуальность учётных записей без изменения доступа без подтверждения.',
-      roleAliases: ['devops', 'sysadmin', 'админ', 'security', 'безопас', 'it', 'manager'],
-      taskKeywords: ['ревизия доступов', 'access review', 'permissions audit', 'права доступа'],
+      description:
+          'Проверить критичные доступы, лишние права и актуальность учётных записей без изменения доступа без подтверждения.',
+      roleAliases: [
+        'devops',
+        'sysadmin',
+        'админ',
+        'security',
+        'безопас',
+        'it',
+        'manager'
+      ],
+      taskKeywords: [
+        'ревизия доступов',
+        'access review',
+        'permissions audit',
+        'права доступа'
+      ],
       cadenceDays: 30,
       effortPoints: 1.5,
       forecastImpact: AiForecastImpact.medium,
@@ -403,8 +685,16 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.marketing,
       trigger: AiTaskTrigger.businessPressure,
       title: 'Проверить путь клиента до заявки/покупки',
-      description: 'Пройти путь клиента от первого контакта до целевого действия и найти очевидные точки потери конверсии.',
-      roleAliases: ['маркет', 'marketing', 'product', 'продукт', 'sales', 'manager'],
+      description:
+          'Пройти путь клиента от первого контакта до целевого действия и найти очевидные точки потери конверсии.',
+      roleAliases: [
+        'маркет',
+        'marketing',
+        'product',
+        'продукт',
+        'sales',
+        'manager'
+      ],
       taskKeywords: ['конверси', 'conversion', 'воронк', 'путь клиента'],
       cadenceDays: 21,
       effortPoints: 2.5,
@@ -415,8 +705,16 @@ class WesiAiTaskCatalog {
       category: AiTaskCategory.operations,
       trigger: AiTaskTrigger.workloadGap,
       title: 'Закрыть полезную задачу из зоны своей ответственности',
-      description: 'Использовать свободное окно на небольшое улучшение, которое уменьшит будущую ручную работу или накопленный хвост.',
-      roleAliases: ['manager', 'менеджер', 'operations', 'операц', 'assistant', 'ассистент'],
+      description:
+          'Использовать свободное окно на небольшое улучшение, которое уменьшит будущую ручную работу или накопленный хвост.',
+      roleAliases: [
+        'manager',
+        'менеджер',
+        'operations',
+        'операц',
+        'assistant',
+        'ассистент'
+      ],
       taskKeywords: ['улучшение процесса', 'полезная задача', 'свободное окно'],
       cadenceDays: 14,
       minRestDays: 1,

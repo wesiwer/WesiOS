@@ -1,7 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../../organizations/models/organization_access_grant.dart';
-import '../../../organizations/models/organization_model.dart';
 import '../../../organizations/services/organization_access_service.dart';
 import '../../../organizations/services/organization_context.dart';
 import '../../../organizations/services/organization_service.dart';
@@ -133,7 +132,8 @@ class WesiAiTaskService {
           break;
         }
         if (grant.includeSubtree &&
-            await OrganizationService.isDescendant(orgId, grant.organizationId)) {
+            await OrganizationService.isDescendant(
+                orgId, grant.organizationId)) {
           result.add(employee.id);
           break;
         }
