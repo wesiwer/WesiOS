@@ -1,0 +1,75 @@
+name: Deploy WesiOS 0.19.20 once
+
+on:
+  push:
+    branches:
+      - agent/org-hierarchy-remediation-1
+    paths:
+      - '.github/workflows/deploy-release-0.19.20-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download already published release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          gh release download app-latest --repo "$GITHUB_REPOSITORY" \
+            --pattern 'wesios-windows-x64.zip' \
+            --pattern 'wesios-android.apk' \
+            --dir upload --clobber
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Deploy through PocketBase public directory
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          DIR='/opt/pocketbase/pb_public/artifacts'
+          $SSH "$USER@$HOST" "mkdir -p '$DIR/app' && test -w '$DIR/app'"
+          REMOTE_TMP="/tmp/wesios-upload-$GITHUB_RUN_ID"
+          $SSH "$USER@$HOST" "mkdir -p '$REMOTE_TMP'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            upload/wesios-windows-x64.zip upload/wesios-android.apk \
+            server/deploy-artifact.sh "$USER@$HOST:$REMOTE_TMP/"
+          NOTES='0.19.20: синхронизация сотрудников, Roadmap, CRM, профиль и Vault; усиление прав и безопасности'
+          NOTES_B64="$(printf '%s' "$NOTES" | base64 -w0)"
+          $SSH "$USER@$HOST" \
+            "WESI_ARTIFACTS='$DIR' bash '$REMOTE_TMP/deploy-artifact.sh' --version '0.19.20' --build '68' --from '$REMOTE_TMP' --notes-b64 '$NOTES_B64'"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE_TMP'"
+      - name: Verify public update
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 'https://api.wesi-inc.ru/artifacts/app/app-manifest.json' -o manifest.json
+          python3 - <<'PY'
+          import json
+          with open('manifest.json', encoding='utf-8') as f:
+              data=json.load(f)
+          assert data.get('version') == '0.19.20', data
+          assert int(data.get('build')) == 68, data
+          print('server release ok', data.get('version'), data.get('build'))
+          PY
