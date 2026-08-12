@@ -101,9 +101,7 @@ class EmployeeModel {
   }
 
   bool get hasContacts =>
-      phone.trim().isNotEmpty ||
-      email.trim().isNotEmpty ||
-      socials.isNotEmpty;
+      phone.trim().isNotEmpty || email.trim().isNotEmpty || socials.isNotEmpty;
 
   EmployeeModel copyWith({
     String? login,
@@ -148,14 +146,12 @@ class EmployeeModel {
         demoStats: demoStats ?? this.demoStats,
         photo: clearPhoto ? null : (photo ?? this.photo),
         skills: skills ?? this.skills,
-        weeklyCapacityPoints:
-            weeklyCapacityPoints ?? this.weeklyCapacityPoints,
+        weeklyCapacityPoints: weeklyCapacityPoints ?? this.weeklyCapacityPoints,
         workloadMinRatio: workloadMinRatio ?? this.workloadMinRatio,
         workloadMaxRatio: workloadMaxRatio ?? this.workloadMaxRatio,
         managerEmployeeId:
             clearManager ? null : (managerEmployeeId ?? this.managerEmployeeId),
-        workloadAlertTarget:
-            workloadAlertTarget ?? this.workloadAlertTarget,
+        workloadAlertTarget: workloadAlertTarget ?? this.workloadAlertTarget,
       );
 
   Map<String, dynamic> toPublicJson() => {

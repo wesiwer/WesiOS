@@ -51,7 +51,8 @@ void main() {
       );
 
   test('explicit skill can qualify employee for a matching task', () {
-    final designer = employee(skills: const ['Графический дизайн', 'Motion design']);
+    final designer =
+        employee(skills: const ['Графический дизайн', 'Motion design']);
     final score = TeamSkillService.fitForTask(
       designer,
       roleAliases: const ['designer', 'дизайнер', 'motion'],

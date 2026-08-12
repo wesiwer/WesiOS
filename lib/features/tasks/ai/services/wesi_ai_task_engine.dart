@@ -2,6 +2,8 @@ import 'dart:math';
 
 import '../../models/task_model.dart';
 import '../../../team/models/employee_model.dart';
+import '../../../team/services/team_skill_service.dart';
+import '../../../team/services/team_workload_service.dart';
 import '../models/ai_learning_profile.dart';
 import '../models/ai_task_suggestion.dart';
 import '../models/ai_task_template.dart';
@@ -330,16 +332,28 @@ class WesiAiTaskEngine {
         tasks,
         categoryOfTask,
       );
-      final roleFit = max(positionFit, historyFit);
+      final skillFit = TeamSkillService.fitForTask(
+        employee,
+        roleAliases: template.roleAliases,
+        taskKeywords: template.taskKeywords,
+      );
+      final roleFit = max(max(positionFit, historyFit), skillFit);
       if (roleFit <= 0) continue;
 
       final workload = _workload(employee.id, tasks);
+      final recommendedLoad = TeamWorkloadService.calculate(
+        employee,
+        tasks,
+        now: input.now,
+      );
       final adaptiveCapacity = WesiAiAdaptivePolicy.capacityFor(
         employee.id,
         tasks,
         input.now,
       );
-      if (workload.openWeight >= 7 || workload.overdue >= 4) continue;
+      if (recommendedLoad.overloaded || workload.overdue >= 4) {
+        if (template.effortPoints >= 1.5) continue;
+      }
       if (adaptiveCapacity.fatigueRisk && template.effortPoints >= 2.5) {
         continue;
       }
@@ -358,14 +372,15 @@ class WesiAiTaskEngine {
         if (rest < template.minRestDays) continue;
       }
 
-      final capacity = (1 - workload.openWeight / 7).clamp(0.0, 1.0);
+      final capacity = (1 - recommendedLoad.ratio).clamp(0.0, 1.0).toDouble();
       final reliability = adaptiveCapacity.reliability;
-      final underloadBoost = adaptiveCapacity.underutilized ? .10 : 0.0;
+      final underloadBoost = recommendedLoad.underloaded ? .14 : 0.0;
       final fatiguePenalty =
           adaptiveCapacity.recentIntensity7 >= 4.5 ? .08 : 0.0;
       final overduePenalty = min(.40, workload.overdue * .12);
       final score = roleFit * .48 +
-          capacity * .28 +
+          skillFit * .10 +
+          capacity * .22 +
           reliability * .10 +
           underloadBoost +
           learning.assigneeBoost(employee.id) -
