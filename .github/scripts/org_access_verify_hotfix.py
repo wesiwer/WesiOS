@@ -23,4 +23,12 @@ c = re.sub(
     c,
 )
 contacts.write_text(c, encoding='utf-8')
+
+contract = Path('test/organization_ui_contract_test.dart')
+t = contract.read_text(encoding='utf-8')
+t = t.replace(
+    "expect(screen, contains('OrganizationContext.effectiveOrganizationIds'));",
+    "expect(screen, contains('OrganizationService.all'));",
+)
+contract.write_text(t, encoding='utf-8')
 print('pre-verify hotfix applied')
