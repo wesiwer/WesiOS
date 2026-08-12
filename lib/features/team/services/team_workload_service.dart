@@ -76,7 +76,7 @@ class TeamWorkloadService {
     var done = 0;
 
     for (final task in tasks) {
-      if (task.effectiveResponsibleEmployeeId != employee.id) continue;
+      if (!_assignedTo(task, employee)) continue;
       if (task.status == TaskStatus.done) {
         if (!task.createdAt.isBefore(weekStart)) {
           done++;
@@ -87,7 +87,7 @@ class TeamWorkloadService {
 
       active++;
       points += _statusWeight(task.status) * _priorityWeight(task.priority);
-      if (task.isOverdue) {
+      if (_isOverdueAt(task, clock)) {
         overdue++;
         points += .65;
       }
@@ -136,6 +136,22 @@ class TeamWorkloadService {
       return b.ratio.compareTo(a.ratio);
     });
     return result;
+  }
+
+  static bool _assignedTo(TaskModel task, EmployeeModel employee) {
+    final assignee = task.assignee?.trim().toLowerCase();
+    if (assignee == null || assignee.isEmpty) return false;
+    return assignee == employee.id.toLowerCase() ||
+        assignee == employee.login.toLowerCase() ||
+        assignee == employee.displayName.toLowerCase();
+  }
+
+  static bool _isOverdueAt(TaskModel task, DateTime clock) {
+    final due = task.dueDate;
+    if (due == null || task.status == TaskStatus.done) return false;
+    final deadline = DateTime(due.year, due.month, due.day);
+    final today = DateTime(clock.year, clock.month, clock.day);
+    return deadline.isBefore(today);
   }
 
   static bool _canReceive(EmployeeModel viewer, EmployeeModel employee) {
