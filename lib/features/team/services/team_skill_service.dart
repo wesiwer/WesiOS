@@ -1,4 +1,8 @@
+import 'dart:math';
+
 import 'package:hive/hive.dart';
+
+import '../models/employee_model.dart';
 
 class TeamSkillService {
   TeamSkillService._();
@@ -62,18 +66,57 @@ class TeamSkillService {
     final value = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (value.length < 2) return null;
     await ensureOpen();
-    final existing = all.where((item) =>
-        item.toLowerCase() == value.toLowerCase()).firstOrNull;
+    final existing = all
+        .where((item) => item.toLowerCase() == value.toLowerCase())
+        .firstOrNull;
     if (existing != null) return existing;
     await Hive.box<dynamic>(boxName).put(_key(value), value);
     return value;
   }
 
-  static String _key(String value) => value
+  /// Returns a bounded compatibility score between an employee's explicit
+  /// skills and the task's role aliases / keywords. Explicit skills are a
+  /// strong signal, but historical success may still override them in Wesi AI.
+  static double fitForTask(
+    EmployeeModel employee, {
+    required List<String> roleAliases,
+    required List<String> taskKeywords,
+  }) {
+    if (employee.skills.isEmpty) return 0;
+    final needles = <String>{
+      ...roleAliases.map(_normalize),
+      ...taskKeywords.map(_normalize),
+    }..removeWhere((value) => value.isEmpty);
+    if (needles.isEmpty) return 0;
+
+    var best = 0.0;
+    for (final rawSkill in employee.skills) {
+      final skill = _normalize(rawSkill);
+      if (skill.isEmpty) continue;
+      for (final needle in needles) {
+        if (skill == needle) return 1;
+        if (skill.contains(needle) || needle.contains(skill)) {
+          best = max(best, .92);
+          continue;
+        }
+        final skillParts = skill.split(' ').where((p) => p.length >= 3).toSet();
+        final needleParts =
+            needle.split(' ').where((p) => p.length >= 3).toSet();
+        if (skillParts.intersection(needleParts).isNotEmpty) {
+          best = max(best, .82);
+        }
+      }
+    }
+    return best;
+  }
+
+  static String _key(String value) => _normalize(value).replaceAll(' ', '_');
+
+  static String _normalize(String value) => value
       .toLowerCase()
       .replaceAll('ё', 'е')
-      .replaceAll(RegExp(r'[^a-zа-я0-9]+'), '_')
-      .replaceAll(RegExp(r'^_+|_+$'), '');
+      .replaceAll(RegExp(r'[^a-zа-я0-9]+'), ' ')
+      .trim();
 }
 
 extension _FirstOrNull<T> on Iterable<T> {
