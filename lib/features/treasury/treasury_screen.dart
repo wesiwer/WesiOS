@@ -7,11 +7,13 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/widgets/currency_picker.dart';
 import '../../core/services/exchange_rate_service.dart';
+import '../organizations/services/organization_context.dart';
+import '../organizations/widgets/organization_switcher.dart';
+import '../organizations/widgets/subtree_finance_breakdown.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 import 'widgets/accounts_bar.dart';
 import 'services/account_service.dart';
-import 'models/account_model.dart';
 import 'widgets/add_transaction_dialog.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 
@@ -41,10 +43,24 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   @override
   void initState() {
     super.initState();
+    OrganizationContext.revision.addListener(_onOrganizationContextChanged);
+    _loadData();
+  }
+
+  @override
+  void dispose() {
+    OrganizationContext.revision.removeListener(_onOrganizationContextChanged);
+    super.dispose();
+  }
+
+  void _onOrganizationContextChanged() {
+    _accountId = AccountService.selectedId;
     _loadData();
   }
 
   Future<void> _loadData() async {
+    if (mounted) setState(() => _isLoading = true);
+    await OrganizationContext.initialize();
     final txs = await _service.getAllTransactions();
     final anomalies = await _service.detectAnomalies();
     await AccountService.ensureMain();
@@ -53,6 +69,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       _transactions = txs;
       _anomalies = anomalies;
       _currency = CurrencyService.current;
+      _accountId = AccountService.selectedId;
       _isLoading = false;
     });
     await _recalc();
@@ -60,9 +77,16 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
   Future<void> _recalc() async {
     final visible = _visible;
+    // In subtree aggregate mode, internal organization legs remain visible in
+    // operation history but must not inflate gross income/expense KPIs.
+    final forTotals = OrganizationContext.scope == OrganizationScope.subtree &&
+            _accountId == null
+        ? TreasuryService.eliminateInternalTransfers(visible)
+        : visible;
     var income = 0.0;
     var expense = 0.0;
-    for (final t in visible) {
+    for (final t in forTotals) {
+      if (t.isRecurring) continue;
       if (t.type == TransactionType.income) {
         income += t.amount;
       } else {
@@ -80,7 +104,11 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
     if (!mounted) return;
     setState(() {
-      _balance = opening + income - expense;
+      _balance = opening +
+          visible.where((t) => !t.isRecurring).fold<double>(
+              0,
+              (sum, t) => sum +
+                  (t.type == TransactionType.income ? t.amount : -t.amount));
       _breakdown = {
         'income': income,
         'expense': expense,
@@ -108,17 +136,26 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       builder: (context) => AddTransactionDialog(type: type, symbol: _sym),
     );
     if (result != null) {
+      final main = await AccountService.ensureMain();
+      final reportingAmount = result['amount'] as double;
       final tx = TransactionModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        title: result['title'],
-        amount: result['amount'],
+        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        title: result['title'] as String,
+        amount: reportingAmount,
         type: type,
         date: result['date'] as DateTime? ?? DateTime.now(),
-        category: result['category'],
-        description: result['description'],
-        isRecurring: result['isRecurring'] ?? false,
-        recurringPeriod: result['recurringPeriod'],
-        accountId: _accountId ?? AccountModel.mainId,
+        category: result['category'] as String?,
+        description: result['description'] as String?,
+        isRecurring: result['isRecurring'] as bool? ?? false,
+        recurringPeriod: result['recurringPeriod'] as RecurringPeriod?,
+        accountId: _accountId ?? main.id,
+        organizationId: OrganizationContext.currentOrganizationId,
+        ownerEmployeeId: result['ownerEmployeeId'] as String?,
+        originalAmount: CurrencyService.fromRub(reportingAmount),
+        originalCurrency: CurrencyService.current.toUpperCase(),
+        fxRateToReporting: CurrencyService.rateToRub(CurrencyService.current),
+        fxRateAt: result['date'] as DateTime? ?? DateTime.now(),
+        fxSource: 'CurrencyService',
       );
       await _service.addTransaction(tx);
       await _loadData();
@@ -126,8 +163,14 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   }
 
   Future<void> _deleteTx(String id) async {
-    await _service.deleteTransaction(id);
-    await _loadData();
+    try {
+      await _service.deleteTransaction(id);
+      await _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
   }
 
   @override
@@ -151,6 +194,20 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         backgroundColor: AppTheme.background,
         title: WesiTitle(WesiLocale.get('wesi_treasury_title'), size: 18),
         actions: [
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: OrganizationSwitcher(compact: true)),
+          ),
+          IconButton(
+            tooltip: WesiLocale.isRussian ? 'Мои финансы' : 'My finance',
+            onPressed: () => Navigator.pushNamed(context, '/my-finance'),
+            icon: const Icon(Icons.person_pin_circle_outlined),
+          ),
+          IconButton(
+            tooltip: WesiLocale.isRussian ? 'Организации' : 'Organizations',
+            onPressed: () => Navigator.pushNamed(context, '/organizations'),
+            icon: const Icon(Icons.account_tree_outlined),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 140),
             child: Center(
@@ -188,6 +245,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           ),
           const SizedBox(height: 16),
           _balanceCard(),
+          if (OrganizationContext.scope == OrganizationScope.subtree) ...[
+            const SizedBox(height: 16),
+            const SubtreeFinanceBreakdown(),
+          ],
           const SizedBox(height: 20),
           Row(
             children: [
@@ -216,7 +277,32 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
+          HoverButton(
+            onTap: () => Navigator.pushNamed(context, '/organizations/transfer'),
+            padding: const EdgeInsets.all(18),
+            backgroundColor: AppTheme.surface,
+            child: Row(
+              children: [
+                Icon(Icons.swap_horiz_rounded, color: AppTheme.accent),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    WesiLocale.isRussian
+                        ? 'Межорганизационный перевод'
+                        : 'Inter-organization transfer',
+                    style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: AppTheme.textPrimary),
+                  ),
+                ),
+                Icon(Icons.arrow_forward_ios,
+                    size: 16, color: AppTheme.textMuted),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
           HoverButton(
             onTap: () => Navigator.pushNamed(context, '/treasury/forecast'),
             padding: const EdgeInsets.all(20),
@@ -307,8 +393,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(WesiLocale.get('current_balance'),
-              style: TextStyle(
-                  fontSize: 13, color: AppTheme.textSecondary)),
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
           const SizedBox(height: 12),
           Text(
             '$_sym${shown.toStringAsFixed(2)}',
@@ -382,12 +467,10 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       builder: (context, _, __) {
         final rate = ExchangeRateService.currentRateLabel;
         if (rate == null) return const SizedBox.shrink();
-
         final date = ExchangeRateService.rateDateLabel;
         final prefix = ExchangeRateService.usingFallback
             ? WesiLocale.get('rate_fallback')
             : '${WesiLocale.get('rate_cbr_on')} ${date ?? ''}'.trim();
-
         return Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Text(
@@ -415,8 +498,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           Icon(icon, color: color, size: 28),
           const SizedBox(height: 8),
           Text(label,
-              style: TextStyle(
-                  fontSize: 12, color: AppTheme.textSecondary)),
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         ],
       ),
     );
@@ -442,11 +524,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(tx.title,
-                    style: TextStyle(
-                        fontSize: 14, color: AppTheme.textPrimary)),
+                    style: TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
                 Text(tx.category ?? WesiLocale.get('uncategorized'),
-                    style: TextStyle(
-                        fontSize: 11, color: AppTheme.textMuted)),
+                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
               ],
             ),
           ),
@@ -460,8 +540,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           const SizedBox(width: 8),
           GestureDetector(
             onTap: () => _deleteTx(tx.id),
-            child: Icon(Icons.delete_outline,
-                size: 18, color: AppTheme.textMuted),
+            child:
+                Icon(Icons.delete_outline, size: 18, color: AppTheme.textMuted),
           ),
         ],
       ),

@@ -9,14 +9,26 @@ import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
+import '../organizations/models/organization_access_grant.dart';
+import '../organizations/models/organization_model.dart';
+import '../organizations/services/organization_access_service.dart';
+import '../organizations/services/organization_context.dart';
+import '../organizations/services/organization_service.dart';
+import '../organizations/widgets/organization_access_editor.dart';
+import '../organizations/widgets/organization_switcher.dart';
+import '../tasks/services/task_service.dart';
 import 'deleted_employees_screen.dart';
 import 'employee_editor_screen.dart';
 import 'models/employee_model.dart';
+import 'models/team_permissions.dart';
 import 'services/contact_actions.dart';
 import 'services/employee_admin_service.dart';
 import 'services/team_service.dart';
+import 'services/team_workload_service.dart';
 import 'team_stats_screen.dart';
 import 'widgets/employee_notes_sheet.dart';
+
+enum _ContactSort { name, position, organization }
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -29,17 +41,36 @@ class _ContactsScreenState extends State<ContactsScreen> {
   String _search = '';
   final Set<String> _activationBusy = <String>{};
   Timer? _activationTicker;
+  Set<String> _contextEmployeeIds = const <String>{};
+  bool _membersLoading = true;
+  List<OrganizationModel> _organizations = const <OrganizationModel>[];
+  Map<String, Set<String>> _employeeOrgIds = const <String, Set<String>>{};
+  Set<String> _manageableOrgIds = const <String>{};
+  String? _selectedOrganizationId;
+  String? _selectedPosition;
+  _ContactSort _sort = _ContactSort.name;
+  List<TeamWorkloadAlert> _workloadAlerts = const [];
 
   bool get _ru => WesiLocale.isRussian;
-  bool get _canManage => TeamService.currentPermissions.canManageTeam;
+  bool get _canManage =>
+      _manageableOrgIds.isNotEmpty &&
+      (_selectedOrganizationId == null ||
+          _manageableOrgIds.contains(_selectedOrganizationId));
   bool get _canSeeNotes => TeamService.currentPermissions.canSeeNotes;
   bool get _ownerOnly => TeamService.isOwnerSession;
+  bool get _localFullAccess => TeamService.current == null || _ownerOnly;
 
   @override
   void initState() {
     super.initState();
     TeamService.revision.addListener(_refresh);
+    OrganizationContext.revision.addListener(_refresh);
     TeamService.ensureOwner();
+    if (_localFullAccess) {
+      _contextEmployeeIds = TeamService.all.map((e) => e.id).toSet();
+      _membersLoading = false;
+    }
+    _loadContextMembers();
     _activationTicker = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) setState(() {});
     });
@@ -49,28 +80,271 @@ class _ContactsScreenState extends State<ContactsScreen> {
   void dispose() {
     _activationTicker?.cancel();
     TeamService.revision.removeListener(_refresh);
+    OrganizationContext.revision.removeListener(_refresh);
     super.dispose();
   }
 
   void _refresh() {
-    if (mounted) setState(() {});
+    _loadContextMembers();
+  }
+
+  Future<void> _loadContextMembers() async {
+    try {
+      final allOrganizations = await OrganizationService.all();
+      final current = TeamService.current;
+      final visibleOrgIds = _localFullAccess
+          ? allOrganizations.map((o) => o.id).toSet()
+          : await OrganizationAccessService.visibleOrganizationIds();
+      final organizations =
+          allOrganizations.where((o) => visibleOrgIds.contains(o.id)).toList();
+
+      final memberships = <String, Set<String>>{};
+      for (final employee in TeamService.all) {
+        if (employee.isOwner) {
+          memberships[employee.id] = {OrganizationModel.rootId};
+          continue;
+        }
+        final grants = await OrganizationAccessService.grantsFor(employee.id);
+        memberships[employee.id] = grants
+            .where((g) => g.permissions.contains(OrganizationPermissions.view))
+            .map((g) => g.organizationId)
+            .where(visibleOrgIds.contains)
+            .toSet();
+      }
+
+      final manageable = <String>{};
+      for (final organization in organizations) {
+        if (current?.isOwner == true ||
+            (current != null &&
+                await OrganizationAccessService.can(
+                  organization.id,
+                  OrganizationPermissions.manageMembers,
+                ))) {
+          manageable.add(organization.id);
+        }
+      }
+
+      var selected = _selectedOrganizationId;
+      if (selected != null && !visibleOrgIds.contains(selected))
+        selected = null;
+      if (selected == null &&
+          visibleOrgIds.contains(OrganizationContext.currentOrganizationId)) {
+        selected = OrganizationContext.currentOrganizationId;
+      }
+
+      final contextEmployeeIds = <String>{};
+      for (final employee in TeamService.all) {
+        final memberOf = memberships[employee.id] ?? const <String>{};
+        if (selected == null || memberOf.contains(selected)) {
+          contextEmployeeIds.add(employee.id);
+        }
+      }
+
+      var workloadAlerts = const <TeamWorkloadAlert>[];
+      final viewer = TeamService.current ?? TeamService.owner;
+      if (viewer != null) {
+        try {
+          final taskOrgIds =
+              selected == null ? visibleOrgIds : <String>{selected};
+          final tasks = await TaskService().getForOrganizations(taskOrgIds);
+          workloadAlerts = TeamWorkloadService.alertsForViewer(
+            viewer: viewer,
+            employees: TeamService.all,
+            tasks: tasks,
+          );
+        } catch (_) {}
+      }
+
+      if (!mounted) return;
+      setState(() {
+        _organizations = organizations;
+        _employeeOrgIds = memberships;
+        _manageableOrgIds = manageable;
+        _selectedOrganizationId = selected;
+        _contextEmployeeIds = contextEmployeeIds;
+        _workloadAlerts = workloadAlerts;
+        _membersLoading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _organizations = const [];
+        _employeeOrgIds = const {};
+        _manageableOrgIds = const {};
+        _contextEmployeeIds = const <String>{};
+        _membersLoading = false;
+      });
+    }
+  }
+
+  void _applyOrganizationFilter(String? organizationId) {
+    setState(() {
+      _selectedOrganizationId = organizationId;
+      _selectedPosition = null;
+      _contextEmployeeIds = TeamService.all
+          .where((employee) {
+            if (organizationId == null) return true;
+            return (_employeeOrgIds[employee.id] ?? const <String>{})
+                .contains(organizationId);
+          })
+          .map((e) => e.id)
+          .toSet();
+    });
+  }
+
+  String _organizationName(String id) {
+    for (final organization in _organizations) {
+      if (organization.id == id) return organization.name;
+    }
+    return id;
+  }
+
+  String _employeeOrganizationLabel(EmployeeModel employee) {
+    final names = (_employeeOrgIds[employee.id] ?? const <String>{})
+        .map(_organizationName)
+        .toList()
+      ..sort();
+    return names.isEmpty ? 'Без организации' : names.join(', ');
+  }
+
+  List<String> get _positions {
+    final result = TeamService.all
+        .where((e) => _contextEmployeeIds.contains(e.id))
+        .map((e) => e.position.trim())
+        .where((p) => p.isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return result;
   }
 
   List<EmployeeModel> get _visible {
     final query = _search.trim().toLowerCase();
-    if (query.isEmpty) return TeamService.all;
-    return TeamService.all.where((employee) {
+    final result = TeamService.all.where((employee) {
+      if (!_contextEmployeeIds.contains(employee.id)) return false;
+      if (_selectedPosition != null && employee.position != _selectedPosition) {
+        return false;
+      }
+      if (query.isEmpty) return true;
       return employee.displayName.toLowerCase().contains(query) ||
           employee.position.toLowerCase().contains(query) ||
           employee.login.contains(query) ||
           employee.email.toLowerCase().contains(query) ||
-          employee.phone.contains(query);
+          employee.phone.contains(query) ||
+          _employeeOrganizationLabel(employee).toLowerCase().contains(query);
     }).toList();
+
+    int byName(EmployeeModel a, EmployeeModel b) =>
+        a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
+    result.sort((a, b) {
+      switch (_sort) {
+        case _ContactSort.name:
+          return byName(a, b);
+        case _ContactSort.position:
+          final position =
+              a.position.toLowerCase().compareTo(b.position.toLowerCase());
+          return position == 0 ? byName(a, b) : position;
+        case _ContactSort.organization:
+          final organization = _employeeOrganizationLabel(a)
+              .toLowerCase()
+              .compareTo(_employeeOrganizationLabel(b).toLowerCase());
+          return organization == 0 ? byName(a, b) : organization;
+      }
+    });
+    return result;
+  }
+
+  Future<OrganizationModel?> _chooseOrganization({
+    required Set<String> candidates,
+    String title = 'Организация',
+  }) async {
+    final available =
+        _organizations.where((o) => candidates.contains(o.id)).toList();
+    if (available.isEmpty) return null;
+    if (available.length == 1) return available.single;
+    return showDialog<OrganizationModel>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(title),
+        children: [
+          for (final organization in available)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(dialogContext, organization),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Text(organization.name),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openOrganizationAccess(EmployeeModel employee) async {
+    if (employee.isOwner) return;
+    final memberships = _employeeOrgIds[employee.id] ?? const <String>{};
+    final candidates = memberships.intersection(_manageableOrgIds);
+    OrganizationModel? organization;
+    final selected = _selectedOrganizationId;
+    if (selected != null && candidates.contains(selected)) {
+      organization = _organizations.where((o) => o.id == selected).firstOrNull;
+    }
+    organization ??= await _chooseOrganization(
+      candidates: candidates,
+      title: 'Настроить доступ: ${employee.displayName}',
+    );
+    if (organization == null || !mounted) return;
+    final grant = (await OrganizationAccessService.grantsFor(employee.id))
+        .where((g) => g.organizationId == organization!.id)
+        .firstOrNull;
+    if (!mounted) return;
+    final changed = await OrganizationAccessEditor.show(
+      context,
+      organization: organization,
+      employee: employee,
+      initialGrant: grant,
+    );
+    if (changed == true) await _loadContextMembers();
   }
 
   Future<void> _add() async {
+    if (!_canManage) return;
+    OrganizationModel? target;
+    final selected = _selectedOrganizationId;
+    if (selected != null && _manageableOrgIds.contains(selected)) {
+      target = _organizations.where((o) => o.id == selected).firstOrNull;
+    }
+    target ??= await _chooseOrganization(
+      candidates: _manageableOrgIds,
+      title: 'В какую организацию добавить сотрудника?',
+    );
+    if (target == null || !mounted) return;
     final created = await EmployeeEditorScreen.open(context);
-    if (created != null && mounted) setState(() {});
+    if (created == null) return;
+    final orgId = target.id;
+    final financeVisible = created.permissions.allows(TeamModules.treasury) ||
+        created.permissions.allows(TeamModules.forecast) ||
+        created.permissions.allows(TeamModules.analytics);
+    final permissions = <String>[OrganizationPermissions.view];
+    if (financeVisible) {
+      permissions.addAll(const [
+        OrganizationPermissions.viewFinance,
+        OrganizationPermissions.createTransactions,
+        OrganizationPermissions.editTransactions,
+        OrganizationPermissions.manageAccounts,
+        OrganizationPermissions.manageRecurring,
+        OrganizationPermissions.viewForecast,
+      ]);
+    }
+    await OrganizationAccessService.grant(
+      employeeId: created.id,
+      organizationId: orgId,
+      includeSubtree: false,
+      permissions: permissions,
+      canViewSelfFinance: true,
+      canViewTeamFinance: created.permissions.canSeeOthersStats,
+    );
+    await _loadContextMembers();
   }
 
   Future<void> _edit(EmployeeModel employee) async {
@@ -368,20 +642,91 @@ class _ContactsScreenState extends State<ContactsScreen> {
           children: [
             _header(people.length),
             _searchField(),
+            _filters(),
+            if (_workloadAlerts.isNotEmpty) _workloadAlertsBanner(),
             Expanded(
-              child: people.isEmpty
-                  ? _empty()
-                  : ListView.builder(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
-                      itemCount: people.length,
-                      itemBuilder: (context, index) => _card(people[index]),
-                    ),
+              child: _membersLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : people.isEmpty
+                      ? _empty()
+                      : ListView.builder(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 96),
+                          itemCount: people.length,
+                          itemBuilder: (context, index) => _card(people[index]),
+                        ),
             ),
           ],
         ),
       ),
     );
   }
+
+  Widget _workloadAlertsBanner() => Container(
+        margin: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        padding: const EdgeInsets.all(11),
+        decoration: BoxDecoration(
+          color: (_workloadAlerts.first.overloaded
+                  ? AppTheme.accentRed
+                  : AppTheme.accent)
+              .withOpacity(.10),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: (_workloadAlerts.first.overloaded
+                    ? AppTheme.accentRed
+                    : AppTheme.accent)
+                .withOpacity(.30),
+          ),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              _workloadAlerts.first.overloaded
+                  ? Icons.warning_amber_rounded
+                  : Icons.hourglass_empty_rounded,
+              size: 18,
+              color: _workloadAlerts.first.overloaded
+                  ? AppTheme.accentRed
+                  : AppTheme.accent,
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _ru ? 'Уведомления по нагрузке' : 'Workload alerts',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: AppTheme.textPrimary,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  for (final alert in _workloadAlerts.take(3))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 2),
+                      child: Text(
+                        alert.message,
+                        style: TextStyle(
+                            fontSize: 11.5, color: AppTheme.textSecondary),
+                      ),
+                    ),
+                  if (_workloadAlerts.length > 3)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 3),
+                      child: Text(
+                        '+${_workloadAlerts.length - 3}',
+                        style:
+                            TextStyle(fontSize: 11, color: AppTheme.textMuted),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
 
   Widget _header(int count) => Padding(
         padding: EdgeInsets.fromLTRB(
@@ -411,6 +756,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ],
               ),
             ),
+            const OrganizationSwitcher(compact: true),
+            const SizedBox(width: 6),
             if (_ownerOnly)
               IconButton(
                 tooltip: _ru ? 'Удалённые сотрудники' : 'Deleted employees',
@@ -451,6 +798,98 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ),
       );
 
+  Widget _filters() => Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            _filterDropdown<String?>(
+              value: _selectedOrganizationId,
+              hint: 'Все организации',
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Все организации'),
+                ),
+                for (final organization in _organizations)
+                  DropdownMenuItem<String?>(
+                    value: organization.id,
+                    child: Text(organization.name),
+                  ),
+              ],
+              onChanged: _applyOrganizationFilter,
+            ),
+            _filterDropdown<String?>(
+              value: _selectedPosition,
+              hint: 'Все должности',
+              items: [
+                const DropdownMenuItem<String?>(
+                  value: null,
+                  child: Text('Все должности'),
+                ),
+                for (final position in _positions)
+                  DropdownMenuItem<String?>(
+                    value: position,
+                    child: Text(position),
+                  ),
+              ],
+              onChanged: (value) => setState(() => _selectedPosition = value),
+            ),
+            _filterDropdown<_ContactSort>(
+              value: _sort,
+              hint: 'Сортировка',
+              items: const [
+                DropdownMenuItem(
+                  value: _ContactSort.name,
+                  child: Text('По имени'),
+                ),
+                DropdownMenuItem(
+                  value: _ContactSort.position,
+                  child: Text('По должности'),
+                ),
+                DropdownMenuItem(
+                  value: _ContactSort.organization,
+                  child: Text('По организации'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value != null) setState(() => _sort = value);
+              },
+            ),
+          ],
+        ),
+      );
+
+  Widget _filterDropdown<T>({
+    required T value,
+    required String hint,
+    required List<DropdownMenuItem<T>> items,
+    required ValueChanged<T?> onChanged,
+  }) =>
+      Container(
+        constraints: const BoxConstraints(minWidth: 150, maxWidth: 220),
+        height: 38,
+        padding: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: BoxDecoration(
+          color: AppTheme.surface.withOpacity(.5),
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: AppTheme.glassBorder),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<T>(
+            value: value,
+            hint: Text(hint),
+            isExpanded: true,
+            dropdownColor: AppTheme.surface,
+            style: TextStyle(fontSize: 12, color: AppTheme.textPrimary),
+            items: items,
+            onChanged: onChanged,
+          ),
+        ),
+      );
+
   Widget _empty() => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
@@ -460,7 +899,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
               Icon(Icons.people_outline, size: 40, color: AppTheme.textMuted),
               const SizedBox(height: 12),
               Text(
-                _search.isNotEmpty
+                _search.isNotEmpty || _selectedPosition != null
                     ? (_ru ? 'Никого не нашлось' : 'Nobody found')
                     : _canManage
                         ? (_ru
@@ -509,6 +948,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     ),
                     const SizedBox(width: 12),
                     Expanded(child: _identity(employee)),
+                    if (!employee.isOwner &&
+                        (_employeeOrgIds[employee.id] ?? const <String>{})
+                            .intersection(_manageableOrgIds)
+                            .isNotEmpty)
+                      IconButton(
+                        tooltip: _ru
+                            ? 'Доступ к организациям'
+                            : 'Organization access',
+                        icon: Icon(Icons.admin_panel_settings_outlined,
+                            size: 18, color: AppTheme.accent),
+                        onPressed: () => _openOrganizationAccess(employee),
+                      ),
                     if (_canManage)
                       IconButton(
                         tooltip: _ru ? 'Изменить' : 'Edit',
@@ -587,6 +1038,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
             Text(
               employee.position,
               style: TextStyle(fontSize: 12, color: AppTheme.accent),
+            ),
+          ],
+          if ((_employeeOrgIds[employee.id] ?? const <String>{})
+              .isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Wrap(
+              spacing: 5,
+              runSpacing: 4,
+              children: [
+                for (final orgId in _employeeOrgIds[employee.id]!)
+                  _tag(_organizationName(orgId)),
+              ],
             ),
           ],
           if (employee.nickname.trim().isNotEmpty) ...[
@@ -833,4 +1296,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ),
     );
   }
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

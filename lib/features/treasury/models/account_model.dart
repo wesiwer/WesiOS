@@ -1,10 +1,9 @@
 import 'package:hive/hive.dart';
 
+import '../../organizations/models/organization_model.dart';
+
 part 'account_model.g.dart';
 
-/// Назначение счёта. Влияет только на иконку и подпись — деньги везде
-/// считаются одинаково, а вот «карта» и «наличные» в списке различаются
-/// с одного взгляда.
 @HiveType(typeId: 14)
 enum AccountKind {
   @HiveField(0)
@@ -17,45 +16,60 @@ enum AccountKind {
   savings,
   @HiveField(4)
   project,
+  @HiveField(5)
+  reserve,
+  @HiveField(6)
+  other,
 }
 
-/// Отдельный счёт внутри Wesi Inc.
-///
-/// Раньше баланс был один на всё, и разделить направления бизнеса было
-/// нечем: деньги проекта, резерв и операционка лежали в одной куче. Теперь
-/// операция принадлежит счёту, а общий баланс — это сумма по всем счетам.
 @HiveType(typeId: 15)
 class AccountModel {
   @HiveField(0)
   final String id;
-
   @HiveField(1)
   final String name;
-
   @HiveField(2)
   final AccountKind kind;
 
-  /// Стартовая сумма на счёте — то, что уже лежало там до первой операции.
-  /// Хранится в рублёвом эквиваленте, как и суммы операций.
+  /// Canonical reporting-currency (RUB in org-v1) equivalent. Legacy WesiOS
+  /// already stored account balances in this unit, so keeping the canonical
+  /// ledger unit preserves history while [currency] describes where the
+  /// liquidity physically lives.
   @HiveField(3)
   final double openingBalance;
-
-  /// Цвет карточки — ARGB. Нужен, чтобы счета отличались в списке и на
-  /// диаграммах.
   @HiveField(4)
   final int colorValue;
-
   @HiveField(5)
   final DateTime createdAt;
-
-  /// Архивный счёт не показывается в выборе при добавлении операции, но его
-  /// история никуда не девается — удаление счёта с операциями потеряло бы
-  /// часть прошлого.
   @HiveField(6)
   final bool archived;
-
   @HiveField(7)
   final String? note;
+
+  /// Null only for records written before organization hierarchy v1.
+  /// Legacy records belong to Wesi Inc and are physically backfilled by
+  /// migration/service writes.
+  @HiveField(8)
+  final String? organizationId;
+
+  /// Canonical reporting-currency equivalent, matching [openingBalance].
+  @HiveField(9)
+  final double minimumBalance;
+  @HiveField(10)
+  final bool allowNetting;
+
+  /// Physical account currency (ISO-style uppercase code).
+  @HiveField(11)
+  final String currency;
+
+  /// Haircut applied when liquidity must be converted across currencies.
+  @HiveField(12)
+  final double fxHaircut;
+
+  /// Operational delay before this account can rescue another liquidity
+  /// location. This used to live in a second unsynchronized metadata box.
+  @HiveField(13)
+  final int transferDelayDays;
 
   const AccountModel({
     required this.id,
@@ -66,14 +80,23 @@ class AccountModel {
     required this.createdAt,
     this.archived = false,
     this.note,
+    this.organizationId,
+    this.minimumBalance = 0,
+    this.allowNetting = true,
+    this.currency = 'RUB',
+    this.fxHaircut = 0.03,
+    this.transferDelayDays = 0,
   });
 
-  /// Идентификатор счёта по умолчанию.
-  ///
-  /// Операции, созданные до появления счетов, не имеют `accountId` — они
-  /// считаются принадлежащими основному счёту, иначе после обновления
-  /// приложения баланс обнулился бы на глазах у пользователя.
   static const String mainId = 'main';
+
+  static String mainIdFor(String organizationId) =>
+      organizationId == OrganizationModel.rootId
+          ? mainId
+          : 'main:$organizationId';
+
+  String get effectiveOrganizationId =>
+      organizationId ?? OrganizationModel.rootId;
 
   AccountModel copyWith({
     String? name,
@@ -83,6 +106,12 @@ class AccountModel {
     bool? archived,
     String? note,
     bool clearNote = false,
+    String? organizationId,
+    double? minimumBalance,
+    bool? allowNetting,
+    String? currency,
+    double? fxHaircut,
+    int? transferDelayDays,
   }) =>
       AccountModel(
         id: id,
@@ -93,5 +122,13 @@ class AccountModel {
         createdAt: createdAt,
         archived: archived ?? this.archived,
         note: clearNote ? null : (note ?? this.note),
+        organizationId: organizationId ?? this.organizationId,
+        minimumBalance: minimumBalance ?? this.minimumBalance,
+        allowNetting: allowNetting ?? this.allowNetting,
+        currency: (currency ?? this.currency).toUpperCase(),
+        fxHaircut:
+            (fxHaircut ?? this.fxHaircut).clamp(0.0, 0.25).toDouble(),
+        transferDelayDays:
+            (transferDelayDays ?? this.transferDelayDays).clamp(0, 14).toInt(),
       );
 }

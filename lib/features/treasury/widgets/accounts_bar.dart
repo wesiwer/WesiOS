@@ -70,6 +70,8 @@ class _AccountsBarState extends State<AccountsBar> {
         AccountKind.cash => Icons.payments,
         AccountKind.savings => Icons.savings,
         AccountKind.project => Icons.workspaces_outline,
+        AccountKind.reserve => Icons.savings_outlined,
+        AccountKind.other => Icons.account_balance_wallet_outlined,
       };
 
   String _kindLabel(AccountKind kind) => switch (kind) {
@@ -78,6 +80,8 @@ class _AccountsBarState extends State<AccountsBar> {
         AccountKind.cash => _ru ? 'Наличные' : 'Cash',
         AccountKind.savings => _ru ? 'Накопления' : 'Savings',
         AccountKind.project => _ru ? 'Проект' : 'Project',
+        AccountKind.reserve => _ru ? 'Резерв' : 'Reserve',
+        AccountKind.other => _ru ? 'Другое' : 'Other',
       };
 
   @override
@@ -440,6 +444,8 @@ class _AccountEditorDialogState extends State<AccountEditorDialog> {
                           AccountKind.cash => _ru ? 'Наличные' : 'Cash',
                           AccountKind.savings => _ru ? 'Накопления' : 'Savings',
                           AccountKind.project => _ru ? 'Проект' : 'Project',
+                          AccountKind.reserve => _ru ? 'Резерв' : 'Reserve',
+                          AccountKind.other => _ru ? 'Другое' : 'Other',
                         },
                         style: TextStyle(
                           fontSize: 12,

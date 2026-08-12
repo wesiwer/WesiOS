@@ -25,6 +25,9 @@ import '../../features/founder/founder_story_screen.dart';
 import '../../features/sysadmin/sysadmin_screen.dart';
 import '../../features/team/contacts_screen.dart';
 import '../../features/chats/chats_screen.dart';
+import '../../features/organizations/organizations_screen.dart';
+import '../../features/organizations/inter_org_transfer_screen.dart';
+import '../../features/organizations/my_finance_screen.dart';
 import '../../features/team/models/team_permissions.dart';
 import '../../features/team/services/team_service.dart';
 import '../sync/sync_endpoint.dart';
@@ -64,6 +67,21 @@ class AppRouter {
         return _slideUpRoute(_AccessGate(
           module: TeamModules.treasury,
           child: OperationsScreen(),
+        ));
+      case '/organizations':
+        return _slideUpRoute(_AccessGate(
+          module: TeamModules.treasury,
+          child: const OrganizationsScreen(),
+        ));
+      case '/organizations/transfer':
+        return _slideUpRoute(_AccessGate(
+          module: TeamModules.treasury,
+          child: const InterOrgTransferScreen(),
+        ));
+      case '/my-finance':
+        return _slideUpRoute(_AccessGate(
+          module: TeamModules.treasury,
+          child: const MyFinanceScreen(),
         ));
       case '/tasks':
         return _slideUpRoute(_AccessGate(
@@ -139,9 +157,7 @@ class AppRouter {
           child: CalendarScreen(),
         ));
       case '/time':
-        return _slideUpRoute(
-          _AccessGate(child: const TimeCenterScreen()),
-        );
+        return _slideUpRoute(_AccessGate(child: const TimeCenterScreen()));
       case '/contacts':
         return _slideUpRoute(_AccessGate(
           module: TeamModules.contacts,
@@ -155,18 +171,15 @@ class AppRouter {
       case '/founder':
         return _fadeRoute(_AccessGate(child: FounderStoryScreen()));
       default:
-        return MaterialPageRoute(
-          builder: (_) => _AccessGate(child: HomeScreen()),
-        );
+        return MaterialPageRoute(builder: (_) => _AccessGate(child: HomeScreen()));
     }
   }
 
   static PageRouteBuilder _fadeRoute(Widget page) {
     return PageRouteBuilder(
       pageBuilder: (_, __, ___) => page,
-      transitionsBuilder: (_, animation, __, child) {
-        return FadeTransition(opacity: animation, child: child);
-      },
+      transitionsBuilder: (_, animation, __, child) =>
+          FadeTransition(opacity: animation, child: child),
       transitionDuration: const Duration(milliseconds: 300),
     );
   }
@@ -179,8 +192,7 @@ class AppRouter {
         final slideUp = Tween<Offset>(
           begin: const Offset(0, 1),
           end: Offset.zero,
-        ).animate(
-            CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
+        ).animate(CurvedAnimation(parent: animation, curve: Curves.easeOutCubic));
         final fadeIn = Tween<double>(begin: 0.0, end: 1.0).animate(
           CurvedAnimation(parent: animation, curve: const Interval(0, 0.5)),
         );
@@ -194,7 +206,6 @@ class AppRouter {
   }
 }
 
-/// Центральный fail-closed guard для всех внутренних экранов.
 class _AccessGate extends StatelessWidget {
   final Widget child;
   final String? module;
@@ -213,10 +224,8 @@ class _AccessGate extends StatelessWidget {
             if (employee == null || !SyncEndpoint.isConnected) {
               return const LoginScreen();
             }
-
             final requiredModule = module;
-            if (requiredModule != null &&
-                !employee.permissions.allows(requiredModule)) {
+            if (requiredModule != null && !employee.permissions.allows(requiredModule)) {
               return const HomeScreen();
             }
             return child;
