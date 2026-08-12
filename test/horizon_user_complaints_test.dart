@@ -159,6 +159,49 @@ void main() {
     });
   });
 
+  group('регулярные платежи', () {
+    test('аренда не учитывается дважды — в истории и в проекции', () {
+      // Аренда живёт в двух местах: как регулярная запись, которую движок
+      // проецирует вперёд, и как проведённые за прошлые месяцы копии.
+      final rent = TransactionModel(
+        id: 'rent',
+        title: 'Аренда',
+        amount: 30000,
+        type: TransactionType.expense,
+        date: addDays(today, -2),
+        category: 'Аренда',
+        isRecurring: true,
+        recurringPeriod: RecurringPeriod.monthly,
+      );
+      final materialized = [
+        for (final d in [32, 62, 92])
+          TransactionModel(
+            id: 'rent_$d',
+            title: 'Аренда',
+            amount: 30000,
+            type: TransactionType.expense,
+            date: addDays(today, -d),
+            category: 'Аренда',
+          ),
+      ];
+      final base = <TransactionModel>[
+        for (var i = 1; i <= 120; i++)
+          tx('e$i', 1000, TransactionType.expense, i),
+        for (var i = 1; i <= 120; i++)
+          tx('in$i', 2000, TransactionType.income, i),
+      ];
+
+      final withRent = run([...base, rent, ...materialized],
+          balance: 500000);
+      final without = run(base, balance: 500000);
+      final delta = withRent.p50.last - without.p50.last;
+
+      // Одна аренда за месяц — это ровно −30 000, а не полтора платежа.
+      expect(delta, closeTo(-30000, 6000),
+          reason: 'аренда попала в прогноз дважды: разница \$delta');
+    });
+  });
+
   group('отчёты понятным языком', () {
     test('в советах нет жаргона вроде P50 и MAPE', () {
       final txs = <TransactionModel>[

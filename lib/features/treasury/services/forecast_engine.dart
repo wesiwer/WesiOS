@@ -965,16 +965,26 @@ class ForecastEngine {
         scheduledOneOff.isNotEmpty;
 
     final recurringIds = recurringTxs.map((e) => e.id).toSet();
-    final recurringIncomeIds = recurringTxs
-        .where((e) => e.type == TransactionType.income)
-        .map((e) => e.id)
-        .toList();
-    bool autoMaterializedIncome(TransactionModel tx) =>
+    // Проведённые копии регулярных платежей не идут в статистику привычек.
+    //
+    // Аренда живёт в двух местах сразу: как регулярная запись, которую
+    // движок проецирует вперёд, и как проведённые за прошлые месяцы копии в
+    // истории. Раньше из статистики убирались только доходные копии, а
+    // расходные оставались и формировали «привычку тратить». В итоге аренда
+    // попадала в прогноз дважды: 30 000 в месяц меняли линию на 55 500 за
+    // тридцать дней вместо 30 000.
+    //
+    // Копия узнаётся по идентификатору: Treasury создаёт её как
+    // «идентификатор_родителя + метка времени». Если родительская запись
+    // удалена, копии остаются обычной историей — вперёд их уже никто не
+    // проецирует, и терять их нельзя.
+    final recurringParentIds = recurringTxs.map((e) => e.id).toList();
+    bool materializedRecurring(TransactionModel tx) =>
         !tx.isRecurring &&
-        recurringIncomeIds.any((id) => tx.id.startsWith('${id}_'));
+        recurringParentIds.any((id) => tx.id.startsWith('${id}_'));
     final nonRecurring = history
         .where(
-            (e) => !recurringIds.contains(e.id) && !autoMaterializedIncome(e))
+            (e) => !recurringIds.contains(e.id) && !materializedRecurring(e))
         .toList();
 
     // Both statistical sample count and statistical time span must be earned
@@ -1185,15 +1195,25 @@ class ForecastEngine {
         // подряд не происходит ничего из ожидаемого, а потом всё сваливается
         // одним днём — и промахивается как раз ближняя половина горизонта,
         // та самая, которую человек сверяет глазами.
+        //
+        // Двигаются только месячные и годовые платежи — то, что реально
+        // ходит через банк по датам: аренда, налоги, зарплата, кредит.
+        // Ежедневный и недельный ритм — это привычка тратить, а не
+        // расписание списаний: человек ест и в субботу, и переносить это на
+        // понедельник значило бы сваливать три дня еды в один.
         final plannedDay = addDays(todayOnly, entry.key);
-        final settledDay = PaymentCalendar.settle(
-          plannedDay,
-          PaymentCalendar.shiftFor(
-            title: tx.title,
-            category: tx.category,
-            description: tx.description,
-          ),
-        );
+        final banked = tx.recurringPeriod == RecurringPeriod.monthly ||
+            tx.recurringPeriod == RecurringPeriod.yearly;
+        final settledDay = banked
+            ? PaymentCalendar.settle(
+                plannedDay,
+                PaymentCalendar.shiftFor(
+                  title: tx.title,
+                  category: tx.category,
+                  description: tx.description,
+                ),
+              )
+            : plannedDay;
         final calendarOffset = dayDiff(todayOnly, settledDay);
         final shiftedOffset = tx.type == TransactionType.income
             ? calendarOffset + whatIf.incomeDelayDays

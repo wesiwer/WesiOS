@@ -106,5 +106,35 @@ void main() {
           reason: 'аренда обязана приехать в первый рабочий день: '
               'третьего $onThird, девятого $onNinth');
     });
+
+    test('ежедневный ритм не переносится — это привычка, а не списание', () {
+      // 3 января 2026 — суббота посреди каникул. Человек ест и в каникулы,
+      // и сваливать четыре дня еды в один рабочий день нельзя.
+      final today = DateTime(2025, 12, 30);
+      final txs = <TransactionModel>[
+        for (var i = 0; i < 3; i++)
+          TransactionModel(
+            id: 'food$i',
+            title: 'Еда',
+            amount: 1000,
+            type: TransactionType.expense,
+            date: today,
+            isRecurring: true,
+            recurringPeriod: RecurringPeriod.daily,
+          ),
+      ];
+      final r = ForecastEngine.generate(
+        transactions: txs,
+        currentBalance: 100000,
+        days: 10,
+        asOf: today,
+      );
+      // Каждый день ровно −3000, включая каникулы.
+      for (var day = 0; day < 10; day++) {
+        expect(r.committedNetByDay[day], closeTo(-3000, 1),
+            reason: 'день ${day + 1} обязан списать столько же, сколько все '
+                'остальные: ${r.committedNetByDay[day]}');
+      }
+    });
   });
 }
