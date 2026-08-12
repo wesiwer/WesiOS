@@ -22,6 +22,7 @@ import '../../features/team/models/team_permissions.dart';
 import '../../features/treasury/models/account_model.dart';
 import '../../features/treasury/models/transaction_model.dart';
 import 'sync_journal.dart';
+import 'sync_codec_roadmap.dart';
 
 /// Описание одной синхронизируемой коллекции.
 ///
@@ -715,6 +716,9 @@ class SyncCodec {
     EmployeesSync(),
     ChatsSync(),
     MessagesSync(),
+    // Проекты и вехи дорожной карты — описаны в sync_codec_roadmap.dart.
+    RoadmapProjectsSync(),
+    RoadmapItemsSync(),
   ];
 
   static SyncCollection<dynamic>? byName(String name) {
