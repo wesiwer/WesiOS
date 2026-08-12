@@ -45,8 +45,6 @@ void main() {
         status: status,
         priority: priority,
         dueDate: dueDate,
-        organizationId: 'org',
-        responsibleEmployeeId: employeeId,
         assignee: employeeId,
       );
 
