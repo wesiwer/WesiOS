@@ -1,0 +1,33 @@
+
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: catalog is broad enough to cover multiple business areas
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: long beat gap becomes high priority but keeps low forecast impact
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: sole beatmaker is not pushed into daily beat production
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: completed beat can trigger designer preview chain
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: zero income creates high-impact sales action
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: least loaded suitable employee is preferred
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: heavily overdue employee is not selected just to raise activity
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: open equivalent task suppresses duplicate suggestion
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: no permission to assign others never proposes another employee
+::group::❌ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_adaptive_learning_test.dart: learns recurring organization cadence without becoming too aggressive (failed)
+Expected: true
+  Actual: <false>
+
+package:matcher                                     expect
+package:flutter_test/src/widget_tester.dart 480:18  expect
+test/wesi_ai_adaptive_learning_test.dart 104:5      main.<fn>
+::endgroup::
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_adaptive_learning_test.dart: repeated rejection suppresses routine suggestion noise
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_adaptive_learning_test.dart: accepted priority correction influences future proposals
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_adaptive_learning_test.dart: historical work can qualify an employee even with a generic title
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_adaptive_learning_test.dart: accepted assignee preference breaks an otherwise equal tie
+::group::❌ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_adaptive_learning_test.dart: fatigue signal protects a heavily loaded producer from heavy new work (failed)
+Expected: true
+  Actual: <false>
+
+package:matcher                                     expect
+package:flutter_test/src/widget_tester.dart 480:18  expect
+test/wesi_ai_adaptive_learning_test.dart 244:5      main.<fn>
+::endgroup::
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_adaptive_learning_test.dart: underutilized employee is preferred over a busier equal-role colleague
+
+::error::14 tests passed, 2 failed.

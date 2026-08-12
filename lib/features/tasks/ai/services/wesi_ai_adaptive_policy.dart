@@ -8,11 +8,13 @@ class AiCadenceSignal {
   final int effectiveDays;
   final int? learnedMedianDays;
   final int matchingTasks;
+  final DateTime? latestAt;
 
   const AiCadenceSignal({
     required this.effectiveDays,
     this.learnedMedianDays,
     required this.matchingTasks,
+    this.latestAt,
   });
 
   bool get learned => learnedMedianDays != null;
@@ -52,24 +54,29 @@ class WesiAiAdaptivePolicy {
     List<TaskModel> tasks,
     DateTime now,
   ) {
-    final matching = tasks.where((task) => _matchesTemplate(task, template)).toList()
+    final matching = tasks
+        .where((task) => _matchesTemplate(task, template))
+        .toList()
       ..sort((a, b) => a.createdAt.compareTo(b.createdAt));
     if (matching.length < 3) {
       return AiCadenceSignal(
         effectiveDays: template.cadenceDays,
         matchingTasks: matching.length,
+        latestAt: matching.isEmpty ? null : matching.last.createdAt,
       );
     }
 
     final intervals = <int>[];
     for (var i = 1; i < matching.length; i++) {
-      final days = matching[i].createdAt.difference(matching[i - 1].createdAt).inDays;
+      final days =
+          matching[i].createdAt.difference(matching[i - 1].createdAt).inDays;
       if (days > 0 && days <= 120) intervals.add(days);
     }
     if (intervals.length < 2) {
       return AiCadenceSignal(
         effectiveDays: template.cadenceDays,
         matchingTasks: matching.length,
+        latestAt: matching.isEmpty ? null : matching.last.createdAt,
       );
     }
     intervals.sort();
@@ -90,6 +97,7 @@ class WesiAiAdaptivePolicy {
       effectiveDays: blended.clamp(minimum, maximum).toInt(),
       learnedMedianDays: median,
       matchingTasks: matching.length,
+      latestAt: matching.last.createdAt,
     );
   }
 
@@ -149,7 +157,8 @@ class WesiAiAdaptivePolicy {
 
     for (final task in tasks) {
       if (task.effectiveResponsibleEmployeeId != employeeId) continue;
-      if (latest == null || task.createdAt.isAfter(latest)) latest = task.createdAt;
+      if (latest == null || task.createdAt.isAfter(latest))
+        latest = task.createdAt;
       if (!task.createdAt.isBefore(start14)) {
         assigned14++;
         if (task.status == TaskStatus.done) done14++;

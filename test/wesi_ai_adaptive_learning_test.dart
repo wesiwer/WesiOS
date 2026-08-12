@@ -65,7 +65,8 @@ void main() {
   AiTaskTemplate template(String id) =>
       WesiAiTaskCatalog.all.firstWhere((item) => item.id == id);
 
-  test('learns recurring organization cadence without becoming too aggressive', () {
+  test('learns recurring organization cadence without becoming too aggressive',
+      () {
     final beatmaker = employee('beatmaker', 'Битмейкер');
     final history = [
       task(
@@ -184,7 +185,10 @@ void main() {
 
     expect(result.any((item) => item.category == AiTaskCategory.sales), isTrue);
     expect(
-      result.where((item) => item.category == AiTaskCategory.sales).first.assigneeId,
+      result
+          .where((item) => item.category == AiTaskCategory.sales)
+          .first
+          .assigneeId,
       specialist.id,
     );
   });
@@ -217,7 +221,8 @@ void main() {
     expect(outreach.assigneeId, preferred.id);
   });
 
-  test('fatigue signal protects a heavily loaded producer from heavy new work', () {
+  test('fatigue signal protects a heavily loaded producer from heavy new work',
+      () {
     final beatmaker = employee('beatmaker', 'Битмейкер');
     final recent = List.generate(
       5,
@@ -245,7 +250,8 @@ void main() {
     expect(result.where((item) => item.templateId == 'beat_create'), isEmpty);
   });
 
-  test('underutilized employee is preferred over a busier equal-role colleague', () {
+  test('underutilized employee is preferred over a busier equal-role colleague',
+      () {
     final busy = employee('sales-a', 'Sales manager');
     final free = employee('sales-b', 'Sales manager');
     final busyTasks = [
@@ -277,7 +283,8 @@ void main() {
       signal: signal,
     ));
 
-    final sales = result.firstWhere((item) => item.category == AiTaskCategory.sales);
+    final sales =
+        result.firstWhere((item) => item.category == AiTaskCategory.sales);
     expect(sales.assigneeId, free.id);
   });
 }

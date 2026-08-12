@@ -1,0 +1,4 @@
+analyze=0
+targeted=1
+layout=0
+full=1
