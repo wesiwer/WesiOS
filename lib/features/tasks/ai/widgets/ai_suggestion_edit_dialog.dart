@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../team/models/employee_model.dart';
 import '../../../team/services/team_service.dart';
 import '../../models/task_model.dart';
 import '../models/ai_task_suggestion.dart';
@@ -83,7 +84,7 @@ class _AiSuggestionEditDialogState extends State<AiSuggestionEditDialog> {
   Widget build(BuildContext context) {
     final assignees = widget.suggestion.alternativeAssigneeIds
         .map(TeamService.byId)
-        .whereType<dynamic>()
+        .whereType<EmployeeModel>()
         .toList();
     return AlertDialog(
       backgroundColor: AppTheme.surface,
@@ -153,7 +154,7 @@ class _AiSuggestionEditDialogState extends State<AiSuggestionEditDialog> {
                       child: Text('Без исполнителя'),
                     ),
                     ...assignees.map((employee) => DropdownMenuItem<String?>(
-                          value: employee.id as String,
+                          value: employee.id,
                           child: Text(
                             '${employee.displayName} · ${employee.position}',
                           ),
