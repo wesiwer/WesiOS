@@ -171,7 +171,7 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     let allowed = true;
 
     if (collection === "organizations" && !ctx.isOwner) {
-      allowed = ctx.allowedOrgIds[String(p.id || row.getString("rid"))] === true;
+      allowed = ctx.structuralOrgIds[String(p.id || row.getString("rid"))] === true;
     } else if (collection === "organization_grants" && !ctx.isOwner) {
       allowed = ctx.canManageTeam || String(p.employeeId || "") === ctx.employeeId;
     } else if (collection === "employees" && !ctx.isOwner) {
