@@ -1,4 +1,4 @@
-name: One-time Owner Email Fix Release
+name: One-time Android Updater Fix Release
 
 on:
   push:
@@ -14,14 +14,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Dispatch normal WesiOS release workflow
+      - name: Dispatch WesiOS 0.19.21 release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           gh workflow run release-app.yml \
             --repo "$GITHUB_REPOSITORY" \
-            --ref main \
-            -f notes='Исправлена первичная настройка защищённого входа владельца: почту теперь можно ввести вместе с новым логином и паролем.' \
-            -f deploy_to_server=false
+            --ref agent/org-hierarchy-remediation-1 \
+            -f notes='Исправлено Android-обновление: версия приложения и номер сборки теперь совпадают с реально выпускаемым APK; добавлена защита от повторного рассинхрона версий.' \
+            -f deploy_to_server=true
           echo 'Publish WesiOS Release dispatched.'
