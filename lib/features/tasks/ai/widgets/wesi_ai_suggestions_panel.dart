@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
@@ -138,154 +139,206 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
   @override
   Widget build(BuildContext context) {
     final suggestions = _result?.suggestions ?? const <AiTaskSuggestion>[];
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: AppTheme.surface.withOpacity(.72),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: AppTheme.accent.withOpacity(.26)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          InkWell(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+        final cardWidth = compact
+            ? math.max(260.0, constraints.maxWidth - 20).toDouble()
+            : 350.0;
+        return Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: AppTheme.surface.withOpacity(.72),
             borderRadius: BorderRadius.circular(14),
-            onTap: () => setState(() => _expanded = !_expanded),
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(14, 10, 8, 10),
-              child: Row(
-                children: [
-                  Container(
-                    width: 30,
-                    height: 30,
-                    decoration: BoxDecoration(
-                      color: AppTheme.accent.withOpacity(.15),
-                      borderRadius: BorderRadius.circular(9),
+            border: Border.all(color: AppTheme.accent.withOpacity(.26)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _header(suggestions, compact),
+              if (_expanded) ...[
+                Divider(height: 1, color: AppTheme.glassBorder),
+                if (_error != null)
+                  _errorState(compact)
+                else if (!_loading && suggestions.isEmpty)
+                  _emptyState()
+                else if (suggestions.isNotEmpty)
+                  SizedBox(
+                    height: compact ? 248 : 236,
+                    child: ListView.separated(
+                      padding: const EdgeInsets.all(10),
+                      scrollDirection: Axis.horizontal,
+                      itemCount: suggestions.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 9),
+                      itemBuilder: (context, index) => _suggestionCard(
+                        suggestions[index],
+                        width: cardWidth,
+                        compact: compact,
+                      ),
                     ),
-                    child: Icon(Icons.auto_awesome_rounded,
-                        size: 17, color: AppTheme.accent),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              'Wesi AI · Предложения',
-                              style: TextStyle(
-                                color: AppTheme.textPrimary,
-                                fontWeight: FontWeight.w800,
-                                fontSize: 13.5,
-                              ),
-                            ),
-                            if (!_loading && suggestions.isNotEmpty) ...[
-                              const SizedBox(width: 7),
-                              _countBadge(suggestions.length),
-                            ],
-                          ],
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          _headerHint(),
+              ],
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _header(List<AiTaskSuggestion> suggestions, bool compact) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => setState(() => _expanded = !_expanded),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(compact ? 10 : 14, 10, 8, 10),
+        child: Row(
+          children: [
+            Container(
+              width: 30,
+              height: 30,
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withOpacity(.15),
+                borderRadius: BorderRadius.circular(9),
+              ),
+              child: Icon(
+                Icons.auto_awesome_rounded,
+                size: 17,
+                color: AppTheme.accent,
+              ),
+            ),
+            const SizedBox(width: 9),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          compact ? 'Wesi AI · Задачи' : 'Wesi AI · Предложения',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
-                              color: AppTheme.textMuted, fontSize: 10.5),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_loading)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 10),
-                      child: SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: AppTheme.accent,
+                            color: AppTheme.textPrimary,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 13.5,
+                          ),
                         ),
                       ),
-                    )
-                  else
-                    IconButton(
-                      tooltip: 'Обновить анализ',
-                      onPressed: _reload,
-                      icon: const Icon(Icons.refresh_rounded, size: 19),
-                    ),
-                  Icon(
-                    _expanded
-                        ? Icons.expand_less_rounded
-                        : Icons.expand_more_rounded,
-                    color: AppTheme.textMuted,
+                      if (!_loading && suggestions.isNotEmpty) ...[
+                        const SizedBox(width: 6),
+                        _countBadge(suggestions.length),
+                      ],
+                    ],
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _headerHint(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
                   ),
                 ],
               ),
             ),
-          ),
-          if (_expanded) ...[
-            Divider(height: 1, color: AppTheme.glassBorder),
-            if (_error != null)
+            const SizedBox(width: 4),
+            if (_loading)
               Padding(
-                padding: const EdgeInsets.all(14),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline,
-                        size: 18, color: AppTheme.accentRed),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Анализ временно недоступен. Обычные задачи продолжают работать.',
-                        style: TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 11.5),
-                      ),
-                    ),
-                    TextButton(
-                        onPressed: _reload, child: const Text('Повторить')),
-                  ],
+                padding: const EdgeInsets.symmetric(horizontal: 5),
+                child: SizedBox(
+                  width: 15,
+                  height: 15,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: AppTheme.accent,
+                  ),
                 ),
               )
-            else if (!_loading && suggestions.isEmpty)
-              Padding(
-                padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
-                child: Row(
-                  children: [
-                    Icon(Icons.check_circle_outline_rounded,
-                        size: 18, color: AppTheme.accentGreen),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Сейчас нет достаточно обоснованных предложений. Wesi AI не создаёт задачи ради активности.',
-                        style: TextStyle(
-                            color: AppTheme.textSecondary, fontSize: 11.5),
-                      ),
-                    ),
-                  ],
-                ),
-              )
-            else if (suggestions.isNotEmpty)
-              SizedBox(
-                height: 236,
-                child: ListView.separated(
-                  padding: const EdgeInsets.all(10),
-                  scrollDirection: Axis.horizontal,
-                  itemCount: suggestions.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 9),
-                  itemBuilder: (context, index) =>
-                      _suggestionCard(suggestions[index]),
-                ),
+            else if (!compact)
+              IconButton(
+                tooltip: 'Обновить анализ',
+                visualDensity: VisualDensity.compact,
+                onPressed: _reload,
+                icon: const Icon(Icons.refresh_rounded, size: 19),
               ),
+            Icon(
+              _expanded
+                  ? Icons.expand_less_rounded
+                  : Icons.expand_more_rounded,
+              color: AppTheme.textMuted,
+              size: 22,
+            ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _errorState(bool compact) {
+    final text = Text(
+      'Анализ временно недоступен. Обычные задачи продолжают работать.',
+      style: TextStyle(color: AppTheme.textSecondary, fontSize: 11.5),
+    );
+    if (compact) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 18, color: AppTheme.accentRed),
+                const SizedBox(width: 8),
+                Expanded(child: text),
+              ],
+            ),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(onPressed: _reload, child: const Text('Повторить')),
+            ),
+          ],
+        ),
+      );
+    }
+    return Padding(
+      padding: const EdgeInsets.all(14),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 18, color: AppTheme.accentRed),
+          const SizedBox(width: 8),
+          Expanded(child: text),
+          TextButton(onPressed: _reload, child: const Text('Повторить')),
         ],
       ),
     );
   }
 
+  Widget _emptyState() => Padding(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 13),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Icon(
+              Icons.check_circle_outline_rounded,
+              size: 18,
+              color: AppTheme.accentGreen,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Сейчас нет достаточно обоснованных предложений. Wesi AI не создаёт задачи ради активности.',
+                style: TextStyle(color: AppTheme.textSecondary, fontSize: 11.5),
+              ),
+            ),
+          ],
+        ),
+      );
+
   String _headerHint() {
-    if (_loading)
+    if (_loading) {
       return 'Анализирую задачи, загрузку команды и бизнес-сигналы…';
+    }
     final signal = _result?.businessSignal;
     if (signal?.salesPressure == true) {
       return 'Есть финансовый сигнал: приоритет получают действия, способные приблизить доход.';
@@ -296,12 +349,16 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
     return 'Учитываю историю работы, роли, загрузку и отдых. Финансы недоступны этому профилю.';
   }
 
-  Widget _suggestionCard(AiTaskSuggestion suggestion) {
+  Widget _suggestionCard(
+    AiTaskSuggestion suggestion, {
+    required double width,
+    required bool compact,
+  }) {
     final person = suggestion.assigneeId == null
         ? null
         : TeamService.byId(suggestion.assigneeId!);
     return Container(
-      width: 350,
+      width: width,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: AppTheme.background.withOpacity(.42),
@@ -313,17 +370,29 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
         children: [
           Row(
             children: [
-              _tag(suggestion.category.ru),
+              Expanded(
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    _tag(suggestion.category.ru),
+                    _tag(
+                      _priorityLabel(suggestion.priority),
+                      accent: suggestion.priority.index >= TaskPriority.high.index,
+                    ),
+                  ],
+                ),
+              ),
               const SizedBox(width: 6),
-              _tag(_priorityLabel(suggestion.priority),
-                  accent: suggestion.priority.index >= TaskPriority.high.index),
-              const Spacer(),
               Tooltip(
                 message: 'Отклонить на 14 дней',
                 child: InkWell(
                   onTap: () => _reject(suggestion),
-                  child: Icon(Icons.close_rounded,
-                      size: 17, color: AppTheme.textMuted),
+                  child: Icon(
+                    Icons.close_rounded,
+                    size: 17,
+                    color: AppTheme.textMuted,
+                  ),
                 ),
               ),
             ],
@@ -370,11 +439,15 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
               Icon(Icons.trending_up_rounded,
                   size: 14, color: AppTheme.textMuted),
               const SizedBox(width: 4),
-              Text(
-                'Влияние на прогноз: ${suggestion.forecastImpact.ru.toLowerCase()}',
-                style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
+              Expanded(
+                child: Text(
+                  'Влияние на прогноз: ${suggestion.forecastImpact.ru.toLowerCase()}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
+                ),
               ),
-              const Spacer(),
+              const SizedBox(width: 6),
               Text(
                 'Нужно: ${(suggestion.needScore * 100).round()}%',
                 style: TextStyle(color: AppTheme.textMuted, fontSize: 10),
@@ -393,19 +466,43 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
           const Spacer(),
           Row(
             children: [
-              TextButton(
-                onPressed: () => _snooze(suggestion),
-                child: const Text('Не сейчас'),
+              Expanded(
+                child: TextButton(
+                  onPressed: () => _snooze(suggestion),
+                  style: compact
+                      ? TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 5),
+                          minimumSize: const Size(0, 36),
+                        )
+                      : null,
+                  child: const Text('Не сейчас', maxLines: 1),
+                ),
               ),
-              const Spacer(),
-              OutlinedButton(
-                onPressed: () => _edit(suggestion),
-                child: const Text('Изменить'),
+              const SizedBox(width: 4),
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: () => _edit(suggestion),
+                  style: compact
+                      ? OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 5),
+                          minimumSize: const Size(0, 36),
+                        )
+                      : null,
+                  child: const Text('Изменить', maxLines: 1),
+                ),
               ),
-              const SizedBox(width: 7),
-              FilledButton(
-                onPressed: () => _accept(suggestion),
-                child: const Text('Создать'),
+              const SizedBox(width: 4),
+              Expanded(
+                child: FilledButton(
+                  onPressed: () => _accept(suggestion),
+                  style: compact
+                      ? FilledButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 5),
+                          minimumSize: const Size(0, 36),
+                        )
+                      : null,
+                  child: const Text('Создать', maxLines: 1),
+                ),
               ),
             ],
           ),
@@ -426,6 +523,7 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
         ),
         child: Text(
           text,
+          maxLines: 1,
           style: TextStyle(
             color: accent ? AppTheme.textPrimary : AppTheme.textSecondary,
             fontSize: 9.5,
