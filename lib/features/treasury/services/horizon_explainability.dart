@@ -1,3 +1,4 @@
+import 'calendar_days.dart';
 import 'dart:math';
 
 import '../models/transaction_model.dart';
@@ -48,7 +49,7 @@ class HorizonExplainabilityService {
               bool committed,
             })>>{};
     for (final event in businessEvents) {
-      final offset = _day(event.date).difference(today).inDays;
+      final offset = dayDiff(today, event.date);
       if (offset < 1 || offset > forecast.p50.length) continue;
       (eventsByDay[offset] ??= []).add((
         title: event.title,
@@ -59,7 +60,7 @@ class HorizonExplainabilityService {
     }
     for (final tx in transactions) {
       if (tx.isRecurring) continue;
-      final offset = _day(tx.date).difference(today).inDays;
+      final offset = dayDiff(today, tx.date);
       if (offset < 1 || offset > forecast.p50.length) continue;
       (eventsByDay[offset] ??= []).add((
         title: tx.title,

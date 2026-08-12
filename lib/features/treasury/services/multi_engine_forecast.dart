@@ -1,3 +1,4 @@
+import 'calendar_days.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -234,20 +235,20 @@ class ExternalForecastBridge {
       if (day.isAfter(todayOnly)) continue;
       if (day.isBefore(minDay)) minDay = day;
     }
-    final spanDays = todayOnly.difference(minDay).inDays + 1;
+    final spanDays = dayDiff(minDay, todayOnly) + 1;
     if (spanDays < _minHistoryDays) return null;
 
     final dense = List<double>.filled(spanDays, 0);
     for (final tx in transactions) {
       final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
       if (day.isAfter(todayOnly)) continue;
-      final idx = day.difference(minDay).inDays;
+      final idx = dayDiff(minDay, day);
       if (idx < 0 || idx >= spanDays) continue;
       dense[idx] += tx.type == TransactionType.income ? tx.amount : -tx.amount;
     }
 
     final history = List.generate(spanDays, (i) {
-      final day = minDay.add(Duration(days: i));
+      final day = addDays(minDay, i);
       final y = day.year.toString().padLeft(4, '0');
       final m = day.month.toString().padLeft(2, '0');
       final d = day.day.toString().padLeft(2, '0');

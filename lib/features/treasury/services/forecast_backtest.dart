@@ -1,3 +1,4 @@
+import 'calendar_days.dart';
 import 'dart:math';
 
 import '../models/transaction_model.dart';
@@ -257,7 +258,7 @@ class ForecastBacktest {
     HorizonTuning? tuning,
   }) {
     final today = _dateOnly(now ?? DateTime.now());
-    final asOf = today.subtract(Duration(days: horizonDays));
+    final asOf = addDays(today, -(horizonDays));
     return _runAt(
       transactions: transactions,
       currentBalance: currentBalance,
@@ -295,7 +296,7 @@ class ForecastBacktest {
       final day = _dateOnly(tx.date);
       if (day.isBefore(earliest)) earliest = day;
     }
-    if (asOf.difference(earliest).inDays < minHistoryBeforeAsOf) {
+    if (dayDiff(earliest, asOf) < minHistoryBeforeAsOf) {
       return BacktestResult.empty(asOf, horizonDays);
     }
 
@@ -331,9 +332,9 @@ class ForecastBacktest {
           forecasts.map((f) => read(f)[i]).reduce((a, b) => a + b) /
           forecasts.length;
       points.add(BacktestPoint(
-        date: asOf.add(Duration(days: i + 1)),
+        date: addDays(asOf, i + 1),
         actual: balanceOn(
-            asOf.add(Duration(days: i + 1)), transactions, currentBalance),
+            addDays(asOf, i + 1), transactions, currentBalance),
         p10: avg((f) => f.p10),
         p50: avg((f) => f.p50),
         p90: avg((f) => f.p90),
@@ -412,7 +413,7 @@ class ForecastBacktest {
       for (var offset = horizon;
           origins < maxOriginsPerHorizon;
           offset += step) {
-        final asOf = today.subtract(Duration(days: offset));
+        final asOf = addDays(today, -(offset));
         final result = _runAt(
           transactions: transactions,
           currentBalance: currentBalance,

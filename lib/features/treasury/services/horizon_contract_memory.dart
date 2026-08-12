@@ -1,3 +1,4 @@
+import 'calendar_days.dart';
 import 'dart:convert';
 
 import 'package:hive_flutter/hive_flutter.dart';
@@ -219,7 +220,7 @@ class HorizonContractMemoryService {
       if (outcome.renewed) continue;
       if (outcome.beatId != beatId &&
           (artist.isEmpty || outcome.artistKey != artist)) continue;
-      final distance = startedAt.difference(outcome.closedAt).inDays;
+      final distance = dayDiff(outcome.closedAt, startedAt);
       if (distance < 0 || distance > 180) continue;
       if (distance < bestDistance) {
         bestDistance = distance;

@@ -1,3 +1,4 @@
+import 'calendar_days.dart';
 import 'dart:math';
 
 import '../../../core/services/currency_service.dart';
@@ -52,7 +53,7 @@ class HorizonBusinessContextService {
     DateTime? now,
   }) async {
     final today = _day(now ?? DateTime.now());
-    final end = today.add(Duration(days: days));
+    final end = addDays(today, days);
     final events = <HorizonCashEvent>[];
     final warnings = <ForecastActionPrompt>[];
     final exposure = <String, double>{};
@@ -100,7 +101,7 @@ class HorizonBusinessContextService {
         var committed =
             probability >= 0.9 && deal.stage == DealStage.negotiation;
         if (!due.isAfter(today)) {
-          final overdueDays = max(0, today.difference(due).inDays);
+          final overdueDays = max(0, dayDiff(due, today));
           final decay = exp(-overdueDays / 45.0).clamp(0.25, 0.80);
           probability = (probability * decay).clamp(0.01, 0.75).toDouble();
           committed = false;

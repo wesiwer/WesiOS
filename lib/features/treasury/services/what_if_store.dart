@@ -1,3 +1,4 @@
+import 'calendar_days.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
@@ -81,7 +82,7 @@ class WhatIfPreset {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final target = DateTime(date.year, date.month, date.day);
-    final diff = target.difference(today).inDays;
+    final diff = dayDiff(today, target);
     return diff < 1 ? 1 : diff;
   }
 
@@ -124,7 +125,7 @@ class WhatIfPreset {
           type: e['type'] == 'income'
               ? TransactionType.income
               : TransactionType.expense,
-          date: today.add(Duration(days: offset)),
+          date: addDays(today, offset),
           recurringPeriod: _recurringPeriod(e['recurringPeriod']),
         ));
       }

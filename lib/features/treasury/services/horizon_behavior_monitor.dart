@@ -1,3 +1,4 @@
+import 'calendar_days.dart';
 import 'dart:math';
 
 import '../models/transaction_model.dart';
@@ -32,12 +33,12 @@ class HorizonBehaviorMonitor {
       final d = _day(tx.date);
       if (d.isBefore(first)) first = d;
     }
-    final span = min(180, today.difference(first).inDays + 1);
-    final start = today.subtract(Duration(days: span - 1));
+    final span = min(180, dayDiff(first, today) + 1);
+    final start = addDays(today, -(span - 1));
     final income = List<double>.filled(span, 0);
     final expense = List<double>.filled(span, 0);
     for (final tx in history) {
-      final offset = _day(tx.date).difference(start).inDays;
+      final offset = dayDiff(start, tx.date);
       if (offset < 0 || offset >= span) continue;
       if (tx.type == TransactionType.income) {
         income[offset] += tx.amount;
