@@ -397,10 +397,11 @@ body{position:relative}
    задано в пикселях и подобрано под размер; поставь радиус ещё и тут — он
    как более позднее правило переиграет их все, и знак в шапке скруглится
    слабее, чем был. */
-.wesi-mark{display:block;background:linear-gradient(140deg,var(--logo-bg1),var(--logo-bg2))}
+.wesi-mark{display:block;background:var(--logo-bg)}
 
-/* На белой странице знаку нужна не тень, а тонкая обводка: без неё светлая
-   подложка растворяется в карточке, а тёмная висела бы в воздухе пятном. */
+/* На белой странице знаку нужна не тень, а обводка. Подложка светлого знака
+   — #F8F9FC, ровно как в иконке приложения, и от белой карточки её отделяют
+   семь единиц яркости: без контура знак на ней просто растворяется. */
 :root[data-theme="light"] .wesi-mark{box-shadow:0 8px 22px rgba(var(--shadow-rgb),.22),0 0 0 1px rgba(var(--a3),.28)}
 :root[data-theme="light"] .boot-logo{box-shadow:0 12px 30px rgba(var(--shadow-rgb),.26),0 0 0 1px rgba(var(--a3),.28)}
 :root[data-theme="light"] .intro-orbit .wesi-mark{box-shadow:0 14px 40px rgba(var(--shadow-rgb),.2),0 0 0 1px rgba(var(--a3),.28)}
