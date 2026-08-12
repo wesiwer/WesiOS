@@ -1574,10 +1574,20 @@ class ForecastEngine {
       final bucket = calibration.bucketFor(i + 1);
       final progress = min(1.0, (i + 1) / max(1, bucket.horizonDays));
       final adjusted50 = raw50 + bucket.biasCorrection * progress;
-      final scale = bucket.intervalScale;
-      p10.add(adjusted50 - (raw50 - raw10) * scale);
+      // Хвосты подтягиваются порознь, если ретро-проверка накопила
+      // достаточно наблюдений с каждой стороны. Денежные исходы
+      // несимметричны: снизу редкие крупные списания и сорванные
+      // поступления, сверху — просто «пришло чуть больше обычного», и
+      // растягивать обе стороны одним числом значит промахиваться там, где
+      // цена ошибки выше всего. Ноль означает «раздельной калибровки ещё
+      // нет» — тогда работает общий множитель, как раньше.
+      final lower =
+          bucket.lowerScale > 0 ? bucket.lowerScale : bucket.intervalScale;
+      final upper =
+          bucket.upperScale > 0 ? bucket.upperScale : bucket.intervalScale;
+      p10.add(adjusted50 - (raw50 - raw10) * lower);
       p50.add(adjusted50);
-      p90.add(adjusted50 + (raw90 - raw50) * scale);
+      p90.add(adjusted50 + (raw90 - raw50) * upper);
 
       var negative = sorted.indexWhere((v) => v >= 0);
       if (negative == -1) negative = sorted.length;

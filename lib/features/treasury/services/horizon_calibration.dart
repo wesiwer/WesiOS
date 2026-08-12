@@ -86,6 +86,22 @@ class HorizonCalibrationBucket {
   final int horizonDays;
   final double intervalScale;
 
+  /// Отдельные множители для нижней и верхней половины интервала.
+  ///
+  /// Один общий множитель растягивал обе стороны одинаково, а денежные
+  /// исходы несимметричны: снизу редкие крупные списания и сорванные
+  /// поступления, сверху — просто «пришло чуть больше обычного». Хвосты
+  /// поэтому промахиваются по-разному, и подтягивать их надо порознь.
+  ///
+  /// Считаются как эмпирические квантили нормализованных промахов из
+  /// ретро-проверки — так же, как это делает конформный прогноз: берётся не
+  /// предположение о форме распределения, а то, насколько модель на самом
+  /// деле промахнулась в прошлом. Ноль означает «раздельной калибровки ещё
+  /// нет», и тогда работает общий [intervalScale] — так старые сохранённые
+  /// профили продолжают читаться без миграции.
+  final double lowerScale;
+  final double upperScale;
+
   /// actual - predicted terminal/trajectory balance. Positive means the old
   /// model was too pessimistic and P50 has to move up.
   final double biasCorrection;
@@ -98,6 +114,8 @@ class HorizonCalibrationBucket {
   const HorizonCalibrationBucket({
     required this.horizonDays,
     this.intervalScale = 1,
+    this.lowerScale = 0,
+    this.upperScale = 0,
     this.biasCorrection = 0,
     this.coverage = 0.8,
     this.mape,
@@ -163,6 +181,8 @@ class HorizonCalibrationBucket {
   Map<String, dynamic> toJson() => {
         'horizonDays': horizonDays,
         'intervalScale': intervalScale,
+        'lowerScale': lowerScale,
+        'upperScale': upperScale,
         'biasCorrection': biasCorrection,
         'coverage': coverage,
         'mape': mape,
@@ -179,6 +199,16 @@ class HorizonCalibrationBucket {
                 .clamp(0.55, 3.0)
                 .toDouble() ??
             1,
+        lowerScale: (json['lowerScale'] as num?)
+                ?.toDouble()
+                .clamp(0.0, 3.0)
+                .toDouble() ??
+            0,
+        upperScale: (json['upperScale'] as num?)
+                ?.toDouble()
+                .clamp(0.0, 3.0)
+                .toDouble() ??
+            0,
         biasCorrection:
             (json['biasCorrection'] as num?)?.toDouble() ?? 0,
         coverage: (json['coverage'] as num?)?.toDouble() ?? 0.8,
@@ -292,6 +322,29 @@ double intervalScaleFromCoverage(double coverage, {double? mape}) {
     raw *= 0.85;
   }
   return raw.clamp(0.55, 2.75).toDouble();
+}
+
+/// Конформный множитель полуинтервала по промахам из ретро-проверки.
+///
+/// [ratios] — отношения «насколько модель промахнулась» к «насколько она
+/// обещала промахнуться»: |факт − P50| / |граница − P50| для тех случаев,
+/// когда факт оказался с этой стороны от медианы. Единица означает, что
+/// граница угадана ровно, двойка — что настоящий промах вдвое больше
+/// обещанного.
+///
+/// Берётся эмпирический квантиль порядка [level] — то же, что делает split
+/// conformal prediction: никакого предположения о форме распределения, одна
+/// голая статистика прошлых ошибок. Поправка (n+1)/n — стандартная для
+/// конечной выборки: с малым числом наблюдений интервал обязан быть шире,
+/// иначе обещанные 80% на практике окажутся семьюдесятью.
+///
+/// Ноль возвращается там, где наблюдений слишком мало, чтобы считать
+/// квантиль: это сигнал «раздельной калибровки нет», а не «интервал нулевой».
+double conformalScale(List<double> ratios, {double level = 0.80}) {
+  final usable = ratios.where((r) => r.isFinite && r >= 0).toList()..sort();
+  if (usable.length < 8) return 0;
+  final rank = ((usable.length + 1) * level).ceil().clamp(1, usable.length);
+  return usable[rank - 1].clamp(0.55, 2.75).toDouble();
 }
 
 double pinballLoss(double actual, double predicted, double quantile) {

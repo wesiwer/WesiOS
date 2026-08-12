@@ -24,6 +24,26 @@ class BacktestPoint {
   double get error => actual - p50;
   bool get inBand => actual >= p10 && actual <= p90;
   bool get actualGap => actual < 0;
+
+  /// Насколько факт разошёлся с медианой по сравнению с тем, насколько
+  /// модель обещала разойтись. Единица — граница угадана ровно.
+  ///
+  /// Считается только для той стороны, куда факт действительно ушёл:
+  /// промах вниз ничего не говорит о верхней границе, и наоборот. `null`
+  /// там, где обещанная полуширина нулевая — делить не на что.
+  double? get lowerRatio {
+    if (actual >= p50) return null;
+    final half = p50 - p10;
+    if (half <= 0) return null;
+    return (p50 - actual) / half;
+  }
+
+  double? get upperRatio {
+    if (actual <= p50) return null;
+    final half = p90 - p50;
+    if (half <= 0) return null;
+    return (actual - p50) / half;
+  }
 }
 
 class BacktestResult {
@@ -86,6 +106,10 @@ class HorizonBacktestMetrics {
   final double brierScore;
   final List<({double predicted, bool actual})> riskObservations;
 
+  /// Нормализованные промахи вниз и вверх — сырьё для конформной калибровки.
+  final List<double> lowerRatios;
+  final List<double> upperRatios;
+
   const HorizonBacktestMetrics({
     required this.horizonDays,
     required this.samples,
@@ -96,6 +120,8 @@ class HorizonBacktestMetrics {
     required this.quantileLoss,
     required this.brierScore,
     this.riskObservations = const [],
+    this.lowerRatios = const [],
+    this.upperRatios = const [],
   });
 
   double get normalizedScore {
@@ -109,6 +135,8 @@ class HorizonBacktestMetrics {
     return HorizonCalibrationBucket(
       horizonDays: horizonDays,
       intervalScale: intervalScaleFromCoverage(coverage, mape: mape),
+      lowerScale: conformalScale(lowerRatios),
+      upperScale: conformalScale(upperRatios),
       biasCorrection: bias * shrink,
       coverage: coverage,
       mape: mape,
@@ -443,6 +471,14 @@ class ForecastBacktest {
       riskObservations: [
         for (final point in points)
           (predicted: point.gapRisk, actual: point.actualGap),
+      ],
+      lowerRatios: [
+        for (final point in points)
+          if (point.lowerRatio != null) point.lowerRatio!,
+      ],
+      upperRatios: [
+        for (final point in points)
+          if (point.upperRatio != null) point.upperRatio!,
       ],
     );
   }
