@@ -1,0 +1,64 @@
+Analyzing WesiOS...                                             
+
+   info • Constructors for public widgets should have a named 'key' parameter • lib/core/theme/app_theme.dart:344:9 • use_key_in_widget_constructors
+   info • The parameter name 'old' doesn't match the name 'oldWidget' in the overridden method • lib/core/theme/app_theme.dart:347:49 • avoid_renaming_method_parameters
+   info • Constructors in '@immutable' classes should be declared as 'const' • lib/core/widgets/wesi_wordmark.dart:23:3 • prefer_const_constructors_in_immutables
+   info • The declaration '_ru' isn't referenced • lib/features/audio/audio_vault_v2_screen.dart:43:12 • unused_element
+   info • Statements in an if should be enclosed in a block • lib/features/audio/audio_vault_v2_screen.dart:92:7 • curly_braces_in_flow_control_structures
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/features/audio/services/audio_analysis_v2_service.dart:3:8 • unnecessary_import
+   info • Unnecessary braces in a string interpolation • lib/features/audio/services/audio_analysis_v2_service.dart:777:14 • unnecessary_brace_in_string_interps
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/features/audio/services/audio_player_service.dart:3:8 • unnecessary_import
+   info • Statements in a for should be enclosed in a block • lib/features/calculator/calculator_screen.dart:405:36 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/calendar/calendar_v2_screen.dart:741:17 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/calendar/calendar_v2_screen.dart:866:31 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/calendar/calendar_v2_screen.dart:883:37 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/calendar/calendar_v2_screen.dart:912:27 • curly_braces_in_flow_control_structures
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/crm/crm_screen.dart:2152:50 • use_build_context_synchronously
+   info • Constructors in '@immutable' classes should be declared as 'const' • lib/features/founder/founder_story_screen.dart:7:3 • prefer_const_constructors_in_immutables
+   info • The declaration '_TableEmbed' isn't referenced • lib/features/knowledge/screens/article_editor_screen.dart:15:7 • unused_element
+   info • The declaration '_VideoEmbed' isn't referenced • lib/features/knowledge/screens/article_editor_screen.dart:18:7 • unused_element
+   info • The declaration '_AudioEmbed' isn't referenced • lib/features/knowledge/screens/article_editor_screen.dart:21:7 • unused_element
+   info • Don't use 'BuildContext's across async gaps • lib/features/knowledge/screens/article_editor_screen.dart:330:7 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/knowledge/screens/article_editor_screen.dart:390:61 • use_build_context_synchronously
+   info • Statements in an if should be enclosed in a block • lib/features/knowledge/services/knowledge_linked_chart_service.dart:97:11 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/organizations/organizations_screen.dart:74:9 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/organizations/organizations_screen.dart:372:9 • curly_braces_in_flow_control_structures
+   info • The declaration '_lockedVault' isn't referenced • lib/features/profile/profile_screen.dart:277:10 • unused_element
+   info • The declaration '_vaultOptions' isn't referenced • lib/features/profile/profile_screen.dart:335:10 • unused_element
+   info • The declaration '_fieldTip' isn't referenced • lib/features/profile/profile_screen.dart:568:10 • unused_element
+   info • Unnecessary constructor invocation • lib/features/roadmap/roadmap_screen.dart:468:44 • prefer_collection_literals
+   info • Use 'const' for final variables initialized to a constant value • lib/features/roadmap/roadmap_screen.dart:1203:5 • prefer_const_declarations
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/roadmap/roadmap_screen.dart:1638:50 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/roadmap/roadmap_screen.dart:1962:50 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/features/shield/shield_screen.dart:593:19 • use_build_context_synchronously
+   info • Use 'isNotEmpty' rather than negating the result of 'isEmpty' • lib/features/sysadmin/console/console_screen.dart:457:29 • prefer_is_not_empty
+   info • Use 'isNotEmpty' rather than negating the result of 'isEmpty' • lib/features/sysadmin/console/console_screen.dart:534:28 • prefer_is_not_empty
+   info • Use 'isNotEmpty' rather than negating the result of 'isEmpty' • lib/features/sysadmin/console/console_screen.dart:539:42 • prefer_is_not_empty
+   info • Statements in an if should be enclosed in a block • lib/features/tasks/ai/services/wesi_ai_task_engine.dart:464:7 • curly_braces_in_flow_control_structures
+   info • The declaration '_valueInList' isn't referenced • lib/features/tasks/widgets/assignee_field.dart:97:8 • unused_element
+   info • The declaration '_person' isn't referenced • lib/features/tasks/widgets/assignee_field.dart:100:10 • unused_element
+   info • Statements in an if should be enclosed in a block • lib/features/tasks/widgets/task_cash_impact_field.dart:38:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/team/contacts_screen.dart:126:9 • curly_braces_in_flow_control_structures
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/features/team/services/team_service.dart:3:8 • unnecessary_import
+   info • 'androidAllowWhileIdle' is deprecated and shouldn't be used. Deprecated in favor of the androidScheduleMode parameter • lib/features/time_center/services/time_notification_scheduler.dart:172:11 • deprecated_member_use
+   info • The import of 'package:flutter/foundation.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/widgets.dart' • lib/features/time_center/services/time_schedule_automation.dart:3:8 • unnecessary_import
+   info • Statements in an if should be enclosed in a block • lib/features/time_center/time_center_screen.dart:613:31 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/time_center/time_center_screen.dart:632:33 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/time_center/time_center_screen.dart:765:31 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/time_center/time_center_screen.dart:778:31 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/treasury/sandbox_forecast_screen.dart:454:7 • curly_braces_in_flow_control_structures
+   info • Constructors in '@immutable' classes should be declared as 'const' • lib/features/treasury/sandbox_forecast_screen.dart:889:3 • prefer_const_constructors_in_immutables
+   info • Statements in an if should be enclosed in a block • lib/features/treasury/services/forecast_engine.dart:481:11 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/treasury/services/forecast_engine.dart:1324:13 • curly_braces_in_flow_control_structures
+   info • Statements in a for should be enclosed in a block • lib/features/treasury/services/forecast_engine.dart:1760:33 • curly_braces_in_flow_control_structures
+   info • Statements in a for should be enclosed in a block • lib/features/treasury/services/forecast_engine.dart:1761:34 • curly_braces_in_flow_control_structures
+   info • The import of 'forecast_engine_kind.dart' is unnecessary because all of the used elements are also provided by the import of 'multi_engine_forecast.dart' • lib/features/treasury/services/horizon_engine_competition.dart:9:8 • unnecessary_import
+   info • The import of 'package:flutter/foundation.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/widgets.dart' • lib/features/treasury/services/recurring_payment_automation.dart:3:8 • unnecessary_import
+   info • Use 'const' for final variables initialized to a constant value • lib/features/treasury/widgets/horizon_decision_panel.dart:78:15 • prefer_const_declarations
+   info • Use 'const' for final variables initialized to a constant value • test/sysadmin_defaults_test.dart:8:7 • prefer_const_declarations
+   info • 'generateDemoStats' is deprecated and shouldn't be used. Demo business statistics were removed • test/team_service_test.dart:173:26 • deprecated_member_use_from_same_package
+   info • Use 'const' for final variables initialized to a constant value • test/update_paths_test.dart:21:7 • prefer_const_declarations
+   info • Unnecessary escape in string literal • test/update_paths_test.dart:21:28 • unnecessary_string_escapes
+   info • Use 'const' for final variables initialized to a constant value • test/update_paths_test.dart:28:7 • prefer_const_declarations
+
+60 issues found. (ran in 22.2s)
