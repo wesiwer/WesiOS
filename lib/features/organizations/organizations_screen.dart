@@ -607,8 +607,6 @@ class _OrganizationMembersDialogState
     extends State<_OrganizationMembersDialog> {
   Map<String, OrganizationAccessGrant> _grants = const {};
   Set<String> _actorPermissions = const {};
-  bool _actorSubtree = false;
-  bool _actorTeamFinance = false;
   String? _error;
 
   @override
@@ -628,8 +626,6 @@ class _OrganizationMembersDialogState
 
     final actor = TeamService.current;
     final actorPermissions = <String>{};
-    var actorSubtree = actor?.isOwner == true;
-    var actorTeamFinance = actor?.isOwner == true;
     if (actor == null || actor.isOwner) {
       actorPermissions.addAll(OrganizationPermissions.all);
     } else {
@@ -650,11 +646,6 @@ class _OrganizationMembersDialogState
                   grant.organizationId,
                 ));
         if (!covers) continue;
-        actorSubtree = actorSubtree || grant.includeSubtree;
-        actorTeamFinance = actorTeamFinance ||
-            (grant.canViewTeamFinance &&
-                grant.permissions
-                    .contains(OrganizationPermissions.viewFinance));
       }
     }
 
@@ -662,8 +653,6 @@ class _OrganizationMembersDialogState
       setState(() {
         _grants = map;
         _actorPermissions = actorPermissions;
-        _actorSubtree = actorSubtree;
-        _actorTeamFinance = actorTeamFinance;
         _error = null;
       });
     }
@@ -697,76 +686,6 @@ class _OrganizationMembersDialogState
             widget.organization.id,
           );
         }
-      });
-
-  Future<void> _teamFinance(String employeeId, bool value) => _run(() async {
-        final grant = _grants[employeeId];
-        if (grant == null) return;
-        await OrganizationAccessService.grant(
-          employeeId: employeeId,
-          organizationId: grant.organizationId,
-          includeSubtree: grant.includeSubtree,
-          permissions: grant.permissions,
-          canViewSelfFinance: grant.canViewSelfFinance,
-          canViewTeamFinance: value,
-        );
-      });
-
-  Future<void> _selfFinance(String employeeId, bool value) => _run(() async {
-        final grant = _grants[employeeId];
-        if (grant == null) return;
-        await OrganizationAccessService.grant(
-          employeeId: employeeId,
-          organizationId: grant.organizationId,
-          includeSubtree: grant.includeSubtree,
-          permissions: grant.permissions,
-          canViewSelfFinance: value,
-          canViewTeamFinance: grant.canViewTeamFinance,
-        );
-      });
-
-  Future<void> _permission(
-    String employeeId,
-    String permission,
-    bool value,
-  ) =>
-      _run(() async {
-        final grant = _grants[employeeId];
-        if (grant == null) return;
-        final permissions = grant.permissions.toSet();
-        if (value) {
-          permissions.add(permission);
-          permissions.add(OrganizationPermissions.view);
-        } else {
-          permissions.remove(permission);
-          if (permission == OrganizationPermissions.viewFinance &&
-              grant.canViewTeamFinance) {
-            throw StateError(
-              'Сначала отключи «Персональные финансы команды».',
-            );
-          }
-        }
-        await OrganizationAccessService.grant(
-          employeeId: employeeId,
-          organizationId: grant.organizationId,
-          includeSubtree: grant.includeSubtree,
-          permissions: permissions.toList(),
-          canViewSelfFinance: grant.canViewSelfFinance,
-          canViewTeamFinance: grant.canViewTeamFinance,
-        );
-      });
-
-  Future<void> _subtree(String employeeId, bool value) => _run(() async {
-        final grant = _grants[employeeId];
-        if (grant == null) return;
-        await OrganizationAccessService.grant(
-          employeeId: employeeId,
-          organizationId: grant.organizationId,
-          includeSubtree: value,
-          permissions: grant.permissions,
-          canViewSelfFinance: grant.canViewSelfFinance,
-          canViewTeamFinance: grant.canViewTeamFinance,
-        );
       });
 
   @override
