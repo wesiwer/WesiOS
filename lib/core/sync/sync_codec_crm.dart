@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import '../../features/crm/models/crm_models.dart';
 import '../../features/crm/services/crm_service.dart';
+import '../../features/profile/services/profile_service.dart';
 import 'sync_codec.dart';
 
 /// Клиенты, сделки и касания в синхронизации.
@@ -108,4 +109,43 @@ Map<String, dynamic>? crmDecodeJson(String raw) {
 String crmIdOf(String raw) {
   final id = crmDecodeJson(raw)?['id'];
   return id is String ? id.trim() : '';
+}
+
+/// Профиль человека — одна запись на все его устройства.
+///
+/// Имя, почта, дата рождения, страна и аватарка лежали в `wesios_settings`
+/// вместе с адресом сервера и пропуском сессии, а тот бокс не
+/// синхронизируется — и не должен. Из-за этого профиль, заполненный на
+/// компьютере, на телефоне выглядел пустым.
+class ProfileSync extends SyncCollection<String> {
+  @override
+  String get name => 'profile';
+
+  @override
+  String get boxName => ProfileService.boxName;
+
+  @override
+  String idOf(String value) => ProfileService.recordKey;
+
+  @override
+  Map<String, dynamic> encode(String value) => crmDecodeJson(value) ?? const {};
+
+  @override
+  String? decode(Map<String, dynamic> fields) {
+    if (fields.isEmpty) return null;
+    return jsonEncode(fields);
+  }
+
+  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final ok = await super.applyFields(fields);
+    // Интерфейс читает профиль из настроек, поэтому приехавшую запись надо
+    // сразу разложить по их ключам: иначе профиль доедет до устройства, а на
+    // экране останется прежним.
+    if (ok) await ProfileService.spreadToSettings();
+    return ok;
+  }
+
+  @override
+  void notifyChanged() => ProfileService.revision.value++;
 }

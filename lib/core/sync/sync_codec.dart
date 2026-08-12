@@ -724,6 +724,8 @@ class SyncCodec {
     CrmClientsSync(),
     CrmDealsSync(),
     CrmInteractionsSync(),
+    // Профиль человека — одна запись на все его устройства.
+    ProfileSync(),
   ];
 
   static SyncCollection<dynamic>? byName(String name) {
