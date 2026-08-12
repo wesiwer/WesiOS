@@ -24,7 +24,18 @@ jobs:
           fetch-depth: 0
 
       - name: Apply adaptive learning integration
-        run: python3 .github/scripts/wesi_ai_learning_v2_patch.py
+        run: |
+          python3 .github/scripts/wesi_ai_learning_v2_patch.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/features/tasks/ai/services/wesi_ai_task_engine.dart')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace(
+              '    [double effortPoints = 1],\n  ) {',
+              '    [double effortPoints = 1]\n  ) {',
+          )
+          p.write_text(s, encoding='utf-8')
+          PY
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
