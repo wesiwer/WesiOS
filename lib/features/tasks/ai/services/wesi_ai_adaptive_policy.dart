@@ -38,7 +38,7 @@ class AiEmployeeCapacitySignal {
   bool get underutilized =>
       recentAssigned14 <= 2 && overdueOpen == 0 && recentIntensity7 < 2.6;
 
-  bool get fatigueRisk => recentIntensity7 >= 6.5 || overdueOpen >= 3;
+  bool get fatigueRisk => recentIntensity7 >= 5.5 || overdueOpen >= 3;
 
   double get reliability {
     if (recentAssigned14 == 0) return .65;
@@ -157,8 +157,9 @@ class WesiAiAdaptivePolicy {
 
     for (final task in tasks) {
       if (task.effectiveResponsibleEmployeeId != employeeId) continue;
-      if (latest == null || task.createdAt.isAfter(latest))
+      if (latest == null || task.createdAt.isAfter(latest)) {
         latest = task.createdAt;
+      }
       if (!task.createdAt.isBefore(start14)) {
         assigned14++;
         if (task.status == TaskStatus.done) done14++;
@@ -184,11 +185,20 @@ class WesiAiAdaptivePolicy {
       '${task.title} ${task.description ?? ''} ${task.tags.join(' ')}',
     );
     var hits = 0;
+    var strongestHitLength = 0;
     for (final keyword in template.taskKeywords) {
-      if (text.contains(_normalize(keyword))) hits++;
+      final normalizedKeyword = _normalize(keyword);
+      if (normalizedKeyword.isEmpty || !text.contains(normalizedKeyword)) {
+        continue;
+      }
+      hits++;
+      strongestHitLength = max(strongestHitLength, normalizedKeyword.length);
     }
-    if (template.taskKeywords.length <= 2) return hits >= 1;
-    return hits >= 2;
+    if (hits >= 2) return true;
+    // One meaningful domain term is enough for repeated-history learning.
+    // This lets ordinary human titles such as «Сделать новый бит» teach the
+    // cadence without requiring artificial AI tags or verbose wording.
+    return hits == 1 && strongestHitLength >= 3;
   }
 
   static double _taskIntensity(TaskModel task) {
