@@ -30,12 +30,10 @@ jobs:
           s = re.sub(r"\n  Future<void> _permission\(.*?\n  @override\n  Widget build", "\n  @override\n  Widget build", s, count=1, flags=re.S)
           s = s.replace('        _actorSubtree = actorSubtree;\n', '')
           s = s.replace('        _actorTeamFinance = actorTeamFinance;\n', '')
-          # These calculations only served the removed inline controls.
           s = re.sub(r"\n    var actorSubtree = actor\?\.isOwner == true;\n    var actorTeamFinance = actor\?\.isOwner == true;", '', s, count=1)
           s = re.sub(r"\n        actorSubtree = actorSubtree \|\| grant\.includeSubtree;\n        actorTeamFinance = actorTeamFinance \|\|\n            \(grant\.canViewTeamFinance &&\n                grant\.permissions\n                    \.contains\(OrganizationPermissions\.viewFinance\)\);", '', s, count=1)
           p.write_text(s)
           PY
-          dart format lib/features/organizations/organizations_screen.dart
           git diff --check
       - name: Commit cleanup
         run: |
