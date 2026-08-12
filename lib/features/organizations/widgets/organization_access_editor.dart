@@ -246,7 +246,9 @@ class _OrganizationAccessEditorState extends State<OrganizationAccessEditor> {
       ),
       content: SizedBox(
         width: 620,
-        height: MediaQuery.sizeOf(context).height.clamp(480, 720) * .72,
+        height:
+            MediaQuery.sizeOf(context).height.clamp(480.0, 720.0).toDouble() *
+                .72,
         child: ListView(
           children: [
             _accessSwitch(),
