@@ -1,0 +1,43 @@
+name: Dispatch green release once
+
+on:
+  push:
+    branches:
+      - agent/org-hierarchy-v1
+    paths:
+      - .github/workflows/release-green-dispatch-once.yml
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/org-hierarchy-v1
+          fetch-depth: 0
+
+      - name: Dispatch canonical release without optional server mirror
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref agent/org-hierarchy-v1 \
+            -f notes='Улучшены права организаций и Контакты. Серверное зеркало пропущено: релиз публикуется через GitHub Releases.' \
+            -f deploy_to_server=false
+
+      - name: Self-remove dispatcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/release-green-dispatch-once.yml
+          git config user.name 'WesiOS Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'ci: remove green release dispatcher [skip ci]'
+          git push origin HEAD:agent/org-hierarchy-v1
