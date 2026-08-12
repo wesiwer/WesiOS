@@ -13,6 +13,7 @@ import '../../services/task_service.dart';
 import '../models/ai_learning_profile.dart';
 import '../models/ai_task_suggestion.dart';
 import 'task_template_catalog.dart';
+import 'wesi_ai_strategy_planner.dart';
 import 'wesi_ai_task_engine.dart';
 
 class WesiAiTaskService {
@@ -44,15 +45,24 @@ class WesiAiTaskService {
       now: clock,
     ));
 
-    final visible = <AiTaskSuggestion>[];
+    final allowed = <AiTaskSuggestion>[];
     for (final suggestion in raw) {
       if (await _suppressed(box, suggestion, tasks, clock)) continue;
-      visible.add(suggestion);
-      if (visible.length >= visibleLimit) break;
+      allowed.add(suggestion);
     }
 
+    final strategic = WesiAiStrategyPlanner.rank(
+      suggestions: allowed,
+      tasks: tasks,
+      organizationId: organization.id,
+      organizationName: organization.name,
+      organizationDescription: organization.description ?? '',
+      businessSignal: businessSignal,
+      now: clock,
+    );
+
     return AiTaskAnalysisResult(
-      suggestions: visible,
+      suggestions: strategic.take(visibleLimit).toList(),
       businessSignal: businessSignal,
       analyzedAt: clock,
     );
@@ -92,6 +102,7 @@ class WesiAiTaskService {
       'wesi-ai:template:${suggestion.templateId}',
       'wesi-ai:category:${suggestion.category.name}',
       'wesi-ai:impact:${suggestion.forecastImpact.name}',
+      'wesi-ai:strategy:${(suggestion.strategicScore * 100).round()}',
       'wesi-ai:fingerprint:${suggestion.fingerprint}',
       if (suggestion.sourceTaskId != null)
         'wesi-ai:source:${suggestion.sourceTaskId}',
@@ -221,6 +232,7 @@ class WesiAiTaskService {
       'impactDelta': template == null
           ? 0
           : suggestion.forecastImpact.index - template.forecastImpact.index,
+      'strategicScore': suggestion.strategicScore,
     });
 
     final eventKeys = box.keys
@@ -359,7 +371,6 @@ class WesiAiTaskService {
       }
       if (accepted == null) return false;
       if (accepted.status != TaskStatus.done) return true;
-      // Do not immediately recreate a just-finished recurring cycle.
       return now.difference(accepted.createdAt).inDays < 2;
     }
     return false;
