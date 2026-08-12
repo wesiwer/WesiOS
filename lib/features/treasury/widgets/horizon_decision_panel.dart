@@ -101,6 +101,28 @@ class HorizonDecisionPanel extends StatelessWidget {
                   _ru ? 'Рекомендуемая подушка' : 'Recommended reserve',
                   CurrencyService.formatExactSmart(forecast.recommendedReserve),
                   Icons.savings_outlined,
+                  // Сумма сама по себе ни о чём не говорит: одному это
+                  // полгода спокойствия, другому три недели. Срок считается
+                  // по тому, сколько человек тратит на самом деле.
+                  hint: forecast.reserveDays > 0
+                      ? (_ru
+                          ? 'хватит на ${_days(forecast.reserveDays)}'
+                          : 'covers ${forecast.reserveDays} d')
+                      : null,
+                ),
+                _metric(
+                  _ru ? 'Денег хватит на' : 'Cash lasts',
+                  forecast.cushionDays > 0
+                      ? (_ru
+                          ? _days(forecast.cushionDays)
+                          : '${forecast.cushionDays} d')
+                      : '—',
+                  Icons.hourglass_bottom,
+                  hint: forecast.spendPerDay > 0
+                      ? (_ru
+                          ? 'при тратах ${CurrencyService.formatExactSmart(forecast.spendPerDay)} в день'
+                          : 'at ${CurrencyService.formatExactSmart(forecast.spendPerDay)}/day')
+                      : null,
                 ),
                 _metric(
                   _ru ? 'Свободный буфер' : 'Free safety buffer',
@@ -226,11 +248,28 @@ class HorizonDecisionPanel extends StatelessWidget {
     return _ru ? '$day дн.' : '$day d';
   }
 
+  /// «1 день», «3 дня», «10 дней» — иначе на экране получается «5 день».
+  static String _days(int n) {
+    final tail = n % 100;
+    if (tail >= 11 && tail <= 14) return '$n дней';
+    switch (n % 10) {
+      case 1:
+        return '$n день';
+      case 2:
+      case 3:
+      case 4:
+        return '$n дня';
+      default:
+        return '$n дней';
+    }
+  }
+
   Widget _metric(
     String label,
     String value,
     IconData icon, {
     Color? valueColor,
+    String? hint,
   }) {
     return Container(
       constraints: const BoxConstraints(minHeight: 74),
@@ -266,6 +305,18 @@ class HorizonDecisionPanel extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                if (hint != null) ...[
+                  const SizedBox(height: 2),
+                  Text(
+                    hint,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: AppTheme.textMuted,
+                      fontSize: 9.5,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

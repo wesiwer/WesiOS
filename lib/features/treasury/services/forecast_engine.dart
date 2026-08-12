@@ -258,6 +258,21 @@ class ForecastResult {
   final double uncertaintyScale;
   final double committedNearTerm;
   final double recommendedReserve;
+
+  /// На сколько дней хватит рекомендуемой подушки при привычных тратах.
+  ///
+  /// Сама подушка — это сумма в рублях, и по ней невозможно понять, много
+  /// это или мало: 200 000 — полгода спокойствия одному и три недели
+  /// другому. Дни считаются по тому, сколько человек тратит на самом деле.
+  final int reserveDays;
+
+  /// Сколько дней проживёт текущий баланс на привычных тратах, если ничего
+  /// не приходит. То, что обычно и называют «финансовой подушкой».
+  final int cushionDays;
+
+  /// Сколько тратится в среднем за день — знаменатель обоих сроков.
+  final double spendPerDay;
+
   final double safetyBuffer;
   final int? risk10Day;
   final int? risk25Day;
@@ -299,6 +314,9 @@ class ForecastResult {
     this.uncertaintyScale = 1,
     this.committedNearTerm = 0,
     this.recommendedReserve = 0,
+    this.reserveDays = 0,
+    this.cushionDays = 0,
+    this.spendPerDay = 0,
     this.safetyBuffer = 0,
     this.risk10Day,
     this.risk25Day,
@@ -365,6 +383,9 @@ class ForecastResult {
         uncertaintyScale: uncertaintyScale,
         committedNearTerm: committedNearTerm,
         recommendedReserve: recommendedReserve,
+        reserveDays: reserveDays,
+        cushionDays: cushionDays,
+        spendPerDay: spendPerDay,
         safetyBuffer: safetyBuffer,
         risk10Day: risk10Day,
         risk25Day: risk25Day,
@@ -1552,6 +1573,16 @@ class ForecastEngine {
     final recommendedReserve = (rawDrawdownReserve - committedNearTerm)
         .clamp(0.0, double.infinity)
         .toDouble();
+    // Привычка тратить — по всей доступной истории, чтобы редкие крупные
+    // покупки не выдавали себя за ежедневный расход.
+    final spendPerDay = denseExpense.isEmpty
+        ? 0.0
+        : denseExpense.reduce((a, b) => a + b) / denseExpense.length;
+    final reserveDays =
+        spendPerDay > 0 ? (recommendedReserve / spendPerDay).round() : 0;
+    final cushionDays = spendPerDay > 0
+        ? (max(0.0, currentBalance) / spendPerDay).round()
+        : 0;
     final safetyBuffer =
         currentBalance - recommendedReserve - committedNearTerm;
     final knownShare = knownTotal + uncertainTotal == 0
@@ -1623,6 +1654,9 @@ class ForecastEngine {
                   : 1.0),
       committedNearTerm: committedNearTerm,
       recommendedReserve: recommendedReserve,
+      reserveDays: reserveDays,
+      cushionDays: cushionDays,
+      spendPerDay: spendPerDay,
       safetyBuffer: safetyBuffer,
       risk10Day: risk10,
       risk25Day: risk25,
@@ -1999,13 +2033,54 @@ class ForecastEngine {
     if (risk25Day != null) {
       final worst = p10.isEmpty ? 0.0 : p10.reduce(min);
       final cut = max(0.0, -worst / max(1, risk25Day));
+      // Совет сверяется с тем, сколько человек вообще тратит.
+      //
+      // Раньше нужная сумма просто делилась на число дней и подавалась как
+      // «снизь расходы на столько-то в день». На дефиците это давало
+      // предложения вроде «сократить 30 000 в день» тому, у кого весь
+      // дневной расход — пять тысяч. Совет, который заведомо нельзя
+      // выполнить, — это не совет.
+      final spendPerDay = denseExpense.isEmpty
+          ? 0.0
+          : denseExpense.reduce((a, b) => a + b) / denseExpense.length;
+      final share = spendPerDay > 0 ? cut / spendPerDay : double.infinity;
+      final String textRu;
+      final String textEn;
+      if (share > 0.5) {
+        // Больше половины трат срезать нельзя: там аренда, еда, налоги.
+        // Честнее назвать размер дыры и то, чем её реально закрыть.
+        final gap = cut * risk25Day;
+        textRu = 'Через $risk25Day дн. риск остаться без денег выше 25%. '
+            'Не хватает примерно ${gap.toStringAsFixed(0)} ₽. Одним '
+            'урезанием трат тут не обойтись — нужны либо новые поступления, '
+            'либо отсрочка платежей, либо запас на счёте.';
+        textEn = 'In $risk25Day days the risk of running out is above 25%. '
+            'The shortfall is about ${gap.toStringAsFixed(0)}. Spending cuts '
+            'alone will not close it: this needs new income, deferred '
+            'payments or extra liquidity.';
+      } else if (share > 0.25) {
+        textRu = 'Через $risk25Day дн. риск остаться без денег выше 25%. '
+            'Чтобы этого избежать, придётся тратить на '
+            '${cut.toStringAsFixed(0)} ₽ в день меньше — это '
+            '${(share * 100).round()}% обычных трат. Выполнимо, но жёстко: '
+            'спокойнее добавить поступлений.';
+        textEn = 'In $risk25Day days the risk of running out is above 25%. '
+            'Avoiding it means spending ${cut.toStringAsFixed(0)} less per '
+            'day — ${(share * 100).round()}% of the usual pace. Possible, '
+            'but tight: adding income is the calmer route.';
+      } else {
+        textRu = 'Через $risk25Day дн. риск остаться без денег выше 25%. '
+            'Достаточно тратить на ${cut.toStringAsFixed(0)} ₽ в день '
+            'меньше — это ${(share * 100).round()}% обычных трат.';
+        textEn = 'In $risk25Day days the risk of running out is above 25%. '
+            'Spending ${cut.toStringAsFixed(0)} less per day is enough — '
+            '${(share * 100).round()}% of the usual pace.';
+      }
       prompts.add(ForecastActionPrompt(
         code: 'gap-25',
         severity: ForecastPromptSeverity.critical,
-        textRu:
-            'Риск кассового разрыва превышает 25% через $risk25Day дн. Снизь средние расходы примерно на ${cut.toStringAsFixed(0)} ₽/день или добавь ликвидность.',
-        textEn:
-            'Cash-gap risk exceeds 25% in $risk25Day days. Cut average spending by about ${cut.toStringAsFixed(0)} per day or add liquidity.',
+        textRu: textRu,
+        textEn: textEn,
         amount: cut,
         day: risk25Day,
       ));
