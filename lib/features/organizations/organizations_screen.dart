@@ -11,6 +11,7 @@ import 'models/organization_model.dart';
 import 'services/organization_access_service.dart';
 import 'services/organization_context.dart';
 import 'services/organization_service.dart';
+import 'widgets/organization_access_editor.dart';
 
 class OrganizationsScreen extends StatefulWidget {
   const OrganizationsScreen({super.key});
@@ -790,7 +791,7 @@ class _OrganizationMembersDialogState
                     Text(_error!, style: TextStyle(color: AppTheme.accentRed)),
               ),
             Text(
-              'Интерфейс показывает только права, которые текущая роль сама может делегировать. Service layer повторно проверяет это при сохранении.',
+              'Показываются только сотрудники и права, которыми ваша роль может управлять. Сервер повторно проверит доступ при сохранении.',
               style: TextStyle(color: AppTheme.textSecondary, fontSize: 12),
             ),
             const SizedBox(height: 8),
@@ -806,52 +807,25 @@ class _OrganizationMembersDialogState
                         subtitle: Text(employee.position),
                       ),
                       if (_grants[employee.id] case final grant?) ...[
-                        CheckboxListTile(
-                          value: grant.canViewSelfFinance,
-                          onChanged: (v) =>
-                              _selfFinance(employee.id, v ?? true),
-                          title: const Text('Личные показатели (Мои)'),
-                        ),
-                        CheckboxListTile(
-                          value: grant.includeSubtree,
-                          onChanged: _actorSubtree
-                              ? (v) => _subtree(employee.id, v ?? false)
-                              : null,
-                          title: const Text('Доступ к поддереву'),
-                        ),
-                        CheckboxListTile(
-                          value: grant.canViewTeamFinance,
-                          onChanged: _actorTeamFinance &&
-                                  _actorPermissions.contains(
-                                    OrganizationPermissions.viewFinance,
-                                  )
-                              ? (v) => _teamFinance(employee.id, v ?? false)
-                              : null,
-                          title: const Text('Персональные финансы команды'),
-                        ),
-                        const Divider(),
-                        for (final permission in const [
-                          OrganizationPermissions.viewFinance,
-                          OrganizationPermissions.createTransactions,
-                          OrganizationPermissions.editTransactions,
-                          OrganizationPermissions.manageAccounts,
-                          OrganizationPermissions.manageRecurring,
-                          OrganizationPermissions.viewForecast,
-                          OrganizationPermissions.manageOrgSettings,
-                          OrganizationPermissions.manageMembers,
-                        ])
-                          CheckboxListTile(
-                            dense: true,
-                            value: grant.permissions.contains(permission),
-                            onChanged: _actorPermissions.contains(permission)
-                                ? (v) => _permission(
-                                      employee.id,
-                                      permission,
-                                      v ?? false,
-                                    )
-                                : null,
-                            title: Text(permission),
+                        ListTile(
+                          leading: Icon(
+                            Icons.tune_rounded,
+                            color: AppTheme.accent,
                           ),
+                          title: const Text('Настроить доступ'),
+                          subtitle: Text(
+                            OrganizationAccessEditor.shortSummary(grant),
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: () async {
+                            final changed = await OrganizationAccessEditor.open(
+                              context,
+                              employee: employee,
+                              organization: widget.organization,
+                            );
+                            if (changed == true) await _load();
+                          },
+                        ),
                       ],
                     ],
                   ),
