@@ -27,6 +27,32 @@ routerUse((e) => {
     return {};
   };
 
+  // Security session records are critical and have a fixed shape. Reading
+  // them through record.get("payload") is not reliable across PocketBase JS
+  // runtime versions: a JSON field can be exposed as a proxy/value that looks
+  // like an object but doesn't provide its properties as normal JS fields.
+  // The main security hook uses unmarshalJSONField, so sync must validate the
+  // exact same persisted session in the exact same way. Otherwise OTP verify
+  // succeeds, then the first sync request falsely reports "session ended".
+  const sessionPayloadOf = (record) => {
+    if (!record) return {};
+    try {
+      const model = new DynamicModel({
+        "userId": "",
+        "expiresAt": "",
+        "revokedAt": "",
+      });
+      record.unmarshalJSONField("payload", model);
+      return {
+        "userId": String(model.userId || ""),
+        "expiresAt": String(model.expiresAt || ""),
+        "revokedAt": String(model.revokedAt || ""),
+      };
+    } catch (_) {
+      return {};
+    }
+  };
+
   const sid = String(e.request.header.get("X-WesiOS-Session") || "").trim();
   if (!/^[A-Za-z0-9_-]{24,96}$/.test(sid)) {
     throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
@@ -40,7 +66,7 @@ routerUse((e) => {
     );
   } catch (_) { session = null; }
   if (!session) throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
-  const sessionPayload = payloadOf(session);
+  const sessionPayload = sessionPayloadOf(session);
   const expiresAt = Date.parse(String(sessionPayload.expiresAt || ""));
   if (String(sessionPayload.userId || "") !== e.auth.id ||
       String(sessionPayload.revokedAt || "") ||
