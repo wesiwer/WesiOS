@@ -1,2 +1,2 @@
-analyze=1
-test=99
+analyze=0
+test=1

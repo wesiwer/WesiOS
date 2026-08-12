@@ -41,7 +41,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Timer? _activationTicker;
   Set<String> _contextEmployeeIds = const <String>{};
   bool _membersLoading = true;
-  bool _canManageContext = false;
   List<OrganizationModel> _organizations = const <OrganizationModel>[];
   Map<String, Set<String>> _employeeOrgIds = const <String, Set<String>>{};
   Set<String> _manageableOrgIds = const <String>{};
@@ -145,7 +144,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         _manageableOrgIds = manageable;
         _selectedOrganizationId = selected;
         _contextEmployeeIds = contextEmployeeIds;
-        _canManageContext = selected != null && manageable.contains(selected);
         _membersLoading = false;
       });
     } catch (_) {
@@ -155,7 +153,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         _employeeOrgIds = const {};
         _manageableOrgIds = const {};
         _contextEmployeeIds = const <String>{};
-        _canManageContext = false;
         _membersLoading = false;
       });
     }
@@ -173,8 +170,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
           })
           .map((e) => e.id)
           .toSet();
-      _canManageContext =
-          organizationId != null && _manageableOrgIds.contains(organizationId);
     });
   }
 
