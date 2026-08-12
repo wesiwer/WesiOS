@@ -80,6 +80,12 @@ class TransactionModel {
   @HiveField(28)
   final String fxSource;
 
+  /// Исходная дата регулярного платежа. [date] двигается вперёд после
+  /// проведения, а якорь остаётся неизменным, чтобы месячные платежи не
+  /// съезжали с 31-го на 28-е навсегда.
+  @HiveField(29)
+  final DateTime? recurringAnchor;
+
   const TransactionModel({
     required this.id,
     required this.title,
@@ -110,6 +116,7 @@ class TransactionModel {
     this.fxRateToReporting = 1.0,
     this.fxRateAt,
     this.fxSource = 'legacy',
+    this.recurringAnchor,
   });
 
   String get effectiveOrganizationId =>
@@ -121,6 +128,9 @@ class TransactionModel {
   double get effectiveOriginalAmount => originalAmount ?? amount;
   double get effectiveOrganizationBaseAmount =>
       organizationBaseAmount ?? amount;
+
+  /// Якорь регулярного платежа с обратной совместимостью для старых записей.
+  DateTime get recurringAnchorDate => recurringAnchor ?? date;
 
   TransactionModel copyWith({
     String? id,
@@ -161,6 +171,8 @@ class TransactionModel {
     double? fxRateToReporting,
     DateTime? fxRateAt,
     String? fxSource,
+    DateTime? recurringAnchor,
+    bool clearRecurringAnchor = false,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -206,6 +218,9 @@ class TransactionModel {
       fxRateToReporting: fxRateToReporting ?? this.fxRateToReporting,
       fxRateAt: fxRateAt ?? this.fxRateAt,
       fxSource: fxSource ?? this.fxSource,
+      recurringAnchor: clearRecurringAnchor
+          ? null
+          : (recurringAnchor ?? this.recurringAnchor),
     );
   }
 
@@ -239,6 +254,7 @@ class TransactionModel {
         'fxRateToReporting': fxRateToReporting,
         'fxRateAt': fxRateAt?.toIso8601String(),
         'fxSource': fxSource,
+        'recurringAnchor': recurringAnchor?.toIso8601String(),
       };
 }
 
