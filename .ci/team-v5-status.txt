@@ -1,4 +1,0 @@
-analyze=0
-targeted=0
-layout=0
-full=0
