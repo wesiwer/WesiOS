@@ -1,0 +1,41 @@
+name: Trigger WesiOS Production Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/run-production-once.yml'
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Dispatch production release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run publish-wesios-production.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='WesiOS 0.20.0: обновлённый Wesi Horizon, исправления прогноза и календарных дней'
+
+      - name: Remove one-shot trigger
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/run-production-once.yml
+          git commit -m 'ci: remove completed production release trigger'
+          git push origin HEAD:main
