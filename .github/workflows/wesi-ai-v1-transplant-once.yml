@@ -41,6 +41,58 @@ jobs:
       - name: Connect Wesi AI to Tasks
         run: python3 .github/scripts/wesi_ai_tasks_v1_patch.py
 
+      - name: Make suggestion actions phone-safe
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/features/tasks/ai/widgets/wesi_ai_suggestions_panel.dart')
+          s = p.read_text(encoding='utf-8')
+          old = '''          Row(
+            children: [
+              TextButton(
+                onPressed: () => _snooze(suggestion),
+                child: const Text('Не сейчас'),
+              ),
+              const Spacer(),
+              OutlinedButton(
+                onPressed: () => _edit(suggestion),
+                child: const Text('Изменить'),
+              ),
+              const SizedBox(width: 7),
+              FilledButton(
+                onPressed: () => _accept(suggestion),
+                child: const Text('Создать'),
+              ),
+            ],
+          ),'''
+          new = '''          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                TextButton(
+                  onPressed: () => _snooze(suggestion),
+                  child: const Text('Не сейчас'),
+                ),
+                OutlinedButton(
+                  onPressed: () => _edit(suggestion),
+                  child: const Text('Изменить'),
+                ),
+                FilledButton(
+                  onPressed: () => _accept(suggestion),
+                  child: const Text('Создать'),
+                ),
+              ],
+            ),
+          ),'''
+          if old not in s:
+              raise SystemExit('suggestion action row anchor not found')
+          p.write_text(s.replace(old, new), encoding='utf-8')
+          PY
+
       - name: Remove patch helper
         run: rm -f .github/scripts/wesi_ai_tasks_v1_patch.py
 
@@ -66,6 +118,9 @@ jobs:
 
       - name: Wesi AI tests
         run: flutter test test/wesi_ai_task_engine_test.dart
+
+      - name: Phone task layout regression
+        run: flutter test test/tasks_screen_layout_test.dart
 
       - name: Full test suite
         run: flutter test
