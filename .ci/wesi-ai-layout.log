@@ -1,8 +1,0 @@
-
-✅ board with a handful of tasks per column renders four columns side by side on a desktop-width window without overflowing
-✅ board with a handful of tasks per column falls back to stacked columns on a phone-width window without overflowing — four columns side by side are unreadable there
-✅ board with far more tasks than fit on screen a column scrolls internally instead of overflowing
-✅ board with far more tasks than fit on screen the stacked phone layout also survives it
-✅ empty board shows the empty placeholder in every column
-
-🎉 5 tests passed.
