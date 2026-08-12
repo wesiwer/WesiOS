@@ -20,6 +20,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          echo 'Deploying OTP/session sync compatibility fix.'
           gh workflow run deploy-employee-portal.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref agent/org-hierarchy-remediation-1
