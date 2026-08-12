@@ -177,7 +177,8 @@ class WesiAiStrategyPlanner {
       score -= .16;
       evidence.add('В этом направлении уже $categoryOpen незавершённых задач');
       if (reason.isEmpty) {
-        reason = 'Сначала выгоднее разгрузить уже поставленные задачи этого направления.';
+        reason =
+            'Сначала выгоднее разгрузить уже поставленные задачи этого направления.';
       }
     }
 
@@ -195,9 +196,11 @@ class WesiAiStrategyPlanner {
           (health.completed30d[AiTaskCategory.sales] ?? 0) == 0) {
         multiplier -= .18;
         score -= .10;
-        evidence.add('Есть готовый производственный поток, но нет недавней работы по продажам');
+        evidence.add(
+            'Есть готовый производственный поток, но нет недавней работы по продажам');
         if (reason.isEmpty) {
-          reason = 'Сейчас дополнительное производство слабее действия, которое монетизирует уже созданный запас.';
+          reason =
+              'Сейчас дополнительное производство слабее действия, которое монетизирует уже созданный запас.';
         }
       }
     }
@@ -215,14 +218,17 @@ class WesiAiStrategyPlanner {
     if (burst >= 2) {
       multiplier -= min(.28, burst * .08);
       score -= min(.18, burst * .05);
-      evidence.add('Похожая работа уже выполнялась $burst раз(а) за последние 7 дней');
+      evidence.add(
+          'Похожая работа уже выполнялась $burst раз(а) за последние 7 дней');
       if (reason.isEmpty) {
-        reason = 'Система снижает повторяемость, чтобы не превращать рекомендации в поток одинаковых задач.';
+        reason =
+            'Система снижает повторяемость, чтобы не превращать рекомендации в поток одинаковых задач.';
       }
     }
 
     if (reason.isEmpty) {
-      reason = 'Предложение закрывает актуальную потребность без более сильного обнаруженного узкого места.';
+      reason =
+          'Предложение закрывает актуальную потребность без более сильного обнаруженного узкого места.';
     }
     return AiStrategySignal(
       multiplier: multiplier.clamp(.55, 1.45).toDouble(),
@@ -238,8 +244,8 @@ class WesiAiStrategyPlanner {
   ) {
     final impact = suggestion.forecastImpact.index /
         max(1, AiForecastImpact.values.length - 1);
-    final priority = suggestion.priority.index /
-        max(1, TaskPriority.values.length - 1);
+    final priority =
+        suggestion.priority.index / max(1, TaskPriority.values.length - 1);
     var score = suggestion.needScore * .40 +
         suggestion.strategicScore * .34 +
         impact * .18 +

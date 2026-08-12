@@ -91,11 +91,15 @@ void main() {
     expect(qc.reason, contains('цепочк'));
   });
 
-  test('financial pressure favors sales over more production when stock exists', () {
+  test('financial pressure favors sales over more production when stock exists',
+      () {
     final tasks = [
       task(id: 'beat-1', title: 'Бит 1', category: AiTaskCategory.production),
       task(id: 'beat-2', title: 'Бит 2', category: AiTaskCategory.production),
-      task(id: 'pub-1', title: 'Публикация', category: AiTaskCategory.operations),
+      task(
+          id: 'pub-1',
+          title: 'Публикация',
+          category: AiTaskCategory.operations),
     ];
     const business = AiBusinessSignal(
       financeAvailable: true,
@@ -134,7 +138,8 @@ void main() {
     expect(ranked.first.strategicScore, greaterThan(.6));
   });
 
-  test('existing category backlog suppresses adding more work to same queue', () {
+  test('existing category backlog suppresses adding more work to same queue',
+      () {
     final tasks = [
       for (var i = 0; i < 4; i++)
         task(
@@ -160,7 +165,8 @@ void main() {
     );
 
     expect(signal.multiplier, lessThan(1));
-    expect(signal.evidence.any((item) => item.contains('незавершённых')), isTrue);
+    expect(
+        signal.evidence.any((item) => item.contains('незавершённых')), isTrue);
   });
 
   test('recent repeated work reduces burst recommendations', () {
@@ -194,6 +200,7 @@ void main() {
     );
 
     expect(signal.multiplier, lessThan(1));
-    expect(signal.evidence.any((item) => item.contains('последние 7 дней')), isTrue);
+    expect(signal.evidence.any((item) => item.contains('последние 7 дней')),
+        isTrue);
   });
 }

@@ -164,7 +164,7 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
                   _emptyState()
                 else if (suggestions.isNotEmpty)
                   SizedBox(
-                    height: compact ? 248 : 236,
+                    height: compact ? 282 : 270,
                     child: ListView.separated(
                       padding: const EdgeInsets.all(10),
                       scrollDirection: Axis.horizontal,
@@ -345,9 +345,9 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
       return 'Есть финансовый сигнал: приоритет получают действия, способные приблизить доход.';
     }
     if (signal?.financeAvailable == true) {
-      return 'Учитываю историю работы, ваши решения, роли, загрузку, отдых и Wesi Horizon.';
+      return 'Учитываю бизнес-цепочку, узкие места, историю, ваши решения, загрузку и Wesi Horizon.';
     }
-    return 'Учитываю историю работы, ваши решения, роли, загрузку и отдых. Финансы недоступны этому профилю.';
+    return 'Учитываю бизнес-цепочку, узкие места, историю, ваши решения и загрузку. Финансы недоступны этому профилю.';
   }
 
   Widget _suggestionCard(
@@ -417,6 +417,45 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
             overflow: TextOverflow.ellipsis,
             style: TextStyle(color: AppTheme.textSecondary, fontSize: 10.5),
           ),
+          if (suggestion.strategicReason.isNotEmpty) ...[
+            const SizedBox(height: 5),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              decoration: BoxDecoration(
+                color: AppTheme.accent.withOpacity(.07),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.account_tree_outlined,
+                      size: 13, color: AppTheme.accent),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      suggestion.strategicReason,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: AppTheme.textSecondary,
+                        fontSize: 9.8,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    '${(suggestion.strategicScore * 100).round()}%',
+                    style: TextStyle(
+                      color: AppTheme.accent,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 7),
           Row(
             children: [
