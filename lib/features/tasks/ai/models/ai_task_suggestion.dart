@@ -16,6 +16,8 @@ class AiTaskSuggestion {
   final double needScore;
   final double confidence;
   final double effortPoints;
+  final double strategicScore;
+  final String strategicReason;
   final DateTime? dueDate;
   final String whyNow;
   final List<String> evidence;
@@ -36,6 +38,8 @@ class AiTaskSuggestion {
     required this.needScore,
     required this.confidence,
     required this.effortPoints,
+    this.strategicScore = .5,
+    this.strategicReason = '',
     this.dueDate,
     required this.whyNow,
     this.evidence = const [],
@@ -49,8 +53,13 @@ class AiTaskSuggestion {
     bool clearAssignee = false,
     TaskPriority? priority,
     AiForecastImpact? forecastImpact,
+    double? needScore,
+    double? strategicScore,
+    String? strategicReason,
     DateTime? dueDate,
     bool clearDueDate = false,
+    String? whyNow,
+    List<String>? evidence,
   }) =>
       AiTaskSuggestion(
         id: id,
@@ -64,12 +73,14 @@ class AiTaskSuggestion {
         alternativeAssigneeIds: alternativeAssigneeIds,
         priority: priority ?? this.priority,
         forecastImpact: forecastImpact ?? this.forecastImpact,
-        needScore: needScore,
+        needScore: needScore ?? this.needScore,
         confidence: confidence,
         effortPoints: effortPoints,
+        strategicScore: strategicScore ?? this.strategicScore,
+        strategicReason: strategicReason ?? this.strategicReason,
         dueDate: clearDueDate ? null : (dueDate ?? this.dueDate),
-        whyNow: whyNow,
-        evidence: evidence,
+        whyNow: whyNow ?? this.whyNow,
+        evidence: evidence ?? this.evidence,
         sourceTaskId: sourceTaskId,
       );
 }
