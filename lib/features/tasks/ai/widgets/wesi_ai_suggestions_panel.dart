@@ -345,9 +345,9 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
       return 'Есть финансовый сигнал: приоритет получают действия, способные приблизить доход.';
     }
     if (signal?.financeAvailable == true) {
-      return 'Учитываю историю работы, роли, загрузку, отдых и Wesi Horizon.';
+      return 'Учитываю историю работы, ваши решения, роли, загрузку, отдых и Wesi Horizon.';
     }
-    return 'Учитываю историю работы, роли, загрузку и отдых. Финансы недоступны этому профилю.';
+    return 'Учитываю историю работы, ваши решения, роли, загрузку и отдых. Финансы недоступны этому профилю.';
   }
 
   Widget _suggestionCard(

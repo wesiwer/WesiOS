@@ -10,7 +10,9 @@ import '../../../treasury/services/treasury_service.dart';
 import '../../models/task_model.dart';
 import '../../services/task_assignment.dart';
 import '../../services/task_service.dart';
+import '../models/ai_learning_profile.dart';
 import '../models/ai_task_suggestion.dart';
+import 'task_template_catalog.dart';
 import 'wesi_ai_task_engine.dart';
 
 class WesiAiTaskService {
@@ -25,6 +27,8 @@ class WesiAiTaskService {
     final tasks = await TaskService().getForOrganizations({organization.id});
     final eligibleIds = await _employeeIdsForOrganization(organization.id);
     final businessSignal = await _businessSignal(clock);
+    final box = await Hive.openBox<dynamic>(_memoryBoxName);
+    final learningProfile = _learningProfile(box, organization.id);
 
     final raw = WesiAiTaskEngine.analyze(WesiAiAnalysisInput(
       tasks: tasks,
@@ -36,10 +40,10 @@ class WesiAiTaskService {
       currentEmployeeId: TeamService.current?.id,
       canAssignToOthers: TaskAssignment.canAssignToOthers,
       businessSignal: businessSignal,
+      learningProfile: learningProfile,
       now: clock,
     ));
 
-    final box = await Hive.openBox<dynamic>(_memoryBoxName);
     final visible = <AiTaskSuggestion>[];
     for (final suggestion in raw) {
       if (await _suppressed(box, suggestion, tasks, clock)) continue;
@@ -64,6 +68,7 @@ class WesiAiTaskService {
       'until': DateTime.now().add(duration).toIso8601String(),
       'templateId': suggestion.templateId,
     });
+    await _recordLearningEvent(box, suggestion, 'snooze');
   }
 
   static Future<void> reject(
@@ -76,6 +81,7 @@ class WesiAiTaskService {
       'until': DateTime.now().add(duration).toIso8601String(),
       'templateId': suggestion.templateId,
     });
+    await _recordLearningEvent(box, suggestion, 'reject');
   }
 
   static Future<TaskModel> accept(AiTaskSuggestion suggestion) async {
@@ -114,8 +120,121 @@ class WesiAiTaskService {
       'at': now.toIso8601String(),
       'templateId': suggestion.templateId,
     });
+    await _recordLearningEvent(
+      box,
+      suggestion.copyWith(
+          assigneeId: assignee, clearAssignee: assignee == null),
+      'accepted',
+      taskId: task.id,
+    );
     return task;
   }
+
+  static AiLearningProfile _learningProfile(
+    Box<dynamic> box,
+    String organizationId,
+  ) {
+    final accepted = <String, int>{};
+    final rejected = <String, int>{};
+    final snoozed = <String, int>{};
+    final prioritySum = <String, double>{};
+    final impactSum = <String, double>{};
+    final assignees = <String, Map<String, int>>{};
+
+    for (final raw in box.values) {
+      if (raw is! Map || raw['eventVersion'] != 2) continue;
+      if (raw['organizationId']?.toString() != organizationId) continue;
+      final templateId = raw['templateId']?.toString();
+      final type = raw['type']?.toString();
+      if (templateId == null || type == null) continue;
+      switch (type) {
+        case 'accepted':
+          accepted[templateId] = (accepted[templateId] ?? 0) + 1;
+          prioritySum[templateId] =
+              (prioritySum[templateId] ?? 0) + _asDouble(raw['priorityDelta']);
+          impactSum[templateId] =
+              (impactSum[templateId] ?? 0) + _asDouble(raw['impactDelta']);
+          final employeeId = raw['assigneeId']?.toString();
+          if (employeeId != null && employeeId.isNotEmpty) {
+            final map =
+                assignees.putIfAbsent(templateId, () => <String, int>{});
+            map[employeeId] = (map[employeeId] ?? 0) + 1;
+          }
+          break;
+        case 'reject':
+          rejected[templateId] = (rejected[templateId] ?? 0) + 1;
+          break;
+        case 'snooze':
+          snoozed[templateId] = (snoozed[templateId] ?? 0) + 1;
+          break;
+      }
+    }
+
+    final ids = <String>{
+      ...accepted.keys,
+      ...rejected.keys,
+      ...snoozed.keys,
+    };
+    return AiLearningProfile(
+      templates: {
+        for (final id in ids)
+          id: AiTemplateLearning(
+            accepted: accepted[id] ?? 0,
+            rejected: rejected[id] ?? 0,
+            snoozed: snoozed[id] ?? 0,
+            averagePriorityDelta: (accepted[id] ?? 0) == 0
+                ? 0
+                : (prioritySum[id] ?? 0) / accepted[id]!,
+            averageImpactDelta: (accepted[id] ?? 0) == 0
+                ? 0
+                : (impactSum[id] ?? 0) / accepted[id]!,
+            acceptedAssignees: Map.unmodifiable(
+              assignees[id] ?? const <String, int>{},
+            ),
+          ),
+      },
+    );
+  }
+
+  static Future<void> _recordLearningEvent(
+    Box<dynamic> box,
+    AiTaskSuggestion suggestion,
+    String type, {
+    String? taskId,
+  }) async {
+    final now = DateTime.now();
+    final template = WesiAiTaskCatalog.all
+        .where((item) => item.id == suggestion.templateId)
+        .firstOrNull;
+    await box
+        .put('event::${now.microsecondsSinceEpoch}::${suggestion.templateId}', {
+      'eventVersion': 2,
+      'type': type,
+      'at': now.toIso8601String(),
+      'organizationId': suggestion.organizationId,
+      'templateId': suggestion.templateId,
+      'taskId': taskId,
+      'assigneeId': suggestion.assigneeId,
+      'priorityDelta': template == null
+          ? 0
+          : suggestion.priority.index - template.basePriority.index,
+      'impactDelta': template == null
+          ? 0
+          : suggestion.forecastImpact.index - template.forecastImpact.index,
+    });
+
+    final eventKeys = box.keys
+        .where((key) => key.toString().startsWith('event::'))
+        .map((key) => key.toString())
+        .toList()
+      ..sort();
+    if (eventKeys.length > 300) {
+      await box.deleteAll(eventKeys.take(eventKeys.length - 300));
+    }
+  }
+
+  static double _asDouble(dynamic value) =>
+      value is num ? value.toDouble() : double.tryParse('$value') ?? 0;
 
   static Future<Set<String>> _employeeIdsForOrganization(String orgId) async {
     final result = <String>{};
@@ -247,4 +366,8 @@ class WesiAiTaskService {
   }
 
   static String _decisionKey(String fingerprint) => 'decision::$fingerprint';
+}
+
+extension _FirstOrNull<T> on Iterable<T> {
+  T? get firstOrNull => isEmpty ? null : first;
 }

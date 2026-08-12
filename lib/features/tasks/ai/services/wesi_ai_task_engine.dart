@@ -2,9 +2,11 @@ import 'dart:math';
 
 import '../../models/task_model.dart';
 import '../../../team/models/employee_model.dart';
+import '../models/ai_learning_profile.dart';
 import '../models/ai_task_suggestion.dart';
 import '../models/ai_task_template.dart';
 import 'task_template_catalog.dart';
+import 'wesi_ai_adaptive_policy.dart';
 
 class WesiAiAnalysisInput {
   final List<TaskModel> tasks;
@@ -16,6 +18,7 @@ class WesiAiAnalysisInput {
   final String? currentEmployeeId;
   final bool canAssignToOthers;
   final AiBusinessSignal businessSignal;
+  final AiLearningProfile learningProfile;
   final DateTime now;
 
   const WesiAiAnalysisInput({
@@ -28,6 +31,7 @@ class WesiAiAnalysisInput {
     required this.currentEmployeeId,
     required this.canAssignToOthers,
     required this.businessSignal,
+    this.learningProfile = const AiLearningProfile(),
     required this.now,
   });
 }
@@ -47,13 +51,25 @@ class WesiAiTaskEngine {
 
       final trigger = _triggerNeed(template, input, scopedTasks);
       if (!trigger.needed) continue;
+      final learning = input.learningProfile.forTemplate(template.id);
+      final needScore =
+          (trigger.score * learning.needMultiplier).clamp(0.0, 1.0).toDouble();
+      // Repeated rejection lowers routine noise, but cannot silence a truly
+      // critical signal: a very high raw need is still allowed through.
+      if (learning.rejected >= 2 && learning.accepted == 0 && needScore < .85) {
+        continue;
+      }
 
-      final ranked = _rankEmployees(template, input, scopedTasks);
+      final ranked = _rankEmployees(template, input, scopedTasks, learning);
       if (ranked.isEmpty) continue;
 
       final chosen = ranked.first;
-      final priority =
-          _priorityFor(template, trigger.score, input.businessSignal);
+      final priority = _priorityFor(
+        template,
+        needScore,
+        input.businessSignal,
+        learning,
+      );
       final source = trigger.sourceTask;
       final fingerprint = [
         input.organizationId,
@@ -62,7 +78,9 @@ class WesiAiTaskEngine {
       ].join(':');
       final evidence = <String>[
         ...trigger.evidence,
-        _employeeEvidence(chosen, scopedTasks),
+        _employeeEvidence(chosen, scopedTasks, input.now),
+        if (learning.decisions >= 2)
+          'Учтено ваших решений по этому типу задач: ${learning.decisions}',
       ];
 
       candidates.add(AiTaskSuggestion(
@@ -76,11 +94,15 @@ class WesiAiTaskEngine {
         assigneeId: chosen.employee.id,
         alternativeAssigneeIds: ranked.map((item) => item.employee.id).toList(),
         priority: priority,
-        forecastImpact: _impactFor(template, input.businessSignal),
-        needScore: trigger.score.clamp(0.0, 1.0).toDouble(),
-        confidence: _confidence(template, trigger, ranked.length),
+        forecastImpact: _impactFor(
+          template,
+          input.businessSignal,
+          learning,
+        ),
+        needScore: needScore,
+        confidence: _confidence(template, trigger, ranked.length, learning),
         effortPoints: template.effortPoints,
-        dueDate: _dueDate(input.now, priority),
+        dueDate: _dueDate(input.now, priority, template.effortPoints),
         whyNow: trigger.whyNow,
         evidence: evidence,
         sourceTaskId: source?.id,
@@ -194,10 +216,12 @@ class WesiAiTaskEngine {
         .where((task) => categoryOfTask(task) == template.category)
         .toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final latest = categoryTasks.isEmpty ? null : categoryTasks.first;
+    final cadence = WesiAiAdaptivePolicy.cadenceFor(template, tasks, input.now);
+    final latest = cadence.latestAt ??
+        (categoryTasks.isEmpty ? null : categoryTasks.first.createdAt);
     final gapDays = latest == null
-        ? template.cadenceDays + 1
-        : input.now.difference(latest.createdAt).inDays;
+        ? cadence.effectiveDays + 1
+        : input.now.difference(latest).inDays;
 
     switch (template.trigger) {
       case AiTaskTrigger.businessPressure:
@@ -252,7 +276,7 @@ class WesiAiTaskEngine {
           }
           return _workload(employee.id, tasks).openWeight <= 1.5;
         });
-        if (!lowLoadExists || gapDays < template.cadenceDays) {
+        if (!lowLoadExists || gapDays < cadence.effectiveDays) {
           return const _TriggerNeed.no();
         }
         return _TriggerNeed(
@@ -265,8 +289,8 @@ class WesiAiTaskEngine {
 
       case AiTaskTrigger.hygiene:
       case AiTaskTrigger.cadence:
-        if (gapDays < template.cadenceDays) return const _TriggerNeed.no();
-        final ratio = gapDays / max(1, template.cadenceDays);
+        if (gapDays < cadence.effectiveDays) return const _TriggerNeed.no();
+        final ratio = gapDays / max(1, cadence.effectiveDays);
         final score =
             (.50 + min(.42, (ratio - 1) * .28)).clamp(0.0, 1.0).toDouble();
         final label = latest == null
@@ -278,7 +302,11 @@ class WesiAiTaskEngine {
           whyNow: latest == null
               ? 'В работе организации есть незакрытая регулярная зона.'
               : 'Интервал с последней похожей работой уже превышает нормальный цикл.',
-          evidence: [label],
+          evidence: [
+            label,
+            if (cadence.learned)
+              'Обычный ритм организации: примерно раз в ${cadence.effectiveDays} дн.',
+          ],
         );
     }
   }
@@ -287,6 +315,7 @@ class WesiAiTaskEngine {
     AiTaskTemplate template,
     WesiAiAnalysisInput input,
     List<TaskModel> tasks,
+    AiTemplateLearning learning,
   ) {
     final result = <_RankedEmployee>[];
     for (final employee in input.employees) {
@@ -294,11 +323,26 @@ class WesiAiTaskEngine {
       if (!input.canAssignToOthers && employee.id != input.currentEmployeeId) {
         continue;
       }
-      final roleFit = _roleFit(employee.position, template.roleAliases);
+      final positionFit = _roleFit(employee.position, template.roleAliases);
+      final historyFit = WesiAiAdaptivePolicy.historicalRoleFit(
+        employee,
+        template.category,
+        tasks,
+        categoryOfTask,
+      );
+      final roleFit = max(positionFit, historyFit);
       if (roleFit <= 0) continue;
 
       final workload = _workload(employee.id, tasks);
+      final adaptiveCapacity = WesiAiAdaptivePolicy.capacityFor(
+        employee.id,
+        tasks,
+        input.now,
+      );
       if (workload.openWeight >= 7 || workload.overdue >= 4) continue;
+      if (adaptiveCapacity.fatigueRisk && template.effortPoints >= 2.5) {
+        continue;
+      }
 
       final lastSameCategory = tasks
           .where((task) =>
@@ -315,12 +359,18 @@ class WesiAiTaskEngine {
       }
 
       final capacity = (1 - workload.openWeight / 7).clamp(0.0, 1.0);
-      final health = workload.total == 0
-          ? .65
-          : (workload.done / workload.total).clamp(0.0, 1.0);
+      final reliability = adaptiveCapacity.reliability;
+      final underloadBoost = adaptiveCapacity.underutilized ? .10 : 0.0;
+      final fatiguePenalty =
+          adaptiveCapacity.recentIntensity7 >= 4.5 ? .08 : 0.0;
       final overduePenalty = min(.40, workload.overdue * .12);
-      final score =
-          roleFit * .48 + capacity * .34 + health * .18 - overduePenalty;
+      final score = roleFit * .48 +
+          capacity * .28 +
+          reliability * .10 +
+          underloadBoost +
+          learning.assigneeBoost(employee.id) -
+          overduePenalty -
+          fatiguePenalty;
       result.add(_RankedEmployee(employee, score, workload));
     }
     result.sort((a, b) {
@@ -381,12 +431,16 @@ class WesiAiTaskEngine {
     AiTaskTemplate template,
     double need,
     AiBusinessSignal signal,
+    AiTemplateLearning learning,
   ) {
     var index = template.basePriority.index;
     if (need >= .80) index++;
     if (template.trigger == AiTaskTrigger.businessPressure &&
         signal.pressureScore >= .70) {
       index++;
+    }
+    if (learning.accepted > 0 && learning.averagePriorityDelta.abs() >= .45) {
+      index += learning.averagePriorityDelta.round();
     }
     return TaskPriority
         .values[index.clamp(0, TaskPriority.values.length - 1).toInt()];
@@ -395,11 +449,15 @@ class WesiAiTaskEngine {
   static AiForecastImpact _impactFor(
     AiTaskTemplate template,
     AiBusinessSignal signal,
+    AiTemplateLearning learning,
   ) {
     var index = template.forecastImpact.index;
     if (template.trigger == AiTaskTrigger.businessPressure &&
         signal.pressureScore >= .75) {
       index++;
+    }
+    if (learning.accepted > 0 && learning.averageImpactDelta.abs() >= .45) {
+      index += learning.averageImpactDelta.round();
     }
     return AiForecastImpact
         .values[index.clamp(0, AiForecastImpact.values.length - 1).toInt()];
@@ -409,29 +467,45 @@ class WesiAiTaskEngine {
     AiTaskTemplate template,
     _TriggerNeed trigger,
     int eligiblePeople,
+    AiTemplateLearning learning,
   ) {
     var value = .62 + trigger.score * .22;
     if (eligiblePeople == 1) value += .04;
     if (trigger.sourceTask != null) value += .08;
     if (template.trigger == AiTaskTrigger.businessPressure) value += .04;
+    if (learning.decisions >= 3) {
+      value += learning.accepted >= learning.rejected ? .03 : -.03;
+    }
     return value.clamp(.45, .96).toDouble();
   }
 
-  static DateTime _dueDate(DateTime now, TaskPriority priority) {
-    final days = switch (priority) {
+  static DateTime _dueDate(DateTime now, TaskPriority priority,
+      [double effortPoints = 1]) {
+    final priorityDays = switch (priority) {
       TaskPriority.urgent => 1,
       TaskPriority.high => 2,
       TaskPriority.normal => 4,
       TaskPriority.low => 7,
     };
+    final effortDays = effortPoints.ceil().clamp(1, 7);
+    final days = max(priorityDays, effortDays);
     return DateTime(now.year, now.month, now.day).add(Duration(days: days));
   }
 
   static String _employeeEvidence(
     _RankedEmployee ranked,
     List<TaskModel> tasks,
+    DateTime now,
   ) {
     final load = ranked.workload.openWeight;
+    final adaptive = WesiAiAdaptivePolicy.capacityFor(
+      ranked.employee.id,
+      tasks,
+      now,
+    );
+    if (adaptive.underutilized) {
+      return '${ranked.employee.displayName}: есть свободная ёмкость без просроченного хвоста';
+    }
     if (load < 1) {
       return '${ranked.employee.displayName}: почти нет активной загрузки';
     }
