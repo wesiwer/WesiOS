@@ -10,6 +10,7 @@ import 'models/organization_model.dart';
 import 'services/organization_access_service.dart';
 import 'services/organization_context.dart';
 import 'services/organization_service.dart';
+import 'widgets/organization_access_editor.dart';
 
 class OrganizationsScreen extends StatefulWidget {
   const OrganizationsScreen({super.key});
@@ -42,14 +43,16 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
       final manageMembers = <String>{};
       final employee = TeamService.current;
       for (final org in orgs) {
-        if (employee == null || employee.isOwner ||
+        if (employee == null ||
+            employee.isOwner ||
             await OrganizationAccessService.can(
               org.id,
               OrganizationPermissions.manageOrgSettings,
             )) {
           manageSettings.add(org.id);
         }
-        if (employee == null || employee.isOwner ||
+        if (employee == null ||
+            employee.isOwner ||
             await OrganizationAccessService.can(
               org.id,
               OrganizationPermissions.manageMembers,
@@ -67,7 +70,11 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         _error = null;
       });
     } catch (e) {
-      if (mounted) setState(() { _loading = false; _error = '$e'; });
+      if (mounted)
+        setState(() {
+          _loading = false;
+          _error = '$e';
+        });
     }
   }
 
@@ -93,7 +100,8 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         actions: [
           IconButton(
             tooltip: 'Межорганизационный перевод',
-            onPressed: () => Navigator.pushNamed(context, '/organizations/transfer'),
+            onPressed: () =>
+                Navigator.pushNamed(context, '/organizations/transfer'),
             icon: const Icon(Icons.swap_horiz_rounded),
           ),
           IconButton(onPressed: _load, icon: const Icon(Icons.refresh)),
@@ -116,7 +124,8 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                     _intro(),
                     const SizedBox(height: 12),
                     for (final org in _orgs)
-                      if (_allowed.contains(org.id) || TeamService.current?.isOwner == true)
+                      if (_allowed.contains(org.id) ||
+                          TeamService.current?.isOwner == true)
                         _orgTile(org),
                   ],
                 ),
@@ -148,7 +157,9 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
               : AppTheme.surface.withOpacity(.35),
           borderRadius: BorderRadius.circular(13),
           border: Border.all(
-            color: selected ? AppTheme.accent.withOpacity(.55) : AppTheme.glassBorder,
+            color: selected
+                ? AppTheme.accent.withOpacity(.55)
+                : AppTheme.glassBorder,
           ),
         ),
         child: ListTile(
@@ -178,13 +189,17 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
             onSelected: (action) => _action(org, action),
             itemBuilder: (_) => [
               if (!org.archived)
-                const PopupMenuItem(value: 'open', child: Text('Открыть Treasury')),
+                const PopupMenuItem(
+                    value: 'open', child: Text('Открыть Treasury')),
               if (!org.archived && _manageSettings.contains(org.id))
-                const PopupMenuItem(value: 'edit', child: Text('Редактировать')),
+                const PopupMenuItem(
+                    value: 'edit', child: Text('Редактировать')),
               if (!org.archived && _manageSettings.contains(org.id))
-                const PopupMenuItem(value: 'child', child: Text('Создать дочернюю')),
+                const PopupMenuItem(
+                    value: 'child', child: Text('Создать дочернюю')),
               if (_manageMembers.contains(org.id))
-                const PopupMenuItem(value: 'members', child: Text('Участники и права')),
+                const PopupMenuItem(
+                    value: 'members', child: Text('Участники и права')),
               if (!org.isRoot && _manageSettings.contains(org.id))
                 PopupMenuItem(
                   value: org.archived ? 'restore' : 'archive',
@@ -200,7 +215,9 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
 
   Future<void> _action(OrganizationModel org, String action) async {
     switch (action) {
-      case 'open': await _openOrg(org); break;
+      case 'open':
+        await _openOrg(org);
+        break;
       case 'edit':
         if (_manageSettings.contains(org.id)) await _edit(org);
         break;
@@ -215,7 +232,9 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         final ok = await OrganizationService.archive(org.id);
         if (!ok && mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Нельзя архивировать root или узел с активными дочерними организациями.')),
+            const SnackBar(
+                content: Text(
+                    'Нельзя архивировать root или узел с активными дочерними организациями.')),
           );
         }
         await _load();
@@ -241,7 +260,9 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         .where((o) => !o.archived && _manageSettings.contains(o.id))
         .toList();
     final defaultParent = parent ??
-        parentCandidates.where((o) => o.id == OrganizationContext.currentOrganizationId).firstOrNull ??
+        parentCandidates
+            .where((o) => o.id == OrganizationContext.currentOrganizationId)
+            .firstOrNull ??
         parentCandidates.firstOrNull;
     if (defaultParent == null) return;
 
@@ -259,7 +280,9 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: name, decoration: const InputDecoration(labelText: 'Название')),
+                TextField(
+                    controller: name,
+                    decoration: const InputDecoration(labelText: 'Название')),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
                   value: parentId,
@@ -271,7 +294,10 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                   onChanged: (v) => setLocal(() => parentId = v ?? parentId),
                 ),
                 const SizedBox(height: 10),
-                TextField(controller: currency, decoration: const InputDecoration(labelText: 'Базовая валюта')),
+                TextField(
+                    controller: currency,
+                    decoration:
+                        const InputDecoration(labelText: 'Базовая валюта')),
                 CheckboxListTile(
                   contentPadding: EdgeInsets.zero,
                   value: reserve,
@@ -282,8 +308,12 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Отмена')),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Создать')),
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Отмена')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Создать')),
           ],
         ),
       ),
@@ -338,7 +368,9 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
       }
       await _load();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      if (mounted)
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
     }
   }
 
@@ -349,7 +381,8 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
     final code = TextEditingController(text: org.code ?? '');
     final description = TextEditingController(text: org.description ?? '');
     var parentId = org.parentId;
-    final candidates = _orgs.where((o) => !o.archived && o.id != org.id).toList();
+    final candidates =
+        _orgs.where((o) => !o.archived && o.id != org.id).toList();
     final save = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -360,7 +393,9 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(controller: name, decoration: const InputDecoration(labelText: 'Название')),
+                TextField(
+                    controller: name,
+                    decoration: const InputDecoration(labelText: 'Название')),
                 const SizedBox(height: 10),
                 if (!org.isRoot)
                   DropdownButtonFormField<String>(
@@ -368,22 +403,34 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
                     decoration: const InputDecoration(labelText: 'Родитель'),
                     items: [
                       for (final item in candidates)
-                        DropdownMenuItem(value: item.id, child: Text(item.name)),
+                        DropdownMenuItem(
+                            value: item.id, child: Text(item.name)),
                     ],
                     onChanged: (value) => setLocal(() => parentId = value),
                   ),
                 const SizedBox(height: 10),
-                TextField(controller: currency, decoration: const InputDecoration(labelText: 'Базовая валюта')),
+                TextField(
+                    controller: currency,
+                    decoration:
+                        const InputDecoration(labelText: 'Базовая валюта')),
                 const SizedBox(height: 10),
-                TextField(controller: code, decoration: const InputDecoration(labelText: 'Код')),
+                TextField(
+                    controller: code,
+                    decoration: const InputDecoration(labelText: 'Код')),
                 const SizedBox(height: 10),
-                TextField(controller: description, decoration: const InputDecoration(labelText: 'Описание')),
+                TextField(
+                    controller: description,
+                    decoration: const InputDecoration(labelText: 'Описание')),
               ],
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Отмена')),
-            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Сохранить')),
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Отмена')),
+            FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Сохранить')),
           ],
         ),
       ),
@@ -396,12 +443,14 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
         parentId: org.isRoot ? null : parentId,
         baseCurrency: currency.text,
         code: code.text.trim().isEmpty ? null : code.text.trim(),
-        description: description.text.trim().isEmpty ? null : description.text.trim(),
+        description:
+            description.text.trim().isEmpty ? null : description.text.trim(),
       );
       await _load();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -421,14 +470,18 @@ class _OrganizationsScreenState extends State<OrganizationsScreen> {
 class _OrganizationMembersDialog extends StatefulWidget {
   final OrganizationModel organization;
   final List<dynamic> people;
-  const _OrganizationMembersDialog({required this.organization, required this.people});
+  const _OrganizationMembersDialog(
+      {required this.organization, required this.people});
 
   @override
-  State<_OrganizationMembersDialog> createState() => _OrganizationMembersDialogState();
+  State<_OrganizationMembersDialog> createState() =>
+      _OrganizationMembersDialogState();
 }
 
-class _OrganizationMembersDialogState extends State<_OrganizationMembersDialog> {
+class _OrganizationMembersDialogState
+    extends State<_OrganizationMembersDialog> {
   Map<String, OrganizationAccessGrant> _grants = const {};
+  bool _loading = true;
 
   @override
   void initState() {
@@ -444,165 +497,107 @@ class _OrganizationMembersDialogState extends State<_OrganizationMembersDialog> 
           .firstOrNull;
       if (exact != null) map[person.id] = exact;
     }
-    if (mounted) setState(() => _grants = map);
-  }
-
-  Future<void> _toggle(String employeeId, bool on) async {
-    if (on) {
-      await OrganizationAccessService.grant(
-        employeeId: employeeId,
-        organizationId: widget.organization.id,
-        includeSubtree: false,
-        permissions: const [
-          OrganizationPermissions.view,
-          OrganizationPermissions.viewFinance,
-          OrganizationPermissions.createTransactions,
-          OrganizationPermissions.editTransactions,
-          OrganizationPermissions.manageAccounts,
-          OrganizationPermissions.manageRecurring,
-          OrganizationPermissions.viewForecast,
-        ],
-        canViewSelfFinance: true,
-        canViewTeamFinance: false,
-      );
-    } else {
-      await OrganizationAccessService.revoke(employeeId, widget.organization.id);
+    if (mounted) {
+      setState(() {
+        _grants = map;
+        _loading = false;
+      });
     }
-    await _load();
   }
 
-  Future<void> _teamFinance(String employeeId, bool value) async {
-    final grant = _grants[employeeId];
-    if (grant == null) return;
-    await OrganizationAccessService.grant(
-      employeeId: employeeId,
-      organizationId: grant.organizationId,
-      includeSubtree: grant.includeSubtree,
-      permissions: grant.permissions,
-      canViewSelfFinance: grant.canViewSelfFinance,
-      canViewTeamFinance: value,
+  Future<void> _editAccess(dynamic employee) async {
+    final changed = await OrganizationAccessEditor.show(
+      context,
+      organization: widget.organization,
+      employee: employee,
+      initialGrant: _grants[employee.id],
     );
-    await _load();
+    if (changed == true) await _load();
   }
 
-  Future<void> _selfFinance(String employeeId, bool value) async {
-    final grant = _grants[employeeId];
-    if (grant == null) return;
-    await OrganizationAccessService.grant(
-      employeeId: employeeId,
-      organizationId: grant.organizationId,
-      includeSubtree: grant.includeSubtree,
-      permissions: grant.permissions,
-      canViewSelfFinance: value,
-      canViewTeamFinance: grant.canViewTeamFinance,
-    );
-    await _load();
-  }
-
-  Future<void> _permission(
-    String employeeId,
-    String permission,
-    bool value,
-  ) async {
-    final grant = _grants[employeeId];
-    if (grant == null) return;
-    final permissions = grant.permissions.toSet();
-    if (value) {
-      permissions.add(permission);
-      permissions.add(OrganizationPermissions.view);
-    } else {
-      permissions.remove(permission);
+  String _summary(OrganizationAccessGrant? grant) {
+    if (grant == null) return 'Нет доступа';
+    final labels = <String>[];
+    if (grant.includeSubtree) labels.add('с дочерними');
+    if (grant.permissions.contains(OrganizationPermissions.viewFinance)) {
+      labels.add('финансы');
     }
-    await OrganizationAccessService.grant(
-      employeeId: employeeId,
-      organizationId: grant.organizationId,
-      includeSubtree: grant.includeSubtree,
-      permissions: permissions.toList(),
-      canViewSelfFinance: grant.canViewSelfFinance,
-      canViewTeamFinance: grant.canViewTeamFinance,
-    );
-    await _load();
-  }
-
-  Future<void> _subtree(String employeeId, bool value) async {
-    final grant = _grants[employeeId];
-    if (grant == null) return;
-    await OrganizationAccessService.grant(
-      employeeId: employeeId,
-      organizationId: grant.organizationId,
-      includeSubtree: value,
-      permissions: grant.permissions,
-      canViewSelfFinance: grant.canViewSelfFinance,
-      canViewTeamFinance: grant.canViewTeamFinance,
-    );
-    await _load();
+    if (grant.permissions.contains(OrganizationPermissions.manageMembers)) {
+      labels.add('управление людьми');
+    }
+    if (grant.permissions.contains(OrganizationPermissions.manageOrgSettings)) {
+      labels.add('настройки');
+    }
+    if (labels.isEmpty) return 'Только просмотр';
+    return labels.join(' · ');
   }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text('Доступ: ${widget.organization.name}'),
-      content: SizedBox(
-        width: 560,
-        height: 460,
-        child: ListView(
-          children: [
-            for (final employee in TeamService.all)
-              if (!employee.isOwner)
-                Card(
-                  child: Column(
-                    children: [
-                      SwitchListTile(
-                        value: _grants.containsKey(employee.id),
-                        onChanged: (v) => _toggle(employee.id, v),
-                        title: Text(employee.displayName),
-                        subtitle: Text(employee.position),
-                      ),
-                      if (_grants[employee.id] case final grant?) ...[
-                        CheckboxListTile(
-                          value: grant.canViewSelfFinance,
-                          onChanged: (v) => _selfFinance(employee.id, v ?? true),
-                          title: const Text('Личные показатели (Мои)'),
-                        ),
-                        CheckboxListTile(
-                          value: grant.includeSubtree,
-                          onChanged: (v) => _subtree(employee.id, v ?? false),
-                          title: const Text('Доступ к поддереву'),
-                        ),
-                        CheckboxListTile(
-                          value: grant.canViewTeamFinance,
-                          onChanged: (v) => _teamFinance(employee.id, v ?? false),
-                          title: const Text('Персональные финансы команды'),
-                        ),
-                        const Divider(),
-                        for (final permission in const [
-                          OrganizationPermissions.viewFinance,
-                          OrganizationPermissions.createTransactions,
-                          OrganizationPermissions.editTransactions,
-                          OrganizationPermissions.manageAccounts,
-                          OrganizationPermissions.manageRecurring,
-                          OrganizationPermissions.viewForecast,
-                          OrganizationPermissions.manageOrgSettings,
-                          OrganizationPermissions.manageMembers,
-                        ])
-                          CheckboxListTile(
-                            dense: true,
-                            value: grant.permissions.contains(permission),
-                            onChanged: (v) => _permission(
-                              employee.id,
-                              permission,
-                              v ?? false,
-                            ),
-                            title: Text(permission),
-                          ),
-                      ],
-                    ],
-                  ),
-                ),
-          ],
-        ),
+      backgroundColor: AppTheme.surface,
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Участники: ${widget.organization.name}'),
+          const SizedBox(height: 4),
+          Text(
+            'Выберите сотрудника — подробные права откроются отдельным экраном.',
+            style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
+          ),
+        ],
       ),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Готово'))],
+      content: SizedBox(
+        width: 610,
+        height: 480,
+        child: _loading
+            ? const Center(child: CircularProgressIndicator())
+            : ListView.separated(
+                itemCount: TeamService.all.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final employee = TeamService.all[index];
+                  final grant = _grants[employee.id];
+                  final enabled = employee.isOwner || grant != null;
+                  return Container(
+                    decoration: BoxDecoration(
+                      color: AppTheme.background.withOpacity(.30),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: AppTheme.glassBorder),
+                    ),
+                    child: ListTile(
+                      leading: Icon(
+                        enabled
+                            ? Icons.verified_user_outlined
+                            : Icons.person_outline,
+                        color: enabled ? AppTheme.accent : AppTheme.textMuted,
+                      ),
+                      title: Text(
+                        employee.displayName,
+                        style: TextStyle(
+                          color: AppTheme.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(
+                        employee.isOwner
+                            ? 'Владелец · полный доступ'
+                            : '${employee.position.isEmpty ? 'Без должности' : employee.position} · ${_summary(grant)}',
+                        style: TextStyle(color: AppTheme.textMuted),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => _editAccess(employee),
+                    ),
+                  );
+                },
+              ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Готово'),
+        ),
+      ],
     );
   }
 }
