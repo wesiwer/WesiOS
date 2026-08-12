@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'sync_clock.dart';
 import 'sync_endpoint.dart';
 import 'sync_merge.dart';
 import 'sync_transport.dart';
@@ -200,6 +201,7 @@ class PocketBaseTransport implements SyncTransport {
     }
     final uri = base.replace(path: path, queryParameters: query);
 
+    final sentAt = DateTime.now();
     try {
       final req = await _http.openUrl(method, uri);
       if (auth && _token != null) {
@@ -213,6 +215,13 @@ class PocketBaseTransport implements SyncTransport {
         req.write(jsonEncode(body));
       }
       final res = await req.close().timeout(const Duration(seconds: 25));
+      // Сверяем часы по каждому ответу: это единственный момент, когда
+      // устройство вообще слышит время сервера.
+      await SyncClock.observeServerDate(
+        res.headers.value(HttpHeaders.dateHeader),
+        sentAt: sentAt,
+        receivedAt: DateTime.now(),
+      );
       final text = await res.transform(utf8.decoder).join();
 
       if (res.statusCode == 401 || res.statusCode == 403) {

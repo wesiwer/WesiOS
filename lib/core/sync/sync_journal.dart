@@ -3,6 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import 'sync_clock.dart';
+
 /// Отметка о записи: когда её последний раз трогали и не удалена ли она.
 class SyncStamp {
   final DateTime updatedAt;
@@ -100,7 +102,9 @@ class SyncJournal {
       final expected = _expected.remove(k);
       _opened?.put(
         k,
-        (expected ?? SyncStamp(DateTime.now(), deleted: event.deleted))
+        // Время — по общей для всех устройств шкале, а не по своим часам:
+        // иначе спор двух правок выигрывает тот, у кого часы спешат.
+        (expected ?? SyncStamp(SyncClock.now(), deleted: event.deleted))
             .encode(),
       );
       // Ожидания не было — значит правку сделал человек, и её надо отправить.

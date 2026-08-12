@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import 'pocketbase_transport.dart';
+import 'sync_clock.dart';
 import 'sync_codec.dart';
 import 'sync_endpoint.dart';
 import 'sync_journal.dart';
@@ -119,7 +120,7 @@ class SyncEngine {
     // Первый обмен с сервером это не портит: там действует отдельное
     // правило (см. [_onlyNewTo]), и по спорным записям принимается сервер.
     if (SyncEndpoint.seededAt == null) {
-      final at = now ?? DateTime.now();
+      final at = now ?? SyncClock.now();
       for (final c in SyncCodec.collections) {
         await SyncJournal.seed(c.name, c.local().keys, at);
       }
@@ -222,7 +223,8 @@ class SyncEngine {
     DateTime? now,
     Set<String>? only,
   }) async {
-    final at = now ?? DateTime.now();
+    // Вся сверка времени идёт по общей шкале — см. [SyncClock].
+    final at = now ?? SyncClock.now();
 
     if (busy.value) {
       // Два прохода одновременно означали бы, что второй читает боксы,
