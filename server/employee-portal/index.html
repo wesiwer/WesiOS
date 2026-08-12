@@ -7,7 +7,11 @@
   <meta name="robots" content="noindex,nofollow,noarchive">
   <meta name="description" content="Закрытая платформа Wesi Inc и загрузка WesiOS.">
   <title>WesiOS · Wesi Inc</title>
-  <link rel="icon" href="./app_icon.png">
+  <!-- Значок вкладки. SVG рисуется тем же знаком и теми же токенами, что и
+       знак на странице, поэтому вкладка совпадает с тем, что человек видит.
+       PNG остаётся вторым: браузер без поддержки SVG-значка возьмёт его. -->
+  <link rel="icon" id="favicon" type="image/svg+xml" href="">
+  <link rel="alternate icon" href="./app_icon.png">
   <link rel="apple-touch-icon" href="./app_icon.png">
   <link rel="stylesheet" href="./styles.css?v=13">
   <link rel="stylesheet" href="./portal-v6.css?v=13">
@@ -17,15 +21,37 @@
        увидеть чёрную вспышку во весь экран: браузер уже нарисовал страницу
        по умолчанию, и переключение приходит вторым кадром. Отдельного файла
        здесь быть не может по той же причине — запрос к нему тоже кадр. */
+    /* Значок вкладки строится здесь же, а не лежит файлом. Причина та же,
+       что и у темы: отдельный файл — это запрос, а два файла на две темы —
+       два запроса ради картинки в 16 пикселей.
+
+       Цвета берутся из иконки приложения (res/values/colors.xml), геометрия
+       — из app_icon.png, ровно как у знака на странице. */
+    window.__wesiFavicon = function (theme) {
+      var c = theme === 'light'
+        ? { bg: '%23f8f9fc', ink: '%23334155', accent: '%233b82f6' }
+        : { bg: '%2309090b', ink: '%23ffffff', accent: '%23f97316' };
+      var svg = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'"
+        + " viewBox='0 0 1024 1024'%3E%3Crect width='1024' height='1024' rx='228' fill='"
+        + c.bg + "'/%3E%3Cg fill='none' stroke-width='88' stroke-linecap='round'"
+        + " stroke-linejoin='round'%3E%3Cpath stroke='" + c.ink
+        + "' d='M245.5 348.4 371 675 512.5 485 627 640'/%3E%3Cpath stroke='"
+        + c.accent + "' d='M653 675 778 210'/%3E%3C/g%3E%3C/svg%3E";
+      var link = document.getElementById('favicon');
+      if (link) link.setAttribute('href', svg);
+    };
+
     (function () {
+      var theme = 'dark';
       try {
-        var saved = localStorage.getItem('wesi-theme');
-        if (saved === 'light') {
-          document.documentElement.setAttribute('data-theme', 'light');
-          var meta = document.getElementById('themeColor');
-          if (meta) meta.setAttribute('content', '#f4f6fb');
-        }
+        if (localStorage.getItem('wesi-theme') === 'light') theme = 'light';
       } catch (e) { /* приватный режим: остаёмся на тёмной */ }
+      if (theme === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        var meta = document.getElementById('themeColor');
+        if (meta) meta.setAttribute('content', '#f4f6fb');
+      }
+      window.__wesiFavicon(theme);
     })();
 
     window.__WESI_BOOT_STARTED__ = performance.now();

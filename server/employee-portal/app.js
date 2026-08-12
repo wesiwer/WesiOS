@@ -71,6 +71,9 @@
     if (theme === 'light') root.setAttribute('data-theme', 'light');
     else root.removeAttribute('data-theme');
     els.themeColor?.setAttribute('content', THEME_BAR[theme] || THEME_BAR.dark);
+    // Значок вкладки следует за темой сайта, а не за темой браузера: так
+    // вкладка совпадает с тем, что человек видит на странице.
+    window.__wesiFavicon?.(theme);
     if (els.themeSwitch) {
       els.themeSwitch.setAttribute('aria-checked', theme === 'light' ? 'true' : 'false');
       els.themeSwitch.setAttribute('aria-label', theme === 'light' ? 'Тёмная тема' : 'Светлая тема');

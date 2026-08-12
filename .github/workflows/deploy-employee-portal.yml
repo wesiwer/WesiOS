@@ -73,6 +73,8 @@ jobs:
           grep -q "localStorage.getItem('wesi-theme')" server/employee-portal/index.html
           grep -q 'id="wesiMark"' server/employee-portal/index.html
           grep -q -- '--logo-ink' server/employee-portal/styles.css
+          grep -q '__wesiFavicon' server/employee-portal/index.html
+          grep -q '__wesiFavicon' server/employee-portal/app.js
           grep -q 'background:var(--bg,' server/deploy-employee-portal.sh
 
           node --check server/employee-portal/app.js
