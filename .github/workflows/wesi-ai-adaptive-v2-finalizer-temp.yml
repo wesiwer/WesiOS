@@ -23,9 +23,15 @@ jobs:
           ref: chatgpt/wesi-ai-adaptive-learning-v2-20260812
           fetch-depth: 0
 
-      - name: Apply adaptive learning integration
+      - name: Apply adaptive learning integration if needed
+        shell: bash
         run: |
-          python3 .github/scripts/wesi_ai_learning_v2_patch.py
+          set -euo pipefail
+          if grep -q 'final AiLearningProfile learningProfile' lib/features/tasks/ai/services/wesi_ai_task_engine.dart; then
+            echo 'Adaptive v2 product patch is already present.'
+          else
+            python3 .github/scripts/wesi_ai_learning_v2_patch.py
+          fi
           python3 - <<'PY'
           from pathlib import Path
           p = Path('lib/features/tasks/ai/services/wesi_ai_task_engine.dart')
