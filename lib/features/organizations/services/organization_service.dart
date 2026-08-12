@@ -44,6 +44,7 @@ class OrganizationService {
   static Future<void> ensureBaseline({String createdBy = 'migration'}) async {
     final box = await _open();
     final now = DateTime.now();
+    var changed = false;
 
     final roots = box.values.where((o) => o.isRoot).toList();
     OrganizationModel root;
@@ -61,6 +62,7 @@ class OrganizationService {
         sortOrder: 0,
       );
       await box.put(root.id, root);
+      changed = true;
     } else {
       root = roots.first;
       // Multiple roots must never silently survive. Keep the oldest as root,
@@ -87,6 +89,7 @@ class OrganizationService {
               sortOrder: extra.sortOrder,
             ),
           );
+          changed = true;
         }
       }
     }
@@ -107,8 +110,9 @@ class OrganizationService {
           sortOrder: 10,
         ),
       );
+      changed = true;
     }
-    revision.value++;
+    if (changed) revision.value++;
   }
 
   static Future<List<OrganizationModel>> all({
