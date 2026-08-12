@@ -1,4 +1,4 @@
-name: Organization access contacts UX once
+name: Organization access contacts UX verify
 
 on:
   push:
@@ -9,21 +9,21 @@ permissions:
   contents: write
 
 concurrency:
-  group: org-access-contacts-ux-once
+  group: org-access-contacts-ux-verify
   cancel-in-progress: true
 
 jobs:
-  patch-and-verify:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           ref: chatgpt/org-access-contacts-ux-20260812
           fetch-depth: 0
 
-      - name: Apply UX patch
-        run: python3 .github/scripts/org_access_contacts_ux.py
+      - name: Apply deterministic hotfix
+        run: python3 .github/scripts/org_access_verify_hotfix.py
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
@@ -43,7 +43,25 @@ jobs:
             lib/features/team/contacts_screen.dart \
             test/organization_ui_contract_test.dart
 
-      - name: Preserve patched source
+      - name: Verify and capture logs
+        id: verify
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .ci
+          flutter analyze --no-fatal-infos > .ci/org-access-analyze.log 2>&1
+          ANALYZE=$?
+          if [ "$ANALYZE" -eq 0 ]; then
+            flutter test > .ci/org-access-test.log 2>&1
+            TEST=$?
+          else
+            echo 'Tests not run because analyze failed.' > .ci/org-access-test.log
+            TEST=99
+          fi
+          printf 'analyze=%s\ntest=%s\n' "$ANALYZE" "$TEST" > .ci/org-access-status.txt
+          exit 0
+
+      - name: Persist source and verification evidence
         shell: bash
         run: |
           set -euo pipefail
@@ -52,25 +70,18 @@ jobs:
           git add lib/features/organizations/widgets/organization_access_editor.dart \
                   lib/features/organizations/organizations_screen.dart \
                   lib/features/team/contacts_screen.dart \
-                  test/organization_ui_contract_test.dart
+                  test/organization_ui_contract_test.dart \
+                  .ci/org-access-analyze.log \
+                  .ci/org-access-test.log \
+                  .ci/org-access-status.txt
           if ! git diff --cached --quiet; then
-            git commit -m "feat(org): simplify access controls and organization contacts [skip ci]"
+            git commit -m 'ci: record organization UX verification [skip ci]'
             git push origin HEAD:chatgpt/org-access-contacts-ux-20260812
           fi
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos
-
-      - name: Full test suite
-        run: flutter test
-
-      - name: Remove one-shot harness
-        if: success()
+      - name: Enforce result
         shell: bash
         run: |
-          set -euo pipefail
-          rm -f .github/scripts/org_access_contacts_ux.py
-          rm -f .github/workflows/org-access-contacts-ux-once.yml
-          git add -A
-          git commit -m "ci: remove organization UX one-shot harness [skip ci]"
-          git push origin HEAD:chatgpt/org-access-contacts-ux-20260812
+          source .ci/org-access-status.txt
+          test "$analyze" = 0
+          test "$test" = 0
