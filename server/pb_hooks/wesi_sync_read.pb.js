@@ -76,7 +76,7 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     return false;
   };
   const taskOwned = (p) => {
-    if (ctx.isOwner || ctx.canManageTeam || ctx.canAssignTasks || ctx.canSeeOthersStats) return true;
+    if (ctx.isOwner || ctx.canManageTeam || ctx.canAssignTasks) return true;
     if (String(p.assignee || "") === ctx.employeeId) return true;
     if (String(p.responsibleEmployeeId || "") === ctx.employeeId) return true;
     const tags = Array.isArray(p.tags) ? p.tags.map(String) : [];
@@ -135,7 +135,7 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     }
     const clients = byKey.clients_v1 || [];
     const deals = byKey.deals_v1 || [];
-    const manager = ctx.canManageTeam || ctx.canSeeOthersStats;
+    const manager = ctx.canManageTeam;
     const allowedOrg = (row) => ctx.allowedOrgIds[String(row.organizationId || "org_wesi_inc")] === true;
     const ownDealClientIds = {};
     for (const d of deals) {
@@ -209,7 +209,7 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
       const toOrg = String(p.toOrganizationId || p.destinationOrganizationId || "");
       allowed = ctx.isOwner ||
         (!!fromOrg && !!toOrg && grantApplies(fromOrg, "view_finance") && grantApplies(toOrg, "view_finance"));
-    } else if (collection === "critical_audit" && !ctx.isOwner && !ctx.canSeeOthersStats) {
+    } else if (collection === "critical_audit" && !ctx.isOwner && !ctx.canManageTeam) {
       allowed = String(p.actorId || p.changedBy || p.createdBy || "") === ctx.employeeId;
     } else if (collection === "articles" && !ctx.isOwner && !ctx.knowledgeAll) {
       const id = String(p.id || row.getString("rid"));
