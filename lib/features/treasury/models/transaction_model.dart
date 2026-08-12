@@ -47,6 +47,23 @@ class TransactionModel {
   @HiveField(11)
   final String? accountId;
 
+  /// Исходная дата регулярного платежа — та, которую человек назначил.
+  ///
+  /// [date] у регулярной записи двигается вперёд каждый раз, когда платёж
+  /// проводится. Если считать следующий раз от неё, месячная дата съезжает
+  /// и больше не возвращается: аренда 31 января становится 28 февраля,
+  /// оттуда 28 марта — и остаётся 28-м числом навсегда.
+  ///
+  /// Здесь хранится якорь, от которого каждое наступление считается заново.
+  /// Поле nullable намеренно: у записей, созданных до его появления, в базе
+  /// его нет, и не-nullable тип уронил бы их чтение. Для них якорем служит
+  /// сама [date] — см. [recurringAnchorDate].
+  @HiveField(12)
+  final DateTime? recurringAnchor;
+
+  /// Якорь регулярного платежа: явный, если он есть, иначе дата записи.
+  DateTime get recurringAnchorDate => recurringAnchor ?? date;
+
   const TransactionModel({
     required this.id,
     required this.title,
@@ -60,6 +77,7 @@ class TransactionModel {
     this.isAnomaly = false,
     this.zScore,
     this.accountId,
+    this.recurringAnchor,
   });
 
   /// Счёт операции с учётом старых записей без явного счёта.
@@ -78,6 +96,7 @@ class TransactionModel {
     bool? isAnomaly,
     double? zScore,
     String? accountId,
+    DateTime? recurringAnchor,
   }) {
     return TransactionModel(
       id: id ?? this.id,
@@ -92,6 +111,7 @@ class TransactionModel {
       isAnomaly: isAnomaly ?? this.isAnomaly,
       zScore: zScore ?? this.zScore,
       accountId: accountId ?? this.accountId,
+      recurringAnchor: recurringAnchor ?? this.recurringAnchor,
     );
   }
 

@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/widgets/currency_picker.dart';
+import 'services/history_series.dart';
 import 'services/treasury_service.dart';
 import 'services/forecast_backtest.dart';
 import 'services/forecast_engine.dart';
@@ -150,36 +151,21 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     final historyWindowDays = _forecastDays.clamp(7, 90);
 
     final data = <ForecastPoint>[];
-    final now = DateTime.now();
-    double runningBalance = 0;
-
-    for (final tx in txs.where((t) =>
-        t.date.isBefore(now.subtract(Duration(days: historyWindowDays))))) {
-      runningBalance +=
-          tx.type == TransactionType.income ? tx.amount : -tx.amount;
-    }
-
-    for (int i = historyWindowDays; i >= 0; i--) {
-      final day = now.subtract(Duration(days: i));
-      final dayTxs = txs.where((t) =>
-          t.date.year == day.year &&
-          t.date.month == day.month &&
-          t.date.day == day.day);
-      double dayNet = 0;
-      for (final tx in dayTxs) {
-        dayNet += tx.type == TransactionType.income ? tx.amount : -tx.amount;
-      }
-      runningBalance += dayNet;
+    for (final day in buildHistorySeries(
+      transactions: txs,
+      now: DateTime.now(),
+      windowDays: historyWindowDays,
+    )) {
       // История — факт, а не оценка: p10/p50/p90 совпадают с фактическим
       // балансом (раньше здесь была фиктивная полоса ±3%, вводившая в
       // заблуждение — история не имеет доверительного интервала).
       data.add(ForecastPoint(
-        day: historyWindowDays - i,
-        p10: runningBalance,
-        p50: runningBalance,
-        p90: runningBalance,
+        day: day.offset,
+        p10: day.balance,
+        p50: day.balance,
+        p90: day.balance,
         isForecast: false,
-        actual: runningBalance,
+        actual: day.balance,
       ));
     }
 

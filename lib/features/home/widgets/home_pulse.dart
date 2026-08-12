@@ -5,6 +5,8 @@ import '../../../core/services/currency_service.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../analytics/services/analytics_service.dart';
 import '../../tasks/services/task_service.dart';
+import '../../treasury/services/financial_advice.dart';
+import '../../treasury/services/financial_health.dart';
 import '../../treasury/services/treasury_service.dart';
 
 /// «Пульс» — три числа, ради которых обычно и открывают приложение.
@@ -23,6 +25,7 @@ class _HomePulseState extends State<HomePulse> {
   static const int _period = 30;
 
   AnalyticsSnapshot? _snapshot;
+  FinancialHealth _health = FinancialHealth.empty;
 
   bool get _ru => WesiLocale.isRussian;
 
@@ -43,7 +46,23 @@ class _HomePulseState extends State<HomePulse> {
 
   Future<void> _load() async {
     final snapshot = await AnalyticsService().build(periodDays: _period);
-    if (mounted) setState(() => _snapshot = snapshot);
+    final treasury = TreasuryService();
+    final txs = await treasury.getAllTransactions();
+    final total = await treasury.getCurrentBalance();
+    final health = FinancialHealth.compute(
+      transactions: txs,
+      // Деньги, которые есть сегодня: операции, датированные будущим, —
+      // ещё не деньги.
+      balance: TreasuryService.balanceOnDay(DateTime.now(), txs, total),
+      now: DateTime.now(),
+      periodDays: _period,
+    );
+    if (mounted) {
+      setState(() {
+        _snapshot = snapshot;
+        _health = health;
+      });
+    }
   }
 
   @override
@@ -73,7 +92,7 @@ class _HomePulseState extends State<HomePulse> {
                 kpi: s.expense,
                 positiveIsGood: false,
               ),
-              _runwayCard(s),
+              _cushionCard(),
             ];
 
             return Wrap(
@@ -150,24 +169,33 @@ class _HomePulseState extends State<HomePulse> {
     );
   }
 
-  Widget _runwayCard(AnalyticsSnapshot s) {
-    final days = s.runwayDays;
-    // ≤30 дней — красный (риск); иначе theme accent (не hardcoded orange).
+  /// «На сколько хватит денег» — одним числом и без двусмысленности.
+  ///
+  /// Раньше здесь стояло число дней, посчитанное по нетто (насколько траты
+  /// обгоняют доход), а подпись под ним показывала полные траты за день.
+  /// Перемножить их и сойтись с балансом было нельзя, и карточка выглядела
+  /// как ошибка. Теперь и число, и подпись говорят об одном: сколько
+  /// протянешь на отложенном, если доход прекратится.
+  Widget _cushionCard() {
+    final h = _health;
+    final advice = FinancialAdviceBuilder(ru: _ru).cushion(h);
+    final days = h.cushionDays;
     final color = days == null
-        ? AppTheme.accentGreen
-        : (days <= 30 ? AppTheme.accentRed : AppTheme.accent);
+        ? AppTheme.textMuted
+        : (days < 30
+            ? AppTheme.accentRed
+            : (days < h.targetDays ? AppTheme.accent : AppTheme.accentGreen));
 
     return _shell(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(_ru ? 'Запас хода' : 'Runway',
-              style: TextStyle(
-                  fontSize: 11, color: AppTheme.textMuted)),
+          Text(_ru ? 'Хватит денег на' : 'Money lasts',
+              style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
           const SizedBox(height: 7),
           Text(
             days == null
-                ? (_ru ? 'Не тратим в минус' : 'Not burning')
+                ? (_ru ? 'нет трат' : 'no spending')
                 : (_ru ? '$days дн.' : '$days days'),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -177,19 +205,23 @@ class _HomePulseState extends State<HomePulse> {
           const SizedBox(height: 5),
           Text(
             days == null
-                // Пустой прочерк был бы честнее числа, но бесполезнее фразы:
-                // сервис возвращает null именно тогда, когда доход покрывает
-                // траты, и это стоит сказать словами.
-                ? (_ru
-                    ? 'Доход покрывает расходы'
-                    : 'Income covers spending')
+                ? (_ru ? 'Расходов пока не было' : 'No expenses yet')
                 : (_ru
-                    ? 'при текущих ${CurrencyService.format(s.burnPerDay)} в день'
-                    : 'at ${CurrencyService.format(s.burnPerDay)} per day'),
-            maxLines: 1,
+                    ? 'без дохода, при тратах ${CurrencyService.format(h.spendPerDay)} в день'
+                    : 'with no income, at ${CurrencyService.format(h.spendPerDay)} a day'),
+            maxLines: 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
           ),
+          if (advice.action.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              advice.action,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+            ),
+          ],
         ],
       ),
     );

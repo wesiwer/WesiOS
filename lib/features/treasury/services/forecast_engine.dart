@@ -1,6 +1,7 @@
 import 'dart:math';
 import '../models/transaction_model.dart';
 import 'anomaly_engine.dart';
+import 'calendar_days.dart';
 import 'recurring_engine.dart';
 
 /// Один гипотетический будущий доход/расход для сценария «Что если?».
@@ -160,7 +161,7 @@ class _StreamStats {
       int overallCount = 0;
       for (int i = 0; i < spanDays; i++) {
         if (anomalyDayIndex.contains(i)) continue;
-        final wd = minDay.add(Duration(days: i)).weekday - 1; // 0=Пн..6=Вс
+        final wd = addDays(minDay, i).weekday - 1; // 0=Пн..6=Вс
         weekdaySum[wd] += dense[i];
         weekdayCount[wd]++;
         overallSum += dense[i];
@@ -175,7 +176,7 @@ class _StreamStats {
     }
 
     final deseasonalized = List<double>.generate(spanDays, (i) {
-      final wd = minDay.add(Duration(days: i)).weekday - 1;
+      final wd = addDays(minDay, i).weekday - 1;
       return dense[i] - weekdayFactor[wd];
     });
 
@@ -320,14 +321,14 @@ class ForecastEngine {
     if (days <= 0 || transactions.length < 3) return ForecastResult.empty();
 
     final today = asOf ?? DateTime.now();
-    final todayOnly = DateTime(today.year, today.month, today.day);
+    final todayOnly = dateOnly(today);
 
     DateTime minDay = todayOnly;
     for (final tx in transactions) {
-      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
+      final day = dateOnly(tx.date);
       if (day.isBefore(minDay)) minDay = day;
     }
-    final spanDays = todayOnly.difference(minDay).inDays + 1;
+    final spanDays = dayDiff(minDay, todayOnly) + 1;
 
     final recurringTxs = transactions
         .where((t) => t.isRecurring && t.recurringPeriod != null)
@@ -354,8 +355,7 @@ class ForecastEngine {
     final denseExpense = List<double>.filled(spanDays, 0);
     for (final tx in transactions) {
       if (recurringIds.contains(tx.id)) continue;
-      final day = DateTime(tx.date.year, tx.date.month, tx.date.day);
-      final idx = day.difference(minDay).inDays;
+      final idx = dayDiff(minDay, tx.date);
       if (idx < 0 || idx >= spanDays) continue;
       if (tx.type == TransactionType.income) {
         denseIncome[idx] += tx.amount;
@@ -372,8 +372,7 @@ class ForecastEngine {
     final anomalyDayIndex = <int>{};
     final shockMagnitudes = <double>[]; // всегда >0 — суммы расходов-шоков
     for (final a in anomalies) {
-      final day = DateTime(a.date.year, a.date.month, a.date.day);
-      final idx = day.difference(minDay).inDays;
+      final idx = dayDiff(minDay, a.date);
       if (idx >= 0 && idx < spanDays) anomalyDayIndex.add(idx);
       shockMagnitudes.add(a.amount);
     }
@@ -419,30 +418,38 @@ class ForecastEngine {
 
     // Виртуальные операции «Что если?»: разовые и регулярные.
     final whatIfByOffset = <int, double>{};
-    final whatIfHorizon = todayOnly.add(Duration(days: days));
     for (final e in whatIf.events) {
       final net = e.type == TransactionType.income ? e.amount : -e.amount;
-      final start = DateTime(e.date.year, e.date.month, e.date.day);
+      final start = dateOnly(e.date);
       final period = e.recurringPeriod;
       if (period == null) {
-        final offset = start.difference(todayOnly).inDays;
+        final offset = dayDiff(todayOnly, start);
         if (offset < 1 || offset > days) continue;
         whatIfByOffset[offset] = (whatIfByOffset[offset] ?? 0) + net;
         continue;
       }
-
-      var occurrence = start.isAfter(todayOnly)
-          ? start
-          : RecurringEngine.nextOccurrenceAfter(start, period, todayOnly);
-      var guard = 0;
-      while (!occurrence.isAfter(whatIfHorizon) && guard < 10000) {
-        final offset = occurrence.difference(todayOnly).inDays;
-        if (offset >= 1 && offset <= days) {
+      RecurringEngine.forEachOccurrence(
+        start,
+        period,
+        from: todayOnly,
+        days: days,
+        onOccurrence: (offset) {
           whatIfByOffset[offset] = (whatIfByOffset[offset] ?? 0) + net;
-        }
-        occurrence = RecurringEngine.advance(occurrence, period);
-        guard++;
-      }
+        },
+      );
+    }
+
+    // Операции, которые человек уже внёс, но датировал будущим, — это факт,
+    // а не шум: аванс, назначенный на следующую неделю, приходит в свой
+    // день. Раньше они попадали только в стартовый баланс, то есть деньги
+    // «появлялись» сегодня, а на своей дате уже ничего не происходило.
+    final plannedByOffset = <int, double>{};
+    for (final tx in transactions) {
+      if (recurringIds.contains(tx.id)) continue;
+      final offset = dayDiff(todayOnly, dateOnly(tx.date));
+      if (offset < 1 || offset > days) continue;
+      plannedByOffset[offset] = (plannedByOffset[offset] ?? 0) +
+          (tx.type == TransactionType.income ? tx.amount : -tx.amount);
     }
 
     final incomeMult = whatIf.incomeMultiplier;
@@ -458,7 +465,7 @@ class ForecastEngine {
     for (int p = 0; p < effectivePaths; p++) {
       double balance = currentBalance;
       for (int i = 0; i < days; i++) {
-        final futureDay = todayOnly.add(Duration(days: i + 1));
+        final futureDay = addDays(todayOnly, i + 1);
         final wd = futureDay.weekday - 1;
 
         final incomeSeasonal =
@@ -506,11 +513,13 @@ class ForecastEngine {
         final recurringExpense =
             (recurringExpenseByOffset[i + 1] ?? 0.0) * expenseMult;
         final whatIfNet = whatIfByOffset[i + 1] ?? 0.0;
+        final plannedNet = plannedByOffset[i + 1] ?? 0.0;
 
         balance += incomeToday -
             expenseToday +
             recurringIncome +
             recurringExpense + // уже отрицательный (см. projectFutureContributions)
+            plannedNet +
             whatIfNet;
         balances[i][p] = balance;
       }

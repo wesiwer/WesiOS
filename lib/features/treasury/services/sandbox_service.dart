@@ -3,6 +3,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import '../models/transaction_model.dart';
 import 'anomaly_engine.dart';
 import 'forecast_engine.dart';
+import 'forecast_runner.dart';
 import 'recurring_engine.dart';
 import 'treasury_service.dart';
 
@@ -96,10 +97,15 @@ class SandboxService {
       final period = tx.recurringPeriod;
       if (period == null) continue;
 
-      var anchor = tx;
+      // Один в один с TreasuryService: наступления считаются от якоря,
+      // иначе месячная дата съезжает на короткий месяц и не возвращается.
+      final anchorDate = tx.recurringAnchorDate;
+      var lastDue = tx.date;
+      var index = RecurringEngine.firstIndexAfter(anchorDate, period, tx.date);
       var guard = 0;
-      while (RecurringEngine.isDue(anchor, now) && guard < 366) {
-        final due = RecurringEngine.advance(anchor.date, period);
+      while (guard < 366) {
+        final due = RecurringEngine.occurrence(anchorDate, period, index);
+        if (due.isAfter(now)) break;
         await addTransaction(TransactionModel(
           id: '${tx.id}_${due.millisecondsSinceEpoch}',
           title: tx.title,
@@ -111,11 +117,14 @@ class SandboxService {
               tx.description == null ? null : 'Recurring: ${tx.description}',
           isRecurring: false,
         ));
-        anchor = anchor.copyWith(date: due);
+        lastDue = due;
+        index++;
         guard++;
       }
       if (guard > 0) {
-        await addTransaction(anchor);
+        await addTransaction(
+          tx.copyWith(date: lastDue, recurringAnchor: anchorDate),
+        );
       }
     }
   }
@@ -128,14 +137,17 @@ class SandboxService {
     double annualDiscountRate = 0.0,
   }) async {
     final all = await getAllTransactions();
-    final balance = await getCurrentBalance();
-    return ForecastEngine.generate(
+    final total = await getCurrentBalance();
+    return runForecastOffThread(ForecastRequest(
       transactions: all,
-      currentBalance: balance,
+      // Тот же старт, что и в Treasury: операции, датированные будущим,
+      // не должны поднимать сегодняшний баланс.
+      currentBalance:
+          TreasuryService.balanceOnDay(DateTime.now(), all, total),
       whatIf: whatIf,
       annualDiscountRate: annualDiscountRate,
       days: days,
-    );
+    ));
   }
 
   // ========== SCENARIO GENERATORS ==========

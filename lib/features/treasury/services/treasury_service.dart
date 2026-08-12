@@ -3,7 +3,9 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../models/transaction_model.dart';
 import 'anomaly_engine.dart';
+import 'calendar_days.dart';
 import 'forecast_engine.dart';
+import 'forecast_runner.dart';
 import 'recurring_engine.dart';
 
 /// Wesi Treasury Service — управление финансами, аномалиями, прогнозами.
@@ -107,12 +109,19 @@ class TreasuryService {
       final period = tx.recurringPeriod;
       if (period == null) continue;
 
-      var anchor = tx;
+      // Каждое наступление считается от исходной даты, а не от предыдущего
+      // платежа. Шагами месячная дата съезжает и не возвращается: аренда
+      // 31 января проводится 28 февраля, следующая — 28 марта, и дальше
+      // навсегда 28-е, хотя человек платит 31-го.
+      final anchorDate = tx.recurringAnchorDate;
+      var lastDue = tx.date;
+      var index = RecurringEngine.firstIndexAfter(anchorDate, period, tx.date);
       var guard = 0;
       // Обрабатываем все просроченные периоды за один вызов — иначе платёж
       // «застрянет» на первом же пропущенном разе.
-      while (RecurringEngine.isDue(anchor, now) && guard < 366) {
-        final due = RecurringEngine.advance(anchor.date, period);
+      while (guard < 366) {
+        final due = RecurringEngine.occurrence(anchorDate, period, index);
+        if (due.isAfter(now)) break;
         await addTransaction(TransactionModel(
           id: '${tx.id}_${due.millisecondsSinceEpoch}',
           title: tx.title,
@@ -124,16 +133,42 @@ class TreasuryService {
               tx.description == null ? null : 'Recurring: ${tx.description}',
           isRecurring: false,
         ));
-        anchor = anchor.copyWith(date: due);
+        lastDue = due;
+        index++;
         guard++;
       }
       if (guard > 0) {
-        await addTransaction(anchor); // сдвигаем якорь исходной записи
+        // Дата записи отмечает последний проведённый платёж, а якорь
+        // сохраняется явно — иначе он потеряется вместе со сдвигом даты.
+        await addTransaction(
+          tx.copyWith(date: lastDue, recurringAnchor: anchorDate),
+        );
       }
     }
   }
 
   // ========== FORECAST ==========
+
+  /// Баланс на конец дня [day] — то есть без операций, датированных позже.
+  ///
+  /// [getCurrentBalance] складывает вообще всё, включая операции, которые
+  /// человек внёс наперёд: аванс, назначенный на следующую неделю, поднимал
+  /// сегодняшний баланс, а в свою дату уже ничего не происходило. Прогноз
+  /// от такого старта завышен ровно на сумму будущих операций.
+  static double balanceOnDay(
+    DateTime day,
+    List<TransactionModel> transactions,
+    double totalBalance,
+  ) {
+    final cutoff = dateOnly(day);
+    var later = 0.0;
+    for (final tx in transactions) {
+      if (dateOnly(tx.date).isAfter(cutoff)) {
+        later += tx.type == TransactionType.income ? tx.amount : -tx.amount;
+      }
+    }
+    return totalBalance - later;
+  }
 
   Future<ForecastResult> generateForecast({
     int days = 30,
@@ -141,14 +176,14 @@ class TreasuryService {
     double annualDiscountRate = 0.0,
   }) async {
     final all = await getAllTransactions();
-    final balance = await getCurrentBalance();
-    return ForecastEngine.generate(
+    final total = await getCurrentBalance();
+    return runForecastOffThread(ForecastRequest(
       transactions: all,
-      currentBalance: balance,
+      currentBalance: balanceOnDay(DateTime.now(), all, total),
       days: days,
       whatIf: whatIf,
       annualDiscountRate: annualDiscountRate,
-    );
+    ));
   }
 
   // ========== DEMO DATA (kept but NOT auto-called from forecast screen) ==========

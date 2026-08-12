@@ -29,8 +29,12 @@ class RiskEstimate {
     final belowZero = <double>[];
     int? runway;
     int? alert;
+    // Коридор берём только там, где он есть на самом деле. Раньше цикл шёл
+    // по длине p50 и читал p10[i]/p90[i] вслепую: движок, вернувший одну
+    // медиану, ронял экран прогноза с RangeError.
+    final hasBand = p10.length >= p50.length && p90.length >= p50.length;
     for (int i = 0; i < p50.length; i++) {
-      final spread = (p90[i] - p10[i]).abs();
+      final spread = hasBand ? (p90[i] - p10[i]).abs() : 0.0;
       final sigma = spread > 0 ? spread / (2 * _z80) : 0.0;
       final prob = sigma > 0
           ? _normalCdf(-p50[i] / sigma)
@@ -115,13 +119,16 @@ class ExternalForecastBridge {
       final p50 = _toDoubleList(decoded['p50']);
       final p90 = _toDoubleList(decoded['p90']);
       if (p50.length != days) return null;
+      // Коридор либо полный, либо его нет вовсе. Обрезок хуже отсутствия:
+      // на графике он рисуется как настоящая полоса уверенности.
+      final band = p10.length == days && p90.length == days;
 
       final risk = RiskEstimate.derive(p10, p50, p90);
 
       return ForecastResult(
-        p10: p10,
+        p10: band ? p10 : const [],
         p50: p50,
-        p90: p90,
+        p90: band ? p90 : const [],
         trendPerDay:
             p50.length >= 2 ? (p50.last - p50.first) / p50.length : 0,
         dailyVolatility: 0,
@@ -138,8 +145,23 @@ class ExternalForecastBridge {
     }
   }
 
-  static List<double> _toDoubleList(dynamic raw) =>
-      (raw as List).map((e) => (e as num).toDouble()).toList();
+  /// Список чисел из ответа движка.
+  ///
+  /// Ответ приходит из чужого процесса, и «нет ключа» или «там строка» —
+  /// такой же возможный исход, как и нормальный JSON. Приведение `as List`
+  /// на отсутствующем ключе роняло экран прогноза целиком.
+  static List<double> _toDoubleList(dynamic raw) {
+    if (raw is! List) return const [];
+    final out = <double>[];
+    for (final e in raw) {
+      if (e is num) {
+        out.add(e.toDouble());
+      } else {
+        return const [];
+      }
+    }
+    return out;
+  }
 
   /// Порядок поиска: 1) движок, установленный через [EngineInstallService]
   /// (скачан по требованию пользователя в ApplicationSupportDirectory —
@@ -243,14 +265,26 @@ ForecastResult? combineForecastResults(List<ForecastResult?> results) {
 
   final days = available.first.p50.length;
   if (available.any((r) => r.p50.length != days)) return null;
+  // Усредняем коридор только по тем движкам, у которых он полный.
+  final withBand = available
+      .where((r) => r.p10.length == days && r.p90.length == days)
+      .toList();
 
   double avgAt(List<double> Function(ForecastResult) select, int i) =>
       available.map((r) => select(r)[i]).reduce((a, b) => a + b) /
       available.length;
 
-  final p10 = List<double>.generate(days, (i) => avgAt((r) => r.p10, i));
+  double avgBandAt(List<double> Function(ForecastResult) select, int i) =>
+      withBand.map((r) => select(r)[i]).reduce((a, b) => a + b) /
+      withBand.length;
+
   final p50 = List<double>.generate(days, (i) => avgAt((r) => r.p50, i));
-  final p90 = List<double>.generate(days, (i) => avgAt((r) => r.p90, i));
+  final p10 = withBand.isEmpty
+      ? const <double>[]
+      : List<double>.generate(days, (i) => avgBandAt((r) => r.p10, i));
+  final p90 = withBand.isEmpty
+      ? const <double>[]
+      : List<double>.generate(days, (i) => avgBandAt((r) => r.p90, i));
   final risk = RiskEstimate.derive(p10, p50, p90);
 
   return ForecastResult(

@@ -164,7 +164,7 @@ class ForecastRiskBanner extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  ru ? 'Риск кассового разрыва' : 'Cash gap risk',
+                  ru ? 'Денег может не хватить' : 'Money may run short',
                   style: TextStyle(
                       color: AppTheme.accentRed,
                       fontSize: 14,
@@ -173,10 +173,12 @@ class ForecastRiskBanner extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   ru
-                      ? 'Через $alertDay дн. ($dateLabel) баланс может уйти '
-                          'в минус более чем в 5% сценариев.'
-                      : 'In $alertDay days ($dateLabel) the balance may go '
-                          'negative in over 5% of scenarios.',
+                      ? 'Примерно через $alertDay дн. ($dateLabel) деньги '
+                          'могут закончиться. Так вышло больше чем в одном '
+                          'варианте будущего из двадцати.'
+                      : 'In about $alertDay days ($dateLabel) the money may '
+                          'run out — that happened in more than one future '
+                          'out of twenty.',
                   style: TextStyle(
                       color: AppTheme.textSecondary, fontSize: 12),
                 ),
@@ -201,14 +203,16 @@ class ForecastDiagnostics extends StatelessWidget {
     final ru = WesiLocale.isRussian;
     final parts = [
       ru
-          ? 'история ${forecast.historyDaysSpan} дн.'
-          : '${forecast.historyDaysSpan} days of history',
+          ? 'считали по ${forecast.historyDaysSpan} дн. ваших операций'
+          : 'based on ${forecast.historyDaysSpan} days of your entries',
       ru
-          ? '${forecast.simulatedPaths} траекторий'
-          : '${forecast.simulatedPaths} paths',
+          ? 'проверено ${forecast.simulatedPaths} вариантов'
+          : '${forecast.simulatedPaths} futures checked',
       forecast.seasonalityApplied
-          ? (ru ? 'день недели учтён' : 'weekday seasonality on')
-          : (ru ? 'день недели не учтён' : 'weekday seasonality off'),
+          ? (ru ? 'учли, что дни недели разные' : 'weekdays differ — accounted')
+          : (ru
+              ? 'дней недели пока не различаем — мало истории'
+              : 'weekdays not separated yet — short history'),
     ];
     return Text(
       parts.join(' · '),
@@ -245,7 +249,8 @@ class ForecastAccuracyCard extends StatelessWidget {
         BacktestGrade.good => ru ? 'Прогноз оправдался' : 'Forecast held up',
         BacktestGrade.fair => ru ? 'Прогноз частично оправдался' : 'Partly held up',
         BacktestGrade.poor => ru ? 'Прогноз промахнулся' : 'Forecast missed',
-        BacktestGrade.unknown => ru ? 'Проверить пока не на чем' : 'Not enough history',
+        BacktestGrade.unknown =>
+            ru ? 'Пока мало истории' : 'Not enough history',
       };
 
   @override
@@ -271,7 +276,7 @@ class ForecastAccuracyCard extends StatelessWidget {
               const SizedBox(width: 9),
               Expanded(
                 child: Text(
-                  ru ? 'Проверка на прошлом' : 'Backtest',
+                  ru ? 'А как он справлялся раньше' : 'How it did before',
                   style: TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.w700,
@@ -321,41 +326,43 @@ class ForecastAccuracyCard extends StatelessWidget {
             Row(
               children: [
                 _metric(
-                  ru ? 'Попал в коридор' : 'Within band',
+                  ru ? 'Угадал' : 'Hit the range',
                   '${(result.coverage * 100).toStringAsFixed(0)}%',
                   _gradeColor,
                   ru
-                      ? 'Доля дней, когда факт оказался между P10 и P90. '
-                          'Коридор строится так, чтобы накрывать около 80%.'
-                      : 'Share of days the actual balance fell between P10 '
-                          'and P90. The band is built to cover about 80%.',
+                      ? 'В скольких днях из ста настоящий баланс попал в тот '
+                          'разброс, который прогноз обещал. Хорошо, когда '
+                          'около 80.'
+                      : 'How often the real balance landed inside the range '
+                          'the forecast promised. About 80 is right.',
                 ),
                 const SizedBox(width: 8),
                 _metric(
-                  ru ? 'Ошибка' : 'Error',
+                  ru ? 'Промах' : 'Off by',
                   result.mape == null
                       ? CurrencyService.format(result.mae)
                       : '${result.mape!.toStringAsFixed(1)}%',
                   AppTheme.textPrimary,
                   ru
-                      ? 'Насколько в среднем медианный прогноз (P50) разошёлся '
-                          'с фактом.'
-                      : 'Average gap between the median forecast and reality.',
+                      ? 'Насколько прогноз в среднем расходился с тем, что '
+                          'вышло на самом деле.'
+                      : 'How far the forecast was from what actually '
+                          'happened, on average.',
                 ),
                 const SizedBox(width: 8),
                 _metric(
-                  ru ? 'Перекос' : 'Bias',
+                  ru ? 'Куда врёт' : 'Leans',
                   (result.bias >= 0 ? '+' : '−') +
                       CurrencyService.format(result.bias.abs()),
                   result.bias.abs() < result.mae * 0.3
                       ? AppTheme.textMuted
                       : AppTheme.accent,
                   ru
-                      ? 'Средняя ошибка со знаком. Плюс — прогноз занижал '
-                          'баланс, минус — завышал. Около нуля — систематического '
-                          'перекоса нет.'
-                      : 'Signed average error. Plus means the forecast '
-                          'understated the balance.',
+                      ? 'Плюс — прогноз был осторожнее, чем вышло на деле. '
+                          'Минус — обещал больше денег, чем оказалось. '
+                          'Около нуля — не врёт ни в ту, ни в другую сторону.'
+                      : 'Plus — the forecast was more cautious than reality. '
+                          'Minus — it promised more money than there was.',
                 ),
               ],
             ),
