@@ -4,6 +4,8 @@ import '../models/transaction_model.dart';
 import 'anomaly_engine.dart';
 import 'forecast_engine.dart';
 import 'forecast_runner.dart';
+import 'horizon_calibration.dart';
+import 'horizon_scenarios.dart';
 import 'recurring_engine.dart';
 import 'treasury_service.dart';
 
@@ -46,7 +48,8 @@ class SandboxService {
     return box.values.toList()..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  Future<List<TransactionModel>> getTransactionsByType(TransactionType type) async {
+  Future<List<TransactionModel>> getTransactionsByType(
+      TransactionType type) async {
     final all = await getAllTransactions();
     return all.where((t) => t.type == type).toList();
   }
@@ -137,17 +140,41 @@ class SandboxService {
     double annualDiscountRate = 0.0,
   }) async {
     final all = await getAllTransactions();
-    final total = await getCurrentBalance();
-    return runForecastOffThread(ForecastRequest(
+    // Тот же старт, что и в Treasury: операции, датированные будущим,
+    // не должны поднимать сегодняшний баланс.
+    final balance = TreasuryService.balanceOnDay(
+      DateTime.now(),
+      all,
+      await getCurrentBalance(),
+    );
+    const calibration = HorizonCalibrationProfile.identity;
+    // Считаем вне потока интерфейса — ровно как в Treasury.
+    Future<ForecastResult> core(WhatIfScenario scenario) =>
+        runForecastOffThread(ForecastRequest(
+          transactions: all,
+          currentBalance: balance,
+          days: days,
+          whatIf: scenario,
+          annualDiscountRate: annualDiscountRate,
+          calibration: calibration,
+        ));
+    final base = await core(WhatIfScenario.none);
+    final active = whatIf.isEmpty ? base : await core(whatIf);
+    final package = await HorizonScenarioService.buildDefaultPackage(
+      base: base,
       transactions: all,
-      // Тот же старт, что и в Treasury: операции, датированные будущим,
-      // не должны поднимать сегодняшний баланс.
-      currentBalance:
-          TreasuryService.balanceOnDay(DateTime.now(), all, total),
-      whatIf: whatIf,
-      annualDiscountRate: annualDiscountRate,
+      currentBalance: balance,
       days: days,
-    ));
+      calibration: calibration,
+      annualDiscountRate: annualDiscountRate,
+    );
+    return active.copyWith(
+      scenarioSummaries: package,
+      whatIfRiskDelta: whatIf.isEmpty
+          ? null
+          : HorizonScenarioService.riskDelta(base: base, scenario: active),
+      clearWhatIfRiskDelta: whatIf.isEmpty,
+    );
   }
 
   // ========== SCENARIO GENERATORS ==========

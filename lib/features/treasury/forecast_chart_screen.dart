@@ -10,8 +10,10 @@ import 'services/treasury_service.dart';
 import 'services/forecast_backtest.dart';
 import 'services/forecast_engine.dart';
 import 'services/multi_engine_forecast.dart';
+import 'services/horizon_engine_competition.dart';
 import 'models/transaction_model.dart';
 import 'widgets/forecast_insights.dart';
+import 'widgets/horizon_decision_panel.dart';
 import 'widgets/what_if_dialog.dart';
 import 'widgets/engine_install_banner.dart';
 import '../../core/widgets/wesi_wordmark.dart';
@@ -71,6 +73,8 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   final Map<ForecastEngineKind, ForecastResult?> _engineCache = {};
   final Set<ForecastEngineKind> _loadingEngines = {};
   final Set<ForecastEngineKind> _unavailableEngines = {};
+  ForecastEngineKind _combinedSelectedKind = ForecastEngineKind.wesiHorizon;
+  bool _combinedWasRejected = false;
 
   /// Цвета движков: Wesi Horizon следует теме (оранжевый dark / голубой light),
   /// остальные — фиксированная палитра, чтобы линии не сливались.
@@ -231,7 +235,7 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
   Future<void> _ensureEngineComputed(ForecastEngineKind kind) async {
     if (kind == ForecastEngineKind.wesiHorizon) return; // уже в кэше всегда
     if (kind == ForecastEngineKind.combined) {
-      setState(_recomputeCombined);
+      await _recomputeCombined();
       return;
     }
     if (_engineCache.containsKey(kind) || _loadingEngines.contains(kind)) {
@@ -255,16 +259,28 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
       } else {
         _unavailableEngines.remove(kind);
       }
-      _recomputeCombined();
     });
+    if (_activeEngines.contains(ForecastEngineKind.combined)) {
+      await _recomputeCombined();
+    }
   }
 
-  void _recomputeCombined() {
-    _engineCache[ForecastEngineKind.combined] = combineForecastResults([
-      _engineCache[ForecastEngineKind.wesiHorizon],
-      _engineCache[ForecastEngineKind.prophet],
-      _engineCache[ForecastEngineKind.sarimax],
-    ]);
+  Future<void> _recomputeCombined() async {
+    final smart = await HorizonEngineCompetitionService.smartCombined(
+      horizon: _forecastDays,
+      live: <ForecastEngineKind, ForecastResult?>{
+        ForecastEngineKind.wesiHorizon:
+            _engineCache[ForecastEngineKind.wesiHorizon],
+        ForecastEngineKind.prophet: _engineCache[ForecastEngineKind.prophet],
+        ForecastEngineKind.sarimax: _engineCache[ForecastEngineKind.sarimax],
+      },
+    );
+    if (!mounted) return;
+    setState(() {
+      _engineCache[ForecastEngineKind.combined] = smart.result;
+      _combinedSelectedKind = smart.selectedKind;
+      _combinedWasRejected = smart.combinedWasRejected;
+    });
   }
 
   Future<void> _cycleCurrency() async {
@@ -399,7 +415,18 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
           const SizedBox(height: 8),
           ForecastDiagnostics(forecast: _forecast),
           const SizedBox(height: 12),
+          HorizonDecisionPanel(forecast: _forecast),
+          const SizedBox(height: 12),
           _engineSelector(),
+          if (_activeEngines.contains(ForecastEngineKind.combined)) ...[
+            const SizedBox(height: 6),
+            Text(
+              WesiLocale.isRussian
+                  ? 'Combined: ${_combinedSelectedKind.nameRu}${_combinedWasRejected ? ' — простое усреднение отклонено backtest' : ''}'
+                  : 'Combined: ${_combinedSelectedKind.nameEn}${_combinedWasRejected ? ' — equal averaging rejected by backtest' : ''}',
+              style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+            ),
+          ],
           const SizedBox(height: 12),
           _chartModeTabs(),
           const SizedBox(height: 10),

@@ -7,9 +7,11 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/services/currency_service.dart';
 import '../../tasks/models/task_model.dart';
 import '../../tasks/services/task_service.dart';
 import '../../team/services/team_service.dart';
+import '../../treasury/services/horizon_contract_memory.dart';
 import '../models/audio_vault_models.dart';
 
 class AudioVaultService {
@@ -184,11 +186,34 @@ class AudioVaultService {
     return next;
   }
 
+  static double _leaseRub(BeatLease lease) =>
+      lease.amount * CurrencyService.rateToRub(lease.currency.toLowerCase());
+
   static Future<BeatEntry> setLease(
     BeatEntry beat,
     BeatLease lease, {
     bool createCalendarReminder = true,
   }) async {
+    final previous = beat.lease;
+    if (previous != null && previous.id != lease.id) {
+      await HorizonContractMemoryService.recordClosedLease(
+        beatId: beat.id,
+        leaseId: previous.id,
+        artistName: previous.artistName,
+        closedAt: lease.startsAt,
+        amountRub: _leaseRub(previous),
+      );
+      await HorizonContractMemoryService.removeLease(previous.id);
+    }
+
+    // If this new contract follows a previously closed one for the same beat
+    // or artist, that is realized renewal evidence for future probabilities.
+    await HorizonContractMemoryService.markRenewalIfApplicable(
+      beatId: beat.id,
+      artistName: lease.artistName,
+      startedAt: lease.startsAt,
+    );
+
     var nextLease = lease;
     if (createCalendarReminder) {
       final taskId = 'audio-lease-${beat.id}-${lease.id}';
@@ -213,7 +238,20 @@ class AudioVaultService {
   }
 
   static Future<BeatEntry> clearLease(BeatEntry beat) async {
-    final taskId = beat.lease?.reminderTaskId;
+    final lease = beat.lease;
+    if (lease != null && lease.id.isNotEmpty) {
+      // Closing a lease is persisted as an outcome. A later new lease can turn
+      // it into a renewal; otherwise it remains observed non-renewal evidence.
+      await HorizonContractMemoryService.recordClosedLease(
+        beatId: beat.id,
+        leaseId: lease.id,
+        artistName: lease.artistName,
+        closedAt: DateTime.now(),
+        amountRub: _leaseRub(lease),
+      );
+      await HorizonContractMemoryService.removeLease(lease.id);
+    }
+    final taskId = lease?.reminderTaskId;
     if (taskId != null && taskId.isNotEmpty) {
       await TaskService().delete(taskId);
     }
