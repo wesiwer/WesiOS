@@ -3,6 +3,7 @@ import 'dart:math';
 import '../models/transaction_model.dart';
 import 'calendar_days.dart';
 import 'horizon_calibration.dart';
+import 'payment_calendar.dart';
 import 'recurring_engine.dart';
 
 /// One hypothetical future income/expense for What-If. It never touches the
@@ -1176,9 +1177,27 @@ class ForecastEngine {
         final probability = tx.type == TransactionType.expense
             ? max(0.95, reliability)
             : reliability;
+        // Платёж приходится на рабочий день, а не на календарный.
+        //
+        // Аренда с датой 31-го в субботу спишется в понедельник, платёж на
+        // 1 января — только после каникул, а зарплата, наоборот, по ТК
+        // выплачивается накануне выходного. Без этого в январе десять дней
+        // подряд не происходит ничего из ожидаемого, а потом всё сваливается
+        // одним днём — и промахивается как раз ближняя половина горизонта,
+        // та самая, которую человек сверяет глазами.
+        final plannedDay = addDays(todayOnly, entry.key);
+        final settledDay = PaymentCalendar.settle(
+          plannedDay,
+          PaymentCalendar.shiftFor(
+            title: tx.title,
+            category: tx.category,
+            description: tx.description,
+          ),
+        );
+        final calendarOffset = dayDiff(todayOnly, settledDay);
         final shiftedOffset = tx.type == TransactionType.income
-            ? entry.key + whatIf.incomeDelayDays
-            : entry.key;
+            ? calendarOffset + whatIf.incomeDelayDays
+            : calendarOffset;
         if (shiftedOffset < 1 || shiftedOffset > days) continue;
 
         var modeledNet = entry.value;
@@ -1336,7 +1355,18 @@ class ForecastEngine {
         final day = i + 1;
         final futureDay = addDays(todayOnly, day);
         final weekday = futureDay.weekday - 1;
-        if (i > 0 && i % 7 == 0) regime = regimeModel.transition(rng, regime);
+        // Режим меняется в свой момент у каждой траектории, а не по общей
+        // недельной сетке.
+        //
+        // Жёсткое `i % 7 == 0` означало, что все пять тысяч сценариев
+        // переключаются строго в одни и те же дни. Разнообразие исходов при
+        // этом теряется: между переключениями пути расходятся только шумом,
+        // а в день сетки дёргаются разом. Переход раз в семь дней в среднем
+        // сохраняется, но каждый путь проходит его когда придётся — как это
+        // и происходит в жизни.
+        if (i > 0 && rng.nextDouble() < 1 / 7) {
+          regime = regimeModel.transition(rng, regime);
+        }
 
         var expectedIncome = 0.0;
         var expectedExpense = 0.0;
