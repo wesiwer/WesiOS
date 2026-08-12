@@ -215,3 +215,91 @@ routerUse((e) => {
   });
   return e.next();
 });
+
+// Message integrity guard. The client already prevents editing another
+// employee's words, but the server must enforce the same rule because a
+// modified client can call the sync endpoint directly.
+routerUse((e) => {
+  const path = String(e.request.url.path || "");
+  const method = String(e.request.method || "").toUpperCase();
+  if (path !== "/api/wesi/sync/messages" || method !== "POST") return e.next();
+
+  const ctx = e.get("wesiSyncContext");
+  if (!ctx || ctx.isOwner) return e.next();
+
+  const body = e.requestInfo().body || {};
+  const rid = String(body.rid || "").trim();
+  const incoming = body.payload && typeof body.payload === "object" ? body.payload : {};
+  const deleted = body.deleted === true;
+  if (!rid) throw new BadRequestError("Некорректный id сообщения");
+
+  const payloadOf = (record) => {
+    if (!record) return {};
+    try {
+      const raw = record.get("payload");
+      if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw;
+      if (typeof raw === "string" && raw.trim()) return JSON.parse(raw);
+    } catch (_) {}
+    return {};
+  };
+  const mapOf = (value) => value && typeof value === "object" && !Array.isArray(value)
+    ? value : {};
+  const sameJson = (a, b) => JSON.stringify(a == null ? null : a) === JSON.stringify(b == null ? null : b);
+
+  let existing = null;
+  try {
+    existing = e.app.findFirstRecordByFilter(
+      "wesios_records",
+      "owner={:owner} && coll='messages' && rid={:rid}",
+      {"owner": ctx.ownerId, "rid": rid},
+    );
+  } catch (_) { existing = null; }
+
+  if (!existing) {
+    if (String(incoming.authorId || "") !== ctx.employeeId) {
+      throw new ForbiddenError("Нельзя отправлять сообщения от имени другого сотрудника");
+    }
+    const reactions = mapOf(incoming.reactions);
+    for (const actorId of Object.keys(reactions)) {
+      if (actorId !== ctx.employeeId) {
+        throw new ForbiddenError("Нельзя создавать реакции от имени другого сотрудника");
+      }
+    }
+    return e.next();
+  }
+
+  const before = payloadOf(existing);
+  const beforeAuthor = String(before.authorId || "");
+  if (String(incoming.authorId || beforeAuthor) !== beforeAuthor) {
+    throw new ForbiddenError("Автор сообщения неизменяем");
+  }
+  if (String(incoming.chatId || before.chatId || "") !== String(before.chatId || "")) {
+    throw new ForbiddenError("Нельзя перенести сообщение в другой чат");
+  }
+
+  const beforeReactions = mapOf(before.reactions);
+  const incomingReactions = mapOf(incoming.reactions);
+  const reactionActors = {};
+  for (const id of Object.keys(beforeReactions)) reactionActors[id] = true;
+  for (const id of Object.keys(incomingReactions)) reactionActors[id] = true;
+  for (const actorId of Object.keys(reactionActors)) {
+    if (actorId === ctx.employeeId) continue;
+    if (String(beforeReactions[actorId] || "") !== String(incomingReactions[actorId] || "")) {
+      throw new ForbiddenError("Нельзя менять реакцию другого сотрудника");
+    }
+  }
+
+  if (beforeAuthor !== ctx.employeeId) {
+    if (deleted) throw new ForbiddenError("Нельзя удалить чужое сообщение");
+    const protectedFields = [
+      "body", "kind", "at", "expiresAt", "archived", "replyTo", "editedAt", "attachment"
+    ];
+    for (const field of protectedFields) {
+      if (!sameJson(incoming[field], before[field])) {
+        throw new ForbiddenError("Нельзя изменять содержимое чужого сообщения");
+      }
+    }
+  }
+
+  return e.next();
+});
