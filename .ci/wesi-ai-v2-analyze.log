@@ -34,7 +34,6 @@ Analyzing WesiOS...
    info • Use 'isNotEmpty' rather than negating the result of 'isEmpty' • lib/features/sysadmin/console/console_screen.dart:457:29 • prefer_is_not_empty
    info • Use 'isNotEmpty' rather than negating the result of 'isEmpty' • lib/features/sysadmin/console/console_screen.dart:534:28 • prefer_is_not_empty
    info • Use 'isNotEmpty' rather than negating the result of 'isEmpty' • lib/features/sysadmin/console/console_screen.dart:539:42 • prefer_is_not_empty
-   info • Statements in an if should be enclosed in a block • lib/features/tasks/ai/services/wesi_ai_adaptive_policy.dart:161:9 • curly_braces_in_flow_control_structures
    info • Statements in an if should be enclosed in a block • lib/features/tasks/ai/services/wesi_ai_task_engine.dart:538:7 • curly_braces_in_flow_control_structures
    info • The declaration '_valueInList' isn't referenced • lib/features/tasks/widgets/assignee_field.dart:97:8 • unused_element
    info • The declaration '_person' isn't referenced • lib/features/tasks/widgets/assignee_field.dart:100:10 • unused_element
@@ -62,4 +61,4 @@ Analyzing WesiOS...
    info • Unnecessary escape in string literal • test/update_paths_test.dart:21:28 • unnecessary_string_escapes
    info • Use 'const' for final variables initialized to a constant value • test/update_paths_test.dart:28:7 • prefer_const_declarations
 
-61 issues found. (ran in 23.2s)
+60 issues found. (ran in 25.7s)
