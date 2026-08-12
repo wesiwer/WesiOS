@@ -1,0 +1,124 @@
+name: Deploy app-latest 0.19.23+71 once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/deploy-app-latest-01923-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 1
+
+      - name: Download published app-latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          gh release download app-latest \
+            --repo "$GITHUB_REPOSITORY" \
+            --dir upload \
+            --pattern 'wesios-windows-x64.zip' \
+            --pattern 'wesios-android.apk' \
+            --pattern 'app-manifest.json' \
+            --clobber
+          test -s upload/wesios-windows-x64.zip
+          test -s upload/wesios-android.apk
+          test -s upload/app-manifest.json
+          python3 - <<'PY'
+          import json
+          m=json.load(open('upload/app-manifest.json',encoding='utf-8'))
+          assert m['version']=='0.19.23', m
+          assert int(m['build'])==71, m
+          print('manifest:',m['version'],m['build'])
+          PY
+
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}"
+          test -n "${USER:-}"
+          test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Upload release to PocketBase public artifacts
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          TARGET='/opt/pocketbase/pb_public/artifacts'
+          TMP="/tmp/wesios-app-latest-$GITHUB_RUN_ID"
+          $SSH "$USER@$HOST" "mkdir -p '$TARGET/app' '$TMP'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            upload/wesios-windows-x64.zip \
+            upload/wesios-android.apk \
+            server/deploy-artifact.sh \
+            "$USER@$HOST:$TMP/"
+          NOTES_B64=$(python3 - <<'PY'
+          import json,base64
+          m=json.load(open('upload/app-manifest.json',encoding='utf-8'))
+          notes=(m.get('android') or {}).get('notes') or ''
+          print(base64.b64encode(notes.encode()).decode())
+          PY
+          )
+          $SSH "$USER@$HOST" \
+            "WESI_ARTIFACTS='$TARGET' bash '$TMP/deploy-artifact.sh' --version '0.19.23' --build '71' --from '$TMP' --notes-b64 '$NOTES_B64'"
+          $SSH "$USER@$HOST" "rm -rf '$TMP'"
+
+      - name: Verify public update channel
+        run: |
+          set -euo pipefail
+          BASE='https://api.wesi-inc.ru/artifacts'
+          curl -fsS --max-time 30 "$BASE/app/app-manifest.json" -o public.json
+          python3 - <<'PY'
+          import json,urllib.request
+          m=json.load(open('public.json',encoding='utf-8'))
+          assert m['version']=='0.19.23', m
+          assert int(m['build'])==71, m
+          base='https://api.wesi-inc.ru/artifacts/'
+          for platform in ('android','windows'):
+              item=m[platform]
+              req=urllib.request.Request(base+item['path'], method='HEAD')
+              with urllib.request.urlopen(req,timeout=30) as r:
+                  size=int(r.headers.get('Content-Length','-1'))
+              assert size==int(item['sizeBytes']), (platform,size,item['sizeBytes'])
+              print(platform,size,'OK')
+          print('PUBLIC_UPDATE_0.19.23+71_OK')
+          PY
+
+      - name: Remove one-shot workflow
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git rm .github/workflows/deploy-app-latest-01923-once.yml
+          git commit -m 'ci: remove completed 0.19.23 update deployer'
+          git push origin HEAD:main
