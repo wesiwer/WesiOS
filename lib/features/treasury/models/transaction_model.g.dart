@@ -42,13 +42,14 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       fxRateToReporting: (fields[26] as num?)?.toDouble() ?? 1.0,
       fxRateAt: fields[27] as DateTime?,
       fxSource: fields[28] as String? ?? 'legacy',
+      recurringAnchor: fields[29] as DateTime?,
     );
   }
 
   @override
   void write(BinaryWriter writer, TransactionModel obj) {
     writer
-      ..writeByte(29)
+      ..writeByte(30)
       ..writeByte(0)..write(obj.id)
       ..writeByte(1)..write(obj.title)
       ..writeByte(2)..write(obj.amount)
@@ -77,7 +78,8 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       ..writeByte(25)..write(obj.organizationBaseCurrency)
       ..writeByte(26)..write(obj.fxRateToReporting)
       ..writeByte(27)..write(obj.fxRateAt)
-      ..writeByte(28)..write(obj.fxSource);
+      ..writeByte(28)..write(obj.fxSource)
+      ..writeByte(29)..write(obj.recurringAnchor);
   }
 
   @override
