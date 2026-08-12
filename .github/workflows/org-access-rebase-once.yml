@@ -1,0 +1,71 @@
+name: Transplant organization access UX onto current main
+
+on:
+  push:
+    branches:
+      - chatgpt/org-access-contacts-ux-rebase-20260812
+
+permissions:
+  contents: write
+
+concurrency:
+  group: org-access-rebase-once
+  cancel-in-progress: true
+
+jobs:
+  transplant-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/org-access-contacts-ux-rebase-20260812
+          fetch-depth: 0
+
+      - name: Fetch completed UX branch
+        run: git fetch origin chatgpt/org-access-contacts-ux-20260812
+
+      - name: Copy only requested product files
+        run: |
+          git checkout origin/chatgpt/org-access-contacts-ux-20260812 -- \
+            lib/features/organizations/widgets/organization_access_editor.dart \
+            lib/features/organizations/organizations_screen.dart \
+            lib/features/team/contacts_screen.dart \
+            test/organization_ui_contract_test.dart
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Format
+        run: |
+          dart format \
+            lib/features/organizations/widgets/organization_access_editor.dart \
+            lib/features/organizations/organizations_screen.dart \
+            lib/features/team/contacts_screen.dart \
+            test/organization_ui_contract_test.dart
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Full test suite
+        run: flutter test
+
+      - name: Commit product files and remove harness
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/org-access-rebase-once.yml
+          rm -f .org_access_rebase_marker
+          git config user.name 'WesiOS Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'feat(org): simplify access controls and organization contacts'
+          git push origin HEAD:chatgpt/org-access-contacts-ux-rebase-20260812
