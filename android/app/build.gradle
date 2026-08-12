@@ -23,6 +23,17 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// Не даём собрать Android release, если версия, зашитая в UI/updater,
+// расходится с pubspec/local.properties. Именно такой рассинхрон привёл к
+// тому, что APK обновлялся, а WesiOS продолжал считать себя старой версией
+// и снова предлагал то же обновление.
+def appVersionFile = rootProject.file('../lib/core/constants/app_version.dart')
+def appVersionText = appVersionFile.exists() ? appVersionFile.getText('UTF-8') : ''
+def appVersionMatcher = (appVersionText =~ /static const String number = '([^']+)'/)
+def appBuildMatcher = (appVersionText =~ /static const int build = (\d+)/)
+def dartVersionName = appVersionMatcher.find() ? appVersionMatcher.group(1) : null
+def dartVersionCode = appBuildMatcher.find() ? appBuildMatcher.group(1) : null
+
 // Подпись релиза. В CI workflow кладёт keystore во временный файл и
 // выставляет KEYSTORE_PATH / KEYSTORE_PASSWORD / KEY_ALIAS / KEY_PASSWORD.
 // Имена локальных переменных намеренно НЕ совпадают с keyAlias/keyPassword —
@@ -58,6 +69,19 @@ if (releaseBuildRequested && !hasReleaseKey) {
             "Set KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. " +
             "Debug-signed release APKs are forbidden because they cannot update installed WesiOS builds."
     )
+}
+if (releaseBuildRequested) {
+    if (dartVersionName == null || dartVersionCode == null) {
+        throw new GradleException(
+                "Cannot read AppVersion.number/build from lib/core/constants/app_version.dart"
+        )
+    }
+    if (dartVersionName != flutterVersionName || dartVersionCode != flutterVersionCode) {
+        throw new GradleException(
+                "Release version mismatch: pubspec/local.properties is ${flutterVersionName}+${flutterVersionCode}, " +
+                "but AppVersion is ${dartVersionName}+${dartVersionCode}. Update both before releasing."
+        )
+    }
 }
 
 android {
