@@ -215,7 +215,9 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
                     children: [
                       Flexible(
                         child: Text(
-                          compact ? 'Wesi AI · Задачи' : 'Wesi AI · Предложения',
+                          compact
+                              ? 'Wesi AI · Задачи'
+                              : 'Wesi AI · Предложения',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(
@@ -262,9 +264,7 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
                 icon: const Icon(Icons.refresh_rounded, size: 19),
               ),
             Icon(
-              _expanded
-                  ? Icons.expand_less_rounded
-                  : Icons.expand_more_rounded,
+              _expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
               color: AppTheme.textMuted,
               size: 22,
             ),
@@ -295,7 +295,8 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
             ),
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton(onPressed: _reload, child: const Text('Повторить')),
+              child: TextButton(
+                  onPressed: _reload, child: const Text('Повторить')),
             ),
           ],
         ),
@@ -378,7 +379,8 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
                     _tag(suggestion.category.ru),
                     _tag(
                       _priorityLabel(suggestion.priority),
-                      accent: suggestion.priority.index >= TaskPriority.high.index,
+                      accent:
+                          suggestion.priority.index >= TaskPriority.high.index,
                     ),
                   ],
                 ),

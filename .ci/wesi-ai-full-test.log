@@ -48,16 +48,13 @@
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_hardening_regression_test.dart: calibration cannot materially destabilize the near-horizon median
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_hardening_regression_test.dart: production lifecycle wiring runs Horizon maintenance without opening Forecast
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_hardening_regression_test.dart: account liquidity uses recurring projections and scenario timing
+✅ /home/runner/work/WesiOS/WesiOS/test/treasury_dashboard_live_data_test.dart: Treasury Dashboard is wired to live services, not demo placeholders
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine long horizons a five-year forecast still returns ordered percentiles for every day of the horizon
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine returns insufficientData with fewer than 3 transactions
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine refuses to forecast from a single day of one-off transactions (regression: one day of history produced zero volatility, so all 5000 paths were identical and the chart showed a confident straight line with p10 == p50 == p90)
-✅ /home/runner/work/WesiOS/WesiOS/test/treasury_dashboard_live_data_test.dart: Treasury Dashboard is wired to live services, not demo placeholders
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine a short history still forecasts when recurring payments carry it — there the straight line is the correct deterministic answer, not an artefact of missing data
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine percentiles are ordered (p10 <= p50 <= p90) for every day, and series length matches the requested horizon
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine deterministic recurring payments produce an exact, zero-volatility trajectory when there is no other transaction noise
-✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine Cash Gap Risk Score: a draining recurring expense trips runway and the 5% risk alert at the correct day
-✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine What-If: a one-off virtual event shifts the median trajectory only on and after its day, without touching the real transaction list
-✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine What-If: income multiplier scales only the income stream, expenses stay untouched
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: русские встроенные статьи их вообще много и они не пустые
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: русские встроенные статьи тело каждой статьи — валидный JSON-массив операций
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: русские встроенные статьи в каждой операции есть insert
@@ -66,6 +63,7 @@
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: русские встроенные статьи версия в статье «Что такое WesiOS» не захардкожена в прошлое
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: русские встроенные статьи в каждом разделе есть хоть одна статья
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: русские встроенные статьи порядок внутри папки задан и не повторяется
+✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine Cash Gap Risk Score: a draining recurring expense trips runway and the 5% risk alert at the correct day
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: русские встроенные статьи нет внутренностей программы в тексте
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: русские встроенные статьи у каждой статьи есть заголовок
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: русские встроенные статьи parentId ссылается на существующую статью
@@ -85,6 +83,12 @@
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: оба языка состав деревьев совпадает
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: оба языка перевод есть у каждого заголовка
 ✅ /home/runner/work/WesiOS/WesiOS/test/builtin_articles_delta_test.dart: оба языка тексты статей тоже разные
+✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine What-If: a one-off virtual event shifts the median trajectory only on and after its day, without touching the real transaction list
+✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine What-If: income multiplier scales only the income stream, expenses stay untouched
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: клиент, сделка и касание сохраняются и читаются
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: следующий шаг из касания обновляет карточку клиента
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: сводка считает воронку, выигранное и архив отдельно
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: удаление клиента каскадно удаляет сделки и историю
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: ForecastEngine DCF discounting reduces future balances toward zero at the given annual rate, does not affect belowZeroProbability
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: RecurringEngine advance() clamps to the last valid day of a shorter month
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: RecurringEngine advance() clamps Feb 29 forward across a non-leap year
@@ -92,10 +96,6 @@
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: RecurringEngine projectFutureContributions places a weekly payment exactly 7 days apart within the horizon
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: AnomalyEngine flags a large one-off expense against a stable baseline
 ✅ /home/runner/work/WesiOS/WesiOS/test/treasury_engines_test.dart: AnomalyEngine returns nothing with fewer than 4 expenses
-✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: клиент, сделка и касание сохраняются и читаются
-✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: следующий шаг из касания обновляет карточку клиента
-✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: сводка считает воронку, выигранное и архив отдельно
-✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: удаление клиента каскадно удаляет сделки и историю
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_account_recurring_risk_test.dart: account liquidity projects recurring expense on its actual account
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_account_recurring_risk_test.dart: uncertain business income multiplier is applied to CRM/Vault events
 ✅ /home/runner/work/WesiOS/WesiOS/test/calendar_event_model_test.dart: CalendarEvent recurrence weekly event occurs only on matching weekday after start
@@ -138,21 +138,21 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: passwordStrength слишком короткий пароль — ноль
 ✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: passwordStrength длина и разнообразие символов повышают оценку
 ✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: passwordStrength оценка не выходит за 0..4
-✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах старый пароль продолжает подходить после обновления
-✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах чужой пароль по-прежнему не подходит
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_main_source_stress_test.dart: main-source stress can hit a dominant CRM/business source
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_main_source_stress_test.dart: main-source stress can hit dominant recurring income
-✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах после успешного входа слабый SHA-256 заменяется на PBKDF2
+✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах старый пароль продолжает подходить после обновления
+✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах чужой пароль по-прежнему не подходит
 ✅ /home/runner/work/WesiOS/WesiOS/test/calendar_clock_surface_test.dart: completed Calendar is the only legacy calendar entry point
 ✅ /home/runner/work/WesiOS/WesiOS/test/calendar_clock_surface_test.dart: home clock opens the four-tool Time Center
 ✅ /home/runner/work/WesiOS/WesiOS/test/calendar_clock_surface_test.dart: persistent schedules are restored and Android can schedule exact alarms
-✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах включённая биометрия переносится вместе с паролем
-✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах без старого пароля и без нового защита не считается настроенной
 ✅ /home/runner/work/WesiOS/WesiOS/test/portal_account_service_test.dart: PortalAccountService.messageForResponse translates generic PocketBase failure
+✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах после успешного входа слабый SHA-256 заменяется на PBKDF2
 ✅ /home/runner/work/WesiOS/WesiOS/test/portal_account_service_test.dart: PortalAccountService.messageForResponse explains missing production hook
 ✅ /home/runner/work/WesiOS/WesiOS/test/portal_account_service_test.dart: PortalAccountService.messageForResponse keeps useful Russian server message
 ✅ /home/runner/work/WesiOS/WesiOS/test/portal_account_service_test.dart: PortalAccountService.messageForResponse reads field validation message
 ✅ /home/runner/work/WesiOS/WesiOS/test/portal_account_service_test.dart: PortalAccountService.messageForResponse does not expose PocketBase authorization internals
+✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах включённая биометрия переносится вместе с паролем
+✅ /home/runner/work/WesiOS/WesiOS/test/shield_test.dart: перенос старого замка на ключах без старого пароля и без нового защита не считается настроенной
 ✅ /home/runner/work/WesiOS/WesiOS/test/organization_tz_contract_test.dart: organization hierarchy v1 TZ keeps all core invariants
 ✅ /home/runner/work/WesiOS/WesiOS/test/mobile_ux_01918_test.dart: home keeps WesiOS name and exact balance
 ✅ /home/runner/work/WesiOS/WesiOS/test/mobile_ux_01918_test.dart: more tab marks calendar ready and respects system inset
@@ -277,24 +277,20 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника невалидная почта не принимается
 ✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника одну почту нельзя выдать двум сотрудникам
 ✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника пароль в базе не хранится — только хеш
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника у двух сотрудников разные логины
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_screen_split_test.dart: вопрос показан, нажатие делит, карточка пропадает
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника у двух сотрудников разные логины
 ✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника одинаковый пароль даёт разные хеши — соль своя у каждого
 ✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника по умолчанию открыты только задачи
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника новый профиль не содержит случайных/demo показателей
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника когда словарь логинов кончился — используется уникальный вариант
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_income_delay_truth_test.dart: business incoming cash is shifted, not deleted, by delay stress
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_income_delay_truth_test.dart: statistical incoming delay uses an explicit queue
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость верная пара сверяется локально
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника новый профиль не содержит случайных/demo показателей
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: создание сотрудника когда словарь логинов кончился — используется уникальный вариант
 ✅ /home/runner/work/WesiOS/WesiOS/test/windows_time_scheduler_test.dart: Windows notification launch arguments round-trip arbitrary text
 ✅ /home/runner/work/WesiOS/WesiOS/test/windows_time_scheduler_test.dart: Windows notification launch parser rejects incomplete payload
 ✅ /home/runner/work/WesiOS/WesiOS/test/windows_time_scheduler_test.dart: Windows task names are deterministic and Task Scheduler safe
 ✅ /home/runner/work/WesiOS/WesiOS/test/windows_time_scheduler_test.dart: main handles notification-only launch before normal desktop startup
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость неверный пароль не проходит
 ✅ /home/runner/work/WesiOS/WesiOS/test/windows_time_scheduler_test.dart: Windows scheduling uses Task Scheduler with process fallback
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость несуществующий логин не проходит
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость регистр логина не мешает сверке
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость пустой пароль не подходит к владельцу без локального пароля
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость верная пара сверяется локально
 ✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: catalog is broad enough to cover multiple business areas
 ✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: long beat gap becomes high priority but keeps low forecast impact
 ✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: sole beatmaker is not pushed into daily beat production
@@ -304,15 +300,12 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: heavily overdue employee is not selected just to raise activity
 ✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: open equivalent task suppresses duplicate suggestion
 ✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_task_engine_test.dart: no permission to assign others never proposes another employee
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальная смена пароля старый перестаёт подходить, новый подходит
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость неверный пароль не проходит
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость несуществующий логин не проходит
 ✅ /home/runner/work/WesiOS/WesiOS/test/recurring_payment_automation_test.dart: throttles repeated automatic runs and retries after interval
 ✅ /home/runner/work/WesiOS/WesiOS/test/recurring_payment_automation_test.dart: multiple triggers share one in-flight materialization
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: удаление логин возвращается в свободные в локальном режиме
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: удаление удалённый локальный профиль больше не сверяется
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: удаление владельца удалить нельзя
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: удаление удаление текущего сотрудника очищает локальную роль
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: кто вошёл и что ему открыто без входа нет ни роли владельца, ни административных прав
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: кто вошёл и что ему открыто после локальной установки сотрудника права его
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость регистр логина не мешает сверке
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальный хеш пароля — только совместимость пустой пароль не подходит к владельцу без локального пароля
 ✅ /home/runner/work/WesiOS/WesiOS/test/topic_ai_test.dart: разбор ответа модели чистый JSON разбирается
 ✅ /home/runner/work/WesiOS/WesiOS/test/topic_ai_test.dart: разбор ответа модели ответ в ```json … ``` тоже разбирается
 ✅ /home/runner/work/WesiOS/WesiOS/test/topic_ai_test.dart: разбор ответа модели ответ без поля split — это не ответ
@@ -334,6 +327,18 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/topic_ai_test.dart: поведение при отказе модели уверенная модель режет без вопроса
 ✅ /home/runner/work/WesiOS/WesiOS/test/topic_ai_test.dart: поведение при отказе модели неуверенная модель даёт вопрос с человеческим названием
 ✅ /home/runner/work/WesiOS/WesiOS/test/topic_ai_test.dart: текст вопроса без названия спрашивают проще, а не про пустоту
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: локальная смена пароля старый перестаёт подходить, новый подходит
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_balance_truth_test.dart: historical reconstruction ignores transactions scheduled after current balance date
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_balance_truth_test.dart: current account summary source excludes future-dated operations
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: удаление логин возвращается в свободные в локальном режиме
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: удаление удалённый локальный профиль больше не сверяется
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: удаление владельца удалить нельзя
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: удаление удаление текущего сотрудника очищает локальную роль
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: кто вошёл и что ему открыто без входа нет ни роли владельца, ни административных прав
+✅ /home/runner/work/WesiOS/WesiOS/test/employee_finance_dynamics_test.dart: self comparison uses the immediately previous equal-length period
+✅ /home/runner/work/WesiOS/WesiOS/test/employee_finance_dynamics_test.dart: self risks include overdue responsible CRM deal and anomalous expense
+✅ /home/runner/work/WesiOS/WesiOS/test/employee_finance_dynamics_test.dart: CRM service never silently reattributes explicit custom or empty responsibility
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: кто вошёл и что ему открыто после локальной установки сотрудника права его
 ::group::✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: кто вошёл и что ему открыто выход возвращает в состояние без привилегий
 WesiOS secure session delete failed: Binding has not yet been initialized.
 The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
@@ -342,17 +347,6 @@ In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the f
 If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
 ::endgroup::
 ✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: кто вошёл и что ему открыто правка прав действует на текущего сразу
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: список состава владелец идёт первым
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_balance_truth_test.dart: historical reconstruction ignores transactions scheduled after current balance date
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_balance_truth_test.dart: current account summary source excludes future-dated operations
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: список состава остальные по алфавиту
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: список состава владелец заводится один раз
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: карточка сотрудника имя для показа падает на ник, потом на логин
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: карточка сотрудника в открытую карточку не попадают заметки и хеш
-✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: карточка сотрудника почта сохраняется в карточке
-✅ /home/runner/work/WesiOS/WesiOS/test/employee_finance_dynamics_test.dart: self comparison uses the immediately previous equal-length period
-✅ /home/runner/work/WesiOS/WesiOS/test/employee_finance_dynamics_test.dart: self risks include overdue responsible CRM deal and anomalous expense
-✅ /home/runner/work/WesiOS/WesiOS/test/employee_finance_dynamics_test.dart: CRM service never silently reattributes explicit custom or empty responsibility
 ✅ /home/runner/work/WesiOS/WesiOS/test/haptics_test.dart: возможности устройства точный отклик распознаётся
 ✅ /home/runner/work/WesiOS/WesiOS/test/haptics_test.dart: возможности устройства простой мотор не выдаётся за точный
 ✅ /home/runner/work/WesiOS/WesiOS/test/haptics_test.dart: возможности устройства спрашиваем один раз, а не на каждое нажатие
@@ -360,11 +354,17 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/haptics_test.dart: проигрывание событие уходит своим именем
 ✅ /home/runner/work/WesiOS/WesiOS/test/haptics_test.dart: проигрывание отказ платформы — это false, а не исключение
 ✅ /home/runner/work/WesiOS/WesiOS/test/haptics_test.dart: проигрывание нативная сторона не взялась — тоже false
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: список состава владелец идёт первым
 ::group::✅ /home/runner/work/WesiOS/WesiOS/test/topic_quality_test.dart: качество разбиения на сложных диалогах измерено
 Разбиение на темы: 6 из 8
 Не справляется: одна тема после ночного перерыва; одна тема при смене словаря
 ::endgroup::
 ✅ /home/runner/work/WesiOS/WesiOS/test/topic_quality_test.dart: контрольные случаи обязаны проходить всегда
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: список состава остальные по алфавиту
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: список состава владелец заводится один раз
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: карточка сотрудника имя для показа падает на ник, потом на логин
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: карточка сотрудника в открытую карточку не попадают заметки и хеш
+✅ /home/runner/work/WesiOS/WesiOS/test/team_service_test.dart: карточка сотрудника почта сохраняется в карточке
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_auto_test.dart: правка человека считается
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_auto_test.dart: приехавшее с сервера — не считается
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_auto_test.dart: удаление человеком считается
@@ -447,14 +447,29 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок без входа честно говорит об этом
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок без входа не пытается ничего отправить
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок местная запись уезжает на сервер
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id без правки в настройках берётся зашитый
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id зашитое значение похоже на настоящий id GitHub
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок чужая запись приезжает и попадает в бокс
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок применённая чужая запись не уезжает обратно на следующем проходе
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id значение из настроек перекрывает зашитое
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id пробелы по краям обрезаются — вставка из буфера часто тащит их
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок более свежая местная правка побеждает серверную
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id пустое значение возвращает к зашитому, а не отключает вход
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа без токена вход не выполнен и заголовков нет
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа с токеном появляется заголовок авторизации
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок более свежая серверная правка побеждает местную
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа пустой токен не считается входом
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа выход стирает токен, refresh, срок и имя аккаунта
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок удаление на другом устройстве стирает запись здесь
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа client_id переживает выход — это не секрет и не часть сессии
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия без срока токен считается бессрочным — так у OAuth-приложений
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок удаление здесь уезжает надгробием, а не исчезновением
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия живой токен отдаётся как есть
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия просроченный токен без refresh не выдаётся
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок обрыв связи не портит местные данные
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия токен, который истечёт через полминуты, уже считается негодным
 ✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок отказ одной коллекции не выдаётся за общий успех
+✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия битая дата срока не роняет проверку
 ::group::✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок протухший пропуск выбрасывается, а не остаётся выглядеть рабочим
 WesiOS secure session write failed: Binding has not yet been initialized.
 The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
@@ -507,21 +522,6 @@ Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" o
 In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
 If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
 ::endgroup::
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id без правки в настройках берётся зашитый
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id зашитое значение похоже на настоящий id GitHub
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id значение из настроек перекрывает зашитое
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id пробелы по краям обрезаются — вставка из буфера часто тащит их
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: client_id пустое значение возвращает к зашитому, а не отключает вход
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа без токена вход не выполнен и заголовков нет
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа с токеном появляется заголовок авторизации
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа пустой токен не считается входом
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа выход стирает токен, refresh, срок и имя аккаунта
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: состояние входа client_id переживает выход — это не секрет и не часть сессии
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия без срока токен считается бессрочным — так у OAuth-приложений
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия живой токен отдаётся как есть
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия просроченный токен без refresh не выдаётся
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия токен, который истечёт через полминуты, уже считается негодным
-✅ /home/runner/work/WesiOS/WesiOS/test/github_auth_test.dart: срок действия битая дата срока не роняет проверку
 ✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера оставляет только цифры и ведущий плюс
 ✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера пустое и мусор дают пустую строку
 ✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера плюс не в начале не считается плюсом
@@ -743,73 +743,23 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/forecast_backtest_test.dart: движок умеет считать «на дату» asOf сдвигает точку отсчёта прогноза
 ✅ /home/runner/work/WesiOS/WesiOS/test/forecast_backtest_test.dart: движок умеет считать «на дату» без asOf поведение прежнее
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with a handful of tasks per column renders four columns side by side on a desktop-width window without overflowing
-::group::❌ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with a handful of tasks per column falls back to stacked columns on a phone-width window without overflowing — four columns side by side are unreadable there (failed)
-══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
-The following TestFailure was thrown running a test:
-Expected: null
-  Actual: FlutterError:<A RenderFlex overflowed by 55 pixels on the right.>
-
-When the exception was thrown, this was the stack:
-#4      main.<anonymous closure>.<anonymous closure> (file:///home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart:96:7)
-<asynchronous suspension>
-#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:189:15)
-<asynchronous suspension>
-#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1032:5)
-<asynchronous suspension>
-<asynchronous suspension>
-(elided one frame from package:stack_trace)
-
-This was caught by the test expectation on the following line:
-  file:///home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart line 96
-The test description was:
-  falls back to stacked columns on a phone-width window without overflowing — four columns side by
-  side are unreadable there
-════════════════════════════════════════════════════════════════════════════════════════════════════
-Test failed. See exception logs above.
-The test description was: falls back to stacked columns on a phone-width window without overflowing — four columns side by side are unreadable there
-
-::endgroup::
-✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with far more tasks than fit on screen a column scrolls internally instead of overflowing
+✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with a handful of tasks per column falls back to stacked columns on a phone-width window without overflowing — four columns side by side are unreadable there
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: закрытое хранилище без разблокировки не читается и не пишется
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: закрытое хранилище без пароля Shield причина — «пароль не задан»
+✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with far more tasks than fit on screen a column scrolls internally instead of overflowing
+✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with far more tasks than fit on screen the stacked phone layout also survives it
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: закрытое хранилище после unlock причина исчезает
-::group::❌ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with far more tasks than fit on screen the stacked phone layout also survives it (failed)
-══╡ EXCEPTION CAUGHT BY FLUTTER TEST FRAMEWORK ╞════════════════════════════════════════════════════
-The following TestFailure was thrown running a test:
-Expected: null
-  Actual: FlutterError:<A RenderFlex overflowed by 55 pixels on the right.>
-
-When the exception was thrown, this was the stack:
-#4      main.<anonymous closure>.<anonymous closure> (file:///home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart:111:7)
-<asynchronous suspension>
-#5      testWidgets.<anonymous closure>.<anonymous closure> (package:flutter_test/src/widget_tester.dart:189:15)
-<asynchronous suspension>
-#6      TestWidgetsFlutterBinding._runTestBody (package:flutter_test/src/binding.dart:1032:5)
-<asynchronous suspension>
-<asynchronous suspension>
-(elided one frame from package:stack_trace)
-
-This was caught by the test expectation on the following line:
-  file:///home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart line 111
-The test description was:
-  the stacked phone layout also survives it
-════════════════════════════════════════════════════════════════════════════════════════════════════
-Test failed. See exception logs above.
-The test description was: the stacked phone layout also survives it
-
-::endgroup::
-✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение что записали, то и прочитали
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: empty board shows the empty placeholder in every column
+✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение что записали, то и прочитали
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение в Hive лежит шифротекст, а не значение
-✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение одно значение дважды даёт разный шифротекст
-✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение юникод и длинные значения переживают цикл
-✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение пустое значение тоже шифруется и читается
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_truth_invariants_test.dart: schedule rows cannot manufacture high statistical confidence
+✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение одно значение дважды даёт разный шифротекст
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_truth_invariants_test.dart: advanced recurring income with no real receipts is not committed cash
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_truth_invariants_test.dart: probabilistic business cash lowers known-cash share
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_truth_invariants_test.dart: runtime wiring never auto-posts recurring income as actual cash
+✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение юникод и длинные значения переживают цикл
+✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение пустое значение тоже шифруется и читается
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: запись и чтение имена видны, значения — нет
-✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: чужой пароль другим паролем значение не открывается
 ✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: openedBox находит бокс, открытый с конкретным типом
 ✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: openedBox на неоткрытый бокс возвращает null, а не падает
 ✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: countLocalRecords считает записи во всех типизированных боксах
@@ -819,17 +769,14 @@ The test description was: the stacked phone layout also survives it
 ✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: export встроенные статьи не выгружаются — они приезжают с обновлением
 ✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: export ключи и пароль в копию не попадают
 ✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: export счётчики в результате совпадают с содержимым файла
+✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: чужой пароль другим паролем значение не открывается
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: чужой пароль и не превращается в мусор, который приняли бы за данные
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: чужой пароль верный пароль после неверного снова открывает
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: порча данных изменённый шифротекст не расшифровывается
+✅ /home/runner/work/WesiOS/WesiOS/test/home_mobile_layout_test.dart: главная на телефоне не превращается в пустой экран
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: порча данных подменённый тег аутентификации тоже отвергается
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: порча данных обрезанная запись не роняет чтение
 ✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: порча данных мусор вместо base64 не роняет чтение
-✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: удаление delete убирает и запись, и имя
-✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: удаление wipe стирает всё и закрывает хранилище
-✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: соль переживает перезапуск — иначе тот же пароль дал бы другой ключ
-✅ /home/runner/work/WesiOS/WesiOS/test/home_mobile_layout_test.dart: главная на телефоне не превращается в пустой экран
-✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: соль соль хранилища отличается от соли пароля Shield
 ✅ /home/runner/work/WesiOS/WesiOS/test/attachment_test.dart: тип содержимого картинки узнаются по расширению
 ✅ /home/runner/work/WesiOS/WesiOS/test/attachment_test.dart: тип содержимого документ картинкой не считается
 ✅ /home/runner/work/WesiOS/WesiOS/test/attachment_test.dart: тип содержимого решение принимается по типу, а не по имени
@@ -842,6 +789,8 @@ The test description was: the stacked phone layout also survives it
 ✅ /home/runner/work/WesiOS/WesiOS/test/attachment_test.dart: вложение внутри сообщения сообщение без вложения не ломается
 ✅ /home/runner/work/WesiOS/WesiOS/test/attachment_test.dart: вложение внутри сообщения битое вложение не отнимает текст сообщения
 ✅ /home/runner/work/WesiOS/WesiOS/test/attachment_test.dart: вложение внутри сообщения переживает круг через JSON вместе с сообщением
+✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: удаление delete убирает и запись, и имя
+✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: удаление wipe стирает всё и закрывает хранилище
 ✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: help перечисляет реальные диагностические команды
 ✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: обычная команда безопасно печатается в prompt
 ✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: echo учитывает кавычки и сохраняет историю
@@ -855,6 +804,8 @@ The test description was: the stacked phone layout also survives it
 ✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: clear возвращает управляющий флаг без вывода
 ✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: неизвестная команда объясняет, как открыть справку
 ✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: автодополнение предлагает команды по префиксу
+✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: соль переживает перезапуск — иначе тот же пароль дал бы другой ключ
+✅ /home/runner/work/WesiOS/WesiOS/test/secret_vault_test.dart: соль соль хранилища отличается от соли пароля Shield
 ✅ /home/runner/work/WesiOS/WesiOS/test/employee_finance_org_test.dart: employee can see self plus allowed org aggregate without seeing coworker rows
 ✅ /home/runner/work/WesiOS/WesiOS/test/employee_finance_org_test.dart: CEO keeps personal self view while also seeing root organization and team
 ✅ /home/runner/work/WesiOS/WesiOS/test/employee_finance_org_test.dart: subtree finance is additive to self and requires explicit subtree grant
@@ -894,21 +845,16 @@ The test description was: the stacked phone layout also survives it
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Calibration and backtest multi-horizon backtest keeps 14/30/90/180 separate
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions committed cash is separated and explained
 ✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions uncertain business cash stays probabilistic instead of becoming committed
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions stress package has base/conservative/aggressive/stress and stress worsens cash
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions What-If exposes direct risk/runway delta
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions account liquidity reports risk in the needed location
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Backward-compatible domain memory contract memory JSON roundtrip preserves probabilities
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Backward-compatible domain memory account liquidity metadata keeps migration-free defaults
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: узкий телефон карточка помещается в 360 точек
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: узкий телефон и в 320 тоже
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: очень длинное имя и метка владельца помещается в 360 точек
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions stress package has base/conservative/aggressive/stress and stress worsens cash
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: очень длинное имя и метка владельца помещается в 320 точек
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions What-If exposes direct risk/runway delta
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions account liquidity reports risk in the needed location
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Backward-compatible domain memory contract memory JSON roundtrip preserves probabilities
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: очень длинная должность помещается в 360 точек
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration Task cash tag round-trips committed expense
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration Task cash tag round-trips uncertain income and preserves human tags
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration stress library has finite income shock and isolated main-source loss
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration Forecast exposes decision layer and backtest-selected Combined
-✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration company cash sources are wired without schema migrations
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Backward-compatible domain memory account liquidity metadata keeps migration-free defaults
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: очень длинная должность помещается в 320 точек
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: длинное имя в одно слово помещается в 360 точек
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: длинное имя в одно слово помещается в 320 точек
@@ -921,6 +867,11 @@ The test description was: the stacked phone layout also survives it
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: всё длинное сразу помещается в 360 точек
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: всё длинное сразу помещается в 320 точек
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: список из нескольких человек все трое строятся без переполнения
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration Task cash tag round-trips committed expense
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration Task cash tag round-trips uncertain income and preserves human tags
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration stress library has finite income shock and isolated main-source loss
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration Forecast exposes decision layer and backtest-selected Combined
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_product_integration_test.dart: Wesi Horizon product integration company cash sources are wired without schema migrations
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: список из нескольких человек низкий экран не ломает список
 ✅ /home/runner/work/WesiOS/WesiOS/test/contacts_screen_layout_test.dart: пусто пустой результат поиска строится
 ✅ /home/runner/work/WesiOS/WesiOS/test/organization_finance_access_test.dart: self finance remains visible when organization aggregate is denied
@@ -970,27 +921,9 @@ The test description was: the stacked phone layout also survives it
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: срок хранения чата новое сообщение живёт по сроку своего чата
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: срок хранения чата продление достаёт и до уже написанного
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: срок хранения чата укорачивание не стирает переписку задним числом
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию пустой набор не открывает ни один настраиваемый модуль
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию главная, настройки и профиль открыты всегда
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию новому сотруднику открыты задачи и ничего сверх
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: срок хранения чата истёкшее не воскресает продлением
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию сотрудник по умолчанию не управляет людьми и не видит чужого
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию владельцу открыто всё
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: срок хранения чата архивное продление не трогает
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: переключение модулей включение открывает ровно один модуль
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: переключение модулей выключение закрывает обратно
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: срок хранения чата возврат к общему правилу
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: переключение модулей повторное включение не плодит дублей
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: переключение модулей «всегда открытые» нельзя отобрать
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: база знаний по разделам без доступа не открыта ни одна статья
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: база знаний по разделам открытая статья видна, соседняя — нет
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: база знаний по разделам «вся база» открывает и то, чего ещё нет
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: база знаний по разделам выбор отдельной статьи снимает «всю базу»
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: перенос в JSON и обратно набор переживает круг
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: перенос в JSON и обратно битый JSON читается как «ничего не открыто»
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: перенос в JSON и обратно неизвестные значения не открывают лишнего
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: группировка для экрана прав каждый модуль попал ровно в одну группу
-✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: группировка для экрана прав у каждого модуля есть название на обоих языках
 ::group::✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: состояние доставки без входа сообщение никуда не собирается
 WesiOS secure session delete failed: Binding has not yet been initialized.
 The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
@@ -1040,6 +973,24 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: поиск по переписке стёртое по сроку не ищется
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: перенос в JSON разговор переживает круг
 ✅ /home/runner/work/WesiOS/WesiOS/test/chat_service_test.dart: перенос в JSON битая запись не разбирается
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию пустой набор не открывает ни один настраиваемый модуль
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию главная, настройки и профиль открыты всегда
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию новому сотруднику открыты задачи и ничего сверх
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию сотрудник по умолчанию не управляет людьми и не видит чужого
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: что закрыто по умолчанию владельцу открыто всё
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: переключение модулей включение открывает ровно один модуль
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: переключение модулей выключение закрывает обратно
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: переключение модулей повторное включение не плодит дублей
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: переключение модулей «всегда открытые» нельзя отобрать
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: база знаний по разделам без доступа не открыта ни одна статья
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: база знаний по разделам открытая статья видна, соседняя — нет
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: база знаний по разделам «вся база» открывает и то, чего ещё нет
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: база знаний по разделам выбор отдельной статьи снимает «всю базу»
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: перенос в JSON и обратно набор переживает круг
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: перенос в JSON и обратно битый JSON читается как «ничего не открыто»
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: перенос в JSON и обратно неизвестные значения не открывают лишнего
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: группировка для экрана прав каждый модуль попал ровно в одну группу
+✅ /home/runner/work/WesiOS/WesiOS/test/team_permissions_test.dart: группировка для экрана прав у каждого модуля есть название на обоих языках
 ✅ /home/runner/work/WesiOS/WesiOS/test/message_store_test.dart: срок жизни новое сообщение получает месяц жизни
 ✅ /home/runner/work/WesiOS/WesiOS/test/message_store_test.dart: срок жизни через месяц с небольшим исчезает
 ✅ /home/runner/work/WesiOS/WesiOS/test/message_store_test.dart: срок жизни истёкшее не показывается ещё до чистки
@@ -1067,11 +1018,11 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: TaskModel today is due-today, not overdue
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: TaskModel no due date means neither overdue nor due today
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: TaskModel checklist progress counts only finished items
-✅ /home/runner/work/WesiOS/WesiOS/test/shield_overlay_test.dart: в разблокированном состоянии замка нет и он ничему не мешает
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: TaskModel copyWith(clearDueDate) actually clears it — a plain null argument is indistinguishable from "not passed" and would keep the old date
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: TaskModel copyWith preserves id and createdAt
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: WhatIfPreset round-trips through JSON with multipliers intact
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: WhatIfPreset an event is stored as a day offset, so a saved scenario stays in the future instead of silently falling out of the forecast horizon once its hard-coded date passes
+✅ /home/runner/work/WesiOS/WesiOS/test/shield_overlay_test.dart: в разблокированном состоянии замка нет и он ничему не мешает
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: WhatIfPreset an offset that would land in the past is pulled forward to day 1 — the engine ignores events at or before today, so storing 0 or a negative offset would silently disable the scenario
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: WhatIfPreset a malformed entry yields null instead of throwing — one corrupt record must not take the whole scenario list down
 ✅ /home/runner/work/WesiOS/WesiOS/test/tasks_and_whatif_test.dart: WhatIfPreset summary describes what the scenario changes
@@ -1089,4 +1040,4 @@ If ServicesBinding is a custom binding mixin, there must also be a custom bindin
 ✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.delete an account holding history is archived, not erased — deleting it would take part of the past with it
 ✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.delete an empty account is removed outright
 
-::error::921 tests passed, 2 failed.
+🎉 923 tests passed.
