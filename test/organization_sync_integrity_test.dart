@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wesios/core/sync/sync_codec.dart';
 import 'package:wesios/features/organizations/models/organization_model.dart';
@@ -46,5 +48,33 @@ void main() {
     expect(task, isNotNull);
     expect(task!.organizationId, 'org-studio-a');
     expect(task.responsibleEmployeeId, 'employee-a');
+  });
+
+  test('sync gateway keeps structural ancestors out of business data scope', () {
+    final context = File('server/pb_hooks/wesi_sync_context.pb.js').readAsStringSync();
+    final read = File('server/pb_hooks/wesi_sync_read.pb.js').readAsStringSync();
+
+    expect(context, contains('const structuralOrgIds = {};'));
+    expect(context, contains('"structuralOrgIds": structuralOrgIds'));
+    expect(
+      context,
+      isNot(contains('allowedOrgIds[cursor] = true;')),
+      reason: 'Ancestor organizations must not be promoted into the business-data scope.',
+    );
+    expect(
+      read,
+      contains('ctx.structuralOrgIds[String(p.id || row.getString("rid"))] === true'),
+      reason: 'Organization metadata may include ancestors needed to render the hierarchy.',
+    );
+    expect(
+      read,
+      contains('ctx.allowedOrgIds[orgId] === true && taskOwned(p)'),
+      reason: 'Task visibility must stay on the strict data scope.',
+    );
+    expect(
+      read,
+      contains('const allowedOrg = (row) => ctx.allowedOrgIds['),
+      reason: 'CRM visibility must stay on the strict data scope.',
+    );
   });
 }
