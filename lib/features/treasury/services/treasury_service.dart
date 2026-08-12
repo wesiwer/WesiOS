@@ -16,6 +16,7 @@ import '../models/account_model.dart';
 import '../models/transaction_model.dart';
 import 'account_service.dart';
 import 'anomaly_engine.dart';
+import 'calendar_days.dart';
 import 'forecast_engine.dart';
 import 'horizon_behavior_monitor.dart';
 import 'horizon_business_context.dart';
@@ -417,10 +418,13 @@ class TreasuryService {
     for (final tx in recurring) {
       final period = tx.recurringPeriod;
       if (period == null) continue;
-      var anchor = tx;
+      final anchorDate = tx.recurringAnchorDate;
+      var lastDue = tx.date;
+      var index = RecurringEngine.firstIndexAfter(anchorDate, period, tx.date);
       var guard = 0;
-      while (RecurringEngine.isDue(anchor, now) && guard < 366) {
-        final due = RecurringEngine.advance(anchor.date, period);
+      while (guard < 366) {
+        final due = RecurringEngine.occurrence(anchorDate, period, index);
+        if (due.isAfter(now)) break;
         if (tx.type == TransactionType.expense) {
           final actual = TransactionModel(
             id: '${tx.id}_${due.millisecondsSinceEpoch}',
@@ -453,14 +457,31 @@ class TreasuryService {
             await _putRecurringSystem(actual);
           }
         }
-        anchor = anchor.copyWith(date: due, updatedAt: DateTime.now());
+        lastDue = due;
+        index++;
         guard++;
       }
-      if (guard > 0) await _putRecurringSystem(anchor);
+      if (guard > 0) {
+        await _putRecurringSystem(tx.copyWith(date: lastDue, recurringAnchor: anchorDate, updatedAt: DateTime.now()));
+      }
     }
   }
 
   // ========== WESI HORIZON ==========
+
+  /// Баланс на конец календарного дня без будущих операций.
+  static double balanceOnDay(DateTime day, List<TransactionModel> transactions, double totalBalance) {
+    final cutoff = dateOnly(day);
+    var later = 0.0;
+    for (final tx in transactions) {
+      if (tx.isRecurring) continue;
+      if (dateOnly(tx.date).isAfter(cutoff)) {
+        later += tx.type == TransactionType.income ? tx.amount : -tx.amount;
+      }
+    }
+    return totalBalance - later;
+  }
+
 
   Future<ForecastResult> generateForecast({
     int days = 30,
