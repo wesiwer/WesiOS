@@ -63,7 +63,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
   };
   const orgIdOf = (p) => String(p.organizationId || p.orgId || "org_wesi_inc");
   const taskOwned = (p) => {
-    if (ctx.isOwner || ctx.canManageTeam || ctx.canAssignTasks || ctx.canSeeOthersStats) return true;
+    if (ctx.isOwner || ctx.canManageTeam || ctx.canAssignTasks) return true;
     if (String(p.assignee || "") === ctx.employeeId) return true;
     if (String(p.responsibleEmployeeId || "") === ctx.employeeId) return true;
     const tags = Array.isArray(p.tags) ? p.tags.map(String) : [];
@@ -148,7 +148,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
     if (ctx.allowedOrgIds[orgId] !== true || !taskOwned(target)) {
       throw new ForbiddenError("Нет права изменять эту задачу");
     }
-    if (!ctx.isOwner && !ctx.canManageTeam && !ctx.canAssignTasks && !ctx.canSeeOthersStats) {
+    if (!ctx.isOwner && !ctx.canManageTeam && !ctx.canAssignTasks) {
       const assignee = String(target.assignee || "");
       const responsible = String(target.responsibleEmployeeId || "");
       if ((assignee && assignee !== ctx.employeeId) ||
@@ -235,7 +235,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
       };
       const incomingRows = parseList(incoming.value);
       const existingRows = parseList(before.value);
-      const manager = ctx.canManageTeam || ctx.canSeeOthersStats;
+      const manager = ctx.canManageTeam;
       const allowedOrg = (row) => ctx.allowedOrgIds[String(row.organizationId || "org_wesi_inc")] === true;
 
       // Load the other CRM snapshots to validate cross references.
