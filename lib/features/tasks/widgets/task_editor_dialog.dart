@@ -5,8 +5,10 @@ import '../../../core/widgets/hover_button.dart';
 import '../../../core/widgets/window_controls.dart';
 import '../models/task_model.dart';
 import '../services/task_assignment.dart';
+import '../services/task_cash_impact.dart';
 import '../task_labels.dart';
 import 'assignee_field.dart';
+import 'task_cash_impact_field.dart';
 
 /// Создание и редактирование задачи: название, описание, приоритет, срок,
 /// исполнитель, чек-лист.
@@ -45,6 +47,8 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
   late TaskStatus _status;
   late TaskPriority _priority;
   DateTime? _dueDate;
+  TaskCashImpact? _cashImpact;
+  bool _cashNeedsDueDate = false;
   late List<SubTask> _subtasks;
 
   @override
@@ -54,6 +58,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
     _status = t?.status ?? widget.initialStatus;
     _priority = t?.priority ?? TaskPriority.normal;
     _dueDate = t?.dueDate;
+    _cashImpact = TaskCashImpact.fromTags(t?.tags ?? const []);
     _subtasks = List<SubTask>.from(t?.subtasks ?? const []);
     if (t != null) {
       _titleCtrl.text = t.title;
@@ -106,19 +111,27 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
     final title = _titleCtrl.text.trim();
     if (title.isEmpty) return;
     final base = widget.initial;
+    if (_cashImpact != null && _dueDate == null) {
+      setState(() => _cashNeedsDueDate = true);
+      return;
+    }
+    final existingTags = base?.tags ?? const <String>[];
+    final nextTags = _cashImpact == null
+        ? TaskCashImpact.clearFrom(existingTags)
+        : _cashImpact!.applyTo(existingTags);
     final task = base == null
         ? TaskModel(
             id: DateTime.now().microsecondsSinceEpoch.toString(),
             title: title,
-            description: _descCtrl.text.trim().isEmpty
-                ? null
-                : _descCtrl.text.trim(),
+            description:
+                _descCtrl.text.trim().isEmpty ? null : _descCtrl.text.trim(),
             status: _status,
             priority: _priority,
             createdAt: DateTime.now(),
             dueDate: _dueDate,
             assignee: TaskAssignment.coerce(_assignee),
             subtasks: _subtasks,
+            tags: nextTags,
           )
         : base.copyWith(
             title: title,
@@ -130,6 +143,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
             assignee: TaskAssignment.coerce(_assignee),
             clearAssignee: TaskAssignment.coerce(_assignee) == null,
             subtasks: _subtasks,
+            tags: nextTags,
           );
     Navigator.pop(context, task);
   }
@@ -163,21 +177,20 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                 controller: _titleCtrl,
                 autofocus: true,
                 style: TextStyle(color: AppTheme.textPrimary),
-                decoration: InputDecoration(
-                    labelText: ru ? 'Название' : 'Title'),
+                decoration:
+                    InputDecoration(labelText: ru ? 'Название' : 'Title'),
               ),
               SizedBox(height: 12),
               TextField(
                 controller: _descCtrl,
                 maxLines: 3,
                 style: TextStyle(color: AppTheme.textPrimary),
-                decoration: InputDecoration(
-                    labelText: ru ? 'Описание' : 'Description'),
+                decoration:
+                    InputDecoration(labelText: ru ? 'Описание' : 'Description'),
               ),
               SizedBox(height: 16),
               Text(ru ? 'Приоритет' : 'Priority',
-                  style: TextStyle(
-                      fontSize: 12, color: AppTheme.textMuted)),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -187,12 +200,11 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   return GestureDetector(
                     onTap: () => setState(() => _priority = p),
                     child: Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 7),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
-                        color: sel
-                            ? color.withOpacity(0.18)
-                            : AppTheme.background,
+                        color:
+                            sel ? color.withOpacity(0.18) : AppTheme.background,
                         borderRadius: BorderRadius.circular(9),
                         border: Border.all(
                             color: sel
@@ -213,8 +225,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
               ),
               SizedBox(height: 16),
               Text(ru ? 'Колонка' : 'Column',
-                  style: TextStyle(
-                      fontSize: 12, color: AppTheme.textMuted)),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8,
@@ -224,8 +235,8 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   return GestureDetector(
                     onTap: () => setState(() => _status = s),
                     child: Container(
-                      padding: EdgeInsets.symmetric(
-                          horizontal: 12, vertical: 7),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 12, vertical: 7),
                       decoration: BoxDecoration(
                         color: sel
                             ? AppTheme.accent.withOpacity(0.18)
@@ -240,9 +251,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                         TaskLabels.status(s, ru),
                         style: TextStyle(
                           fontSize: 12,
-                          color: sel
-                              ? AppTheme.accent
-                              : AppTheme.textSecondary,
+                          color: sel ? AppTheme.accent : AppTheme.textSecondary,
                         ),
                       ),
                     ),
@@ -256,8 +265,8 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                     child: GestureDetector(
                       onTap: _pickDue,
                       child: Container(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 14),
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 14, vertical: 14),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(color: AppTheme.glassBorder),
@@ -273,8 +282,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                                     ? (ru ? 'Срок не задан' : 'No due date')
                                     : TaskLabels.date(_dueDate!),
                                 style: TextStyle(
-                                    fontSize: 13,
-                                    color: AppTheme.textPrimary),
+                                    fontSize: 13, color: AppTheme.textPrimary),
                               ),
                             ),
                             if (_dueDate != null)
@@ -297,10 +305,29 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              TaskCashImpactField(
+                key: ValueKey('${widget.initial?.id ?? 'new'}-cash'),
+                initial: _cashImpact,
+                onChanged: (value) => setState(() {
+                  _cashImpact = value;
+                  if (value == null || _dueDate != null) {
+                    _cashNeedsDueDate = false;
+                  }
+                }),
+              ),
+              if (_cashNeedsDueDate) ...[
+                const SizedBox(height: 6),
+                Text(
+                  ru
+                      ? 'Для денежного влияния укажи срок задачи — это дата движения денег.'
+                      : 'Set a due date for cash impact — it is the cash movement date.',
+                  style: TextStyle(color: AppTheme.accentRed, fontSize: 11),
+                ),
+              ],
               SizedBox(height: 18),
               Text(ru ? 'Чек-лист' : 'Checklist',
-                  style: TextStyle(
-                      fontSize: 12, color: AppTheme.textMuted)),
+                  style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
               SizedBox(height: 6),
               ...List.generate(_subtasks.length, (i) {
                 final st = _subtasks[i];
@@ -348,8 +375,7 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                     ),
                   ),
                   IconButton(
-                    icon: Icon(Icons.add_circle,
-                        color: AppTheme.accent),
+                    icon: Icon(Icons.add_circle, color: AppTheme.accent),
                     onPressed: _addSubtask,
                   ),
                 ],
@@ -365,13 +391,11 @@ class _TaskEditorDialogState extends State<TaskEditorDialog> {
                   Spacer(),
                   HoverButton(
                     onTap: _submit,
-                    padding: EdgeInsets.symmetric(
-                        horizontal: 26, vertical: 12),
+                    padding: EdgeInsets.symmetric(horizontal: 26, vertical: 12),
                     backgroundColor: AppTheme.accent,
                     child: Text(WesiLocale.get('save'),
                         style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w600)),
+                            color: Colors.white, fontWeight: FontWeight.w600)),
                   ),
                 ],
               ),

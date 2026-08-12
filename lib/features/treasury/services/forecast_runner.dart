@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/transaction_model.dart';
 import 'forecast_engine.dart';
+import 'horizon_calibration.dart';
 
 /// Всё, что нужно движку для одного расчёта.
 ///
@@ -14,6 +15,10 @@ class ForecastRequest {
   final WhatIfScenario whatIf;
   final double annualDiscountRate;
   final DateTime? asOf;
+  final HorizonCalibrationProfile calibration;
+  final List<HorizonCashEvent> businessEvents;
+  final Map<String, double> recurringReliability;
+  final List<AccountLiquiditySnapshot> accounts;
 
   const ForecastRequest({
     required this.transactions,
@@ -22,6 +27,10 @@ class ForecastRequest {
     this.whatIf = WhatIfScenario.none,
     this.annualDiscountRate = 0.0,
     this.asOf,
+    this.calibration = HorizonCalibrationProfile.identity,
+    this.businessEvents = const [],
+    this.recurringReliability = const {},
+    this.accounts = const [],
   });
 }
 
@@ -32,6 +41,10 @@ ForecastResult _run(ForecastRequest r) => ForecastEngine.generate(
       whatIf: r.whatIf,
       annualDiscountRate: r.annualDiscountRate,
       asOf: r.asOf,
+      calibration: r.calibration,
+      businessEvents: r.businessEvents,
+      recurringReliability: r.recurringReliability,
+      accounts: r.accounts,
     );
 
 /// Прогноз считается вне потока интерфейса.

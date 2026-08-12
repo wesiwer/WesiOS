@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
+import 'horizon_maintenance_automation.dart';
 import 'treasury_service.dart';
 
 /// Автоматически материализует просроченные регулярные операции Treasury.
@@ -18,14 +19,20 @@ class RecurringPaymentAutomation with WidgetsBindingObserver {
   RecurringPaymentAutomation({
     TreasuryService? treasury,
     DateTime Function()? now,
+    Future<void> Function()? maintenance,
     this.minInterval = const Duration(minutes: 5),
   })  : _treasury = treasury ?? TreasuryService(),
-        _now = now ?? DateTime.now;
+        _now = now ?? DateTime.now,
+        _maintenance = maintenance ??
+            (treasury == null
+                ? (() => HorizonMaintenanceAutomation.shared.runNow())
+                : (() async {}));
 
   static final RecurringPaymentAutomation shared = RecurringPaymentAutomation();
 
   final TreasuryService _treasury;
   final DateTime Function() _now;
+  final Future<void> Function() _maintenance;
   final Duration minInterval;
 
   Future<void>? _inFlight;
@@ -75,6 +82,10 @@ class RecurringPaymentAutomation with WidgetsBindingObserver {
   Future<void> _run() async {
     try {
       await _treasury.processRecurringPayments();
+      // Maintenance is intentionally independent from opening Forecast UI:
+      // issued-forecast ledger, monthly learning and engine championship keep
+      // advancing on ordinary app launch/resume.
+      await _maintenance();
       _lastCompletedAt = _now();
     } catch (error, stackTrace) {
       debugPrint('Recurring payments automation failed: $error');

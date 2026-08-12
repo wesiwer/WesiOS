@@ -17,6 +17,7 @@ import 'widgets/ableton_project_panel.dart';
 import 'widgets/audio_analysis_panel.dart';
 import 'widgets/audio_music_hub.dart';
 import 'widgets/audio_visualizer.dart';
+import 'widgets/horizon_contract_dialog.dart';
 import 'widgets/lease_countdown.dart';
 
 class AudioVaultV2Screen extends StatefulWidget {
@@ -1301,12 +1302,15 @@ class _BeatDetailsV2State extends State<_BeatDetailsV2> {
                     padding: const EdgeInsets.only(top: 6),
                     child: Text(l.notes)),
               const SizedBox(height: 8),
-              Row(children: [
+              Wrap(spacing: 8, runSpacing: 8, children: [
                 OutlinedButton.icon(
                     onPressed: () => _editLease(b),
                     icon: const Icon(Icons.edit_outlined),
                     label: const Text('Продлить / изменить')),
-                const SizedBox(width: 8),
+                OutlinedButton.icon(
+                    onPressed: () => HorizonContractDialog.show(context, b),
+                    icon: const Icon(Icons.query_stats),
+                    label: const Text('Horizon: ожидания денег')),
                 TextButton.icon(
                   onPressed: () async {
                     beat = await AudioVaultService.clearLease(b);
