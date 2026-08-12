@@ -1,0 +1,27 @@
+name: Release 0.19.20 once
+
+on:
+  push:
+    branches:
+      - agent/org-hierarchy-remediation-1
+    paths:
+      - '.github/workflows/release-0.19.20-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch signed WesiOS release from remediation branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref agent/org-hierarchy-remediation-1 \
+            -f notes='0.19.20: синхронизация сотрудников, Roadmap, CRM, профиль и Vault; усиление прав и безопасности' \
+            -f deploy_to_server=true
