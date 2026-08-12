@@ -149,6 +149,9 @@ routerUse((e) => {
     if (isOwner || String(p.employeeId || "") === employeeId) ownGrants.push(p);
   }
 
+  // allowedOrgIds is a strict data scope. structuralOrgIds additionally contains
+  // ancestors required to render/validate the organization tree. Never use
+  // structuralOrgIds to authorize business data.
   const allowedOrgIds = {};
   if (isOwner) {
     for (const id of Object.keys(allOrgIds)) allowedOrgIds[id] = true;
@@ -179,12 +182,15 @@ routerUse((e) => {
         }
       }
     }
-    // Ancestors are structural metadata required to validate/render a granted
-    // child organization; granting them here does not grant finance rights.
+  }
+
+  const structuralOrgIds = {};
+  for (const id of Object.keys(allowedOrgIds)) structuralOrgIds[id] = true;
+  if (!isOwner) {
     for (const id of Object.keys(allowedOrgIds)) {
       let cursor = orgParents[id];
       while (cursor) {
-        allowedOrgIds[cursor] = true;
+        structuralOrgIds[cursor] = true;
         cursor = orgParents[cursor];
       }
     }
@@ -203,6 +209,7 @@ routerUse((e) => {
     "canSeeNotes": permissions.canSeeNotes === true,
     "canAssignTasks": permissions.canAssignTasks === true,
     "allowedOrgIds": allowedOrgIds,
+    "structuralOrgIds": structuralOrgIds,
     "orgParents": orgParents,
     "ownGrants": ownGrants
   });
