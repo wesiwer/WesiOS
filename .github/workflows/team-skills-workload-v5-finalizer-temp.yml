@@ -1,0 +1,94 @@
+name: Team skills workload v5 finalizer temp
+
+on:
+  pull_request:
+    branches:
+      - agent/org-hierarchy-v1
+
+permissions:
+  contents: write
+
+concurrency:
+  group: team-skills-workload-v5-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    if: github.head_ref == 'chatgpt/team-skills-workload-v5-20260813'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/team-skills-workload-v5-20260813
+          fetch-depth: 0
+
+      - name: Apply team skills and workload integration
+        run: python3 .github/scripts/team_skills_workload_v5_patch.py
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Format changed sources
+        run: |
+          dart format \
+            lib/features/team/models/employee_model.dart \
+            lib/features/team/models/employee_model.g.dart \
+            lib/features/team/services/team_service.dart \
+            lib/features/team/services/team_skill_service.dart \
+            lib/features/team/services/team_workload_service.dart \
+            lib/features/team/employee_editor_screen.dart \
+            lib/features/team/contacts_screen.dart \
+            lib/features/tasks/ai/services/wesi_ai_task_engine.dart \
+            test/team_skills_workload_test.dart
+
+      - name: Verify and capture diagnostics
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .ci
+          flutter analyze --no-fatal-infos > .ci/team-v5-analyze.log 2>&1
+          ANALYZE=$?
+          flutter test test/team_skills_workload_test.dart test/wesi_ai_task_engine_test.dart test/wesi_ai_adaptive_learning_test.dart test/wesi_ai_strategy_planner_test.dart > .ci/team-v5-targeted.log 2>&1
+          TARGETED=$?
+          flutter test test/tasks_screen_layout_test.dart > .ci/team-v5-layout.log 2>&1
+          LAYOUT=$?
+          flutter test > .ci/team-v5-full.log 2>&1
+          FULL=$?
+          printf 'analyze=%s\ntargeted=%s\nlayout=%s\nfull=%s\n' "$ANALYZE" "$TARGETED" "$LAYOUT" "$FULL" > .ci/team-v5-status.txt
+          exit 0
+
+      - name: Persist product and diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/features/team \
+                  lib/features/tasks/ai/services/wesi_ai_task_engine.dart \
+                  test/team_skills_workload_test.dart \
+                  .ci/team-v5-analyze.log \
+                  .ci/team-v5-targeted.log \
+                  .ci/team-v5-layout.log \
+                  .ci/team-v5-full.log \
+                  .ci/team-v5-status.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'ci: record team skills workload v5 verification [skip ci]'
+            git push origin HEAD:chatgpt/team-skills-workload-v5-20260813
+          fi
+
+      - name: Enforce verification result
+        shell: bash
+        run: |
+          source .ci/team-v5-status.txt
+          test "$analyze" = 0
+          test "$targeted" = 0
+          test "$layout" = 0
+          test "$full" = 0
