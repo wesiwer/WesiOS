@@ -58,8 +58,8 @@ class ForecastResult {
   final List<double> p50;
   final List<double> p90;
 
-  /// Текущая скорость изменения баланса (EWMA, ₽/день, доход минус расход),
-  /// без учёта сезонности по дню недели и регулярных платежей.
+  /// Сколько в среднем остаётся за день: доход минус расход, без учёта
+  /// дня недели, регулярных платежей и разовых выбросов.
   final double trendPerDay;
 
   /// Стандартное отклонение дневного нетто (шум вокруг тренда).
@@ -125,11 +125,18 @@ class ForecastResult {
 }
 
 /// Статистика одного денежного потока (доходы или расходы отдельно):
-/// сезонность по дню недели, тренд (EWMA), пул для bootstrap-шума.
+/// сезонность по дню недели, средний дневной поток, пул для bootstrap-шума.
 /// Разделение потоков даёт две вещи: точность (у доходов и расходов разные
 /// недельные паттерны — расходы растут на выходных, доходы обычно в будни)
 /// и возможность независимо крутить множители в сценарии «Что если?».
 class _StreamStats {
+  /// Длина отрезка, по которому усредняется дневной поток.
+  ///
+  /// Тридцать дней — это месячный цикл денег: зарплата, аренда, подписки.
+  /// Более короткий отрезок снова начал бы зависеть от того, какое сегодня
+  /// число.
+  static const int _trendChunkDays = 30;
+
   final List<double> weekdayFactor;
   final double trendPerDay;
   final List<double> residualPool;
@@ -151,7 +158,6 @@ class _StreamStats {
     required int spanDays,
     required bool seasonalityApplied,
     required int minResidualsForBootstrap,
-    required double halfLifeDays,
   }) {
     final weekdayFactor = List<double>.filled(7, 0);
     if (seasonalityApplied) {
@@ -180,23 +186,39 @@ class _StreamStats {
       return dense[i] - weekdayFactor[wd];
     });
 
-    final decay = pow(0.5, 1 / halfLifeDays).toDouble();
-    double ewma = deseasonalized.isNotEmpty ? deseasonalized.first : 0;
-    for (int i = 1; i < spanDays; i++) {
-      ewma = decay * ewma + (1 - decay) * deseasonalized[i];
-    }
+    // Сколько в среднем приходит (или уходит) за день.
+    //
+    // Считается по месячным отрезкам, а не по отдельным дням, и вот почему.
+    // Деньги живут месячным циклом: расходы идут понемногу каждый день, а
+    // доход приходит редко и крупно — зарплата, аванс, оплата счёта. Оценка
+    // «по последним дням с затуханием» на таком ряде показывает не средний
+    // доход, а расстояние до последнего поступления: сразу после зарплаты
+    // она завышена, через две недели занижена вдвое, и человек, у которого
+    // доходы ровно сходятся с расходами, видит прогноз, уверенно ползущий
+    // вниз. На проверке: доход и расход по 90 000 за три месяца, а движок
+    // насчитывал −120 в день и сносил баланс на 5 455 за месяц.
+    //
+    // Отрезок в 30 дней вмещает целое число зарплат независимо от того,
+    // какое сегодня число, поэтому фаза цикла больше ни на что не влияет.
+    // Свежесть при этом не теряется: отрезки взвешены, вес каждого
+    // следующего вдвое меньше.
+    //
+    // Дни-выбросы исключены: редкий крупный ремонт — не привычка, и он
+    // моделируется отдельно, как случайный шок. Если оставить его здесь, он
+    // учтётся дважды.
+    final trendPerDay = _averagePerDay(
+      deseasonalized,
+      anomalyDayIndex,
+      spanDays,
+    );
 
-    double resSum = 0;
-    for (int i = 0; i < spanDays; i++) {
-      if (anomalyDayIndex.contains(i)) continue;
-      resSum += deseasonalized[i];
-    }
-    final nonAnomalyCount = spanDays - anomalyDayIndex.length;
-    final longRunMean = nonAnomalyCount > 0 ? resSum / nonAnomalyCount : 0.0;
+    // Разброс вокруг среднего. Центрируем вокруг того же числа, которое
+    // потом станет основой прогноза: иначе шум сам по себе тянул бы
+    // баланс в сторону.
     final residualPool = <double>[];
     for (int i = 0; i < spanDays; i++) {
       if (anomalyDayIndex.contains(i)) continue;
-      residualPool.add(deseasonalized[i] - longRunMean);
+      residualPool.add(deseasonalized[i] - trendPerDay);
     }
 
     final hasBootstrapPool = residualPool.length >= minResidualsForBootstrap;
@@ -204,11 +226,54 @@ class _StreamStats {
 
     return _StreamStats(
       weekdayFactor: weekdayFactor,
-      trendPerDay: ewma,
+      trendPerDay: trendPerDay,
       residualPool: residualPool,
       hasBootstrapPool: hasBootstrapPool,
       volatility: volatility,
     );
+  }
+
+  /// Средний дневной поток: месячные отрезки от свежего к старому, вес
+  /// каждого следующего вдвое меньше.
+  ///
+  /// Неполный остаток истории отбрасывается, если есть хотя бы один целый
+  /// отрезок: как раз он и вносил бы перекос от фазы месяца. Когда истории
+  /// меньше отрезка, берём что есть — это лучше, чем ничего.
+  static double _averagePerDay(
+    List<double> values,
+    Set<int> anomalyDayIndex,
+    int spanDays,
+  ) {
+    if (spanDays <= 0) return 0;
+
+    double weightedSum = 0;
+    double weightTotal = 0;
+    var weight = 1.0;
+
+    // Идём от последнего дня назад отрезками по [_trendChunkDays].
+    var end = spanDays; // не включая
+    while (end > 0) {
+      final start = end - _trendChunkDays;
+      if (start < 0 && end < spanDays) break; // неполный хвост — пропускаем
+      final from = start < 0 ? 0 : start;
+
+      double sum = 0;
+      var days = 0;
+      for (var i = from; i < end; i++) {
+        if (anomalyDayIndex.contains(i)) continue;
+        sum += values[i];
+        days++;
+      }
+      if (days > 0) {
+        weightedSum += weight * (sum / days);
+        weightTotal += weight;
+      }
+      weight /= 2;
+      end = from;
+      if (from == 0) break;
+    }
+
+    return weightTotal > 0 ? weightedSum / weightTotal : 0;
   }
 
   static double _stdDev(List<double> v) {
@@ -216,6 +281,38 @@ class _StreamStats {
     final mean = v.reduce((a, b) => a + b) / v.length;
     final sumSq = v.map((x) => (x - mean) * (x - mean)).reduce((a, b) => a + b);
     return sqrt(sumSq / (v.length - 1));
+  }
+
+  /// Случайная точка входа в историю для одной траектории.
+  int randomCursor(Random rng) =>
+      residualPool.isEmpty ? 0 : rng.nextInt(residualPool.length);
+
+  /// Отклонение от среднего на шаге [step].
+  ///
+  /// Дни берутся не вразнобой, а подряд, с одной случайной точки входа и
+  /// по кругу. Разница принципиальная там, где доход приходит редко и
+  /// крупно.
+  ///
+  /// Если тянуть каждый день независимо, зарплата превращается в лотерею:
+  /// за месяц вперёд она выпадает то ноль раз, то дважды. Ноль раз — это
+  /// больше трети всех вариантов, и медиана уезжает вниз, хотя на деле
+  /// зарплата приходит раз в месяц как часы. Человек, у которого доходы
+  /// сходятся с расходами, видел график, уверенно ползущий в минус.
+  ///
+  /// Идя по истории подряд, траектория переносит в будущее её собственный
+  /// ритм: месяц истории содержит ровно столько зарплат, сколько их было.
+  double noiseAt(int step, Random rng) {
+    if (hasBootstrapPool) {
+      return residualPool[step % residualPool.length];
+    }
+    return volatility > 0 ? _gaussian(rng) * volatility : 0.0;
+  }
+
+  /// Box-Muller: стандартное нормальное число из равномерного RNG.
+  static double _gaussian(Random rng) {
+    final u1 = 1.0 - rng.nextDouble(); // (0,1], избегаем log(0)
+    final u2 = rng.nextDouble();
+    return sqrt(-2.0 * log(u1)) * cos(2 * pi * u2);
   }
 }
 
@@ -231,9 +328,10 @@ class _StreamStats {
 ///   осмысленный рычаг для сценария «Что если?» (можно уменьшить только
 ///   доход или увеличить только расход);
 /// - сезонность по дню недели считается отдельно от тренда и шума;
-/// - тренд — экспоненциально взвешенное среднее (EWMA, полураспад 10 дней):
-///   недавние дни весят больше, устойчивее к разовым всплескам, чем плоское
-///   окно «последние N дней»;
+/// - средний дневной поток считается по месячным отрезкам с убывающим
+///   весом: расходы идут каждый день, а доход приходит редко и крупно, и
+///   оценка «по последним дням» показывала бы не средний доход, а то,
+///   сколько дней прошло с зарплаты;
 /// - шум берётся эмпирическим bootstrap'ом из истории (а не из нормального
 ///   распределения) — сохраняет реальную форму и асимметрию расходов;
 /// - обнаруженные аномалии ([AnomalyEngine]) исключаются из «фонового шума»
@@ -254,7 +352,6 @@ class ForecastEngine {
   static const int _defaultSeed = 42;
   static const int _seasonalityMinSpanDays = 21;
   static const int _minResidualsForBootstrap = 5;
-  static const double _halfLifeDays = 10.0;
 
   /// Минимальный охват истории в днях, при котором вообще имеет смысл
   /// строить статистический прогноз.
@@ -385,12 +482,14 @@ class ForecastEngine {
 
     final incomeStats = _StreamStats.compute(
       dense: denseIncome,
-      anomalyDayIndex: anomalyDayIndex,
+      // Выбросы ищутся только среди расходов (см. AnomalyEngine). Раньше их
+      // дни выбрасывались и из статистики доходов — то есть день, когда
+      // чинили сервер, переставал считаться днём с зарплатой.
+      anomalyDayIndex: const <int>{},
       minDay: minDay,
       spanDays: spanDays,
       seasonalityApplied: seasonalityApplied,
       minResidualsForBootstrap: _minResidualsForBootstrap,
-      halfLifeDays: _halfLifeDays,
     );
     final expenseStats = _StreamStats.compute(
       dense: denseExpense,
@@ -399,7 +498,6 @@ class ForecastEngine {
       spanDays: spanDays,
       seasonalityApplied: seasonalityApplied,
       minResidualsForBootstrap: _minResidualsForBootstrap,
-      halfLifeDays: _halfLifeDays,
     );
 
     // Регулярные платежи — раздельно по типу, чтобы множители «Что если?»
@@ -464,6 +562,10 @@ class ForecastEngine {
 
     for (int p = 0; p < effectivePaths; p++) {
       double balance = currentBalance;
+      // Точка входа в историю у каждой траектории своя, а дальше она идёт
+      // по дням подряд (см. _StreamStats.noiseAt).
+      final incomeCursor = incomeStats.randomCursor(rng);
+      final expenseCursor = expenseStats.randomCursor(rng);
       for (int i = 0; i < days; i++) {
         final futureDay = addDays(todayOnly, i + 1);
         final wd = futureDay.weekday - 1;
@@ -473,18 +575,8 @@ class ForecastEngine {
         final expenseSeasonal =
             seasonalityApplied ? expenseStats.weekdayFactor[wd] : 0.0;
 
-        final incomeNoise = incomeStats.hasBootstrapPool
-            ? incomeStats
-                .residualPool[rng.nextInt(incomeStats.residualPool.length)]
-            : (incomeStats.volatility > 0
-                ? _gaussian(rng) * incomeStats.volatility
-                : 0.0);
-        final expenseNoise = expenseStats.hasBootstrapPool
-            ? expenseStats
-                .residualPool[rng.nextInt(expenseStats.residualPool.length)]
-            : (expenseStats.volatility > 0
-                ? _gaussian(rng) * expenseStats.volatility
-                : 0.0);
+        final incomeNoise = incomeStats.noiseAt(incomeCursor + i, rng);
+        final expenseNoise = expenseStats.noiseAt(expenseCursor + i, rng);
 
         double shock = 0;
         if (shockMagnitudes.isNotEmpty &&
@@ -593,12 +685,5 @@ class ForecastEngine {
     if (lower == upper) return sorted[lower];
     final frac = pos - lower;
     return sorted[lower] + (sorted[upper] - sorted[lower]) * frac;
-  }
-
-  /// Box-Muller: стандартное нормальное число из равномерного RNG.
-  static double _gaussian(Random rng) {
-    final u1 = 1.0 - rng.nextDouble(); // (0,1], избегаем log(0)
-    final u2 = rng.nextDouble();
-    return sqrt(-2.0 * log(u1)) * cos(2 * pi * u2);
   }
 }
