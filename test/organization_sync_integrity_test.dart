@@ -77,4 +77,32 @@ void main() {
       reason: 'CRM visibility must stay on the strict data scope.',
     );
   });
+
+  test('stats visibility cannot widen task, CRM, or audit permissions', () {
+    final read = File('server/pb_hooks/wesi_sync_read.pb.js').readAsStringSync();
+    final write = File('server/pb_hooks/wesi_sync_write.pb.js').readAsStringSync();
+
+    expect(
+      read,
+      contains('"demoStats": (self || ctx.canSeeOthersStats)'),
+      reason: 'canSeeOthersStats remains valid only for employee indicators.',
+    );
+    expect(
+      read,
+      isNot(contains('ctx.canAssignTasks || ctx.canSeeOthersStats')),
+      reason: 'Viewing other employee indicators must not expose their tasks.',
+    );
+    expect(
+      write,
+      isNot(contains('ctx.canAssignTasks || ctx.canSeeOthersStats')),
+      reason: 'Viewing other employee indicators must not allow editing their tasks.',
+    );
+    expect(read, contains('const manager = ctx.canManageTeam;'));
+    expect(write, contains('const manager = ctx.canManageTeam;'));
+    expect(
+      read,
+      contains('collection === "critical_audit" && !ctx.isOwner && !ctx.canManageTeam'),
+      reason: 'Critical audit visibility must require an actual management permission.',
+    );
+  });
 }
