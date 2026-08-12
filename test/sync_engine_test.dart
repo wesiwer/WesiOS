@@ -9,11 +9,14 @@ import 'package:wesios/core/sync/sync_engine.dart';
 import 'package:wesios/core/sync/sync_journal.dart';
 import 'package:wesios/core/sync/sync_transport.dart';
 import 'package:wesios/features/knowledge/models/article_model.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
+import 'package:wesios/features/organizations/services/organization_service.dart';
 import 'package:wesios/features/tasks/models/task_model.dart';
 import 'package:wesios/features/team/models/employee_model.dart';
 import 'package:wesios/features/team/models/team_permissions.dart';
 import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
+import 'package:wesios/features/treasury/services/account_service.dart';
 
 import 'fake_sync_transport.dart';
 
@@ -55,6 +58,8 @@ void main() {
     Hive.registerAdapter(ArticleModelAdapter());
     Hive.registerAdapter(TeamPermissionsAdapter());
     Hive.registerAdapter(EmployeeModelAdapter());
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
 
     await Hive.openBox('wesios_settings');
     await Hive.openBox(SyncJournal.boxName);
@@ -63,6 +68,7 @@ void main() {
     await Hive.openBox<TaskModel>('wesios_tasks');
     await Hive.openBox<ArticleModel>('wesios_knowledge');
     await Hive.openBox<EmployeeModel>('wesios_team');
+    await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
   });
 
   tearDownAll(() async {
@@ -77,10 +83,11 @@ void main() {
     for (final c in SyncCodec.collections) {
       await c.box()?.clear();
     }
+    await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
+    await OrganizationService.ensureBaseline();
+    await AccountService.ensureMain();
     await SyncEngine.prepare(now: base);
   });
-
-  // ------------------------------------------------------------------ журнал
 
   group('журнал', () {
     test('отметка кодируется и читается обратно без потерь', () {
@@ -150,8 +157,6 @@ void main() {
     });
   });
 
-  // -------------------------------------------------------------------- кодек
-
   group('кодек', () {
     test('операция переживает круг через поля', () {
       final c = TransactionsSync();
@@ -211,7 +216,8 @@ void main() {
       expect(back.subtasks.length, 2);
       expect(back.subtasks.first.done, isTrue);
       expect(back.subtasks.last.done, isFalse);
-      expect(back.tags, ['работа', 'срочно']);
+      expect(back.tags.where((tag) => !tag.startsWith('wesios:')).toList(),
+          ['работа', 'срочно']);
       expect(back.order, 7);
     });
 
@@ -244,7 +250,6 @@ void main() {
       expect(back.permissions.modules, {'tasks', 'treasury'});
       expect(back.permissions.knowledgeIds, {'a1'});
       expect(back.permissions.canSeeNotes, isTrue);
-      // Хеш обязан уехать: без него человек не войдёт со второго устройства.
       expect(back.passwordHash, 'hash');
       expect(back.passwordSalt, 'salt');
       expect(back.demoStats['balance'], 1000.0);
@@ -302,13 +307,8 @@ void main() {
     });
   });
 
-  // ------------------------------------------------------------------ движок
-
   group('движок', () {
     test('без входа честно говорит об этом', () async {
-      // Адрес зашит в сборку, поэтому «сервер не настроен» больше не
-      // существует как состояние: единственная причина, по которой обмен
-      // не идёт из коробки, — отсутствие входа. Про неё и надо говорить.
       final report = await SyncEngine.run(now: base);
       expect(report.ok, isFalse);
       expect(report.firstFailure?.code, 'NOT_SIGNED_IN');
@@ -331,7 +331,8 @@ void main() {
       expect(report.ok, isTrue, reason: report.describe());
       expect(t.store['transactions']!.containsKey('t1'), isTrue);
       expect(t.store['transactions']!['t1']!.fields['title'], 'Хлеб');
-      expect(report.uploaded, 1);
+      expect(report.uploaded, greaterThanOrEqualTo(1),
+          reason: 'baseline organization/account rows may sync alongside the transaction');
     });
 
     test('чужая запись приезжает и попадает в бокс', () async {
@@ -351,9 +352,6 @@ void main() {
 
     test('применённая чужая запись не уезжает обратно на следующем проходе',
         () async {
-      // Ровно та качель, ради которой в журнале есть «ожидания»: без них
-      // приезд чужой правки отмечается как своя, и она бесконечно ходит
-      // между устройствами.
       final t = FakeSyncTransport();
       t.seed('transactions', 'remote1',
           TransactionsSync().encode(tx('remote1')), base);
@@ -372,8 +370,6 @@ void main() {
     });
 
     test('более свежая местная правка побеждает серверную', () async {
-      // Устройство уже обменивалось: правило первого обмена («по спорным
-      // записям принимаем сервер») здесь не действует.
       await SyncEndpoint.markRun(base.subtract(const Duration(days: 1)));
 
       final t = FakeSyncTransport();
@@ -495,11 +491,6 @@ void main() {
     });
 
     test('свежая установка не затирает сервер своими заготовками', () async {
-      // Приложение само создаёт при первом запуске счёт с постоянным
-      // идентификатором `main` и владельца с идентификатором `owner`. На
-      // новом устройстве это пустые заготовки, и они СВЕЖЕЕ настоящих —
-      // созданы только что. Без правила первого обмена они уехали бы наверх
-      // поверх настоящих данных.
       final t = FakeSyncTransport();
       t.seed(
         'accounts',
@@ -539,8 +530,6 @@ void main() {
     });
 
     test('в первый обмен уезжает то, чего на сервере нет', () async {
-      // Обратная сторона правила: устройство, где человек уже работал, при
-      // первом обмене ничего не теряет.
       final t = FakeSyncTransport();
       t.seed('transactions', 'their',
           TransactionsSync().encode(tx('their', title: 'Чужая')), base);
@@ -558,7 +547,6 @@ void main() {
       await SyncEngine.run(transport: t, now: base);
       expect(SyncEndpoint.lastRun, isNotNull);
 
-      // Теперь местная правка обязана победить более старую серверную.
       t.seed('transactions', 't1',
           TransactionsSync().encode(tx('t1', title: 'Серверное')), base);
       await txBox().put('t1', tx('t1', title: 'Местное'));
@@ -578,8 +566,6 @@ void main() {
     });
 
     test('два устройства сходятся к одному состоянию', () async {
-      // Сервер общий, боксы — «второе устройство» изображается прямой
-      // подстановкой в store.
       final t = FakeSyncTransport();
       t.seed('transactions', 'other',
           TransactionsSync().encode(tx('other', title: 'С телефона')), base);
@@ -595,7 +581,6 @@ void main() {
 
     test('запись из будущей версии не помечается как усвоенная', () async {
       final t = FakeSyncTransport();
-      // Нет суммы и даты — разобрать нечем.
       t.seed('transactions', 'future', const {'id': 'future'}, base);
 
       final report = await SyncEngine.run(transport: t, now: base);
@@ -608,13 +593,7 @@ void main() {
     });
   });
 
-  // ------------------------------------------------------------------ адрес
-
   group('адрес сервера', () {
-    // Раньше здесь проверялся разборщик адреса, набранного руками: голый IP
-    // по http, домен по https, мусор в null. Поля больше нет, разборщика
-    // тоже — проверять надо то, что осталось.
-
     test('зашит в сборку и всегда по https', () {
       expect(SyncEndpoint.url, SyncEndpoint.defaultUrl);
       expect(SyncEndpoint.url, startsWith('https://'));
@@ -622,8 +601,6 @@ void main() {
     });
 
     test('сохранённый адрес из старой установки ничего не решает', () async {
-      // На устройстве, где когда-то ввели IP с опечаткой, обмен молча не
-      // работал бы вечно: чинить стало нечего и негде.
       await SyncEndpoint.configure(url: '203.0.113.10:8090');
       expect(SyncEndpoint.url, SyncEndpoint.defaultUrl);
     });
@@ -647,9 +624,6 @@ void main() {
     });
 
     test('протухший пропуск не считается подключением', () async {
-      // Транспорт такой пропуск не примет, и если считать его подключением,
-      // то у сообщений останутся «часики» — обещание отправки, которого
-      // никто не выполнит.
       await SyncEndpoint.saveSession(
         token: 't',
         userId: 'u',
@@ -661,7 +635,6 @@ void main() {
   });
 }
 
-/// Транспорт, который отказывает на одной коллекции и работает на остальных.
 class _FailingOnceTransport extends FakeSyncTransport {
   final String broken;
 

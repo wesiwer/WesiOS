@@ -4,6 +4,10 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/core/sync/sync_codec.dart';
+import 'package:wesios/features/organizations/models/organization_access_grant.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
+import 'package:wesios/features/organizations/services/organization_access_service.dart';
+import 'package:wesios/features/organizations/services/organization_service.dart';
 import 'package:wesios/features/tasks/models/task_model.dart';
 import 'package:wesios/features/tasks/services/task_assignment.dart';
 import 'package:wesios/features/tasks/services/task_service.dart';
@@ -44,9 +48,14 @@ void main() {
     Hive.registerAdapter(TaskModelAdapter());
     Hive.registerAdapter(TeamPermissionsAdapter());
     Hive.registerAdapter(EmployeeModelAdapter());
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
+    Hive.registerAdapter(OrganizationAccessGrantAdapter());
     await Hive.openBox('wesios_settings');
     await Hive.openBox<EmployeeModel>(TeamService.boxName);
     await Hive.openBox<TaskModel>('wesios_tasks');
+    await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
+    await Hive.openBox<OrganizationAccessGrant>(OrganizationAccessService.boxName);
   });
 
   tearDownAll(() async {
@@ -58,6 +67,9 @@ void main() {
     await Hive.box<EmployeeModel>(TeamService.boxName).clear();
     await Hive.box<TaskModel>('wesios_tasks').clear();
     await Hive.box('wesios_settings').clear();
+    await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
+    await Hive.box<OrganizationAccessGrant>(OrganizationAccessService.boxName).clear();
+    await OrganizationService.ensureBaseline();
   });
 
   group('право ставить задачи другим', () {
@@ -114,6 +126,13 @@ void main() {
       await TeamService.save(me);
       await TeamService.save(person('e2'));
       await TeamService.signIn(me);
+      await OrganizationAccessService.grant(
+        employeeId: me.id,
+        organizationId: OrganizationModel.rootId,
+        includeSubtree: false,
+        permissions: const [OrganizationPermissions.view],
+        enforceActor: false,
+      );
 
       final service = TaskService();
       await service.save(TaskModel(

@@ -77,9 +77,15 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
   Future<void> _recalc() async {
     final visible = _visible;
+    // In subtree aggregate mode, internal organization legs remain visible in
+    // operation history but must not inflate gross income/expense KPIs.
+    final forTotals = OrganizationContext.scope == OrganizationScope.subtree &&
+            _accountId == null
+        ? TreasuryService.eliminateInternalTransfers(visible)
+        : visible;
     var income = 0.0;
     var expense = 0.0;
-    for (final t in visible) {
+    for (final t in forTotals) {
       if (t.isRecurring) continue;
       if (t.type == TransactionType.income) {
         income += t.amount;
@@ -98,7 +104,11 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
     if (!mounted) return;
     setState(() {
-      _balance = opening + income - expense;
+      _balance = opening +
+          visible.where((t) => !t.isRecurring).fold<double>(
+              0,
+              (sum, t) => sum +
+                  (t.type == TransactionType.income ? t.amount : -t.amount));
       _breakdown = {
         'income': income,
         'expense': expense,
@@ -127,10 +137,11 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
     );
     if (result != null) {
       final main = await AccountService.ensureMain();
+      final reportingAmount = result['amount'] as double;
       final tx = TransactionModel(
         id: DateTime.now().microsecondsSinceEpoch.toString(),
         title: result['title'] as String,
-        amount: result['amount'] as double,
+        amount: reportingAmount,
         type: type,
         date: result['date'] as DateTime? ?? DateTime.now(),
         category: result['category'] as String?,
@@ -140,6 +151,11 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         accountId: _accountId ?? main.id,
         organizationId: OrganizationContext.currentOrganizationId,
         ownerEmployeeId: result['ownerEmployeeId'] as String?,
+        originalAmount: CurrencyService.fromRub(reportingAmount),
+        originalCurrency: CurrencyService.current.toUpperCase(),
+        fxRateToReporting: CurrencyService.rateToRub(CurrencyService.current),
+        fxRateAt: result['date'] as DateTime? ?? DateTime.now(),
+        fxSource: 'CurrencyService',
       );
       await _service.addTransaction(tx);
       await _loadData();
@@ -377,8 +393,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(WesiLocale.get('current_balance'),
-              style: TextStyle(
-                  fontSize: 13, color: AppTheme.textSecondary)),
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
           const SizedBox(height: 12),
           Text(
             '$_sym${shown.toStringAsFixed(2)}',
@@ -483,8 +498,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           Icon(icon, color: color, size: 28),
           const SizedBox(height: 8),
           Text(label,
-              style: TextStyle(
-                  fontSize: 12, color: AppTheme.textSecondary)),
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         ],
       ),
     );
@@ -510,11 +524,9 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(tx.title,
-                    style: TextStyle(
-                        fontSize: 14, color: AppTheme.textPrimary)),
+                    style: TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
                 Text(tx.category ?? WesiLocale.get('uncategorized'),
-                    style: TextStyle(
-                        fontSize: 11, color: AppTheme.textMuted)),
+                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
               ],
             ),
           ),
@@ -528,8 +540,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           const SizedBox(width: 8),
           GestureDetector(
             onTap: () => _deleteTx(tx.id),
-            child: Icon(Icons.delete_outline,
-                size: 18, color: AppTheme.textMuted),
+            child:
+                Icon(Icons.delete_outline, size: 18, color: AppTheme.textMuted),
           ),
         ],
       ),

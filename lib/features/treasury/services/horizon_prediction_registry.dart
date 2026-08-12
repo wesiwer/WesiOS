@@ -160,16 +160,16 @@ class HorizonPredictionRegistry {
   static Future<List<HorizonPredictionRecord>> records() async {
     try {
       final raw = (await _open()).get(_recordsKey);
-      if (raw is! String || raw.isEmpty) return const [];
+      if (raw is! String || raw.isEmpty) return <HorizonPredictionRecord>[];
       final decoded = jsonDecode(raw);
-      if (decoded is! List) return const [];
+      if (decoded is! List) return <HorizonPredictionRecord>[];
       return [
         for (final value in decoded)
           if (value is Map)
             HorizonPredictionRecord.fromJson(Map<String, dynamic>.from(value)),
       ]..sort((a, b) => a.issuedAt.compareTo(b.issuedAt));
     } catch (_) {
-      return const [];
+      return <HorizonPredictionRecord>[];
     }
   }
 

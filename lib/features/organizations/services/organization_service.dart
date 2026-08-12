@@ -1,7 +1,11 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../team/services/team_service.dart';
+import '../models/organization_access_grant.dart';
 import '../models/organization_model.dart';
+import 'critical_audit_service.dart';
+import 'organization_access_service.dart';
 
 class OrganizationTreeException implements Exception {
   final String message;
@@ -22,9 +26,25 @@ class OrganizationService {
     return _box!;
   }
 
+  static Future<void> _requireManage(String organizationId) async {
+    final actor = TeamService.current;
+    // No authenticated employee means migration/bootstrap/internal maintenance,
+    // not an interactive user. Once a user session exists, the domain service
+    // itself is the security boundary; UI checks are only convenience.
+    if (actor == null || actor.isOwner) return;
+    if (!await OrganizationAccessService.can(
+      organizationId,
+      OrganizationPermissions.manageOrgSettings,
+      employeeId: actor.id,
+    )) {
+      throw StateError('manage_org_settings permission required');
+    }
+  }
+
   static Future<void> ensureBaseline({String createdBy = 'migration'}) async {
     final box = await _open();
     final now = DateTime.now();
+    var changed = false;
 
     final roots = box.values.where((o) => o.isRoot).toList();
     OrganizationModel root;
@@ -42,6 +62,7 @@ class OrganizationService {
         sortOrder: 0,
       );
       await box.put(root.id, root);
+      changed = true;
     } else {
       root = roots.first;
       // Multiple roots must never silently survive. Keep the oldest as root,
@@ -68,6 +89,7 @@ class OrganizationService {
               sortOrder: extra.sortOrder,
             ),
           );
+          changed = true;
         }
       }
     }
@@ -88,8 +110,9 @@ class OrganizationService {
           sortOrder: 10,
         ),
       );
+      changed = true;
     }
-    revision.value++;
+    if (changed) revision.value++;
   }
 
   static Future<List<OrganizationModel>> all({
@@ -170,6 +193,7 @@ class OrganizationService {
     int? colorValue,
     int sortOrder = 0,
   }) async {
+    await _requireManage(parentId);
     final normalized = name.trim();
     if (normalized.isEmpty) {
       throw const OrganizationTreeException('organization name is empty');
@@ -190,7 +214,7 @@ class OrganizationService {
           : baseCurrency.trim().toUpperCase(),
       createdAt: now,
       updatedAt: now,
-      createdBy: createdBy,
+      createdBy: TeamService.current?.id ?? createdBy,
       code: code?.trim().isEmpty == true ? null : code?.trim(),
       description: description?.trim().isEmpty == true
           ? null
@@ -199,6 +223,14 @@ class OrganizationService {
       sortOrder: sortOrder,
     );
     await (await _open()).put(id, model);
+    await CriticalAuditService.record(
+      event: 'organization.create',
+      entityType: 'organization',
+      entityId: id,
+      organizationId: id,
+      after: model.toJson(),
+      actorId: TeamService.current?.id ?? createdBy,
+    );
     revision.value++;
     return model;
   }
@@ -218,6 +250,7 @@ class OrganizationService {
     if (current == null) {
       throw const OrganizationTreeException('organization does not exist');
     }
+    await _requireManage(current.id);
     if (current.isRoot && parentId != null) {
       throw const OrganizationTreeException('root cannot have a parent');
     }
@@ -225,6 +258,7 @@ class OrganizationService {
       throw const OrganizationTreeException('root cannot be archived');
     }
     if (parentId != null && parentId != current.parentId) {
+      await _requireManage(parentId);
       if (parentId == current.id || await isDescendant(parentId, current.id)) {
         throw const OrganizationTreeException('cyclic organization tree');
       }
@@ -245,6 +279,14 @@ class OrganizationService {
       updatedAt: DateTime.now(),
     );
     await (await _open()).put(next.id, next);
+    await CriticalAuditService.record(
+      event: 'organization.update',
+      entityType: 'organization',
+      entityId: next.id,
+      organizationId: next.id,
+      before: current.toJson(),
+      after: next.toJson(),
+    );
     revision.value++;
     return next;
   }
@@ -252,11 +294,21 @@ class OrganizationService {
   static Future<bool> archive(String id) async {
     final org = await byId(id);
     if (org == null || org.isRoot) return false;
+    await _requireManage(id);
     final activeChildren = await childrenOf(id);
     if (activeChildren.isNotEmpty) return false;
-    await (await _open()).put(
-      id,
-      org.copyWith(status: OrganizationStatus.archived, updatedAt: DateTime.now()),
+    final next = org.copyWith(
+      status: OrganizationStatus.archived,
+      updatedAt: DateTime.now(),
+    );
+    await (await _open()).put(id, next);
+    await CriticalAuditService.record(
+      event: 'organization.archive',
+      entityType: 'organization',
+      entityId: id,
+      organizationId: id,
+      before: org.toJson(),
+      after: next.toJson(),
     );
     revision.value++;
     return true;
@@ -265,13 +317,23 @@ class OrganizationService {
   static Future<bool> restore(String id) async {
     final org = await byId(id);
     if (org == null || !org.archived) return false;
+    await _requireManage(id);
     if (org.parentId != null) {
       final parent = await byId(org.parentId!);
       if (parent == null || parent.archived) return false;
     }
-    await (await _open()).put(
-      id,
-      org.copyWith(status: OrganizationStatus.active, updatedAt: DateTime.now()),
+    final next = org.copyWith(
+      status: OrganizationStatus.active,
+      updatedAt: DateTime.now(),
+    );
+    await (await _open()).put(id, next);
+    await CriticalAuditService.record(
+      event: 'organization.restore',
+      entityType: 'organization',
+      entityId: id,
+      organizationId: id,
+      before: org.toJson(),
+      after: next.toJson(),
     );
     revision.value++;
     return true;

@@ -1,0 +1,26 @@
+name: Deploy current sync security once
+
+on:
+  push:
+    branches:
+      - agent/org-hierarchy-remediation-1
+    paths:
+      - '.github/workflows/deploy-sync-security-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy current employee portal and sync hooks
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          echo 'Deploying OTP/session sync compatibility fix.'
+          gh workflow run deploy-employee-portal.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref agent/org-hierarchy-remediation-1

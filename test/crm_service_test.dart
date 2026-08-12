@@ -4,6 +4,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/features/crm/models/crm_models.dart';
 import 'package:wesios/features/crm/services/crm_service.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
+import 'package:wesios/features/organizations/services/organization_service.dart';
 
 void main() {
   late Directory dir;
@@ -11,6 +13,10 @@ void main() {
   setUpAll(() async {
     dir = Directory.systemTemp.createTempSync('wesios_crm_test');
     Hive.init(dir.path);
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
+    await Hive.openBox<dynamic>('wesios_settings');
+    await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
     await Hive.openBox<dynamic>(CrmService.boxName);
   });
 
@@ -19,7 +25,12 @@ void main() {
     dir.deleteSync(recursive: true);
   });
 
-  setUp(CrmService.clearForTest);
+  setUp(() async {
+    await Hive.box<dynamic>('wesios_settings').clear();
+    await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
+    await CrmService.clearForTest();
+    await OrganizationService.ensureBaseline();
+  });
 
   CrmClient client(String id, {CrmClientStatus status = CrmClientStatus.active}) {
     final now = DateTime(2026, 8, 6);

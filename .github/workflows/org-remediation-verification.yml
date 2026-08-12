@@ -1,0 +1,147 @@
+name: Organization remediation verification
+
+on:
+  push:
+    branches:
+      - agent/org-hierarchy-remediation-1
+  pull_request:
+    branches:
+      - agent/org-hierarchy-v1
+
+concurrency:
+  group: org-remediation-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  VERIFY_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  analysis:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+  remediation-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Security, scope, money, sync, migration, UI and fault-injection suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            test/organization_privilege_escalation_test.dart
+            test/organization_domain_permission_test.dart
+            test/organization_service_authorization_test.dart
+            test/organization_scope_isolation_test.dart
+            test/task_crm_organization_scope_test.dart
+            test/crm_interaction_integrity_test.dart
+            test/organization_finance_negative_test.dart
+            test/organization_forecast_permission_test.dart
+            test/inter_org_visibility_test.dart
+            test/inter_org_fault_injection_test.dart
+            test/multi_currency_org_test.dart
+            test/account_liquidity_migration_test.dart
+            test/background_org_processing_test.dart
+            test/sync_corruption_guard_test.dart
+            test/sync_migration_grant_test.dart
+            test/sync_repeat_audit_security_test.dart
+            test/employee_sync_lifecycle_test.dart
+            test/account_history_integrity_test.dart
+            test/org_physical_ownership_test.dart
+            test/organization_legacy_migration_rehearsal_test.dart
+            test/organization_access_revocation_test.dart
+            test/organization_finance_access_test.dart
+            test/organization_sync_integrity_test.dart
+            test/inter_org_transfer_test.dart
+            test/organization_ui_behavior_test.dart
+            test/organization_finance_ui_behavior_test.dart
+            test/team_stats_organization_scope_ui_test.dart
+          )
+          for file in "${files[@]}"; do
+            echo "===== RUNNING $file ====="
+            timeout 180s flutter test "$file"
+          done
+
+  full-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test
+
+  android-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        run: test "$(git rev-parse HEAD)" = "$VERIFY_SHA"
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build apk --debug
+
+  windows-build:
+    runs-on: windows-2022
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.VERIFY_SHA }}
+      - name: Verify exact head
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:VERIFY_SHA) {
+            throw "Expected exact head $env:VERIFY_SHA but checked out $actual"
+          }
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --release

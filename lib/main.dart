@@ -24,6 +24,7 @@ import 'core/services/secrets_service.dart';
 import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_endpoint.dart';
 import 'core/sync/sync_engine.dart';
+import 'core/sync/sync_feature_extensions.dart';
 import 'core/theme/app_theme.dart';
 import 'features/chats/models/chat_message.dart';
 import 'features/chats/models/chat_thread.dart';
@@ -35,6 +36,7 @@ import 'features/organizations/models/inter_org_transfer_model.dart';
 import 'features/organizations/models/organization_access_grant.dart';
 import 'features/organizations/models/organization_model.dart';
 import 'features/organizations/models/transaction_audit_model.dart';
+import 'features/organizations/services/inter_org_transfer_service.dart';
 import 'features/organizations/services/organization_migration_service.dart';
 import 'features/tasks/models/task_model.dart';
 import 'features/team/models/employee_model.dart';
@@ -117,20 +119,24 @@ void main(List<String> arguments) async {
   // never rewritten.
   await OrganizationMigrationService.runV1();
 
+  // A transfer journal is written before either financial leg. Complete any
+  // interrupted create/cancel before recurring/Horizon can read the ledger.
+  await InterOrgTransferService.recoverPending();
+
   RecurringPaymentAutomation.shared.start();
   TimeScheduleAutomation.shared.start();
 
   await SyncEndpoint.initializeSession();
   await TeamService.forgetUnrememberedSession();
+  await SyncFeatureExtensions.install();
 
   if (TeamService.current != null && SyncEndpoint.isConnected) {
     SessionService.startHeartbeat();
-    if (TeamService.isOwnerSession) {
-      unawaited(SyncEngine.runOnLaunch());
-      SyncAuto.start();
-    } else {
-      SyncAuto.stop();
-    }
+    // Every authenticated employee participates in synchronization. The
+    // server gateway applies module/org/row permissions; owner-only sync here
+    // previously made Tasks/Profile/avatars appear local on employee devices.
+    unawaited(SyncEngine.runOnLaunch());
+    SyncAuto.start();
   } else {
     SessionService.stopHeartbeat();
     SyncAuto.stop();

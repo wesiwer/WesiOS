@@ -61,10 +61,23 @@ class OrganizationAccessGrant {
     this.permissions = const [OrganizationPermissions.view],
     required this.createdAt,
     required this.updatedAt,
-    required this.createdBy,
-  });
+    required String createdBy,
+  }) : createdBy = createdBy == 'sync'
+            ? 'untrusted-sync'
+            : createdBy == 'migration'
+                ? 'migration/internal'
+                : createdBy;
 
-  bool allows(String permission) => permissions.contains(permission);
+  /// Forecasts are derived from organization financial rows. A malformed or
+  /// legacy grant that contains `view_forecast` without `view_finance` must not
+  /// become an indirect finance read channel.
+  bool allows(String permission) {
+    if (permission == OrganizationPermissions.viewForecast) {
+      return permissions.contains(OrganizationPermissions.viewForecast) &&
+          permissions.contains(OrganizationPermissions.viewFinance);
+    }
+    return permissions.contains(permission);
+  }
 
   OrganizationAccessGrant copyWith({
     bool? includeSubtree,
