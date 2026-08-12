@@ -49,7 +49,7 @@ void main() {
       () {
     final screen = source('lib/features/team/contacts_screen.dart');
     expect(screen, contains('OrganizationContext.revision.addListener'));
-    expect(screen, contains('OrganizationContext.effectiveOrganizationIds'));
+    expect(screen, contains('OrganizationService.all'));
     expect(screen, contains('OrganizationSwitcher(compact: true)'));
     expect(screen, contains('OrganizationAccessService.grant'));
     expect(screen, contains('OrganizationPermissions.manageMembers'));

@@ -60,4 +60,4 @@ Analyzing WesiOS...
    info • Unnecessary escape in string literal • test/update_paths_test.dart:21:28 • unnecessary_string_escapes
    info • Use 'const' for final variables initialized to a constant value • test/update_paths_test.dart:28:7 • prefer_const_declarations
 
-59 issues found. (ran in 23.2s)
+59 issues found. (ran in 22.6s)
