@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../organizations/models/organization_model.dart';
+import '../../organizations/services/organization_context.dart';
 import '../models/transaction_model.dart';
 import 'forecast_backtest.dart';
 import 'forecast_engine.dart';
@@ -54,6 +56,8 @@ class HorizonPredictionRecord {
   final double startingBalance;
   final String calibrationSource;
   final List<HorizonIssuedPrediction> predictions;
+  final String organizationId;
+  final String organizationScope;
 
   const HorizonPredictionRecord({
     required this.id,
@@ -61,6 +65,8 @@ class HorizonPredictionRecord {
     required this.startingBalance,
     required this.calibrationSource,
     required this.predictions,
+    this.organizationId = OrganizationModel.rootId,
+    this.organizationScope = 'only',
   });
 
   Map<String, dynamic> toJson() => {
@@ -69,6 +75,8 @@ class HorizonPredictionRecord {
         'startingBalance': startingBalance,
         'calibrationSource': calibrationSource,
         'predictions': predictions.map((e) => e.toJson()).toList(),
+        'organizationId': organizationId,
+        'organizationScope': organizationScope,
       };
 
   factory HorizonPredictionRecord.fromJson(Map<String, dynamic> json) =>
@@ -81,10 +89,11 @@ class HorizonPredictionRecord {
         predictions: [
           for (final raw in (json['predictions'] as List? ?? const []))
             if (raw is Map)
-              HorizonIssuedPrediction.fromJson(
-                Map<String, dynamic>.from(raw),
-              ),
+              HorizonIssuedPrediction.fromJson(Map<String, dynamic>.from(raw)),
         ],
+        organizationId:
+            '${json['organizationId'] ?? OrganizationModel.rootId}',
+        organizationScope: '${json['organizationScope'] ?? 'only'}',
       );
 }
 
@@ -131,20 +140,13 @@ class HorizonLiveCalibrationReport {
   int get samples => observations.length;
 }
 
-/// Production forecast ledger.
-///
-/// Rolling backtests answer “how would today's code have behaved on old
-/// history?”. This registry answers the stricter question: “what did WesiOS
-/// actually tell the user on that date, and what happened afterwards?”.
-/// Only the unmodified Base forecast is recorded; opening What-If never trains
-/// the model on a hypothetical future.
 class HorizonPredictionRegistry {
   HorizonPredictionRegistry._();
 
   static const String boxName = 'wesios_horizon_prediction_registry';
   static const String _recordsKey = 'issued_predictions_v1';
   static const List<int> trackedHorizons = [14, 30, 90, 180];
-  static const int _maxRecords = 730; // about two years of daily snapshots
+  static const int _maxRecords = 730;
 
   static DateTime _day(DateTime d) => DateTime(d.year, d.month, d.day);
   static String _dayId(DateTime d) =>
@@ -164,9 +166,7 @@ class HorizonPredictionRegistry {
       return [
         for (final value in decoded)
           if (value is Map)
-            HorizonPredictionRecord.fromJson(
-              Map<String, dynamic>.from(value),
-            ),
+            HorizonPredictionRecord.fromJson(Map<String, dynamic>.from(value)),
       ]..sort((a, b) => a.issuedAt.compareTo(b.issuedAt));
     } catch (_) {
       return const [];
@@ -178,12 +178,25 @@ class HorizonPredictionRegistry {
     required double currentBalance,
     required HorizonCalibrationProfile calibration,
     DateTime? now,
+    String? organizationId,
+    String organizationScope = 'only',
   }) async {
     if (forecast.insufficientData || forecast.p50.isEmpty) return;
     final issued = _day(now ?? DateTime.now());
+    final orgId = organizationId ?? OrganizationModel.rootId;
     final existing = await records();
-    final id = _dayId(issued);
-    if (existing.any((record) => record.id == id)) return;
+    final legacyIdentity =
+        orgId == OrganizationModel.rootId && organizationScope == 'only';
+    final id = legacyIdentity
+        ? _dayId(issued)
+        : '$orgId:$organizationScope:${_dayId(issued)}';
+    if (existing.any((record) =>
+        record.id == id ||
+        (record.organizationId == orgId &&
+            record.organizationScope == organizationScope &&
+            _day(record.issuedAt) == issued))) {
+      return;
+    }
 
     final points = <HorizonIssuedPrediction>[];
     for (final horizon in trackedHorizons) {
@@ -212,6 +225,8 @@ class HorizonPredictionRegistry {
       startingBalance: currentBalance,
       calibrationSource: calibration.source,
       predictions: points,
+      organizationId: orgId,
+      organizationScope: organizationScope,
     ));
     if (existing.length > _maxRecords) {
       existing.removeRange(0, existing.length - _maxRecords);
@@ -230,9 +245,15 @@ class HorizonPredictionRegistry {
     required List<TransactionModel> transactions,
     required double currentBalance,
     DateTime? now,
+    String? organizationId,
+    String? organizationScope,
   }) async {
     final today = _day(now ?? DateTime.now());
-    final issued = await records();
+    final orgId = organizationId ?? OrganizationContext.currentOrganizationId;
+    final scope = organizationScope ?? OrganizationContext.scope.name;
+    final issued = (await records())
+        .where((r) => r.organizationId == orgId && r.organizationScope == scope)
+        .toList();
     final observations = <HorizonRealizedPrediction>[];
     for (final record in issued) {
       for (final prediction in record.predictions) {
@@ -322,9 +343,6 @@ class HorizonPredictionRegistry {
     );
   }
 
-  /// Blend historical reconstruction with actual issued-forecast evidence.
-  /// Live evidence becomes dominant as the sample grows, but a handful of
-  /// observations cannot abruptly overturn the safer rolling backtest.
   static MultiHorizonBacktest blendWithBacktest({
     required MultiHorizonBacktest backtest,
     required HorizonLiveCalibrationReport live,

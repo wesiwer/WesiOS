@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../organizations/models/organization_model.dart';
+import '../../organizations/services/organization_context.dart';
 import '../models/transaction_model.dart';
 import 'forecast_backtest.dart';
 import 'horizon_calibration.dart';
@@ -24,24 +26,25 @@ class HorizonLearningSnapshot {
   });
 }
 
-/// Persisted, bounded self-learning for Wesi Horizon.
-///
-/// There are deliberately two evidence sources:
-/// 1) rolling multi-origin reconstruction, which gives enough observations
-///    even early in the product lifecycle;
-/// 2) the production prediction registry, which evaluates the exact forecast
-///    that was actually issued to the user against the later realized cash.
-///
-/// As live evidence accumulates it receives progressively more weight. This
-/// prevents a new installation from overfitting two observations while also
-/// preventing the model from hiding forever behind synthetic backtests.
 class HorizonLearningService {
   HorizonLearningService._();
 
   static const String boxName = 'wesios_horizon_learning';
-  static const String _profileKey = 'calibration_profile_v1';
-  static const String _lastMonthKey = 'last_learning_month_v1';
-  static const String _historyKey = 'learning_history_v1';
+  static const String _legacyProfileKey = 'calibration_profile_v1';
+  static const String _legacyLastMonthKey = 'last_learning_month_v1';
+  static const String _legacyHistoryKey = 'learning_history_v1';
+
+  static bool get _legacyContext =>
+      OrganizationContext.currentOrganizationId == OrganizationModel.rootId &&
+      OrganizationContext.scope == OrganizationScope.only;
+
+  static String _scoped(String base) => _legacyContext
+      ? base
+      : '$base.${OrganizationContext.currentOrganizationId}.${OrganizationContext.scope.name}';
+
+  static String get _profileKey => _scoped(_legacyProfileKey);
+  static String get _lastMonthKey => _scoped(_legacyLastMonthKey);
+  static String get _historyKey => _scoped(_legacyHistoryKey);
 
   static Future<Box<dynamic>> _open() async {
     if (Hive.isBoxOpen(boxName)) return Hive.box<dynamic>(boxName);
@@ -87,9 +90,6 @@ class HorizonLearningService {
     final date = now ?? DateTime.now();
     final previous = await load();
     if (!force && !await isDue(date)) return null;
-
-    // Do not mark a month as learned until there is enough historical
-    // structure for at least the short-horizon backtest to mean something.
     if (transactions.length < 20) return null;
 
     try {
@@ -103,6 +103,8 @@ class HorizonLearningService {
         transactions: transactions,
         currentBalance: currentBalance,
         now: date,
+        organizationId: OrganizationContext.currentOrganizationId,
+        organizationScope: OrganizationContext.scope.name,
       );
       final evaluation = HorizonPredictionRegistry.blendWithBacktest(
         backtest: backtest,
@@ -133,6 +135,8 @@ class HorizonLearningService {
           : <String>[];
       history.add(jsonEncode({
         'updatedAt': date.toIso8601String(),
+        'organizationId': OrganizationContext.currentOrganizationId,
+        'organizationScope': OrganizationContext.scope.name,
         'previousSource': previous.source,
         'profile': profile.toJson(),
         'tuningObjective': optimized.objective,
@@ -172,7 +176,6 @@ class HorizonLearningService {
         tuningObjective: optimized.objective,
       );
     } catch (_) {
-      // Learning must never be able to take live Treasury down.
       return null;
     }
   }

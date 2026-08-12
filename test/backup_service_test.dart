@@ -30,6 +30,7 @@ void main() {
     Hive.registerAdapter(TransactionModelAdapter());
     Hive.registerAdapter(TransactionTypeAdapter());
     Hive.registerAdapter(RecurringPeriodAdapter());
+    Hive.registerAdapter(TransactionSourceAdapter());
     Hive.registerAdapter(TaskStatusAdapter());
     Hive.registerAdapter(TaskPriorityAdapter());
     Hive.registerAdapter(SubTaskAdapter());

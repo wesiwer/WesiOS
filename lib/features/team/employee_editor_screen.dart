@@ -15,6 +15,7 @@ import 'models/team_permissions.dart';
 import 'services/contact_actions.dart';
 import 'services/login_pool_service.dart';
 import 'services/team_service.dart';
+import 'services/team_skill_service.dart';
 import 'widgets/credentials_result_dialog.dart';
 
 /// Заведение и правка сотрудника.
@@ -58,6 +59,12 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
   bool _photoCleared = false;
   bool _saving = false;
   List<ArticleModel> _articles = const [];
+  final Set<String> _skills = <String>{};
+  double _weeklyCapacity = 10;
+  double _minLoad = .65;
+  double _maxLoad = 1.10;
+  String? _managerId;
+  String _alertTarget = 'manager';
 
   bool get _ru => WesiLocale.isRussian;
   bool get _isNew => widget.initial == null;
@@ -76,7 +83,16 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
       _phoneCtrl.text = e.phone;
       _emailCtrl.text = e.email;
       _notesCtrl.text = e.notes;
+      _skills.addAll(e.skills);
+      _weeklyCapacity = e.weeklyCapacityPoints;
+      _minLoad = e.workloadMinRatio;
+      _maxLoad = e.workloadMaxRatio;
+      _managerId = e.managerEmployeeId;
+      _alertTarget = e.workloadAlertTarget;
     }
+    TeamSkillService.ensureOpen().then((_) {
+      if (mounted) setState(() {});
+    });
     for (final network in ContactActions.knownNetworks) {
       _socialCtrls[network] =
           TextEditingController(text: e?.socials[network] ?? '');
@@ -148,6 +164,12 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
           permissions: _permissions,
           avatarIndex: _avatarIndex,
           photo: _photo,
+          skills: _skills.toList(),
+          weeklyCapacityPoints: _weeklyCapacity,
+          workloadMinRatio: _minLoad,
+          workloadMaxRatio: _maxLoad,
+          managerEmployeeId: _managerId,
+          workloadAlertTarget: _alertTarget,
         );
         if (created == null) {
           _error(_ru
@@ -175,6 +197,13 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
           avatarIndex: _avatarIndex,
           photo: _photo,
           clearPhoto: _photoCleared && _photo == null,
+          skills: _skills.toList(),
+          weeklyCapacityPoints: _weeklyCapacity,
+          workloadMinRatio: _minLoad,
+          workloadMaxRatio: _maxLoad,
+          managerEmployeeId: _managerId,
+          clearManager: _managerId == null,
+          workloadAlertTarget: _alertTarget,
         );
         await TeamService.save(updated);
         if (mounted) Navigator.pop(context, updated);
@@ -344,6 +373,13 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
                   _field(_nickCtrl, _ru ? 'Ник (если есть)' : 'Nickname'),
                   _field(_positionCtrl, _ru ? 'Должность' : 'Position'),
                   const SizedBox(height: 18),
+                  _section(_ru ? 'Навыки' : 'Skills'),
+                  _skillsEditor(),
+                  const SizedBox(height: 18),
+                  _section(
+                      _ru ? 'Рекомендуемая нагрузка' : 'Recommended workload'),
+                  _workloadEditor(),
+                  const SizedBox(height: 18),
                   _section(_ru ? 'Связь — видно всем' : 'Contacts — public'),
                   _field(_phoneCtrl, _ru ? 'Телефон' : 'Phone',
                       keyboard: TextInputType.phone),
@@ -385,6 +421,174 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
   }
 
   // --------------------------------------------------------------- кусочки
+
+  Future<void> _addSkill() async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppTheme.surface,
+        title: Text(_ru ? 'Новый навык' : 'New skill'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(
+            hintText:
+                _ru ? 'Например: Саунд-дизайн' : 'For example: Sound design',
+          ),
+          onSubmitted: (value) => Navigator.pop(context, value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(_ru ? 'Отмена' : 'Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, controller.text),
+            child: Text(_ru ? 'Добавить' : 'Add'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value == null) return;
+    final saved = await TeamSkillService.add(value);
+    if (saved != null && mounted) setState(() => _skills.add(saved));
+  }
+
+  Widget _skillsEditor() => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(13),
+        decoration: BoxDecoration(
+          color: AppTheme.surface.withOpacity(.38),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.glassBorder),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _ru
+                  ? 'Можно выбрать несколько. Wesi AI будет учитывать их при назначении задач.'
+                  : 'Select multiple. Wesi AI uses these skills for task assignment.',
+              style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: [
+                for (final skill in TeamSkillService.all)
+                  FilterChip(
+                    label: Text(skill),
+                    selected: _skills.contains(skill),
+                    onSelected: (selected) => setState(() {
+                      if (selected) {
+                        _skills.add(skill);
+                      } else {
+                        _skills.remove(skill);
+                      }
+                    }),
+                  ),
+                ActionChip(
+                  avatar: const Icon(Icons.add, size: 16),
+                  label: Text(_ru ? 'Новый навык' : 'New skill'),
+                  onPressed: _addSkill,
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+
+  Widget _workloadEditor() {
+    final managers =
+        TeamService.all.where((e) => e.id != widget.initial?.id).toList();
+    return Container(
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(.38),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _ru
+                ? 'Недельная ёмкость: ${_weeklyCapacity.toStringAsFixed(0)} баллов'
+                : 'Weekly capacity: ${_weeklyCapacity.toStringAsFixed(0)} points',
+            style: TextStyle(fontSize: 12.5, color: AppTheme.textPrimary),
+          ),
+          Slider(
+            value: _weeklyCapacity.clamp(4, 24),
+            min: 4,
+            max: 24,
+            divisions: 20,
+            label: _weeklyCapacity.toStringAsFixed(0),
+            onChanged: (v) => setState(() => _weeklyCapacity = v),
+          ),
+          Text(
+            _ru
+                ? 'Норма: ${(_minLoad * 100).round()}–${(_maxLoad * 100).round()}% от ёмкости'
+                : 'Normal range: ${(_minLoad * 100).round()}–${(_maxLoad * 100).round()}%',
+            style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+          ),
+          RangeSlider(
+            values: RangeValues(
+                _minLoad.clamp(.35, .95), _maxLoad.clamp(.75, 1.45)),
+            min: .35,
+            max: 1.45,
+            divisions: 22,
+            labels: RangeLabels(
+                '${(_minLoad * 100).round()}%', '${(_maxLoad * 100).round()}%'),
+            onChanged: (values) => setState(() {
+              _minLoad = values.start;
+              _maxLoad = values.end;
+            }),
+          ),
+          const SizedBox(height: 6),
+          DropdownButtonFormField<String?>(
+            value: managers.any((e) => e.id == _managerId) ? _managerId : null,
+            decoration:
+                InputDecoration(labelText: _ru ? 'Руководитель' : 'Manager'),
+            items: [
+              DropdownMenuItem<String?>(
+                  value: null, child: Text(_ru ? 'Не выбран' : 'Not selected')),
+              for (final manager in managers)
+                DropdownMenuItem<String?>(
+                    value: manager.id, child: Text(manager.displayName)),
+            ],
+            onChanged: (value) => setState(() => _managerId = value),
+          ),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            value:
+                const {'manager', 'ceo', 'both', 'off'}.contains(_alertTarget)
+                    ? _alertTarget
+                    : 'manager',
+            decoration: InputDecoration(
+              labelText: _ru ? 'Кому сообщать о нагрузке' : 'Workload alerts',
+            ),
+            items: [
+              DropdownMenuItem(
+                  value: 'manager',
+                  child: Text(_ru ? 'Руководителю' : 'Manager')),
+              DropdownMenuItem(
+                  value: 'ceo', child: Text(_ru ? 'Только CEO' : 'CEO only')),
+              DropdownMenuItem(
+                  value: 'both',
+                  child: Text(_ru ? 'Руководителю и CEO' : 'Manager and CEO')),
+              DropdownMenuItem(
+                  value: 'off', child: Text(_ru ? 'Не уведомлять' : 'Off')),
+            ],
+            onChanged: (value) =>
+                setState(() => _alertTarget = value ?? 'manager'),
+          ),
+        ],
+      ),
+    );
+  }
 
   Widget _loginHint() {
     final free = LoginPoolService.freeCount;
@@ -441,7 +645,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
                 'вкладках. Главная, задачи, настройки и профиль открыты всегда.'
             : 'Closed sections are not shown at all. Home, tasks, settings '
                 'and profile are always open.',
-        style: TextStyle(fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
+        style:
+            TextStyle(fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
       );
 
   List<Widget> _moduleGroups() {
@@ -475,7 +680,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
           color: AppTheme.surface.withOpacity(on ? 0.55 : 0.3),
           borderRadius: BorderRadius.circular(11),
           border: Border.all(
-            color: on ? AppTheme.accent.withOpacity(0.35) : AppTheme.glassBorder,
+            color:
+                on ? AppTheme.accent.withOpacity(0.35) : AppTheme.glassBorder,
           ),
         ),
         child: Row(
@@ -496,8 +702,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
                   if (_ru && TeamModules.hintRu(module).isNotEmpty) ...[
                     const SizedBox(height: 2),
                     Text(TeamModules.hintRu(module),
-                        style: TextStyle(
-                            fontSize: 11, color: AppTheme.textMuted)),
+                        style:
+                            TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                   ],
                 ],
               ),
@@ -539,8 +745,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
           _checkRow(
             label: _ru ? 'Вся база, включая будущие статьи' : 'Everything',
             value: _permissions.knowledgeAll,
-            onChanged: (v) => setState(() =>
-                _permissions = _permissions.copyWith(knowledgeAll: v)),
+            onChanged: (v) => setState(
+                () => _permissions = _permissions.copyWith(knowledgeAll: v)),
           ),
           if (!_permissions.knowledgeAll) ...[
             const Divider(height: 18),
@@ -552,15 +758,14 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
             else ...[
               if (folders.isNotEmpty) ...[
                 Text(_ru ? 'Папки' : 'Folders',
-                    style: TextStyle(
-                        fontSize: 11, color: AppTheme.textMuted)),
+                    style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                 const SizedBox(height: 4),
                 for (final f in folders)
                   _checkRow(
                     label: f.title,
                     value: _permissions.allowsArticle(f.id),
-                    onChanged: (v) => setState(() =>
-                        _permissions = _permissions.withArticle(f.id, v)),
+                    onChanged: (v) => setState(
+                        () => _permissions = _permissions.withArticle(f.id, v)),
                     icon: Icons.folder_outlined,
                   ),
                 const SizedBox(height: 8),
@@ -577,8 +782,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
                         _checkRow(
                           label: a.title,
                           value: _permissions.allowsArticle(a.id),
-                          onChanged: (v) => setState(() => _permissions =
-                              _permissions.withArticle(a.id, v)),
+                          onChanged: (v) => setState(() =>
+                              _permissions = _permissions.withArticle(a.id, v)),
                           icon: Icons.article_outlined,
                         ),
                     ],
@@ -610,8 +815,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
               ? 'Без этого человек видит только свои цифры'
               : 'Without it a person sees only their own numbers',
           value: _permissions.canSeeOthersStats,
-          onChanged: (v) => setState(() =>
-              _permissions = _permissions.copyWith(canSeeOthersStats: v)),
+          onChanged: (v) => setState(
+              () => _permissions = _permissions.copyWith(canSeeOthersStats: v)),
         ),
         _checkRow(
           label: _ru ? 'Видит скрытые заметки' : 'Sees private notes',
@@ -671,8 +876,8 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
                   if (hint != null) ...[
                     const SizedBox(height: 1),
                     Text(hint,
-                        style: TextStyle(
-                            fontSize: 11, color: AppTheme.textMuted)),
+                        style:
+                            TextStyle(fontSize: 11, color: AppTheme.textMuted)),
                   ],
                 ],
               ),
@@ -719,8 +924,7 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
                       color: AppTheme.surface,
-                      border:
-                          Border.all(color: AppTheme.accentRed, width: 1.4),
+                      border: Border.all(color: AppTheme.accentRed, width: 1.4),
                     ),
                     child: Icon(Icons.delete_outline,
                         size: 14, color: AppTheme.accentRed),

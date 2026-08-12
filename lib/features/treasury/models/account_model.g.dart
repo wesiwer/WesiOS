@@ -2,10 +2,6 @@
 
 part of 'account_model.dart';
 
-// **************************************************************************
-// TypeAdapterGenerator
-// **************************************************************************
-
 class AccountModelAdapter extends TypeAdapter<AccountModel> {
   @override
   final int typeId = 15;
@@ -20,34 +16,34 @@ class AccountModelAdapter extends TypeAdapter<AccountModel> {
       id: fields[0] as String,
       name: fields[1] as String,
       kind: fields[2] as AccountKind,
-      openingBalance: fields[3] as double,
+      openingBalance: (fields[3] as num).toDouble(),
       colorValue: fields[4] as int,
       createdAt: fields[5] as DateTime,
       archived: fields[6] as bool,
       note: fields[7] as String?,
+      organizationId: fields[8] as String?,
+      minimumBalance: (fields[9] as num?)?.toDouble() ?? 0,
+      allowNetting: fields[10] as bool? ?? true,
+      currency: fields[11] as String? ?? 'RUB',
     );
   }
 
   @override
   void write(BinaryWriter writer, AccountModel obj) {
     writer
-      ..writeByte(8)
-      ..writeByte(0)
-      ..write(obj.id)
-      ..writeByte(1)
-      ..write(obj.name)
-      ..writeByte(2)
-      ..write(obj.kind)
-      ..writeByte(3)
-      ..write(obj.openingBalance)
-      ..writeByte(4)
-      ..write(obj.colorValue)
-      ..writeByte(5)
-      ..write(obj.createdAt)
-      ..writeByte(6)
-      ..write(obj.archived)
-      ..writeByte(7)
-      ..write(obj.note);
+      ..writeByte(12)
+      ..writeByte(0)..write(obj.id)
+      ..writeByte(1)..write(obj.name)
+      ..writeByte(2)..write(obj.kind)
+      ..writeByte(3)..write(obj.openingBalance)
+      ..writeByte(4)..write(obj.colorValue)
+      ..writeByte(5)..write(obj.createdAt)
+      ..writeByte(6)..write(obj.archived)
+      ..writeByte(7)..write(obj.note)
+      ..writeByte(8)..write(obj.organizationId)
+      ..writeByte(9)..write(obj.minimumBalance)
+      ..writeByte(10)..write(obj.allowNetting)
+      ..writeByte(11)..write(obj.currency);
   }
 
   @override
@@ -56,9 +52,7 @@ class AccountModelAdapter extends TypeAdapter<AccountModel> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AccountModelAdapter &&
-          runtimeType == other.runtimeType &&
-          typeId == other.typeId;
+      other is AccountModelAdapter && runtimeType == other.runtimeType && typeId == other.typeId;
 }
 
 class AccountKindAdapter extends TypeAdapter<AccountKind> {
@@ -68,39 +62,27 @@ class AccountKindAdapter extends TypeAdapter<AccountKind> {
   @override
   AccountKind read(BinaryReader reader) {
     switch (reader.readByte()) {
-      case 0:
-        return AccountKind.main;
-      case 1:
-        return AccountKind.card;
-      case 2:
-        return AccountKind.cash;
-      case 3:
-        return AccountKind.savings;
-      case 4:
-        return AccountKind.project;
-      default:
-        return AccountKind.main;
+      case 0: return AccountKind.main;
+      case 1: return AccountKind.card;
+      case 2: return AccountKind.cash;
+      case 3: return AccountKind.savings;
+      case 4: return AccountKind.project;
+      case 5: return AccountKind.reserve;
+      case 6: return AccountKind.other;
+      default: return AccountKind.main;
     }
   }
 
   @override
   void write(BinaryWriter writer, AccountKind obj) {
     switch (obj) {
-      case AccountKind.main:
-        writer.writeByte(0);
-        break;
-      case AccountKind.card:
-        writer.writeByte(1);
-        break;
-      case AccountKind.cash:
-        writer.writeByte(2);
-        break;
-      case AccountKind.savings:
-        writer.writeByte(3);
-        break;
-      case AccountKind.project:
-        writer.writeByte(4);
-        break;
+      case AccountKind.main: writer.writeByte(0); break;
+      case AccountKind.card: writer.writeByte(1); break;
+      case AccountKind.cash: writer.writeByte(2); break;
+      case AccountKind.savings: writer.writeByte(3); break;
+      case AccountKind.project: writer.writeByte(4); break;
+      case AccountKind.reserve: writer.writeByte(5); break;
+      case AccountKind.other: writer.writeByte(6); break;
     }
   }
 
@@ -110,7 +92,5 @@ class AccountKindAdapter extends TypeAdapter<AccountKind> {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is AccountKindAdapter &&
-          runtimeType == other.runtimeType &&
-          typeId == other.typeId;
+      other is AccountKindAdapter && runtimeType == other.runtimeType && typeId == other.typeId;
 }

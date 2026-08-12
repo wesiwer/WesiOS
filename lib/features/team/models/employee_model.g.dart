@@ -2,10 +2,6 @@
 
 part of 'employee_model.dart';
 
-// **************************************************************************
-// TypeAdapterGenerator
-// **************************************************************************
-
 class EmployeeModelAdapter extends TypeAdapter<EmployeeModel> {
   @override
   final int typeId = 21;
@@ -34,13 +30,21 @@ class EmployeeModelAdapter extends TypeAdapter<EmployeeModel> {
       isOwner: fields[14] as bool,
       demoStats: (fields[15] as Map).cast<String, double>(),
       photo: fields[16] as Uint8List?,
+      skills: fields[17] == null
+          ? const []
+          : (fields[17] as List).map((e) => e.toString()).toList(),
+      weeklyCapacityPoints: (fields[18] as num?)?.toDouble() ?? 10,
+      workloadMinRatio: (fields[19] as num?)?.toDouble() ?? .65,
+      workloadMaxRatio: (fields[20] as num?)?.toDouble() ?? 1.10,
+      managerEmployeeId: fields[21] as String?,
+      workloadAlertTarget: fields[22] as String? ?? 'manager',
     );
   }
 
   @override
   void write(BinaryWriter writer, EmployeeModel obj) {
     writer
-      ..writeByte(17)
+      ..writeByte(23)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -74,7 +78,19 @@ class EmployeeModelAdapter extends TypeAdapter<EmployeeModel> {
       ..writeByte(15)
       ..write(obj.demoStats)
       ..writeByte(16)
-      ..write(obj.photo);
+      ..write(obj.photo)
+      ..writeByte(17)
+      ..write(obj.skills)
+      ..writeByte(18)
+      ..write(obj.weeklyCapacityPoints)
+      ..writeByte(19)
+      ..write(obj.workloadMinRatio)
+      ..writeByte(20)
+      ..write(obj.workloadMaxRatio)
+      ..writeByte(21)
+      ..write(obj.managerEmployeeId)
+      ..writeByte(22)
+      ..write(obj.workloadAlertTarget);
   }
 
   @override

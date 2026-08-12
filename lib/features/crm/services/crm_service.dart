@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../../organizations/services/organization_context.dart';
 import '../models/crm_models.dart';
 
 class CrmService {
@@ -41,6 +42,20 @@ class CrmService {
     list.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return list;
   }
+
+  static Future<List<CrmClient>> clientsForOrganizations(
+    Set<String> organizationIds,
+  ) async =>
+      (await clients())
+          .where((client) => organizationIds.contains(client.organizationId))
+          .toList();
+
+  static Future<List<CrmDeal>> dealsForOrganizations(
+    Set<String> organizationIds,
+  ) async =>
+      (await deals())
+          .where((deal) => organizationIds.contains(deal.organizationId))
+          .toList();
 
   static Future<List<CrmInteraction>> interactions() async {
     final box = await _open();
@@ -81,8 +96,16 @@ class CrmService {
   static Future<void> saveClient(CrmClient client) async {
     final all = await clients();
     final now = DateTime.now();
-    final normalized = client.copyWith(updatedAt: now);
     final index = all.indexWhere((value) => value.id == client.id);
+    final previous = index < 0 ? null : all[index];
+    final normalized = client.copyWith(
+      updatedAt: now,
+      organizationId: client.organizationId.isEmpty
+          ? (previous?.organizationId ?? OrganizationContext.currentOrganizationId)
+          : client.organizationId,
+      ownerEmployeeId: client.ownerEmployeeId,
+      clearOwnerEmployee: client.ownerEmployeeId == null,
+    );
     if (index < 0) {
       all.add(normalized);
     } else {
@@ -127,13 +150,21 @@ class CrmService {
   static Future<void> saveDeal(CrmDeal deal) async {
     final all = await deals();
     final now = DateTime.now();
-    var next = deal.copyWith(updatedAt: now);
+    final index = all.indexWhere((value) => value.id == deal.id);
+    final previous = index < 0 ? null : all[index];
+    var next = deal.copyWith(
+      updatedAt: now,
+      organizationId: deal.organizationId.isEmpty
+          ? (previous?.organizationId ?? OrganizationContext.currentOrganizationId)
+          : deal.organizationId,
+      responsibleEmployeeId: deal.responsibleEmployeeId,
+      clearResponsibleEmployee: deal.responsibleEmployeeId == null,
+    );
     if (next.stage == DealStage.won || next.stage == DealStage.lost) {
       next = next.copyWith(closedAt: next.closedAt ?? now);
     } else if (next.closedAt != null) {
       next = next.copyWith(clearClosedAt: true);
     }
-    final index = all.indexWhere((value) => value.id == deal.id);
     if (index < 0) {
       all.add(next);
     } else {
@@ -207,9 +238,13 @@ class CrmService {
           .where((value) => value.clientId == clientId)
           .toList();
 
-  static Future<CrmSummary> summary() async {
-    final allClients = await clients();
-    final allDeals = await deals();
+  static Future<CrmSummary> summary({Set<String>? organizationIds}) async {
+    final allClients = organizationIds == null
+        ? await clients()
+        : await clientsForOrganizations(organizationIds);
+    final allDeals = organizationIds == null
+        ? await deals()
+        : await dealsForOrganizations(organizationIds);
     final visibleClients = allClients
         .where((value) => value.status != CrmClientStatus.archived)
         .toList();

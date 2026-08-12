@@ -1,18 +1,13 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../../organizations/services/organization_context.dart';
+import '../../team/services/team_service.dart';
 import '../models/task_model.dart';
 import 'task_assignment.dart';
 
-/// Хранилище задач.
-///
-/// Тот же подход, что у Treasury: Hive-бокс + `revision`, чтобы открытые
-/// экраны обновлялись без ручного дёргания (вкладки живут в IndexedStack и
-/// сами по себе не пересоздаются).
 class TaskService {
   static const String _boxName = 'wesios_tasks';
-
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
-
   Box<TaskModel>? _box;
 
   Future<Box<TaskModel>> get _tasksBox async {
@@ -23,8 +18,6 @@ class TaskService {
   Future<List<TaskModel>> getAll() async {
     final box = await _tasksBox;
     final list = box.values.toList();
-    // Сортировка по порядку внутри колонки, затем по дате создания —
-    // так новые задачи не прыгают в середину списка.
     list.sort((a, b) {
       final byOrder = a.order.compareTo(b.order);
       return byOrder != 0 ? byOrder : a.createdAt.compareTo(b.createdAt);
@@ -32,26 +25,43 @@ class TaskService {
     return list;
   }
 
+  Future<List<TaskModel>> getForOrganizations(Set<String> organizationIds) async {
+    final all = await getAll();
+    return all
+        .where((task) => organizationIds.contains(task.effectiveOrganizationId))
+        .toList();
+  }
+
   Future<List<TaskModel>> byStatus(TaskStatus status) async {
     final all = await getAll();
     return all.where((t) => t.status == status).toList();
   }
 
-  /// Сохраняет задачу, приводя исполнителя к тому, что разрешено.
-  ///
-  /// Проверка права стоит здесь, а не только в диалоге: диалог убирает
-  /// список с экрана, но задача с чужим исполнителем может приехать другим
-  /// путём — из синхронизации или из экрана, про который забыли. Право,
-  /// которое соблюдает только интерфейс, — это не право, а оформление.
   Future<void> save(TaskModel task) async {
     final box = await _tasksBox;
     final allowed = TaskAssignment.coerce(task.assignee);
-    await box.put(
-      task.id,
-      allowed == task.assignee
-          ? task
-          : task.copyWith(assignee: allowed, clearAssignee: allowed == null),
+    final employee = allowed == null ? null : TeamService.byId(allowed);
+    final orgId = task.organizationId ??
+        (task.effectiveOrganizationId != 'org_wesi_beats'
+            ? task.effectiveOrganizationId
+            : OrganizationContext.currentOrganizationId);
+    final responsible = task.responsibleEmployeeId ??
+        task.effectiveResponsibleEmployeeId ??
+        employee?.id;
+    final tags = TaskModel.withOwnershipTags(
+      task.tags,
+      organizationId: orgId,
+      employeeId: responsible,
     );
+    final normalized = task.copyWith(
+      assignee: allowed,
+      clearAssignee: allowed == null,
+      organizationId: orgId,
+      responsibleEmployeeId: responsible,
+      clearResponsibleEmployee: responsible == null,
+      tags: tags,
+    );
+    await box.put(task.id, normalized);
     revision.value++;
   }
 
@@ -61,18 +71,15 @@ class TaskService {
     revision.value++;
   }
 
-  /// Переносит задачу в другую колонку, ставя её в конец.
   Future<void> move(TaskModel task, TaskStatus to) async {
     if (task.status == to) return;
     final inTarget = await byStatus(to);
-    final nextOrder =
-        inTarget.isEmpty ? 0 : inTarget.map((t) => t.order).reduce((a, b) => a > b ? a : b) + 1;
+    final nextOrder = inTarget.isEmpty
+        ? 0
+        : inTarget.map((t) => t.order).reduce((a, b) => a > b ? a : b) + 1;
     await save(task.copyWith(status: to, order: nextOrder));
   }
 
-  /// Задачи со сроком в указанный день — то, что календарь показывает
-  /// в ячейке даты. Завершённые не выбрасываем: в календаре полезно видеть,
-  /// что на этот день что-то было и оно сделано.
   Future<List<TaskModel>> dueOn(DateTime day) async {
     final all = await getAll();
     return all.where((t) {
@@ -82,8 +89,6 @@ class TaskService {
     }).toList();
   }
 
-  /// Ближайшие незавершённые задачи со сроком — для карточки на главной.
-  /// Просроченные идут первыми: они и есть самое срочное.
   Future<List<TaskModel>> upcoming({int limit = 3}) async {
     final all = await getAll();
     final withDue = all
@@ -93,8 +98,6 @@ class TaskService {
     return withDue.take(limit).toList();
   }
 
-  /// Активные задачи без срока — показываем, когда со сроками ничего нет,
-  /// иначе карточка на главной выглядит пустой при полной доске.
   Future<List<TaskModel>> activeWithoutDue({int limit = 3}) async {
     final all = await getAll();
     return all
@@ -103,8 +106,6 @@ class TaskService {
         .toList();
   }
 
-  /// Все дни, на которые назначены задачи — календарю нужно, чтобы
-  /// проставить точки под датами, не перечитывая бокс на каждую ячейку.
   Future<Map<DateTime, List<TaskModel>>> byDueDay() async {
     final all = await getAll();
     final map = <DateTime, List<TaskModel>>{};
@@ -117,7 +118,6 @@ class TaskService {
     return map;
   }
 
-  /// Сводка для дашборда: сколько задач в каждой колонке и сколько просрочено.
   Future<TaskSummary> summary() async {
     final all = await getAll();
     return TaskSummary(
