@@ -1,3 +1,4 @@
+import 'calendar_days.dart';
 import 'dart:convert';
 import 'dart:math';
 
@@ -229,8 +230,7 @@ class HorizonEngineCompetitionService {
       final step = max(7, horizon ~/ 2);
       for (var origin = 0; origin < _originsPerHorizon; origin++) {
         final offset = horizon + origin * step;
-        final asOf = DateTime(today.year, today.month, today.day)
-            .subtract(Duration(days: offset));
+        final asOf = addDays(today, -offset);
         final past = transactions.where((t) => !t.date.isAfter(asOf)).toList();
         if (past.length < 14) continue;
         final balance = ForecastBacktest.balanceOn(
@@ -278,7 +278,7 @@ class HorizonEngineCompetitionService {
               result.p50.length < horizon) continue;
           final evaluationStart = max(0, (horizon * 0.75).floor());
           for (var i = evaluationStart; i < horizon; i++) {
-            final target = asOf.add(Duration(days: i + 1));
+            final target = addDays(asOf, i + 1);
             points[entry.key]!.add(_EnginePoint(
               actual: ForecastBacktest.balanceOn(
                 target,

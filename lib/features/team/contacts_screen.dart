@@ -294,15 +294,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
       title: 'Настроить доступ: ${employee.displayName}',
     );
     if (organization == null || !mounted) return;
-    final grant = (await OrganizationAccessService.grantsFor(employee.id))
-        .where((g) => g.organizationId == organization!.id)
-        .firstOrNull;
     if (!mounted) return;
-    final changed = await OrganizationAccessEditor.show(
+    final changed = await OrganizationAccessEditor.open(
       context,
       organization: organization,
       employee: employee,
-      initialGrant: grant,
     );
     if (changed == true) await _loadContextMembers();
   }

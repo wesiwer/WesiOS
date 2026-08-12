@@ -1,3 +1,4 @@
+import 'calendar_days.dart';
 import 'dart:convert';
 import 'dart:math';
 
@@ -210,7 +211,7 @@ class HorizonPredictionRegistry {
           : (forecast.p10[horizon - 1] < 0 ? 0.10 : 0.0);
       points.add(HorizonIssuedPrediction(
         horizonDays: horizon,
-        targetDate: issued.add(Duration(days: horizon)),
+        targetDate: addDays(issued, horizon),
         p10: forecast.p10[horizon - 1],
         p50: forecast.p50[horizon - 1],
         p90: forecast.p90[horizon - 1],
