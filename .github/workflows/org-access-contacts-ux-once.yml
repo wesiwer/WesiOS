@@ -43,21 +43,34 @@ jobs:
             lib/features/team/contacts_screen.dart \
             test/organization_ui_contract_test.dart
 
+      - name: Preserve patched source
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/features/organizations/widgets/organization_access_editor.dart \
+                  lib/features/organizations/organizations_screen.dart \
+                  lib/features/team/contacts_screen.dart \
+                  test/organization_ui_contract_test.dart
+          if ! git diff --cached --quiet; then
+            git commit -m "feat(org): simplify access controls and organization contacts [skip ci]"
+            git push origin HEAD:chatgpt/org-access-contacts-ux-20260812
+          fi
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
       - name: Full test suite
         run: flutter test
 
-      - name: Remove one-shot harness and commit product changes
+      - name: Remove one-shot harness
         if: success()
         shell: bash
         run: |
           set -euo pipefail
           rm -f .github/scripts/org_access_contacts_ux.py
           rm -f .github/workflows/org-access-contacts-ux-once.yml
-          git config user.name 'WesiOS Automation'
-          git config user.email 'actions@users.noreply.github.com'
           git add -A
-          git commit -m "feat(org): simplify access controls and organization contacts"
+          git commit -m "ci: remove organization UX one-shot harness [skip ci]"
           git push origin HEAD:chatgpt/org-access-contacts-ux-20260812
