@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/load_failure_panel.dart';
 import '../../core/widgets/module_header.dart';
 import '../../core/widgets/window_controls.dart';
 import '../tasks/services/task_service.dart';
@@ -31,6 +32,7 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   AnalyticsSnapshot? _data;
   FinancialHealth _health = FinancialHealth.empty;
   bool _loading = true;
+  String? _error;
 
   bool get _ru => WesiLocale.isRussian;
 
@@ -52,22 +54,38 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
   }
 
   Future<void> _load() async {
-    final data = await _service.build(periodDays: _periodDays);
-    final treasury = TreasuryService();
-    final txs = await treasury.getAllTransactions();
-    final total = await treasury.getCurrentBalance();
-    final health = FinancialHealth.compute(
-      transactions: txs,
-      balance: TreasuryService.balanceOnDay(DateTime.now(), txs, total),
-      now: DateTime.now(),
-      periodDays: _periodDays,
-    );
-    if (!mounted) return;
-    setState(() {
-      _data = data;
-      _health = health;
-      _loading = false;
-    });
+    if (mounted) setState(() => _error = null);
+    try {
+      final data = await _service.build(periodDays: _periodDays);
+      final treasury = TreasuryService();
+      final txs = await treasury.getAllTransactions();
+      final total = await treasury.getCurrentBalance();
+      final health = FinancialHealth.compute(
+        transactions: txs,
+        balance: TreasuryService.balanceOnDay(DateTime.now(), txs, total),
+        now: DateTime.now(),
+        periodDays: _periodDays,
+      );
+      if (!mounted) return;
+      setState(() {
+        _data = data;
+        _health = health;
+        _loading = false;
+      });
+    } catch (error) {
+      // Экран обязан закончиться хоть чем-то. Раньше исключение здесь
+      // оставляло спиннер навсегда: работать нельзя, причина неизвестна.
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = '$error';
+      });
+    }
+  }
+
+  Future<void> _retry() async {
+    if (mounted) setState(() => _loading = true);
+    await _load();
   }
 
   Future<void> _setPeriod(int days) async {
@@ -87,10 +105,16 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     return Scaffold(
       backgroundColor: AppTheme.background,
       body: SafeArea(
-        child: _loading || d == null
-            ? Center(
-                child: CircularProgressIndicator(
-                    color: AppTheme.accent.withOpacity(0.5)))
+        child: _error != null && d == null
+            ? LoadFailurePanel(
+                what: _ru ? 'Аналитика' : 'Analytics',
+                error: _error!,
+                onRetry: _retry,
+              )
+            : _loading || d == null
+                ? Center(
+                    child: CircularProgressIndicator(
+                        color: AppTheme.accent.withOpacity(0.5)))
             : ListView(
                 padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 12, 16, 32),
                 children: [

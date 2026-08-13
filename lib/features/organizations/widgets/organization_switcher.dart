@@ -204,6 +204,18 @@ class _OrganizationPickerSheetState extends State<_OrganizationPickerSheet> {
   void _reload() => _load();
 
   Future<void> _load() async {
+    try {
+      await _loadInner();
+    } catch (error) {
+      // Список организаций не открылся — показываем пустой, а не вечный
+      // спиннер: выбрать будет нечего, но экран хотя бы закроется.
+      debugPrint('organization picker: загрузка не удалась — $error');
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadInner() async {
     final epoch = ++_pickerLoadEpoch;
     final all = await OrganizationService.all();
     final allowed = TeamService.current == null

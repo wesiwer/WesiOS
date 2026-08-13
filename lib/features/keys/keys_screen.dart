@@ -57,7 +57,23 @@ class _KeysScreenState extends State<KeysScreen> {
     if (mounted) setState(() {});
   }
 
+  /// Загрузка под страховкой.
+  ///
+  /// Раньше исключение в середине цепочки `await` оставляло `_loading`
+  /// включённым навсегда: экран показывал вечный спиннер и не говорил, что
+  /// именно сломалось. Теперь любая неудача заканчивает загрузку — экран
+  /// покажет то, что успел, а не будет притворяться, что ещё грузится.
   Future<void> _load() async {
+    try {
+      await _loadInner();
+    } catch (error) {
+      debugPrint('keys_screen: загрузка не удалась — $error');
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadInner() async {
     setState(() {
       _loading = true;
       _error = null;
@@ -452,27 +468,36 @@ class _KeysScreenState extends State<KeysScreen> {
   }
 
   Future<void> _signIn() async {
-    final email = await _askText(
-      title: _ru ? 'Почта' : 'Email',
-      hint: 'name@example.com',
-    );
-    if (email == null || email.isEmpty) return;
-    if (!mounted) return;
-    final password = await _askText(
-      title: _ru ? 'Пароль Firebase' : 'Firebase password',
-      hint: _ru ? 'Пароль' : 'Password',
-      obscure: true,
-    );
-    if (password == null || password.isEmpty) return;
-
-    setState(() => _loading = true);
-    final failure = await FirebaseRestService.signIn(email, password);
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      _error = failure?.describe(russian: _ru);
-    });
-    if (failure == null) await _load();
+    try {
+      final email = await _askText(
+        title: _ru ? 'Почта' : 'Email',
+        hint: 'name@example.com',
+      );
+      if (email == null || email.isEmpty) return;
+      if (!mounted) return;
+      final password = await _askText(
+        title: _ru ? 'Пароль Firebase' : 'Firebase password',
+        hint: _ru ? 'Пароль' : 'Password',
+        obscure: true,
+      );
+      if (password == null || password.isEmpty) return;
+  
+      setState(() => _loading = true);
+      final failure = await FirebaseRestService.signIn(email, password);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = failure?.describe(russian: _ru);
+      });
+      if (failure == null) await _load();
+    
+    } catch (error) {
+      // Действие не должно оставлять кнопку в вечной загрузке:
+      // человек не поймёт, идёт что-то или уже нет.
+      debugPrint('keys: _signIn не удалось — $error');
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
   }
 
   Future<void> _configureProject() async {
@@ -596,25 +621,34 @@ class _KeysScreenState extends State<KeysScreen> {
   }
 
   Future<void> _editSecret(String name, String current) async {
-    final value = await _askText(
-      title: name,
-      hint: _ru ? 'Значение' : 'Value',
-      initial: current,
-    );
-    if (value == null) return;
-
-    final next = {...(_remote ?? const <String, String>{}), name: value};
-    setState(() => _loading = true);
-    final failure =
-        await FirebaseRestService.setDocument('secrets/default', next);
-    if (!mounted) return;
-    setState(() {
-      _loading = false;
-      _error = failure?.describe(russian: _ru);
-      if (failure == null) _remote = next;
-    });
-    if (failure == null && SecretVault.unlocked.value) {
-      await SecretVault.write(name, value);
+    try {
+      final value = await _askText(
+        title: name,
+        hint: _ru ? 'Значение' : 'Value',
+        initial: current,
+      );
+      if (value == null) return;
+  
+      final next = {...(_remote ?? const <String, String>{}), name: value};
+      setState(() => _loading = true);
+      final failure =
+          await FirebaseRestService.setDocument('secrets/default', next);
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = failure?.describe(russian: _ru);
+        if (failure == null) _remote = next;
+      });
+      if (failure == null && SecretVault.unlocked.value) {
+        await SecretVault.write(name, value);
+      }
+    
+    } catch (error) {
+      // Действие не должно оставлять кнопку в вечной загрузке:
+      // человек не поймёт, идёт что-то или уже нет.
+      debugPrint('keys: _editSecret не удалось — $error');
+      if (!mounted) return;
+      setState(() => _loading = false);
     }
   }
 

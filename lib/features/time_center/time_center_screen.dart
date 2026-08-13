@@ -51,7 +51,23 @@ class _TimeCenterScreenState extends State<TimeCenterScreen> {
     super.dispose();
   }
 
+  /// Загрузка под страховкой.
+  ///
+  /// Раньше исключение в середине цепочки `await` оставляло `_loading`
+  /// включённым навсегда: экран показывал вечный спиннер и не говорил, что
+  /// именно сломалось. Теперь любая неудача заканчивает загрузку — экран
+  /// покажет то, что успел, а не будет притворяться, что ещё грузится.
   Future<void> _load() async {
+    try {
+      await _loadInner();
+    } catch (error) {
+      debugPrint('time_center_screen: загрузка не удалась — $error');
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadInner() async {
     final alarms = await _service.getAlarms();
     final reminders = await _service.getReminders();
     final timer = await _service.reconcileTimer();

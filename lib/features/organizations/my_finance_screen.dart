@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../core/services/currency_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/load_failure_panel.dart';
 import '../treasury/services/forecast_engine.dart';
 import 'services/employee_finance_service.dart';
 import 'services/organization_access_service.dart';
@@ -27,6 +28,7 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
   bool _canSubtree = false;
   bool _canTeam = false;
   bool _loading = true;
+  String? _error;
   int _loadEpoch = 0;
 
   @override
@@ -48,7 +50,26 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
 
   Future<void> _load() async {
     final epoch = ++_loadEpoch;
-    if (mounted) setState(() => _loading = true);
+    if (mounted) {
+      setState(() {
+        _loading = true;
+        _error = null;
+      });
+    }
+    try {
+      await _loadInner(epoch);
+    } catch (error) {
+      // Без этого одно исключение в середине цепочки оставляло экран в
+      // вечной загрузке — самом бесполезном состоянии из возможных.
+      if (!mounted || epoch != _loadEpoch) return;
+      setState(() {
+        _loading = false;
+        _error = '$error';
+      });
+    }
+  }
+
+  Future<void> _loadInner(int epoch) async {
     final orgId = OrganizationContext.currentOrganizationId;
     final canOrganization =
         await OrganizationAccessService.canViewOrganizationFinance(orgId);
@@ -119,7 +140,13 @@ class _MyFinanceScreenState extends State<MyFinanceScreen> {
           ),
         ],
       ),
-      body: _loading
+      body: _error != null
+          ? LoadFailurePanel(
+              what: 'Финансовые показатели',
+              error: _error!,
+              onRetry: _load,
+            )
+          : _loading
           ? const Center(child: CircularProgressIndicator())
           : RefreshIndicator(
               onRefresh: _load,

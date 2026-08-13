@@ -90,7 +90,23 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
     _load();
   }
 
+  /// Загрузка под страховкой.
+  ///
+  /// Раньше исключение в середине цепочки `await` оставляло `_loading`
+  /// включённым навсегда: экран показывал вечный спиннер и не говорил, что
+  /// именно сломалось. Теперь любая неудача заканчивает загрузку — экран
+  /// покажет то, что успел, а не будет притворяться, что ещё грузится.
   Future<void> _load() async {
+    try {
+      await _loadInner();
+    } catch (error) {
+      debugPrint('sandbox_forecast_screen: загрузка не удалась — $error');
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _loadInner() async {
     setState(() => _loading = true);
     final balance = await _service.getCurrentBalance();
     final baseline = await _service.generateForecast(days: _days);
