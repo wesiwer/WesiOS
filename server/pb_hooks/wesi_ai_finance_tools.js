@@ -112,7 +112,7 @@ module.exports = {
       return {ok: true, result: {
         organizationId: organizationId,
         organizationName: state.orgs[organizationId] ? state.orgs[organizationId].name : organizationId,
-        reportingCurrency: "RUB", from: from, to: to, transactionCount: filtered.length,
+        reportingCurrency: state.orgs[organizationId] ? state.orgs[organizationId].baseCurrency : "RUB", from: from, to: to, transactionCount: filtered.length,
         income: round(income), expense: round(expense), net: round(income - expense), recurringExpense: round(recurringExpense), anomalyCount: anomalyCount,
         topExpenseCategories: leaders(expenseCategories), topIncomeCategories: leaders(incomeCategories),
       }};
