@@ -3,6 +3,7 @@ import '../team/services/team_service.dart';
 import 'controllers/wesi_ai_chat_controller.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
+import 'wesi_ai_handoff_controller.dart';
 import 'wesi_ai_managed_controller.dart';
 
 class AiAssistantScreen extends StatefulWidget {
@@ -12,7 +13,7 @@ class AiAssistantScreen extends StatefulWidget {
 }
 
 class _AiAssistantScreenState extends State<AiAssistantScreen> {
-  WesiAiManagedChatController? controller;
+  WesiAiHandoffController? controller;
   final composer = TextEditingController();
 
   @override
@@ -20,7 +21,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     super.initState();
     final employee = TeamService.current;
     if (employee != null) {
-      controller = WesiAiManagedChatController(
+      controller = WesiAiHandoffController(
         store: WesiAiLocalStore(employee.id),
       );
       controller!.addListener(_refresh);
@@ -133,7 +134,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                           enabled: !c.sending,
                           personaName: _personaName(item.persona),
                           onTap: () => c.selectConversation(item.id),
-                          onAction: (action) => _conversationAction(c, item, action),
+                          onAction: (action) =>
+                              _conversationAction(c, item, action),
                         ),
                       if (archived.isNotEmpty)
                         ExpansionTile(
@@ -208,6 +210,27 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                             ],
                           ),
                         ),
+                      if (active.persona != WesiAiPersona.lobby)
+                        Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+                          child: Row(
+                            children: [
+                              Text('Сейчас: ${_personaName(active.persona)}'),
+                              const Spacer(),
+                              OutlinedButton.icon(
+                                onPressed: c.sending
+                                    ? null
+                                    : () => _handoff(c, active),
+                                icon: const Icon(Icons.swap_horiz),
+                                label: Text(
+                                  active.persona == WesiAiPersona.zane
+                                      ? 'Передать Нирване'
+                                      : 'Передать Зейну',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       Expanded(
                         child: messages.isEmpty
                             ? const Center(
@@ -221,7 +244,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                                   return ListTile(
                                     leading: m.kind == WesiAiMessageKind.error
                                         ? const Icon(Icons.error_outline)
-                                        : null,
+                                        : m.kind == WesiAiMessageKind.status
+                                            ? const Icon(Icons.swap_horiz)
+                                            : null,
                                     title: Text(m.text),
                                     subtitle: Text(_authorName(m.author)),
                                   );
@@ -270,22 +295,50 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     );
   }
 
+  Future<void> _handoff(
+    WesiAiHandoffController controller,
+    WesiAiConversation source,
+  ) async {
+    final target = source.persona == WesiAiPersona.zane
+        ? WesiAiPersona.nirvana
+        : WesiAiPersona.zane;
+    final targetName = _personaName(target);
+    final accepted = await showDialog<bool>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: Text('Передать задачу: $targetName?'),
+            content: Text(
+              'Wesi AI создаст отдельный чат с $targetName и передаст ему текущий текстовый контекст. Исходный чат останется без изменений.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: const Text('Отмена'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: const Text('Передать'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (accepted) await controller.handoffTo(target);
+  }
+
   Future<void> _conversationAction(
     WesiAiManagedChatController controller,
     WesiAiConversation conversation,
     String action,
   ) async {
-    switch (action) {
-      case 'pin':
-        await controller.togglePinned(conversation.id);
-      case 'rename':
-        await _rename(controller, conversation);
-      case 'archive':
-        await controller.archiveConversation(conversation.id);
-      case 'delete':
-        if (await _confirmDelete(conversation.title)) {
-          await controller.deleteConversation(conversation.id);
-        }
+    if (action == 'pin') {
+      await controller.togglePinned(conversation.id);
+    } else if (action == 'rename') {
+      await _rename(controller, conversation);
+    } else if (action == 'archive') {
+      await controller.archiveConversation(conversation.id);
+    } else if (action == 'delete' && await _confirmDelete(conversation.title)) {
+      await controller.deleteConversation(conversation.id);
     }
   }
 
@@ -329,7 +382,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
       ),
     );
     editor.dispose();
-    if (result != null) await controller.renameConversation(conversation.id, result);
+    if (result != null) {
+      await controller.renameConversation(conversation.id, result);
+    }
   }
 
   Future<bool> _confirmDelete(String title) async {
@@ -337,7 +392,9 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: const Text('Удалить чат?'),
-            content: Text('Локальная история «$title» будет удалена с этого устройства.'),
+            content: Text(
+              'Локальная история «$title» будет удалена с этого устройства.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(dialogContext, false),
@@ -407,7 +464,10 @@ class _ConversationTile extends StatelessWidget {
               value: 'pin',
               child: Text(item.pinned ? 'Открепить' : 'Закрепить'),
             ),
-            const PopupMenuItem(value: 'rename', child: Text('Переименовать')),
+            const PopupMenuItem(
+              value: 'rename',
+              child: Text('Переименовать'),
+            ),
             const PopupMenuItem(value: 'archive', child: Text('В архив')),
             const PopupMenuItem(value: 'delete', child: Text('Удалить')),
           ],
