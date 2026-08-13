@@ -3,7 +3,7 @@ import test from 'node:test';
 import {createRequire} from 'node:module';
 
 const require = createRequire(import.meta.url);
-const tools = require('../pb_hooks/wesi_ai_tools.js');
+const tools = require('../pb_hooks/wesi_ai_task_tools.js');
 
 function row(payload) {
   return {
