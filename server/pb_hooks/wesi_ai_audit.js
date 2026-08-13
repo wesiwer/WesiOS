@@ -1,5 +1,6 @@
 module.exports = {
   record: function(e, ctx, entry) {
+    if (typeof __hooks === "undefined") return false;
     try {
       const now = new Date().toISOString();
       const id = "critical_audit_wesi_ai_" + Date.now() + "_" + $security.randomString(8);
