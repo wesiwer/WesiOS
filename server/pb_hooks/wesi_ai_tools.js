@@ -10,6 +10,14 @@ function payloadOf(record) {
   return {};
 }
 
+function recordAudit(e, ctx, entry) {
+  try {
+    const path = typeof __hooks !== "undefined" ? __hooks + "/wesi_ai_audit.js" : "./wesi_ai_audit.js";
+    const audit = require(path);
+    audit.record(e, ctx, entry);
+  } catch (_) {}
+}
+
 function loadAccess(e, ctx) {
   let permissions = {};
   if (ctx.isOwner) {
@@ -188,7 +196,11 @@ module.exports = {
       if (!title || title.length > 500) return {ok: false, code: "VALIDATION_ERROR", message: "Некорректное название задачи"};
       const target = resolveEmployee(e, ctx, input.assignee);
       if (target.error) return {ok: false, code: target.error, message: target.error === "AMBIGUOUS_EMPLOYEE" ? "Найдено несколько сотрудников с таким именем" : "Сотрудник не найден"};
-      if (target.id !== ctx.employeeId && !access.canAssignOthers) return {ok: false, code: "FORBIDDEN", message: "Нет права назначать задачи другим сотрудникам", alternatives: ["Создать задачу себе", "Подготовить текст для руководителя"]};
+      const requestedOrg = String(input.organizationId || activeOrganizationId || ROOT_ORG);
+      if (target.id !== ctx.employeeId && !access.canAssignOthers) {
+        recordAudit(e, ctx, {tool: "tasks_create", entityType: "wesi_ai_action", entityId: "tasks_create", organizationId: requestedOrg, ok: false, code: "FORBIDDEN", targetEmployeeId: target.id});
+        return {ok: false, code: "FORBIDDEN", message: "Нет права назначать задачи другим сотрудникам", alternatives: ["Создать задачу себе", "Подготовить текст для руководителя"]};
+      }
       const orgId = chooseOrganization(access, input.organizationId || activeOrganizationId);
       if (!orgId) return {ok: false, code: "FORBIDDEN", message: "Нет доступной организации для задачи"};
       let dueDate = null;
@@ -225,6 +237,7 @@ module.exports = {
       record.set("stamp", now);
       record.set("deleted", false);
       e.app.save(record);
+      recordAudit(e, ctx, {tool: "tasks_create", entityType: "task", entityId: id, organizationId: orgId, ok: true, targetEmployeeId: target.id});
       return {ok: true, result: {task: {id: id, title: title, dueDate: dueDate, assigneeId: target.id, assignee: target.label, organizationId: orgId}}};
     }
 
