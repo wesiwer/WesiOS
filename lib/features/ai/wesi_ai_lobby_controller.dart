@@ -4,12 +4,13 @@ import 'controllers/wesi_ai_chat_controller.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
 import 'wesi_ai_api.dart';
+import 'wesi_ai_lobby_api.dart';
 import 'wesi_ai_lobby_codec.dart';
 
 class WesiAiLobbyChatController extends WesiAiChatController {
   WesiAiLobbyChatController({
     required WesiAiLocalStore store,
-    WesiAiApi api = const WesiAiApi(),
+    WesiAiApi api = const WesiAiLobbyApi(),
   }) : super(store: store, api: api);
 
   @override
