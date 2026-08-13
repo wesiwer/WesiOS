@@ -22,10 +22,26 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for file in server/pb_hooks/*.js server/employee-portal/*.js; do
+          for file in server/pb_hooks/*.js server/employee-portal/*.js server/wesi-ai-relay/*.mjs; do
             [ -f "$file" ] || continue
             node --check "$file"
           done
+      - name: Test Wesi AI Relay
+        run: node --test server/wesi-ai-relay/*.test.mjs
+      - name: Validate Wesi AI persona bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python server/build-wesi-ai-personas.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path('server/pb_hooks/.wesi-ai-personas.json')
+          data = json.loads(p.read_text(encoding='utf-8'))
+          assert len(data['personas']['zane']) >= 200
+          assert len(data['personas']['nirvana']) >= 200
+          p.unlink()
+          PY
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
