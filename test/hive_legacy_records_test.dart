@@ -289,6 +289,66 @@ void main() {
     await box.close();
   });
 
+  test('операция из ветки орг-иерархии читается со сдвигом полей', () async {
+    // Самая коварная из раскладок. Поле 12 там — organizationId (строка), а
+    // после слияния под этим номером лежит recurringAnchor (дата). Прочитать
+    // одно как другое нельзя: приведение падает, и вместе с ним падает
+    // каждый экран, где читаются операции.
+    await writeAsOldVersion(
+      _ShiftedTransactionWriter(),
+      TransactionModelAdapter(),
+      'shifted_tx',
+      'T9',
+      _ShiftedTransaction(
+        id: 'T9',
+        title: 'Продажа бита',
+        amount: 15000,
+        type: TransactionType.income,
+        date: DateTime.utc(2026, 8, 1),
+        accountId: 'main',
+        organizationId: 'org_wesi_beats',
+        source: TransactionSource.crm,
+        createdBy: 'wesi',
+        originalCurrency: 'USD',
+        fxRateToReporting: 100,
+        fxSource: 'cbr',
+      ),
+    );
+
+    final box = await Hive.openBox<TransactionModel>('shifted_tx');
+    final tx = box.get('T9');
+
+    expect(tx, isNotNull, reason: 'иначе экран финансов не открывается вовсе');
+    expect(tx!.title, 'Продажа бита');
+    expect(tx.amount, 15000);
+    // Поля, сдвинутые на одно, обязаны встать на свои места.
+    expect(tx.organizationId, 'org_wesi_beats',
+        reason: 'иначе операция уедет не в ту организацию');
+    expect(tx.source, TransactionSource.crm);
+    expect(tx.createdBy, 'wesi');
+    expect(tx.originalCurrency, 'USD');
+    expect(tx.fxRateToReporting, 100);
+    expect(tx.fxSource, 'cbr');
+    // Якоря в той раскладке не существовало — его и не должно появиться.
+    expect(tx.recurringAnchor, isNull);
+    await box.close();
+  });
+
+  test('целое число в денежном поле не роняет чтение', () async {
+    // Ноль вполне мог записаться целым. Жёсткое приведение к double? на нём
+    // падает, хотя данные исправны.
+    await writeAsOldVersion(
+      _IntMoneyWriter(),
+      TransactionModelAdapter(),
+      'int_money_tx',
+      'T8',
+      const _IntMoney(),
+    );
+    final box = await Hive.openBox<TransactionModel>('int_money_tx');
+    expect(box.get('T8')?.amount, 0);
+    await box.close();
+  });
+
   test('объявленное число полей совпадает с записанным', () {
     // Адаптер написан руками, а значит номер поля можно и забыть. Заголовок
     // говорит «полей 30», а записано 29 — Hive прочитает мусор, и заметить
@@ -636,5 +696,114 @@ class _LegacyEmployeeWriter extends TypeAdapter<_LegacyEmployee> {
       ..write(obj.demoStats)
       ..writeByte(16)
       ..write(obj.photo);
+  }
+}
+
+class _ShiftedTransaction {
+  final String id;
+  final String title;
+  final double amount;
+  final TransactionType type;
+  final DateTime date;
+  final String? accountId;
+  final String? organizationId;
+  final TransactionSource source;
+  final String? createdBy;
+  final String originalCurrency;
+  final double fxRateToReporting;
+  final String fxSource;
+
+  const _ShiftedTransaction({
+    required this.id,
+    required this.title,
+    required this.amount,
+    required this.type,
+    required this.date,
+    this.accountId,
+    this.organizationId,
+    required this.source,
+    this.createdBy,
+    required this.originalCurrency,
+    required this.fxRateToReporting,
+    required this.fxSource,
+  });
+}
+
+/// Пишет операцию так, как это делала сборка ветки орг-иерархии: 29 полей,
+/// организация под номером 12, всё остальное сдвинуто на одно.
+class _ShiftedTransactionWriter extends TypeAdapter<_ShiftedTransaction> {
+  @override
+  final int typeId = 1;
+
+  @override
+  _ShiftedTransaction read(BinaryReader reader) =>
+      throw UnsupportedError('старый адаптер только пишет');
+
+  @override
+  void write(BinaryWriter writer, _ShiftedTransaction obj) {
+    writer
+      ..writeByte(29)
+      ..writeByte(0)..write(obj.id)
+      ..writeByte(1)..write(obj.title)
+      ..writeByte(2)..write(obj.amount)
+      ..writeByte(3)..write(obj.type)
+      ..writeByte(4)..write(obj.date)
+      ..writeByte(5)..write(null)
+      ..writeByte(6)..write(null)
+      ..writeByte(7)..write(false)
+      ..writeByte(8)..write(null)
+      ..writeByte(9)..write(false)
+      ..writeByte(10)..write(null)
+      ..writeByte(11)..write(obj.accountId)
+      ..writeByte(12)..write(obj.organizationId)
+      ..writeByte(13)..write(null)
+      ..writeByte(14)..write(null)
+      ..writeByte(15)..write(obj.source)
+      ..writeByte(16)..write(obj.createdBy)
+      ..writeByte(17)..write(null)
+      ..writeByte(18)..write(null)
+      ..writeByte(19)..write(null)
+      ..writeByte(20)..write(null)
+      ..writeByte(21)..write(null)
+      ..writeByte(22)..write(null)
+      ..writeByte(23)..write(obj.originalCurrency)
+      ..writeByte(24)..write(null)
+      ..writeByte(25)..write('RUB')
+      ..writeByte(26)..write(obj.fxRateToReporting)
+      ..writeByte(27)..write(null)
+      ..writeByte(28)..write(obj.fxSource);
+  }
+}
+
+class _IntMoney {
+  const _IntMoney();
+}
+
+/// Пишет сумму целым числом — так вполне мог записаться ноль.
+class _IntMoneyWriter extends TypeAdapter<_IntMoney> {
+  @override
+  final int typeId = 1;
+
+  @override
+  _IntMoney read(BinaryReader reader) =>
+      throw UnsupportedError('старый адаптер только пишет');
+
+  @override
+  void write(BinaryWriter writer, _IntMoney obj) {
+    writer
+      ..writeByte(13)
+      ..writeByte(0)..write('T8')
+      ..writeByte(1)..write('Ноль')
+      ..writeByte(2)..write(0)
+      ..writeByte(3)..write(TransactionType.income)
+      ..writeByte(4)..write(DateTime.utc(2026, 8, 1))
+      ..writeByte(5)..write(null)
+      ..writeByte(6)..write(null)
+      ..writeByte(7)..write(false)
+      ..writeByte(8)..write(null)
+      ..writeByte(9)..write(false)
+      ..writeByte(10)..write(null)
+      ..writeByte(11)..write(null)
+      ..writeByte(12)..write(null);
   }
 }

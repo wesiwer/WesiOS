@@ -22,11 +22,14 @@ void main() {
     for (final entity in root.listSync(recursive: true)) {
       if (entity is! File || !entity.path.endsWith('.dart')) continue;
       final source = entity.readAsStringSync();
-      if (!source.contains('_loading = false')) continue;
+      // Флаг называют по-разному: _loading, _isLoading, _busy. Искать одно
+      // конкретное имя — значит пропустить остальные, что и случилось с
+      // экраном кассы: там _isLoading, и первая проверка его не заметила.
+      if (!_loadingFlag.hasMatch(source)) continue;
 
       final functions = _asyncFunctions(source);
       for (final function in functions) {
-        if (!function.body.contains('_loading = false')) continue;
+        if (!_loadingFlag.hasMatch(function.body)) continue;
         if (!function.body.contains('await ')) continue;
         if (function.body.contains('catch')) continue;
         // Тело могло быть вынесено, а страховка остаться в вызывающем: это
@@ -48,6 +51,9 @@ void main() {
     );
   });
 }
+
+/// Любое присваивание «загрузка закончилась», как бы флаг ни назывался.
+final RegExp _loadingFlag = RegExp(r'_\w*[Ll]oading\w*\s*=\s*false');
 
 class _AsyncFunction {
   final String name;

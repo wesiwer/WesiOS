@@ -160,19 +160,24 @@ class AccountModelAdapter extends TypeAdapter<AccountModel> {
       id: fields[0] as String,
       name: fields[1] as String,
       kind: fields[2] as AccountKind? ?? AccountKind.main,
-      openingBalance: fields[3] as double? ?? 0,
-      colorValue: fields[4] as int? ?? 0xFFF97316,
+      openingBalance: _num(fields[3]) ?? 0,
+      colorValue: (fields[4] as num?)?.toInt() ?? 0xFFF97316,
       createdAt: fields[5] as DateTime,
       archived: fields[6] as bool? ?? false,
       note: fields[7] as String?,
       organizationId: fields[8] as String?,
-      minimumBalance: fields[9] as double? ?? 0,
+      minimumBalance: _num(fields[9]) ?? 0,
       allowNetting: fields[10] as bool? ?? true,
       currency: fields[11] as String? ?? 'RUB',
-      fxHaircut: fields[12] as double? ?? 0.03,
-      transferDelayDays: fields[13] as int? ?? 0,
+      fxHaircut: _num(fields[12]) ?? 0.03,
+      transferDelayDays: (fields[13] as num?)?.toInt() ?? 0,
     );
   }
+
+  /// Число могло быть записано целым: жёсткое приведение к `double?` на
+  /// таком значении падает, хотя данные исправны.
+  static double? _num(dynamic value) =>
+      value is num ? value.toDouble() : null;
 
   @override
   void write(BinaryWriter writer, AccountModel obj) {

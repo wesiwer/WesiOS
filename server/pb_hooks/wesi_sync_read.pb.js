@@ -28,7 +28,15 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     "inter_org_transfers": true, "transaction_audit": true,
     "critical_audit": true, "calendar_events": true, "articles": true,
     "chats": true, "messages": true, "roadmap_state": true,
-    "crm_state": true, "profile_private": true, "vault_private": true
+    "crm_state": true, "profile_private": true, "vault_private": true,
+    // Появились, когда синхронизация перешла с «один список одной строкой»
+    // на запись за записью. Без них сервер отвечал 400 на первой же новой
+    // коллекции, и обмен вставал целиком — включая те коллекции, что он
+    // знал: проход по списку не доходил до конца.
+    "roadmap_projects": true, "roadmap_items": true,
+    "crm_clients": true, "crm_deals": true, "crm_interactions": true,
+    "audio_beats": true, "profile": true,
+    "file_grants": true, "file_requests": true, "file_handovers": true
   };
   if (!known[collection]) throw new BadRequestError("Неизвестная коллекция синхронизации");
 
@@ -44,7 +52,10 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     const map = {
       "tasks": "tasks", "calendar_events": "calendar", "articles": "knowledge",
       "chats": "chats", "messages": "chats", "roadmap_state": "roadmap",
-      "crm_state": "crm"
+      "crm_state": "crm",
+      "roadmap_projects": "roadmap", "roadmap_items": "roadmap",
+      "crm_clients": "crm", "crm_deals": "crm", "crm_interactions": "crm",
+      "audio_beats": "audio"
     };
     return map[collection] ? hasModule(map[collection]) : true;
   };

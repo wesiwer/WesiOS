@@ -122,7 +122,19 @@ class _TreasuryForecastScreenState extends State<TreasuryForecastScreen> {
     if (mounted) setState(() => _backtest = result);
   }
 
+  /// Загрузка под страховкой: исключение не должно оставлять экран
+  /// прогноза в вечном спиннере.
   Future<void> _loadData({bool full = false}) async {
+    try {
+      await _loadDataInner(full: full);
+    } catch (error) {
+      debugPrint('forecast_chart_screen: загрузка не удалась — $error');
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadDataInner({bool full = false}) async {
     if (full) {
       setState(() => _isLoading = true);
     } else {

@@ -48,7 +48,19 @@ class _ProfileCredentialsCardState extends State<ProfileCredentialsCard> {
     });
   }
 
+  /// Загрузка под страховкой: исключение не должно оставлять
+  /// экран в вечном спиннере.
   Future<void> _loadSessions() async {
+    try {
+      await _loadSessionsInner();
+    } catch (error) {
+      debugPrint('credentials_card: загрузка не удалась — $error');
+      if (!mounted) return;
+      setState(() => _loadingSessions = false);
+    }
+  }
+
+  Future<void> _loadSessionsInner() async {
     if (_loadingSessions || !SyncEndpoint.isConnected) return;
     if (mounted) setState(() => _loadingSessions = true);
     final sessions = await SessionService.list();

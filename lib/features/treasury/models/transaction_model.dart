@@ -339,10 +339,32 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
     final fields = <int, dynamic>{
       for (var i = 0; i < count; i++) reader.readByte(): reader.read(),
     };
+
+    // Записи бывают трёх раскладок, и различить их обязательно.
+    //
+    // Поле 12 в разное время значило разное. В ветке орг-иерархии под ним
+    // лежал `organizationId` — строка, а после слияния там `recurringAnchor`
+    // — дата, и все поля организации сдвинулись на одно вперёд. Прочитать
+    // одно как другое нельзя: приведение падает с «type 'String' is not a
+    // subtype of type 'DateTime?'», и вместе с ним падает весь экран, где
+    // читались операции.
+    //
+    // Отличаются раскладки надёжно, по самим данным:
+    //   • есть поле 29        — нынешняя раскладка, 30 полей;
+    //   • есть 13, но нет 29  — сдвинутая, 29 полей;
+    //   • нет и 13            — самая старая, 13 полей, до организаций.
+    // Тип поля 12 проверяется дополнительно: если там строка, раскладка
+    // сдвинутая независимо от количества полей.
+    final shifted = !fields.containsKey(29) &&
+        (fields.containsKey(13) || fields[12] is String);
+    final at = shifted
+        ? (int index) => index <= 12 ? fields[index] : fields[index - 1]
+        : (int index) => fields[index];
+
     return TransactionModel(
       id: fields[0] as String,
       title: fields[1] as String,
-      amount: fields[2] as double,
+      amount: _num(fields[2]) ?? 0,
       type: fields[3] as TransactionType,
       date: fields[4] as DateTime,
       category: fields[5] as String?,
@@ -350,28 +372,35 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
       isRecurring: fields[7] as bool? ?? false,
       recurringPeriod: fields[8] as RecurringPeriod?,
       isAnomaly: fields[9] as bool? ?? false,
-      zScore: fields[10] as double?,
+      zScore: _num(fields[10]),
       accountId: fields[11] as String?,
-      recurringAnchor: fields[12] as DateTime?,
-      organizationId: fields[13] as String?,
-      projectId: fields[14] as String?,
-      counterpartyId: fields[15] as String?,
-      source: fields[16] as TransactionSource? ?? TransactionSource.manual,
-      createdBy: fields[17] as String?,
-      updatedBy: fields[18] as String?,
-      updatedAt: fields[19] as DateTime?,
-      ownerEmployeeId: fields[20] as String?,
-      interOrgTransferId: fields[21] as String?,
-      createdByEmployeeId: fields[22] as String?,
-      originalAmount: fields[23] as double?,
-      originalCurrency: fields[24] as String? ?? 'RUB',
-      organizationBaseAmount: fields[25] as double?,
-      organizationBaseCurrency: fields[26] as String? ?? 'RUB',
-      fxRateToReporting: fields[27] as double? ?? 1.0,
-      fxRateAt: fields[28] as DateTime?,
-      fxSource: fields[29] as String? ?? 'legacy',
+      // У сдвинутой раскладки якоря регулярного платежа не было вовсе:
+      // под этим номером лежала организация. Значит его и нет.
+      recurringAnchor: shifted ? null : fields[12] as DateTime?,
+      organizationId: at(13) as String?,
+      projectId: at(14) as String?,
+      counterpartyId: at(15) as String?,
+      source: at(16) as TransactionSource? ?? TransactionSource.manual,
+      createdBy: at(17) as String?,
+      updatedBy: at(18) as String?,
+      updatedAt: at(19) as DateTime?,
+      ownerEmployeeId: at(20) as String?,
+      interOrgTransferId: at(21) as String?,
+      createdByEmployeeId: at(22) as String?,
+      originalAmount: _num(at(23)),
+      originalCurrency: at(24) as String? ?? 'RUB',
+      organizationBaseAmount: _num(at(25)),
+      organizationBaseCurrency: at(26) as String? ?? 'RUB',
+      fxRateToReporting: _num(at(27)) ?? 1.0,
+      fxRateAt: at(28) as DateTime?,
+      fxSource: at(29) as String? ?? 'legacy',
     );
   }
+
+  /// Число могло быть записано целым — например, ноль. Жёсткое приведение к
+  /// `double?` на таком значении падает, хотя данные совершенно исправны.
+  static double? _num(dynamic value) =>
+      value is num ? value.toDouble() : null;
 
   @override
   void write(BinaryWriter writer, TransactionModel obj) {

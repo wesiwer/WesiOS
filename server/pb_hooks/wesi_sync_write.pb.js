@@ -9,7 +9,15 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
     "inter_org_transfers": true, "transaction_audit": true,
     "critical_audit": true, "calendar_events": true, "articles": true,
     "chats": true, "messages": true, "roadmap_state": true,
-    "crm_state": true, "profile_private": true, "vault_private": true
+    "crm_state": true, "profile_private": true, "vault_private": true,
+    // Появились, когда синхронизация перешла с «один список одной строкой»
+    // на запись за записью. Без них сервер отвечал 400 на первой же новой
+    // коллекции, и обмен вставал целиком — включая те коллекции, что он
+    // знал: проход по списку не доходил до конца.
+    "roadmap_projects": true, "roadmap_items": true,
+    "crm_clients": true, "crm_deals": true, "crm_interactions": true,
+    "audio_beats": true, "profile": true,
+    "file_grants": true, "file_requests": true, "file_handovers": true
   };
   if (!known[collection]) throw new BadRequestError("Неизвестная коллекция синхронизации");
 
@@ -310,6 +318,41 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
       }
       const retained = existingRows.filter((row) => !visible(row));
       incoming = {"key": rid, "value": JSON.stringify(retained.concat(accepted))};
+    }
+  } else if (collection === "roadmap_projects" || collection === "roadmap_items") {
+    requireModule("roadmap");
+  } else if (collection === "crm_clients" || collection === "crm_deals" ||
+             collection === "crm_interactions") {
+    // Теперь запись за записью, а не весь раздел одной строкой. Проверка
+    // организации поэтому идёт по самой записи, а не по всему списку.
+    requireModule("crm");
+    if (!ctx.isOwner) {
+      const target = deleted ? before : incoming;
+      const orgId = String((target && target.organizationId) || "org_wesi_inc");
+      if (ctx.allowedOrgIds[orgId] !== true) {
+        throw new ForbiddenError("Нет доступа к этой организации");
+      }
+    }
+  } else if (collection === "audio_beats") {
+    requireModule("audio");
+  } else if (collection === "profile") {
+    // Профиль правит только его хозяин: чужую карточку через этот путь
+    // переписать нельзя даже тому, кто управляет командой.
+    if (!ctx.isOwner && rid !== ctx.employeeId && rid !== "me") {
+      throw new ForbiddenError("Чужой профиль править нельзя");
+    }
+  } else if (collection === "file_grants" || collection === "file_requests" ||
+             collection === "file_handovers") {
+    // Доступ к файлам живёт рядом с модулем аудио: биты и документы
+    // раздаются оттуда.
+    requireModule("audio");
+    if (!ctx.isOwner && collection === "file_grants") {
+      // Выдать себе доступ к чужому файлу нельзя — это и есть весь смысл
+      // разграничения. Право выдавать есть у владельца и у того, кто
+      // управляет командой.
+      if (!ctx.canManageTeam) {
+        throw new ForbiddenError("Выдавать доступ к файлам может владелец");
+      }
     }
   }
 

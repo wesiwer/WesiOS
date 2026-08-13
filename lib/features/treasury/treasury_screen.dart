@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/widgets/load_failure_panel.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_tooltip.dart';
 import '../../core/widgets/window_controls.dart';
@@ -31,6 +32,7 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   Map<String, double> _breakdown = {};
   List<TransactionModel> _anomalies = [];
   bool _isLoading = true;
+  String? _error;
   String _currency = CurrencyService.current;
 
   String? _accountId = AccountService.selectedId;
@@ -59,7 +61,25 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   }
 
   Future<void> _loadData() async {
-    if (mounted) setState(() => _isLoading = true);
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
+    try {
+      await _loadInner();
+    } catch (error) {
+      // Без этого одно исключение оставляло экран кассы в вечном спиннере.
+      if (!mounted) return;
+      setState(() {
+        _isLoading = false;
+        _error = '$error';
+      });
+    }
+  }
+
+  Future<void> _loadInner() async {
     await OrganizationContext.initialize();
     final txs = await _service.getAllTransactions();
     final anomalies = await _service.detectAnomalies();
@@ -175,6 +195,18 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) {
+      return Scaffold(
+        backgroundColor: AppTheme.background,
+        body: SafeArea(
+          child: LoadFailurePanel(
+            what: WesiLocale.isRussian ? 'Финансы' : 'Finances',
+            error: _error!,
+            onRetry: _loadData,
+          ),
+        ),
+      );
+    }
     if (_isLoading) {
       return Scaffold(
         backgroundColor: AppTheme.background,

@@ -36,7 +36,19 @@ class _SandboxScreenState extends State<SandboxScreen> {
     _loadData();
   }
 
+  /// Загрузка под страховкой: исключение не должно оставлять
+  /// экран в вечном спиннере.
   Future<void> _loadData() async {
+    try {
+      await _loadDataInner();
+    } catch (error) {
+      debugPrint('sandbox_screen: загрузка не удалась — $error');
+      if (!mounted) return;
+      setState(() => _isLoading = false);
+    }
+  }
+
+  Future<void> _loadDataInner() async {
     final txs = await _service.getAllTransactions();
     final balance = await _service.getCurrentBalance();
     final breakdown = await _service.getBalanceBreakdown();
