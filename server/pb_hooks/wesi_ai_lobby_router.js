@@ -1,6 +1,6 @@
 module.exports = {
   choose: function(ai, cfg, route, requestId, message, history) {
-    const payload = {requestId, route, operation: "route", input: {
+    const payload = {requestId, route, operation: "lobby", input: {
       system: "WESI_AI_LOBBY_ROUTER\nChoose ZANE for technical/finance/work tasks, NIRVANA for creative/media tasks, and both for mixed requests. Return only ZANE, NIRVANA, ZANE_NIRVANA or NIRVANA_ZANE.",
       history, message
     }};
