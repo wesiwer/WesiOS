@@ -3,13 +3,14 @@ import '../../core/theme/app_theme.dart';
 import '../../core/localization/wesi_locale.dart';
 import '../../core/services/currency_service.dart';
 import '../../core/widgets/window_controls.dart';
+import '../organizations/services/organization_context.dart';
+import '../organizations/widgets/organization_switcher.dart';
 import 'services/treasury_service.dart';
 import 'models/transaction_model.dart';
 import 'widgets/add_transaction_dialog.dart';
 import 'widgets/category_pie.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 
-/// Экран всех операций — полный список транзакций с edit/delete
 class OperationsScreen extends StatefulWidget {
   const OperationsScreen({super.key});
 
@@ -24,16 +25,26 @@ class _OperationsScreenState extends State<OperationsScreen> {
   bool _isLoading = true;
   String _searchQuery = '';
   String? _filterCategory;
-  String _sortBy = 'date'; // date, amount, category
+  String _sortBy = 'date';
 
   @override
   void initState() {
     super.initState();
+    OrganizationContext.revision.addListener(_reload);
     _loadData();
   }
 
+  @override
+  void dispose() {
+    OrganizationContext.revision.removeListener(_reload);
+    super.dispose();
+  }
+
+  void _reload() => _loadData();
+
   Future<void> _loadData() async {
     final txs = await _service.getAllTransactions();
+    if (!mounted) return;
     setState(() {
       _transactions = txs;
       _applyFilters();
@@ -52,7 +63,6 @@ class _OperationsScreenState extends State<OperationsScreen> {
       return matchesSearch && matchesCategory;
     }).toList();
 
-    // Sort
     switch (_sortBy) {
       case 'date':
         _filtered.sort((a, b) => b.date.compareTo(a.date));
@@ -68,11 +78,27 @@ class _OperationsScreenState extends State<OperationsScreen> {
   }
 
   Future<void> _deleteTx(String id) async {
-    await _service.deleteTransaction(id);
-    await _loadData();
+    try {
+      await _service.deleteTransaction(id);
+      await _loadData();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
   }
 
   Future<void> _editTx(TransactionModel tx) async {
+    if (tx.interOrgTransferId != null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Межорганизационная проводка изменяется только через связанную операцию перевода.'),
+          ),
+        );
+      }
+      return;
+    }
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (context) => AddTransactionDialog(
@@ -82,30 +108,52 @@ class _OperationsScreenState extends State<OperationsScreen> {
       ),
     );
     if (result != null) {
-      // copyWith, а не сборка новой модели по полям: при ручной сборке
-      // достаточно забыть одно поле, чтобы оно молча обнулилось. Так уже
-      // терялся accountId — операция со второго счёта после правки
-      // переезжала на основной, и балансы обоих счетов менялись без
-      // единого сообщения.
-      final updated = tx.copyWith(
+      final reportingAmount = result['amount'] as double;
+      final editedDate = result['date'] as DateTime? ?? tx.date;
+      // An edit is a new monetary observation in the currency currently shown
+      // by the dialog. Rebuild the normalized money metadata instead of
+      // carrying stale original/base values from the old amount.
+      final updated = TransactionModel(
+        id: tx.id,
         title: result['title'] as String,
-        amount: result['amount'] as double,
-        date: result['date'] as DateTime?,
+        amount: reportingAmount,
+        type: tx.type,
+        date: editedDate,
         category: result['category'] as String?,
         description: result['description'] as String?,
-        isRecurring: result['isRecurring'] as bool?,
-        recurringPeriod: result['recurringPeriod'] as RecurringPeriod?,
+        isRecurring: result['isRecurring'] as bool? ?? false,
+        recurringPeriod: result['isRecurring'] == true
+            ? result['recurringPeriod'] as RecurringPeriod?
+            : null,
+        isAnomaly: tx.isAnomaly,
+        zScore: tx.zScore,
+        accountId: tx.accountId,
+        organizationId: tx.organizationId,
+        projectId: tx.projectId,
+        counterpartyId: tx.counterpartyId,
+        source: tx.source,
+        createdBy: tx.createdBy,
+        updatedBy: tx.updatedBy,
+        updatedAt: tx.updatedAt,
+        ownerEmployeeId: result['ownerEmployeeId'] as String?,
+        interOrgTransferId: tx.interOrgTransferId,
+        createdByEmployeeId: tx.createdByEmployeeId,
+        originalAmount: CurrencyService.fromRub(reportingAmount),
+        originalCurrency: CurrencyService.current.toUpperCase(),
+        organizationBaseAmount: null,
+        organizationBaseCurrency: tx.organizationBaseCurrency,
+        fxRateToReporting: CurrencyService.rateToRub(CurrencyService.current),
+        fxRateAt: editedDate,
+        fxSource: 'CurrencyService',
       );
-      await _service.addTransaction(updated);
+      await _service.updateTransaction(updated, reason: 'manual edit');
       await _loadData();
     }
   }
 
-  Set<String> get _categories {
-    return _transactions
-        .map((t) => t.category ?? WesiLocale.get('uncategorized'))
-        .toSet();
-  }
+  Set<String> get _categories => _transactions
+      .map((t) => t.category ?? WesiLocale.get('uncategorized'))
+      .toSet();
 
   @override
   Widget build(BuildContext context) {
@@ -125,7 +173,10 @@ class _OperationsScreenState extends State<OperationsScreen> {
         backgroundColor: AppTheme.background,
         title: WesiTitle(WesiLocale.get('operations'), size: 18),
         actions: [
-          // Sort button
+          const Padding(
+            padding: EdgeInsets.only(right: 8),
+            child: Center(child: OrganizationSwitcher(compact: true)),
+          ),
           PopupMenuButton<String>(
             icon: Icon(Icons.sort, color: AppTheme.textSecondary),
             onSelected: (v) {
@@ -149,9 +200,8 @@ class _OperationsScreenState extends State<OperationsScreen> {
       ),
       body: Column(
         children: [
-          // Search bar
           Padding(
-            padding: EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
             child: TextField(
               onChanged: (v) {
                 setState(() {
@@ -173,7 +223,6 @@ class _OperationsScreenState extends State<OperationsScreen> {
               ),
             ),
           ),
-          // Category filter chips
           if (_categories.isNotEmpty)
             SizedBox(
               height: 40,
@@ -204,8 +253,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
                 ],
               ),
             ),
-          SizedBox(height: 8),
-          // Transactions list
+          const SizedBox(height: 8),
           Expanded(
             child: _filtered.isEmpty
                 ? Center(
@@ -217,9 +265,6 @@ class _OperationsScreenState extends State<OperationsScreen> {
                 : ListView(
                     padding: const EdgeInsets.all(16),
                     children: [
-                      // Диаграммы считаются по ОТФИЛЬТРОВАННОМУ списку —
-                      // так поиск и фильтр по категории меняют и структуру,
-                      // а не только перечень строк ниже.
                       CategoryPieSection(transactions: _filtered),
                       const SizedBox(height: 20),
                       ..._transactionRows(),
@@ -278,19 +323,20 @@ class _OperationsScreenState extends State<OperationsScreen> {
 
   Widget _txItem(TransactionModel tx) {
     final isIncome = tx.type == TransactionType.income;
+    final linked = tx.interOrgTransferId != null;
     return Dismissible(
       key: Key(tx.id),
-      direction: DismissDirection.endToStart,
+      direction: linked ? DismissDirection.none : DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,
-        padding: EdgeInsets.only(right: 20),
+        padding: const EdgeInsets.only(right: 20),
         color: AppTheme.accentRed.withOpacity(0.3),
         child: Icon(Icons.delete, color: AppTheme.accentRed),
       ),
-      onDismissed: (_) => _deleteTx(tx.id),
+      onDismissed: linked ? null : (_) => _deleteTx(tx.id),
       child: Container(
-        margin: EdgeInsets.only(bottom: 8),
-        padding: EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: AppTheme.surface.withOpacity(0.3),
           borderRadius: BorderRadius.circular(12),
@@ -299,10 +345,18 @@ class _OperationsScreenState extends State<OperationsScreen> {
         child: Row(
           children: [
             Icon(
-              isIncome ? Icons.arrow_upward : Icons.arrow_downward,
-              color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
+              linked
+                  ? Icons.swap_horiz_rounded
+                  : isIncome
+                      ? Icons.arrow_upward
+                      : Icons.arrow_downward,
+              color: linked
+                  ? AppTheme.accent
+                  : isIncome
+                      ? AppTheme.accentGreen
+                      : AppTheme.accentRed,
             ),
-            SizedBox(width: 12),
+            const SizedBox(width: 12),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -311,9 +365,9 @@ class _OperationsScreenState extends State<OperationsScreen> {
                       style: TextStyle(
                           color: AppTheme.textPrimary,
                           fontWeight: FontWeight.w600)),
-                  SizedBox(height: 4),
+                  const SizedBox(height: 4),
                   Text(
-                    '${tx.category ?? WesiLocale.get('uncategorized')} · ${_formatDate(tx.date)} · ${_formatTime(tx.date)}',
+                    '${tx.category ?? WesiLocale.get('uncategorized')} · ${_formatDate(tx.date)} · ${_formatTime(tx.date)}${linked ? ' · inter-org' : ''}',
                     style: TextStyle(color: AppTheme.textMuted, fontSize: 11),
                   ),
                 ],
@@ -326,20 +380,19 @@ class _OperationsScreenState extends State<OperationsScreen> {
                 color: isIncome ? AppTheme.accentGreen : AppTheme.accentRed,
               ),
             ),
-            SizedBox(width: 8),
+            const SizedBox(width: 8),
             GestureDetector(
-              onTap: () => _editTx(tx),
-              child: Icon(Icons.edit, size: 18, color: AppTheme.textMuted),
+              onTap: linked ? null : () => _editTx(tx),
+              child: Icon(Icons.edit,
+                  size: 18,
+                  color: linked ? AppTheme.textMuted.withOpacity(.35) : AppTheme.textMuted),
             ),
-            SizedBox(width: 12),
-            // Явная кнопка удаления. Свайп (Dismissible) остаётся, но на
-            // десктопе он неочевиден, а на телефоне о нём надо догадаться —
-            // из-за этого удалять операции получалось только во вкладке
-            // «Финансы».
+            const SizedBox(width: 12),
             GestureDetector(
-              onTap: () => _confirmDelete(tx),
+              onTap: linked ? null : () => _confirmDelete(tx),
               child: Icon(Icons.delete_outline,
-                  size: 18, color: AppTheme.accentRed),
+                  size: 18,
+                  color: linked ? AppTheme.textMuted.withOpacity(.35) : AppTheme.accentRed),
             ),
           ],
         ),
@@ -354,7 +407,7 @@ class _OperationsScreenState extends State<OperationsScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding: EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
+        insetPadding: const EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
         title: Text(ru ? 'Удалить операцию?' : 'Delete operation?',
             style: TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: Text(
@@ -380,9 +433,8 @@ class _OperationsScreenState extends State<OperationsScreen> {
     if (ok == true) await _deleteTx(tx.id);
   }
 
-  String _formatDate(DateTime d) {
-    return '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
-  }
+  String _formatDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}.${d.month.toString().padLeft(2, '0')}.${d.year}';
 
   String _formatTime(DateTime d) =>
       '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';

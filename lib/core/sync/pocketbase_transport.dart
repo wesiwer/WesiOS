@@ -6,8 +6,15 @@ import 'sync_endpoint.dart';
 import 'sync_merge.dart';
 import 'sync_transport.dart';
 
-/// Связь с сервером синхронизации на PocketBase.
+/// Связь с сервером синхронизации WesiOS поверх PocketBase.
+///
+/// Прямые CRUD-запросы к `wesios_records` намеренно не используются:
+/// встроенные правила коллекции оставляют каждую запись видимой только её
+/// auth-владельцу. Корпоративный обмен сотрудников проходит через
+/// `/api/wesi/sync/*`, где сервер проверяет WesiOS session, employeeId,
+/// модульные права, организационные гранты и область конкретной записи.
 class PocketBaseTransport implements SyncTransport {
+  /// Оставлены публичными для совместимости старых тестов/диагностики.
   static const String collectionName = 'wesios_records';
   static const int pageSize = 500;
 
@@ -19,7 +26,6 @@ class PocketBaseTransport implements SyncTransport {
   String? _token;
   String? _userId;
   String? _sessionId;
-  final Map<String, String> _serverIds = {};
 
   PocketBaseTransport(this.baseUrl);
 
@@ -49,7 +55,6 @@ class PocketBaseTransport implements SyncTransport {
     _token = null;
     _userId = null;
     _sessionId = null;
-    _serverIds.clear();
   }
 
   /// Прямой password-auth больше не используется: он обходил бы почтовый
@@ -69,69 +74,50 @@ class PocketBaseTransport implements SyncTransport {
   Future<SyncResult<Map<String, SyncRecord>>> fetch(String collection) async {
     if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
 
-    final out = <String, SyncRecord>{};
-    var page = 1;
-    while (true) {
-      final res = await _send(
-        'GET',
-        '/api/collections/$collectionName/records',
-        query: {
-          'filter': "coll='$collection'",
-          'perPage': '$pageSize',
-          'page': '$page',
-          'sort': 'id',
-        },
+    final res = await _send('GET', '/api/wesi/sync/$collection');
+    if (res.failure != null) return SyncResult.fail(res.failure!);
+
+    final items = res.value!['items'];
+    if (items is! List) {
+      return const SyncResult.fail(
+        SyncFailure('NOT_WESIOS', 'В ответе нет списка записей'),
       );
-      if (res.failure != null) return SyncResult.fail(res.failure!);
+    }
 
-      final items = res.value!['items'];
-      if (items is! List) {
-        return const SyncResult.fail(
-          SyncFailure('NOT_WESIOS', 'В ответе нет списка записей'),
-        );
-      }
-      for (final item in items) {
-        if (item is! Map) continue;
-        final rid = item['rid'];
-        final serverId = item['id'];
-        final stamp = DateTime.tryParse('${item['stamp']}');
-        if (rid is! String || serverId is! String || stamp == null) continue;
-
-        _serverIds['$collection/$rid'] = serverId;
-        final payload = item['payload'];
-        out[rid] = SyncRecord(
-          id: rid,
-          updatedAt: stamp,
-          deleted: item['deleted'] == true,
-          fields: payload is Map
-              ? Map<String, dynamic>.from(payload)
-              : const {},
-        );
-      }
-
-      final totalPages = item2int(res.value!['totalPages']);
-      if (items.length < pageSize || page >= totalPages) break;
-      page++;
+    final out = <String, SyncRecord>{};
+    for (final item in items) {
+      if (item is! Map) continue;
+      final rid = item['rid'];
+      final stamp = DateTime.tryParse('${item['stamp']}');
+      if (rid is! String || rid.isEmpty || stamp == null) continue;
+      final payload = item['payload'];
+      out[rid] = SyncRecord(
+        id: rid,
+        updatedAt: stamp,
+        deleted: item['deleted'] == true,
+        fields: payload is Map
+            ? Map<String, dynamic>.from(payload)
+            : const {},
+      );
     }
     return SyncResult.ok(out);
   }
 
   Future<SyncResult<String>> revision() async {
     if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
-    final res = await _send(
-      'GET',
-      '/api/collections/$collectionName/records',
-      query: const {
-        'perPage': '1',
-        'page': '1',
-        'sort': '-stamp,-id',
-        'fields': 'id,stamp',
-      },
-    );
+    final res = await _send('GET', '/api/wesi/sync/revision');
     if (res.failure != null) return SyncResult.fail(res.failure!);
-    return SyncResult.ok(revisionFromResponse(res.value!));
+    final revision = res.value!['revision'];
+    if (revision is! String || revision.isEmpty) {
+      return const SyncResult.fail(
+        SyncFailure('NOT_WESIOS', 'Сервер не вернул ревизию синхронизации'),
+      );
+    }
+    return SyncResult.ok(revision);
   }
 
+  /// Старый формат ответа PocketBase оставлен для unit-тестов миграционного
+  /// слоя. Рабочий transport получает готовую строку с `/api/wesi/sync/revision`.
   static String revisionFromResponse(Map<String, dynamic> json) {
     final items = json['items'];
     if (items is! List || items.isEmpty) return 'empty';
@@ -165,36 +151,35 @@ class PocketBaseTransport implements SyncTransport {
     final delivered = <String>[];
     SyncFailure? firstFailure;
     for (final r in records) {
-      final body = {
-        'owner': _userId,
-        'coll': collection,
-        'rid': r.id,
-        'payload': r.fields,
-        'stamp': r.updatedAt.toUtc().toIso8601String(),
-        'deleted': r.deleted,
-      };
-      final serverId = _serverIds['$collection/${r.id}'];
-      final res = serverId == null
-          ? await _send(
-              'POST',
-              '/api/collections/$collectionName/records',
-              body: body,
-            )
-          : await _send(
-              'PATCH',
-              '/api/collections/$collectionName/records/$serverId',
-              body: body,
-            );
-
+      final res = await _send(
+        'POST',
+        '/api/wesi/sync/$collection',
+        body: {
+          'rid': r.id,
+          'payload': r.fields,
+          'stamp': r.updatedAt.toUtc().toIso8601String(),
+          'deleted': r.deleted,
+        },
+      );
       if (res.failure != null) {
+        // Отказ в доступе — не поломка. Локальная база может содержать
+        // строки, которые видел предыдущий сотрудник на общем устройстве;
+        // сервер — настоящая граница доступа, и его «нельзя» означает, что
+        // строка просто не наша. Считать это ошибкой значило бы держать
+        // отчёт вечно красным у любого, чей доступ ограничен.
+        if (res.failure!.code == 'FORBIDDEN') continue;
+
         firstFailure ??= res.failure;
-        // Пропускаем эту запись и берёмся за следующую: одна упрямая
+        // Остальное пропускаем и берёмся за следующую запись: одна упрямая
         // запись не должна держать взаперти всё, что за ней в очереди.
         if (_fatalCodes.contains(res.failure!.code)) break;
         continue;
       }
-      final id = res.value?['id'];
-      if (id is String) _serverIds['$collection/${r.id}'] = id;
+      // Идентификатор записи на сервере запоминать больше не нужно: запись
+      // идёт через собственный обработчик, и решение «создать или обновить»
+      // принимает он сам по паре «коллекция + идентификатор». Заодно исчезли
+      // дубли, которые возникали, когда два устройства создавали одну и ту
+      // же запись одновременно.
       delivered.add(r.id);
     }
     return SyncPushResult(deliveredIds: delivered, failure: firstFailure);
@@ -239,11 +224,19 @@ class PocketBaseTransport implements SyncTransport {
       );
       final text = await res.transform(utf8.decoder).join();
 
-      if (res.statusCode == 401 || res.statusCode == 403) {
+      if (res.statusCode == 401) {
         return SyncResult.fail(
           auth
               ? const SyncFailure('NOT_SIGNED_IN', 'Сеанс завершён')
               : const SyncFailure('BAD_CREDENTIALS', 'Неверные данные входа'),
+        );
+      }
+      if (res.statusCode == 403) {
+        return SyncResult.fail(
+          SyncFailure(
+            'FORBIDDEN',
+            _briefly(text).isEmpty ? 'Нет доступа к этим данным' : _briefly(text),
+          ),
         );
       }
       if (res.statusCode == 400 && !auth) {
@@ -255,7 +248,7 @@ class PocketBaseTransport implements SyncTransport {
         return const SyncResult.fail(
           SyncFailure(
             'NOT_WESIOS',
-            'На сервере нет коллекции $collectionName',
+            'На сервере не установлен шлюз синхронизации WesiOS',
           ),
         );
       }

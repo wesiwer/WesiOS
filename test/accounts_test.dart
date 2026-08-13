@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:wesios/features/organizations/models/organization_access_grant.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
 import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 import 'package:wesios/features/treasury/services/account_service.dart';
@@ -17,6 +19,9 @@ void main() {
     Hive.registerAdapter(RecurringPeriodAdapter());
     Hive.registerAdapter(AccountKindAdapter());
     Hive.registerAdapter(AccountModelAdapter());
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
+    Hive.registerAdapter(OrganizationAccessGrantAdapter());
   });
 
   tearDownAll(() async {
@@ -148,12 +153,13 @@ void main() {
       expect(still.archived, isTrue);
     });
 
-    test('an empty account is removed outright', () async {
+    test('an empty account is archived instead of physically erased', () async {
       final a = await AccountService.create(name: 'Пустой');
       final ok = await AccountService.delete(a.id, hasOperations: false);
       expect(ok, isTrue);
       final all = await AccountService.getAll();
-      expect(all.any((x) => x.id == a.id), isFalse);
+      final still = all.firstWhere((x) => x.id == a.id);
+      expect(still.archived, isTrue);
     });
   });
 }

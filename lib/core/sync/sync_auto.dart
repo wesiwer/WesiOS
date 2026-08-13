@@ -57,7 +57,15 @@ class SyncAuto {
     unawaited(_pollRemote());
   }
 
-  static void stop() {
+  /// Останавливает автоматический обмен.
+  ///
+  /// Пока подтверждённая сессия активна и синхронизация включена, обычный
+  /// `stop()` не должен случайно выключить обмен. Старый LoginScreen делал
+  /// именно это для каждого non-owner сразу после успешного MFA-входа.
+  /// Настоящее выключение сначала ставит SyncEndpoint.enabled=false; внутренний
+  /// rebind/logout может использовать [force].
+  static void stop({bool force = false}) {
+    if (!force && SyncEndpoint.enabled && SyncEndpoint.isConnected) return;
     if (_listening) {
       SyncJournal.localChanges.removeListener(_onLocalChange);
     }
@@ -235,7 +243,7 @@ class SyncAuto {
   /// Только для тестов.
   @visibleForTesting
   static void reset() {
-    stop();
+    stop(force: true);
     pending.value = false;
   }
 }

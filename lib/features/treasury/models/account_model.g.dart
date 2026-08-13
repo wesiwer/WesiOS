@@ -25,13 +25,19 @@ class AccountModelAdapter extends TypeAdapter<AccountModel> {
       createdAt: fields[5] as DateTime,
       archived: fields[6] as bool,
       note: fields[7] as String?,
+      organizationId: fields[8] as String?,
+      minimumBalance: fields[9] as double,
+      allowNetting: fields[10] as bool,
+      currency: fields[11] as String,
+      fxHaircut: fields[12] as double,
+      transferDelayDays: fields[13] as int,
     );
   }
 
   @override
   void write(BinaryWriter writer, AccountModel obj) {
     writer
-      ..writeByte(8)
+      ..writeByte(14)
       ..writeByte(0)
       ..write(obj.id)
       ..writeByte(1)
@@ -47,7 +53,19 @@ class AccountModelAdapter extends TypeAdapter<AccountModel> {
       ..writeByte(6)
       ..write(obj.archived)
       ..writeByte(7)
-      ..write(obj.note);
+      ..write(obj.note)
+      ..writeByte(8)
+      ..write(obj.organizationId)
+      ..writeByte(9)
+      ..write(obj.minimumBalance)
+      ..writeByte(10)
+      ..write(obj.allowNetting)
+      ..writeByte(11)
+      ..write(obj.currency)
+      ..writeByte(12)
+      ..write(obj.fxHaircut)
+      ..writeByte(13)
+      ..write(obj.transferDelayDays);
   }
 
   @override
@@ -78,6 +96,10 @@ class AccountKindAdapter extends TypeAdapter<AccountKind> {
         return AccountKind.savings;
       case 4:
         return AccountKind.project;
+      case 5:
+        return AccountKind.reserve;
+      case 6:
+        return AccountKind.other;
       default:
         return AccountKind.main;
     }
@@ -100,6 +122,12 @@ class AccountKindAdapter extends TypeAdapter<AccountKind> {
         break;
       case AccountKind.project:
         writer.writeByte(4);
+        break;
+      case AccountKind.reserve:
+        writer.writeByte(5);
+        break;
+      case AccountKind.other:
+        writer.writeByte(6);
         break;
     }
   }

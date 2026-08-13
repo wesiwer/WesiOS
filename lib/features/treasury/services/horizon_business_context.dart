@@ -5,6 +5,8 @@ import '../../../core/services/currency_service.dart';
 import '../../audio/services/audio_vault_service.dart';
 import '../../crm/models/crm_models.dart';
 import '../../crm/services/crm_service.dart';
+import '../../organizations/models/organization_model.dart';
+import '../../organizations/services/organization_context.dart';
 import '../../tasks/models/task_model.dart';
 import '../../tasks/services/task_cash_impact.dart';
 import '../../tasks/services/task_service.dart';
@@ -27,9 +29,6 @@ class HorizonBusinessContext {
   });
 }
 
-/// Company-level context for Horizon. The forecast core stays a deterministic
-/// math engine; this layer translates real WesiOS modules into known/uncertain
-/// cash events and liquidity locations.
 class HorizonBusinessContextService {
   HorizonBusinessContextService._();
 
@@ -51,20 +50,28 @@ class HorizonBusinessContextService {
     required List<TransactionModel> transactions,
     required int days,
     DateTime? now,
+    Set<String>? organizationIds,
   }) async {
     final today = _day(now ?? DateTime.now());
     final end = addDays(today, days);
     final events = <HorizonCashEvent>[];
     final warnings = <ForecastActionPrompt>[];
     final exposure = <String, double>{};
+    final ids = organizationIds ??
+        await OrganizationContext.effectiveOrganizationIds();
 
-    await _addCrm(events, exposure, warnings, today, end);
-    await _addContracts(events, exposure, warnings, today, end);
-    await _addTaskObligations(events, warnings, today, end);
+    await _addCrm(events, exposure, warnings, today, end, ids);
+    if (ids.contains(OrganizationModel.rootId)) {
+      await _addContracts(events, exposure, warnings, today, end);
+    }
+    await _addTaskObligations(events, warnings, today, end, ids);
 
     List<AccountLiquiditySnapshot> accounts = const [];
     try {
-      accounts = await AccountLiquidityService.snapshots(transactions);
+      accounts = await AccountLiquidityService.snapshots(
+        transactions,
+        organizationIds: ids,
+      );
     } catch (_) {
       warnings.add(_sourceWarning(
         code: 'context-accounts-unavailable',
@@ -88,16 +95,18 @@ class HorizonBusinessContextService {
     List<ForecastActionPrompt> warnings,
     DateTime today,
     DateTime end,
+    Set<String> organizationIds,
   ) async {
     try {
-      final deals = await CrmService.deals();
+      final deals = await CrmService.dealsForOrganizations(organizationIds);
       for (final deal in deals) {
         if (!deal.isOpen || deal.expectedCloseAt == null || deal.amount <= 0) {
           continue;
         }
         final due = _day(deal.expectedCloseAt!);
         var eventDate = due;
-        var probability = (deal.probability / 100).clamp(0.01, 0.99).toDouble();
+        var probability =
+            (deal.probability / 100).clamp(0.01, 0.99).toDouble();
         var committed =
             probability >= 0.9 && deal.stage == DealStage.negotiation;
         if (!due.isAfter(today)) {
@@ -157,11 +166,6 @@ class HorizonBusinessContextService {
             CurrencyService.rateToRub(lease.currency.toLowerCase());
         final renewalDate = _day(lease.endsAt);
 
-        // Natural expiry is a realized contract outcome even when the user
-        // never presses “close lease”. recordClosedLease is idempotent by
-        // leaseId, so a later explicit close cannot duplicate evidence. If a
-        // new matching lease appears within the renewal window,
-        // markRenewalIfApplicable upgrades this outcome to renewed=true.
         if (!renewalDate.isAfter(today)) {
           await HorizonContractMemoryService.recordClosedLease(
             beatId: beat.id,
@@ -205,8 +209,9 @@ class HorizonBusinessContextService {
             source: 'audio-renewal',
             riskSource: 'audio:${beat.id}',
           ));
-          exposure['audio:${beat.id}'] = (exposure['audio:${beat.id}'] ?? 0) +
-              renewalAmount * contract.renewalProbability;
+          exposure['audio:${beat.id}'] =
+              (exposure['audio:${beat.id}'] ?? 0) +
+                  renewalAmount * contract.renewalProbability;
         }
 
         final royaltyDate =
@@ -224,8 +229,9 @@ class HorizonBusinessContextService {
             source: 'audio-royalty',
             riskSource: 'audio:${beat.id}',
           ));
-          exposure['audio:${beat.id}'] = (exposure['audio:${beat.id}'] ?? 0) +
-              contract.expectedRoyaltyRub * contract.royaltyProbability;
+          exposure['audio:${beat.id}'] =
+              (exposure['audio:${beat.id}'] ?? 0) +
+                  contract.expectedRoyaltyRub * contract.royaltyProbability;
         }
       }
     } catch (_) {
@@ -237,18 +243,15 @@ class HorizonBusinessContextService {
     }
   }
 
-  /// Cash-tag convention on Tasks keeps the task model backward-compatible:
-  /// `cash:-50000` -> committed expense at dueDate
-  /// `cash:+15000@0.6` -> uncertain incoming with 60% probability
-  /// `cash:uncertain:-10000@0.4` is also accepted.
   static Future<void> _addTaskObligations(
     List<HorizonCashEvent> events,
     List<ForecastActionPrompt> warnings,
     DateTime today,
     DateTime end,
+    Set<String> organizationIds,
   ) async {
     try {
-      final tasks = await TaskService().getAll();
+      final tasks = await TaskService().getForOrganizations(organizationIds);
       for (final task in tasks) {
         if (task.status == TaskStatus.done || task.dueDate == null) continue;
         final parsed = TaskCashImpact.fromTags(task.tags);
@@ -274,10 +277,6 @@ class HorizonBusinessContextService {
             day: 1,
           ));
 
-          // Forecast offsets begin at day 1. An unpaid due/overdue cash task
-          // must not vanish merely because its calendar date is no longer in
-          // the future; move the unresolved obligation to the next forecast
-          // step while preserving its committed/probabilistic semantics.
           final missedIncoming = overdue && parsed.signedAmount > 0;
           final overdueProbability = missedIncoming
               ? min(parsed.probability, 0.65).toDouble()

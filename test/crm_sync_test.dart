@@ -8,6 +8,8 @@ import 'package:wesios/core/sync/sync_engine.dart';
 import 'package:wesios/core/sync/sync_journal.dart';
 import 'package:wesios/features/crm/models/crm_models.dart';
 import 'package:wesios/features/crm/services/crm_service.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
+import 'package:wesios/features/organizations/services/organization_service.dart';
 
 import 'fake_sync_transport.dart';
 
@@ -47,6 +49,14 @@ void main() {
   setUpAll(() async {
     dir = Directory.systemTemp.createTempSync('wesios_crm_sync');
     Hive.init(dir.path);
+    // CRM теперь привязана к организации: без неё запись некуда положить.
+    if (!Hive.isAdapterRegistered(80)) {
+      Hive.registerAdapter(OrganizationStatusAdapter());
+    }
+    if (!Hive.isAdapterRegistered(81)) {
+      Hive.registerAdapter(OrganizationModelAdapter());
+    }
+    await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
     await Hive.openBox('wesios_settings');
     await Hive.openBox(SyncJournal.boxName);
     await Hive.openBox<String>(CrmService.clientsBoxName);
@@ -64,6 +74,8 @@ void main() {
     await Hive.box('wesios_settings').clear();
     await Hive.box(SyncJournal.boxName).clear();
     await CrmService.clearForTest();
+    await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
+    await OrganizationService.ensureBaseline();
   });
 
   test('клиенты, сделки и касания участвуют в обмене', () {
@@ -132,6 +144,9 @@ void main() {
   });
 
   test('перенос сделки по воронке не трогает соседние сделки', () async {
+    // Сделка без клиента теперь не заводится — и правильно: висящая в
+    // воздухе сделка никому ни о чём не говорит.
+    await CrmService.saveClient(client('C1', 'Иван'));
     await CrmService.saveDeal(deal('D1', 'C1', 'Альбом', 150000));
     await CrmService.saveDeal(deal('D2', 'C1', 'Клип', 80000));
     await Future<void>.delayed(Duration.zero);

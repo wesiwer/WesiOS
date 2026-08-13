@@ -1,71 +1,40 @@
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../../../core/localization/wesi_locale.dart';
+import '../../organizations/models/organization_model.dart';
+import '../../organizations/services/organization_context.dart';
 import '../models/transaction_model.dart';
 
-/// Категории операций, которые пользователь может менять сам.
-///
-/// Раньше список был захардкожен прямо в диалоге добавления, поэтому
-/// подогнать его под своё дело было нельзя — а «ПО / Маркетинг / Офис»
-/// подходит далеко не каждому.
-///
-/// Наборы у доходов и расходов **раздельные**: общий список заставлял
-/// выбирать «Зарплаты» для поступления и «Фриланс» для траты — категории
-/// из другой половины бизнеса только мешали и портили разрезы в аналитике.
+/// Categories are organization-owned vocabulary. Legacy keys remain the
+/// Wesi Inc source so existing custom categories survive migration without
+/// duplicating or silently resetting them.
 class CategoryService {
   static const String _box = 'wesios_settings';
-
-  /// Инкрементируется при любом изменении списка — открытые экраны
-  /// перечитывают категории без перезапуска.
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static const List<String> incomeDefaultsRu = [
-    'Продажи',
-    'Услуги',
-    'Фриланс',
-    'Подписки',
-    'Инвестиции',
-    'Возвраты',
-    'Прочий доход',
+    'Продажи', 'Услуги', 'Фриланс', 'Подписки', 'Инвестиции', 'Возвраты', 'Прочий доход',
   ];
-
   static const List<String> incomeDefaultsEn = [
-    'Sales',
-    'Services',
-    'Freelance',
-    'Subscriptions',
-    'Investments',
-    'Refunds',
-    'Other income',
+    'Sales', 'Services', 'Freelance', 'Subscriptions', 'Investments', 'Refunds', 'Other income',
   ];
-
   static const List<String> expenseDefaultsRu = [
-    'ПО',
-    'Маркетинг',
-    'Офис',
-    'Зарплаты',
-    'Инфраструктура',
-    'Налоги',
-    'Оборудование',
-    'Прочие расходы',
+    'ПО', 'Маркетинг', 'Офис', 'Зарплаты', 'Инфраструктура', 'Налоги', 'Оборудование', 'Прочие расходы',
   ];
-
   static const List<String> expenseDefaultsEn = [
-    'Software',
-    'Marketing',
-    'Office',
-    'Salaries',
-    'Infrastructure',
-    'Taxes',
-    'Equipment',
-    'Other expenses',
+    'Software', 'Marketing', 'Office', 'Salaries', 'Infrastructure', 'Taxes', 'Equipment', 'Other expenses',
   ];
 
-  /// Ключ хранения: свой на каждую пару (тип операции × язык).
-  static String _key(TransactionType type) {
+  static String _legacyKey(TransactionType type) {
     final lang = WesiLocale.isRussian ? 'ru' : 'en';
     final kind = type == TransactionType.income ? 'income' : 'expense';
     return 'categories_${kind}_$lang';
+  }
+
+  static String _key(TransactionType type, [String? organizationId]) {
+    final orgId = organizationId ?? OrganizationContext.currentOrganizationId;
+    if (orgId == OrganizationModel.rootId) return _legacyKey(type);
+    return '${_legacyKey(type)}.$orgId';
   }
 
   static List<String> defaultsFor(TransactionType type) {
@@ -76,33 +45,33 @@ class CategoryService {
     return List<String>.from(ru ? expenseDefaultsRu : expenseDefaultsEn);
   }
 
-  /// Текущий список для типа операции и активного языка.
-  static List<String> forType(TransactionType type) {
+  static List<String> forType(
+    TransactionType type, {
+    String? organizationId,
+  }) {
     try {
-      final raw = Hive.box(_box).get(_key(type));
+      final raw = Hive.box(_box).get(_key(type, organizationId));
       if (raw is List && raw.isNotEmpty) {
         return raw.map((e) => '$e').toList();
       }
-    } catch (_) {
-      // Бокс не открыт — отдаём значения по умолчанию.
-    }
+    } catch (_) {}
     return defaultsFor(type);
   }
 
-  /// Все категории обеих половин — для фильтров и разрезов в аналитике,
-  /// где операции обоих типов лежат вперемешку.
   static List<String> get all => [
         ...forType(TransactionType.income),
         ...forType(TransactionType.expense),
       ];
 
-  static Future<void> _save(TransactionType type, List<String> list) async {
-    await Hive.box(_box).put(_key(type), list);
+  static Future<void> _save(
+    TransactionType type,
+    List<String> list, {
+    String? organizationId,
+  }) async {
+    await Hive.box(_box).put(_key(type, organizationId), list);
     revision.value++;
   }
 
-  /// Добавляет категорию. Дубликаты игнорируются без ошибки — повторное
-  /// добавление того же имени не должно ломать поток пользователя.
   static Future<void> add(TransactionType type, String name) async {
     final trimmed = name.trim();
     if (trimmed.isEmpty) return;
@@ -113,7 +82,10 @@ class CategoryService {
   }
 
   static Future<void> rename(
-      TransactionType type, String from, String to) async {
+    TransactionType type,
+    String from,
+    String to,
+  ) async {
     final trimmed = to.trim();
     if (trimmed.isEmpty) return;
     final list = forType(type);
@@ -123,8 +95,6 @@ class CategoryService {
     await _save(type, list);
   }
 
-  /// Удаляет категорию. Последнюю удалить нельзя — иначе в диалоге
-  /// добавления операции не осталось бы ни одного варианта.
   static Future<bool> remove(TransactionType type, String name) async {
     final list = forType(type);
     if (list.length <= 1) return false;

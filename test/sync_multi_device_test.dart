@@ -9,6 +9,8 @@ import 'package:wesios/core/sync/sync_journal.dart';
 import 'package:wesios/core/sync/sync_merge.dart';
 import 'package:wesios/core/sync/sync_transport.dart';
 import 'package:wesios/features/knowledge/models/article_model.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
+import 'package:wesios/features/organizations/services/organization_service.dart';
 import 'package:wesios/features/tasks/models/task_model.dart';
 import 'package:wesios/features/team/models/employee_model.dart';
 import 'package:wesios/features/team/models/team_permissions.dart';
@@ -69,6 +71,15 @@ void main() {
     Hive.registerAdapter(ArticleModelAdapter());
     Hive.registerAdapter(TeamPermissionsAdapter());
     Hive.registerAdapter(EmployeeModelAdapter());
+    // Задача из несуществующей организации не применяется — и правильно:
+    // это мусор, а не работа. Значит организация нужна и в тестах.
+    if (!Hive.isAdapterRegistered(80)) {
+      Hive.registerAdapter(OrganizationStatusAdapter());
+    }
+    if (!Hive.isAdapterRegistered(81)) {
+      Hive.registerAdapter(OrganizationModelAdapter());
+    }
+    await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
     await Hive.openBox('wesios_settings');
     await Hive.openBox(SyncJournal.boxName);
     await Hive.openBox<TransactionModel>('wesios_treasury');
@@ -90,6 +101,8 @@ void main() {
     for (final c in SyncCodec.collections) {
       await c.box()?.clear();
     }
+    await Hive.box<OrganizationModel>(OrganizationService.boxName).clear();
+    await OrganizationService.ensureBaseline();
     await SyncEngine.prepare(now: base);
     // Не первый обмен: правило «принимаем сервер» проверяется отдельно и
     // здесь только мешало бы увидеть обычное слияние.

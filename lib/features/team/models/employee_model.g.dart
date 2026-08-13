@@ -2,6 +2,10 @@
 
 part of 'employee_model.dart';
 
+// **************************************************************************
+// TypeAdapterGenerator
+// **************************************************************************
+
 class EmployeeModelAdapter extends TypeAdapter<EmployeeModel> {
   @override
   final int typeId = 21;
@@ -30,14 +34,12 @@ class EmployeeModelAdapter extends TypeAdapter<EmployeeModel> {
       isOwner: fields[14] as bool,
       demoStats: (fields[15] as Map).cast<String, double>(),
       photo: fields[16] as Uint8List?,
-      skills: fields[17] == null
-          ? const []
-          : (fields[17] as List).map((e) => e.toString()).toList(),
-      weeklyCapacityPoints: (fields[18] as num?)?.toDouble() ?? 10,
-      workloadMinRatio: (fields[19] as num?)?.toDouble() ?? .65,
-      workloadMaxRatio: (fields[20] as num?)?.toDouble() ?? 1.10,
+      skills: (fields[17] as List).cast<String>(),
+      weeklyCapacityPoints: fields[18] as double,
+      workloadMinRatio: fields[19] as double,
+      workloadMaxRatio: fields[20] as double,
       managerEmployeeId: fields[21] as String?,
-      workloadAlertTarget: fields[22] as String? ?? 'manager',
+      workloadAlertTarget: fields[22] as String,
     );
   }
 
