@@ -1,24 +1,26 @@
-name: Temporary targeted org verifier
+name: Temporary full org integration gate
 
 on:
   push:
     branches: [chatgpt/org-main-v2]
     paths: ['org-targeted-verify-trigger.txt']
 
-permissions:
-  contents: write
-
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
           ref: chatgpt/org-main-v2
-          fetch-depth: 0
-      - name: Align sync upload count with baseline collections
-        run: sed -i 's/expect(report.uploaded, 1);/expect(report.uploaded, greaterThanOrEqualTo(1));/' test/sync_engine_test.dart
+      - name: Validate server JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in server/pb_hooks/*.js server/employee-portal/*.js; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+          done
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
@@ -26,14 +28,5 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
-      - name: Remaining org compatibility tests
-        run: flutter test test/task_assignment_test.dart test/accounts_test.dart test/sync_engine_test.dart
-      - name: Persist updated sync expectation
-        run: |
-          git config user.name 'WesiOS Automation'
-          git config user.email 'actions@users.noreply.github.com'
-          git add test/sync_engine_test.dart
-          if ! git diff --cached --quiet; then
-            git commit -m 'test: account for organization sync baseline uploads'
-            git push origin HEAD:chatgpt/org-main-v2
-          fi
+      - name: Full Flutter test suite
+        run: flutter test
