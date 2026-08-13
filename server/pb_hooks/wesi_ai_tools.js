@@ -1,7 +1,8 @@
 function adapters() {
+  const base = typeof __hooks !== "undefined" ? __hooks + "/" : "./";
   return [
-    require(`${__hooks}/wesi_ai_task_tools.js`),
-    require(`${__hooks}/wesi_ai_finance_tools.js`),
+    require(base + "wesi_ai_task_tools.js"),
+    require(base + "wesi_ai_finance_tools.js"),
   ];
 }
 
@@ -14,7 +15,6 @@ module.exports = {
     }
     return out;
   },
-
   context: function(e, ctx, activeOrganizationId) {
     const result = {};
     for (const adapter of adapters()) {
@@ -24,7 +24,6 @@ module.exports = {
     }
     return result;
   },
-
   execute: function(e, ctx, name, args, activeOrganizationId) {
     for (const adapter of adapters()) {
       const definitions = adapter.definitions(e, ctx);
