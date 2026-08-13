@@ -5,7 +5,24 @@ import 'account_model.dart';
 
 part 'transaction_model.g.dart';
 
-@HiveType(typeId: 1)
+/// Адаптер для этой модели написан руками — см. [TransactionModelAdapter]
+/// в конце файла. Генератор для неё намеренно отключён (нет `@HiveType`),
+/// и вот почему.
+///
+/// Сгенерированный адаптер читает поле как `fields[16] as TransactionSource`.
+/// У записи, созданной прошлой версией приложения, поля 16 просто нет —
+/// `fields[16]` возвращает null, и приведение падает. То есть каждая уже
+/// существующая на устройстве операция становится нечитаемой, а поскольку
+/// журнал операций читается при запуске, приложение открывается чёрным
+/// экраном ещё до первого кадра.
+///
+/// Заметить это тестами было нельзя: тесты всегда начинают с пустых коробок,
+/// где старых записей не бывает. Ловится только чтением того, что записала
+/// предыдущая версия, — ровно это и проверяет `hive_legacy_records_test`.
+///
+/// Номера полей физически лежат на устройствах людей: их нельзя ни менять
+/// местами, ни переиспользовать. Аннотации `@HiveField` оставлены как раз
+/// затем, чтобы занятые номера были видны прямо рядом с полями.
 class TransactionModel {
   @HiveField(0)
   final String id;
@@ -300,4 +317,135 @@ enum TransactionSource {
   task,
   @HiveField(5)
   interorg,
+}
+
+/// Чтение и запись операции в Hive.
+///
+/// Пишем всегда все поля. Читаем так, чтобы отсутствующее поле означало
+/// «эту запись сделала версия, которая про него ещё не знала», а не отказ.
+/// Поэтому у всего, что появилось после выхода прошлой версии, есть
+/// умолчание — то же самое, что стоит в конструкторе.
+///
+/// Поля 0–12 существовали всегда и читаются строго: если в записи нет
+/// суммы или даты, это не старый формат, а испорченные данные, и молча
+/// подставлять им ноль было бы хуже, чем сказать об этом вслух.
+class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
+  @override
+  final int typeId = 1;
+
+  @override
+  TransactionModel read(BinaryReader reader) {
+    final count = reader.readByte();
+    final fields = <int, dynamic>{
+      for (var i = 0; i < count; i++) reader.readByte(): reader.read(),
+    };
+    return TransactionModel(
+      id: fields[0] as String,
+      title: fields[1] as String,
+      amount: fields[2] as double,
+      type: fields[3] as TransactionType,
+      date: fields[4] as DateTime,
+      category: fields[5] as String?,
+      description: fields[6] as String?,
+      isRecurring: fields[7] as bool? ?? false,
+      recurringPeriod: fields[8] as RecurringPeriod?,
+      isAnomaly: fields[9] as bool? ?? false,
+      zScore: fields[10] as double?,
+      accountId: fields[11] as String?,
+      recurringAnchor: fields[12] as DateTime?,
+      organizationId: fields[13] as String?,
+      projectId: fields[14] as String?,
+      counterpartyId: fields[15] as String?,
+      source: fields[16] as TransactionSource? ?? TransactionSource.manual,
+      createdBy: fields[17] as String?,
+      updatedBy: fields[18] as String?,
+      updatedAt: fields[19] as DateTime?,
+      ownerEmployeeId: fields[20] as String?,
+      interOrgTransferId: fields[21] as String?,
+      createdByEmployeeId: fields[22] as String?,
+      originalAmount: fields[23] as double?,
+      originalCurrency: fields[24] as String? ?? 'RUB',
+      organizationBaseAmount: fields[25] as double?,
+      organizationBaseCurrency: fields[26] as String? ?? 'RUB',
+      fxRateToReporting: fields[27] as double? ?? 1.0,
+      fxRateAt: fields[28] as DateTime?,
+      fxSource: fields[29] as String? ?? 'legacy',
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, TransactionModel obj) {
+    writer
+      ..writeByte(30)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.title)
+      ..writeByte(2)
+      ..write(obj.amount)
+      ..writeByte(3)
+      ..write(obj.type)
+      ..writeByte(4)
+      ..write(obj.date)
+      ..writeByte(5)
+      ..write(obj.category)
+      ..writeByte(6)
+      ..write(obj.description)
+      ..writeByte(7)
+      ..write(obj.isRecurring)
+      ..writeByte(8)
+      ..write(obj.recurringPeriod)
+      ..writeByte(9)
+      ..write(obj.isAnomaly)
+      ..writeByte(10)
+      ..write(obj.zScore)
+      ..writeByte(11)
+      ..write(obj.accountId)
+      ..writeByte(12)
+      ..write(obj.recurringAnchor)
+      ..writeByte(13)
+      ..write(obj.organizationId)
+      ..writeByte(14)
+      ..write(obj.projectId)
+      ..writeByte(15)
+      ..write(obj.counterpartyId)
+      ..writeByte(16)
+      ..write(obj.source)
+      ..writeByte(17)
+      ..write(obj.createdBy)
+      ..writeByte(18)
+      ..write(obj.updatedBy)
+      ..writeByte(19)
+      ..write(obj.updatedAt)
+      ..writeByte(20)
+      ..write(obj.ownerEmployeeId)
+      ..writeByte(21)
+      ..write(obj.interOrgTransferId)
+      ..writeByte(22)
+      ..write(obj.createdByEmployeeId)
+      ..writeByte(23)
+      ..write(obj.originalAmount)
+      ..writeByte(24)
+      ..write(obj.originalCurrency)
+      ..writeByte(25)
+      ..write(obj.organizationBaseAmount)
+      ..writeByte(26)
+      ..write(obj.organizationBaseCurrency)
+      ..writeByte(27)
+      ..write(obj.fxRateToReporting)
+      ..writeByte(28)
+      ..write(obj.fxRateAt)
+      ..writeByte(29)
+      ..write(obj.fxSource);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TransactionModelAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
 }

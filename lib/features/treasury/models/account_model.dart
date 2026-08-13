@@ -22,7 +22,15 @@ enum AccountKind {
   other,
 }
 
-@HiveType(typeId: 15)
+/// Адаптер написан руками — см. [AccountModelAdapter] в конце файла.
+///
+/// Причина та же, что и у операции: поля 9–13 появились позже, а у счетов,
+/// заведённых прошлой версией, их в базе нет. Сгенерированный адаптер читал
+/// бы их как не-nullable и падал на каждом существующем счёте.
+///
+/// Аннотации `@HiveField` оставлены, чтобы занятые номера были видны рядом
+/// с полями: переиспользовать их нельзя — под ними лежат данные на
+/// устройствах людей.
 class AccountModel {
   @HiveField(0)
   final String id;
@@ -131,4 +139,82 @@ class AccountModel {
         transferDelayDays:
             (transferDelayDays ?? this.transferDelayDays).clamp(0, 14).toInt(),
       );
+}
+
+/// Чтение и запись счёта в Hive.
+///
+/// Поля 0–8 существовали в прошлой версии и читаются строго. Всё, что
+/// добавилось после неё, имеет умолчание из конструктора: отсутствие поля
+/// означает «эту запись сделала версия, которая про него не знала».
+class AccountModelAdapter extends TypeAdapter<AccountModel> {
+  @override
+  final int typeId = 15;
+
+  @override
+  AccountModel read(BinaryReader reader) {
+    final count = reader.readByte();
+    final fields = <int, dynamic>{
+      for (var i = 0; i < count; i++) reader.readByte(): reader.read(),
+    };
+    return AccountModel(
+      id: fields[0] as String,
+      name: fields[1] as String,
+      kind: fields[2] as AccountKind? ?? AccountKind.main,
+      openingBalance: fields[3] as double? ?? 0,
+      colorValue: fields[4] as int? ?? 0xFFF97316,
+      createdAt: fields[5] as DateTime,
+      archived: fields[6] as bool? ?? false,
+      note: fields[7] as String?,
+      organizationId: fields[8] as String?,
+      minimumBalance: fields[9] as double? ?? 0,
+      allowNetting: fields[10] as bool? ?? true,
+      currency: fields[11] as String? ?? 'RUB',
+      fxHaircut: fields[12] as double? ?? 0.03,
+      transferDelayDays: fields[13] as int? ?? 0,
+    );
+  }
+
+  @override
+  void write(BinaryWriter writer, AccountModel obj) {
+    writer
+      ..writeByte(14)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.name)
+      ..writeByte(2)
+      ..write(obj.kind)
+      ..writeByte(3)
+      ..write(obj.openingBalance)
+      ..writeByte(4)
+      ..write(obj.colorValue)
+      ..writeByte(5)
+      ..write(obj.createdAt)
+      ..writeByte(6)
+      ..write(obj.archived)
+      ..writeByte(7)
+      ..write(obj.note)
+      ..writeByte(8)
+      ..write(obj.organizationId)
+      ..writeByte(9)
+      ..write(obj.minimumBalance)
+      ..writeByte(10)
+      ..write(obj.allowNetting)
+      ..writeByte(11)
+      ..write(obj.currency)
+      ..writeByte(12)
+      ..write(obj.fxHaircut)
+      ..writeByte(13)
+      ..write(obj.transferDelayDays);
+  }
+
+  @override
+  int get hashCode => typeId.hashCode;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is AccountModelAdapter &&
+          runtimeType == other.runtimeType &&
+          typeId == other.typeId;
 }

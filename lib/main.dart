@@ -57,8 +57,32 @@ bool get isDesktop {
 void main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  if (await TimeNotificationScheduler.handleLaunchArguments(arguments)) {
+  // Запуск идёт под присмотром.
+  //
+  // Всё, что здесь происходит, случается ДО первого кадра, поэтому любое
+  // исключение раньше оставляло человека наедине с чёрным окном: ни текста,
+  // ни кода ошибки, ни намёка, куда смотреть. Именно так выглядела поломка
+  // чтения старых записей — приложение просто не открывалось.
+  //
+  // Теперь сбой запуска показывается на экране. Он всё равно означает, что
+  // работать нельзя, но разница между «не запускается» и «не запускается
+  // вот из-за этого» — это разница между вечером в догадках и одним
+  // сообщением с понятной причиной.
+  try {
+    if (!await _bootstrap(arguments)) return;
+  } catch (error, stack) {
+    debugPrint('Запуск не удался: $error\n$stack');
+    runApp(_StartupFailureApp(error: error, stack: stack));
     return;
+  }
+
+  runApp(const WesiOSApp());
+}
+
+/// Подготовка приложения. Возвращает false, если запускаться не нужно.
+Future<bool> _bootstrap(List<String> arguments) async {
+  if (await TimeNotificationScheduler.handleLaunchArguments(arguments)) {
+    return false;
   }
 
   if (isDesktop) {
@@ -174,5 +198,64 @@ void main(List<String> arguments) async {
     debugPrint('Firebase native init skipped/failed: $e');
   }
 
-  runApp(const WesiOSApp());
+  return true;
+}
+
+/// Экран вместо чёрного окна, когда запуск не удался.
+///
+/// Намеренно не зависит ни от темы, ни от локализации, ни от чего-либо
+/// ещё, что само могло не загрузиться: единственная его задача — показать
+/// причину, когда всё остальное уже сломано.
+class _StartupFailureApp extends StatelessWidget {
+  final Object error;
+  final StackTrace stack;
+
+  const _StartupFailureApp({required this.error, required this.stack});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: Scaffold(
+        backgroundColor: const Color(0xFF0E0E11),
+        body: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'WesiOS не смог запуститься',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Данные на устройстве не тронуты. Покажите этот текст — '
+                  'по нему видно, что именно не открылось.',
+                  style: TextStyle(color: Color(0xFFA0A0AC), fontSize: 13),
+                ),
+                const SizedBox(height: 16),
+                Expanded(
+                  child: SingleChildScrollView(
+                    child: SelectableText(
+                      '$error\n\n$stack',
+                      style: const TextStyle(
+                        color: Color(0xFFE0E0E6),
+                        fontSize: 11.5,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
