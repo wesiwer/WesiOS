@@ -37,8 +37,11 @@ class WesiAiTaskService {
     final organization = await OrganizationContext.currentOrganization();
     final tasks = await TaskService().getForOrganizations({organization.id});
     final eligibleIds = await _employeeIdsForOrganization(organization.id);
-    final businessSignal = await _businessSignal(clock);
-    final world = await _worldState(organization.id, tasks);
+    // Журнал операций читается один раз на весь разбор: и денежные итоги, и
+    // поиск фактов смотрят в один и тот же список.
+    final transactions = await _scopedTransactions(organization.id);
+    final businessSignal = await _businessSignal(clock, transactions);
+    final world = await _worldState(organization.id, tasks, transactions);
     final box = await Hive.openBox<dynamic>(_memoryBoxName);
     final learningProfile = _learningProfile(box, organization.id);
 
@@ -296,6 +299,7 @@ class WesiAiTaskService {
   static Future<WesiAiWorldState> _worldState(
     String organizationId,
     List<TaskModel> tasks,
+    List<TransactionModel>? transactions,
   ) async {
     var clients = const <CrmClient>[];
     var deals = const <CrmDeal>[];
@@ -349,17 +353,6 @@ class WesiAiTaskService {
       fileRequests = const [];
     }
 
-    var transactions = const <TransactionModel>[];
-    if (await _financeVisible(organizationId)) {
-      try {
-        transactions = (await TreasuryService().getAllTransactions())
-            .where((tx) => tx.effectiveOrganizationId == organizationId)
-            .toList();
-      } catch (_) {
-        transactions = const [];
-      }
-    }
-
     return WesiAiWorldState(
       tasks: tasks,
       clients: clients,
@@ -369,8 +362,25 @@ class WesiAiTaskService {
       roadmapItems: roadmapItems,
       beats: beats,
       fileRequests: fileRequests,
-      transactions: transactions,
+      transactions: transactions ?? const [],
     );
+  }
+
+  /// Операции организации — или `null`, если финансы этому человеку закрыты.
+  ///
+  /// Пустой список и «нет доступа» — разные вещи: в первом случае денежных
+  /// итогов просто нет, во втором их нельзя показывать.
+  static Future<List<TransactionModel>?> _scopedTransactions(
+    String organizationId,
+  ) async {
+    if (!await _financeVisible(organizationId)) return null;
+    try {
+      return (await TreasuryService().getAllTransactions())
+          .where((tx) => tx.effectiveOrganizationId == organizationId)
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   static bool _moduleAllowed(String module) {
@@ -392,21 +402,20 @@ class WesiAiTaskService {
     }
   }
 
-  static Future<AiBusinessSignal> _businessSignal(DateTime now) async {
+  /// [scoped] — операции организации, уже прочитанные один раз.
+  ///
+  /// Раньше денежные итоги и поиск фактов читали журнал операций каждый
+  /// по разу. На большом журнале это удвоенная работа на каждое обновление
+  /// панели, поэтому список читается один раз и передаётся сюда.
+  static Future<AiBusinessSignal> _businessSignal(
+    DateTime now,
+    List<TransactionModel>? scoped,
+  ) async {
     final orgId = OrganizationContext.currentOrganizationId;
+    if (scoped == null) return const AiBusinessSignal();
     try {
-      if (TeamService.current != null &&
-          !await OrganizationAccessService.can(
-            orgId,
-            OrganizationPermissions.viewFinance,
-          )) {
-        return const AiBusinessSignal();
-      }
-
       final treasury = TreasuryService();
-      final all = (await treasury.getAllTransactions())
-          .where((tx) => tx.effectiveOrganizationId == orgId)
-          .toList();
+      final all = scoped;
       final recentStart = now.subtract(const Duration(days: 30));
       final previousStart = now.subtract(const Duration(days: 60));
       var recentIncome = 0.0;
