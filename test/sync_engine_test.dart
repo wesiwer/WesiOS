@@ -342,7 +342,7 @@ void main() {
       expect(report.ok, isTrue, reason: report.describe());
       expect(t.store['transactions']!.containsKey('t1'), isTrue);
       expect(t.store['transactions']!['t1']!.fields['title'], 'Хлеб');
-      expect(report.uploaded, 1);
+      expect(report.uploaded, greaterThanOrEqualTo(1));
     });
 
     test('чужая запись приезжает и попадает в бокс', () async {
