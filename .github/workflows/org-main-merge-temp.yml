@@ -1,0 +1,30 @@
+name: Temporary org/main merge inspector
+
+on:
+  push:
+    branches: [chatgpt/org-main-v2]
+    paths: ['org-main-merge-trigger.txt']
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/org-main-v2
+          fetch-depth: 0
+      - name: Inspect merge with current main
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          set +e
+          git merge --no-commit --no-ff origin/main
+          code=$?
+          set -e
+          echo "merge_exit=$code"
+          echo "conflicts:"
+          git diff --name-only --diff-filter=U || true
+          if [ "$code" -ne 0 ]; then
+            exit 1
+          fi
