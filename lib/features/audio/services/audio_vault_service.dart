@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -14,12 +15,27 @@ import '../../team/services/team_service.dart';
 import '../../treasury/services/horizon_contract_memory.dart';
 import '../models/audio_vault_models.dart';
 
+/// Хранилище битов.
+///
+/// Каждая карточка лежит отдельной записью, ключ — её идентификатор. Раньше
+/// весь каталог был одной строкой под ключом `beats_v1`: правка одного бита
+/// считалась изменением всего каталога, и совместная работа означала бы, что
+/// двое затирают правки друг друга.
+///
+/// Сами файлы — mp3, wav, обложки, трекауты — остаются на диске устройства и
+/// в обмен не идут: они слишком велики, а лимит записи на сервере два
+/// мегабайта. Синхронизируется то, **что за бит**: название, темп,
+/// тональность, стадия, комментарии и условия аренды.
 class AudioVaultService {
   AudioVaultService._();
 
+  /// Старый бокс. Остаётся источником для переноса и хранит расширенные
+  /// метаданные, которые к обмену не относятся.
   static const String boxName = 'wesios_audio_vault';
+  static const String beatsBoxName = 'wesios_audio_beats';
   static const String _beatsKey = 'beats_v1';
   static const String _extendedMetaKey = 'extended_meta_v1';
+  static const String _migratedKey = 'migrated_to_records_v1';
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static Future<Box<dynamic>> get _box async {
@@ -27,14 +43,68 @@ class AudioVaultService {
     return Hive.openBox<dynamic>(boxName);
   }
 
+  static Box<String>? _beats;
+
+  static Future<Box<String>> get _beatsBox async {
+    final cached = _beats;
+    if (cached != null && cached.isOpen) {
+      await _migrateIfNeeded();
+      return cached;
+    }
+    _beats = Hive.isBoxOpen(beatsBoxName)
+        ? Hive.box<String>(beatsBoxName)
+        : await Hive.openBox<String>(beatsBoxName);
+    await _migrateIfNeeded();
+    return _beats!;
+  }
+
+  static bool _migrating = false;
+
+  /// Перенос каталога со старого формата «всё одной строкой».
+  static Future<void> _migrateIfNeeded() async {
+    if (_migrating) return;
+    if (!Hive.isBoxOpen(boxName) && !await Hive.boxExists(boxName)) return;
+    _migrating = true;
+    try {
+      final legacy = await _box;
+      if (legacy.get(_migratedKey) == true) return;
+      final box = _beats;
+      if (box == null) return;
+      final raw = legacy.get(_beatsKey);
+      if (raw is List) {
+        for (final item in raw.whereType<Map>()) {
+          try {
+            final beat = BeatEntry.fromJson(Map<String, dynamic>.from(item));
+            // Уже перенесённое не трогаем: у него мог появиться более свежий
+            // вариант с другого устройства.
+            if (beat.id.isEmpty || box.containsKey(beat.id)) continue;
+            await box.put(beat.id, jsonEncode(beat.toJson()));
+          } catch (_) {
+            // Одна битая карточка не должна остановить перенос остальных.
+          }
+        }
+      }
+      await legacy.put(_migratedKey, true);
+    } catch (_) {
+      // Сломанный старый бокс не повод не запускать приложение.
+    } finally {
+      _migrating = false;
+    }
+  }
+
   static Future<List<BeatEntry>> all() async {
-    final box = await _box;
-    final raw = box.get(_beatsKey);
-    if (raw is! List) return [];
-    final beats = raw
-        .whereType<Map>()
-        .map((e) => BeatEntry.fromJson(Map<String, dynamic>.from(e)))
-        .toList();
+    final box = await _beatsBox;
+    final beats = <BeatEntry>[];
+    for (final raw in box.values) {
+      if (raw.isEmpty) continue;
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is! Map) continue;
+        beats.add(BeatEntry.fromJson(Map<String, dynamic>.from(decoded)));
+      } catch (_) {
+        // Одна испорченная карточка не должна прятать каталог целиком.
+      }
+    }
     beats.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return beats;
   }
@@ -48,15 +118,8 @@ class AudioVaultService {
   }
 
   static Future<void> save(BeatEntry beat) async {
-    final box = await _box;
-    final list = await all();
-    final index = list.indexWhere((e) => e.id == beat.id);
-    if (index < 0) {
-      list.add(beat);
-    } else {
-      list[index] = beat;
-    }
-    await box.put(_beatsKey, list.map((e) => e.toJson()).toList());
+    final box = await _beatsBox;
+    await box.put(beat.id, jsonEncode(beat.toJson()));
     revision.value++;
   }
 
@@ -70,9 +133,7 @@ class AudioVaultService {
       } catch (_) {}
     }
 
-    final list = await all();
-    list.removeWhere((e) => e.id == beat.id);
-    await box.put(_beatsKey, list.map((e) => e.toJson()).toList());
+    await (await _beatsBox).delete(beat.id);
 
     final rawMeta = box.get(_extendedMetaKey);
     if (rawMeta is Map && rawMeta.containsKey(beat.id)) {

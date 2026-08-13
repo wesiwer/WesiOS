@@ -724,6 +724,8 @@ class SyncCodec {
     CrmClientsSync(),
     CrmDealsSync(),
     CrmInteractionsSync(),
+    // Каталог битов: карточки едут, файлы остаются на своём устройстве.
+    AudioBeatsSync(),
     // Профиль человека — одна запись на все его устройства.
     ProfileSync(),
   ];

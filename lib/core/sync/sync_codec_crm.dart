@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import '../../features/audio/models/audio_vault_models.dart';
+import '../../features/audio/services/audio_vault_service.dart';
 import '../../features/crm/models/crm_models.dart';
 import '../../features/crm/services/crm_service.dart';
 import '../../features/profile/services/profile_service.dart';
@@ -148,4 +150,86 @@ class ProfileSync extends SyncCollection<String> {
 
   @override
   void notifyChanged() => ProfileService.revision.value++;
+}
+
+/// Каталог битов.
+///
+/// Синхронизируется то, **что за бит**: название, темп, тональность, стадия,
+/// комментарии, условия аренды. Пути к файлам — нет, и это главное здесь.
+///
+/// Путь вида `/data/.../AudioVault/<id>/mp3_...` — свойство устройства, а не
+/// карточки. Приехав на другой телефон, он указывал бы в пустоту: приложение
+/// считало бы, что файл есть, показывало бы кнопку воспроизведения и молча
+/// не работало. Поэтому пути вычищаются при отправке, а при получении
+/// подставляются свои — те, что уже есть на этом устройстве.
+class AudioBeatsSync extends SyncCollection<String> {
+  @override
+  void notifyChanged() => AudioVaultService.revision.value++;
+
+  @override
+  String get name => 'audio_beats';
+
+  @override
+  String get boxName => AudioVaultService.beatsBoxName;
+
+  @override
+  String idOf(String value) => crmIdOf(value);
+
+  @override
+  bool shouldSync(String value) => crmIdOf(value).isNotEmpty;
+
+  /// Поля, которые указывают на файл на диске этого устройства.
+  static const List<String> _localOnly = [
+    'mp3Path',
+    'wavPath',
+    'trackoutPath',
+    'coverPath',
+    'attachments',
+  ];
+
+  @override
+  Map<String, dynamic> encode(String value) {
+    final json = crmDecodeJson(value);
+    if (json == null) return const {};
+    final out = Map<String, dynamic>.of(json);
+    for (final key in _localOnly) {
+      out.remove(key);
+    }
+    return out;
+  }
+
+  @override
+  String? decode(Map<String, dynamic> fields) {
+    final id = fields['id'];
+    if (id is! String || id.trim().isEmpty) return null;
+    try {
+      // Разбираем через модель: так запись из более новой версии, которую эта
+      // не понимает, будет пропущена, а не положена в бокс мусором.
+      BeatEntry.fromJson(fields);
+    } catch (_) {
+      return null;
+    }
+    return jsonEncode(fields);
+  }
+
+  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final box = this.box();
+    if (box == null) return false;
+    final decoded = decode(fields);
+    if (decoded == null) return false;
+
+    final id = '${fields['id']}';
+    final merged = Map<String, dynamic>.of(fields);
+    // Свои файлы остаются своими: приехавшая карточка описывает бит, а где
+    // его файлы лежат на этом устройстве — знает только это устройство.
+    final mine = crmDecodeJson(box.get(id) ?? '');
+    if (mine != null) {
+      for (final key in _localOnly) {
+        if (mine[key] != null) merged[key] = mine[key];
+      }
+    }
+    await box.put(id, jsonEncode(merged));
+    return true;
+  }
 }
