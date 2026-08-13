@@ -5,9 +5,6 @@ on:
     branches: [chatgpt/org-main-v2]
     paths: ['org-targeted-verify-trigger.txt']
 
-permissions:
-  contents: write
-
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -16,65 +13,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: chatgpt/org-main-v2
-          fetch-depth: 0
-      - name: Align stale tests with production org invariants
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          p = Path('test/sync_engine_test.dart')
-          s = p.read_text()
-          anchor = "import 'package:wesios/features/organizations/models/transaction_audit_model.dart';\n"
-          imp = "import 'package:wesios/features/organizations/services/organization_service.dart';\n"
-          if imp not in s:
-              s = s.replace(anchor, anchor + imp, 1)
-          setup_anchor = "    await Hive.openBox('wesios_settings');\n"
-          bootstrap = "    await Hive.openBox<OrganizationModel>(OrganizationService.boxName);\n    await OrganizationService.ensureBaseline();\n"
-          if bootstrap not in s:
-              s = s.replace(setup_anchor, setup_anchor + bootstrap, 1)
-          p.write_text(s)
-
-          p = Path('test/task_assignment_test.dart')
-          s = p.read_text()
-          anchor = "import 'package:wesios/features/organizations/models/organization_model.dart';\n"
-          imports = "import 'package:wesios/features/organizations/models/organization_access_grant.dart';\nimport 'package:wesios/features/organizations/services/organization_access_service.dart';\nimport 'package:wesios/features/organizations/services/organization_service.dart';\n"
-          if 'organization_access_service.dart' not in s:
-              s = s.replace(anchor, anchor + imports, 1)
-          if 'Hive.registerAdapter(OrganizationAccessGrantAdapter());' not in s:
-              s = s.replace('    Hive.registerAdapter(OrganizationModelAdapter());\n', '    Hive.registerAdapter(OrganizationModelAdapter());\n    Hive.registerAdapter(OrganizationAccessGrantAdapter());\n', 1)
-          setup_anchor = "    await Hive.openBox('wesios_settings');\n"
-          setup = "    await Hive.openBox<OrganizationModel>(OrganizationService.boxName);\n    await Hive.openBox<OrganizationAccessGrant>(OrganizationAccessService.boxName);\n    await OrganizationService.ensureBaseline();\n"
-          if setup not in s:
-              s = s.replace(setup_anchor, setup_anchor + setup, 1)
-          old = "      await TeamService.signIn(me);\n\n      final service = TaskService();"
-          new = "      await TeamService.signIn(me);\n      await OrganizationAccessService.grant(\n        employeeId: me.id,\n        organizationId: OrganizationModel.rootId,\n        includeSubtree: false,\n        permissions: const [OrganizationPermissions.view],\n        enforceActor: false,\n      );\n\n      final service = TaskService();"
-          if old in s:
-              s = s.replace(old, new, 1)
-          p.write_text(s)
-
-          p = Path('test/accounts_test.dart')
-          s = p.read_text()
-          old = """    test('an empty account is removed outright', () async {
-      final a = await AccountService.create(name: 'Пустой');
-      final ok = await AccountService.delete(a.id, hasOperations: false);
-      expect(ok, isTrue);
-      final all = await AccountService.getAll();
-      expect(all.any((x) => x.id == a.id), isFalse);
-    });"""
-          new = """    test('an empty account is archived too — financial identities stay durable', () async {
-      final a = await AccountService.create(name: 'Пустой');
-      final ok = await AccountService.delete(a.id, hasOperations: false);
-      expect(ok, isTrue);
-      final all = await AccountService.getAll();
-      final still = all.firstWhere((x) => x.id == a.id);
-      expect(still.archived, isTrue);
-    });"""
-          if old in s:
-              s = s.replace(old, new, 1)
-          p.write_text(s)
-          PY
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
@@ -82,16 +20,5 @@ jobs:
           cache: true
       - run: flutter pub get
       - run: flutter analyze --no-fatal-infos
-      - name: Remaining previously failing tests
+      - name: Remaining org compatibility tests
         run: flutter test test/task_assignment_test.dart test/accounts_test.dart test/sync_engine_test.dart
-      - name: Commit repaired tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name 'WesiOS Automation'
-          git config user.email 'actions@users.noreply.github.com'
-          git add test/task_assignment_test.dart test/accounts_test.dart test/sync_engine_test.dart
-          if ! git diff --cached --quiet; then
-            git commit -m 'test: align legacy coverage with organization invariants'
-            git push origin HEAD:chatgpt/org-main-v2
-          fi
