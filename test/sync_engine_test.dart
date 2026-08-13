@@ -29,6 +29,14 @@ void main() {
       Hive.box<TransactionModel>('wesios_treasury');
   Box<TaskModel> taskBox() => Hive.box<TaskModel>('wesios_tasks');
 
+  TaskModel task(String id, {String title = 'Задача'}) => TaskModel(
+        id: id,
+        title: title,
+        status: TaskStatus.backlog,
+        priority: TaskPriority.normal,
+        createdAt: base,
+      );
+
   TransactionModel tx(String id, {double amount = 100, String title = 'Хлеб'}) =>
       TransactionModel(
         id: id,
@@ -658,6 +666,44 @@ void main() {
       expect(SyncEndpoint.isConnected, isFalse);
     });
   });
+  group('упрямая запись', () {
+    test('не запирает за собой очередь и не прячет отказ', () async {
+      // Пятьдесят задач, третья из которых сервер не принимает — например,
+      // она больше лимита или конфликтует по ключу. Раньше отправка на ней
+      // останавливалась, а отчёт при этом показывал успех: «отправлено 2»,
+      // зелёная галочка, и сорок семь задач молча остались дома. Причина
+      // устойчивая, значит повторялось бы каждый проход.
+      for (var i = 1; i <= 50; i++) {
+        await taskBox().put('T$i', task('T$i'));
+      }
+      await Future<void>.delayed(Duration.zero);
+
+      final t = FakeSyncTransport()..rejectIds.add('T3');
+      final report = await SyncEngine.run(transport: t, now: base);
+
+      expect(t.store['tasks']!.length, 49,
+          reason: 'все задачи, кроме упрямой, обязаны уехать');
+      expect(t.store['tasks']!.containsKey('T50'), isTrue,
+          reason: 'записи после сбойной не должны застревать');
+      expect(report.ok, isFalse,
+          reason: 'отчёт обязан признать, что часть не уехала');
+      expect(report.uploaded, 49);
+    });
+
+    test('доставленным считается только то, что дошло', () async {
+      await taskBox().put('T1', task('T1'));
+      await taskBox().put('T2', task('T2'));
+      await Future<void>.delayed(Duration.zero);
+
+      final t = FakeSyncTransport()..rejectIds.add('T2');
+      final report = await SyncEngine.run(transport: t, now: base);
+
+      final tasks = report.collections.firstWhere((c) => c.collection == 'tasks');
+      expect(tasks.uploaded, 1);
+      expect(tasks.ok, isFalse);
+    });
+  });
+
 }
 
 /// Транспорт, который отказывает на одной коллекции и работает на остальных.
@@ -667,9 +713,9 @@ class _FailingOnceTransport extends FakeSyncTransport {
   _FailingOnceTransport(this.broken);
 
   @override
-  Future<SyncResult<int>> push(String collection, List<SyncRecord> records) {
+  Future<SyncPushResult> push(String collection, List<SyncRecord> records) {
     if (collection == broken) {
-      return Future.value(const SyncResult.fail(SyncFailure.offline));
+      return Future.value(const SyncPushResult(failure: SyncFailure.offline));
     }
     return super.push(collection, records);
   }

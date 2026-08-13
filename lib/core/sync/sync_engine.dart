@@ -322,16 +322,16 @@ class SyncEngine {
       return SyncCollectionReport(collection: c.name, applied: applied);
     }
     final pushed = await t.push(c.name, plan.toUpload);
-    if (pushed.failure == null) {
-      // Отправка удалась — сообщаем коллекции, что именно уехало. Пока это
-      // нужно одним сообщениям: у них есть состояние «дошло ли», и до этого
-      // момента оно не менялось никогда.
-      await c.afterUpload([for (final r in plan.toUpload) r.id]);
+    // Сообщаем коллекции ровно то, что действительно уехало, а не весь план.
+    // Это нужно сообщениям: у них есть состояние «дошло ли», и пометить
+    // доставленным то, что осталось дома, — прямая ложь на экране.
+    if (pushed.deliveredIds.isNotEmpty) {
+      await c.afterUpload(pushed.deliveredIds);
     }
     return SyncCollectionReport(
       collection: c.name,
       applied: applied,
-      uploaded: pushed.value ?? 0,
+      uploaded: pushed.sent,
       failure: pushed.failure,
     );
   }

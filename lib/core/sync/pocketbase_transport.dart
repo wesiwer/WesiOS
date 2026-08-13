@@ -142,15 +142,28 @@ class PocketBaseTransport implements SyncTransport {
     return '$id|$stamp';
   }
 
+  /// Отказы, после которых продолжать бессмысленно: дело не в записи, а в
+  /// связи или в самом сервере. Всё остальное — беда конкретной записи
+  /// (слишком большая, конфликт ключей), и она не повод бросать остальные.
+  static const Set<String> _fatalCodes = {
+    'NOT_SIGNED_IN',
+    'NETWORK',
+    'BAD_ADDRESS',
+    'NOT_WESIOS',
+  };
+
   @override
-  Future<SyncResult<int>> push(
+  Future<SyncPushResult> push(
     String collection,
     List<SyncRecord> records,
   ) async {
-    if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
-    if (records.isEmpty) return const SyncResult.ok(0);
+    if (!isSignedIn) {
+      return const SyncPushResult(failure: SyncFailure.notSignedIn);
+    }
+    if (records.isEmpty) return const SyncPushResult();
 
-    var sent = 0;
+    final delivered = <String>[];
+    SyncFailure? firstFailure;
     for (final r in records) {
       final body = {
         'owner': _userId,
@@ -174,15 +187,17 @@ class PocketBaseTransport implements SyncTransport {
             );
 
       if (res.failure != null) {
-        return sent == 0
-            ? SyncResult.fail(res.failure!)
-            : SyncResult.ok(sent);
+        firstFailure ??= res.failure;
+        // Пропускаем эту запись и берёмся за следующую: одна упрямая
+        // запись не должна держать взаперти всё, что за ней в очереди.
+        if (_fatalCodes.contains(res.failure!.code)) break;
+        continue;
       }
       final id = res.value?['id'];
       if (id is String) _serverIds['$collection/${r.id}'] = id;
-      sent++;
+      delivered.add(r.id);
     }
-    return SyncResult.ok(sent);
+    return SyncPushResult(deliveredIds: delivered, failure: firstFailure);
   }
 
   static int item2int(Object? raw) =>
