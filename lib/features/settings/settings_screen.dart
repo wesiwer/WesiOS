@@ -39,7 +39,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final bg = Theme.of(context).scaffoldBackgroundColor;
         return Scaffold(
           backgroundColor: bg,
-          body: ListView(
+          // На телефоне kTitleBarInset равен нулю: своей полосы заголовка
+          // там нет. Но системная строка со временем и связью есть всегда,
+          // и без SafeArea заголовок экрана залезал прямо под неё.
+          body: SafeArea(
+            bottom: false,
+            child: ListView(
             padding: EdgeInsets.fromLTRB(16, kTitleBarInset + 16, 16, 16),
             children: [
               ModuleHeader(title: WesiLocale.get('settings')),
@@ -387,6 +392,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
               const SizedBox(height: 32),
             ],
+          ),
           ),
         );
       },

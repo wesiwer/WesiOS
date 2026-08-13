@@ -182,7 +182,23 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
                   _emptyState()
                 else if (suggestions.isNotEmpty)
                   SizedBox(
-                    height: compact ? 282 : 270,
+                    // Высота полосы карточек задана числом, потому что
+                    // горизонтальному списку нужна опора. Но число нельзя
+                    // подбирать на глаз: стоило добавить в карточку одну
+                    // строку — и кнопки «Создать», «Изменить», «Не сейчас»
+                    // вылезли за границу. Наружу они не просто не видны, они
+                    // ещё и не нажимаются: Flutter не ловит касания за
+                    // пределами родителя. Выглядит это как «кнопки не
+                    // работают», а причина в вёрстке.
+                    //
+                    // Поэтому высота растёт вместе с системным шрифтом: у
+                    // человека с крупным текстом иначе ломалось бы то же
+                    // самое, и без его снимка экрана об этом никто бы не
+                    // узнал.
+                    height: (compact ? 306.0 : 294.0) *
+                        MediaQuery.textScalerOf(context)
+                            .scale(1)
+                            .clamp(1.0, 1.7),
                     child: ListView.separated(
                       padding: const EdgeInsets.all(10),
                       scrollDirection: Axis.horizontal,
