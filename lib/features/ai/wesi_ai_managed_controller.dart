@@ -105,6 +105,42 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     await _save();
   }
 
+  Future<void> clearLastError() async {
+    if (sending) return;
+    final conversation = state.activeConversation;
+    if (conversation == null) return;
+    final messages = state.messagesFor(conversation.id);
+    if (messages.isEmpty || messages.last.kind != WesiAiMessageKind.error) return;
+    final errorId = messages.last.id;
+    state = state.copyWith(
+      messages: state.messages.where((message) => message.id != errorId).toList(),
+    );
+    await _save();
+  }
+
+  Future<void> regenerateLastResponse() async {
+    if (sending) return;
+    final conversation = state.activeConversation;
+    if (conversation == null) return;
+    final ordered = state.messagesFor(conversation.id);
+    var userIndex = -1;
+    for (var i = ordered.length - 1; i >= 0; i--) {
+      if (ordered[i].author == WesiAiMessageAuthor.user) {
+        userIndex = i;
+        break;
+      }
+    }
+    if (userIndex < 0) return;
+    final text = ordered[userIndex].text.trim();
+    if (text.isEmpty) return;
+    final removeIds = ordered.sublist(userIndex).map((m) => m.id).toSet();
+    state = state.copyWith(
+      messages: state.messages.where((message) => !removeIds.contains(message.id)).toList(),
+    );
+    await _save();
+    await addUserMessage(text);
+  }
+
   List<WesiAiConversation> get visibleConversations {
     final items = state.conversations.where((c) => !c.archived).toList();
     items.sort((a, b) {
