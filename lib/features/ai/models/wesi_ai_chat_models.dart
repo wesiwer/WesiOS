@@ -2,6 +2,8 @@ enum WesiAiPersona { zane, nirvana, lobby }
 
 enum WesiAiTier { fast, pro, maximum }
 
+enum WesiAiLobbyMode { both, smart }
+
 enum WesiAiMessageAuthor { user, zane, nirvana, system, tool }
 
 enum WesiAiMessageKind { text, image, video, audio, file, action, status, error }
@@ -11,18 +13,19 @@ class WesiAiConversation {
   final String employeeId;
   final String title;
   final WesiAiPersona persona;
+  final WesiAiLobbyMode lobbyMode;
   final DateTime createdAt;
   final DateTime updatedAt;
   final bool archived;
   final bool pinned;
 
-  const WesiAiConversation({required this.id, required this.employeeId, required this.title, required this.persona, required this.createdAt, required this.updatedAt, this.archived = false, this.pinned = false});
+  const WesiAiConversation({required this.id, required this.employeeId, required this.title, required this.persona, required this.createdAt, required this.updatedAt, this.lobbyMode = WesiAiLobbyMode.smart, this.archived = false, this.pinned = false});
 
-  WesiAiConversation copyWith({String? title, WesiAiPersona? persona, DateTime? updatedAt, bool? archived, bool? pinned}) => WesiAiConversation(id: id, employeeId: employeeId, title: title ?? this.title, persona: persona ?? this.persona, createdAt: createdAt, updatedAt: updatedAt ?? this.updatedAt, archived: archived ?? this.archived, pinned: pinned ?? this.pinned);
+  WesiAiConversation copyWith({String? title, WesiAiPersona? persona, WesiAiLobbyMode? lobbyMode, DateTime? updatedAt, bool? archived, bool? pinned}) => WesiAiConversation(id: id, employeeId: employeeId, title: title ?? this.title, persona: persona ?? this.persona, lobbyMode: lobbyMode ?? this.lobbyMode, createdAt: createdAt, updatedAt: updatedAt ?? this.updatedAt, archived: archived ?? this.archived, pinned: pinned ?? this.pinned);
 
-  Map<String, dynamic> toJson() => {'id': id, 'employeeId': employeeId, 'title': title, 'persona': persona.name, 'createdAt': createdAt.toIso8601String(), 'updatedAt': updatedAt.toIso8601String(), 'archived': archived, 'pinned': pinned};
+  Map<String, dynamic> toJson() => {'id': id, 'employeeId': employeeId, 'title': title, 'persona': persona.name, 'lobbyMode': lobbyMode.name, 'createdAt': createdAt.toIso8601String(), 'updatedAt': updatedAt.toIso8601String(), 'archived': archived, 'pinned': pinned};
 
-  factory WesiAiConversation.fromJson(Map<String, dynamic> json) => WesiAiConversation(id: json['id'] as String, employeeId: json['employeeId'] as String, title: json['title'] as String? ?? 'Новый чат', persona: WesiAiPersona.values.byName(json['persona'] as String? ?? 'zane'), createdAt: DateTime.parse(json['createdAt'] as String), updatedAt: DateTime.parse(json['updatedAt'] as String), archived: json['archived'] as bool? ?? false, pinned: json['pinned'] as bool? ?? false);
+  factory WesiAiConversation.fromJson(Map<String, dynamic> json) => WesiAiConversation(id: json['id'] as String, employeeId: json['employeeId'] as String, title: json['title'] as String? ?? 'Новый чат', persona: WesiAiPersona.values.byName(json['persona'] as String? ?? 'zane'), lobbyMode: WesiAiLobbyMode.values.byName(json['lobbyMode'] as String? ?? 'smart'), createdAt: DateTime.parse(json['createdAt'] as String), updatedAt: DateTime.parse(json['updatedAt'] as String), archived: json['archived'] as bool? ?? false, pinned: json['pinned'] as bool? ?? false);
 }
 
 class WesiAiMessage {
