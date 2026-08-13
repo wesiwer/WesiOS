@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
 import 'package:wesios/features/tasks/models/task_model.dart';
 import 'package:wesios/features/tasks/services/task_service.dart';
 import 'package:wesios/features/tasks/tasks_screen.dart';
@@ -16,6 +17,8 @@ void main() {
   setUpAll(() {
     tempDir = Directory.systemTemp.createTempSync('wesios_tasks_test');
     Hive.init(tempDir.path);
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
     Hive.registerAdapter(TaskStatusAdapter());
     Hive.registerAdapter(TaskPriorityAdapter());
     Hive.registerAdapter(SubTaskAdapter());

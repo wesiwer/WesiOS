@@ -9,6 +9,10 @@ import 'package:wesios/core/sync/sync_engine.dart';
 import 'package:wesios/core/sync/sync_journal.dart';
 import 'package:wesios/core/sync/sync_transport.dart';
 import 'package:wesios/features/knowledge/models/article_model.dart';
+import 'package:wesios/features/organizations/models/inter_org_transfer_model.dart';
+import 'package:wesios/features/organizations/models/organization_access_grant.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
+import 'package:wesios/features/organizations/models/transaction_audit_model.dart';
 import 'package:wesios/features/tasks/models/task_model.dart';
 import 'package:wesios/features/team/models/employee_model.dart';
 import 'package:wesios/features/team/models/team_permissions.dart';
@@ -44,6 +48,7 @@ void main() {
     Hive.registerAdapter(TransactionModelAdapter());
     Hive.registerAdapter(TransactionTypeAdapter());
     Hive.registerAdapter(RecurringPeriodAdapter());
+    Hive.registerAdapter(TransactionSourceAdapter());
     Hive.registerAdapter(TaskStatusAdapter());
     Hive.registerAdapter(TaskPriorityAdapter());
     Hive.registerAdapter(SubTaskAdapter());
@@ -54,6 +59,12 @@ void main() {
     Hive.registerAdapter(ArticleModelAdapter());
     Hive.registerAdapter(TeamPermissionsAdapter());
     Hive.registerAdapter(EmployeeModelAdapter());
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
+    Hive.registerAdapter(OrganizationAccessGrantAdapter());
+    Hive.registerAdapter(InterOrgTransferTypeAdapter());
+    Hive.registerAdapter(InterOrgTransferModelAdapter());
+    Hive.registerAdapter(TransactionAuditModelAdapter());
 
     await Hive.openBox('wesios_settings');
     await Hive.openBox(SyncJournal.boxName);
@@ -210,7 +221,8 @@ void main() {
       expect(back.subtasks.length, 2);
       expect(back.subtasks.first.done, isTrue);
       expect(back.subtasks.last.done, isFalse);
-      expect(back.tags, ['работа', 'срочно']);
+      expect(back.tags, containsAll(['работа', 'срочно']));
+      expect(back.tags.where((tag) => !tag.startsWith('wesios:')), ['работа', 'срочно']);
       expect(back.order, 7);
     });
 

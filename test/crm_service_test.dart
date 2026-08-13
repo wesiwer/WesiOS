@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
 import 'package:wesios/features/crm/models/crm_models.dart';
 import 'package:wesios/features/crm/services/crm_service.dart';
 
@@ -11,6 +12,8 @@ void main() {
   setUpAll(() async {
     dir = Directory.systemTemp.createTempSync('wesios_crm_test');
     Hive.init(dir.path);
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
     await Hive.openBox<dynamic>(CrmService.boxName);
   });
 

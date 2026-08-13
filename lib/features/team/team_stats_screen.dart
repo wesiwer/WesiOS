@@ -5,6 +5,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
+import '../organizations/services/organization_access_service.dart';
+import '../organizations/services/organization_context.dart';
 import '../tasks/models/task_model.dart';
 import '../tasks/services/task_service.dart';
 import 'models/employee_model.dart';
@@ -27,6 +29,7 @@ class TeamStatsScreen extends StatefulWidget {
 class _TeamStatsScreenState extends State<TeamStatsScreen> {
   bool get _ru => WesiLocale.isRussian;
   List<TaskModel> _tasks = const [];
+  int _loadEpoch = 0;
 
   List<EmployeeModel> get _people {
     final p = TeamService.currentPermissions;
@@ -40,6 +43,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
     super.initState();
     TeamService.revision.addListener(_changed);
     TaskService.revision.addListener(_changed);
+    OrganizationContext.revision.addListener(_changed);
+    OrganizationAccessService.revision.addListener(_changed);
     _load();
   }
 
@@ -47,14 +52,19 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
   void dispose() {
     TeamService.revision.removeListener(_changed);
     TaskService.revision.removeListener(_changed);
+    OrganizationContext.revision.removeListener(_changed);
+    OrganizationAccessService.revision.removeListener(_changed);
     super.dispose();
   }
 
   void _changed() => _load();
 
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
     final tasks = await TaskService().getAll();
-    if (mounted) setState(() => _tasks = tasks);
+    if (mounted && epoch == _loadEpoch) {
+      setState(() => _tasks = tasks);
+    }
   }
 
   @override

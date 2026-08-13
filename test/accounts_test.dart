@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
 import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 import 'package:wesios/features/treasury/services/account_service.dart';
@@ -12,9 +13,12 @@ void main() {
   setUpAll(() {
     tempDir = Directory.systemTemp.createTempSync('wesios_accounts_test');
     Hive.init(tempDir.path);
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
     Hive.registerAdapter(TransactionModelAdapter());
     Hive.registerAdapter(TransactionTypeAdapter());
     Hive.registerAdapter(RecurringPeriodAdapter());
+    Hive.registerAdapter(TransactionSourceAdapter());
     Hive.registerAdapter(AccountKindAdapter());
     Hive.registerAdapter(AccountModelAdapter());
   });
