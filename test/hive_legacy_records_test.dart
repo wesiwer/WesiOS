@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:wesios/features/tasks/models/task_model.dart';
 import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 
@@ -29,6 +30,10 @@ void main() {
     Hive.registerAdapter(RecurringPeriodAdapter());
     Hive.registerAdapter(TransactionSourceAdapter());
     Hive.registerAdapter(AccountKindAdapter());
+    Hive.registerAdapter(TaskStatusAdapter());
+    Hive.registerAdapter(TaskPriorityAdapter());
+    Hive.registerAdapter(SubTaskAdapter());
+    Hive.registerAdapter(TaskModelAdapter());
     Hive.registerAdapter(TransactionModelAdapter());
     Hive.registerAdapter(AccountModelAdapter());
   });
@@ -175,6 +180,46 @@ void main() {
     expect(tx.fxSource, 'cbr');
     expect(tx.organizationId, 'org_wesi_beats');
     await reopened.close();
+  });
+
+  test('задача из прошлой версии читается и не теряет данных', () async {
+    // Задачи читаются при запуске той же миграцией, что и операции со
+    // счетами. Здесь поля организации добавлены как nullable, и падать не
+    // должно — тест закрепляет это, чтобы следующая правка модели не
+    // повторила историю с операциями.
+    await writeAsOldVersion(
+      _LegacyTaskWriter(),
+      TaskModelAdapter(),
+      'legacy_task',
+      'T1',
+      _LegacyTask(
+        id: 'T1',
+        title: 'Свести трек',
+        description: 'к пятнице',
+        status: TaskStatus.inProgress,
+        priority: TaskPriority.high,
+        createdAt: DateTime.utc(2026, 6, 1),
+        dueDate: DateTime.utc(2026, 6, 5),
+        assignee: 'wesi',
+        subtasks: const [],
+        tags: const ['студия'],
+        order: 3,
+      ),
+    );
+
+    final box = await Hive.openBox<TaskModel>('legacy_task');
+    final task = box.get('T1');
+
+    expect(task, isNotNull);
+    expect(task!.title, 'Свести трек');
+    expect(task.status, TaskStatus.inProgress);
+    expect(task.priority, TaskPriority.high);
+    expect(task.dueDate, DateTime.utc(2026, 6, 5));
+    expect(task.tags, ['студия']);
+    expect(task.order, 3);
+    expect(task.organizationId, isNull);
+    expect(task.responsibleEmployeeId, isNull);
+    await box.close();
   });
 
   test('объявленное число полей совпадает с записанным', () {
@@ -355,5 +400,71 @@ class _LegacyAccountWriter extends TypeAdapter<_LegacyAccount> {
       ..write(obj.archived)
       ..writeByte(7)
       ..write(obj.note);
+  }
+}
+
+class _LegacyTask {
+  final String id;
+  final String title;
+  final String? description;
+  final TaskStatus status;
+  final TaskPriority priority;
+  final DateTime createdAt;
+  final DateTime? dueDate;
+  final String? assignee;
+  final List<SubTask> subtasks;
+  final List<String> tags;
+  final int order;
+
+  const _LegacyTask({
+    required this.id,
+    required this.title,
+    this.description,
+    required this.status,
+    required this.priority,
+    required this.createdAt,
+    this.dueDate,
+    this.assignee,
+    required this.subtasks,
+    required this.tags,
+    required this.order,
+  });
+}
+
+/// Пишет задачу в 11 полей — столько писала выпущенная версия.
+class _LegacyTaskWriter extends TypeAdapter<_LegacyTask> {
+  @override
+  final int typeId = 13;
+
+  @override
+  _LegacyTask read(BinaryReader reader) =>
+      throw UnsupportedError('старый адаптер только пишет');
+
+  @override
+  void write(BinaryWriter writer, _LegacyTask obj) {
+    writer
+      ..writeByte(11)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.title)
+      ..writeByte(2)
+      ..write(obj.description)
+      ..writeByte(3)
+      ..write(obj.status)
+      ..writeByte(4)
+      ..write(obj.priority)
+      ..writeByte(5)
+      ..write(obj.createdAt)
+      ..writeByte(6)
+      ..write(obj.dueDate)
+      ..writeByte(7)
+      ..write(obj.assignee)
+      ..writeByte(8)
+      ..write(obj.subtasks)
+      ..writeByte(9)
+      ..write(obj.tags)
+      ..writeByte(10)
+      ..write(obj.order);
   }
 }
