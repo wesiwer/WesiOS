@@ -1,0 +1,32 @@
+name: Temporary exact org integration verifier
+
+on:
+  push:
+    branches: [chatgpt/org-main-v2]
+    paths: ['org-final-verify-trigger.txt']
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/org-main-v2
+      - name: Validate server JavaScript
+        run: |
+          set -euo pipefail
+          for file in server/pb_hooks/*.js server/employee-portal/*.js; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+          done
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Full tests
+        run: flutter test
