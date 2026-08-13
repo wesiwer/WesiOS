@@ -18,7 +18,7 @@ class OrganizationAccessEditor extends StatefulWidget {
     required this.organization,
   });
 
-  static Future<bool?> open(
+  static Future<bool?> show(
     BuildContext context, {
     required EmployeeModel employee,
     required OrganizationModel organization,
@@ -38,23 +38,23 @@ class OrganizationAccessEditor extends StatefulWidget {
   static String permissionLabel(String permission) {
     switch (permission) {
       case OrganizationPermissions.view:
-        return 'Доступ к организации';
+        return 'Видеть организацию';
       case OrganizationPermissions.viewFinance:
-        return 'Просмотр финансов';
+        return 'Смотреть финансы организации';
       case OrganizationPermissions.createTransactions:
-        return 'Добавление операций';
+        return 'Добавлять операции';
       case OrganizationPermissions.editTransactions:
-        return 'Изменение и удаление операций';
+        return 'Изменять и удалять операции';
       case OrganizationPermissions.manageAccounts:
-        return 'Управление счетами';
+        return 'Управлять счетами';
       case OrganizationPermissions.manageRecurring:
-        return 'Регулярные платежи';
+        return 'Настраивать регулярные платежи';
       case OrganizationPermissions.viewForecast:
-        return 'Финансовый прогноз';
+        return 'Смотреть финансовый прогноз';
       case OrganizationPermissions.manageOrgSettings:
-        return 'Настройки организации';
+        return 'Менять настройки организации';
       case OrganizationPermissions.manageMembers:
-        return 'Управление сотрудниками';
+        return 'Управлять участниками и их доступом';
       default:
         return permission;
     }
@@ -531,7 +531,7 @@ class _OrganizationAccessEditorState extends State<OrganizationAccessEditor> {
               ),
               ActionChip(
                 avatar: const Icon(Icons.groups_outlined, size: 16),
-                label: const Text('Управление командой'),
+                label: const Text('Руководитель'),
                 onPressed: () => _preset({
                   OrganizationPermissions.view,
                   OrganizationPermissions.manageMembers,

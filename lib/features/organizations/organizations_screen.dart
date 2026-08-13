@@ -763,7 +763,7 @@ class _OrganizationMembersDialogState
                           ),
                           trailing: const Icon(Icons.chevron_right),
                           onTap: () async {
-                            final changed = await OrganizationAccessEditor.open(
+                            final changed = await OrganizationAccessEditor.show(
                               context,
                               employee: employee,
                               organization: widget.organization,

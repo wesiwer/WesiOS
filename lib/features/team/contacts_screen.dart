@@ -287,7 +287,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       }
     }
     if (organization == null || !mounted) return;
-    final changed = await OrganizationAccessEditor.open(
+    final changed = await OrganizationAccessEditor.show(
       context,
       employee: employee,
       organization: organization,
