@@ -46,8 +46,22 @@ class OrganizationContext {
     final stored = currentOrganizationId;
     final org = await OrganizationService.byId(stored);
     final employee = TeamService.current;
+
+    // Организация должна не только существовать и быть разрешённой, но и
+    // находиться в дереве — то есть быть достижимой от корня.
+    //
+    // Без этой проверки у владельца проверка вырождалась в ничто: право на
+    // просмотр у него есть на любую организацию, поэтому запись с исчезнувшим
+    // родителем проходила насквозь. Дальше её пересекали с деревом, получали
+    // пусто, и каждый финансовый экран падал с «нет права на прогноз» — при
+    // том, что прав у владельца в избытке, а не было как раз организации.
+    final visible = employee == null
+        ? await _rootSubtree()
+        : await OrganizationAccessService.visibleOrganizationIds();
+
     if (org != null &&
         !org.archived &&
+        visible.contains(org.id) &&
         (employee == null ||
             await OrganizationAccessService.can(
               org.id,
@@ -55,10 +69,6 @@ class OrganizationContext {
             ))) {
       return;
     }
-
-    final visible = employee == null
-        ? <String>{OrganizationModel.rootId}
-        : await OrganizationAccessService.visibleOrganizationIds();
     String fallback;
     if (visible.contains(OrganizationModel.rootId)) {
       fallback = OrganizationModel.rootId;
@@ -113,12 +123,33 @@ class OrganizationContext {
           : <String>{current};
       if (TeamService.current == null) return requested;
       final allowed = await OrganizationAccessService.visibleOrganizationIds();
-      return requested.intersection(allowed);
+      final result = requested.intersection(allowed);
+      // Пусто при непустом `allowed` — это не «доступа нет», а «выбранная
+      // организация устарела»: её удалили, заархивировали или у неё исчез
+      // родитель. Возвращать пустой список в этом случае нельзя: для всего
+      // финансового он означает «данных нет вообще», и человек получает
+      // отказ по правам там, где права ни при чём.
+      if (result.isEmpty && allowed.isNotEmpty) {
+        return <String>{
+          allowed.contains(OrganizationModel.rootId)
+              ? OrganizationModel.rootId
+              : allowed.first,
+        };
+      }
+      return result;
     } catch (_) {
       // During early UI bootstrap/tests organization Hive adapters may not yet
       // be available. Never broaden a normal employee's access on that path.
       return _failClosedFallback();
     }
+  }
+
+  /// Всё дерево от корня. Нужно, чтобы отличить существующую организацию
+  /// от достижимой: запись может лежать в хранилище и при этом не иметь пути
+  /// до корня — например, когда её родителя удалили.
+  static Future<Set<String>> _rootSubtree() async {
+    final root = await OrganizationService.root();
+    return OrganizationService.subtreeIds(root.id);
   }
 
   static Future<OrganizationModel> currentOrganization() async {
