@@ -1,5 +1,7 @@
+import 'package:hive/hive.dart';
 import 'package:wesios/core/sync/sync_merge.dart';
 import 'package:wesios/core/sync/sync_transport.dart';
+import 'package:wesios/features/organizations/services/organization_service.dart';
 
 /// Сервер синхронизации, живущий в памяти теста.
 ///
@@ -20,6 +22,7 @@ class FakeSyncTransport implements SyncTransport {
   SyncFailure? failWith;
 
   bool _signedIn = true;
+  bool _organizationBaselineReady = false;
 
   FakeSyncTransport({bool signedIn = true}) : _signedIn = signedIn;
 
@@ -28,6 +31,17 @@ class FakeSyncTransport implements SyncTransport {
 
   @override
   void signOut() => _signedIn = false;
+
+  Future<void> _ensureProductionBaseline() async {
+    if (_organizationBaselineReady) return;
+    // Production runs OrganizationMigrationService/ensureBaseline before sync.
+    // Legacy sync tests intentionally exercise SyncEngine in isolation, so the
+    // fake transport mirrors that bootstrap only when the org adapter exists.
+    if (Hive.isAdapterRegistered(81)) {
+      await OrganizationService.ensureBaseline();
+    }
+    _organizationBaselineReady = true;
+  }
 
   @override
   Future<SyncResult<String>> signIn(String login, String password) async {
@@ -38,6 +52,7 @@ class FakeSyncTransport implements SyncTransport {
 
   @override
   Future<SyncResult<Map<String, SyncRecord>>> fetch(String collection) async {
+    await _ensureProductionBaseline();
     calls.add('fetch:$collection');
     if (failWith != null) return SyncResult.fail(failWith!);
     if (!_signedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
@@ -49,6 +64,7 @@ class FakeSyncTransport implements SyncTransport {
     String collection,
     List<SyncRecord> records,
   ) async {
+    await _ensureProductionBaseline();
     calls.add('push:$collection:${records.length}');
     if (failWith != null) return SyncResult.fail(failWith!);
     if (!_signedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
