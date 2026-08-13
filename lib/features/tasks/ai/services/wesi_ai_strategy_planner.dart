@@ -31,6 +31,10 @@ class WesiAiStrategyPlanner {
     );
 
     final enriched = suggestions.map((suggestion) {
+      // Наблюдение о конкретном объекте не пересчитывается формой цепочки:
+      // у просроченной сделки своя срочность, и «в этом направлении и так
+      // много задач» её не отменяет.
+      if (suggestion.isFact) return suggestion;
       final template = WesiAiTaskCatalog.all
           .where((item) => item.id == suggestion.templateId)
           .firstOrNull;
@@ -58,6 +62,8 @@ class WesiAiStrategyPlanner {
     }).toList();
 
     enriched.sort((a, b) {
+      final grounding = b.groundingTier.compareTo(a.groundingTier);
+      if (grounding != 0) return grounding;
       final aScore = _portfolioScore(a, businessSignal);
       final bScore = _portfolioScore(b, businessSignal);
       final score = bScore.compareTo(aScore);

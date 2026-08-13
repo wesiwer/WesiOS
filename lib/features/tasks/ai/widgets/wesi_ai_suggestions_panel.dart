@@ -382,6 +382,11 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
                       accent:
                           suggestion.priority.index >= TaskPriority.high.index,
                     ),
+                    // Метка происхождения: карточка указывает на конкретную
+                    // сделку, веху или бит, а не на тип работ вообще. Человеку
+                    // важно видеть разницу — такое предложение можно пойти и
+                    // перепроверить в самом приложении.
+                    if (suggestion.isFact) _tag('по данным'),
                   ],
                 ),
               ),
@@ -495,6 +500,26 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
               ),
             ],
           ),
+          if (suggestion.dueDate != null) ...[
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                Icon(Icons.event_outlined, size: 14, color: AppTheme.textMuted),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    // У наблюдения срок не выдуман: это дата самой лицензии,
+                    // вехи или платежа. Без неё карточка теряет половину
+                    // смысла — «когда» здесь так же важно, как «что».
+                    'Срок: ${_shortDate(suggestion.dueDate!)}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
+                  ),
+                ),
+              ],
+            ),
+          ],
           if (suggestion.evidence.isNotEmpty) ...[
             const SizedBox(height: 6),
             Text(
@@ -595,4 +620,8 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
         TaskPriority.high => 'Высокая',
         TaskPriority.urgent => 'Срочная',
       };
+
+  static String _shortDate(DateTime value) =>
+      '${value.day.toString().padLeft(2, '0')}.'
+      '${value.month.toString().padLeft(2, '0')}';
 }

@@ -200,7 +200,6 @@ class RoadmapService {
   }
 
   static Future<void> saveItem(RoadmapItem item) async {
-    final all = await items();
     final sanitizedDependencies = item.dependencyIds
         .where((value) => value != item.id)
         .toSet()

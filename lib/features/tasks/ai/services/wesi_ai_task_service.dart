@@ -1,9 +1,18 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../../audio/models/audio_vault_models.dart';
+import '../../../audio/services/audio_vault_service.dart';
+import '../../../crm/models/crm_models.dart';
+import '../../../crm/services/crm_service.dart';
+import '../../../files/models/file_share_models.dart';
+import '../../../files/services/file_share_service.dart';
 import '../../../organizations/models/organization_access_grant.dart';
 import '../../../organizations/services/organization_access_service.dart';
 import '../../../organizations/services/organization_context.dart';
 import '../../../organizations/services/organization_service.dart';
+import '../../../roadmap/models/roadmap_models.dart';
+import '../../../roadmap/services/roadmap_service.dart';
+import '../../../team/models/team_permissions.dart';
 import '../../../team/services/team_service.dart';
 import '../../../treasury/models/transaction_model.dart';
 import '../../../treasury/services/treasury_service.dart';
@@ -13,6 +22,7 @@ import '../../services/task_service.dart';
 import '../models/ai_learning_profile.dart';
 import '../models/ai_task_suggestion.dart';
 import 'task_template_catalog.dart';
+import 'wesi_ai_fact_finder.dart';
 import 'wesi_ai_strategy_planner.dart';
 import 'wesi_ai_task_engine.dart';
 
@@ -28,11 +38,13 @@ class WesiAiTaskService {
     final tasks = await TaskService().getForOrganizations({organization.id});
     final eligibleIds = await _employeeIdsForOrganization(organization.id);
     final businessSignal = await _businessSignal(clock);
+    final world = await _worldState(organization.id, tasks);
     final box = await Hive.openBox<dynamic>(_memoryBoxName);
     final learningProfile = _learningProfile(box, organization.id);
 
     final raw = WesiAiTaskEngine.analyze(WesiAiAnalysisInput(
       tasks: tasks,
+      world: world,
       employees: TeamService.all,
       eligibleEmployeeIds: eligibleIds,
       organizationId: organization.id,
@@ -106,6 +118,9 @@ class WesiAiTaskService {
       'wesi-ai:fingerprint:${suggestion.fingerprint}',
       if (suggestion.sourceTaskId != null)
         'wesi-ai:source:${suggestion.sourceTaskId}',
+      // Метка объекта: пока задача не закрыта, система не предложит то же
+      // самое ещё раз — ни на этом устройстве, ни на устройстве коллеги.
+      if (suggestion.isFact) suggestion.factTag,
     ];
     final task = TaskModel(
       id: 'wesi_ai_${now.microsecondsSinceEpoch}',
@@ -271,6 +286,110 @@ class WesiAiTaskService {
       }
     }
     return result;
+  }
+
+  /// Живые данные организации для поиска фактов.
+  ///
+  /// Каждый источник читается отдельно и в своём `try`: если у человека нет
+  /// доступа к CRM или модуль поломан, система теряет один источник фактов,
+  /// а не весь разбор целиком.
+  static Future<WesiAiWorldState> _worldState(
+    String organizationId,
+    List<TaskModel> tasks,
+  ) async {
+    var clients = const <CrmClient>[];
+    var deals = const <CrmDeal>[];
+    var interactions = const <CrmInteraction>[];
+    if (_moduleAllowed(TeamModules.crm)) {
+      try {
+        clients = await CrmService.clientsForOrganizations({organizationId});
+        deals = await CrmService.dealsForOrganizations({organizationId});
+        final visibleClients = {for (final c in clients) c.id};
+        interactions = (await CrmService.interactionsRaw())
+            .where((item) => visibleClients.contains(item.clientId))
+            .toList();
+      } catch (_) {
+        clients = const [];
+        deals = const [];
+        interactions = const [];
+      }
+    }
+
+    // У дорожной карты и каталога битов нет привязки к организации — это
+    // данные всего приложения. Поэтому они видны в любом контексте, а от
+    // повторных предложений защищает метка факта на созданной задаче.
+    var projects = const <RoadmapProject>[];
+    var roadmapItems = const <RoadmapItem>[];
+    if (_moduleAllowed(TeamModules.roadmap)) {
+      try {
+        projects = await RoadmapService.projects(includeArchived: false);
+        roadmapItems = await RoadmapService.items();
+      } catch (_) {
+        projects = const [];
+        roadmapItems = const [];
+      }
+    }
+
+    var beats = const <BeatEntry>[];
+    if (_moduleAllowed(TeamModules.audio)) {
+      try {
+        beats = await AudioVaultService.all();
+      } catch (_) {
+        beats = const [];
+      }
+    }
+
+    var fileRequests = const <FileShareRequest>[];
+    try {
+      final me = TeamService.current?.id;
+      fileRequests = me == null
+          ? const []
+          : await FileShareService.incoming(me);
+    } catch (_) {
+      fileRequests = const [];
+    }
+
+    var transactions = const <TransactionModel>[];
+    if (await _financeVisible(organizationId)) {
+      try {
+        transactions = (await TreasuryService().getAllTransactions())
+            .where((tx) => tx.effectiveOrganizationId == organizationId)
+            .toList();
+      } catch (_) {
+        transactions = const [];
+      }
+    }
+
+    return WesiAiWorldState(
+      tasks: tasks,
+      clients: clients,
+      deals: deals,
+      interactions: interactions,
+      projects: projects,
+      roadmapItems: roadmapItems,
+      beats: beats,
+      fileRequests: fileRequests,
+      transactions: transactions,
+    );
+  }
+
+  static bool _moduleAllowed(String module) {
+    final current = TeamService.current;
+    return current == null ||
+        current.isOwner ||
+        current.permissions.allows(module);
+  }
+
+  static Future<bool> _financeVisible(String organizationId) async {
+    if (TeamService.current == null) return true;
+    try {
+      return await OrganizationAccessService.can(
+        organizationId,
+        OrganizationPermissions.viewFinance,
+      );
+    } catch (_) {
+      return false;
+    }
   }
 
   static Future<AiBusinessSignal> _businessSignal(DateTime now) async {

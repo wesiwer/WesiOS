@@ -4,11 +4,13 @@ import '../../models/task_model.dart';
 import '../../../team/models/employee_model.dart';
 import '../../../team/services/team_skill_service.dart';
 import '../../../team/services/team_workload_service.dart';
+import '../models/ai_fact.dart';
 import '../models/ai_learning_profile.dart';
 import '../models/ai_task_suggestion.dart';
 import '../models/ai_task_template.dart';
 import 'task_template_catalog.dart';
 import 'wesi_ai_adaptive_policy.dart';
+import 'wesi_ai_fact_finder.dart';
 
 class WesiAiAnalysisInput {
   final List<TaskModel> tasks;
@@ -21,6 +23,13 @@ class WesiAiAnalysisInput {
   final bool canAssignToOthers;
   final AiBusinessSignal businessSignal;
   final AiLearningProfile learningProfile;
+
+  /// Живые данные организации: клиенты, сделки, вехи, биты, запросы файлов.
+  ///
+  /// Пустое состояние — рабочий случай: в новой организации фактов ещё нет,
+  /// и система честно возвращается к предложениям по типам работ.
+  final WesiAiWorldState world;
+
   final DateTime now;
 
   const WesiAiAnalysisInput({
@@ -34,6 +43,7 @@ class WesiAiAnalysisInput {
     required this.canAssignToOthers,
     required this.businessSignal,
     this.learningProfile = const AiLearningProfile(),
+    this.world = const WesiAiWorldState(),
     required this.now,
   });
 }
@@ -111,7 +121,12 @@ class WesiAiTaskEngine {
       ));
     }
 
+    candidates.addAll(_factSuggestions(input, scopedTasks));
+
     candidates.sort((a, b) {
+      // Наблюдение о конкретном объекте идёт впереди догадки по типу работ.
+      final grounding = b.groundingTier.compareTo(a.groundingTier);
+      if (grounding != 0) return grounding;
       final need = b.needScore.compareTo(a.needScore);
       if (need != 0) return need;
       final impact = b.forecastImpact.index.compareTo(a.forecastImpact.index);
@@ -133,6 +148,177 @@ class WesiAiTaskEngine {
       if (result.length >= 5) break;
     }
     return result;
+  }
+
+  /// Предложения, выросшие из живых данных организации.
+  ///
+  /// В отличие от шаблонов, здесь ничего не придумывается: у каждого
+  /// предложения есть объект, у объекта — срок и числа, а исполнителем по
+  /// умолчанию становится тот, за кем этот объект и так закреплён.
+  static List<AiTaskSuggestion> _factSuggestions(
+    WesiAiAnalysisInput input,
+    List<TaskModel> scopedTasks,
+  ) {
+    final world = WesiAiWorldState(
+      tasks: scopedTasks,
+      clients: input.world.clients,
+      deals: input.world.deals,
+      interactions: input.world.interactions,
+      projects: input.world.projects,
+      roadmapItems: input.world.roadmapItems,
+      beats: input.world.beats,
+      fileRequests: input.world.fileRequests,
+      transactions: input.world.transactions,
+    );
+    final facts = WesiAiFactFinder.collect(
+      world,
+      now: input.now,
+      coverTasks: input.tasks,
+    );
+    if (facts.isEmpty) return const [];
+
+    final result = <AiTaskSuggestion>[];
+    for (final fact in facts) {
+      final learningId = 'fact:${fact.kind.name}';
+      final learning = input.learningProfile.forTemplate(learningId);
+      final needScore =
+          (fact.urgency * learning.needMultiplier).clamp(0.0, 1.0).toDouble();
+      // Отказ учится и здесь, но порог молчания для наблюдения ниже, чем для
+      // шаблона. Шаблон — это идея, от неё можно отказаться насовсем.
+      // Наблюдение — это состояние данных: просроченная сделка не перестаёт
+      // быть просроченной оттого, что напоминания трижды закрыли крестиком.
+      // Поэтому замолкает только спокойное наблюдение, а заметное остаётся.
+      if (learning.rejected >= 2 && learning.accepted == 0 && needScore < .55) {
+        continue;
+      }
+
+      final ranked = _rankForFact(fact, input, scopedTasks, learning);
+      final chosen = ranked.isEmpty ? null : ranked.first;
+      final evidence = <String>[
+        ...fact.evidence,
+        if (chosen != null) _factAssigneeEvidence(fact, chosen),
+        if (learning.decisions >= 2)
+          'Учтено ваших решений по таким наблюдениям: ${learning.decisions}',
+      ];
+
+      result.add(AiTaskSuggestion(
+        id: 'wesi-ai-fact-${fact.tag.hashCode.abs()}',
+        fingerprint: '${input.organizationId}:${fact.tag}',
+        templateId: learningId,
+        category: fact.category,
+        organizationId: input.organizationId,
+        title: fact.title,
+        description: fact.description,
+        assigneeId: chosen?.employee.id,
+        alternativeAssigneeIds:
+            ranked.map((item) => item.employee.id).toList(),
+        priority: fact.priority,
+        forecastImpact: fact.impact,
+        needScore: needScore,
+        // Наблюдение проверяемо, поэтому уверенность высокая: сомнение здесь
+        // не в том, правда ли это, а в том, лучший ли это следующий шаг.
+        confidence: (.72 + fact.urgency * .22).clamp(.45, .96).toDouble(),
+        effortPoints: fact.effortPoints,
+        strategicScore: fact.urgency,
+        // Стратегическая полоска в карточке остаётся пустой намеренно: у
+        // наблюдения причина уже написана в «почему сейчас», и повторять её
+        // второй раз теми же словами — не объяснение, а шум.
+        dueDate: fact.deadline,
+        whyNow: fact.whyNow,
+        evidence: evidence,
+        factTag: fact.tag,
+      ));
+    }
+    return result;
+  }
+
+  /// Кому поручить наблюдение.
+  ///
+  /// Владелец объекта идёт первым не по формальности, а по сути: отношения
+  /// с клиентом или авторство бита нельзя передать другому человеку одним
+  /// назначением. При этом преимущество владельца — большое, но не
+  /// безусловное: если он завален и просрочен, система вправе предложить
+  /// того, кто действительно успеет.
+  static List<_RankedEmployee> _rankForFact(
+    WesiAiFact fact,
+    WesiAiAnalysisInput input,
+    List<TaskModel> tasks,
+    AiTemplateLearning learning,
+  ) {
+    final scored = <_RankedEmployee>[];
+    final fallback = <_RankedEmployee>[];
+
+    for (final employee in input.employees) {
+      if (!input.eligibleEmployeeIds.contains(employee.id)) continue;
+      if (!input.canAssignToOthers && employee.id != input.currentEmployeeId) {
+        continue;
+      }
+
+      final workload = _workload(employee.id, tasks);
+      final load = TeamWorkloadService.calculate(
+        employee,
+        tasks,
+        now: input.now,
+      );
+      final capacity = (1 - load.ratio).clamp(0.0, 1.0).toDouble();
+      final overduePenalty = min(.45, workload.overdue * .11);
+      final owner = fact.ownerEmployeeId != null &&
+          _sameEmployee(employee, fact.ownerEmployeeId!);
+
+      final positionFit = _roleFit(employee.position, fact.roleAliases);
+      final skillFit = fact.roleAliases.isEmpty
+          ? 0.0
+          : TeamSkillService.fitForTask(
+              employee,
+              roleAliases: fact.roleAliases,
+              taskKeywords: const [],
+            );
+      final roleFit = max(positionFit, skillFit);
+
+      final score = (owner ? .55 : 0) +
+          roleFit * .30 +
+          capacity * .22 +
+          learning.assigneeBoost(employee.id) -
+          overduePenalty;
+      final entry = _RankedEmployee(employee, score, workload);
+      if (owner || roleFit > 0) {
+        scored.add(entry);
+      } else {
+        fallback.add(entry);
+      }
+    }
+
+    // Наблюдение не должно исчезать только потому, что ни у кого не совпала
+    // должность: у реальной проблемы всё равно есть срок. Если подходящих по
+    // роли нет, берём тех, у кого есть свободная ёмкость.
+    final pool = scored.isNotEmpty ? scored : fallback;
+    pool.sort((a, b) {
+      final score = b.score.compareTo(a.score);
+      if (score != 0) return score;
+      return a.workload.openWeight.compareTo(b.workload.openWeight);
+    });
+    return pool;
+  }
+
+  static bool _sameEmployee(EmployeeModel employee, String reference) {
+    final needle = reference.trim().toLowerCase();
+    if (needle.isEmpty) return false;
+    return employee.id.toLowerCase() == needle ||
+        employee.login.toLowerCase() == needle ||
+        employee.fullName.trim().toLowerCase() == needle;
+  }
+
+  static String _factAssigneeEvidence(WesiAiFact fact, _RankedEmployee ranked) {
+    final name = ranked.employee.displayName;
+    if (fact.ownerEmployeeId != null &&
+        _sameEmployee(ranked.employee, fact.ownerEmployeeId!)) {
+      return '$name: объект закреплён за ним';
+    }
+    if (ranked.workload.overdue > 0) {
+      return '$name: лучший доступный вариант, просрочено '
+          '${ranked.workload.overdue}';
+    }
+    return '$name: подходит по роли и свободен';
   }
 
   static AiTaskCategory? categoryOfTask(TaskModel task) {

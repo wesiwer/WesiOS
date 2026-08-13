@@ -6,7 +6,6 @@ import 'package:wesios/core/sync/sync_codec.dart';
 import 'package:wesios/core/sync/sync_endpoint.dart';
 import 'package:wesios/core/sync/sync_engine.dart';
 import 'package:wesios/core/sync/sync_journal.dart';
-import 'package:wesios/core/sync/sync_merge.dart';
 import 'package:wesios/core/sync/sync_transport.dart';
 import 'package:wesios/features/knowledge/models/article_model.dart';
 import 'package:wesios/features/organizations/models/organization_model.dart';

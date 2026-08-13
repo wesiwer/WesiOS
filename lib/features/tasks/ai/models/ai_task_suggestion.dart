@@ -23,6 +23,14 @@ class AiTaskSuggestion {
   final List<String> evidence;
   final String? sourceTaskId;
 
+  /// Метка наблюдения, из которого выросло предложение.
+  ///
+  /// Пустая — значит предложение пришло от шаблона: «по такому типу работ
+  /// давно ничего не было». Непустая — значит система указывает на
+  /// конкретный объект и по этой же метке потом поймёт, что работа уже
+  /// поставлена, и перестанет предлагать то же самое.
+  final String factTag;
+
   const AiTaskSuggestion({
     required this.id,
     required this.fingerprint,
@@ -44,7 +52,21 @@ class AiTaskSuggestion {
     required this.whyNow,
     this.evidence = const [],
     this.sourceTaskId,
+    this.factTag = '',
   });
+
+  /// Предложение указывает на конкретный объект приложения, а не на тип работ.
+  bool get isFact => factTag.isNotEmpty;
+
+  /// Насколько предложение опирается на данные, а не на догадку.
+  ///
+  /// Шаблон говорит «по такому типу работ давно ничего не было» — это
+  /// предположение о полезности. Факт говорит «вот эта сделка просрочена на
+  /// девять дней» — это наблюдение. Пока в приложении есть незакрытые
+  /// наблюдения, придумывать новую работу поверх них неправильно, поэтому
+  /// заметный факт всегда идёт первым. Слабый факт такого права не получает
+  /// и сравнивается с шаблонами на общих основаниях.
+  int get groundingTier => isFact && needScore >= .35 ? 1 : 0;
 
   AiTaskSuggestion copyWith({
     String? title,
@@ -82,6 +104,7 @@ class AiTaskSuggestion {
         whyNow: whyNow ?? this.whyNow,
         evidence: evidence ?? this.evidence,
         sourceTaskId: sourceTaskId,
+        factTag: factTag,
       );
 }
 
