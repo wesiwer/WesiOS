@@ -52,19 +52,19 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     cleanHistory.push({author: author, text: text});
   }
   const cleanMemory = ai.sanitizeMemory(memory);
+  const systemParts = [personaBundle.prompt];
+  if (summary) systemParts.push("[WESI_AI_CONVERSATION_SUMMARY]\n" + summary);
+  if (cleanMemory.shared.length) systemParts.push("[WESI_AI_SHARED_MEMORY]\n" + cleanMemory.shared.join("\n"));
+  const personaMemory = persona === "zane" ? cleanMemory.zane : persona === "nirvana" ? cleanMemory.nirvana : cleanMemory.zane.concat(cleanMemory.nirvana);
+  if (personaMemory.length) systemParts.push("[WESI_AI_PERSONA_MEMORY]\n" + personaMemory.join("\n"));
+  if (persona === "lobby") systemParts.push("[WESI_AI_LOBBY_MODE]\n" + lobbyMode);
+
   const requestId = "wai_" + Date.now() + "_" + $security.randomString(12);
   const payload = {
     requestId: requestId,
     route: route,
     operation: persona === "lobby" ? "lobby" : "chat",
-    input: {
-      system: personaBundle.prompt,
-      lobbyMode: persona === "lobby" ? lobbyMode : null,
-      summary: summary,
-      memory: cleanMemory,
-      history: cleanHistory,
-      message: message
-    }
+    input: {system: systemParts.join("\n\n"), history: cleanHistory, message: message}
   };
   const raw = JSON.stringify(payload);
   const timestamp = String(Math.floor(Date.now() / 1000));
