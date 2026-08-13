@@ -7,8 +7,8 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/module_header.dart';
 import '../../core/widgets/window_controls.dart';
 import '../tasks/services/task_service.dart';
-import '../treasury/services/financial_advice.dart';
-import '../treasury/services/financial_health.dart';
+import '../organizations/services/organization_context.dart';
+import '../organizations/widgets/subtree_finance_breakdown.dart';
 import '../treasury/services/treasury_service.dart';
 import 'services/analytics_service.dart';
 
@@ -27,7 +27,6 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
 
   int _periodDays = 30;
   AnalyticsSnapshot? _data;
-  FinancialHealth _health = FinancialHealth.empty;
   bool _loading = true;
 
   bool get _ru => WesiLocale.isRussian;
@@ -38,30 +37,22 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     _load();
     TreasuryService.revision.addListener(_load);
     TaskService.revision.addListener(_load);
+    OrganizationContext.revision.addListener(_load);
   }
 
   @override
   void dispose() {
     TreasuryService.revision.removeListener(_load);
     TaskService.revision.removeListener(_load);
+    OrganizationContext.revision.removeListener(_load);
     super.dispose();
   }
 
   Future<void> _load() async {
     final data = await _service.build(periodDays: _periodDays);
-    final treasury = TreasuryService();
-    final txs = await treasury.getAllTransactions();
-    final total = await treasury.getCurrentBalance();
-    final health = FinancialHealth.compute(
-      transactions: txs,
-      balance: TreasuryService.balanceOnDay(DateTime.now(), txs, total),
-      now: DateTime.now(),
-      periodDays: _periodDays,
-    );
     if (!mounted) return;
     setState(() {
       _data = data;
-      _health = health;
       _loading = false;
     });
   }
@@ -103,6 +94,10 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
                     _emptyState()
                   else ...[
                     _kpiGrid(d),
+                    if (OrganizationContext.scope == OrganizationScope.subtree) ...[
+                      const SizedBox(height: 18),
+                      const SubtreeFinanceBreakdown(),
+                    ],
                     const SizedBox(height: 18),
                     _trendCard(d),
                     const SizedBox(height: 18),
@@ -337,118 +332,36 @@ class _AnalyticsScreenState extends State<AnalyticsScreen> {
     );
   }
 
-  /// Деньги: сколько отложено, на сколько хватит и что делать дальше.
-  ///
-  /// Раньше здесь стояли «Траты в день» и «Запас прочности», посчитанные по
-  /// разным основаниям: число дней — по разнице доходов и трат, а строка
-  /// рядом — по полным тратам. Два числа не перемножались друг с другом, и
-  /// карточка читалась как требование сократить всё до нуля.
   Widget _healthCard(AnalyticsSnapshot d) {
-    final h = _health;
-    final advice = FinancialAdviceBuilder(ru: _ru);
-    final cushion = advice.cushion(h);
-    final step = advice.nextStep(h);
-    final days = h.cushionDays;
-
+    final runway = d.runwayDays;
     return _card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _cardTitle(_ru ? 'Деньги' : 'Money'),
+          _cardTitle(_ru ? 'Здоровье' : 'Health'),
           const SizedBox(height: 14),
+          _statRow(icon: Icons.local_fire_department_outlined, color: AppTheme.accentRed, label: _ru ? 'Траты в день' : 'Burn per day', value: CurrencyService.format(d.burnPerDay)),
+          _statRow(icon: Icons.receipt_long_outlined, color: AppTheme.accentGreen, label: _ru ? 'Средний чек дохода' : 'Average income ticket', value: CurrencyService.format(d.averageIncomeTicket)),
           _statRow(
-            icon: Icons.savings_outlined,
-            color: days == null
-                ? AppTheme.textMuted
-                : (days < 30
-                    ? AppTheme.accentRed
-                    : (days < h.targetDays
-                        ? AppTheme.accent
-                        : AppTheme.accentGreen)),
-            label: _ru ? 'Отложено, хватит на' : 'Saved, lasts',
-            value: days == null
-                ? (_ru ? '—' : '—')
-                : (_ru ? '$days дн.' : '$days days'),
+            icon: runway == null ? Icons.trending_up : Icons.hourglass_bottom,
+            color: runway == null ? AppTheme.accentGreen : (runway < 60 ? AppTheme.accentRed : AppTheme.accent),
+            label: _ru ? 'Запас прочности' : 'Runway',
+            value: runway == null ? (_ru ? 'доходы перекрывают' : 'income covers it') : (_ru ? '$runway дн.' : '$runway days'),
           ),
-          _statRow(
-            icon: Icons.shopping_basket_outlined,
-            color: AppTheme.accentRed,
-            label: _ru ? 'Тратим в день' : 'Spending a day',
-            value: CurrencyService.format(h.spendPerDay),
-          ),
-          _statRow(
-            icon: Icons.payments_outlined,
-            color: AppTheme.accentGreen,
-            label: _ru ? 'Зарабатываем в день' : 'Earning a day',
-            value: CurrencyService.format(h.earnPerDay),
-          ),
-          if (!h.isEmpty) ...[
-            const SizedBox(height: 10),
-            Text(
-              cushion.headline,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: AppTheme.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              cushion.detail,
-              style: TextStyle(
-                  fontSize: 11.5, height: 1.45, color: AppTheme.textSecondary),
-            ),
-            if (cushion.action.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                cushion.action,
-                style: TextStyle(
-                    fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
-              ),
-            ],
-            const SizedBox(height: 12),
+          if (runway != null && runway < 60) ...[
+            const SizedBox(height: 8),
             Container(
-              width: double.infinity,
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: (step.alarming ? AppTheme.accentRed : AppTheme.accent)
-                    .withOpacity(0.10),
+                color: AppTheme.accentRed.withOpacity(0.12),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                    color: (step.alarming ? AppTheme.accentRed : AppTheme.accent)
-                        .withOpacity(0.32)),
+                border: Border.all(color: AppTheme.accentRed.withOpacity(0.35)),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    step.headline,
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color:
-                          step.alarming ? AppTheme.accentRed : AppTheme.accent,
-                    ),
-                  ),
-                  const SizedBox(height: 5),
-                  Text(
-                    step.detail,
-                    style: TextStyle(
-                        fontSize: 11.5,
-                        height: 1.45,
-                        color: AppTheme.textSecondary),
-                  ),
-                  if (step.action.isNotEmpty) ...[
-                    const SizedBox(height: 5),
-                    Text(
-                      step.action,
-                      style: TextStyle(
-                          fontSize: 11.5,
-                          height: 1.45,
-                          color: AppTheme.textPrimary),
-                    ),
-                  ],
-                ],
+              child: Text(
+                _ru
+                    ? 'При нынешнем темпе денег хватит меньше чем на два месяца. Стоит посмотреть прогноз и сценарии «Что если?».'
+                    : 'At the current pace the money lasts less than two months. Worth checking the forecast and what-if scenarios.',
+                style: TextStyle(fontSize: 12, color: AppTheme.accentRed),
               ),
             ),
           ],

@@ -10,6 +10,7 @@ import 'services/task_assignment.dart';
 import 'services/task_service.dart';
 import 'task_labels.dart';
 import 'widgets/task_editor_dialog.dart';
+import 'ai/widgets/wesi_ai_suggestions_panel.dart';
 
 /// Задачи — канбан-доска с приоритетами, сроками, исполнителями и
 /// чек-листами.
@@ -73,8 +74,7 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   Future<void> _create([TaskStatus status = TaskStatus.backlog]) async {
-    final task =
-        await TaskEditorDialog.show(context, initialStatus: status);
+    final task = await TaskEditorDialog.show(context, initialStatus: status);
     if (task != null) await _service.save(task);
   }
 
@@ -90,8 +90,7 @@ class _TasksScreenState extends State<TasksScreen> {
       builder: (context) => AlertDialog(
         backgroundColor: AppTheme.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        insetPadding:
-            EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
+        insetPadding: EdgeInsets.fromLTRB(40, kTitleBarHeight + 24, 40, 24),
         title: Text(ru ? 'Удалить задачу?' : 'Delete task?',
             style: TextStyle(fontSize: 17, color: AppTheme.textPrimary)),
         content: Text('«${task.title}»',
@@ -149,7 +148,11 @@ class _TasksScreenState extends State<TasksScreen> {
               _header(ru),
               const SizedBox(height: 12),
               _filters(ru),
-              const SizedBox(height: 14),
+              const SizedBox(height: 10),
+              WesiAiSuggestionsPanel(onTaskCreated: () {
+                _load();
+              }),
+              const SizedBox(height: 10),
               Expanded(child: _board(ru)),
             ],
           ),
@@ -185,16 +188,14 @@ class _TasksScreenState extends State<TasksScreen> {
           child: SizedBox(
             height: 38,
             child: TextField(
-              style: TextStyle(
-                  fontSize: 13, color: AppTheme.textPrimary),
+              style: TextStyle(fontSize: 13, color: AppTheme.textPrimary),
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
                 isDense: true,
-                prefixIcon: Icon(Icons.search,
-                    size: 17, color: AppTheme.textMuted),
+                prefixIcon:
+                    Icon(Icons.search, size: 17, color: AppTheme.textMuted),
                 hintText: ru ? 'Поиск по задачам' : 'Search tasks',
-                hintStyle:
-                    TextStyle(fontSize: 13, color: AppTheme.textMuted),
+                hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
                 filled: true,
                 fillColor: AppTheme.surface.withOpacity(0.5),
                 border: OutlineInputBorder(
@@ -226,8 +227,7 @@ class _TasksScreenState extends State<TasksScreen> {
             ...TaskPriority.values.map((p) => PopupMenuItem(
                   value: p,
                   child: Text(TaskLabels.priority(p, ru),
-                      style: TextStyle(
-                          color: TaskLabels.priorityColor(p))),
+                      style: TextStyle(color: TaskLabels.priorityColor(p))),
                 )),
           ],
           child: _chip(
@@ -290,8 +290,7 @@ class _TasksScreenState extends State<TasksScreen> {
           children: [
             for (int i = 0; i < TaskStatus.values.length; i++) ...[
               Expanded(child: _columnWidget(TaskStatus.values[i], ru)),
-              if (i != TaskStatus.values.length - 1)
-                const SizedBox(width: 12),
+              if (i != TaskStatus.values.length - 1) const SizedBox(width: 12),
             ],
           ],
         );
@@ -339,13 +338,12 @@ class _TasksScreenState extends State<TasksScreen> {
                     ),
                   ),
                   Text('${items.length}',
-                      style: TextStyle(
-                          fontSize: 12, color: AppTheme.textMuted)),
+                      style:
+                          TextStyle(fontSize: 12, color: AppTheme.textMuted)),
                   const SizedBox(width: 4),
                   GestureDetector(
                     onTap: () => _create(status),
-                    child: Icon(Icons.add,
-                        size: 16, color: AppTheme.accent),
+                    child: Icon(Icons.add, size: 16, color: AppTheme.accent),
                   ),
                 ],
               ),
@@ -356,8 +354,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   child: Center(
                     child: Text(
                       ru ? 'Пусто' : 'Empty',
-                      style: TextStyle(
-                          fontSize: 11, color: AppTheme.textMuted),
+                      style: TextStyle(fontSize: 11, color: AppTheme.textMuted),
                     ),
                   ),
                 )
@@ -461,8 +458,7 @@ class _TasksScreenState extends State<TasksScreen> {
                   const SizedBox(width: 8),
                   Text(
                     '${task.subtasks.where((s) => s.done).length}/${task.subtasks.length}',
-                    style: TextStyle(
-                        fontSize: 10, color: AppTheme.textMuted),
+                    style: TextStyle(fontSize: 10, color: AppTheme.textMuted),
                   ),
                 ],
               ),

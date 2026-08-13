@@ -4,12 +4,20 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../../core/services/currency_service.dart';
+import '../../organizations/models/organization_access_grant.dart';
+import '../../organizations/models/organization_model.dart';
+import '../../organizations/services/organization_access_service.dart';
+import '../../organizations/services/organization_context.dart';
+import '../../organizations/services/organization_service.dart';
+import '../../organizations/services/transaction_audit_service.dart';
+import '../../team/services/team_service.dart';
+import '../models/account_model.dart';
 import '../models/transaction_model.dart';
 import 'account_service.dart';
 import 'anomaly_engine.dart';
 import 'calendar_days.dart';
 import 'forecast_engine.dart';
-import 'forecast_runner.dart';
 import 'horizon_behavior_monitor.dart';
 import 'horizon_business_context.dart';
 import 'horizon_calibration.dart';
@@ -20,50 +28,300 @@ import 'horizon_prediction_registry.dart';
 import 'horizon_scenarios.dart';
 import 'recurring_engine.dart';
 
-/// Wesi Treasury Service — управление финансами, аномалиями, прогнозами.
-///
-/// ForecastEngine remains the pure mathematical core. This service is the
-/// company-level orchestration layer: it joins Treasury with CRM, Tasks,
-/// Audio Vault contracts, account liquidity, persisted calibration and the
-/// default scenario/decision package.
+/// Wesi Treasury orchestration. `TransactionModel.amount` is the canonical
+/// Wesi reporting amount (RUB in org-v1). Original/local/base amounts are
+/// frozen as metadata so mixed-currency rows are never summed as raw doubles.
 class TreasuryService {
   static const String _boxName = 'wesios_treasury';
   Box<TransactionModel>? _box;
 
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
-  static bool _learningInFlight = false;
-  static bool _competitionInFlight = false;
-  static bool _predictionAuditInFlight = false;
-  static DateTime? _predictionAuditDay;
+  static final Set<String> _learningInFlight = <String>{};
+  static final Set<String> _competitionInFlight = <String>{};
+  static final Set<String> _predictionAuditKeys = <String>{};
+  static final Set<String> _predictionAuditInFlight = <String>{};
 
   Future<Box<TransactionModel>> get _treasuryBox async {
     _box ??= await Hive.openBox<TransactionModel>(_boxName);
     return _box!;
   }
 
+  Future<void> _require(String orgId, String permission) async {
+    if (TeamService.current != null &&
+        !await OrganizationAccessService.can(orgId, permission)) {
+      throw StateError('$permission permission required');
+    }
+  }
+
+  Future<({OrganizationModel org, AccountModel account})> _resolveOwnership(
+    String orgId,
+    String? accountId,
+  ) async {
+    final org = await OrganizationService.byId(orgId);
+    if (org == null || org.archived) {
+      throw StateError('transaction organization is unavailable');
+    }
+    final account = accountId == null
+        ? await AccountService.ensureMain(organizationId: orgId)
+        : await AccountService.byId(accountId);
+    if (account == null ||
+        account.archived ||
+        account.effectiveOrganizationId != orgId) {
+      throw StateError('transaction account belongs to another organization');
+    }
+    return (org: org, account: account);
+  }
+
+  TransactionModel _normalizeMoney(
+    TransactionModel tx,
+    OrganizationModel org,
+    AccountModel account,
+  ) {
+    final originalCurrency = tx.originalCurrency.trim().isEmpty
+        ? 'RUB'
+        : tx.originalCurrency.toUpperCase();
+    final originalRate = CurrencyService.rateToRub(originalCurrency.toLowerCase());
+    final originalAmount = tx.originalAmount ??
+        (originalCurrency == 'RUB' || originalRate == 0
+            ? tx.amount
+            : tx.amount / originalRate);
+    final baseRate = CurrencyService.rateToRub(org.baseCurrency.toLowerCase());
+    final baseAmount = tx.organizationBaseAmount ??
+        (baseRate == 0 ? tx.amount : tx.amount / baseRate);
+    final rate = originalAmount == 0
+        ? (originalCurrency == 'RUB' ? 1.0 : originalRate)
+        : tx.amount / originalAmount;
+    return tx.copyWith(
+      accountId: account.id,
+      organizationId: org.id,
+      originalAmount: originalAmount,
+      originalCurrency: originalCurrency,
+      organizationBaseAmount: baseAmount,
+      organizationBaseCurrency: org.baseCurrency,
+      fxRateToReporting: rate.isFinite ? rate : 1.0,
+      fxRateAt: tx.fxRateAt ?? tx.date,
+      fxSource: tx.fxSource == 'legacy' && originalCurrency != 'RUB'
+          ? 'CurrencyService'
+          : tx.fxSource,
+    );
+  }
+
   // ========== CRUD ==========
 
   Future<void> addTransaction(TransactionModel tx) async {
+    final orgId = tx.organizationId ?? OrganizationContext.currentOrganizationId;
+    final ownership = await _resolveOwnership(orgId, tx.accountId);
+    await _require(orgId, OrganizationPermissions.createTransactions);
+    if (tx.isRecurring) {
+      await _require(orgId, OrganizationPermissions.manageRecurring);
+    }
+
     final box = await _treasuryBox;
-    await box.put(tx.id, tx);
+    final before = box.get(tx.id);
+    if (before != null) {
+      await _require(
+        before.effectiveOrganizationId,
+        OrganizationPermissions.editTransactions,
+      );
+      if (before.isRecurring || tx.isRecurring) {
+        await _require(
+          before.effectiveOrganizationId,
+          OrganizationPermissions.manageRecurring,
+        );
+        await _require(orgId, OrganizationPermissions.manageRecurring);
+      }
+      if (before.effectiveOrganizationId != orgId) {
+        await _require(orgId, OrganizationPermissions.editTransactions);
+      }
+    }
+
+    final actor = TeamService.current?.id;
+    final normalized = _normalizeMoney(tx, ownership.org, ownership.account)
+        .copyWith(
+      createdBy: tx.createdBy ?? actor,
+      createdByEmployeeId: tx.createdByEmployeeId ?? actor,
+      updatedBy: before == null ? tx.updatedBy : (actor ?? tx.updatedBy),
+      updatedAt: before == null ? tx.updatedAt : DateTime.now(),
+    );
+    await box.put(normalized.id, normalized);
+    if (before != null) {
+      await TransactionAuditService.record(
+        transactionId: normalized.id,
+        before: before,
+        after: normalized,
+        reason: 'update',
+      );
+    }
     revision.value++;
   }
 
-  Future<void> deleteTransaction(String id) async {
+  Future<void> updateTransaction(
+    TransactionModel tx, {
+    String? reason,
+  }) async {
     final box = await _treasuryBox;
+    final before = box.get(tx.id);
+    if (before == null) throw StateError('transaction does not exist');
+    await _require(
+      before.effectiveOrganizationId,
+      OrganizationPermissions.editTransactions,
+    );
+
+    final orgId = tx.organizationId ?? before.effectiveOrganizationId;
+    final ownership = await _resolveOwnership(orgId, tx.accountId);
+    if (orgId != before.effectiveOrganizationId) {
+      // Re-ownership is a two-sided authorization boundary: the actor must be
+      // allowed to edit both where the money came from and where it is going.
+      await _require(orgId, OrganizationPermissions.editTransactions);
+    }
+    if (before.isRecurring || tx.isRecurring) {
+      await _require(
+        before.effectiveOrganizationId,
+        OrganizationPermissions.manageRecurring,
+      );
+      await _require(orgId, OrganizationPermissions.manageRecurring);
+    }
+
+    final actor = TeamService.current?.id;
+    final next = _normalizeMoney(tx, ownership.org, ownership.account).copyWith(
+      updatedBy: actor ?? tx.updatedBy,
+      updatedAt: DateTime.now(),
+    );
+    await box.put(next.id, next);
+    await TransactionAuditService.record(
+      transactionId: next.id,
+      before: before,
+      after: next,
+      reason: reason ?? 'update',
+    );
+    revision.value++;
+  }
+
+  Future<void> deleteTransaction(
+    String id, {
+    String? reason,
+    bool allowInterOrg = false,
+  }) async {
+    final box = await _treasuryBox;
+    final before = box.get(id);
+    if (before == null) return;
+    if (before.interOrgTransferId != null && !allowInterOrg) {
+      throw StateError('inter-org transaction must be cancelled as a transfer');
+    }
+    await _require(
+      before.effectiveOrganizationId,
+      OrganizationPermissions.editTransactions,
+    );
+    if (before.isRecurring) {
+      await _require(
+        before.effectiveOrganizationId,
+        OrganizationPermissions.manageRecurring,
+      );
+    }
+    await TransactionAuditService.record(
+      transactionId: id,
+      before: before,
+      after: null,
+      reason: reason ?? 'delete',
+    );
     await box.delete(id);
     revision.value++;
   }
 
-  Future<List<TransactionModel>> getAllTransactions() async {
+  /// Constrained repair primitive used only by InterOrgTransfer recovery.
+  Future<void> restoreInterOrgLeg(TransactionModel tx) async {
+    final transferId = tx.interOrgTransferId;
+    if (tx.source != TransactionSource.interorg || transferId == null) {
+      throw StateError('only linked inter-org legs can be recovered');
+    }
+    final box = await _treasuryBox;
+    final existing = box.get(tx.id);
+    if (existing != null) {
+      if (existing.interOrgTransferId != transferId) {
+        throw StateError('transaction id collision during inter-org recovery');
+      }
+      return;
+    }
+    final orgId = tx.effectiveOrganizationId;
+    final ownership = await _resolveOwnership(orgId, tx.accountId);
+    final normalized = _normalizeMoney(tx, ownership.org, ownership.account);
+    await box.put(normalized.id, normalized);
+    await TransactionAuditService.record(
+      transactionId: normalized.id,
+      before: null,
+      after: normalized,
+      reason: 'inter-org recovery restore',
+      changedBy: 'interorg-recovery',
+    );
+    revision.value++;
+  }
+
+  /// Constrained counterpart to [restoreInterOrgLeg].
+  Future<void> deleteInterOrgLegForRecovery(
+    String id,
+    String transferId,
+  ) async {
+    final box = await _treasuryBox;
+    final existing = box.get(id);
+    if (existing == null) return;
+    if (existing.source != TransactionSource.interorg ||
+        existing.interOrgTransferId != transferId) {
+      throw StateError('refusing to delete unrelated transaction during recovery');
+    }
+    await TransactionAuditService.record(
+      transactionId: id,
+      before: existing,
+      after: null,
+      reason: 'inter-org recovery delete',
+      changedBy: 'interorg-recovery',
+    );
+    await box.delete(id);
+    revision.value++;
+  }
+
+  Future<List<TransactionModel>> getAllTransactionsRaw() async {
     final box = await _treasuryBox;
     return box.values.toList()..sort((a, b) => b.date.compareTo(a.date));
   }
 
-  Future<List<TransactionModel>> getTransactionsByType(
-      TransactionType type) async {
+  Future<List<TransactionModel>> getAllTransactions() async {
+    var ids = await OrganizationContext.effectiveOrganizationIds();
+    if (TeamService.current != null) {
+      final financeIds = await OrganizationAccessService.organizationIdsFor(
+        OrganizationPermissions.viewFinance,
+      );
+      ids = ids.intersection(financeIds);
+    }
+    final all = await getAllTransactionsRaw();
+    return all.where((t) => ids.contains(t.effectiveOrganizationId)).toList();
+  }
+
+  Future<List<TransactionModel>> getTransactionsByType(TransactionType type) async {
     final all = await getAllTransactions();
     return all.where((t) => t.type == type).toList();
+  }
+
+  static List<TransactionModel> eliminateInternalTransfers(
+    List<TransactionModel> transactions,
+  ) {
+    final byTransfer = <String, List<TransactionModel>>{};
+    for (final tx in transactions) {
+      final id = tx.interOrgTransferId;
+      if (id == null) continue;
+      byTransfer.putIfAbsent(id, () => <TransactionModel>[]).add(tx);
+    }
+    final internalIds = <String>{};
+    for (final entry in byTransfer.entries) {
+      final organizations =
+          entry.value.map((e) => e.effectiveOrganizationId).toSet();
+      if (organizations.length >= 2) internalIds.add(entry.key);
+    }
+    if (internalIds.isEmpty) return transactions;
+    return transactions
+        .where((tx) =>
+            tx.interOrgTransferId == null ||
+            !internalIds.contains(tx.interOrgTransferId))
+        .toList();
   }
 
   // ========== BALANCE ==========
@@ -76,6 +334,7 @@ class TreasuryService {
     } catch (_) {
       double balance = 0;
       for (final tx in all) {
+        if (tx.isRecurring) continue;
         balance += tx.type == TransactionType.income ? tx.amount : -tx.amount;
       }
       return balance;
@@ -84,9 +343,12 @@ class TreasuryService {
 
   Future<Map<String, double>> getBalanceBreakdown() async {
     final now = DateTime.now();
-    final all = (await getAllTransactions())
-        .where((tx) => !tx.date.isAfter(now))
+    var all = (await getAllTransactions())
+        .where((tx) => !tx.date.isAfter(now) && !tx.isRecurring)
         .toList();
+    if (OrganizationContext.scope == OrganizationScope.subtree) {
+      all = eliminateInternalTransfers(all);
+    }
     double income = 0, expense = 0;
     for (final tx in all) {
       if (tx.type == TransactionType.income) {
@@ -115,74 +377,104 @@ class TreasuryService {
     return all.where((t) => t.isRecurring).toList();
   }
 
-  Future<void> processRecurringPayments() async {
-    final recurring = await getRecurringPayments();
-    final now = DateTime.now();
+  Future<Set<String>> _recurringMaintenanceIds() async {
+    final current = TeamService.current;
+    if (current == null || current.isOwner) {
+      final root = await OrganizationService.root();
+      return OrganizationService.subtreeIds(root.id);
+    }
+    return OrganizationAccessService.organizationIdsFor(
+      OrganizationPermissions.manageRecurring,
+      employeeId: current.id,
+    );
+  }
 
+  Future<void> _putRecurringSystem(TransactionModel tx) async {
+    final orgId = tx.effectiveOrganizationId;
+    final ownership = await _resolveOwnership(orgId, tx.accountId);
+    final box = await _treasuryBox;
+    final before = box.get(tx.id);
+    final normalized = _normalizeMoney(tx, ownership.org, ownership.account)
+        .copyWith(updatedAt: DateTime.now(), updatedBy: 'recurring-system');
+    await box.put(normalized.id, normalized);
+    if (before != null) {
+      await TransactionAuditService.record(
+        transactionId: normalized.id,
+        before: before,
+        after: normalized,
+        reason: 'recurring anchor advance',
+        changedBy: 'recurring-system',
+      );
+    }
+    revision.value++;
+  }
+
+  Future<void> processRecurringPayments() async {
+    final allowedIds = await _recurringMaintenanceIds();
+    final recurring = (await getAllTransactionsRaw())
+        .where((t) => t.isRecurring && allowedIds.contains(t.effectiveOrganizationId))
+        .toList();
+    final now = DateTime.now();
     for (final tx in recurring) {
       final period = tx.recurringPeriod;
       if (period == null) continue;
-
-      // Каждое наступление считается от исходной даты, а не от предыдущего
-      // платежа. Шагами месячная дата съезжает и не возвращается: аренда
-      // 31 января проводится 28 февраля, следующая — 28 марта, и дальше
-      // навсегда 28-е, хотя человек платит 31-го.
       final anchorDate = tx.recurringAnchorDate;
       var lastDue = tx.date;
       var index = RecurringEngine.firstIndexAfter(anchorDate, period, tx.date);
       var guard = 0;
-      // Обрабатываем все просроченные периоды за один вызов — иначе платёж
-      // «застрянет» на первом же пропущенном разе.
       while (guard < 366) {
         final due = RecurringEngine.occurrence(anchorDate, period, index);
         if (due.isAfter(now)) break;
         if (tx.type == TransactionType.expense) {
-          await addTransaction(TransactionModel(
+          final actual = TransactionModel(
             id: '${tx.id}_${due.millisecondsSinceEpoch}',
             title: tx.title,
             amount: tx.amount,
             type: tx.type,
             date: due,
             category: tx.category,
-            description:
-                tx.description == null ? null : 'Recurring: ${tx.description}',
+            description: tx.description == null
+                ? null
+                : 'Recurring: ${tx.description}',
             isRecurring: false,
             accountId: tx.accountId,
-          ));
+            organizationId: tx.effectiveOrganizationId,
+            projectId: tx.projectId,
+            counterpartyId: tx.counterpartyId,
+            source: TransactionSource.recurring,
+            ownerEmployeeId: tx.ownerEmployeeId,
+            createdBy: tx.createdBy,
+            createdByEmployeeId: tx.createdByEmployeeId,
+            originalAmount: tx.originalAmount,
+            originalCurrency: tx.originalCurrency,
+            organizationBaseAmount: tx.organizationBaseAmount,
+            organizationBaseCurrency: tx.organizationBaseCurrency,
+            fxRateToReporting: tx.fxRateToReporting,
+            fxRateAt: due,
+            fxSource: tx.fxSource,
+          );
+          if ((await _treasuryBox).get(actual.id) == null) {
+            await _putRecurringSystem(actual);
+          }
         }
-        // Поступление НЕ проводится автоматически как полученные деньги.
-        // Реальный приход вносится отдельно и служит доказательством того,
-        // что платёж действительно исполнен.
         lastDue = due;
         index++;
         guard++;
       }
       if (guard > 0) {
-        // Дата записи отмечает последний проведённый платёж, а якорь
-        // сохраняется явно — иначе он потеряется вместе со сдвигом даты.
-        await addTransaction(
-          tx.copyWith(date: lastDue, recurringAnchor: anchorDate),
-        );
+        await _putRecurringSystem(tx.copyWith(date: lastDue, recurringAnchor: anchorDate, updatedAt: DateTime.now()));
       }
     }
   }
 
   // ========== WESI HORIZON ==========
 
-  /// Баланс на конец дня [day] — то есть без операций, датированных позже.
-  ///
-  /// [getCurrentBalance] складывает вообще всё, включая операции, которые
-  /// человек внёс наперёд: аванс, назначенный на следующую неделю, поднимал
-  /// сегодняшний баланс, а в свою дату уже ничего не происходило. Прогноз
-  /// от такого старта завышен ровно на сумму будущих операций.
-  static double balanceOnDay(
-    DateTime day,
-    List<TransactionModel> transactions,
-    double totalBalance,
-  ) {
+  /// Баланс на конец календарного дня без будущих операций.
+  static double balanceOnDay(DateTime day, List<TransactionModel> transactions, double totalBalance) {
     final cutoff = dateOnly(day);
     var later = 0.0;
     for (final tx in transactions) {
+      if (tx.isRecurring) continue;
       if (dateOnly(tx.date).isAfter(cutoff)) {
         later += tx.type == TransactionType.income ? tx.amount : -tx.amount;
       }
@@ -190,37 +482,50 @@ class TreasuryService {
     return totalBalance - later;
   }
 
+
   Future<ForecastResult> generateForecast({
     int days = 30,
     WhatIfScenario whatIf = WhatIfScenario.none,
     double annualDiscountRate = 0.0,
   }) async {
-    final all = await getAllTransactions();
-    // Старт прогноза — баланс на конец сегодняшнего дня. `getCurrentBalance`
-    // складывает вообще всё, включая операции, датированные будущим: аванс,
-    // назначенный на следующую неделю, поднимал сегодняшний баланс, а в свою
-    // дату уже ничего не происходило — прогноз стартовал завышенным.
-    final balance =
-        balanceOnDay(DateTime.now(), all, await getCurrentBalance());
+    final requested = await OrganizationContext.effectiveOrganizationIds();
+    var forecastIds = requested;
+    if (TeamService.current != null) {
+      final allowed = await OrganizationAccessService.organizationIdsFor(
+        OrganizationPermissions.viewForecast,
+      );
+      forecastIds = requested.intersection(allowed);
+    }
+    if (forecastIds.isEmpty) {
+      throw StateError('view_forecast permission required');
+    }
 
-    // Rendering uses the last verified profile immediately. Monthly learning,
-    // engine competition and the production forecast ledger are background
-    // jobs and never hold the forecast screen hostage.
-    final calibration = await HorizonLearningService.load();
-    _kickLearning(all, balance);
-    _kickPredictionAudit(all, balance, calibration);
+    final rawScoped = (await getAllTransactionsRaw())
+        .where((t) => forecastIds.contains(t.effectiveOrganizationId))
+        .toList();
+    final all = OrganizationContext.scope == OrganizationScope.subtree
+        ? eliminateInternalTransfers(rawScoped)
+        : rawScoped;
+    final balance = await AccountService.reportingBalanceForOrganizations(
+      forecastIds,
+      rawScoped,
+    );
+    final orgId = OrganizationContext.currentOrganizationId;
+    final scope = OrganizationContext.scope.name;
+    final calibration = await HorizonLearningService.load(
+      organizationId: orgId,
+      organizationScope: scope,
+    );
+    _kickLearning(all, balance, orgId, scope);
+    _kickPredictionAudit(all, balance, calibration, orgId, scope, forecastIds);
 
     final context = await HorizonBusinessContextService.load(
       transactions: all,
       days: days,
+      organizationIds: forecastIds,
     );
 
-    // Расчёт уходит с потока интерфейса: Monte-Carlo — это `пути × дни`
-    // шагов плюс сортировка на каждый день, и раньше всё это выполнялось
-    // прямо в UI-потоке (метод `async`, но работа синхронная — `await`
-    // перед синхронным кодом никуда его не переносит).
-    Future<ForecastResult> core(WhatIfScenario scenario) =>
-        runForecastOffThread(ForecastRequest(
+    ForecastResult core(WhatIfScenario scenario) => ForecastEngine.generate(
           transactions: all,
           currentBalance: balance,
           days: days,
@@ -229,12 +534,10 @@ class TreasuryService {
           calibration: calibration,
           businessEvents: context.events,
           accounts: context.accounts,
-        ));
+        );
 
-    // Default scenario package must always be anchored to the unmodified base,
-    // not silently inherit an ad-hoc What-If currently open in the UI.
-    final base = await core(WhatIfScenario.none);
-    final active = whatIf.isEmpty ? base : await core(whatIf);
+    final base = core(WhatIfScenario.none);
+    final active = whatIf.isEmpty ? base : core(whatIf);
 
     final scenarios = await HorizonScenarioService.buildDefaultPackage(
       base: base,
@@ -268,38 +571,40 @@ class TreasuryService {
       ),
     );
 
-    // External engines may take seconds and are optional/Windows-only.
-    _kickCompetition(all, balance);
-
+    _kickCompetition(all, balance, orgId, scope);
     return explained;
   }
 
   static void _kickLearning(
     List<TransactionModel> transactions,
     double currentBalance,
+    String organizationId,
+    String organizationScope,
   ) {
-    if (_learningInFlight) return;
-    _learningInFlight = true;
+    final key = '$organizationId:$organizationScope';
+    if (!_learningInFlight.add(key)) return;
     unawaited(HorizonLearningService.updateIfDue(
       transactions: transactions,
       currentBalance: currentBalance,
-    ).whenComplete(() => _learningInFlight = false));
+      organizationId: organizationId,
+      organizationScope: organizationScope,
+    ).whenComplete(() => _learningInFlight.remove(key)));
   }
 
   static void _kickPredictionAudit(
     List<TransactionModel> transactions,
     double currentBalance,
     HorizonCalibrationProfile calibration,
+    String organizationId,
+    String organizationScope,
+    Set<String> organizationIds,
   ) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final alreadyRan = _predictionAuditDay != null &&
-        _predictionAuditDay!.year == today.year &&
-        _predictionAuditDay!.month == today.month &&
-        _predictionAuditDay!.day == today.day;
-    if (_predictionAuditInFlight || alreadyRan) return;
-    _predictionAuditInFlight = true;
-    _predictionAuditDay = today;
+    final key = '$organizationId:$organizationScope:${today.toIso8601String()}';
+    if (_predictionAuditInFlight.contains(key) ||
+        _predictionAuditKeys.contains(key)) return;
+    _predictionAuditInFlight.add(key);
 
     unawaited(() async {
       try {
@@ -308,6 +613,7 @@ class TreasuryService {
           transactions: transactions,
           days: auditDays,
           now: today,
+          organizationIds: organizationIds,
         );
         final audit = ForecastEngine.generate(
           transactions: transactions,
@@ -325,48 +631,47 @@ class TreasuryService {
           currentBalance: currentBalance,
           calibration: calibration,
           now: today,
+          organizationId: organizationId,
+          organizationScope: organizationScope,
         );
+        _predictionAuditKeys.add(key);
       } catch (_) {
         // Audit collection is strictly fail-soft.
       }
-    }()
-        .whenComplete(() => _predictionAuditInFlight = false));
+    }().whenComplete(() => _predictionAuditInFlight.remove(key)));
   }
 
   static void _kickCompetition(
     List<TransactionModel> transactions,
     double currentBalance,
+    String organizationId,
+    String organizationScope,
   ) {
-    if (_competitionInFlight) return;
-    _competitionInFlight = true;
+    final key = '$organizationId:$organizationScope';
+    if (!_competitionInFlight.add(key)) return;
     unawaited(HorizonEngineCompetitionService.evaluateIfDue(
       transactions: transactions,
       currentBalance: currentBalance,
-    ).whenComplete(() => _competitionInFlight = false));
+      organizationId: organizationId,
+      organizationScope: organizationScope,
+    ).whenComplete(() => _competitionInFlight.remove(key)));
   }
 
   // ========== DEMO DATA (never auto-called by forecast screen) ==========
 
   Future<void> generateDemoData() async {
-    final box = await _treasuryBox;
-    if (box.isNotEmpty) return;
-
+    final existing = await getAllTransactions();
+    if (existing.isNotEmpty) return;
     final now = DateTime.now();
     final random = Random();
     final categories = [
-      'Software',
-      'Marketing',
-      'Office',
-      'Salaries',
-      'Freelance',
-      'Investments'
+      'Software', 'Marketing', 'Office', 'Salaries', 'Freelance', 'Investments'
     ];
-
     for (int i = 60; i >= 0; i--) {
       final date = now.subtract(Duration(days: i));
       if (random.nextDouble() > 0.3) {
         await addTransaction(TransactionModel(
-          id: 'inc_$i',
+          id: 'inc_${OrganizationContext.currentOrganizationId}_$i',
           title: 'Income #$i',
           amount: 1000 + random.nextInt(4000).toDouble(),
           type: TransactionType.income,
@@ -376,7 +681,7 @@ class TreasuryService {
       }
       if (random.nextDouble() > 0.2) {
         await addTransaction(TransactionModel(
-          id: 'exp_$i',
+          id: 'exp_${OrganizationContext.currentOrganizationId}_$i',
           title: 'Expense #$i',
           amount: 100 + random.nextInt(900).toDouble(),
           type: TransactionType.expense,
@@ -385,27 +690,5 @@ class TreasuryService {
         ));
       }
     }
-
-    await addTransaction(TransactionModel(
-      id: 'anomaly_1',
-      title: 'Emergency Server Repair',
-      amount: 15000,
-      type: TransactionType.expense,
-      date: now.subtract(const Duration(days: 5)),
-      category: 'Infrastructure',
-      isAnomaly: true,
-      zScore: 3.2,
-    ));
-
-    await addTransaction(TransactionModel(
-      id: 'recurring_salary',
-      title: 'Monthly Salary',
-      amount: 5000,
-      type: TransactionType.expense,
-      date: now.subtract(const Duration(days: 15)),
-      category: 'Salaries',
-      isRecurring: true,
-      recurringPeriod: RecurringPeriod.monthly,
-    ));
   }
 }

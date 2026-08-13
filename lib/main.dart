@@ -24,6 +24,7 @@ import 'core/services/secrets_service.dart';
 import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_endpoint.dart';
 import 'core/sync/sync_engine.dart';
+import 'core/sync/sync_feature_extensions.dart';
 import 'core/theme/app_theme.dart';
 import 'features/chats/models/chat_message.dart';
 import 'features/chats/models/chat_thread.dart';
@@ -31,6 +32,12 @@ import 'features/chats/services/chat_service.dart';
 import 'features/chats/services/message_store.dart';
 import 'features/knowledge/models/article_model.dart';
 import 'features/knowledge/services/knowledge_service.dart';
+import 'features/organizations/models/inter_org_transfer_model.dart';
+import 'features/organizations/models/organization_access_grant.dart';
+import 'features/organizations/models/organization_model.dart';
+import 'features/organizations/models/transaction_audit_model.dart';
+import 'features/organizations/services/inter_org_transfer_service.dart';
+import 'features/organizations/services/organization_migration_service.dart';
 import 'features/tasks/models/task_model.dart';
 import 'features/team/models/employee_model.dart';
 import 'features/team/models/team_permissions.dart';
@@ -50,9 +57,6 @@ bool get isDesktop {
 void main(List<String> arguments) async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Windows Task Scheduler запускает тот же exe с безопасно закодированным
-  // payload. В этом режиме нужен только системный toast: обычное окно,
-  // хранилища, авторизация и остальная инициализация WesiOS не поднимаются.
   if (await TimeNotificationScheduler.handleLaunchArguments(arguments)) {
     return;
   }
@@ -80,6 +84,7 @@ void main(List<String> arguments) async {
   Hive.registerAdapter(TransactionModelAdapter());
   Hive.registerAdapter(TransactionTypeAdapter());
   Hive.registerAdapter(RecurringPeriodAdapter());
+  Hive.registerAdapter(TransactionSourceAdapter());
   Hive.registerAdapter(TaskStatusAdapter());
   Hive.registerAdapter(TaskPriorityAdapter());
   Hive.registerAdapter(SubTaskAdapter());
@@ -94,6 +99,13 @@ void main(List<String> arguments) async {
   Hive.registerAdapter(DeliveryStateAdapter());
   Hive.registerAdapter(ChatMessageAdapter());
   Hive.registerAdapter(ChatThreadAdapter());
+  Hive.registerAdapter(OrganizationStatusAdapter());
+  Hive.registerAdapter(OrganizationModelAdapter());
+  Hive.registerAdapter(OrganizationAccessGrantAdapter());
+  Hive.registerAdapter(InterOrgTransferTypeAdapter());
+  Hive.registerAdapter(InterOrgTransferModelAdapter());
+  Hive.registerAdapter(TransactionAuditModelAdapter());
+
   await Hive.openBox('wesios_cache');
   await Hive.openBox('wesios_settings');
   await Hive.openBox('wesios_offline_queue');
@@ -102,30 +114,29 @@ void main(List<String> arguments) async {
   await MessageStore.open();
   await ChatService.open();
 
-  // Recurring Treasury operations are materialized automatically at launch
-  // and when WesiOS returns from background. The automation is single-flight
-  // and throttled; Sandbox remains intentionally isolated.
-  RecurringPaymentAutomation.shared.start();
+  // Org v1 runs before any Treasury automation. It is idempotent and only
+  // backfills ownership missing on pre-org records; existing tagged data is
+  // never rewritten.
+  await OrganizationMigrationService.runV1();
 
-  // Restore Calendar/Time Center schedules after Hive is ready.
+  // A transfer journal is written before either financial leg. Complete any
+  // interrupted create/cancel before recurring/Horizon can read the ledger.
+  await InterOrgTransferService.recoverPending();
+
+  RecurringPaymentAutomation.shared.start();
   TimeScheduleAutomation.shared.start();
 
-  // Auth token + revocable session id live in OS-protected storage, not Hive.
-  // This also performs a one-time migration from old plaintext `sync_session`.
   await SyncEndpoint.initializeSession();
   await TeamService.forgetUnrememberedSession();
+  await SyncFeatureExtensions.install();
 
-  // A remembered login is accepted locally only when it contains the new
-  // server-side revocable WesiOS session id. Start heartbeat immediately so
-  // deletion/revocation is detected even while the splash screen is visible.
   if (TeamService.current != null && SyncEndpoint.isConnected) {
     SessionService.startHeartbeat();
-    if (TeamService.isOwnerSession) {
-      unawaited(SyncEngine.runOnLaunch());
-      SyncAuto.start();
-    } else {
-      SyncAuto.stop();
-    }
+    // Every authenticated employee participates in synchronization. The
+    // server gateway applies module/org/row permissions; owner-only sync here
+    // previously made Tasks/Profile/avatars appear local on employee devices.
+    unawaited(SyncEngine.runOnLaunch());
+    SyncAuto.start();
   } else {
     SessionService.stopHeartbeat();
     SyncAuto.stop();
@@ -157,8 +168,6 @@ void main(List<String> arguments) async {
   AppUpdateService.check();
   KnowledgeService.seed();
 
-  // Firebase configuration ships with the application. Employees must never
-  // be asked to paste apiKey/appId/projectId manually.
   try {
     await Firebase.initializeApp();
   } catch (e) {

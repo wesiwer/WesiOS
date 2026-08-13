@@ -1,9 +1,9 @@
+import '../../organizations/services/organization_context.dart';
 import '../../tasks/models/task_model.dart';
 import '../../tasks/services/task_service.dart';
 import '../../treasury/models/transaction_model.dart';
 import '../../treasury/services/treasury_service.dart';
 
-/// Один месяц в разрезе денег.
 class MonthPoint {
   final DateTime month;
   final double income;
@@ -18,57 +18,32 @@ class MonthPoint {
   double get net => income - expense;
 }
 
-/// Показатель со сравнением к предыдущему периоду.
-///
-/// Голое число почти ничего не говорит: «300 000 за месяц» — это много или
-/// мало? Смысл появляется только рядом с тем, что было в прошлом периоде.
 class Kpi {
   final double value;
   final double previous;
-
   const Kpi(this.value, this.previous);
-
   double get delta => value - previous;
-
-  /// Относительное изменение. null — сравнивать не с чем (в прошлом периоде
-  /// был ноль), и рисовать «+∞ %» честнее не показывать вовсе.
   double? get changeFraction {
     if (previous == 0) return null;
     return (value - previous) / previous.abs();
   }
-
   bool get isUp => delta > 0;
 }
 
-/// Полная сводка для вкладки «Аналитика».
 class AnalyticsSnapshot {
   final Kpi income;
   final Kpi expense;
   final Kpi net;
   final Kpi operations;
-
-  /// Помесячная динамика за выбранный горизонт.
   final List<MonthPoint> months;
-
-  /// Топ категорий расходов и доходов за период.
   final List<MapEntry<String, double>> topExpenseCategories;
   final List<MapEntry<String, double>> topIncomeCategories;
-
-  /// Средний чек: сколько в среднем приносит одна операция дохода.
   final double averageIncomeTicket;
-
-  /// Средние расходы в день за период — база для «на сколько хватит денег».
   final double burnPerDay;
-
-  /// На сколько дней хватит текущего баланса при нынешнем темпе трат.
-  /// null — расходов нет или они перекрыты доходами.
   final int? runwayDays;
-
-  /// Задачи: сделано за период, просрочено, доля выполнения.
   final int tasksDone;
   final int tasksOverdue;
   final int tasksTotal;
-
   final DateTime from;
   final DateTime to;
   final bool isEmpty;
@@ -92,8 +67,7 @@ class AnalyticsSnapshot {
     this.isEmpty = false,
   });
 
-  double get taskCompletion =>
-      tasksTotal == 0 ? 0 : tasksDone / tasksTotal;
+  double get taskCompletion => tasksTotal == 0 ? 0 : tasksDone / tasksTotal;
 
   static AnalyticsSnapshot empty(DateTime from, DateTime to) =>
       AnalyticsSnapshot(
@@ -116,18 +90,17 @@ class AnalyticsSnapshot {
       );
 }
 
-/// Считает сводку по всем модулям.
-///
-/// Чистая функция поверх уже загруженных данных: сервис ничего не рисует и
-/// не лезет в Hive напрямую в [build] — это позволяет проверять расчёты
-/// тестами, не поднимая UI.
 class AnalyticsService {
   final TreasuryService _treasury = TreasuryService();
   final TaskService _tasks = TaskService();
 
   Future<AnalyticsSnapshot> build({required int periodDays}) async {
-    final transactions = await _treasury.getAllTransactions();
-    final tasks = await _tasks.getAll();
+    final scoped = await _treasury.getAllTransactions();
+    final transactions = OrganizationContext.scope == OrganizationScope.subtree
+        ? TreasuryService.eliminateInternalTransfers(scoped)
+        : scoped;
+    final organizationIds = await OrganizationContext.effectiveOrganizationIds();
+    final tasks = await _tasks.getForOrganizations(organizationIds);
     return compute(
       transactions: transactions,
       tasks: tasks,
@@ -136,8 +109,6 @@ class AnalyticsService {
     );
   }
 
-  /// Расчёт вынесен отдельно и принимает `now` — иначе тест зависел бы от
-  /// сегодняшней даты и «протухал» бы со временем.
   static AnalyticsSnapshot compute({
     required List<TransactionModel> transactions,
     required List<TaskModel> tasks,
@@ -153,11 +124,13 @@ class AnalyticsService {
       return !day.isBefore(a) && !day.isAfter(b);
     }
 
-    final current =
-        transactions.where((t) => inRange(t.date, from, today)).toList();
+    final current = transactions
+        .where((t) => !t.isRecurring && inRange(t.date, from, today))
+        .toList();
     final previous = transactions
-        .where((t) => inRange(
-            t.date, prevFrom, from.subtract(const Duration(days: 1))))
+        .where((t) =>
+            !t.isRecurring &&
+            inRange(t.date, prevFrom, from.subtract(const Duration(days: 1))))
         .toList();
 
     double sum(List<TransactionModel> rows, TransactionType type) => rows
@@ -169,7 +142,6 @@ class AnalyticsService {
     final prevIncome = sum(previous, TransactionType.income);
     final prevExpense = sum(previous, TransactionType.expense);
 
-    // Помесячная динамика по всей истории в пределах периода.
     final byMonth = <DateTime, List<TransactionModel>>{};
     for (final t in current) {
       final key = DateTime(t.date.year, t.date.month);
@@ -197,20 +169,14 @@ class AnalyticsService {
       return list.take(5).toList();
     }
 
-    final incomeOps =
-        current.where((t) => t.type == TransactionType.income).length;
-
-    // Баланс на конец периода — по всей истории, а не только по окну:
-    // деньги, заработанные раньше, никуда не делись.
-    final balance = transactions.fold<double>(
+    final incomeOps = current.where((t) => t.type == TransactionType.income).length;
+    final actual = transactions.where((t) => !t.isRecurring).toList();
+    final balance = actual.fold<double>(
       0,
       (s, t) => t.type == TransactionType.income ? s + t.amount : s - t.amount,
     );
 
     final burnPerDay = expense / periodDays;
-    // Runway имеет смысл, только когда траты реально превышают поступления:
-    // при положительном нетто деньги не кончаются, и число дней было бы
-    // выдумкой.
     final netPerDay = (income - expense) / periodDays;
     final int? runwayDays = (netPerDay < 0 && balance > 0)
         ? (balance / -netPerDay).floor()
@@ -226,8 +192,7 @@ class AnalyticsService {
       income: Kpi(income, prevIncome),
       expense: Kpi(expense, prevExpense),
       net: Kpi(income - expense, prevIncome - prevExpense),
-      operations:
-          Kpi(current.length.toDouble(), previous.length.toDouble()),
+      operations: Kpi(current.length.toDouble(), previous.length.toDouble()),
       months: months,
       topExpenseCategories: topCategories(TransactionType.expense),
       topIncomeCategories: topCategories(TransactionType.income),
