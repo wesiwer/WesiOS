@@ -152,12 +152,13 @@ void main() {
       expect(still.archived, isTrue);
     });
 
-    test('an empty account is removed outright', () async {
+    test('an empty account is archived too — financial identities stay durable', () async {
       final a = await AccountService.create(name: 'Пустой');
       final ok = await AccountService.delete(a.id, hasOperations: false);
       expect(ok, isTrue);
       final all = await AccountService.getAll();
-      expect(all.any((x) => x.id == a.id), isFalse);
+      final still = all.firstWhere((x) => x.id == a.id);
+      expect(still.archived, isTrue);
     });
   });
 }
