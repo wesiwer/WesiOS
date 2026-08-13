@@ -24,6 +24,7 @@ import '../../features/treasury/models/transaction_model.dart';
 import 'sync_journal.dart';
 import 'sync_codec_roadmap.dart';
 import 'sync_codec_crm.dart';
+import 'sync_codec_files.dart';
 
 /// Описание одной синхронизируемой коллекции.
 ///
@@ -728,6 +729,12 @@ class SyncCodec {
     AudioBeatsSync(),
     // Профиль человека — одна запись на все его устройства.
     ProfileSync(),
+    // Обмен файлами: запросы, доступы и журнал выдач. Сами файлы не едут.
+    // Доступы идут раньше запросов: запрос без своего разрешения выглядел бы
+    // самовольным, хотя разрешение просто ещё не приехало.
+    FileGrantsSync(),
+    FileRequestsSync(),
+    FileHandoversSync(),
   ];
 
   static SyncCollection<dynamic>? byName(String name) {
