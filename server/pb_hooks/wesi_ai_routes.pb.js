@@ -1,6 +1,7 @@
 routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
   const ai = require(`${__hooks}/wesi_ai_lib.js`);
   const personaRuntime = require(`${__hooks}/wesi_ai_persona_runtime.js`);
+  const tools = require(`${__hooks}/wesi_ai_tools.js`);
   const ctx = ai.resolveIdentity(e);
   ai.requireAiModule(ctx);
   const cfg = ai.readRelayConfig();
@@ -11,13 +12,14 @@ routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
     personas: ["zane", "nirvana", "lobby"],
     lobbyModes: ["both", "smart"],
     ready: cfg.ready && personasReady,
-    features: {localFirstChats: true, handoff: true, lobby: true, streaming: false, media: false, wesiTools: false}
+    features: {localFirstChats: true, handoff: true, lobby: true, streaming: false, media: false, wesiTools: tools.definitions(e, ctx).length > 0}
   });
 }, $apis.requireAuth("users"));
 
 routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const ai = require(`${__hooks}/wesi_ai_lib.js`);
   const personaRuntime = require(`${__hooks}/wesi_ai_persona_runtime.js`);
+  const tools = require(`${__hooks}/wesi_ai_tools.js`);
   const ctx = ai.resolveIdentity(e);
   ai.requireAiModule(ctx);
   const body = e.requestInfo().body || {};
@@ -26,6 +28,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const lobbyMode = String(body.lobbyMode || "smart").trim().toLowerCase();
   const message = String(body.message || "").trim();
   const summary = String(body.summary || "").trim();
+  const activeOrganizationId = String(body.activeOrganizationId || "").trim();
   const history = Array.isArray(body.messages) ? body.messages : [];
   const memory = body.memory && typeof body.memory === "object" ? body.memory : {};
 
@@ -51,47 +54,105 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     if (text.length > 32000) throw new BadRequestError("Слишком длинное сообщение в контексте");
     cleanHistory.push({author: author, text: text});
   }
+
   const cleanMemory = ai.sanitizeMemory(memory);
+  const toolDefinitions = tools.definitions(e, ctx);
+  const runtimeContext = tools.context(e, ctx, activeOrganizationId);
   const systemParts = [personaBundle.prompt];
   if (summary) systemParts.push("[WESI_AI_CONVERSATION_SUMMARY]\n" + summary);
   if (cleanMemory.shared.length) systemParts.push("[WESI_AI_SHARED_MEMORY]\n" + cleanMemory.shared.join("\n"));
   const personaMemory = persona === "zane" ? cleanMemory.zane : persona === "nirvana" ? cleanMemory.nirvana : cleanMemory.zane.concat(cleanMemory.nirvana);
   if (personaMemory.length) systemParts.push("[WESI_AI_PERSONA_MEMORY]\n" + personaMemory.join("\n"));
   if (persona === "lobby") systemParts.push("[WESI_AI_LOBBY_MODE]\n" + lobbyMode);
+  systemParts.push("[WESI_AI_RUNTIME_CONTEXT]\n" + JSON.stringify(runtimeContext));
+  if (toolDefinitions.length) {
+    systemParts.push(
+      "[WESI_AI_TOOL_PROTOCOL]\n" +
+      "Для реальных данных или действий WesiOS используй только инструменты ниже. " +
+      "Чтобы вызвать инструмент, ответь ТОЛЬКО JSON без markdown: " +
+      "{\"wesiTool\":{\"name\":\"tool_name\",\"arguments\":{}}}. " +
+      "Никогда не утверждай, что действие выполнено, пока сервер не вернул verified result. " +
+      "Если сервер вернул FORBIDDEN, объясни отказ в характере персоны и предложи допустимые alternatives.\n" +
+      JSON.stringify(toolDefinitions)
+    );
+  }
 
   const requestId = "wai_" + Date.now() + "_" + $security.randomString(12);
-  const payload = {
-    requestId: requestId,
-    route: route,
-    operation: persona === "lobby" ? "lobby" : "chat",
-    input: {system: systemParts.join("\n\n"), history: cleanHistory, message: message}
+  const relayCall = function(system, phase) {
+    const relayRequestId = requestId + "_" + phase;
+    const payload = {
+      requestId: relayRequestId,
+      route: route,
+      operation: persona === "lobby" ? "lobby" : "chat",
+      input: {system: system, history: cleanHistory, message: message}
+    };
+    const raw = JSON.stringify(payload);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = $security.hs256(timestamp + "." + raw, cfg.sharedSecret);
+    let relay;
+    try {
+      relay = $http.send({
+        url: cfg.url.replace(/\/$/, "") + "/v1/wesi-ai",
+        method: "POST",
+        body: raw,
+        headers: {"Content-Type": "application/json", "X-Wesi-Request-Id": relayRequestId, "X-Wesi-Timestamp": timestamp, "X-Wesi-Signature": signature},
+        timeout: 120
+      });
+    } catch (_) {
+      return {ok: false, status: 503, code: "WAI_RELAY_UNAVAILABLE"};
+    }
+    if (!relay || relay.statusCode < 200 || relay.statusCode >= 300) return {ok: false, status: 502, code: "WAI_RELAY_BAD_RESPONSE"};
+    const result = relay.json && typeof relay.json === "object" ? relay.json : {};
+    const answer = String(result.answer || "").trim();
+    return answer ? {ok: true, answer: answer} : {ok: false, status: 502, code: "WAI_EMPTY_RESPONSE"};
   };
-  const raw = JSON.stringify(payload);
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const signature = $security.hs256(timestamp + "." + raw, cfg.sharedSecret);
-  let relay;
-  try {
-    relay = $http.send({
-      url: cfg.url.replace(/\/$/, "") + "/v1/wesi-ai",
-      method: "POST",
-      body: raw,
-      headers: {"Content-Type": "application/json", "X-Wesi-Request-Id": requestId, "X-Wesi-Timestamp": timestamp, "X-Wesi-Signature": signature},
-      timeout: 120
-    });
-  } catch (_) {
-    return e.json(503, {ok: false, code: "WAI_RELAY_UNAVAILABLE"});
+
+  const parseToolRequest = function(answer) {
+    let text = String(answer || "").trim();
+    if (text.indexOf("```json") === 0 && text.lastIndexOf("```") > 6) text = text.slice(7, text.lastIndexOf("```")).trim();
+    else if (text.indexOf("```") === 0 && text.lastIndexOf("```") > 3) text = text.slice(3, text.lastIndexOf("```")).trim();
+    try {
+      const parsed = JSON.parse(text);
+      const req = parsed && parsed.wesiTool && typeof parsed.wesiTool === "object" ? parsed.wesiTool : null;
+      if (!req) return null;
+      const name = String(req.name || "").trim();
+      const args = req.arguments && typeof req.arguments === "object" ? req.arguments : {};
+      if (!name) return null;
+      return {name: name, arguments: args};
+    } catch (_) { return null; }
+  };
+
+  const toolResults = [];
+  const seenCalls = {};
+  for (let turn = 0; turn < 4; turn++) {
+    const currentSystem = systemParts.concat(toolResults.length ? ["[WESI_AI_VERIFIED_TOOL_RESULTS]\n" + JSON.stringify(toolResults)] : []).join("\n\n");
+    const generated = relayCall(currentSystem, String(turn + 1));
+    if (!generated.ok) return e.json(generated.status, {ok: false, code: generated.code, requestId: requestId});
+    const toolRequest = toolDefinitions.length ? parseToolRequest(generated.answer) : null;
+    if (!toolRequest) {
+      return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, answer: generated.answer, toolResults: toolResults});
+    }
+
+    const allowedTool = toolDefinitions.some((item) => String(item.name || "") === toolRequest.name);
+    if (!allowedTool) {
+      toolResults.push({tool: toolRequest.name, verified: true, ok: false, code: "FORBIDDEN", message: "Инструмент недоступен текущему сотруднику"});
+      continue;
+    }
+    const signature = toolRequest.name + "|" + JSON.stringify(toolRequest.arguments);
+    if (seenCalls[signature]) {
+      toolResults.push({tool: toolRequest.name, verified: true, ok: false, code: "DUPLICATE_TOOL_CALL", message: "Повторный вызов не выполнен"});
+      continue;
+    }
+    seenCalls[signature] = true;
+    const executed = tools.execute(e, ctx, toolRequest.name, toolRequest.arguments, runtimeContext.activeOrganizationId);
+    toolResults.push({tool: toolRequest.name, verified: true, ok: executed.ok === true, code: executed.code || null, message: executed.message || null, alternatives: executed.alternatives || null, result: executed.result || null});
   }
-  if (!relay || relay.statusCode < 200 || relay.statusCode >= 300) return e.json(502, {ok: false, code: "WAI_RELAY_BAD_RESPONSE", requestId: requestId});
-  const result = relay.json && typeof relay.json === "object" ? relay.json : {};
-  const answer = String(result.answer || "").trim();
-  if (!answer) return e.json(502, {ok: false, code: "WAI_EMPTY_RESPONSE", requestId: requestId});
-  return e.json(200, {
-    ok: true,
-    requestId: requestId,
-    persona: persona,
-    tier: tier,
-    answer: answer,
-    handoff: result.handoff && typeof result.handoff === "object" ? result.handoff : null,
-    lobby: result.lobby && typeof result.lobby === "object" ? result.lobby : null
-  });
+
+  const finalSystem = systemParts.concat([
+    "[WESI_AI_VERIFIED_TOOL_RESULTS]\n" + JSON.stringify(toolResults),
+    "[WESI_AI_FINAL_RESPONSE]\nЛимит инструментов исчерпан. Не вызывай инструменты снова. Дай пользователю итоговый ответ только по verified results и явно сообщи о неуспешных действиях."
+  ]).join("\n\n");
+  const finalGenerated = relayCall(finalSystem, "final");
+  if (!finalGenerated.ok) return e.json(finalGenerated.status, {ok: false, code: finalGenerated.code, requestId: requestId});
+  return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, answer: finalGenerated.answer, toolResults: toolResults});
 }, $apis.requireAuth("users"));
