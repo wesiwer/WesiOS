@@ -91,7 +91,7 @@ function loadAccess(e, ctx) {
     permissions: permissions,
     orgs: orgs,
     allowedOrgIds: allowed,
-    canReadOthers: ctx.isOwner || permissions.canManageTeam === true || permissions.canAssignTasks === true || permissions.canSeeOthersStats === true,
+    canReadOthers: ctx.isOwner || permissions.canManageTeam === true || permissions.canAssignTasks === true,
     canAssignOthers: ctx.isOwner || permissions.canManageTeam === true || permissions.canAssignTasks === true,
   };
 }
