@@ -69,6 +69,27 @@ module.exports = {
       return {ready: /^https:\/\//.test(url) && sharedSecret.length >= 32, url: url, sharedSecret: sharedSecret, routes: {fast: String(routes.fast || ""), pro: String(routes.pro || ""), maximum: String(routes.maximum || "")}};
     } catch (_) { return {ready: false, url: "", sharedSecret: "", routes: {fast: "", pro: "", maximum: ""}}; }
   },
+  callRelay: function(cfg, payload, requestId) {
+    const raw = JSON.stringify(payload);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = $security.hs256(timestamp + "." + raw, cfg.sharedSecret);
+    let relay;
+    try {
+      relay = $http.send({
+        url: cfg.url.replace(/\/$/, "") + "/v1/wesi-ai",
+        method: "POST",
+        body: raw,
+        headers: {"Content-Type": "application/json", "X-Wesi-Request-Id": requestId, "X-Wesi-Timestamp": timestamp, "X-Wesi-Signature": signature},
+        timeout: 120
+      });
+    } catch (_) {
+      return {ok: false, status: 503, code: "WAI_RELAY_UNAVAILABLE"};
+    }
+    if (!relay || relay.statusCode < 200 || relay.statusCode >= 300) return {ok: false, status: 502, code: "WAI_RELAY_BAD_RESPONSE"};
+    const result = relay.json && typeof relay.json === "object" ? relay.json : {};
+    const answer = String(result.answer || "").trim();
+    return answer ? {ok: true, answer: answer} : {ok: false, status: 502, code: "WAI_EMPTY_RESPONSE"};
+  },
   sanitizeMemory: function(memory) {
     const result = {shared: [], zane: [], nirvana: []};
     for (const key of ["shared", "zane", "nirvana"]) {
