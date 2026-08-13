@@ -1,8 +1,11 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/features/tasks/models/task_model.dart';
+import 'package:wesios/features/team/models/employee_model.dart';
+import 'package:wesios/features/team/models/team_permissions.dart';
 import 'package:wesios/features/treasury/models/account_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 
@@ -34,6 +37,8 @@ void main() {
     Hive.registerAdapter(TaskPriorityAdapter());
     Hive.registerAdapter(SubTaskAdapter());
     Hive.registerAdapter(TaskModelAdapter());
+    Hive.registerAdapter(TeamPermissionsAdapter());
+    Hive.registerAdapter(EmployeeModelAdapter());
     Hive.registerAdapter(TransactionModelAdapter());
     Hive.registerAdapter(AccountModelAdapter());
   });
@@ -222,6 +227,68 @@ void main() {
     await box.close();
   });
 
+  test('профиль из прошлой версии открывается и сохраняет права', () async {
+    // Коробка сотрудников открывается при запуске раньше всего остального.
+    // Нечитаемый профиль здесь — это не «пропал человек из списка», а
+    // приложение, которое не открывается ни у кого.
+    await writeAsOldVersion(
+      _LegacyEmployeeWriter(),
+      EmployeeModelAdapter(),
+      'legacy_team',
+      'E1',
+      _LegacyEmployee(
+        id: 'E1',
+        login: 'anna',
+        fullName: 'Анна',
+        nickname: 'ann',
+        position: 'менеджер',
+        phone: '+7 900 000-00-00',
+        email: 'anna@wesi.local',
+        socials: const {'tg': '@ann'},
+        notes: '',
+        permissions: const TeamPermissions(
+          moduleList: [TeamModules.tasks, TeamModules.crm],
+          canManageTeam: false,
+        ),
+        passwordHash: 'hash',
+        passwordSalt: 'salt',
+        avatarIndex: 3,
+        createdAt: DateTime.utc(2025, 11, 2),
+        isOwner: false,
+        demoStats: const {},
+        photo: null,
+      ),
+    );
+
+    final box = await Hive.openBox<EmployeeModel>('legacy_team');
+    final person = box.get('E1');
+
+    expect(person, isNotNull,
+        reason: 'профиль, заведённый прошлой версией, обязан открыться');
+    expect(person!.login, 'anna', reason: 'по логину человек и входит');
+    expect(person.email, 'anna@wesi.local',
+        reason: 'на почту приходит код подтверждения — без неё не войти');
+    expect(person.passwordHash, 'hash');
+    expect(person.passwordSalt, 'salt');
+    expect(person.isOwner, isFalse);
+
+    // Права обязаны сохраниться ровно те, что были выданы.
+    expect(person.permissions.allows(TeamModules.tasks), isTrue);
+    expect(person.permissions.allows(TeamModules.crm), isTrue);
+    expect(person.permissions.allows(TeamModules.treasury), isFalse,
+        reason: 'чужих прав появиться не должно');
+    expect(person.permissions.canManageTeam, isFalse);
+
+    // Поля, которых у старого профиля нет, берут умолчание.
+    expect(person.skills, isEmpty);
+    expect(person.weeklyCapacityPoints, 10);
+    expect(person.workloadMinRatio, .65);
+    expect(person.workloadMaxRatio, 1.10);
+    expect(person.workloadAlertTarget, 'manager');
+    expect(person.managerEmployeeId, isNull);
+    await box.close();
+  });
+
   test('объявленное число полей совпадает с записанным', () {
     // Адаптер написан руками, а значит номер поля можно и забыть. Заголовок
     // говорит «полей 30», а записано 29 — Hive прочитает мусор, и заметить
@@ -247,6 +314,19 @@ void main() {
     );
     expect(account.declared, 14);
     expect(account.written, 14);
+
+    final person = _CountingWriter();
+    EmployeeModelAdapter().write(
+      person,
+      EmployeeModel(
+        id: 'x',
+        login: 'x',
+        fullName: 'x',
+        createdAt: DateTime.utc(2026),
+      ),
+    );
+    expect(person.declared, 23);
+    expect(person.written, 23);
   });
 }
 
@@ -466,5 +546,95 @@ class _LegacyTaskWriter extends TypeAdapter<_LegacyTask> {
       ..write(obj.tags)
       ..writeByte(10)
       ..write(obj.order);
+  }
+}
+
+class _LegacyEmployee {
+  final String id;
+  final String login;
+  final String fullName;
+  final String nickname;
+  final String position;
+  final String phone;
+  final String email;
+  final Map<String, String> socials;
+  final String notes;
+  final TeamPermissions permissions;
+  final String passwordHash;
+  final String passwordSalt;
+  final int avatarIndex;
+  final DateTime createdAt;
+  final bool isOwner;
+  final Map<String, double> demoStats;
+  final Uint8List? photo;
+
+  const _LegacyEmployee({
+    required this.id,
+    required this.login,
+    required this.fullName,
+    required this.nickname,
+    required this.position,
+    required this.phone,
+    required this.email,
+    required this.socials,
+    required this.notes,
+    required this.permissions,
+    required this.passwordHash,
+    required this.passwordSalt,
+    required this.avatarIndex,
+    required this.createdAt,
+    required this.isOwner,
+    required this.demoStats,
+    this.photo,
+  });
+}
+
+/// Пишет профиль в 17 полей — так было до навыков и учёта нагрузки.
+class _LegacyEmployeeWriter extends TypeAdapter<_LegacyEmployee> {
+  @override
+  final int typeId = 21;
+
+  @override
+  _LegacyEmployee read(BinaryReader reader) =>
+      throw UnsupportedError('старый адаптер только пишет');
+
+  @override
+  void write(BinaryWriter writer, _LegacyEmployee obj) {
+    writer
+      ..writeByte(17)
+      ..writeByte(0)
+      ..write(obj.id)
+      ..writeByte(1)
+      ..write(obj.login)
+      ..writeByte(2)
+      ..write(obj.fullName)
+      ..writeByte(3)
+      ..write(obj.nickname)
+      ..writeByte(4)
+      ..write(obj.position)
+      ..writeByte(5)
+      ..write(obj.phone)
+      ..writeByte(6)
+      ..write(obj.email)
+      ..writeByte(7)
+      ..write(obj.socials)
+      ..writeByte(8)
+      ..write(obj.notes)
+      ..writeByte(9)
+      ..write(obj.permissions)
+      ..writeByte(10)
+      ..write(obj.passwordHash)
+      ..writeByte(11)
+      ..write(obj.passwordSalt)
+      ..writeByte(12)
+      ..write(obj.avatarIndex)
+      ..writeByte(13)
+      ..write(obj.createdAt)
+      ..writeByte(14)
+      ..write(obj.isOwner)
+      ..writeByte(15)
+      ..write(obj.demoStats)
+      ..writeByte(16)
+      ..write(obj.photo);
   }
 }

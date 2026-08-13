@@ -1116,6 +1116,27 @@ class _ContactsScreenState extends State<ContactsScreen> {
                     : label,
             child: tag,
           ),
+          // Причина отказа — текстом, а не только подсказкой при наведении.
+          //
+          // На телефоне подсказку надо ещё догадаться вызвать долгим нажатием,
+          // поэтому раньше владелец видел просто красное «Ошибка активации».
+          // Самая частая причина — почта на внутреннем домене: код входа
+          // отправить некуда, и человек не может войти, пока почту не
+          // поменяют. Такое стоит прочитать сразу, а не искать.
+          if (_activationHint(employee, error).isNotEmpty) ...[
+            const SizedBox(height: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 260),
+              child: Text(
+                _activationHint(employee, error),
+                style: TextStyle(
+                  fontSize: 10.5,
+                  height: 1.35,
+                  color: AppTheme.textSecondary,
+                ),
+              ),
+            ),
+          ],
           if (canReactivate || canRetry || canActivate) ...[
             const SizedBox(height: 6),
             TextButton.icon(
@@ -1145,6 +1166,25 @@ class _ContactsScreenState extends State<ContactsScreen> {
         ],
       ),
     );
+  }
+
+  /// Почему человек не может войти и что с этим делать.
+  ///
+  /// Проверка почты идёт первой и не ждёт неудачной попытки: без действующей
+  /// почты код входа отправить некуда, и никакая повторная активация этого
+  /// не изменит. Раньше это выяснялось только после нажатия «Повторить» и
+  /// пряталось в подсказке.
+  String _activationHint(EmployeeModel employee, String error) {
+    if (!employee.isOwner &&
+        !TeamService.validEmployeeEmail(employee.email)) {
+      return _ru
+          ? 'Нужна действующая почта: на неё приходит код входа. '
+              'Внутренний адрес вида «логин@wesi.local» не подойдёт — '
+              'откройте карточку и укажите настоящую.'
+          : 'A real email is required: the sign-in code is sent there. '
+              'An internal «login@wesi.local» address will not work.';
+    }
+    return error;
   }
 
   Widget _tag(String text) => Container(

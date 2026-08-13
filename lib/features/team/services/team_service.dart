@@ -10,6 +10,7 @@ import '../../../core/security/shield_service.dart';
 import '../../../core/services/firebase_rest_service.dart';
 import '../../../core/sync/sync_auto.dart';
 import '../../../core/sync/sync_endpoint.dart';
+import '../../../core/sync/sync_journal.dart';
 import '../models/employee_model.dart';
 import '../models/team_permissions.dart';
 import 'credentials_generator.dart';
@@ -158,6 +159,25 @@ class TeamService {
             isOwner: identity.isOwner,
           );
 
+    // Вход — это применение серверной правды, а не правка человека.
+    //
+    // Разница важная. Сервер присылает только опознавательную часть: логин,
+    // имя, права. Телефона, фото, навыков и хеша пароля в ней нет. На новом
+    // устройстве, где профиля ещё не было, из этого собирается запись без
+    // них — и если объявить её своей правкой, она уедет в синхронизацию и
+    // затрёт у всех остальных полную карточку. Человек вошёл бы на телефоне
+    // и обнаружил, что у него пропали фото и телефон.
+    //
+    // Поэтому журналу сообщается отметка не «сейчас», а та, что уже есть, —
+    // или дата заведения профиля, если записи здесь ещё не было. Тогда на
+    // ближайшем обмене побеждает полная карточка с сервера, а не то, что мы
+    // собрали из опознавательных данных.
+    SyncJournal.expect(
+      'employees',
+      employee.id,
+      SyncJournal.stampOf('employees', employee.id) ??
+          SyncStamp(identity.createdAt),
+    );
     await box.put(employee.id, employee);
     await signIn(employee, remember: remember);
     revision.value++;
