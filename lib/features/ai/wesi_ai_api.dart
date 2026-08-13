@@ -20,11 +20,22 @@ class WesiAiReply {
 }
 
 class WesiAiApi {
+  static const int maxTransportHistoryMessages = 80;
+
   static final HttpClient _http = HttpClient()
     ..connectionTimeout = const Duration(seconds: 12)
     ..idleTimeout = const Duration(seconds: 30);
 
   const WesiAiApi();
+
+  static List<Map<String, String>> transportHistory(List<WesiAiMessage> history) {
+    final messages = history
+        .where((m) => m.kind == WesiAiMessageKind.text && m.author != WesiAiMessageAuthor.system)
+        .map((m) => {'author': m.author.name, 'text': m.text})
+        .toList(growable: false);
+    if (messages.length <= maxTransportHistoryMessages) return messages;
+    return messages.sublist(messages.length - maxTransportHistoryMessages);
+  }
 
   Future<WesiAiReply> send({
     required WesiAiConversation conversation,
@@ -51,10 +62,7 @@ class WesiAiApi {
       'conversationId': conversation.id,
       'activeOrganizationId': OrganizationContext.currentOrganizationId,
       'memory': memory.toJson(),
-      'messages': history
-          .where((m) => m.kind == WesiAiMessageKind.text && m.author != WesiAiMessageAuthor.system)
-          .map((m) => {'author': m.author.name, 'text': m.text})
-          .toList(),
+      'messages': transportHistory(history),
     };
 
     try {
