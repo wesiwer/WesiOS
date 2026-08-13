@@ -445,13 +445,22 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      # Куда класть — проверяем ДО того, как гнать 50 МБ по сети.
+      # Куда класть — выясняем ДО того, как гнать 50 МБ по сети.
       #
-      # Без этой проверки отказ выглядит как `mkdir: cannot create directory
-      # '/srv/wesi-artifacts/app': Permission denied` в середине лога — и по
-      # нему не видно ни того, что каталог выбран по умолчанию, ни того, что
-      # чинится это одной строкой. Прогон краснеет каждый релиз, причина
-      # одна и та же, а разбирать её приходится заново.
+      # Здесь была поломка, из-за которой выкладка падала каждый релиз.
+      # Сторож брал каталог по умолчанию `/srv/wesi-artifacts`, а сам
+      # `deploy-artifact.sh` — `/opt/pocketbase/pb_public/artifacts`. То есть
+      # проверялся один каталог, а писался бы совсем другой: сторож честно
+      # сообщал «недоступен на запись» про путь, которым выкладка всё равно
+      # не воспользовалась бы.
+      #
+      # Поэтому теперь каталог не угадывается, а определяется: если задана
+      # переменная — берём её, иначе спрашиваем сам сервер, куда он пустит
+      # писать. Ровно так же уже поступает deploy-employee-portal.
+      #
+      # Найденный путь передаётся дальше через GITHUB_ENV, чтобы выкладка шла
+      # именно туда, где проверка прошла, — иначе расхождение вернётся, просто
+      # в другом месте.
       - name: Check the target directory is writable
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -460,42 +469,52 @@ jobs:
         run: |
           set -euo pipefail
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
-          DIR="${ARTIFACTS_DIR:-/srv/wesi-artifacts}"
 
-          if $SSH "$USER@$HOST" "mkdir -p '$DIR/app' 2>/dev/null && test -w '$DIR/app'"; then
-            echo "Каталог $DIR/app доступен на запись"
+          # Порядок важен: первым идёт то, что раздаёт PocketBase без единой
+          # настройки, вторым — отдельное хранилище под nginx.
+          if [ -n "${ARTIFACTS_DIR:-}" ]; then
+            CANDIDATES="$ARTIFACTS_DIR"
+          else
+            CANDIDATES="/opt/pocketbase/pb_public/artifacts /srv/wesi-artifacts"
+          fi
+
+          FOUND=""
+          for DIR in $CANDIDATES; do
+            if $SSH "$USER@$HOST" "mkdir -p '$DIR/app' 2>/dev/null && test -w '$DIR/app'"; then
+              FOUND="$DIR"
+              break
+            fi
+            echo "Каталог $DIR — не подходит, пробую дальше"
+          done
+
+          if [ -n "$FOUND" ]; then
+            echo "Каталог $FOUND/app доступен на запись"
+            echo "RESOLVED_ARTIFACTS_DIR=$FOUND" >> "$GITHUB_ENV"
             exit 0
           fi
 
           {
             echo "### Выкладка на свой сервер не прошла"
             echo
-            echo "Каталог \`$DIR\` недоступен пользователю \`$USER\` на запись."
-            if [ -z "${ARTIFACTS_DIR:-}" ]; then
-              echo "Переменная репозитория \`WESI_ARTIFACTS_DIR\` не задана, "
-              echo "поэтому взят каталог по умолчанию."
-              echo
-              echo "**Проще всего** — раздавать файлы самим PocketBase:"
-              echo '```'
-              echo "Settings → Secrets and variables → Actions → Variables"
-              echo "WESI_ARTIFACTS_DIR = /opt/pocketbase/pb_public/artifacts"
-              echo '```'
-              echo "и один раз на сервере:"
-            else
-              echo
-              echo "На сервере:"
-            fi
+            echo "Пользователю \`$USER\` некуда писать. Проверены каталоги:"
+            for DIR in $CANDIDATES; do echo "- \`$DIR\`"; done
+            echo
+            echo "Достаточно сделать writable любой из них, например:"
             echo '```bash'
-            echo "sudo mkdir -p $DIR"
-            echo "sudo chown -R $USER: $DIR"
+            echo "sudo mkdir -p /opt/pocketbase/pb_public/artifacts"
+            echo "sudo chown -R $USER: /opt/pocketbase/pb_public/artifacts"
             echo '```'
+            echo
+            echo "Тогда файлы будет раздавать сам PocketBase, по тому же"
+            echo "адресу, который приложение и так спрашивает, — ни nginx,"
+            echo "ни переменной репозитория для этого не нужно."
             echo
             echo "Сборки при этом уже опубликованы в GitHub Releases, и"
             echo "приложение возьмёт обновление оттуда — своя раздача это"
             echo "запасной путь, а не единственный."
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "::error::Каталог $DIR недоступен на запись пользователю $USER — см. итог прогона"
+          echo "::error::Нет каталога, доступного на запись пользователю $USER — см. итог прогона"
           exit 1
 
       - name: Upload build to server
@@ -505,7 +524,10 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
           BUILD: ${{ needs.version.outputs.build }}
           NOTES: ${{ github.event.inputs.notes }}
-          ARTIFACTS_DIR: ${{ vars.WESI_ARTIFACTS_DIR }}
+          # Каталог, который предыдущий шаг нашёл и проверил. Брать здесь
+          # переменную репозитория заново нельзя: когда она не задана,
+          # проверенный путь потерялся бы, и мы вернулись бы к угадыванию.
+          ARTIFACTS_DIR: ${{ env.RESOLVED_ARTIFACTS_DIR }}
         run: |
           set -euo pipefail
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
