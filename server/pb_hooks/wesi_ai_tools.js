@@ -1,246 +1,36 @@
-const ROOT_ORG = "org_wesi_inc";
-
-function payloadOf(record) {
-  if (!record) return {};
-  try {
-    const raw = record.get("payload");
-    if (raw && typeof raw === "object" && !Array.isArray(raw)) return raw;
-    if (typeof raw === "string" && raw.trim()) return JSON.parse(raw);
-  } catch (_) {}
-  return {};
-}
-
-function recordAudit(e, ctx, entry) {
-  try {
-    const path = typeof __hooks !== "undefined" ? __hooks + "/wesi_ai_audit.js" : "./wesi_ai_audit.js";
-    const audit = require(path);
-    audit.record(e, ctx, entry);
-  } catch (_) {}
-}
-
-function loadAccess(e, ctx) {
-  let permissions = {};
-  if (ctx.isOwner) {
-    permissions = {canManageTeam: true, canSeeOthersStats: true, canAssignTasks: true};
-  } else {
-    let employee = null;
-    try {
-      employee = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
-        {owner: ctx.ownerId, rid: ctx.employeeId},
-      );
-    } catch (_) { employee = null; }
-    const snapshot = payloadOf(employee);
-    permissions = snapshot.permissions && typeof snapshot.permissions === "object"
-      ? snapshot.permissions : {};
-  }
-
-  let organizations = [];
-  let grants = [];
-  try {
-    organizations = e.app.findRecordsByFilter(
-      "wesios_records", "owner={:owner} && coll='organizations' && deleted=false",
-      "id", 0, 0, {owner: ctx.ownerId},
-    );
-  } catch (_) { organizations = []; }
-  try {
-    grants = e.app.findRecordsByFilter(
-      "wesios_records", "owner={:owner} && coll='organization_grants' && deleted=false",
-      "id", 0, 0, {owner: ctx.ownerId},
-    );
-  } catch (_) { grants = []; }
-
-  const orgs = {};
-  const parents = {};
-  for (const row of organizations) {
-    const p = payloadOf(row);
-    const id = String(p.id || row.getString("rid") || "");
-    if (!id || String(p.status || "active") === "archived") continue;
-    orgs[id] = {id: id, name: String(p.name || id), parentId: p.parentId == null ? null : String(p.parentId)};
-    parents[id] = orgs[id].parentId;
-  }
-
-  const allowed = {};
-  if (ctx.isOwner) {
-    for (const id of Object.keys(orgs)) allowed[id] = true;
-  } else {
-    const own = [];
-    for (const row of grants) {
-      const p = payloadOf(row);
-      if (String(p.employeeId || "") === ctx.employeeId) own.push(p);
-    }
-    for (const g of own) {
-      const perms = Array.isArray(g.permissions) ? g.permissions.map(String) : [];
-      if (perms.indexOf("view") < 0) continue;
-      const id = String(g.organizationId || "");
-      if (orgs[id]) allowed[id] = true;
-      if (g.includeSubtree === true) {
-        for (const childId of Object.keys(orgs)) {
-          let cursor = parents[childId];
-          while (cursor) {
-            if (cursor === id) { allowed[childId] = true; break; }
-            cursor = parents[cursor];
-          }
-        }
-      }
-    }
-  }
-
-  return {
-    permissions: permissions,
-    orgs: orgs,
-    allowedOrgIds: allowed,
-    canReadOthers: ctx.isOwner || permissions.canManageTeam === true || permissions.canAssignTasks === true,
-    canAssignOthers: ctx.isOwner || permissions.canManageTeam === true || permissions.canAssignTasks === true,
-  };
-}
-
-function chooseOrganization(access, requested) {
-  const id = String(requested || "").trim();
-  if (id && access.allowedOrgIds[id] === true && access.orgs[id]) return id;
-  if (access.allowedOrgIds[ROOT_ORG] === true && access.orgs[ROOT_ORG]) return ROOT_ORG;
-  const ids = Object.keys(access.allowedOrgIds).filter((x) => access.allowedOrgIds[x] === true && access.orgs[x]);
-  return ids.length ? ids[0] : "";
-}
-
-function employees(e, ctx) {
-  let rows = [];
-  try {
-    rows = e.app.findRecordsByFilter(
-      "wesios_records", "owner={:owner} && coll='employees' && deleted=false",
-      "id", 0, 0, {owner: ctx.ownerId},
-    );
-  } catch (_) { rows = []; }
-  return rows.map((row) => {
-    const p = payloadOf(row);
-    return {
-      id: String(p.id || row.getString("rid") || ""),
-      login: String(p.login || ""),
-      fullName: String(p.fullName || ""),
-      nickname: String(p.nickname || ""),
-    };
-  }).filter((x) => x.id);
-}
-
-function resolveEmployee(e, ctx, query) {
-  const q = String(query || "").trim().toLowerCase();
-  if (!q) return {id: ctx.employeeId, label: ctx.employeeId};
-  const all = employees(e, ctx);
-  const exact = all.filter((x) => [x.id, x.login, x.fullName, x.nickname].some((v) => v && v.toLowerCase() === q));
-  if (exact.length === 1) return {id: exact[0].id, label: exact[0].fullName || exact[0].nickname || exact[0].login || exact[0].id};
-  const partial = all.filter((x) => [x.login, x.fullName, x.nickname].some((v) => v && v.toLowerCase().includes(q)));
-  if (partial.length === 1) return {id: partial[0].id, label: partial[0].fullName || partial[0].nickname || partial[0].login || partial[0].id};
-  if (exact.length > 1 || partial.length > 1) return {error: "AMBIGUOUS_EMPLOYEE"};
-  return {error: "EMPLOYEE_NOT_FOUND"};
-}
-
-function taskVisible(access, ctx, p) {
-  const orgId = String(p.organizationId || ROOT_ORG);
-  if (access.allowedOrgIds[orgId] !== true) return false;
-  if (access.canReadOthers) return true;
-  return String(p.assignee || "") === ctx.employeeId || String(p.responsibleEmployeeId || "") === ctx.employeeId;
+function adapters() {
+  return [
+    require(`${__hooks}/wesi_ai_task_tools.js`),
+    require(`${__hooks}/wesi_ai_finance_tools.js`),
+  ];
 }
 
 module.exports = {
   definitions: function(e, ctx) {
-    if (!ctx.isOwner && ctx.modules.indexOf("tasks") < 0) return [];
-    return [
-      {
-        name: "tasks_list",
-        description: "Получить реальные задачи WesiOS, доступные текущему сотруднику.",
-        parameters: {type: "object", properties: {status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]}, limit: {type: "integer", minimum: 1, maximum: 50}}},
-      },
-      {
-        name: "tasks_create",
-        description: "Создать реальную задачу WesiOS. Можно назначить другому сотруднику только при наличии соответствующего права.",
-        parameters: {type: "object", required: ["title"], properties: {title: {type: "string"}, description: {type: "string"}, dueDate: {type: "string", description: "ISO date YYYY-MM-DD"}, assignee: {type: "string", description: "Имя, логин или id сотрудника; пусто означает текущего сотрудника"}, organizationId: {type: "string"}, priority: {type: "string", enum: ["low", "normal", "high", "urgent"]}}},
-      },
-    ];
+    const out = [];
+    for (const adapter of adapters()) {
+      const items = adapter.definitions(e, ctx);
+      if (Array.isArray(items)) out.push(...items);
+    }
+    return out;
   },
 
   context: function(e, ctx, activeOrganizationId) {
-    const access = loadAccess(e, ctx);
-    const visible = Object.keys(access.allowedOrgIds).filter((id) => access.allowedOrgIds[id] === true && access.orgs[id]).map((id) => ({id: id, name: access.orgs[id].name}));
-    return {serverTime: new Date().toISOString(), activeOrganizationId: chooseOrganization(access, activeOrganizationId), organizations: visible, canAssignTasksToOthers: access.canAssignOthers};
+    const result = {};
+    for (const adapter of adapters()) {
+      if (typeof adapter.context !== "function") continue;
+      const part = adapter.context(e, ctx, activeOrganizationId);
+      if (part && typeof part === "object") Object.assign(result, part);
+    }
+    return result;
   },
 
   execute: function(e, ctx, name, args, activeOrganizationId) {
-    if (!ctx.isOwner && ctx.modules.indexOf("tasks") < 0) return {ok: false, code: "FORBIDDEN", message: "Нет доступа к модулю задач"};
-    const access = loadAccess(e, ctx);
-    const input = args && typeof args === "object" ? args : {};
-
-    if (name === "tasks_list") {
-      let rows = [];
-      try {
-        rows = e.app.findRecordsByFilter(
-          "wesios_records", "owner={:owner} && coll='tasks' && deleted=false",
-          "-stamp", 0, 0, {owner: ctx.ownerId},
-        );
-      } catch (_) { rows = []; }
-      const status = String(input.status || "");
-      const limit = Math.max(1, Math.min(50, Number(input.limit || 20)));
-      const out = [];
-      for (const row of rows) {
-        const p = payloadOf(row);
-        if (!taskVisible(access, ctx, p)) continue;
-        if (status && String(p.status || "backlog") !== status) continue;
-        out.push({id: String(p.id || row.getString("rid")), title: String(p.title || ""), status: String(p.status || "backlog"), priority: String(p.priority || "normal"), dueDate: p.dueDate || null, assignee: p.assignee || null, organizationId: String(p.organizationId || ROOT_ORG)});
-        if (out.length >= limit) break;
-      }
-      return {ok: true, result: {tasks: out}};
+    for (const adapter of adapters()) {
+      const definitions = adapter.definitions(e, ctx);
+      if (!Array.isArray(definitions) || !definitions.some((item) => String(item.name || "") === name)) continue;
+      return adapter.execute(e, ctx, name, args, activeOrganizationId);
     }
-
-    if (name === "tasks_create") {
-      const title = String(input.title || "").trim();
-      if (!title || title.length > 500) return {ok: false, code: "VALIDATION_ERROR", message: "Некорректное название задачи"};
-      const target = resolveEmployee(e, ctx, input.assignee);
-      if (target.error) return {ok: false, code: target.error, message: target.error === "AMBIGUOUS_EMPLOYEE" ? "Найдено несколько сотрудников с таким именем" : "Сотрудник не найден"};
-      const requestedOrg = String(input.organizationId || activeOrganizationId || ROOT_ORG);
-      if (target.id !== ctx.employeeId && !access.canAssignOthers) {
-        recordAudit(e, ctx, {tool: "tasks_create", entityType: "wesi_ai_action", entityId: "tasks_create", organizationId: requestedOrg, ok: false, code: "FORBIDDEN", targetEmployeeId: target.id});
-        return {ok: false, code: "FORBIDDEN", message: "Нет права назначать задачи другим сотрудникам", alternatives: ["Создать задачу себе", "Подготовить текст для руководителя"]};
-      }
-      const orgId = chooseOrganization(access, input.organizationId || activeOrganizationId);
-      if (!orgId) return {ok: false, code: "FORBIDDEN", message: "Нет доступной организации для задачи"};
-      let dueDate = null;
-      if (input.dueDate != null && String(input.dueDate).trim()) {
-        const raw = String(input.dueDate).trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || !Number.isFinite(Date.parse(raw + "T12:00:00Z"))) return {ok: false, code: "VALIDATION_ERROR", message: "Некорректный срок задачи"};
-        dueDate = raw + "T12:00:00.000Z";
-      }
-      const priority = ["low", "normal", "high", "urgent"].indexOf(String(input.priority || "normal")) >= 0 ? String(input.priority || "normal") : "normal";
-      const now = new Date().toISOString();
-      const id = "wai_task_" + Date.now() + "_" + $security.randomString(8);
-      const payload = {
-        id: id,
-        title: title,
-        description: input.description == null ? null : String(input.description).slice(0, 10000),
-        status: "backlog",
-        priority: priority,
-        createdAt: now,
-        dueDate: dueDate,
-        assignee: target.id,
-        tags: ["wesios:org:" + orgId, "wesios:employee:" + target.id],
-        order: 0,
-        organizationId: orgId,
-        responsibleEmployeeId: target.id,
-        subtasks: [],
-      };
-      const collection = e.app.findCollectionByNameOrId("wesios_records");
-      const record = new Record(collection);
-      record.set("owner", ctx.ownerId);
-      record.set("org", "wesi-inc");
-      record.set("coll", "tasks");
-      record.set("rid", id);
-      record.set("payload", payload);
-      record.set("stamp", now);
-      record.set("deleted", false);
-      e.app.save(record);
-      recordAudit(e, ctx, {tool: "tasks_create", entityType: "task", entityId: id, organizationId: orgId, ok: true, targetEmployeeId: target.id});
-      return {ok: true, result: {task: {id: id, title: title, dueDate: dueDate, assigneeId: target.id, assignee: target.label, organizationId: orgId}}};
-    }
-
-    return {ok: false, code: "UNKNOWN_TOOL", message: "Неизвестный инструмент Wesi AI"};
+    return {ok: false, code: "FORBIDDEN", message: "Инструмент недоступен текущему сотруднику"};
   },
 };
