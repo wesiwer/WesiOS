@@ -7,6 +7,10 @@ import 'models/wesi_ai_chat_models.dart';
 import 'wesi_ai_api.dart';
 
 class WesiAiLobbyApi extends WesiAiApi {
+  static final HttpClient _http = HttpClient()
+    ..connectionTimeout = const Duration(seconds: 12)
+    ..idleTimeout = const Duration(seconds: 30);
+
   const WesiAiLobbyApi();
 
   @override
@@ -17,6 +21,16 @@ class WesiAiLobbyApi extends WesiAiApi {
     required List<WesiAiMessage> history,
     required WesiAiMemorySnapshot memory,
   }) async {
+    if (conversation.persona != WesiAiPersona.lobby) {
+      return super.send(
+        conversation: conversation,
+        tier: tier,
+        message: message,
+        history: history,
+        memory: memory,
+      );
+    }
+
     final session = SyncEndpoint.session;
     final token = session?['token'];
     final sessionId = SyncEndpoint.sessionId;
@@ -42,7 +56,7 @@ class WesiAiLobbyApi extends WesiAiApi {
     };
 
     try {
-      final request = await HttpClient().postUrl(uri);
+      final request = await _http.postUrl(uri);
       request.headers.set(HttpHeaders.authorizationHeader, token);
       request.headers.set('X-WesiOS-Session', sessionId);
       request.headers.contentType = ContentType.json;
