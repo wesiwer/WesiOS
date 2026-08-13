@@ -45,7 +45,7 @@ class WesiAiApi {
     final body = <String, dynamic>{
       'persona': conversation.persona.name,
       'tier': tier.name,
-      'lobbyMode': 'smart',
+      'lobbyMode': conversation.lobbyMode.name,
       'message': message,
       'summary': '',
       'conversationId': conversation.id,
