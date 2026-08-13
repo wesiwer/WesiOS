@@ -8,7 +8,9 @@ import '../../core/widgets/window_controls.dart';
 import 'models/task_model.dart';
 import 'services/task_assignment.dart';
 import 'services/task_service.dart';
+import 'services/task_work_order.dart';
 import 'task_labels.dart';
+import 'widgets/task_drag_handle.dart';
 import 'widgets/task_editor_dialog.dart';
 import 'ai/widgets/wesi_ai_suggestions_panel.dart';
 
@@ -69,7 +71,9 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   List<TaskModel> _column(TaskStatus s) {
-    return _tasks.where((t) {
+    // Порядок внутри этапа считается, а не берётся из хранилища: сверху то,
+    // что горит по сроку и при этом важно.
+    return TaskWorkOrder.sort(_tasks.where((t) {
       if (t.status != s) return false;
       if (_priorityFilter != null && t.priority != _priorityFilter) {
         return false;
@@ -86,7 +90,7 @@ class _TasksScreenState extends State<TasksScreen> {
         if (!inTitle && !inDesc && !inAssignee) return false;
       }
       return true;
-    }).toList();
+    }).toList());
   }
 
   Future<void> _create([TaskStatus status = TaskStatus.backlog]) async {
@@ -390,24 +394,20 @@ class _TasksScreenState extends State<TasksScreen> {
     );
   }
 
-  Widget _card(TaskModel task, bool ru) {
-    final card = _cardBody(task, ru);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Draggable<TaskModel>(
-        data: task,
-        feedback: Material(
-          color: Colors.transparent,
-          child: Opacity(
-            opacity: 0.9,
-            child: SizedBox(width: 240, child: _cardBody(task, ru)),
+  Widget _card(TaskModel task, bool ru) => Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: TaskDragHandle(
+          task: task,
+          feedback: Material(
+            color: Colors.transparent,
+            child: Opacity(
+              opacity: 0.9,
+              child: SizedBox(width: 240, child: _cardBody(task, ru)),
+            ),
           ),
+          child: _cardBody(task, ru),
         ),
-        childWhenDragging: Opacity(opacity: 0.35, child: card),
-        child: card,
-      ),
-    );
-  }
+      );
 
   Widget _cardBody(TaskModel task, bool ru) {
     final pColor = TaskLabels.priorityColor(task.priority);
