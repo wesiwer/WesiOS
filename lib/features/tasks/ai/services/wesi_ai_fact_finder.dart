@@ -60,6 +60,9 @@ class WesiAiFactFinder {
   /// Сколько дней бит может лежать в работе, не двигаясь по стадиям.
   static const int beatStallDays = 21;
 
+  /// Общий порог молчания по новым битам, когда собственного ритма ещё нет.
+  static const int beatSilenceFloorDays = 14;
+
   /// [coverTasks] — задачи, которые снимают факт. По умолчанию это задачи
   /// самой организации, но дорожная карта и каталог битов общие на всё
   /// приложение, поэтому сюда стоит передавать задачи всех организаций:
@@ -637,7 +640,131 @@ class WesiAiFactFinder {
         }
       }
     }
+
+    final silence = _beatSilence(world, now);
+    if (silence != null) facts.add(silence);
     return facts;
+  }
+
+  /// Новые биты перестали появляться.
+  ///
+  /// Все остальные наблюдения говорят о существующем объекте: этот бит, эта
+  /// лицензия. Здесь объекта нет — есть его отсутствие, а отсутствие само о
+  /// себе не сообщит. Именно поэтому система молчала: она видела каждый
+  /// отдельный бит и не видела, что новых давно не заводили.
+  ///
+  /// Порог не константа. «Две недели без бита» для одного человека —
+  /// обычный ритм, для другого — месяц простоя, и одно число на всех
+  /// врало бы обоим. Поэтому ритм берётся собственный: медиана промежутков
+  /// между появлением битов. Медиана, а не среднее, — один отпуск посреди
+  /// истории сдвигает среднее так, что порог перестаёт срабатывать вообще.
+  static WesiAiFact? _beatSilence(WesiAiWorldState world, DateTime now) {
+    final live =
+        world.beats.where((beat) => beat.stage != BeatStage.archived).toList();
+    if (live.isEmpty) return null;
+
+    final created = live.map((beat) => beat.createdAt).toList()..sort();
+    final last = created.last;
+    final quiet = AiFactMath.daysBetween(last, now);
+    if (quiet <= 0) return null;
+
+    // Пока над битом идёт работа, «новых давно не было» — неправда по сути:
+    // материал делается прямо сейчас. Застрявшую работу разбирает
+    // beatStalled, и дублировать его здесь не нужно.
+    final active = live.any((beat) =>
+        _inWorkStages.contains(beat.stage) &&
+        AiFactMath.daysBetween(beat.updatedAt, now) <= 7);
+    if (active) return null;
+
+    final gaps = <int>[
+      for (var i = 1; i < created.length; i++)
+        AiFactMath.daysBetween(created[i - 1], created[i]),
+    ].where((gap) => gap > 0).toList()
+      ..sort();
+
+    // Три бита дают два промежутка — минимум, на котором вообще можно
+    // говорить о ритме. Меньше — это не ритм, а пара точек, и тогда честнее
+    // взять общий порог, чем выдать случайность за закономерность.
+    final hasRhythm = gaps.length >= 2;
+    final median = hasRhythm
+        ? (gaps.length.isOdd
+            ? gaps[gaps.length ~/ 2].toDouble()
+            : (gaps[gaps.length ~/ 2 - 1] + gaps[gaps.length ~/ 2]) / 2)
+        : 0.0;
+    final threshold = hasRhythm
+        ? max(beatSilenceFloorDays, (median * 2).round())
+        : beatSilenceFloorDays;
+    if (quiet < threshold) return null;
+
+    // Биты, которые уже приносили деньги. Если приносили — молчание стоит
+    // дороже, и это не оценка, а факт из журнала лицензий.
+    final earning =
+        live.where((beat) => (beat.lease?.amount ?? 0) > 0).length;
+
+    return WesiAiFact(
+      kind: AiFactKind.beatCadenceStalled,
+      category: AiTaskCategory.production,
+      subjectId: 'beat-cadence',
+      subjectTitle: 'Новые биты',
+      title: 'Написать новый бит',
+      description: hasRhythm
+          ? 'Последний бит заведён ${_date(last)} — ${AiFactMath.days(quiet)} '
+              'назад. Обычный промежуток между битами здесь '
+              '${AiFactMath.days(median.round())}, сейчас пауза дольше вдвое. '
+              'Каталог не пополняется, а продавать можно только то, что в нём есть.'
+          : 'Последний бит заведён ${_date(last)} — ${AiFactMath.days(quiet)} '
+              'назад. Каталог не пополняется, а продавать можно только то, '
+              'что в нём есть.',
+      // Границы стоят на итоговом числе, а не на слагаемом, и выбраны не на
+      // глаз. Это совет, а не тревога: у наблюдения нет собственного срока —
+      // завтра ничего не сломается оттого, что бит не написан. Отсюда три
+      // требования, и они задают обе границы.
+      //
+      // Снизу — 0.36: наблюдение обязано оставаться выше порога
+      // обоснованности (0.35), иначе оно проваливается под догадки по типу
+      // работ ровно тогда, когда оно правдиво.
+      //
+      // Сверху — 0.52, ниже сразу двух рубежей. Ниже 0.55 — порога, за
+      // которым система перестаёт слушать отказы: у совета без срока право
+      // замолчать после двух отказов должно остаться. И ниже того, что
+      // набирает датированное событие с деньгами — истекающая лицензия,
+      // просроченный платёж. Пустой каталог тянет вниз медленно, а лицензия
+      // сгорает в конкретный день, и порядок между ними спорным быть не
+      // должен.
+      urgency: AiFactMath.blend(
+        AiFactMath.lateness(quiet - threshold + 1, halfLife: 12),
+        earning > 0 ? .8 : .2,
+      ).clamp(.36, .52),
+      deadline: _after(now, 7),
+      ownerEmployeeId: _employeeRef(
+        // Автор последнего бита — самый очевидный кандидат: он это уже делал.
+        live
+            .reduce((a, b) => a.createdAt.isAfter(b.createdAt) ? a : b)
+            .authorEmployeeId,
+      ),
+      roleAliases: const [
+        'битмейкер',
+        'beatmaker',
+        'продюсер',
+        'producer',
+        'музыкант',
+      ],
+      whyNow: earning > 0
+          ? 'Биты этой организации уже приносили деньги — пустой каталог их не принесёт.'
+          : 'Каталог перестал расти, а продавать можно только готовое.',
+      evidence: [
+        'Последний бит: ${_date(last)}',
+        if (hasRhythm)
+          'Обычный промежуток: ${AiFactMath.days(median.round())}'
+        else
+          'Ритм ещё не сложился — порог общий, ${AiFactMath.days(beatSilenceFloorDays)}',
+        'Всего битов: ${live.length}',
+        if (earning > 0) 'С лицензиями: $earning',
+      ],
+      impact:
+          earning > 0 ? AiForecastImpact.high : AiForecastImpact.medium,
+      effortPoints: 3,
+    );
   }
 
   // ----------------------------------------------------------------- задачи

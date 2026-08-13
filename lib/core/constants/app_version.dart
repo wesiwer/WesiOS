@@ -4,7 +4,7 @@
 /// Release workflow проверяет это перед сборкой и остановит релиз, если
 /// значения снова разойдутся.
 class AppVersion {
-  static const String number = '0.22.6';
+  static const String number = '0.22.7';
 
   /// Номер сборки — то, что стоит после `+` в pubspec.yaml.
   ///

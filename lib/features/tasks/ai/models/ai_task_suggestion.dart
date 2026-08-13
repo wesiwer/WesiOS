@@ -157,9 +157,16 @@ class AiTaskAnalysisResult {
   final AiBusinessSignal businessSignal;
   final DateTime analyzedAt;
 
+  /// Организация, чьи данные разобраны. Разбор всегда идёт по одной
+  /// организации, и человек должен видеть, по какой именно: предложение из
+  /// Wesi Beat's и предложение из Wesi Inc выглядят одинаково, а означают
+  /// разное.
+  final String organizationName;
+
   const AiTaskAnalysisResult({
     required this.suggestions,
     required this.businessSignal,
     required this.analyzedAt,
+    this.organizationName = '',
   });
 }

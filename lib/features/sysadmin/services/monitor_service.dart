@@ -74,7 +74,7 @@ class MonitorService {
 
   static final Map<String, List<ProbeSample>> _history = {};
   static final Map<String, TlsInfo?> _tls = {};
-  static final Map<String, ServerLoad?> _load = {};
+  static final Map<String, ServerLoadProbe> _load = {};
   static bool _defaultsWriteScheduled = false;
 
   static Box<dynamic>? _open() {
@@ -182,7 +182,10 @@ class MonitorService {
 
   static TlsInfo? tlsOf(String id) => _tls[id];
 
-  static ServerLoad? loadOf(String id) => _load[id];
+  static ServerLoad? loadOf(String id) => _load[id]?.load;
+
+  /// Последний опрос агента целиком — вместе с причиной отказа.
+  static ServerLoadProbe? loadProbeOf(String id) => _load[id];
 
   static void _record(String id, ProbeSample sample) {
     final list = _history.putIfAbsent(id, () => <ProbeSample>[]);

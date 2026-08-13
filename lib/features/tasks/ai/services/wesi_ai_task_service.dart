@@ -80,6 +80,7 @@ class WesiAiTaskService {
       suggestions: strategic.take(visibleLimit).toList(),
       businessSignal: businessSignal,
       analyzedAt: clock,
+      organizationName: organization.name,
     );
   }
 

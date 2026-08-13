@@ -194,13 +194,18 @@ class NetworkProbe {
   /// нельзя никак: сеть про это ничего не сообщает. Либо на сервере что-то
   /// эти цифры отдаёт, либо их нет — и рисовать их «примерно» было бы
   /// обманом. Скрипт агента лежит в `server/wesios-agent.sh`.
-  static Future<ServerLoad?> load(
+  static Future<ServerLoadProbe> load(
     String url, {
     Duration timeout = defaultTimeout,
     Map<String, String> headers = const {},
   }) async {
     final uri = Uri.tryParse(url);
-    if (uri == null || uri.host.isEmpty) return null;
+    if (uri == null || uri.host.isEmpty) {
+      return const ServerLoadProbe.failed(
+        ServerLoadFailure.badAddress,
+        'Адрес нельзя разобрать.',
+      );
+    }
     final client = HttpClient()..connectionTimeout = timeout;
     try {
       final req = await client.getUrl(uri);
@@ -209,17 +214,94 @@ class NetworkProbe {
       final res = await req.close().timeout(timeout);
       if (res.statusCode != 200) {
         await res.drain<void>();
-        return null;
+        return ServerLoadProbe.failed(
+          ServerLoadFailure.httpError,
+          'Сервер ответил ${res.statusCode}.',
+          statusCode: res.statusCode,
+        );
       }
       final body = await res.transform(utf8.decoder).join();
-      final json = jsonDecode(body);
-      return json is Map<String, dynamic> ? ServerLoad.tryParse(json) : null;
-    } catch (_) {
-      return null;
+      final Object? json;
+      try {
+        json = jsonDecode(body);
+      } catch (_) {
+        // Ровно этот случай и притворялся молчанием агента: по адресу
+        // отвечала страница портала, а не файл агента. Разница видна только
+        // здесь, и не сказать о ней — значит отправить человека чинить
+        // работающий агент вместо неправильного адреса.
+        return ServerLoadProbe.failed(
+          ServerLoadFailure.notJson,
+          _looksLikeHtml(body)
+              ? 'По адресу отвечает веб-страница, а не агент.'
+              : 'Ответ не разбирается как JSON.',
+          statusCode: 200,
+        );
+      }
+      if (json is! Map<String, dynamic>) {
+        return const ServerLoadProbe.failed(
+          ServerLoadFailure.notJson,
+          'Ответ не разбирается как JSON.',
+          statusCode: 200,
+        );
+      }
+      final parsed = ServerLoad.tryParse(json);
+      if (parsed == null) {
+        return const ServerLoadProbe.failed(
+          ServerLoadFailure.wrongShape,
+          'Это JSON, но без полей агента (load1, at).',
+          statusCode: 200,
+        );
+      }
+      return ServerLoadProbe.ok(parsed);
+    } catch (error) {
+      return ServerLoadProbe.failed(
+        ServerLoadFailure.unreachable,
+        'Узел не отвечает: $error',
+      );
     } finally {
       client.close(force: true);
     }
   }
+
+  static bool _looksLikeHtml(String body) {
+    final head = body.trimLeft().toLowerCase();
+    return head.startsWith('<!doctype html') || head.startsWith('<html');
+  }
+}
+
+/// Почему показателей сервера нет.
+///
+/// Раньше все причины сходились в один `null`, и интерфейс говорил «агент не
+/// отвечает» одинаково и когда узел молчал, и когда по адресу лежала совсем
+/// другая страница. Это разные поломки с разным лечением: в первом случае
+/// чинят агент, во втором — адрес.
+enum ServerLoadFailure {
+  badAddress,
+  unreachable,
+  httpError,
+  notJson,
+  wrongShape,
+}
+
+/// Результат опроса агента: либо показатели, либо причина их отсутствия.
+class ServerLoadProbe {
+  final ServerLoad? load;
+  final ServerLoadFailure? failure;
+  final String detail;
+  final int? statusCode;
+
+  const ServerLoadProbe.ok(ServerLoad this.load)
+      : failure = null,
+        detail = '',
+        statusCode = 200;
+
+  const ServerLoadProbe.failed(
+    this.failure,
+    this.detail, {
+    this.statusCode,
+  }) : load = null;
+
+  bool get isOk => load != null;
 }
 
 /// Показатели, присланные агентом с сервера.

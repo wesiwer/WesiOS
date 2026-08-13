@@ -22,6 +22,7 @@ enum AiFactKind {
   beatMissingCover,
   beatMissingMaster,
   beatStalled,
+  beatCadenceStalled,
   leaseExpiring,
   leaseExpired,
   taskOverdue,

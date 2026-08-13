@@ -128,7 +128,7 @@ class _AiSuggestionEditDialogState extends State<AiSuggestionEditDialog> {
                     child: DropdownButtonFormField<AiForecastImpact>(
                       value: _impact,
                       decoration: const InputDecoration(
-                          labelText: 'Влияние на прогноз'),
+                          labelText: 'Значимость'),
                       items: AiForecastImpact.values
                           .map((impact) => DropdownMenuItem(
                                 value: impact,

@@ -83,7 +83,10 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
       _phoneCtrl.text = e.phone;
       _emailCtrl.text = e.email;
       _notesCtrl.text = e.notes;
-      _skills.addAll(e.skills);
+      // Навык из первой версии справочника («Outreach», «QA») приводится к
+      // нынешнему имени: иначе он остался бы в карточке записью, которую
+      // уже нельзя ни выбрать, ни снять.
+      _skills.addAll(TeamSkillService.canonicalAll(e.skills));
       _weeklyCapacity = e.weeklyCapacityPoints;
       _minLoad = e.workloadMinRatio;
       _maxLoad = e.workloadMaxRatio;
@@ -371,7 +374,20 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
                   const SizedBox(height: 14),
                   _field(_nameCtrl, _ru ? 'Имя и фамилия' : 'Full name'),
                   _field(_nickCtrl, _ru ? 'Ник (если есть)' : 'Nickname'),
-                  _field(_positionCtrl, _ru ? 'Должность' : 'Position'),
+                  _field(
+                    _positionCtrl,
+                    _ru ? 'Должность' : 'Position',
+                    // Пока ни один навык не отмечен, должность — единственное,
+                    // что система о человеке знает, и молчать об этом незачем:
+                    // навыки проставляются сами и тут же видны фишками. Как
+                    // только выбор сделан руками, подстановка умолкает и ждёт
+                    // явного нажатия — переписывать чужой выбор она не вправе.
+                    onChanged: (value) => setState(() {
+                      if (_skills.isEmpty) {
+                        _skills.addAll(TeamSkillService.forPosition(value));
+                      }
+                    }),
+                  ),
                   const SizedBox(height: 18),
                   _section(_ru ? 'Навыки' : 'Skills'),
                   _skillsEditor(),
@@ -456,29 +472,122 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
     if (saved != null && mounted) setState(() => _skills.add(saved));
   }
 
-  Widget _skillsEditor() => Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(13),
-        decoration: BoxDecoration(
-          color: AppTheme.surface.withOpacity(.38),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: AppTheme.glassBorder),
-        ),
+  /// Подставляет навыки, которые следуют из должности.
+  ///
+  /// Только добавляет. Снимать уже выбранное подстановка не вправе: должность
+  /// описывает человека грубо, а руками отмеченное — точно, и затирать
+  /// точное приблизительным нельзя.
+  void _applyPositionSkills() {
+    final suggested = TeamSkillService.forPosition(_positionCtrl.text);
+    final added = suggested.where((skill) => !_skills.contains(skill)).toList();
+    setState(() => _skills.addAll(added));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(
+        added.isEmpty
+            ? (suggested.isEmpty
+                ? (_ru
+                    ? 'Для должности «${_positionCtrl.text.trim()}» подходящих навыков в справочнике нет'
+                    : 'No matching skills for this position')
+                : (_ru
+                    ? 'Всё, что следует из должности, уже отмечено'
+                    : 'Everything implied by the position is already selected'))
+            : (_ru
+                ? 'Добавлено: ${added.join(', ')}'
+                : 'Added: ${added.join(', ')}'),
+      ),
+    ));
+  }
+
+  Widget _skillsEditor() {
+    final suggested = TeamSkillService.forPosition(_positionCtrl.text);
+    final custom = TeamSkillService.custom;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: AppTheme.surface.withOpacity(.38),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.glassBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _ru
+                ? 'Отмеченные навыки Wesi AI учитывает, когда решает, кому поручить задачу.'
+                : 'Wesi AI uses the selected skills when it decides who gets a task.',
+            style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+          ),
+          if (suggested.isNotEmpty) ...[
+            const SizedBox(height: 9),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _ru
+                        ? 'Должность «${_positionCtrl.text.trim()}» предполагает: ${suggested.join(', ')}'
+                        : 'This position implies: ${suggested.join(', ')}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      height: 1.35,
+                      color: AppTheme.textMuted,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                FilledButton.tonal(
+                  onPressed: _applyPositionSkills,
+                  child: Text(
+                    _ru ? 'Подставить' : 'Apply',
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ],
+          const SizedBox(height: 4),
+          for (final category in TeamSkillService.catalog)
+            _skillGroup(category.name,
+                [for (final skill in category.skills) skill.name]),
+          if (custom.isNotEmpty)
+            _skillGroup(_ru ? 'Свои навыки' : 'Custom', custom),
+          const SizedBox(height: 10),
+          ActionChip(
+            avatar: const Icon(Icons.add, size: 16),
+            label: Text(_ru ? 'Новый навык' : 'New skill'),
+            onPressed: _addSkill,
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Одна область работы со своими навыками.
+  ///
+  /// Плоская лента из двадцати с лишним фишек читается как список слов:
+  /// глазу не за что зацепиться, и найти нужное можно только перебором.
+  /// Заголовок области превращает перебор в выбор.
+  Widget _skillGroup(String title, List<String> skills) => Padding(
+        padding: const EdgeInsets.only(top: 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              _ru
-                  ? 'Можно выбрать несколько. Wesi AI будет учитывать их при назначении задач.'
-                  : 'Select multiple. Wesi AI uses these skills for task assignment.',
-              style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
+              title.toUpperCase(),
+              style: TextStyle(
+                fontSize: 10,
+                letterSpacing: .8,
+                fontWeight: FontWeight.w800,
+                color: AppTheme.textMuted,
+              ),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 7),
             Wrap(
               spacing: 7,
               runSpacing: 7,
               children: [
-                for (final skill in TeamSkillService.all)
+                for (final skill in skills)
                   FilterChip(
                     label: Text(skill),
                     selected: _skills.contains(skill),
@@ -490,11 +599,6 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
                       }
                     }),
                   ),
-                ActionChip(
-                  avatar: const Icon(Icons.add, size: 16),
-                  label: Text(_ru ? 'Новый навык' : 'New skill'),
-                  onPressed: _addSkill,
-                ),
               ],
             ),
           ],
@@ -1010,12 +1114,14 @@ class _EmployeeEditorScreenState extends State<EmployeeEditorScreen> {
     String label, {
     String? hint,
     TextInputType? keyboard,
+    ValueChanged<String>? onChanged,
   }) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: TextField(
         controller: c,
         keyboardType: keyboard,
+        onChanged: onChanged,
         style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
         decoration: InputDecoration(
           labelText: label,

@@ -331,6 +331,83 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
     );
   }
 
+  /// Что именно пошло не так с агентом — и что с этим делать.
+  Widget _agentFailure(ServerLoadProbe? probe) {
+    final (String what, String fix) = switch (probe?.failure) {
+      ServerLoadFailure.badAddress => (
+          _ru ? 'Адрес агента нельзя разобрать.' : 'Agent address is invalid.',
+          _ru
+              ? 'Проверьте адрес: он должен быть целой ссылкой, вида '
+                  'https://адрес/wesios-status.json'
+              : 'The address must be a full URL.',
+        ),
+      ServerLoadFailure.httpError => (
+          _ru
+              ? 'По адресу агента сервер ответил ${probe?.statusCode}.'
+              : 'Agent address returned ${probe?.statusCode}.',
+          probe?.statusCode == 404
+              ? (_ru
+                  ? 'Файла по этому адресу нет. Скорее всего агент не '
+                      'установлен: bash server/wesios-agent.sh --install'
+                  : 'No such file. The agent is probably not installed.')
+              : (_ru
+                  ? 'Адрес отвечает, но не файлом агента. Проверьте, что '
+                      'ссылка ведёт на wesios-status.json.'
+                  : 'The address responds, but not with the agent file.'),
+        ),
+      ServerLoadFailure.notJson => (
+          _ru
+              ? 'По адресу агента отвечает не агент.'
+              : 'The agent address is answered by something else.',
+          _ru
+              ? 'Сам агент может быть исправен — сюда просто не доходит '
+                  'запрос. Так бывает, когда сервер уводит все неизвестные '
+                  'адреса на сайт. Проверьте адрес и настройки сервера.'
+              : 'The agent may be fine — the request never reaches it.',
+        ),
+      ServerLoadFailure.wrongShape => (
+          _ru
+              ? 'Ответ получен, но это не показатели агента.'
+              : 'Response received, but not agent metrics.',
+          _ru
+              ? 'В файле нет полей load1 и at. Возможно, это чужой '
+                  'JSON или агент старой версии.'
+              : 'Fields load1 and at are missing.',
+        ),
+      _ => (
+          _ru
+              ? 'Агент указан, но узел не отвечает по этому адресу.'
+              : 'Agent configured but the host is not responding.',
+          _ru
+              ? 'Проверьте, что сервер доступен и агент запущен: '
+                  'systemctl status wesios-agent.timer'
+              : 'Check that the host is reachable and the agent is running.',
+        ),
+    };
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          what,
+          style: TextStyle(fontSize: 12, color: AppTheme.accentRed),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          fix,
+          style: TextStyle(
+              fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
+        ),
+        if ((probe?.detail ?? '').isNotEmpty) ...[
+          const SizedBox(height: 6),
+          Text(
+            probe!.detail,
+            style: TextStyle(fontSize: 10.5, color: AppTheme.textMuted),
+          ),
+        ],
+      ],
+    );
+  }
+
   Widget _loadCard(MonitorTarget t) {
     final load = MonitorService.loadOf(t.id);
     final now = DateTime.now();
@@ -354,12 +431,13 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
                   fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
             )
           else if (load == null)
-            Text(
-              _ru
-                  ? 'Агент указан, но не отвечает по этому адресу.'
-                  : 'Agent configured but not responding.',
-              style: TextStyle(fontSize: 12, color: AppTheme.accentRed),
-            )
+            // Все причины раньше сходились в одну фразу «агент не отвечает».
+            // Она отправляла чинить агент даже тогда, когда агент был ни при
+            // чём: адрес мог отвечать чужой страницей, отдавать 404 или
+            // возвращать исправный JSON без нужных полей. Причина и лечение
+            // у этих случаев разные, поэтому теперь они и написаны разными
+            // словами.
+            _agentFailure(MonitorService.loadProbeOf(t.id))
           else ...[
             if (load.isStale(now))
               Padding(

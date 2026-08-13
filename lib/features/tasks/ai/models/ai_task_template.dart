@@ -78,11 +78,20 @@ extension AiTaskCategoryLabel on AiTaskCategory {
       };
 }
 
+/// Насколько сильно предложение поднимается в очереди.
+///
+/// Имя `forecastImpact` осталось от первой версии и обещало больше, чем
+/// делает: в денежный прогноз это число не попадает и никогда не попадало.
+/// Оно даёт 18 % веса в сортировке предложений — и всё. Деньги приходят в
+/// Horizon от самих объектов (сделка CRM с ожидаемой датой закрытия,
+/// лицензия на бит), причём только по той организации, чей прогноз открыт.
+/// Поэтому в интерфейсе это называется значимостью, а не влиянием на
+/// прогноз: подпись должна совпадать с тем, что происходит на самом деле.
 extension AiForecastImpactLabel on AiForecastImpact {
   String get ru => switch (this) {
-        AiForecastImpact.low => 'Низкое',
-        AiForecastImpact.medium => 'Среднее',
-        AiForecastImpact.high => 'Высокое',
-        AiForecastImpact.critical => 'Критическое',
+        AiForecastImpact.low => 'Низкая',
+        AiForecastImpact.medium => 'Средняя',
+        AiForecastImpact.high => 'Высокая',
+        AiForecastImpact.critical => 'Критическая',
       };
 }

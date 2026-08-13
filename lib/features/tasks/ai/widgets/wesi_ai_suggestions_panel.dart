@@ -374,14 +374,19 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
     if (_loading) {
       return 'Анализирую задачи, загрузку команды и бизнес-сигналы…';
     }
+    // Разбор идёт по одной организации, и это не мелочь: те же данные в
+    // соседней организации дадут другой список. Пока названия не было,
+    // понять, про чью работу говорит панель, было неоткуда.
+    final org = _result?.organizationName.trim() ?? '';
+    final prefix = org.isEmpty ? '' : '$org · ';
     final signal = _result?.businessSignal;
     if (signal?.salesPressure == true) {
-      return 'Есть финансовый сигнал: приоритет получают действия, способные приблизить доход.';
+      return '${prefix}есть финансовый сигнал: приоритет получают действия, способные приблизить доход.';
     }
     if (signal?.financeAvailable == true) {
-      return 'Учитываю бизнес-цепочку, узкие места, историю, ваши решения, загрузку и Wesi Horizon.';
+      return '${prefix}учитываю бизнес-цепочку, узкие места, историю, ваши решения, загрузку и Wesi Horizon.';
     }
-    return 'Учитываю бизнес-цепочку, узкие места, историю, ваши решения и загрузку. Финансы недоступны этому профилю.';
+    return '${prefix}учитываю бизнес-цепочку, узкие места, историю, ваши решения и загрузку. Финансы недоступны этому профилю.';
   }
 
   Widget _suggestionCard(
@@ -514,25 +519,39 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
             ],
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Icon(Icons.trending_up_rounded,
-                  size: 14, color: AppTheme.textMuted),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  'Влияние на прогноз: ${suggestion.forecastImpact.ru.toLowerCase()}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
+          // Подпись раньше обещала влияние на денежный прогноз, которого
+          // нет: это вес в сортировке предложений. Пояснение под нажатием, а
+          // не строкой в карточке, — у неё фиксированная высота, и лишняя
+          // строка выталкивает кнопки за пределы родителя.
+          Tooltip(
+            message: 'Значимость меняет только порядок предложений в этом '
+                'списке — в денежный прогноз она не идёт.\n\n'
+                'Деньги в прогноз приносят сами объекты: сделка CRM с '
+                'ожидаемой датой закрытия и лицензия на бит. Считаются они '
+                'по организации: своя касса — своя, у родительской — своя '
+                'вместе с дочерними, у соседней — ничего.',
+            triggerMode: TooltipTriggerMode.tap,
+            showDuration: const Duration(seconds: 12),
+            child: Row(
+              children: [
+                Icon(Icons.trending_up_rounded,
+                    size: 14, color: AppTheme.textMuted),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    'Значимость: ${suggestion.forecastImpact.ru.toLowerCase()}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Text(
-                'Нужно: ${(suggestion.needScore * 100).round()}%',
-                style: TextStyle(color: AppTheme.textMuted, fontSize: 10),
-              ),
-            ],
+                const SizedBox(width: 6),
+                Text(
+                  'Нужно: ${(suggestion.needScore * 100).round()}%',
+                  style: TextStyle(color: AppTheme.textMuted, fontSize: 10),
+                ),
+              ],
+            ),
           ),
           if (suggestion.dueDate != null) ...[
             const SizedBox(height: 4),
