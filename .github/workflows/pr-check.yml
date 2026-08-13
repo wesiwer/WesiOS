@@ -26,6 +26,8 @@ jobs:
             [ -f "$file" ] || continue
             node --check "$file"
           done
+      - name: Test Wesi AI Relay
+        run: node --test server/wesi-ai-relay/*.test.mjs
       - name: Validate Wesi AI persona bundle
         shell: bash
         run: |
