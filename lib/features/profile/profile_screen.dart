@@ -15,6 +15,7 @@ import '../../core/widgets/wesi_wordmark.dart';
 import '../team/services/team_service.dart';
 import 'widgets/credentials_card.dart';
 import 'widgets/sync_card.dart';
+import 'services/profile_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -79,6 +80,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadAll() async {
+    // Профиль мог приехать с другого устройства — раскладываем его по ключам
+    // настроек до чтения, иначе экран показал бы прежние значения.
+    await ProfileService.spreadToSettings();
     final box = Hive.box('wesios_settings');
     final idx = box.get('avatar_index');
     if (idx != null) {
@@ -107,14 +111,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _autoSave() async {
-    final box = Hive.box('wesios_settings');
-    await box.put('profile_name', _nameCtrl.text.trim());
-    await box.put('profile_email', _emailCtrl.text.trim());
-    await box.put('profile_gender', _gender);
-    await box.put('profile_country', _country);
-    if (_birthDate != null) {
-      await box.put('profile_birth', _birthDate!.toIso8601String());
-    }
+    // Пишем через ProfileService: он кладёт профиль отдельной записью, чтобы
+    // тот попал в обмен и оказался одинаковым на всех устройствах человека, и
+    // заодно дублирует поля в настройки — на них смотрит остальной интерфейс.
+    await ProfileService.write(
+      name: _nameCtrl.text,
+      email: _emailCtrl.text,
+      gender: _gender,
+      country: _country,
+      birth: _birthDate,
+      avatarIndex: _selectedAvatarIndex,
+      photo: WesiAvatar.customBytes,
+    );
 
     // Firebase keys — сохраняем если есть обязательные
     if (_apiKeyCtrl.text.trim().isNotEmpty &&
@@ -686,6 +694,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           HoverButton(
             onTap: () async {
               await WesiAvatar.clearCustom();
+              // Аватарка — часть профиля, и уехать должна вместе с ним.
+              await ProfileService.write(
+                name: _nameCtrl.text,
+                email: _emailCtrl.text,
+                gender: _gender,
+                country: _country,
+                birth: _birthDate,
+                avatarIndex: _selectedAvatarIndex,
+                clearPhoto: true,
+              );
               if (mounted) setState(() {});
             },
             padding: EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -717,6 +735,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final bytes = result?.files.single.bytes;
     if (bytes == null) return;
     await WesiAvatar.setCustom(bytes);
+    await _autoSave();
     if (mounted) setState(() {});
   }
 
@@ -732,6 +751,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: () async {
             setState(() => _selectedAvatarIndex = index);
             await WesiAvatar.setIndex(index);
+            // Выбор пресета отменяет загруженную картинку — в записи профиля
+            // тоже, иначе на другом устройстве осталась бы старая фотография.
+            await ProfileService.write(
+              name: _nameCtrl.text,
+              email: _emailCtrl.text,
+              gender: _gender,
+              country: _country,
+              birth: _birthDate,
+              avatarIndex: index,
+              clearPhoto: true,
+            );
             if (mounted) setState(() {});
           },
           child: Container(

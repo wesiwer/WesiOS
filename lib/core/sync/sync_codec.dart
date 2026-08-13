@@ -22,6 +22,8 @@ import '../../features/team/models/team_permissions.dart';
 import '../../features/treasury/models/account_model.dart';
 import '../../features/treasury/models/transaction_model.dart';
 import 'sync_journal.dart';
+import 'sync_codec_roadmap.dart';
+import 'sync_codec_crm.dart';
 
 /// Описание одной синхронизируемой коллекции.
 ///
@@ -715,6 +717,15 @@ class SyncCodec {
     EmployeesSync(),
     ChatsSync(),
     MessagesSync(),
+    // Проекты и вехи дорожной карты — описаны в sync_codec_roadmap.dart.
+    RoadmapProjectsSync(),
+    RoadmapItemsSync(),
+    // Клиенты, сделки и касания — описаны в sync_codec_crm.dart.
+    CrmClientsSync(),
+    CrmDealsSync(),
+    CrmInteractionsSync(),
+    // Профиль человека — одна запись на все его устройства.
+    ProfileSync(),
   ];
 
   static SyncCollection<dynamic>? byName(String name) {

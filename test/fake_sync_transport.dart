@@ -44,19 +44,32 @@ class FakeSyncTransport implements SyncTransport {
     return SyncResult.ok(Map.of(store[collection] ?? const {}));
   }
 
+  /// Записи, которые «сервер» отказывается принимать. Так проверяется, что
+  /// одна упрямая запись не запирает всю очередь за собой.
+  final Set<String> rejectIds = {};
+
   @override
-  Future<SyncResult<int>> push(
+  Future<SyncPushResult> push(
     String collection,
     List<SyncRecord> records,
   ) async {
     calls.add('push:$collection:${records.length}');
-    if (failWith != null) return SyncResult.fail(failWith!);
-    if (!_signedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
-    final bucket = store.putIfAbsent(collection, () => {});
-    for (final r in records) {
-      bucket[r.id] = r;
+    if (failWith != null) return SyncPushResult(failure: failWith);
+    if (!_signedIn) {
+      return const SyncPushResult(failure: SyncFailure.notSignedIn);
     }
-    return SyncResult.ok(records.length);
+    final bucket = store.putIfAbsent(collection, () => {});
+    final delivered = <String>[];
+    SyncFailure? failure;
+    for (final r in records) {
+      if (rejectIds.contains(r.id)) {
+        failure ??= const SyncFailure('HTTP_400', 'Запись не принята');
+        continue;
+      }
+      bucket[r.id] = r;
+      delivered.add(r.id);
+    }
+    return SyncPushResult(deliveredIds: delivered, failure: failure);
   }
 
   /// Положить запись «с другого устройства».
