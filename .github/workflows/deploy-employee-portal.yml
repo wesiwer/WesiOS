@@ -14,6 +14,7 @@ on:
       - 'server/pb_hooks/wesi_sync_context.pb.js'
       - 'server/pb_hooks/wesi_sync_read.pb.js'
       - 'server/pb_hooks/wesi_sync_write.pb.js'
+      - 'server/pb_hooks/wesi_sysadmin.pb.js'
       - 'server/deploy-employee-portal.sh'
       - 'assets/images/app_icon.png'
       - '.github/workflows/deploy-employee-portal.yml'
@@ -54,6 +55,7 @@ jobs:
             server/pb_hooks/wesi_sync_context.pb.js \
             server/pb_hooks/wesi_sync_read.pb.js \
             server/pb_hooks/wesi_sync_write.pb.js \
+            server/pb_hooks/wesi_sysadmin.pb.js \
             assets/images/app_icon.png; do
             test -s "$file"
           done
@@ -93,6 +95,7 @@ jobs:
           node --check server/pb_hooks/wesi_sync_context.pb.js
           node --check server/pb_hooks/wesi_sync_read.pb.js
           node --check server/pb_hooks/wesi_sync_write.pb.js
+          node --check server/pb_hooks/wesi_sysadmin.pb.js
 
           for marker in \
             '/api/wesi/app/bootstrap' \
@@ -200,6 +203,7 @@ jobs:
             server/pb_hooks/wesi_sync_context.pb.js \
             server/pb_hooks/wesi_sync_read.pb.js \
             server/pb_hooks/wesi_sync_write.pb.js \
+            server/pb_hooks/wesi_sysadmin.pb.js \
             server/deploy-employee-portal.sh \
             "$USER@$HOST:$REMOTE/"
           $SSH "$USER@$HOST" \

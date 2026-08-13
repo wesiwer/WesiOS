@@ -19,7 +19,8 @@ done
 for file in index.html styles.css portal-v6.css app.js motion-v6.js app_icon.png \
   employee_portal.pb.js employee_portal_static.pb.js wesi_security.pb.js \
   wesi_auth_bootstrap.pb.js wesi_mail_health.pb.js \
-  wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js; do
+  wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js \
+  wesi_sysadmin.pb.js; do
   [[ -s "$FROM/$file" ]] || { echo "Нет файла $FROM/$file" >&2; exit 2; }
 done
 
@@ -102,6 +103,7 @@ HOOK_SOURCES=(
   "$FROM/wesi_sync_context.pb.js"
   "$FROM/wesi_sync_read.pb.js"
   "$FROM/wesi_sync_write.pb.js"
+  "$FROM/wesi_sysadmin.pb.js"
 )
 HOOK_MODE=""
 

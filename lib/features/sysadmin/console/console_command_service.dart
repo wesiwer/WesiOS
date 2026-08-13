@@ -9,6 +9,7 @@ import '../models/probe_result.dart';
 import '../services/monitor_service.dart';
 import '../services/network_probe.dart';
 import 'console_templates.dart';
+import 'remote_shell_service.dart';
 
 enum ConsoleLineKind { prompt, output, success, warning, error, system }
 
@@ -32,17 +33,81 @@ class ConsoleExecution {
   });
 }
 
-/// Безопасная операционная консоль WesiOS.
+/// Операционная консоль WesiOS.
 ///
-/// Консоль выполняет настоящие сетевые проверки из приложения, но не хранит
-/// приватные SSH-ключи и не запускает произвольный shell на сервере. Для
-/// удалённых команд нужен отдельный авторизованный серверный endpoint с
-/// аудитом и белым списком. Токены разбираются только локально и никогда не
-/// сохраняются в истории.
+/// Работает в двух режимах, и разница между ними видна человеку всегда.
+///
+/// Местный режим — сетевые проверки с самого устройства: ping, dns, http,
+/// tls, доступность SSH-порта. Это диагностика «отсюда»: она отвечает на
+/// вопрос, видно ли сервер с этого телефона.
+///
+/// Удалённый режим — команды выполняет сам сервер и присылает вывод.
+/// Приватных SSH-ключей в приложении по-прежнему нет: запрос уходит на
+/// авторизованный обработчик, который пускает только владельца, обрывает
+/// команду по сроку и пишет каждую в журнал.
+///
+/// Токены разбираются только локально и никогда не сохраняются в истории.
 class ConsoleCommandService {
   static const String _settingsBox = 'wesios_settings';
   static const String _historyKey = 'sysadmin_console_history_v1';
+  static const String _remoteKey = 'sysadmin_console_remote_v1';
+  static const String _remoteCwdKey = 'sysadmin_console_cwd_v1';
   static const int maxHistory = 80;
+
+  /// Команды, которые остаются местными даже в удалённом режиме.
+  ///
+  /// Это управление самой консолью. Отправлять `clear` на сервер бессмысленно,
+  /// а `remote off` — ещё и опасно: выключить режим стало бы нечем.
+  static const Set<String> _alwaysLocal = {
+    'help',
+    '?',
+    'clear',
+    'cls',
+    'remote',
+    'history',
+    'targets',
+    'ls',
+    'templates',
+    'open',
+    'load',
+    'token',
+    'whoami',
+  };
+
+  static bool get remoteMode {
+    try {
+      return Hive.box<dynamic>(_settingsBox).get(_remoteKey) == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> setRemoteMode(bool value) async {
+    try {
+      await Hive.box<dynamic>(_settingsBox).put(_remoteKey, value);
+    } catch (_) {
+      // Настройка не сохранилась — режим всё равно отработает в этом сеансе.
+    }
+  }
+
+  static String get remoteCwd {
+    try {
+      final raw = Hive.box<dynamic>(_settingsBox).get(_remoteCwdKey);
+      return raw is String && raw.trim().isNotEmpty
+          ? raw.trim()
+          : '/opt/pocketbase';
+    } catch (_) {
+      return '/opt/pocketbase';
+    }
+  }
+
+  static Future<void> setRemoteCwd(String value) async {
+    try {
+      await Hive.box<dynamic>(_settingsBox).put(_remoteCwdKey, value.trim());
+    } catch (_) {
+      // См. выше: не сохранилось — не беда.
+    }
+  }
 
   static List<String> loadHistory() {
     try {
@@ -133,6 +198,11 @@ class ConsoleCommandService {
       'tls ',
       'ssh-check ',
       'ssh-help',
+      'sh ',
+      'remote',
+      'remote on',
+      'remote off',
+      'remote cd ',
       'token inspect ',
       'token hash ',
       'token redact ',
@@ -171,8 +241,24 @@ class ConsoleCommandService {
     final selected = targetId == null ? null : MonitorService.byId(targetId);
     final scopedArgs = _scopedArgs(command, args, selected);
 
+    // `sh` отправляет одну команду на сервер, не меняя режима.
+    if (command == 'sh' || command == 'ssh') {
+      final remainder = raw.substring(parts.first.length).trim();
+      if (remainder.isEmpty) return _usage('sh <команда>', russian);
+      return _runRemote(remainder, russian);
+    }
+
+    // В удалённом режиме на сервер уходит всё, кроме управления консолью.
+    // Проверка идёт по исходной строке: `df -h` — это команда сервера, а не
+    // неизвестная команда консоли, и сообщать о ней «не знаю такой» было бы
+    // неправильно.
+    if (remoteMode && !_alwaysLocal.contains(command)) {
+      return _runRemote(raw, russian);
+    }
+
     try {
       return switch (command) {
+        'remote' => await _remote(args, russian),
         'help' || '?' => ConsoleExecution(lines: _help(russian)),
         'clear' || 'cls' => const ConsoleExecution(clear: true),
         'status' => await _status(russian, selected),
@@ -326,6 +412,27 @@ class ConsoleCommandService {
           'ssh-check <host> [22]  ${ru ? 'проверить доступность SSH-порта' : 'check SSH port reachability'}',
           ConsoleLineKind.output,
         ),
+        ConsoleLine('', ConsoleLineKind.output),
+        ConsoleLine(
+          ru ? 'НА СЕРВЕРЕ' : 'ON THE SERVER',
+          ConsoleLineKind.system,
+        ),
+        ConsoleLine(
+          'sh <команда>           ${ru ? 'выполнить одну команду на сервере' : 'run one command on the server'}',
+          ConsoleLineKind.output,
+        ),
+        ConsoleLine(
+          'remote on / off        ${ru ? 'слать на сервер всё подряд' : 'send everything to the server'}',
+          ConsoleLineKind.output,
+        ),
+        ConsoleLine(
+          'remote                 ${ru ? 'состояние и рабочий каталог' : 'status and working directory'}',
+          ConsoleLineKind.output,
+        ),
+        ConsoleLine(
+          'remote cd <каталог>    ${ru ? 'сменить рабочий каталог' : 'change working directory'}',
+          ConsoleLineKind.output,
+        ),
         ConsoleLine(
           'token inspect <TOKEN>  ${ru ? 'локально прочитать JWT' : 'inspect JWT locally'}',
           ConsoleLineKind.output,
@@ -373,6 +480,184 @@ class ConsoleCommandService {
             ConsoleLineKind.output,
           ),
       ],
+    ]);
+  }
+
+  /// Выполнить команду на сервере и показать вывод как есть.
+  ///
+  /// Вывод сервера не раскрашивается по догадке: строки идут обычным
+  /// выводом, а цветом отмечается только итог. Иначе безобидная строка со
+  /// словом «error» внутри чужого лога выглядела бы как сбой команды.
+  static Future<ConsoleExecution> _runRemote(String command, bool ru) async {
+    final capability = await RemoteShellService.capability();
+    if (!capability.available) {
+      return ConsoleExecution(lines: [
+        ConsoleLine(
+          ru
+              ? 'Сервер не выполняет команды: ${capability.reason}'
+              : 'Remote execution unavailable: ${capability.reason}',
+          ConsoleLineKind.error,
+        ),
+        ConsoleLine(
+          ru
+              ? 'Местные проверки (ping, dns, http, tls) работают по-прежнему.'
+              : 'Local checks (ping, dns, http, tls) still work.',
+          ConsoleLineKind.system,
+        ),
+      ]);
+    }
+
+    final result = await RemoteShellService.run(
+      command,
+      cwd: remoteCwd,
+      timeoutSeconds: capability.defaultTimeoutSeconds,
+    );
+
+    if (!result.executed) {
+      return ConsoleExecution(lines: [
+        ConsoleLine(result.error, ConsoleLineKind.error),
+      ]);
+    }
+
+    final lines = <ConsoleLine>[];
+    final text = result.output;
+    if (text.trim().isEmpty) {
+      lines.add(ConsoleLine(
+        ru ? '(вывод пуст)' : '(no output)',
+        ConsoleLineKind.system,
+      ));
+    } else {
+      for (final line in text.split('\n')) {
+        lines.add(ConsoleLine(line, ConsoleLineKind.output));
+      }
+    }
+
+    if (result.truncated) {
+      lines.add(ConsoleLine(
+        ru
+            ? 'Вывод обрезан: показано начало. Уточните команду — например, '
+                'через head, tail или grep.'
+            : 'Output truncated. Narrow the command with head, tail or grep.',
+        ConsoleLineKind.warning,
+      ));
+    }
+    if (result.timedOut) {
+      lines.add(ConsoleLine(
+        ru
+            ? 'Команда оборвана по сроку (${capability.defaultTimeoutSeconds} с). '
+                'Долгие задачи запускайте в фоне, иначе консоль их не дождётся.'
+            : 'Command timed out after ${capability.defaultTimeoutSeconds}s.',
+        ConsoleLineKind.warning,
+      ));
+    }
+
+    final seconds = (result.durationMs / 1000).toStringAsFixed(
+      result.durationMs >= 1000 ? 1 : 2,
+    );
+    lines.add(ConsoleLine(
+      ru
+          ? 'Код возврата: ${result.exitCode} · ${seconds} с · сервер'
+          : 'Exit code: ${result.exitCode} · ${seconds}s · server',
+      result.ok ? ConsoleLineKind.success : ConsoleLineKind.error,
+    ));
+    return ConsoleExecution(lines: lines);
+  }
+
+  /// Управление удалённым режимом: включить, выключить, показать состояние,
+  /// сменить рабочий каталог.
+  static Future<ConsoleExecution> _remote(List<String> args, bool ru) async {
+    final action = args.isEmpty ? 'status' : args.first.toLowerCase();
+
+    if (action == 'on' || action == 'вкл') {
+      final capability = await RemoteShellService.capability(refresh: true);
+      if (!capability.available) {
+        return ConsoleExecution(lines: [
+          ConsoleLine(
+            ru
+                ? 'Не включаю: ${capability.reason}'
+                : 'Not enabling: ${capability.reason}',
+            ConsoleLineKind.error,
+          ),
+        ]);
+      }
+      await setRemoteMode(true);
+      return ConsoleExecution(lines: [
+        ConsoleLine(
+          ru
+              ? 'Удалённый режим включён. Команды идут на сервер, '
+                  'каталог: $remoteCwd'
+              : 'Remote mode on. Commands run on the server in $remoteCwd',
+          ConsoleLineKind.success,
+        ),
+        ConsoleLine(
+          ru
+              ? 'Выключить: remote off. Разово выполнить на сервере: sh <команда>.'
+              : 'Turn off with: remote off. One-off: sh <command>.',
+          ConsoleLineKind.system,
+        ),
+      ]);
+    }
+
+    if (action == 'off' || action == 'выкл') {
+      await setRemoteMode(false);
+      return ConsoleExecution(lines: [
+        ConsoleLine(
+          ru
+              ? 'Удалённый режим выключен. Команды снова выполняются здесь.'
+              : 'Remote mode off. Commands run locally again.',
+          ConsoleLineKind.success,
+        ),
+      ]);
+    }
+
+    if (action == 'cd') {
+      if (args.length < 2) return _usage('remote cd <каталог>', ru);
+      await setRemoteCwd(args[1]);
+      return ConsoleExecution(lines: [
+        ConsoleLine(
+          ru ? 'Рабочий каталог: $remoteCwd' : 'Working directory: $remoteCwd',
+          ConsoleLineKind.success,
+        ),
+      ]);
+    }
+
+    final capability = await RemoteShellService.capability(refresh: true);
+    return ConsoleExecution(lines: [
+      ConsoleLine(
+        ru ? 'УДАЛЁННОЕ ВЫПОЛНЕНИЕ' : 'REMOTE EXECUTION',
+        ConsoleLineKind.system,
+      ),
+      ConsoleLine(
+        ru
+            ? 'Режим: ${remoteMode ? 'включён' : 'выключен'}'
+            : 'Mode: ${remoteMode ? 'on' : 'off'}',
+        remoteMode ? ConsoleLineKind.success : ConsoleLineKind.output,
+      ),
+      ConsoleLine(
+        ru
+            ? 'Сервер: ${capability.available ? 'выполняет команды' : capability.reason}'
+            : 'Server: ${capability.available ? 'ready' : capability.reason}',
+        capability.available
+            ? ConsoleLineKind.success
+            : ConsoleLineKind.error,
+      ),
+      ConsoleLine(
+        ru ? 'Каталог: $remoteCwd' : 'Directory: $remoteCwd',
+        ConsoleLineKind.output,
+      ),
+      ConsoleLine(
+        ru
+            ? 'Срок на команду: ${capability.defaultTimeoutSeconds} с'
+            : 'Timeout: ${capability.defaultTimeoutSeconds}s',
+        ConsoleLineKind.output,
+      ),
+      ConsoleLine(
+        ru
+            ? 'Команды выполняет сервер и пишет каждую в журнал. Доступ '
+                'только у владельца.'
+            : 'The server executes and logs every command. Owner only.',
+        ConsoleLineKind.system,
+      ),
     ]);
   }
 
