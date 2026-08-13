@@ -11,12 +11,11 @@ import '../../../organizations/services/organization_context.dart';
 import '../../../roadmap/services/roadmap_service.dart';
 import '../../../team/services/team_service.dart';
 import '../../../treasury/services/treasury_service.dart';
-import '../../models/task_model.dart';
 import '../../services/task_service.dart';
 import '../models/ai_task_suggestion.dart';
-import '../models/ai_task_template.dart';
 import '../services/wesi_ai_task_service.dart';
 import 'ai_suggestion_edit_dialog.dart';
+import 'wesi_ai_suggestion_card.dart';
 
 class WesiAiSuggestionsPanel extends StatefulWidget {
   final VoidCallback? onTaskCreated;
@@ -125,6 +124,7 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
             .toList(),
         businessSignal: current.businessSignal,
         analyzedAt: current.analyzedAt,
+        organizationName: current.organizationName,
       );
     });
   }
@@ -150,6 +150,7 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
             current.suggestions.where((item) => item.id != id).toList(),
         businessSignal: current.businessSignal,
         analyzedAt: current.analyzedAt,
+        organizationName: current.organizationName,
       );
     });
   }
@@ -195,20 +196,25 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
                     // человека с крупным текстом иначе ломалось бы то же
                     // самое, и без его снимка экрана об этом никто бы не
                     // узнал.
-                    height: (compact ? 306.0 : 294.0) *
-                        MediaQuery.textScalerOf(context)
-                            .scale(1)
-                            .clamp(1.0, 1.7),
+                    height: WesiAiSuggestionCard.stripHeight(context,
+                        compact: compact),
                     child: ListView.separated(
                       padding: const EdgeInsets.all(10),
                       scrollDirection: Axis.horizontal,
                       itemCount: suggestions.length,
                       separatorBuilder: (_, __) => const SizedBox(width: 9),
-                      itemBuilder: (context, index) => _suggestionCard(
-                        suggestions[index],
-                        width: cardWidth,
-                        compact: compact,
-                      ),
+                      itemBuilder: (context, index) {
+                        final suggestion = suggestions[index];
+                        return WesiAiSuggestionCard(
+                          suggestion: suggestion,
+                          width: cardWidth,
+                          compact: compact,
+                          onAccept: () => _accept(suggestion),
+                          onEdit: () => _edit(suggestion),
+                          onSnooze: () => _snooze(suggestion),
+                          onReject: () => _reject(suggestion),
+                        );
+                      },
                     ),
                   ),
               ],
@@ -370,6 +376,22 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
         ),
       );
 
+  Widget _countBadge(int count) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+        decoration: BoxDecoration(
+          color: AppTheme.accent.withOpacity(.15),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Text(
+          '$count',
+          style: TextStyle(
+            color: AppTheme.accent,
+            fontSize: 10,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      );
+
   String _headerHint() {
     if (_loading) {
       return 'Анализирую задачи, загрузку команды и бизнес-сигналы…';
@@ -389,292 +411,4 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
     return '${prefix}учитываю бизнес-цепочку, узкие места, историю, ваши решения и загрузку. Финансы недоступны этому профилю.';
   }
 
-  Widget _suggestionCard(
-    AiTaskSuggestion suggestion, {
-    required double width,
-    required bool compact,
-  }) {
-    final person = suggestion.assigneeId == null
-        ? null
-        : TeamService.byId(suggestion.assigneeId!);
-    return Container(
-      width: width,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: AppTheme.background.withOpacity(.42),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.glassBorder),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Wrap(
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    _tag(suggestion.category.ru),
-                    _tag(
-                      _priorityLabel(suggestion.priority),
-                      accent:
-                          suggestion.priority.index >= TaskPriority.high.index,
-                    ),
-                    // Метка происхождения: карточка указывает на конкретную
-                    // сделку, веху или бит, а не на тип работ вообще. Человеку
-                    // важно видеть разницу — такое предложение можно пойти и
-                    // перепроверить в самом приложении.
-                    if (suggestion.isFact) _tag('по данным'),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 6),
-              Tooltip(
-                message: 'Отклонить на 14 дней',
-                child: InkWell(
-                  onTap: () => _reject(suggestion),
-                  child: Icon(
-                    Icons.close_rounded,
-                    size: 17,
-                    color: AppTheme.textMuted,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            suggestion.title,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: AppTheme.textPrimary,
-              fontSize: 13.5,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            suggestion.whyNow,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(color: AppTheme.textSecondary, fontSize: 10.5),
-          ),
-          if (suggestion.strategicReason.isNotEmpty) ...[
-            const SizedBox(height: 5),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              decoration: BoxDecoration(
-                color: AppTheme.accent.withOpacity(.07),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(Icons.account_tree_outlined,
-                      size: 13, color: AppTheme.accent),
-                  const SizedBox(width: 5),
-                  Expanded(
-                    child: Text(
-                      suggestion.strategicReason,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: AppTheme.textSecondary,
-                        fontSize: 9.8,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 5),
-                  Text(
-                    '${(suggestion.strategicScore * 100).round()}%',
-                    style: TextStyle(
-                      color: AppTheme.accent,
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-          const SizedBox(height: 7),
-          Row(
-            children: [
-              Icon(Icons.person_outline_rounded,
-                  size: 14, color: AppTheme.textMuted),
-              const SizedBox(width: 4),
-              Expanded(
-                child: Text(
-                  person == null
-                      ? 'Исполнитель не выбран'
-                      : '${person.displayName} · ${person.position}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          // Подпись раньше обещала влияние на денежный прогноз, которого
-          // нет: это вес в сортировке предложений. Пояснение под нажатием, а
-          // не строкой в карточке, — у неё фиксированная высота, и лишняя
-          // строка выталкивает кнопки за пределы родителя.
-          Tooltip(
-            message: 'Значимость меняет только порядок предложений в этом '
-                'списке — в денежный прогноз она не идёт.\n\n'
-                'Деньги в прогноз приносят сами объекты: сделка CRM с '
-                'ожидаемой датой закрытия и лицензия на бит. Считаются они '
-                'по организации: своя касса — своя, у родительской — своя '
-                'вместе с дочерними, у соседней — ничего.',
-            triggerMode: TooltipTriggerMode.tap,
-            showDuration: const Duration(seconds: 12),
-            child: Row(
-              children: [
-                Icon(Icons.trending_up_rounded,
-                    size: 14, color: AppTheme.textMuted),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    'Значимость: ${suggestion.forecastImpact.ru.toLowerCase()}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  'Нужно: ${(suggestion.needScore * 100).round()}%',
-                  style: TextStyle(color: AppTheme.textMuted, fontSize: 10),
-                ),
-              ],
-            ),
-          ),
-          if (suggestion.dueDate != null) ...[
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.event_outlined, size: 14, color: AppTheme.textMuted),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    // У наблюдения срок не выдуман: это дата самой лицензии,
-                    // вехи или платежа. Без неё карточка теряет половину
-                    // смысла — «когда» здесь так же важно, как «что».
-                    'Срок: ${_shortDate(suggestion.dueDate!)}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(color: AppTheme.textMuted, fontSize: 10.5),
-                  ),
-                ),
-              ],
-            ),
-          ],
-          if (suggestion.evidence.isNotEmpty) ...[
-            const SizedBox(height: 6),
-            Text(
-              '• ${suggestion.evidence.first}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: AppTheme.textMuted, fontSize: 9.8),
-            ),
-          ],
-          const Spacer(),
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => _snooze(suggestion),
-                  style: compact
-                      ? TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 5),
-                          minimumSize: const Size(0, 36),
-                        )
-                      : null,
-                  child: const Text('Не сейчас', maxLines: 1),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => _edit(suggestion),
-                  style: compact
-                      ? OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 5),
-                          minimumSize: const Size(0, 36),
-                        )
-                      : null,
-                  child: const Text('Изменить', maxLines: 1),
-                ),
-              ),
-              const SizedBox(width: 4),
-              Expanded(
-                child: FilledButton(
-                  onPressed: () => _accept(suggestion),
-                  style: compact
-                      ? FilledButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 5),
-                          minimumSize: const Size(0, 36),
-                        )
-                      : null,
-                  child: const Text('Создать', maxLines: 1),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tag(String text, {bool accent = false}) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-        decoration: BoxDecoration(
-          color: (accent ? AppTheme.accent : AppTheme.surface).withOpacity(.55),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color:
-                accent ? AppTheme.accent.withOpacity(.4) : AppTheme.glassBorder,
-          ),
-        ),
-        child: Text(
-          text,
-          maxLines: 1,
-          style: TextStyle(
-            color: accent ? AppTheme.textPrimary : AppTheme.textSecondary,
-            fontSize: 9.5,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      );
-
-  Widget _countBadge(int count) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-        decoration: BoxDecoration(
-          color: AppTheme.accent.withOpacity(.15),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          '$count',
-          style: TextStyle(
-            color: AppTheme.accent,
-            fontSize: 10,
-            fontWeight: FontWeight.w800,
-          ),
-        ),
-      );
-
-  static String _priorityLabel(TaskPriority priority) => switch (priority) {
-        TaskPriority.low => 'Низкая',
-        TaskPriority.normal => 'Обычная',
-        TaskPriority.high => 'Высокая',
-        TaskPriority.urgent => 'Срочная',
-      };
-
-  static String _shortDate(DateTime value) =>
-      '${value.day.toString().padLeft(2, '0')}.'
-      '${value.month.toString().padLeft(2, '0')}';
 }

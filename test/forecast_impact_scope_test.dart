@@ -38,13 +38,18 @@ void main() {
 
   group('значимость — это порядок, а не деньги', () {
     test('подпись в карточке больше не обещает влияния на прогноз', () {
+      final card = File(
+        'lib/features/tasks/ai/widgets/wesi_ai_suggestion_card.dart',
+      ).readAsStringSync();
       final panel = File(
         'lib/features/tasks/ai/widgets/wesi_ai_suggestions_panel.dart',
       ).readAsStringSync();
 
-      expect(panel.contains('Влияние на прогноз'), isFalse,
-          reason: 'подпись обещала то, чего не происходит');
-      expect(panel.contains('Значимость: '), isTrue);
+      expect(card.contains('Значимость: '), isTrue);
+      for (final source in [card, panel]) {
+        expect(source.contains('Влияние на прогноз'), isFalse,
+            reason: 'подпись обещала то, чего не происходит');
+      }
     });
 
     test('задача из предложения не несёт денежного тега', () {
