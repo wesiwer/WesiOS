@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import '../../core/sync/sync_endpoint.dart';
+import '../organizations/services/organization_context.dart';
 import 'models/wesi_ai_chat_models.dart';
 
 class WesiAiApiException implements Exception {
@@ -47,6 +48,8 @@ class WesiAiApi {
       'lobbyMode': 'smart',
       'message': message,
       'summary': '',
+      'conversationId': conversation.id,
+      'activeOrganizationId': OrganizationContext.currentOrganizationId,
       'memory': memory.toJson(),
       'messages': history
           .where((m) => m.kind == WesiAiMessageKind.text && m.author != WesiAiMessageAuthor.system)
