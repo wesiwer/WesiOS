@@ -40,40 +40,9 @@ routerAdd("POST", "/api/wesi/ai/lobby", (e) => {
 
   const relayCall = function(operation, phase, system, extraHistory) {
     const requestId = rootRequestId + "_" + phase;
-    const payload = {
-      requestId: requestId,
-      route: route,
-      operation: operation,
-      input: {
-        system: system,
-        history: cleanHistory.concat(Array.isArray(extraHistory) ? extraHistory : []),
-        message: message,
-      },
-    };
-    const raw = JSON.stringify(payload);
-    const timestamp = String(Math.floor(Date.now() / 1000));
-    const signature = $security.hs256(timestamp + "." + raw, cfg.sharedSecret);
-    let relay;
-    try {
-      relay = $http.send({
-        url: cfg.url.replace(/\/$/, "") + "/v1/wesi-ai",
-        method: "POST",
-        body: raw,
-        headers: {
-          "Content-Type": "application/json",
-          "X-Wesi-Request-Id": requestId,
-          "X-Wesi-Timestamp": timestamp,
-          "X-Wesi-Signature": signature,
-        },
-        timeout: 120,
-      });
-    } catch (_) {
-      return {ok: false, code: "WAI_RELAY_UNAVAILABLE"};
-    }
-    if (!relay || relay.statusCode < 200 || relay.statusCode >= 300) return {ok: false, code: "WAI_RELAY_BAD_RESPONSE"};
-    const result = relay.json && typeof relay.json === "object" ? relay.json : {};
-    const answer = String(result.answer || "").trim();
-    return answer ? {ok: true, answer: answer} : {ok: false, code: "WAI_EMPTY_RESPONSE"};
+    const payload = {requestId: requestId, route: route, operation: operation, input: {system: system, history: cleanHistory.concat(Array.isArray(extraHistory) ? extraHistory : []), message: message}};
+    const result = ai.callRelay(cfg, payload, requestId);
+    return result.ok ? {ok: true, answer: result.answer} : {ok: false, code: result.code};
   };
 
   let order = ["zane", "nirvana"];
@@ -131,5 +100,6 @@ routerAdd("POST", "/api/wesi/ai/lobby", (e) => {
     lobbyMode: mode,
     participants: order,
     messages: messages,
+    answer: "__WESI_LOBBY_V1__" + JSON.stringify(messages),
   });
 }, $apis.requireAuth("users"));
