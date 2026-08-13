@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
+import 'package:wesios/features/organizations/models/organization_model.dart';
+import 'package:wesios/features/organizations/services/organization_service.dart';
 import 'package:wesios/features/tasks/models/task_model.dart';
 import 'package:wesios/features/tasks/services/task_service.dart';
 import 'package:wesios/features/tasks/tasks_screen.dart';
@@ -20,6 +22,8 @@ void main() {
     Hive.registerAdapter(TaskPriorityAdapter());
     Hive.registerAdapter(SubTaskAdapter());
     Hive.registerAdapter(TaskModelAdapter());
+    Hive.registerAdapter(OrganizationStatusAdapter());
+    Hive.registerAdapter(OrganizationModelAdapter());
   });
 
   tearDownAll(() async {
@@ -28,17 +32,13 @@ void main() {
   });
 
   /// Засев доски.
-  ///
-  /// ВАЖНО: вызывать только из `setUp`, никогда из тела `testWidgets`.
-  /// `testWidgets` крутит тело в `FakeAsync` с поддельными часами, а Hive
-  /// пишет на реальный диск — такой Future под фейковым временем не
-  /// завершается никогда, и тест просто виснет до таймаута, без единого
-  /// сообщения об ошибке. Запись должна идти в `setUp`, где асинхронность
-  /// настоящая; внутри теста остаётся только чтение уже открытого бокса —
-  /// оно резолвится микротаской, а её FakeAsync прокручивает.
   Future<void> prepare(int perColumn) async {
     final box = await Hive.openBox<TaskModel>('wesios_tasks');
+    final orgBox =
+        await Hive.openBox<OrganizationModel>(OrganizationService.boxName);
     await box.clear();
+    await orgBox.clear();
+    await OrganizationService.ensureBaseline();
     final service = TaskService();
     for (final status in TaskStatus.values) {
       for (var i = 0; i < perColumn; i++) {
@@ -67,9 +67,6 @@ void main() {
     addTearDown(tester.view.reset);
 
     await tester.pumpWidget(const MaterialApp(home: TasksScreen()));
-    // Именно pump, а не pumpAndSettle: пока задачи грузятся, на экране висит
-    // CircularProgressIndicator, а он анимируется бесконечно — pumpAndSettle
-    // на нём просто не вернётся.
     for (var i = 0; i < 5; i++) {
       await tester.pump(const Duration(milliseconds: 50));
     }

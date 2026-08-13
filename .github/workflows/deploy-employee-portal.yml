@@ -11,6 +11,9 @@ on:
       - 'server/pb_hooks/wesi_security.pb.js'
       - 'server/pb_hooks/wesi_auth_bootstrap.pb.js'
       - 'server/pb_hooks/wesi_mail_health.pb.js'
+      - 'server/pb_hooks/wesi_sync_context.pb.js'
+      - 'server/pb_hooks/wesi_sync_read.pb.js'
+      - 'server/pb_hooks/wesi_sync_write.pb.js'
       - 'server/deploy-employee-portal.sh'
       - 'assets/images/app_icon.png'
       - '.github/workflows/deploy-employee-portal.yml'
@@ -48,6 +51,9 @@ jobs:
             server/pb_hooks/wesi_security.pb.js \
             server/pb_hooks/wesi_auth_bootstrap.pb.js \
             server/pb_hooks/wesi_mail_health.pb.js \
+            server/pb_hooks/wesi_sync_context.pb.js \
+            server/pb_hooks/wesi_sync_read.pb.js \
+            server/pb_hooks/wesi_sync_write.pb.js \
             assets/images/app_icon.png; do
             test -s "$file"
           done
@@ -84,6 +90,9 @@ jobs:
           node --check server/pb_hooks/wesi_security.pb.js
           node --check server/pb_hooks/wesi_auth_bootstrap.pb.js
           node --check server/pb_hooks/wesi_mail_health.pb.js
+          node --check server/pb_hooks/wesi_sync_context.pb.js
+          node --check server/pb_hooks/wesi_sync_read.pb.js
+          node --check server/pb_hooks/wesi_sync_write.pb.js
 
           for marker in \
             '/api/wesi/app/bootstrap' \
@@ -121,6 +130,13 @@ jobs:
           grep -q 'sendmailSelected' server/pb_hooks/wesi_mail_health.pb.js
           grep -q 'mailClientMode' server/pb_hooks/wesi_mail_health.pb.js
           grep -q 'httpsProviderConfigured' server/pb_hooks/wesi_mail_health.pb.js
+
+          grep -q 'wesiSyncContext' server/pb_hooks/wesi_sync_context.pb.js
+          grep -q '/api/wesi/sync/revision' server/pb_hooks/wesi_sync_read.pb.js
+          grep -q '/api/wesi/sync/{collection}' server/pb_hooks/wesi_sync_read.pb.js
+          grep -q '/api/wesi/sync/{collection}' server/pb_hooks/wesi_sync_write.pb.js
+          grep -q 'profile_private' server/pb_hooks/wesi_sync_write.pb.js
+          grep -q 'vault_private' server/pb_hooks/wesi_sync_write.pb.js
 
       - name: Check server secrets
         env:
@@ -181,13 +197,16 @@ jobs:
             server/pb_hooks/wesi_security.pb.js \
             server/pb_hooks/wesi_auth_bootstrap.pb.js \
             server/pb_hooks/wesi_mail_health.pb.js \
+            server/pb_hooks/wesi_sync_context.pb.js \
+            server/pb_hooks/wesi_sync_read.pb.js \
+            server/pb_hooks/wesi_sync_write.pb.js \
             server/deploy-employee-portal.sh \
             "$USER@$HOST:$REMOTE/"
           $SSH "$USER@$HOST" \
             "WESI_ARTIFACTS_DIR='$ARTIFACTS_DIR' WESI_PORTAL_DIR='${PORTAL_DIR:-}' bash '$REMOTE/deploy-employee-portal.sh' --from '$REMOTE'"
           $SSH "$USER@$HOST" "rm -rf '$REMOTE'"
 
-      - name: Verify deployed portal, OTP mail, and security routes
+      - name: Verify deployed portal, OTP mail, security, and sync routes
         run: |
           set -euo pipefail
           BASE='https://api.wesi-inc.ru/portal/'
@@ -214,7 +233,8 @@ jobs:
           test "$(wc -c < app_icon.png)" -gt 1000
 
           curl -fsS --max-time 20 "$API/api/wesi/auth/mail-ready" -o mail-ready.json || {
-            echo '::error::WesiOS mail readiness endpoint is not healthy'; exit 1; }
+            echo '::error::WesiOS mail readiness endpoint is not healthy'; exit 1;
+          }
           python3 - <<'PY'
           import json
           with open('mail-ready.json', encoding='utf-8') as f:
@@ -253,7 +273,8 @@ jobs:
           for path in \
             /api/wesi/app/bootstrap \
             /api/wesi/security/session/ping \
-            /api/wesi/security/sessions; do
+            /api/wesi/security/sessions \
+            /api/wesi/sync/revision; do
             CODE=$(curl -sS -o route-response.txt -w '%{http_code}' --max-time 20 "$API$path" || true)
             case "$CODE" in
               401|403) echo "Protected route loaded: $path ($CODE)" ;;

@@ -5,13 +5,15 @@ import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_avatar.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
+import '../organizations/services/organization_access_service.dart';
+import '../organizations/services/organization_context.dart';
 import '../tasks/models/task_model.dart';
 import '../tasks/services/task_service.dart';
 import 'models/employee_model.dart';
 import 'services/team_service.dart';
 
 /// Реальные показатели людей, рассчитанные только по существующим задачам.
-/// Никаких случайных/demo финансовых цифр здесь больше нет.
+/// Legacy canSeeOthersStats никогда не расширяет OrganizationContext.
 class TeamStatsScreen extends StatefulWidget {
   const TeamStatsScreen({super.key});
 
@@ -27,19 +29,16 @@ class TeamStatsScreen extends StatefulWidget {
 class _TeamStatsScreenState extends State<TeamStatsScreen> {
   bool get _ru => WesiLocale.isRussian;
   List<TaskModel> _tasks = const [];
-
-  List<EmployeeModel> get _people {
-    final p = TeamService.currentPermissions;
-    if (p.canSeeOthersStats) return TeamService.all;
-    final me = TeamService.current;
-    return me == null ? const [] : [me];
-  }
+  List<EmployeeModel> _people = const [];
+  int _loadEpoch = 0;
 
   @override
   void initState() {
     super.initState();
     TeamService.revision.addListener(_changed);
     TaskService.revision.addListener(_changed);
+    OrganizationContext.revision.addListener(_changed);
+    OrganizationAccessService.revision.addListener(_changed);
     _load();
   }
 
@@ -47,20 +46,46 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
   void dispose() {
     TeamService.revision.removeListener(_changed);
     TaskService.revision.removeListener(_changed);
+    OrganizationContext.revision.removeListener(_changed);
+    OrganizationAccessService.revision.removeListener(_changed);
     super.dispose();
   }
 
   void _changed() => _load();
 
   Future<void> _load() async {
+    final epoch = ++_loadEpoch;
     final tasks = await TaskService().getAll();
-    if (mounted) setState(() => _tasks = tasks);
+    final me = TeamService.current;
+    var people = <EmployeeModel>[];
+    if (me != null) {
+      if (!TeamService.currentPermissions.canSeeOthersStats) {
+        people = [me];
+      } else {
+        final scopeIds = await OrganizationContext.effectiveOrganizationIds();
+        for (final employee in TeamService.all) {
+          final employeeIds =
+              await OrganizationAccessService.visibleOrganizationIds(
+            employeeId: employee.id,
+          );
+          if (employeeIds.intersection(scopeIds).isNotEmpty) {
+            people.add(employee);
+          }
+        }
+      }
+    }
+    if (mounted && epoch == _loadEpoch) {
+      setState(() {
+        _tasks = tasks;
+        _people = people;
+      });
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final people = _people;
-    final everyone = TeamService.currentPermissions.canSeeOthersStats;
+    final everyone =
+        TeamService.currentPermissions.canSeeOthersStats && _people.length > 1;
 
     return Scaffold(
       backgroundColor: AppTheme.background,
@@ -85,9 +110,14 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                         const SizedBox(height: 2),
                         Text(
                           everyone
-                              ? (_ru ? 'Реальные данные по задачам' : 'Real task data')
-                              : (_ru ? 'Только ваши реальные данные' : 'Your real data only'),
-                          style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
+                              ? (_ru
+                                  ? 'Реальные данные по задачам в доступной организации/ветке'
+                                  : 'Real task data in the permitted organization scope')
+                              : (_ru
+                                  ? 'Только ваши реальные данные'
+                                  : 'Your real data only'),
+                          style: TextStyle(
+                              fontSize: 12, color: AppTheme.textMuted),
                         ),
                       ],
                     ),
@@ -113,8 +143,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                     Expanded(
                       child: Text(
                         _ru
-                            ? 'Показатели считаются из реально созданных задач. Если данных нет, WesiOS ничего не генерирует и показывает «данных пока нет».'
-                            : 'Metrics are calculated from actual tasks. WesiOS no longer generates placeholder numbers.',
+                            ? 'Показатели считаются из реально созданных задач и никогда не выходят за текущий доступный организационный контур.'
+                            : 'Metrics are calculated from actual tasks and never escape the current permitted organization scope.',
                         style: TextStyle(
                             fontSize: 11.5,
                             height: 1.45,
@@ -128,8 +158,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
             Expanded(
               child: ListView.builder(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-                itemCount: people.length,
-                itemBuilder: (context, i) => _card(people[i]),
+                itemCount: _people.length,
+                itemBuilder: (context, i) => _card(_people[i]),
               ),
             ),
           ],
@@ -139,8 +169,10 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
   }
 
   Widget _card(EmployeeModel employee) {
-    final assigned = _tasks.where((task) => task.assignee == employee.id).toList();
-    final done = assigned.where((task) => task.status == TaskStatus.done).length;
+    final assigned =
+        _tasks.where((task) => task.assignee == employee.id).toList();
+    final done =
+        assigned.where((task) => task.status == TaskStatus.done).length;
     final open = assigned.length - done;
     final overdue = assigned.where((task) => task.isOverdue).length;
     final completion = assigned.isEmpty ? 0.0 : done / assigned.length;
@@ -159,7 +191,10 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
           children: [
             Row(
               children: [
-                WesiAvatar(size: 36, index: employee.avatarIndex, photo: employee.photo),
+                WesiAvatar(
+                    size: 36,
+                    index: employee.avatarIndex,
+                    photo: employee.photo),
                 const SizedBox(width: 11),
                 Expanded(
                   child: Column(
@@ -172,7 +207,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                               color: AppTheme.textPrimary)),
                       if (employee.position.isNotEmpty)
                         Text(employee.position,
-                            style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
+                            style: TextStyle(
+                                fontSize: 11, color: AppTheme.textMuted)),
                     ],
                   ),
                 ),
@@ -181,7 +217,9 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
             if (assigned.isEmpty) ...[
               const SizedBox(height: 10),
               Text(
-                _ru ? 'Данных пока нет — сотруднику ещё не назначены задачи.' : 'No data yet — no tasks are assigned.',
+                _ru
+                    ? 'Данных пока нет — сотруднику ещё не назначены доступные задачи.'
+                    : 'No data yet — no visible tasks are assigned.',
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted),
               ),
             ] else ...[
@@ -207,7 +245,8 @@ class _TeamStatsScreenState extends State<TeamStatsScreen> {
                         value: completion.clamp(0.0, 1.0),
                         minHeight: 5,
                         backgroundColor: AppTheme.surfaceLight,
-                        valueColor: AlwaysStoppedAnimation(AppTheme.accentGreen),
+                        valueColor:
+                            AlwaysStoppedAnimation(AppTheme.accentGreen),
                       ),
                     ),
                   ),

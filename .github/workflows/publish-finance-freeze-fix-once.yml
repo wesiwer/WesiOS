@@ -1,0 +1,27 @@
+name: Publish finance freeze fix once
+
+on:
+  push:
+    branches:
+      - agent/org-hierarchy-remediation-1
+    paths:
+      - '.github/workflows/publish-finance-freeze-fix-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish WesiOS 0.19.22
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref agent/org-hierarchy-remediation-1 \
+            -f notes='Исправлено зависание вкладки «Финансы» при открытии: устранён бесконечный цикл обновления организаций.' \
+            -f deploy_to_server=true
