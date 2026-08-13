@@ -6,87 +6,67 @@ import 'team_permissions.dart';
 
 part 'employee_model.g.dart';
 
-/// Сотрудник или партнёр.
-///
-/// Разделение полей здесь не косметическое, а смысловое:
-/// - **открытые** (имя, должность, телефон, почта, соцсети) видит любой, кто
-///   открыл контакты — за тем список и нужен;
-/// - **[notes]** видит только владелец и тот, кому он это открыл. Сюда идёт
-///   всё остальное: договорённости, ставка, что-то личное.
-///
-/// **Пароля здесь нет и не будет.** Хранится [passwordHash] и [passwordSalt].
-/// Разница принципиальная: если пароль можно посмотреть, его можно и украсть
-/// — вместе с базой, резервной копией или экраном. Владелец видит пароль
-/// ОДИН раз, в момент создания, когда тот ещё не сохранён никуда; дальше
-/// только сброс на новый. Это единственное требование из задумки, которое
-/// я выполнить не могу, и подменять его тихой заглушкой было бы хуже, чем
-/// сказать прямо.
 @HiveType(typeId: 21)
 class EmployeeModel {
   @HiveField(0)
   final String id;
-
-  /// Логин для входа. Уникален, берётся из свободных (см. LoginPoolService).
   @HiveField(1)
   final String login;
-
   @HiveField(2)
   final String fullName;
-
   @HiveField(3)
   final String nickname;
-
   @HiveField(4)
   final String position;
-
   @HiveField(5)
   final String phone;
-
   @HiveField(6)
   final String email;
-
-  /// Соцсети: название сети → ссылка или @имя.
   @HiveField(7)
   final Map<String, String> socials;
-
-  /// Скрытые заметки. Показываются только по праву canSeeNotes.
   @HiveField(8)
   final String notes;
-
   @HiveField(9)
   final TeamPermissions permissions;
-
   @HiveField(10)
   final String passwordHash;
-
   @HiveField(11)
   final String passwordSalt;
-
   @HiveField(12)
   final int avatarIndex;
-
   @HiveField(13)
   final DateTime createdAt;
-
-  /// Владелец — тот, кто завёл систему. Его нельзя удалить и урезать в правах.
   @HiveField(14)
   final bool isOwner;
-
-  /// Показатели для проверки, пока настоящих данных нет (см. TeamService).
   @HiveField(15)
   final Map<String, double> demoStats;
-
-  /// Фотография человека. null — показывается пресет по [avatarIndex].
-  ///
-  /// Хранится байтами прямо в карточке, а не файлом рядом: карточка уезжает
-  /// на сервер целиком, и снимок должен ехать вместе с ней. Иначе на втором
-  /// устройстве у всех коллег окажутся безликие кружки, и «аватарки видны
-  /// другим» останется словами.
-  ///
-  /// Размер ограничивает [TeamService.maxPhotoBytes]: снимок с телефона
-  /// весит мегабайты, а в списке он рисуется кружком в сорок точек.
   @HiveField(16)
   final Uint8List? photo;
+
+  /// Практические навыки сотрудника. Это не должность: один человек может
+  /// одновременно владеть несколькими направлениями, и Wesi AI использует
+  /// этот список при выборе исполнителя.
+  @HiveField(17)
+  final List<String> skills;
+
+  /// Условная недельная ёмкость в баллах задач. Значение 10 подходит для
+  /// обычной полной загрузки и может быть уменьшено для part-time.
+  @HiveField(18)
+  final double weeklyCapacityPoints;
+
+  /// Нижняя и верхняя границы нормальной загрузки относительно ёмкости.
+  @HiveField(19)
+  final double workloadMinRatio;
+  @HiveField(20)
+  final double workloadMaxRatio;
+
+  /// Руководитель, которому можно показывать уведомления по нагрузке.
+  @HiveField(21)
+  final String? managerEmployeeId;
+
+  /// manager / ceo / both / off.
+  @HiveField(22)
+  final String workloadAlertTarget;
 
   const EmployeeModel({
     required this.id,
@@ -106,20 +86,22 @@ class EmployeeModel {
     this.isOwner = false,
     this.demoStats = const {},
     this.photo,
+    this.skills = const [],
+    this.weeklyCapacityPoints = 10,
+    this.workloadMinRatio = .65,
+    this.workloadMaxRatio = 1.10,
+    this.managerEmployeeId,
+    this.workloadAlertTarget = 'manager',
   });
 
-  /// Как показывать человека в списке.
   String get displayName {
     if (fullName.trim().isNotEmpty) return fullName.trim();
     if (nickname.trim().isNotEmpty) return nickname.trim();
     return login;
   }
 
-  /// Есть ли что показать в открытой части карточки.
   bool get hasContacts =>
-      phone.trim().isNotEmpty ||
-      email.trim().isNotEmpty ||
-      socials.isNotEmpty;
+      phone.trim().isNotEmpty || email.trim().isNotEmpty || socials.isNotEmpty;
 
   EmployeeModel copyWith({
     String? login,
@@ -137,6 +119,13 @@ class EmployeeModel {
     Map<String, double>? demoStats,
     Uint8List? photo,
     bool clearPhoto = false,
+    List<String>? skills,
+    double? weeklyCapacityPoints,
+    double? workloadMinRatio,
+    double? workloadMaxRatio,
+    String? managerEmployeeId,
+    bool clearManager = false,
+    String? workloadAlertTarget,
   }) =>
       EmployeeModel(
         id: id,
@@ -155,16 +144,16 @@ class EmployeeModel {
         createdAt: createdAt,
         isOwner: isOwner,
         demoStats: demoStats ?? this.demoStats,
-        // Отдельный флаг вместо «передали null — сотри»: без него снимок
-        // нельзя убрать, только заменить.
         photo: clearPhoto ? null : (photo ?? this.photo),
+        skills: skills ?? this.skills,
+        weeklyCapacityPoints: weeklyCapacityPoints ?? this.weeklyCapacityPoints,
+        workloadMinRatio: workloadMinRatio ?? this.workloadMinRatio,
+        workloadMaxRatio: workloadMaxRatio ?? this.workloadMaxRatio,
+        managerEmployeeId:
+            clearManager ? null : (managerEmployeeId ?? this.managerEmployeeId),
+        workloadAlertTarget: workloadAlertTarget ?? this.workloadAlertTarget,
       );
 
-  /// Для будущей отправки на сервер.
-  ///
-  /// Хеш и соль сюда НЕ попадают: проверять пароль будет сервер, и отдавать
-  /// ему материал для перебора незачем. Заметки тоже отдельно — они
-  /// защищены другим правилом, чем открытая карточка.
   Map<String, dynamic> toPublicJson() => {
         'id': id,
         'login': login,
@@ -176,5 +165,11 @@ class EmployeeModel {
         'socials': socials,
         'avatarIndex': avatarIndex,
         'createdAt': createdAt.toIso8601String(),
+        'skills': skills,
+        'weeklyCapacityPoints': weeklyCapacityPoints,
+        'workloadMinRatio': workloadMinRatio,
+        'workloadMaxRatio': workloadMaxRatio,
+        'managerEmployeeId': managerEmployeeId,
+        'workloadAlertTarget': workloadAlertTarget,
       };
 }
