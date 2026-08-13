@@ -1,0 +1,154 @@
+name: Temporary Wesi AI spec synchronizer
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'wesi-ai-spec-sync-trigger.txt'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch Wesi AI specification
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('docs/WESI_AI_SPEC.md')
+          s = p.read_text(encoding='utf-8')
+
+          s = re.sub(
+              r"## 3\.3 Persona Bible — обязательный отдельный источник\n.*?\n---\n\n# 4\.",
+              """## 3.3 Persona Bible — обязательный отдельный источник
+
+Канонические профили из спецификации владельца v2.0 уже зафиксированы в репозитории:
+
+```text
+docs/wesi_ai/personas/ZANE_PERSONA.md
+docs/wesi_ai/personas/NIRVANA_PERSONA.md
+```
+
+Эти файлы являются обязательным источником характера, голоса, отношений, правил переключения и Lobby. Их нельзя самовольно смягчать, нейтрализовать или заменять общей манерой underlying-модели.
+
+Правило «не называть сторонние модели» относится к persona-самоидентификации: Зейн и Нирвана считают себя Wesi AI. При этом технический UI WesiOS, model selector и админская диагностика могут показывать фактически выбранный provider/model.
+
+---
+
+# 4.""",
+              s,
+              flags=re.S,
+          )
+
+          s = re.sub(
+              r"# 9\. Зарубежный Wesi AI Gateway\n.*?\n---\n\n# 10\.",
+              """# 9. Основной сервер Wesi + зарубежный AI Relay
+
+## ОБЯЗАТЕЛЬНО
+
+Актуальное решение владельца: **вся логика и вычисления Wesi AI выполняются на основном сервере Wesi. Зарубежный сервер является только посредником между основным сервером и внешними моделями.**
+
+Специализированный документ: `docs/WESI_AI_GATEWAY.md`.
+
+Целевая схема:
+
+```text
+WesiOS
+  ↓ HTTPS + Wesi session
+MAIN WESI SERVER
+  ↓ auth / permissions / org scope
+  ↓ Persona Engine / Context / Memory
+  ↓ Model Router / Budget / Lobby
+  ↓ WesiOS Read Tools / Action Broker
+  ↓ готовый provider request
+FOREIGN WESI AI RELAY
+  ↓ transport only
+Gemini / Claude / image / Veo / future providers
+  ↓
+FOREIGN RELAY
+  ↓ provider stream/result
+MAIN WESI SERVER
+  ↓ validation / tool continuation / persona output
+WesiOS
+```
+
+Основной сервер является мозгом Wesi AI и единственным product orchestrator.
+
+На основном сервере находятся:
+
+- Persona Engine;
+- ContextBuilder и память;
+- model routing;
+- quotas/budgets;
+- Lobby/handoff;
+- permissions и Organization scope;
+- Capability Registry;
+- Read Tools;
+- Action Broker;
+- risk confirmation;
+- audit;
+- media job ownership/state.
+
+Зарубежный Relay только принимает доверенный server-to-server запрос, отправляет его выбранному provider и возвращает response/stream/status. Он не решает права, не читает WesiOS business data самостоятельно, не управляет памятью и не выполняет actions.
+
+Запрещено:
+
+- прямые provider calls из Flutter;
+- прямое использование Relay клиентом как product backend;
+- переносить permission logic на underlying-модель;
+- переносить Persona Engine/Context/Memory/Lobby на Relay;
+- хранить provider API keys в APK/Windows build;
+- выдавать provider keys сотруднику.
+
+---
+
+# 10.""",
+              s,
+              flags=re.S,
+          )
+
+          replacements = {
+              "Фактический список приходит с Gateway через capabilities/model catalog и может меняться без нового APK.":
+                  "Фактический список приходит с основного сервера Wesi через capabilities/model catalog и может меняться без нового APK; основной сервер уже использует зарубежный Relay для связи с providers.",
+              "Планируемый provider class — Google image generation / Nano Banana или актуальный эквивалент через Gateway.":
+                  "Планируемый provider class — Google image generation / Nano Banana или актуальный эквивалент. Запрос формирует основной сервер Wesi и передаёт provider-вызов через зарубежный Relay.",
+              "Видео создаётся через Veo или актуальный video-generation provider, также только через Gateway.":
+                  "Видео создаётся через Veo или актуальный video-generation provider: основной сервер управляет job, а зарубежный Relay только передаёт вызов provider и результат обратно.",
+              "- `[TODO]` Полный Persona Bible Зейна и Нирваны из оригинального текста владельца.":
+                  "- `[DONE MAIN]` Канонический Persona Bible Зейна и Нирваны из спецификации владельца v2.0: `docs/wesi_ai/personas/ZANE_PERSONA.md` и `NIRVANA_PERSONA.md`.",
+              "5. Обычный текст идёт через зарубежный Gateway, provider key отсутствует в клиенте.":
+                  "5. Обычный текст идёт WesiOS → основной сервер Wesi → зарубежный Relay → provider; provider key отсутствует в клиенте.",
+              "3. Gateway client.":
+                  "3. Main Wesi AI server client; зарубежный Relay скрыт от Flutter-клиента.",
+              "- все внешние AI providers вызываются только через зарубежный Wesi AI Gateway.":
+                  "- все внешние AI providers вызываются основным сервером Wesi через зарубежный Wesi AI Relay; клиент напрямую Relay не использует.",
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+
+          journal_marker = "| 2026-08-13 | SPEC | Создано полное живое ТЗ Wesi AI | этот документ | Обязательный источник истины для дальнейшей разработки |"
+          if journal_marker in s and "Persona Bible из PDF v2.0" not in s:
+              s = s.replace(
+                  journal_marker,
+                  journal_marker + "\n| 2026-08-13 | SPEC | Persona Bible из PDF v2.0 + новая серверная схема Main Server → Foreign Relay → Providers | `docs/wesi_ai/personas/*`, `docs/WESI_AI_GATEWAY.md` | Основной сервер — мозг; зарубежный сервер — только посредник |",
+              )
+
+          p.write_text(s, encoding='utf-8')
+          PY
+
+          git config user.name "Wesi AI Spec Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add docs/WESI_AI_SPEC.md
+          git diff --cached --check
+          git commit -m "docs(ai): sync personas and main-server relay architecture"
+          git push origin HEAD:main
