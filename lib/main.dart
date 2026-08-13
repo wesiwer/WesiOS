@@ -25,6 +25,7 @@ import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_endpoint.dart';
 import 'core/sync/sync_engine.dart';
 import 'core/sync/sync_feature_extensions.dart';
+import 'core/sync/sync_transaction_anchor_fix.dart';
 import 'core/theme/app_theme.dart';
 import 'features/chats/models/chat_message.dart';
 import 'features/chats/models/chat_thread.dart';
@@ -152,6 +153,7 @@ Future<bool> _bootstrap(List<String> arguments) async {
 
   await SyncEndpoint.initializeSession();
   await TeamService.forgetUnrememberedSession();
+  SyncTransactionAnchorFix.install();
   await SyncFeatureExtensions.install();
 
   if (TeamService.current != null && SyncEndpoint.isConnected) {
