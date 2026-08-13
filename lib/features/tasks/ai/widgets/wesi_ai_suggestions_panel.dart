@@ -4,7 +4,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../../../core/theme/app_theme.dart';
+import '../../../audio/services/audio_vault_service.dart';
+import '../../../crm/services/crm_service.dart';
+import '../../../files/services/file_share_service.dart';
 import '../../../organizations/services/organization_context.dart';
+import '../../../roadmap/services/roadmap_service.dart';
 import '../../../team/services/team_service.dart';
 import '../../../treasury/services/treasury_service.dart';
 import '../../models/task_model.dart';
@@ -30,23 +34,37 @@ class _WesiAiSuggestionsPanelState extends State<WesiAiSuggestionsPanel> {
   String? _error;
   Timer? _debounce;
 
+  /// Всё, из чего система теперь берёт поводы для предложений.
+  ///
+  /// Список обязан совпадать с источниками в `WesiAiTaskService`: если
+  /// подключить источник, но забыть подписку, заведённый клиент или новая
+  /// лицензия не появятся в панели, пока случайно не изменится что-то другое.
+  List<ValueNotifier<int>> get _sources => [
+        TaskService.revision,
+        TeamService.revision,
+        OrganizationContext.revision,
+        TreasuryService.revision,
+        CrmService.revision,
+        RoadmapService.revision,
+        AudioVaultService.revision,
+        FileShareService.revision,
+      ];
+
   @override
   void initState() {
     super.initState();
     _reload();
-    TaskService.revision.addListener(_scheduleReload);
-    TeamService.revision.addListener(_scheduleReload);
-    OrganizationContext.revision.addListener(_scheduleReload);
-    TreasuryService.revision.addListener(_scheduleReload);
+    for (final source in _sources) {
+      source.addListener(_scheduleReload);
+    }
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
-    TaskService.revision.removeListener(_scheduleReload);
-    TeamService.revision.removeListener(_scheduleReload);
-    OrganizationContext.revision.removeListener(_scheduleReload);
-    TreasuryService.revision.removeListener(_scheduleReload);
+    for (final source in _sources) {
+      source.removeListener(_scheduleReload);
+    }
     super.dispose();
   }
 
