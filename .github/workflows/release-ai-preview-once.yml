@@ -1,0 +1,34 @@
+name: Release Wesi AI preview once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/release-ai-preview-once.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ github.token }}
+      - name: Bump version without rewriting pubspec
+        run: |
+          set -euo pipefail
+          sed -i -E 's/^version: .*/version: 0.22.9+84/' pubspec.yaml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add pubspec.yaml
+          git commit -m 'chore(release): WesiOS 0.22.9+84'
+          git push origin HEAD:main
+      - name: Dispatch signed production release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run release-app.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f notes='Wesi AI preview: текстовый AI, Universal Attachments и текущие улучшения AI-модуля.' \
+            -f deploy_to_server=true
