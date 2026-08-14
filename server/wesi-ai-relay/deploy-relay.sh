@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install/update Wesi AI Relay on a foreign Linux server.
+# Install/update Wesi AI Relay on a Debian/Ubuntu Linux server.
 set -euo pipefail
 
 APP_DIR="${WESI_RELAY_DIR:-/opt/wesi-ai-relay}"
@@ -49,12 +49,65 @@ require_secrets() {
   return 0
 }
 
+install_node24() {
+  local current=0
+  if command -v node >/dev/null 2>&1; then
+    current="$(node -p 'Number(process.versions.node.split(".")[0])' 2>/dev/null || echo 0)"
+  fi
+  if [ "${current:-0}" -ge 20 ]; then
+    echo "Node.js $(node --version) уже установлен."
+    return 0
+  fi
+
+  command -v apt-get >/dev/null 2>&1 || fail "Node.js 20+ не найден, а автоустановка поддерживает Debian/Ubuntu."
+  echo "Устанавливаю официальный Node.js 24 LTS с проверкой SHA-256..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y ca-certificates curl xz-utils
+
+  local machine arch sums filename version tmp expected actual root
+  machine="$(uname -m)"
+  case "$machine" in
+    x86_64|amd64) arch=x64 ;;
+    aarch64|arm64) arch=arm64 ;;
+    *) fail "Неподдерживаемая архитектура для Node.js: $machine" ;;
+  esac
+
+  tmp="$(mktemp -d)"
+  trap 'rm -rf "$tmp"' RETURN
+  curl -fsSL --retry 3 --retry-delay 2 \
+    https://nodejs.org/dist/latest-v24.x/SHASUMS256.txt -o "$tmp/SHASUMS256.txt"
+  filename="$(awk -v a="$arch" '$2 ~ ("^node-v[0-9.]+-linux-" a "\\.tar\\.xz$") {print $2; exit}' "$tmp/SHASUMS256.txt")"
+  [ -n "$filename" ] || fail "Не удалось определить официальный архив Node.js 24 для $arch"
+  version="$(printf '%s' "$filename" | sed -E 's/^node-(v[0-9.]+)-linux-[^.]+\.tar\.xz$/\1/')"
+  [ -n "$version" ] || fail "Не удалось определить версию Node.js"
+  curl -fsSL --retry 3 --retry-delay 2 \
+    "https://nodejs.org/dist/latest-v24.x/$filename" -o "$tmp/$filename"
+  expected="$(awk -v f="$filename" '$2 == f {print $1}' "$tmp/SHASUMS256.txt")"
+  actual="$(sha256sum "$tmp/$filename" | awk '{print $1}')"
+  [ -n "$expected" ] && [ "$actual" = "$expected" ] || fail "SHA-256 Node.js не совпал"
+
+  root="/usr/local/lib/nodejs/$version"
+  rm -rf "$root"
+  mkdir -p "$root"
+  tar -xJf "$tmp/$filename" --strip-components=1 -C "$root"
+  ln -sfn "$root/bin/node" /usr/local/bin/node
+  ln -sfn "$root/bin/npm" /usr/local/bin/npm
+  ln -sfn "$root/bin/npx" /usr/local/bin/npx
+  if [ -e "$root/bin/corepack" ]; then ln -sfn "$root/bin/corepack" /usr/local/bin/corepack; fi
+  hash -r
+  node --version
+  [ "$(node -p 'Number(process.versions.node.split(".")[0])')" -ge 20 ] || fail "Node.js установился некорректно"
+  trap - RETURN
+  rm -rf "$tmp"
+}
+
 install_relay() {
   require_secrets
-  command -v node >/dev/null 2>&1 || fail "Node.js не установлен. Нужен Node 20 или новее."
-  local major
-  major="$(node -p 'process.versions.node.split(".")[0]')"
-  [ "$major" -ge 20 ] || fail "Node $major слишком старый, нужен 20 или новее."
+  install_node24
+  local node_bin
+  node_bin="$(command -v node)"
+  [ -x "$node_bin" ] || fail "Node.js executable не найден после установки"
 
   mkdir -p "$APP_DIR"
   for file in server.mjs auth.mjs google.mjs google-media.mjs google-artifact.mjs media-cache.mjs package.json; do
@@ -89,7 +142,7 @@ User=wesi-relay
 Group=wesi-relay
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$ENV_FILE
-ExecStart=/usr/bin/env node $APP_DIR/server.mjs
+ExecStart=$node_bin $APP_DIR/server.mjs
 Restart=always
 RestartSec=3
 NoNewPrivileges=true
@@ -111,10 +164,14 @@ UNIT
 
   systemctl daemon-reload
   systemctl enable --now wesi-ai-relay.service
-  sleep 1
+  sleep 2
   local health
   health="$(curl -fsS --max-time 10 "http://$RELAY_HOST:$RELAY_PORT/health" || true)"
-  printf '%s' "$health" | grep -q '"ok":true' || fail "Relay не отвечает корректно на /health"
+  if ! printf '%s' "$health" | grep -q '"ok":true'; then
+    systemctl status wesi-ai-relay --no-pager -l || true
+    journalctl -u wesi-ai-relay -n 100 --no-pager || true
+    fail "Relay не отвечает корректно на /health"
+  fi
   printf '%s' "$health" | grep -q '"ready":true' || fail "Relay запущен, но provider/shared-secret configuration не готова"
 
   cat <<TEXT
