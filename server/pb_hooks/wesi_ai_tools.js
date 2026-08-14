@@ -6,6 +6,7 @@ function adapters() {
     require(base + "wesi_ai_workspace_tools.js"),
     require(base + "wesi_ai_knowledge_tools.js"),
     require(base + "wesi_ai_presentation_tools.js"),
+    require(base + "wesi_ai_media_tools.js"),
   ];
 }
 
