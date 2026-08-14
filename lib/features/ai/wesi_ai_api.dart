@@ -4,6 +4,7 @@ import 'dart:io';
 import '../../core/sync/sync_endpoint.dart';
 import '../organizations/services/organization_context.dart';
 import 'models/wesi_ai_chat_models.dart';
+import 'models/wesi_ai_content_blocks.dart';
 
 class WesiAiApiException implements Exception {
   final String code;
@@ -16,7 +17,13 @@ class WesiAiApiException implements Exception {
 class WesiAiReply {
   final String answer;
   final String requestId;
-  const WesiAiReply({required this.answer, required this.requestId});
+  final List<WesiAiContentBlock> blocks;
+
+  const WesiAiReply({
+    required this.answer,
+    required this.requestId,
+    this.blocks = const <WesiAiContentBlock>[],
+  });
 }
 
 class WesiAiApi {
@@ -82,9 +89,21 @@ class WesiAiApi {
         final code = '${json['code'] ?? 'WAI_REQUEST_FAILED'}';
         throw WesiAiApiException(code, _messageFor(code));
       }
-      final answer = '${json['answer'] ?? ''}'.trim();
-      if (answer.isEmpty) throw const WesiAiApiException('WAI_EMPTY_RESPONSE', 'Wesi AI вернул пустой ответ');
-      return WesiAiReply(answer: answer, requestId: '${json['requestId'] ?? ''}');
+      final parsed = WesiAiContentParser.parse(
+        answer: '${json['answer'] ?? ''}'.trim(),
+        toolResults: json['toolResults'],
+      );
+      if (parsed.text.isEmpty && parsed.blocks.isEmpty) {
+        throw const WesiAiApiException(
+          'WAI_EMPTY_RESPONSE',
+          'Wesi AI вернул пустой ответ',
+        );
+      }
+      return WesiAiReply(
+        answer: parsed.text,
+        requestId: '${json['requestId'] ?? ''}',
+        blocks: parsed.blocks,
+      );
     } on WesiAiApiException {
       rethrow;
     } on SocketException {
