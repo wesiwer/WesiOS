@@ -68,6 +68,7 @@ module.exports = {
       const url = String(cfg.url || "").trim();
       const sharedSecret = String(cfg.sharedSecret || "").trim();
       const routes = cfg.routes && typeof cfg.routes === "object" ? cfg.routes : {};
+      const ultra = routes.ultra && typeof routes.ultra === "object" ? routes.ultra : {};
       return {
         ready: /^https:\/\//.test(url) && sharedSecret.length >= 32,
         url: url,
@@ -75,11 +76,16 @@ module.exports = {
         routes: {
           fast: String(routes.fast || ""),
           pro: String(routes.pro || ""),
-          maximum: String(routes.maximum || "")
+          maximum: String(routes.maximum || ""),
+          ultra: {
+            low: String(ultra.low || routes.ultraLow || ""),
+            medium: String(ultra.medium || routes.ultraMedium || ""),
+            high: String(ultra.high || routes.ultraHigh || "")
+          }
         }
       };
     } catch (_) {
-      return {ready: false, url: "", sharedSecret: "", routes: {fast: "", pro: "", maximum: ""}};
+      return {ready: false, url: "", sharedSecret: "", routes: {fast: "", pro: "", maximum: "", ultra: {low: "", medium: "", high: ""}}};
     }
   },
 
