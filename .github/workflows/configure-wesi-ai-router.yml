@@ -8,10 +8,6 @@ on:
         required: true
         default: 'ai.wesi-wi.su'
         type: string
-  push:
-    branches: [main]
-    paths:
-      - '.github/wesi-ai-router-deploy.trigger'
 
 permissions:
   contents: read
