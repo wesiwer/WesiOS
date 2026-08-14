@@ -17,44 +17,21 @@ routerAdd("POST", "/api/wesi/ai/tts", (e) => {
   if (!cfg.ready) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED"});
 
   const requestId = "wai_tts_" + Date.now() + "_" + $security.randomString(12);
-  const payload = {
+  const relay = ai.callRelayJson(cfg, {
     requestId: requestId,
     operation: "tts",
     input: {persona: persona, text: text}
-  };
-  const raw = JSON.stringify(payload);
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const signature = $security.hs256(requestId + "." + timestamp + "." + raw, cfg.sharedSecret);
-
-  let relay;
-  try {
-    relay = $http.send({
-      url: cfg.url.replace(/\/$/, "") + "/v1/wesi-ai",
-      method: "POST",
-      body: raw,
-      headers: {
-        "Content-Type": "application/json",
-        "X-Wesi-Request-Id": requestId,
-        "X-Wesi-Timestamp": timestamp,
-        "X-Wesi-Signature": signature
-      },
-      timeout: 120
-    });
-  } catch (_) {
-    return e.json(503, {ok: false, code: "WAI_RELAY_UNAVAILABLE", requestId: requestId});
-  }
-
-  if (!relay || relay.statusCode < 200 || relay.statusCode >= 300) {
-    const provider = relay && relay.json && typeof relay.json === "object" ? relay.json : {};
-    return e.json(relay && relay.statusCode === 429 ? 429 : 502, {
+  }, requestId, 120);
+  if (!relay.ok) {
+    return e.json(relay.status || 502, {
       ok: false,
-      code: String(provider.code || "WAI_RELAY_BAD_RESPONSE"),
+      code: relay.code || "WAI_RELAY_BAD_RESPONSE",
       requestId: requestId
     });
   }
 
-  const result = relay.json && typeof relay.json === "object" ? relay.json : {};
-  const media = result.media && typeof result.media === "object" ? result.media : {};
+  const media = relay.result && relay.result.media && typeof relay.result.media === "object"
+    ? relay.result.media : {};
   const data = String(media.data || "");
   const mimeType = String(media.mimeType || "");
   const byteSize = Number(media.byteSize || 0);
