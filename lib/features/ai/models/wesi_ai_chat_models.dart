@@ -1,6 +1,6 @@
 enum WesiAiPersona { zane, nirvana, lobby }
 
-enum WesiAiTier { fast, pro, maximum }
+enum WesiAiTier { fast, pro, maximum, ultra }
 
 enum WesiAiLobbyMode { both, smart }
 
