@@ -17,6 +17,7 @@ routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
       localFirstChats: true,
       handoff: true,
       lobby: true,
+      emotions: true,
       voiceConversation: true,
       naturalTts: cfg.ready,
       streaming: false,
@@ -64,6 +65,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const personaRuntime = require(`${__hooks}/wesi_ai_persona_runtime.js`);
   const tools = require(`${__hooks}/wesi_ai_tools.js`);
   const ultraRouter = require(`${__hooks}/wesi_ai_ultra_router.js`);
+  const emotionEngine = require(`${__hooks}/wesi_ai_emotion_engine.js`);
   const ctx = ai.resolveIdentity(e);
   ai.requireAiModule(ctx);
   const body = e.requestInfo().body || {};
@@ -75,6 +77,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const activeOrganizationId = String(body.activeOrganizationId || "").trim();
   const history = Array.isArray(body.messages) ? body.messages : [];
   const memory = body.memory && typeof body.memory === "object" ? body.memory : {};
+  const currentEmotions = emotionEngine.sanitize(body.emotions);
 
   if (["zane", "nirvana", "lobby"].indexOf(persona) < 0) throw new BadRequestError("Некорректный режим Wesi AI");
   if (["fast", "pro", "maximum", "ultra"].indexOf(tier) < 0) throw new BadRequestError("Некорректный уровень Wesi AI");
@@ -107,6 +110,18 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     cleanHistory.push({author: author, text: text});
   }
 
+  const emotionRequestId = "wai_emotion_" + Date.now() + "_" + $security.randomString(10);
+  const emotionResult = emotionEngine.evaluate(
+    ai,
+    cfg,
+    emotionRequestId,
+    persona,
+    message,
+    cleanHistory,
+    currentEmotions
+  );
+  const emotionalState = emotionResult.emotions;
+
   const cleanMemory = ai.sanitizeMemory(memory);
   const toolDefinitions = tools.definitions(e, ctx);
   const runtimeContext = tools.context(e, ctx, activeOrganizationId);
@@ -115,6 +130,14 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   if (cleanMemory.shared.length) systemParts.push("[WESI_AI_SHARED_MEMORY]\n" + cleanMemory.shared.join("\n"));
   const personaMemory = persona === "zane" ? cleanMemory.zane : persona === "nirvana" ? cleanMemory.nirvana : cleanMemory.zane.concat(cleanMemory.nirvana);
   if (personaMemory.length) systemParts.push("[WESI_AI_PERSONA_MEMORY]\n" + personaMemory.join("\n"));
+  systemParts.push(
+    "[WESI_AI_EMOTIONAL_STATE]\n" +
+    JSON.stringify(emotionalState) + "\n" +
+    "Эмоциональное состояние — внутренняя непрерывность персонажей. Оно должно мягко влиять на выбор слов, инициативу, юмор, дистанцию и реакцию, но не превращать ответ в театральную сцену. " +
+    "Не перечисляй эмоции пользователю без причины. Не манипулируй чувством вины и не требуй эмоциональной заботы. " +
+    "Незакрытые traces можно помнить между чатами; искренние извинения, время и позитивное взаимодействие должны естественно смягчать их. " +
+    "Свежие факты и текущая просьба пользователя важнее старого эмоционального следа."
+  );
   if (persona === "lobby") systemParts.push("[WESI_AI_LOBBY_MODE]\n" + lobbyMode);
   systemParts.push("[WESI_AI_RUNTIME_CONTEXT]\n" + JSON.stringify(runtimeContext));
   if (toolDefinitions.length) {
@@ -191,7 +214,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     if (!generated.ok) return e.json(generated.status, {ok: false, code: generated.code, requestId: requestId});
     const toolRequest = toolDefinitions.length ? parseToolRequest(generated.answer) : null;
     if (!toolRequest) {
-      return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, route: routeMeta(), answer: generated.answer, toolResults: toolResults});
+      return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, route: routeMeta(), answer: generated.answer, toolResults: toolResults, emotions: emotionalState});
     }
 
     const allowedTool = toolDefinitions.some((item) => String(item.name || "") === toolRequest.name);
@@ -215,5 +238,5 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   ]).join("\n\n");
   const finalGenerated = relayCall(finalSystem, "final");
   if (!finalGenerated.ok) return e.json(finalGenerated.status, {ok: false, code: finalGenerated.code, requestId: requestId});
-  return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, route: routeMeta(), answer: finalGenerated.answer, toolResults: toolResults});
+  return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, route: routeMeta(), answer: finalGenerated.answer, toolResults: toolResults, emotions: emotionalState});
 }, $apis.requireAuth("users"));
