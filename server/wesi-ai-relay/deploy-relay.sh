@@ -44,8 +44,9 @@ require_secrets() {
   [ -n "${GEMINI_API_KEY:-}" ] || missing+=("GEMINI_API_KEY")
   [ ${#missing[@]} -eq 0 ] || fail "Не заданы: ${missing[*]}"
   [ "${#WESI_MAIN_SHARED_SECRET}" -ge 32 ] || fail "WESI_MAIN_SHARED_SECRET короче 32 символов"
-  contains_newline "$WESI_MAIN_SHARED_SECRET" && fail "Shared secret содержит перевод строки"
-  contains_newline "$GEMINI_API_KEY" && fail "Gemini key содержит перевод строки"
+  if contains_newline "$WESI_MAIN_SHARED_SECRET"; then fail "Shared secret содержит перевод строки"; fi
+  if contains_newline "$GEMINI_API_KEY"; then fail "Gemini key содержит перевод строки"; fi
+  return 0
 }
 
 install_relay() {
@@ -68,9 +69,6 @@ WESI_RELAY_HOST=$RELAY_HOST
 WESI_RELAY_PORT=$RELAY_PORT
 WESI_ZANE_TTS_VOICE=${WESI_ZANE_TTS_VOICE:-Charon}
 WESI_NIRVANA_TTS_VOICE=${WESI_NIRVANA_TTS_VOICE:-Sulafat}
-# Paid image/video/music APIs are never enabled implicitly. Changing this to
-# true is an explicit operator decision and is intentionally not driven by a
-# normal deployment secret.
 WESI_ENABLE_PAID_MEDIA=${WESI_ENABLE_PAID_MEDIA:-false}
 ENV
 
