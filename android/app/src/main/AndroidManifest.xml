@@ -31,8 +31,10 @@
               />
         </activity>
 
-        <!-- Keep stable component names for existing installations, but make
-             every launcher entry use the current generated WesiOS mark. -->
+        <!-- Keep stable component names for existing installations. The dark
+             alias uses the generated launcher mark; the light alias keeps its
+             own stable resource name but that resource now renders the current
+             light WesiOS mark. -->
         <activity-alias
             android:name=".IconDark"
             android:enabled="true"
@@ -51,8 +53,8 @@
             android:name=".IconLight"
             android:enabled="false"
             android:exported="true"
-            android:icon="@mipmap/launcher_icon"
-            android:roundIcon="@mipmap/launcher_icon"
+            android:icon="@drawable/launcher_icon_light"
+            android:roundIcon="@drawable/launcher_icon_light"
             android:label="WesiOS"
             android:targetActivity=".MainActivity">
             <intent-filter>
