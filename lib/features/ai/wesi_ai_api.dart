@@ -44,7 +44,7 @@ class WesiAiContextCompaction {
 }
 
 class WesiAiApi {
-  static const int maxTransportHistoryMessages = 80;
+  static const int maxTransportHistoryMessages = 800;
 
   static final HttpClient _http = HttpClient()
     ..connectionTimeout = const Duration(seconds: 12)
