@@ -6,7 +6,7 @@ on:
       public_host:
         description: 'Wesi AI Relay DNS hostname'
         required: true
-        default: 'ai.wesi-wi.su'
+        default: 'ai.wesi-wf.su'
         type: string
 
 permissions:
@@ -21,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      PUBLIC_HOST: ${{ inputs.public_host || 'ai.wesi-wi.su' }}
+      PUBLIC_HOST: ${{ inputs.public_host || 'ai.wesi-wf.su' }}
       RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
       RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
