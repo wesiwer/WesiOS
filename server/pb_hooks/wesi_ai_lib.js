@@ -122,7 +122,8 @@ module.exports = {
     const relay = module.exports.callRelayJson(cfg, payload, requestId, 120);
     if (!relay.ok) return relay;
     const answer = String(relay.result.answer || "").trim();
-    return answer ? {ok: true, answer: answer} : {ok: false, status: 502, code: "WAI_EMPTY_RESPONSE"};
+    const context = relay.result.context && typeof relay.result.context === "object" ? relay.result.context : null;
+    return answer ? {ok: true, answer: answer, context: context} : {ok: false, status: 502, code: "WAI_EMPTY_RESPONSE"};
   },
 
   fetchRelayArtifact: function(cfg, artifactId) {
