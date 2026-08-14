@@ -31,6 +31,33 @@ class WesiAiSpokenReply {
   const WesiAiSpokenReply(this.text, {this.author});
 }
 
+/// Что из появившихся сообщений нужно произнести.
+///
+/// Отбор именно из переписки, а не из отдельного ответа сети: озвучивать
+/// нужно ровно то, что человек увидит на экране, и сообщение обязано
+/// попасть в чат один раз. В лобби на одну фразу отвечают оба, и каждый
+/// ответ сохраняет своего автора — иначе диалог двоих прозвучит одним
+/// голосом.
+///
+/// Ошибку произнести нужно: в разговоре человек не смотрит на экран, и
+/// молчание после вопроса неотличимо от поломки. А вот картинку, файл или
+/// служебную отметку — нет: осмысленного текста в них нет.
+List<WesiAiSpokenReply> spokenRepliesFrom({
+  required List<WesiAiMessage> messages,
+  required Set<String> alreadySeen,
+}) =>
+    messages
+        .where((m) => !alreadySeen.contains(m.id))
+        .where((m) =>
+            m.author != WesiAiMessageAuthor.user &&
+            m.author != WesiAiMessageAuthor.tool)
+        .where((m) =>
+            m.kind == WesiAiMessageKind.text ||
+            m.kind == WesiAiMessageKind.error)
+        .where((m) => m.text.trim().isNotEmpty)
+        .map((m) => WesiAiSpokenReply(m.text.trim(), author: m.author))
+        .toList(growable: false);
+
 /// Микрофон с точки зрения разговора.
 ///
 /// Интерфейс, а не готовый класс: настоящее распознавание требует

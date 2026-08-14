@@ -16,6 +16,8 @@ import 'package:wesios/features/ai/wesi_ai_voice_session.dart';
 /// фразу договаривается в уже выключенном разговоре. Поэтому проверяется
 /// именно порядок событий, а не только конечное состояние.
 void main() {
+  _spokenReplySelection();
+
   _Ear ear() => _Ear();
 
   test('полный круг: услышал, отправил, озвучил, снова слушает', () async {
@@ -482,4 +484,106 @@ class _Mouth implements WesiAiVoiceMouth {
     stopped++;
     _interrupted = true;
   }
+}
+
+/// Что именно попадает в озвучку.
+///
+/// Отбор идёт из самой переписки, а не из ответа сети: озвучивать нужно
+/// ровно то, что человек увидит на экране, и сообщение обязано попасть в
+/// чат один раз. В лобби на одну фразу отвечают оба — и каждый обязан
+/// сохранить свой голос.
+void _spokenReplySelection() {
+  WesiAiMessage message(
+    String id, {
+    required WesiAiMessageAuthor author,
+    String text = 'текст',
+    WesiAiMessageKind kind = WesiAiMessageKind.text,
+  }) =>
+      WesiAiMessage(
+        id: id,
+        conversationId: 'c1',
+        employeeId: 'e1',
+        author: author,
+        kind: kind,
+        text: text,
+        createdAt: DateTime(2026, 8, 14),
+      );
+
+  group('отбор реплик для озвучки', () {
+    test('старые сообщения не проговариваются заново', () {
+      final replies = spokenRepliesFrom(
+        messages: [
+          message('old', author: WesiAiMessageAuthor.zane, text: 'старое'),
+          message('new', author: WesiAiMessageAuthor.zane, text: 'новое'),
+        ],
+        alreadySeen: {'old'},
+      );
+      expect(replies.map((r) => r.text), ['новое']);
+    });
+
+    test('собственная реплика человека не озвучивается', () {
+      // Иначе система повторит вслух то, что человек только что сказал.
+      final replies = spokenRepliesFrom(
+        messages: [
+          message('u', author: WesiAiMessageAuthor.user, text: 'мой вопрос'),
+          message('a', author: WesiAiMessageAuthor.zane, text: 'ответ'),
+        ],
+        alreadySeen: const {},
+      );
+      expect(replies.map((r) => r.text), ['ответ']);
+    });
+
+    test('в лобби каждый сохраняет свой голос', () {
+      final replies = spokenRepliesFrom(
+        messages: [
+          message('z', author: WesiAiMessageAuthor.zane, text: 'Зейн'),
+          message('n', author: WesiAiMessageAuthor.nirvana, text: 'Нирвана'),
+        ],
+        alreadySeen: const {},
+      );
+      expect(replies.map((r) => r.author),
+          [WesiAiMessageAuthor.zane, WesiAiMessageAuthor.nirvana]);
+    });
+
+    test('ошибка проговаривается', () {
+      // В разговоре человек не смотрит на экран, и молчание после вопроса
+      // неотличимо от поломки.
+      final replies = spokenRepliesFrom(
+        messages: [
+          message('e',
+              author: WesiAiMessageAuthor.system,
+              kind: WesiAiMessageKind.error,
+              text: 'Сеть недоступна'),
+        ],
+        alreadySeen: const {},
+      );
+      expect(replies.map((r) => r.text), ['Сеть недоступна']);
+    });
+
+    test('вложения и служебные отметки не проговариваются', () {
+      final replies = spokenRepliesFrom(
+        messages: [
+          message('img',
+              author: WesiAiMessageAuthor.zane,
+              kind: WesiAiMessageKind.image,
+              text: '/path/cover.png'),
+          message('st',
+              author: WesiAiMessageAuthor.system,
+              kind: WesiAiMessageKind.status,
+              text: 'выполняю'),
+          message('t', author: WesiAiMessageAuthor.tool, text: 'результат'),
+        ],
+        alreadySeen: const {},
+      );
+      expect(replies, isEmpty);
+    });
+
+    test('пустой текст пропускается', () {
+      final replies = spokenRepliesFrom(
+        messages: [message('a', author: WesiAiMessageAuthor.zane, text: '   ')],
+        alreadySeen: const {},
+      );
+      expect(replies, isEmpty);
+    });
+  });
 }

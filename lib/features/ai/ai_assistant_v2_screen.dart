@@ -115,15 +115,10 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
     await controller.addUserMessage(text);
 
-    return controller.state
-        .messagesFor(conversationId)
-        .where((m) => !before.contains(m.id))
-        .where((m) =>
-            m.author != WesiAiMessageAuthor.user &&
-            m.author != WesiAiMessageAuthor.tool &&
-            m.text.trim().isNotEmpty)
-        .map((m) => WesiAiSpokenReply(m.text, author: m.author))
-        .toList(growable: false);
+    return spokenRepliesFrom(
+      messages: controller.state.messagesFor(conversationId),
+      alreadySeen: before,
+    );
   }
 
   @override
