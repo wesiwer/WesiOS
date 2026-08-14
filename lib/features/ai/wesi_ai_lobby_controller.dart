@@ -23,6 +23,7 @@ class WesiAiLobbyChatController extends WesiAiChatController {
     if (clean.isEmpty || sending) return;
     final history = state.messagesFor(conversation.id);
     final now = DateTime.now();
+    final emotionalState = state.emotions.decayed(now);
     final user = WesiAiMessage(
       id: _id(now),
       conversationId: conversation.id,
@@ -42,6 +43,7 @@ class WesiAiLobbyChatController extends WesiAiChatController {
     state = state.copyWith(
       messages: [...state.messages, user],
       conversations: conversations,
+      emotions: emotionalState,
     );
     sending = true;
     await _save();
@@ -52,6 +54,7 @@ class WesiAiLobbyChatController extends WesiAiChatController {
         message: clean,
         history: history,
         memory: state.memory,
+        emotions: emotionalState,
       );
       final turns = WesiAiLobbyCodec.decode(reply.answer);
       if (turns.isEmpty) {
@@ -71,11 +74,18 @@ class WesiAiLobbyChatController extends WesiAiChatController {
             author: turns[i].author,
             text: turns[i].text,
             createdAt: at,
-            metadata: {'requestId': reply.requestId, 'lobby': true},
+            metadata: {
+              'requestId': reply.requestId,
+              'lobby': true,
+              if (reply.emotions != null) 'emotions': reply.emotions!.toJson(),
+            },
           ),
         );
       }
-      state = state.copyWith(messages: [...state.messages, ...messages]);
+      state = state.copyWith(
+        messages: [...state.messages, ...messages],
+        emotions: reply.emotions ?? emotionalState,
+      );
     } on WesiAiApiException catch (error) {
       final at = DateTime.now();
       state = state.copyWith(
