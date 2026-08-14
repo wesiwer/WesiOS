@@ -24,19 +24,20 @@ module.exports = {
     }
     const memory = ai.sanitizeMemory(body.memory && typeof body.memory === "object" ? body.memory : {});
     const rootId = "wai_lobby_" + Date.now() + "_" + $security.randomString(10);
-    const emotionResult = emotionEngine.evaluate(
+    const initialEmotion = emotionEngine.evaluate(
       ai,
       cfg,
-      rootId + "_emotion",
+      rootId + "_emotion_user",
       "lobby",
       message,
       history,
       emotionEngine.sanitize(body.emotions)
     );
-    const emotions = emotionResult.emotions;
+    let emotions = initialEmotion.emotions;
     const order = mode === "both" ? ["zane", "nirvana"] : router.choose(ai, cfg, route, rootId + "_route", message, history);
     const messages = [];
-    for (const name of order) {
+    for (let index = 0; index < order.length; index++) {
+      const name = order[index];
       const profile = name === "zane" ? zane : nirvana;
       const personaMemory = name === "zane" ? memory.zane : memory.nirvana;
       const personaEmotion = emotions && emotions[name] ? emotions[name] : null;
@@ -60,6 +61,22 @@ module.exports = {
         continue;
       }
       messages.push({author: name, text: result.answer});
+
+      // Re-evaluate after an agent speaks so the next participant can react to
+      // that exact turn, not one user message later. This is especially
+      // important for teasing, support, apology and conflict inside Lobby.
+      if (index < order.length - 1) {
+        const interpersonal = emotionEngine.evaluate(
+          ai,
+          cfg,
+          rootId + "_emotion_after_" + name,
+          "lobby",
+          name + ": " + result.answer,
+          history.concat(messages),
+          emotions
+        );
+        emotions = interpersonal.emotions;
+      }
     }
     return {
       status: 200,
