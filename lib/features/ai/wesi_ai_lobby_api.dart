@@ -1,8 +1,10 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
 import '../../core/sync/sync_endpoint.dart';
 import '../organizations/services/organization_context.dart';
+import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'wesi_ai_api.dart';
 
@@ -20,7 +22,9 @@ class WesiAiLobbyApi extends WesiAiApi {
     required String message,
     required List<WesiAiMessage> history,
     required WesiAiMemorySnapshot memory,
+    List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
   }) async {
+    WesiAiAttachment.validateBatch(attachments);
     if (conversation.persona != WesiAiPersona.lobby) {
       return super.send(
         conversation: conversation,
@@ -28,6 +32,21 @@ class WesiAiLobbyApi extends WesiAiApi {
         message: message,
         history: history,
         memory: memory,
+        attachments: attachments,
+      );
+    }
+
+    // The canonical /chat route already understands the Lobby persona and is
+    // the universal multimodal path. Use it whenever files are attached so
+    // no attachment can be silently dropped by the legacy Lobby endpoint.
+    if (attachments.isNotEmpty) {
+      return super.send(
+        conversation: conversation,
+        tier: tier,
+        message: message,
+        history: history,
+        memory: memory,
+        attachments: attachments,
       );
     }
 
@@ -81,6 +100,8 @@ class WesiAiLobbyApi extends WesiAiApi {
       throw const WesiAiApiException('NETWORK', 'Нет связи с сервером WesiOS');
     } on HttpException {
       throw const WesiAiApiException('NETWORK', 'Ошибка связи с сервером WesiOS');
+    } on TimeoutException {
+      throw const WesiAiApiException('NETWORK', 'Lobby не успел ответить вовремя');
     } on FormatException {
       throw const WesiAiApiException('NOT_WESIOS', 'Сервер WesiOS вернул некорректный ответ');
     }
