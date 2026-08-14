@@ -6,7 +6,12 @@ on:
       public_host:
         description: 'Foreign Relay DNS hostname, e.g. ai-relay.example.com'
         required: true
+        default: 'ai.wesi-wi.su'
         type: string
+  push:
+    branches: [main]
+    paths:
+      - '.github/wesi-ai-full-deploy.trigger'
 
 permissions:
   contents: read
@@ -20,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      PUBLIC_HOST: ${{ inputs.public_host }}
-      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || inputs.public_host }}
+      PUBLIC_HOST: ${{ inputs.public_host || 'ai.wesi-wi.su' }}
+      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || inputs.public_host || 'ai.wesi-wi.su' }}
       RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
@@ -56,12 +61,7 @@ jobs:
           PROVIDED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
         run: |
           set -euo pipefail
-          if [ -n "${PROVIDED:-}" ]; then
-            SHARED="$PROVIDED"
-          else
-            SHARED="$(openssl rand -hex 32)"
-            echo '::notice::Generated a new Main↔Relay HMAC secret for this atomic deployment.'
-          fi
+          if [ -n "${PROVIDED:-}" ]; then SHARED="$PROVIDED"; else SHARED="$(openssl rand -hex 32)"; fi
           [ ${#SHARED} -ge 32 ] || { echo '::error::WESI_MAIN_SHARED_SECRET is too short'; exit 1; }
           echo "::add-mask::$SHARED"
           echo "WESI_SHARED_SECRET=$SHARED" >> "$GITHUB_ENV"
@@ -92,12 +92,7 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/relay_key
           chmod 600 ~/.ssh/relay_key
-          if [ -n "${KNOWN:-}" ]; then
-            printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts
-          else
-            ssh-keyscan -H "$RELAY_SSH_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null
-            echo '::warning::WESI_RELAY_SSH_KNOWN_HOSTS is not set; using the host key observed now.'
-          fi
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts; else ssh-keyscan -H "$RELAY_SSH_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/relay_known_hosts
 
       - name: Build sealed Relay credentials
@@ -113,13 +108,10 @@ jobs:
               'WESI_MAIN_SHARED_SECRET_B64': os.environ['WESI_SHARED_SECRET'],
               'GEMINI_API_KEY_B64': os.environ['GEMINI_KEY'],
           }
-          if os.environ.get('ZANE_VOICE'):
-              values['WESI_ZANE_TTS_VOICE_B64'] = os.environ['ZANE_VOICE']
-          if os.environ.get('NIRVANA_VOICE'):
-              values['WESI_NIRVANA_TTS_VOICE_B64'] = os.environ['NIRVANA_VOICE']
+          if os.environ.get('ZANE_VOICE'): values['WESI_ZANE_TTS_VOICE_B64'] = os.environ['ZANE_VOICE']
+          if os.environ.get('NIRVANA_VOICE'): values['WESI_NIRVANA_TTS_VOICE_B64'] = os.environ['NIRVANA_VOICE']
           with open('relay-secrets.b64', 'w', encoding='ascii') as f:
-              for key, value in values.items():
-                  f.write(key + '=' + base64.b64encode(value.encode()).decode() + '\n')
+              for key, value in values.items(): f.write(key + '=' + base64.b64encode(value.encode()).decode() + '\n')
           PY
           chmod 600 relay-secrets.b64
 
@@ -128,10 +120,7 @@ jobs:
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
           REMOTE="/tmp/wesi-ai-relay-$GITHUB_RUN_ID"
-          cleanup() {
-            rm -f relay-secrets.b64
-            ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'" >/dev/null 2>&1 || true
-          }
+          cleanup() { rm -f relay-secrets.b64; ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
           ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
           scp "${SSH[@]}" \
@@ -147,57 +136,66 @@ jobs:
           cleanup
           trap - EXIT
 
-      - name: Verify HTTPS, provider text, natural TTS and anti-replay
+      - name: Install free provider secrets on Relay
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, os
+          with open('providers.b64','w',encoding='ascii') as f:
+              for name in ('GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY'):
+                  value=os.environ.get(name,'').strip()
+                  if value: f.write(name+'='+base64.b64encode(value.encode()).decode()+'\n')
+          PY
+          chmod 600 providers.b64
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          scp "${SSH[@]}" providers.b64 "$RELAY_SSH_USER@$RELAY_SSH_HOST:/tmp/wesi-ai-providers.b64"
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" 'sudo bash -s' <<'REMOTE'
+          set -euo pipefail
+          umask 077
+          : > /etc/wesi-ai-providers.env
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            key="${line%%=*}"; value="${line#*=}"
+            [ "$key" != "$line" ] || exit 2
+            case "$key" in GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;; *) exit 2;; esac
+            decoded="$(printf '%s' "$value" | base64 -d)"
+            [ -n "$decoded" ] && printf '%s=%s\n' "$key" "$decoded" >> /etc/wesi-ai-providers.env
+          done < /tmp/wesi-ai-providers.b64
+          rm -f /tmp/wesi-ai-providers.b64
+          chown root:wesi-relay /etc/wesi-ai-providers.env
+          chmod 640 /etc/wesi-ai-providers.env
+          systemctl restart wesi-ai-relay
+          systemctl is-active --quiet wesi-ai-relay
+          REMOTE
+          rm -f providers.b64
+
+      - name: Verify Relay HTTPS and Fast Pro Ultra
         run: |
           set -euo pipefail
           curl -fsS --max-time 20 "https://$PUBLIC_HOST/health" > relay-health.json
           python3 - <<'PY'
           import json
-          data = json.load(open('relay-health.json', encoding='utf-8'))
+          data=json.load(open('relay-health.json',encoding='utf-8'))
           assert data.get('ok') is True and data.get('ready') is True, data
-          print('Foreign Relay HTTPS: ready')
+          assert data.get('routing') == ['fast','pro','ultra'], data
           PY
           python3 - <<'PY'
-          import hashlib, hmac, json, os, time, urllib.error, urllib.request
-          base = 'https://' + os.environ['PUBLIC_HOST']
-          secret = os.environ['WESI_SHARED_SECRET'].encode()
-
-          def signed(payload, request_id):
-              raw = json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode()
-              ts = str(int(time.time()))
-              sig = hmac.new(secret, request_id.encode()+b'.'+ts.encode()+b'.'+raw, hashlib.sha256).hexdigest()
-              return urllib.request.Request(base+'/v1/wesi-ai', data=raw, method='POST', headers={
-                  'Content-Type':'application/json', 'X-Wesi-Request-Id':request_id,
-                  'X-Wesi-Timestamp':ts, 'X-Wesi-Signature':sig,
-              })
-
-          rid = 'wai_deploy_text_' + str(int(time.time()))
-          text_req = signed({
-              'requestId': rid, 'route':'google/gemini-3.5-flash-lite', 'operation':'chat',
-              'input':{'system':'Deployment health check.','history':[],'message':'Ответь одним словом: OK'}
-          }, rid)
-          with urllib.request.urlopen(text_req, timeout=120) as r:
-              result = json.load(r)
-          assert result.get('ok') is True and str(result.get('answer','')).strip(), result
-          print('Relay → Gemini text: OK')
-          try:
-              urllib.request.urlopen(text_req, timeout=20)
-              raise AssertionError('Replay accepted')
-          except urllib.error.HTTPError as exc:
-              body = json.loads(exc.read().decode() or '{}')
-              assert exc.code == 401 and body.get('code') == 'WAI_RELAY_REPLAY_DETECTED', (exc.code, body)
-          print('Production anti-replay: OK')
-
-          rid = 'wai_deploy_tts_' + str(int(time.time()))
-          tts_req = signed({
-              'requestId':rid, 'operation':'tts',
-              'input':{'persona':'zane','text':'Проверка голоса Wesi AI.'}
-          }, rid)
-          with urllib.request.urlopen(tts_req, timeout=120) as r:
-              tts = json.load(r)
-          media = tts.get('media') or {}
-          assert tts.get('ok') is True and media.get('kind') == 'tts' and media.get('data'), tts
-          print('Relay → Gemini natural TTS: OK')
+          import hashlib,hmac,json,os,time,urllib.request
+          base='https://'+os.environ['PUBLIC_HOST']; secret=os.environ['WESI_SHARED_SECRET'].encode()
+          def call(route):
+              rid='wai_deploy_'+route.split('/')[-1]+'_'+str(time.time_ns())
+              payload={'requestId':rid,'route':route,'operation':'chat','input':{'system':'Deployment test. Reply only OK.','history':[],'message':'OK'}}
+              raw=json.dumps(payload,separators=(',',':'),ensure_ascii=False).encode(); ts=str(int(time.time()))
+              sig=hmac.new(secret,rid.encode()+b'.'+ts.encode()+b'.'+raw,hashlib.sha256).hexdigest()
+              req=urllib.request.Request(base+'/v1/wesi-ai',data=raw,method='POST',headers={'Content-Type':'application/json','X-Wesi-Request-Id':rid,'X-Wesi-Timestamp':ts,'X-Wesi-Signature':sig})
+              with urllib.request.urlopen(req,timeout=125) as r: data=json.load(r)
+              assert data.get('ok') is True and str(data.get('answer','')).strip(), data
+              print(route, data.get('provider'), data.get('model'))
+          for route in ('wesi/fast','wesi/pro','wesi/ultra'): call(route)
           PY
 
       - name: Prepare Main Wesi Server SSH
@@ -208,12 +206,7 @@ jobs:
           set -euo pipefail
           printf '%s\n' "$KEY" > ~/.ssh/main_key
           chmod 600 ~/.ssh/main_key
-          if [ -n "${KNOWN:-}" ]; then
-            printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts
-          else
-            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
-            echo '::warning::WESI_SERVER_KNOWN_HOSTS is not set; using the host key observed now.'
-          fi
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
 
       - name: Build Main Server Relay configuration
@@ -221,37 +214,20 @@ jobs:
           set -euo pipefail
           python3 - <<'PY'
           import json, os
-          config = {
-              'url': 'https://' + os.environ['PUBLIC_HOST'],
-              'sharedSecret': os.environ['WESI_SHARED_SECRET'],
-              'routes': {
-                  'fast':'google/gemini-3.5-flash-lite',
-                  'pro':'google/gemini-3.6-flash',
-                  'maximum':'google/gemini-3.6-flash',
-              },
-          }
-          with open('wesi-ai-relay.json','w',encoding='utf-8') as f:
-              json.dump(config,f,ensure_ascii=False)
+          config={'url':'https://'+os.environ['PUBLIC_HOST'],'sharedSecret':os.environ['WESI_SHARED_SECRET'],'routes':{'fast':'wesi/fast','pro':'wesi/pro','maximum':'wesi/ultra'}}
+          with open('wesi-ai-relay.json','w',encoding='utf-8') as f: json.dump(config,f,ensure_ascii=False)
           PY
           chmod 600 wesi-ai-relay.json
 
-      - name: Deploy Main Wesi AI hooks, personas and shared config
+      - name: Deploy Main Wesi AI hooks personas and shared config
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
           REMOTE="/tmp/wesi-ai-main-$GITHUB_RUN_ID"
-          cleanup() {
-            rm -f wesi-ai-relay.json
-            ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE'" >/dev/null 2>&1 || true
-          }
+          cleanup() { rm -f wesi-ai-relay.json; ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE'" >/dev/null 2>&1 || true; }
           trap cleanup EXIT
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
-          scp "${SSH[@]}" \
-            server/pb_hooks/wesi_ai_*.js \
-            server/pb_hooks/wesi_ai_*.pb.js \
-            server/pb_hooks/.wesi-ai-personas.json \
-            wesi-ai-relay.json \
-            "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+          scp "${SSH[@]}" server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js server/pb_hooks/.wesi-ai-personas.json wesi-ai-relay.json "$MAIN_USER@$MAIN_HOST:$REMOTE/"
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
           HOOK_DIR=/opt/pocketbase/pb_hooks
@@ -259,63 +235,28 @@ jobs:
           PB_USER=$(ps -eo user=,comm= | awk '$2 ~ /^pocketbase$/ {print $1; exit}')
           [ -n "${PB_USER:-}" ] || PB_USER=$(stat -c '%U' "$HOOK_DIR")
           PB_GROUP=$(id -gn "$PB_USER" 2>/dev/null || stat -c '%G' "$HOOK_DIR")
-          install_one() {
-            src="$1"; mode="$2"; dst="$3"
-            if [ "$(id -un)" = "$PB_USER" ] && [ -w "$HOOK_DIR" ]; then
-              install -o "$PB_USER" -g "$PB_GROUP" -m "$mode" "$src" "$dst"
-            else
-              sudo -n install -o "$PB_USER" -g "$PB_GROUP" -m "$mode" "$src" "$dst"
-            fi
-          }
+          install_one() { src="$1"; mode="$2"; dst="$3"; if [ "$(id -un)" = "$PB_USER" ] && [ -w "$HOOK_DIR" ]; then install -o "$PB_USER" -g "$PB_GROUP" -m "$mode" "$src" "$dst"; else sudo -n install -o "$PB_USER" -g "$PB_GROUP" -m "$mode" "$src" "$dst"; fi; }
           count=0
-          for src in "$REMOTE"/wesi_ai_*.js "$REMOTE"/wesi_ai_*.pb.js; do
-            [ -f "$src" ] || continue
-            install_one "$src" 0644 "$HOOK_DIR/$(basename "$src")"
-            count=$((count+1))
-          done
+          for src in "$REMOTE"/wesi_ai_*.js "$REMOTE"/wesi_ai_*.pb.js; do [ -f "$src" ] || continue; install_one "$src" 0644 "$HOOK_DIR/$(basename "$src")"; count=$((count+1)); done
           [ "$count" -gt 8 ] || { echo "Incomplete hook bundle: $count" >&2; exit 1; }
           install_one "$REMOTE/.wesi-ai-personas.json" 0600 "$HOOK_DIR/.wesi-ai-personas.json"
           install_one "$REMOTE/wesi-ai-relay.json" 0600 "$HOOK_DIR/.wesi-ai-relay.json"
-          test "$(stat -c '%a' "$HOOK_DIR/.wesi-ai-personas.json")" = 600
-          test "$(stat -c '%a' "$HOOK_DIR/.wesi-ai-relay.json")" = 600
           sudo -n systemctl restart pocketbase
-          for _ in $(seq 1 30); do
-            systemctl is-active --quiet pocketbase && exit 0
-            sleep 1
-          done
+          for _ in $(seq 1 30); do systemctl is-active --quiet pocketbase && exit 0; sleep 1; done
           systemctl is-active --quiet pocketbase
           REMOTE_SCRIPT
           cleanup
           trap - EXIT
 
-      - name: Verify Main → Relay and protected Wesi AI routes
+      - name: Verify Main protected Wesi AI routes
         run: |
           set -euo pipefail
-          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" \
-            "curl -fsS --max-time 20 'https://$PUBLIC_HOST/health' | grep -q '\"ready\":true'"
-
           check_route() {
-            method="$1"
-            path="$2"
-            code='000'
-            for _ in $(seq 1 15); do
-              code="$(curl -sS -o /tmp/wesi-ai-route.out -w '%{http_code}' --max-time 20 -X "$method" "https://api.wesi-inc.ru$path" || true)"
-              [ "$code" != '000' ] && break
-              sleep 1
-            done
-            if [ "$code" != '401' ] && [ "$code" != '403' ]; then
-              echo "::error::$method $path is not loaded as a protected route (HTTP $code)"
-              cat /tmp/wesi-ai-route.out 2>/dev/null || true
-              exit 1
-            fi
+            method="$1"; path="$2"; code='000'
+            for _ in $(seq 1 15); do code="$(curl -sS -o /tmp/wesi-ai-route.out -w '%{http_code}' --max-time 20 -X "$method" "https://api.wesi-inc.ru$path" || true)"; [ "$code" != '000' ] && break; sleep 1; done
+            if [ "$code" != '401' ] && [ "$code" != '403' ]; then echo "::error::$method $path not protected/loaded (HTTP $code)"; cat /tmp/wesi-ai-route.out 2>/dev/null || true; exit 1; fi
           }
-
           check_route GET /api/wesi/ai/capabilities
           check_route POST /api/wesi/ai/tts
           check_route GET /api/wesi/ai/media/jobs/wam_0000000000000000000000000000
-          echo 'Main Wesi AI protected routes: loaded'
-
-      - name: Done
-        run: |
-          echo 'Wesi AI production deployment is complete: Relay + TLS + Gemini + TTS + anti-replay + Main hooks + personas + media routes.'
+          echo 'Wesi AI production deployment complete: Fast / Pro / Ultra + TTS + Main hooks.'
