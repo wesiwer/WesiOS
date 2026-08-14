@@ -45,9 +45,10 @@ function sendArtifact(res, item) {
 async function readBody(req) {
   const chunks = [];
   let size = 0;
+  const maxBytes = 12 * 1024 * 1024;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 2097152) throw new Error('too_large');
+    if (size > maxBytes) throw new Error('too_large');
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString('utf8');
@@ -158,7 +159,7 @@ http.createServer(async (req, res) => {
       return send(res, result?.status || 502, {ok: false, code: result?.code || 'WAI_PROVIDER_UNAVAILABLE'});
     }
     if (result.limits) return send(res, 200, {ok: true, limits: result.limits});
-    if (result.answer) return send(res, 200, {ok: true, answer: result.answer});
+    if (result.answer) return send(res, 200, {ok: true, answer: result.answer, context: result.context || null});
 
     if (result.media) {
       if (String(result.media.kind || '') === 'tts') {
