@@ -64,7 +64,7 @@ class WesiAiSpeechOutput {
       // PowerShell command separators or quotes from the assistant response.
       final psRate = ((profile.rate - 1.0) * 5).round().clamp(-3, 3);
       final script = <String>[
-        r'$ErrorActionPreference = "Stop"',
+        r'$ErrorActionPreference = "Stop"'.replaceAll(r'\"', '"'),
         'Add-Type -AssemblyName System.Speech',
         r'$s = New-Object System.Speech.Synthesis.SpeechSynthesizer',
         '\$s.Rate = $psRate',
