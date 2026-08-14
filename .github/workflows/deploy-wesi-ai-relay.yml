@@ -1,0 +1,126 @@
+name: Deploy Wesi AI Relay
+
+# Выкладка зарубежного Relay. Запускается только руками: у него на борту
+# ключ провайдера, и перезапускать его на каждый push незачем.
+#
+# Нужны секреты репозитория:
+#   WESI_RELAY_SSH_HOST   — адрес зарубежного сервера
+#   WESI_RELAY_SSH_USER   — пользователь с правом sudo
+#   WESI_RELAY_SSH_KEY    — приватный ключ
+#   WESI_MAIN_SHARED_SECRET — общий секрет с api.wesi-inc.ru, не короче 32 символов
+#   GEMINI_API_KEY        — ключ провайдера, живёт только на Relay
+#
+# Необязательные:
+#   WESI_RELAY_SSH_KNOWN_HOSTS — отпечаток сервера
+#   WESI_RELAY_PUBLIC_HOST     — публичный адрес для проверки /health по HTTPS
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-wesi-ai-relay
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Проверка до всякого подключения: отсутствующий секрет иначе
+      # превращается в невнятную ошибку ssh на середине выкладки.
+      - name: Проверить, что все секреты заданы
+        shell: bash
+        env:
+          HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+          USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+          GEMINI: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          missing=()
+          [ -n "$HOST" ]   || missing+=(WESI_RELAY_SSH_HOST)
+          [ -n "$USER" ]   || missing+=(WESI_RELAY_SSH_USER)
+          [ -n "$KEY" ]    || missing+=(WESI_RELAY_SSH_KEY)
+          [ -n "$SHARED" ] || missing+=(WESI_MAIN_SHARED_SECRET)
+          [ -n "$GEMINI" ] || missing+=(GEMINI_API_KEY)
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "Не заданы секреты: ${missing[*]}" >&2
+            echo "Relay не будет выложен, пока они не появятся." >&2
+            exit 1
+          fi
+          if [ "${#SHARED}" -lt 32 ]; then
+            echo "WESI_MAIN_SHARED_SECRET короче 32 символов — Relay такой не примет." >&2
+            exit 1
+          fi
+          echo "Все секреты на месте."
+
+      - name: Проверить синтаксис и тесты Relay
+        run: |
+          set -euo pipefail
+          for file in server/wesi-ai-relay/*.mjs; do node --check "$file"; done
+          node --test server/wesi-ai-relay/*.test.mjs
+
+      - name: Подготовить ключ
+        shell: bash
+        env:
+          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+          HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/relay_key
+          chmod 600 ~/.ssh/relay_key
+          if [ -n "$KNOWN" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            # Без сохранённого отпечатка первое подключение доверяет тому,
+            # кто ответил. Для повторных выкладок задайте
+            # WESI_RELAY_SSH_KNOWN_HOSTS.
+            ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Выложить и запустить
+        shell: bash
+        env:
+          HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+          USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+          GEMINI: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          tmp="wesi-ai-relay-${GITHUB_RUN_ID}"
+          ssh -i ~/.ssh/relay_key -o BatchMode=yes "$USER@$HOST" "mkdir -p ~/$tmp"
+          scp -i ~/.ssh/relay_key -o BatchMode=yes \
+            server/wesi-ai-relay/server.mjs \
+            server/wesi-ai-relay/auth.mjs \
+            server/wesi-ai-relay/google.mjs \
+            server/wesi-ai-relay/package.json \
+            server/wesi-ai-relay/deploy-relay.sh \
+            "$USER@$HOST:~/$tmp/"
+          # Секреты уходят через переменные окружения sudo, а не аргументами:
+          # аргументы видны в списке процессов любому на машине.
+          ssh -i ~/.ssh/relay_key -o BatchMode=yes "$USER@$HOST" \
+            "cd ~/$tmp && sudo -E env WESI_MAIN_SHARED_SECRET='$SHARED' GEMINI_API_KEY='$GEMINI' bash deploy-relay.sh --install && cd ~ && rm -rf ~/$tmp"
+
+      - name: Проверить /health снаружи
+        if: ${{ secrets.WESI_RELAY_PUBLIC_HOST != '' }}
+        shell: bash
+        env:
+          PUBLIC: ${{ secrets.WESI_RELAY_PUBLIC_HOST }}
+        run: |
+          set -euo pipefail
+          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://$PUBLIC/health" || echo 000)"
+          if [ "$code" != "200" ]; then
+            echo "Relay не отвечает по HTTPS: код $code" >&2
+            echo "Проверьте nginx и сертификат — образец в server/wesi-ai-relay/nginx-relay.conf" >&2
+            exit 1
+          fi
+          echo "Relay отвечает по HTTPS."
