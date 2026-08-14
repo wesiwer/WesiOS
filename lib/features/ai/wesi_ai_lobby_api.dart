@@ -4,6 +4,7 @@ import 'dart:io';
 import '../../core/sync/sync_endpoint.dart';
 import '../organizations/services/organization_context.dart';
 import 'models/wesi_ai_chat_models.dart';
+import 'models/wesi_ai_emotions.dart';
 import 'wesi_ai_api.dart';
 
 class WesiAiLobbyApi extends WesiAiApi {
@@ -20,6 +21,7 @@ class WesiAiLobbyApi extends WesiAiApi {
     required String message,
     required List<WesiAiMessage> history,
     required WesiAiMemorySnapshot memory,
+    required WesiAiEmotionSnapshot emotions,
   }) async {
     if (conversation.persona != WesiAiPersona.lobby) {
       return super.send(
@@ -28,14 +30,21 @@ class WesiAiLobbyApi extends WesiAiApi {
         message: message,
         history: history,
         memory: memory,
+        emotions: emotions,
       );
     }
 
     final session = SyncEndpoint.session;
     final token = session?['token'];
     final sessionId = SyncEndpoint.sessionId;
-    if (!SyncEndpoint.isConnected || token is! String || token.isEmpty || sessionId == null) {
-      throw const WesiAiApiException('NOT_SIGNED_IN', 'Войдите в WesiOS, чтобы использовать Wesi AI');
+    if (!SyncEndpoint.isConnected ||
+        token is! String ||
+        token.isEmpty ||
+        sessionId == null) {
+      throw const WesiAiApiException(
+        'NOT_SIGNED_IN',
+        'Войдите в WesiOS, чтобы использовать Wesi AI',
+      );
     }
 
     final base = Uri.parse(SyncEndpoint.url);
@@ -45,14 +54,15 @@ class WesiAiLobbyApi extends WesiAiApi {
       'tier': tier.name,
       'lobbyMode': conversation.lobbyMode.name,
       'message': message,
-      'summary': '',
+      'summary': conversation.contextSummary,
       'conversationId': conversation.id,
       'activeOrganizationId': OrganizationContext.currentOrganizationId,
       'memory': memory.toJson(),
-      'messages': history
-          .where((m) => m.kind == WesiAiMessageKind.text && m.author != WesiAiMessageAuthor.system)
-          .map((m) => {'author': m.author.name, 'text': m.text})
-          .toList(),
+      'emotions': emotions.toJson(),
+      'messages': WesiAiApi.transportHistory(
+        history,
+        skip: conversation.contextCompactedMessageCount,
+      ),
     };
 
     try {
@@ -73,8 +83,19 @@ class WesiAiLobbyApi extends WesiAiApi {
         throw WesiAiApiException(code, _messageFor(code));
       }
       final answer = '${json['answer'] ?? ''}'.trim();
-      if (answer.isEmpty) throw const WesiAiApiException('WAI_EMPTY_RESPONSE', 'Wesi AI вернул пустой ответ');
-      return WesiAiReply(answer: answer, requestId: '${json['requestId'] ?? ''}');
+      if (answer.isEmpty) {
+        throw const WesiAiApiException(
+          'WAI_EMPTY_RESPONSE',
+          'Wesi AI вернул пустой ответ',
+        );
+      }
+      return WesiAiReply(
+        answer: answer,
+        requestId: '${json['requestId'] ?? ''}',
+        emotions: json['emotions'] is Map
+            ? WesiAiEmotionSnapshot.fromJson(json['emotions'])
+            : null,
+      );
     } on WesiAiApiException {
       rethrow;
     } on SocketException {
@@ -82,13 +103,18 @@ class WesiAiLobbyApi extends WesiAiApi {
     } on HttpException {
       throw const WesiAiApiException('NETWORK', 'Ошибка связи с сервером WesiOS');
     } on FormatException {
-      throw const WesiAiApiException('NOT_WESIOS', 'Сервер WesiOS вернул некорректный ответ');
+      throw const WesiAiApiException(
+        'NOT_WESIOS',
+        'Сервер WesiOS вернул некорректный ответ',
+      );
     }
   }
 
   static String _messageFor(String code) => switch (code) {
-        'WAI_RELAY_NOT_CONFIGURED' => 'Wesi AI ещё не подключён к серверу моделей',
-        'WAI_PERSONA_ENGINE_NOT_READY' => 'Профиль Wesi AI ещё не готов на сервере',
+        'WAI_RELAY_NOT_CONFIGURED' =>
+          'Wesi AI ещё не подключён к серверу моделей',
+        'WAI_PERSONA_ENGINE_NOT_READY' =>
+          'Профиль Wesi AI ещё не готов на сервере',
         'WAI_RELAY_UNAVAILABLE' => 'Сервис Wesi AI временно недоступен',
         'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
         'WAI_EMPTY_RESPONSE' => 'Wesi AI вернул пустой ответ',
