@@ -25,7 +25,7 @@ void main() {
     );
   });
 
-  test('thirty minutes away starts a fresh conversation', () {
+  test('thirty minutes away from Wesi AI starts a fresh conversation', () {
     final opened = DateTime(2026, 8, 14, 10);
     final left = opened.add(const Duration(minutes: 5));
     WesiAiSessionPolicy.markModuleOpened(opened);
@@ -39,10 +39,23 @@ void main() {
     );
   });
 
-  test('backgrounding app forces a fresh conversation on next opening', () {
+  test('brief app background keeps the current conversation', () {
     final opened = DateTime(2026, 8, 14, 10);
     WesiAiSessionPolicy.markModuleOpened(opened);
     WesiAiSessionPolicy.markAppBackgrounded();
+
+    expect(
+      WesiAiSessionPolicy.shouldStartFresh(
+        opened.add(const Duration(minutes: 1)),
+      ),
+      isFalse,
+    );
+  });
+
+  test('new process starts a fresh conversation', () {
+    final opened = DateTime(2026, 8, 14, 10);
+    WesiAiSessionPolicy.markModuleOpened(opened);
+    WesiAiSessionPolicy.resetForTest();
 
     expect(
       WesiAiSessionPolicy.shouldStartFresh(
