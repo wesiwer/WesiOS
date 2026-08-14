@@ -62,6 +62,10 @@ function mediaUrl(jobId, token) {
   return PUBLIC_BASE + "/api/wesi/ai/media/file/" + encodeURIComponent(jobId) + "?token=" + encodeURIComponent(token);
 }
 
+function statusUrl(jobId) {
+  return PUBLIC_BASE + "/api/wesi/ai/media/jobs/" + encodeURIComponent(jobId);
+}
+
 function makeContentBlock(payload) {
   const status = String(payload.status || "pending");
   const data = {
@@ -74,6 +78,13 @@ function makeContentBlock(payload) {
   if (status === "ready" && payload.fileToken) {
     data.url = mediaUrl(payload.jobId, payload.fileToken);
     data.mimeType = String(payload.mimeType || "");
+  } else {
+    // The Flutter block validator intentionally accepts only http(s) media
+    // blocks. Pending/failed states therefore retain the authenticated Main
+    // status URL. This also lets a persisted pending card resume polling after
+    // an app restart and lets a failed status replace that card instead of
+    // being discarded and polled forever.
+    data.url = statusUrl(payload.jobId);
   }
   return {type: "media", data: data};
 }
@@ -216,5 +227,6 @@ module.exports = {
   persistRelayArtifact: persistRelayArtifact,
   makeContentBlock: makeContentBlock,
   serveFile: serveFile,
-  mediaUrl: mediaUrl
+  mediaUrl: mediaUrl,
+  statusUrl: statusUrl
 };
