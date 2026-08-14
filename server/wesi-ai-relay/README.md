@@ -53,11 +53,13 @@ Firebase Android API key из `android/app/google-services.json` **не явля
 |---|---|
 | `WESI_RELAY_SSH_HOST` | отдельный SSH host; если не задан, используется DNS hostname из workflow input |
 | `WESI_RELAY_SSH_KNOWN_HOSTS` | pinned SSH host key Relay |
-| `WESI_MAIN_SHARED_SECRET` | постоянный HMAC secret; если не задан, deployment генерирует сильный secret и атомарно ставит его на Relay и Main |
+| `WESI_MAIN_SHARED_SECRET` | постоянный HMAC secret; если не задан, первый deployment генерирует сильный secret и ставит его на Relay и Main |
 | `WESI_ZANE_TTS_VOICE` | override натурального голоса Зейна |
 | `WESI_NIRVANA_TTS_VOICE` | override натурального голоса Нирваны |
 
 Дефолты голосов: Зейн — `Charon`, Нирвана — `Sulafat`.
+
+Для первого запуска `WESI_MAIN_SHARED_SECRET` можно не задавать. Для будущих повторных production-deploy рекомендуется сохранить постоянное случайное значение длиной не менее 32 символов в GitHub Secret: так даже оборванный redeploy не сможет временно оставить Main и Relay на разных HMAC secret.
 
 ## Единственный production запуск
 
@@ -148,13 +150,13 @@ Relay artifact:
 - выдаётся только по отдельному подписанному Main request;
 - уничтожается при первом успешном получении.
 
-Для Veo Relay сам скачивает provider result с `GEMINI_API_KEY`, проверяет HTTPS Google host, MIME и максимальный размер, после чего Main видит только Wesi artifact handoff.
+Для Veo Relay сам скачивает provider result с `GEMINI_API_KEY`. Каждый HTTP redirect обрабатывается вручную и повторно проверяется по Google API host allowlist **до** передачи API key следующему адресу. Затем проверяются MIME и максимальный размер, и Main получает только Wesi artifact handoff.
 
 ## Natural voice fallback
 
 Клиент сначала пытается получить натуральный голос через Main → Relay → Gemini. Если Relay/провайдер недоступен, разговор автоматически продолжает работать через системный Android/Windows TTS.
 
-Android bridge завершает `speak()` только после фактического `onDone` озвучки, поэтому hands-free session не открывает микрофон, пока динамик ещё говорит.
+Gemini TTS возвращает raw PCM 24 kHz mono 16-bit. Relay заворачивает PCM в настоящий RIFF/WAV перед отправкой Main/client. Android bridge завершает `speak()` только после фактического `onDone` озвучки, поэтому hands-free session не открывает микрофон, пока динамик ещё говорит.
 
 ## Локальная проверка
 
