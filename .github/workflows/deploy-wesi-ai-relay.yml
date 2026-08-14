@@ -1,21 +1,33 @@
 name: Deploy Wesi AI Relay
 
-# Выкладка зарубежного Relay. Запускается только руками: у него на борту
-# ключ провайдера, и перезапускать его на каждый push незачем.
+# One-shot Foreign Relay deployment.
 #
-# Нужны секреты репозитория:
-#   WESI_RELAY_SSH_HOST   — адрес зарубежного сервера
-#   WESI_RELAY_SSH_USER   — пользователь с правом sudo
-#   WESI_RELAY_SSH_KEY    — приватный ключ
-#   WESI_MAIN_SHARED_SECRET — общий секрет с api.wesi-inc.ru, не короче 32 символов
-#   GEMINI_API_KEY        — ключ провайдера, живёт только на Relay
+# Required repository secrets:
+#   WESI_RELAY_SSH_HOST
+#   WESI_RELAY_SSH_USER
+#   WESI_RELAY_SSH_KEY
+#   GEMINI_API_KEY
 #
-# Необязательные:
-#   WESI_RELAY_SSH_KNOWN_HOSTS — отпечаток сервера
-#   WESI_RELAY_PUBLIC_HOST     — публичный адрес для проверки /health по HTTPS
+# Existing Main Server secrets are reused automatically:
+#   WESI_SERVER_HOST
+#   WESI_SERVER_USER
+#   WESI_SERVER_SSH_KEY
+#
+# Optional:
+#   WESI_RELAY_SSH_KNOWN_HOSTS
+#   WESI_SERVER_KNOWN_HOSTS
+#   WESI_MAIN_SHARED_SECRET       (generated per deploy when absent)
+#   WESI_RELAY_PUBLIC_HOST       (or pass public_host input)
+#   WESI_ZANE_TTS_VOICE          (default Charon)
+#   WESI_NIRVANA_TTS_VOICE       (default Sulafat)
 
 on:
   workflow_dispatch:
+    inputs:
+      public_host:
+        description: 'HTTPS hostname of Foreign Relay (without https://). May also be stored as WESI_RELAY_PUBLIC_HOST secret.'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -27,107 +39,264 @@ concurrency:
 jobs:
   deploy:
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
 
-      # Проверка до всякого подключения: отсутствующий секрет иначе
-      # превращается в невнятную ошибку ssh на середине выкладки.
-      - name: Проверить, что все секреты заданы
+      - name: Resolve and validate deployment configuration
         shell: bash
         env:
-          HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
-          USER: ${{ secrets.WESI_RELAY_SSH_USER }}
-          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
-          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+          RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+          RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
           GEMINI: ${{ secrets.GEMINI_API_KEY }}
+          MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+          MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          PROVIDED_SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+          PUBLIC_SECRET: ${{ secrets.WESI_RELAY_PUBLIC_HOST }}
+          PUBLIC_INPUT: ${{ inputs.public_host }}
         run: |
           set -euo pipefail
           missing=()
-          [ -n "$HOST" ]   || missing+=(WESI_RELAY_SSH_HOST)
-          [ -n "$USER" ]   || missing+=(WESI_RELAY_SSH_USER)
-          [ -n "$KEY" ]    || missing+=(WESI_RELAY_SSH_KEY)
-          [ -n "$SHARED" ] || missing+=(WESI_MAIN_SHARED_SECRET)
-          [ -n "$GEMINI" ] || missing+=(GEMINI_API_KEY)
+          [ -n "${RELAY_HOST:-}" ] || missing+=(WESI_RELAY_SSH_HOST)
+          [ -n "${RELAY_USER:-}" ] || missing+=(WESI_RELAY_SSH_USER)
+          [ -n "${RELAY_KEY:-}" ] || missing+=(WESI_RELAY_SSH_KEY)
+          [ -n "${GEMINI:-}" ] || missing+=(GEMINI_API_KEY)
+          [ -n "${MAIN_HOST:-}" ] || missing+=(WESI_SERVER_HOST)
+          [ -n "${MAIN_USER:-}" ] || missing+=(WESI_SERVER_USER)
+          [ -n "${MAIN_KEY:-}" ] || missing+=(WESI_SERVER_SSH_KEY)
           if [ ${#missing[@]} -gt 0 ]; then
-            echo "Не заданы секреты: ${missing[*]}" >&2
-            echo "Relay не будет выложен, пока они не появятся." >&2
+            echo "::error::Missing secrets: ${missing[*]}"
             exit 1
           fi
-          if [ "${#SHARED}" -lt 32 ]; then
-            echo "WESI_MAIN_SHARED_SECRET короче 32 символов — Relay такой не примет." >&2
-            exit 1
-          fi
-          echo "Все секреты на месте."
 
-      - name: Проверить синтаксис и тесты Relay
+          PUBLIC="${PUBLIC_INPUT:-${PUBLIC_SECRET:-}}"
+          PUBLIC="${PUBLIC#https://}"
+          PUBLIC="${PUBLIC%%/*}"
+          if ! [[ "$PUBLIC" =~ ^[A-Za-z0-9.-]+$ ]] || [ ${#PUBLIC} -lt 4 ]; then
+            echo '::error::Set workflow input public_host or WESI_RELAY_PUBLIC_HOST to the Relay HTTPS hostname.'
+            exit 1
+          fi
+
+          if [ -n "${PROVIDED_SHARED:-}" ]; then
+            SHARED="$PROVIDED_SHARED"
+          else
+            SHARED="$(openssl rand -hex 32)"
+          fi
+          [ ${#SHARED} -ge 32 ] || { echo '::error::WESI_MAIN_SHARED_SECRET is too short'; exit 1; }
+          echo "::add-mask::$SHARED"
+          echo "WESI_SHARED_SECRET=$SHARED" >> "$GITHUB_ENV"
+          echo "WESI_RELAY_PUBLIC=$PUBLIC" >> "$GITHUB_ENV"
+          echo 'Configuration resolved. Shared secret will be installed on both servers automatically.'
+
+      - name: Validate Relay source and tests
         run: |
           set -euo pipefail
           for file in server/wesi-ai-relay/*.mjs; do node --check "$file"; done
           node --test server/wesi-ai-relay/*.test.mjs
+          bash -n server/wesi-ai-relay/deploy-relay.sh
 
-      - name: Подготовить ключ
+      - name: Prepare Relay SSH
         shell: bash
         env:
           KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
           HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/relay_key
           chmod 600 ~/.ssh/relay_key
-          if [ -n "$KNOWN" ]; then
-            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts
           else
-            # Без сохранённого отпечатка первое подключение доверяет тому,
-            # кто ответил. Для повторных выкладок задайте
-            # WESI_RELAY_SSH_KNOWN_HOSTS.
-            ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts 2>/dev/null
+            ssh-keyscan -H "$HOST" > ~/.ssh/relay_known_hosts 2>/dev/null
           fi
-          chmod 600 ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/relay_known_hosts
 
-      - name: Выложить и запустить
+      - name: Build sealed Relay secret bundle
+        shell: bash
+        env:
+          SHARED: ${{ env.WESI_SHARED_SECRET }}
+          GEMINI: ${{ secrets.GEMINI_API_KEY }}
+          ZANE_VOICE: ${{ secrets.WESI_ZANE_TTS_VOICE }}
+          NIRVANA_VOICE: ${{ secrets.WESI_NIRVANA_TTS_VOICE }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, os
+          pairs = {
+              'WESI_MAIN_SHARED_SECRET_B64': os.environ['SHARED'],
+              'GEMINI_API_KEY_B64': os.environ['GEMINI'],
+          }
+          optional = {
+              'WESI_ZANE_TTS_VOICE_B64': os.environ.get('ZANE_VOICE', ''),
+              'WESI_NIRVANA_TTS_VOICE_B64': os.environ.get('NIRVANA_VOICE', ''),
+          }
+          pairs.update({k: v for k, v in optional.items() if v})
+          with open('relay-secrets.b64', 'w', encoding='ascii') as f:
+              for key, value in pairs.items():
+                  encoded = base64.b64encode(value.encode()).decode()
+                  f.write(f'{key}={encoded}\n')
+          PY
+          chmod 600 relay-secrets.b64
+
+      - name: Upload and restart Relay
         shell: bash
         env:
           HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
           USER: ${{ secrets.WESI_RELAY_SSH_USER }}
-          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
-          GEMINI: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
+          SSH_OPTS=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
           tmp="wesi-ai-relay-${GITHUB_RUN_ID}"
-          ssh -i ~/.ssh/relay_key -o BatchMode=yes "$USER@$HOST" "mkdir -p ~/$tmp"
-          scp -i ~/.ssh/relay_key -o BatchMode=yes \
+          ssh "${SSH_OPTS[@]}" "$USER@$HOST" "mkdir -p ~/$tmp"
+          scp "${SSH_OPTS[@]}" \
             server/wesi-ai-relay/server.mjs \
             server/wesi-ai-relay/auth.mjs \
             server/wesi-ai-relay/google.mjs \
+            server/wesi-ai-relay/google-media.mjs \
             server/wesi-ai-relay/package.json \
             server/wesi-ai-relay/deploy-relay.sh \
+            relay-secrets.b64 \
             "$USER@$HOST:~/$tmp/"
-          # Секреты уходят через переменные окружения sudo, а не аргументами:
-          # аргументы видны в списке процессов любому на машине.
-          ssh -i ~/.ssh/relay_key -o BatchMode=yes "$USER@$HOST" \
-            "cd ~/$tmp && sudo -E env WESI_MAIN_SHARED_SECRET='$SHARED' GEMINI_API_KEY='$GEMINI' bash deploy-relay.sh --install && cd ~ && rm -rf ~/$tmp"
+          rm -f relay-secrets.b64
+          ssh "${SSH_OPTS[@]}" "$USER@$HOST" \
+            "cd ~/$tmp && sudo bash deploy-relay.sh --install-from-b64 ~/$tmp/relay-secrets.b64 && cd ~ && rm -rf ~/$tmp"
 
-      # Проверка наличия адреса живёт внутри скрипта, а не в `if:`. Секрет в
-      # условии шага GitHub не принимает вовсе — и отвергает при этом весь
-      # файл, а не один шаг: workflow не запускается, а в списке появляется
-      # прогон без единой задачи, названный путём к файлу.
-      - name: Проверить /health снаружи
+      - name: Verify public HTTPS and real Gemini roundtrip
         shell: bash
         env:
-          PUBLIC: ${{ secrets.WESI_RELAY_PUBLIC_HOST }}
+          PUBLIC: ${{ env.WESI_RELAY_PUBLIC }}
+          SHARED: ${{ env.WESI_SHARED_SECRET }}
         run: |
           set -euo pipefail
-          if [ -z "${PUBLIC:-}" ]; then
-            echo "WESI_RELAY_PUBLIC_HOST не задан — проверка снаружи пропущена."
-            exit 0
+          curl -fsS --max-time 20 "https://$PUBLIC/health" > relay-health.json
+          python3 - <<'PY'
+          import json
+          data = json.load(open('relay-health.json', encoding='utf-8'))
+          assert data.get('ok') is True, data
+          assert data.get('ready') is True, data
+          print('Foreign Relay HTTPS health: ready')
+          PY
+
+          python3 - <<'PY'
+          import hashlib, hmac, json, os, time, urllib.request, urllib.error
+          public = os.environ['PUBLIC']
+          secret = os.environ['SHARED'].encode()
+          request_id = 'wai_deploy_' + str(int(time.time()))
+          payload = {
+              'requestId': request_id,
+              'route': 'google/gemini-3.5-flash-lite',
+              'operation': 'chat',
+              'input': {'system': 'Deployment health check.', 'history': [], 'message': 'Ответь одним словом: OK'},
+          }
+          raw = json.dumps(payload, separators=(',', ':'), ensure_ascii=False).encode()
+          timestamp = str(int(time.time()))
+          signed = request_id.encode() + b'.' + timestamp.encode() + b'.' + raw
+          signature = hmac.new(secret, signed, hashlib.sha256).hexdigest()
+          headers = {
+              'Content-Type': 'application/json',
+              'X-Wesi-Request-Id': request_id,
+              'X-Wesi-Timestamp': timestamp,
+              'X-Wesi-Signature': signature,
+          }
+          req = urllib.request.Request(f'https://{public}/v1/wesi-ai', data=raw, headers=headers, method='POST')
+          with urllib.request.urlopen(req, timeout=120) as response:
+              result = json.load(response)
+          assert result.get('ok') is True and str(result.get('answer', '')).strip(), result
+          print('Relay -> Gemini roundtrip: OK')
+
+          # The exact same authenticated request must now be rejected as replay.
+          try:
+              urllib.request.urlopen(req, timeout=20)
+              raise AssertionError('Replay unexpectedly accepted')
+          except urllib.error.HTTPError as exc:
+              body = json.loads(exc.read().decode() or '{}')
+              assert exc.code == 401 and body.get('code') == 'WAI_RELAY_REPLAY_DETECTED', (exc.code, body)
+          print('Relay anti-replay production check: OK')
+          PY
+
+      - name: Prepare Main Server SSH
+        shell: bash
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          printf '%s\n' "$KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/main_known_hosts 2>/dev/null
           fi
-          code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://$PUBLIC/health" || echo 000)"
-          if [ "$code" != "200" ]; then
-            echo "Relay не отвечает по HTTPS: код $code" >&2
-            echo "Проверьте nginx и сертификат — образец в server/wesi-ai-relay/nginx-relay.conf" >&2
-            exit 1
+          chmod 600 ~/.ssh/main_known_hosts
+
+      - name: Configure Main Server to use Foreign Relay
+        shell: bash
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          PUBLIC: ${{ env.WESI_RELAY_PUBLIC }}
+          SHARED: ${{ env.WESI_SHARED_SECRET }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          config = {
+              'url': 'https://' + os.environ['PUBLIC'],
+              'sharedSecret': os.environ['SHARED'],
+              'routes': {
+                  'fast': 'google/gemini-3.5-flash-lite',
+                  'pro': 'google/gemini-3.6-flash',
+                  'maximum': 'google/gemini-3.6-flash',
+              },
+          }
+          with open('wesi-ai-relay.json', 'w', encoding='utf-8') as f:
+              json.dump(config, f, ensure_ascii=False)
+          PY
+          chmod 600 wesi-ai-relay.json
+
+          SSH_OPTS=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          scp "${SSH_OPTS[@]}" wesi-ai-relay.json "$USER@$HOST:/tmp/.wesi-ai-relay.json"
+          rm -f wesi-ai-relay.json
+          ssh "${SSH_OPTS[@]}" "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          SOURCE=/tmp/.wesi-ai-relay.json
+          TARGET="$HOOK_DIR/.wesi-ai-relay.json"
+          trap 'rm -f "$SOURCE"' EXIT
+          test -s "$SOURCE"
+          test -d "$HOOK_DIR"
+          PB_USER=$(ps -eo user=,comm= | awk '$2 ~ /^pocketbase$/ {print $1; exit}')
+          if [ -z "${PB_USER:-}" ]; then
+            PB_USER=$(stat -c '%U' "$HOOK_DIR")
           fi
-          echo "Relay отвечает по HTTPS."
+          PB_GROUP=$(id -gn "$PB_USER" 2>/dev/null || stat -c '%G' "$HOOK_DIR")
+          if [ "$(id -un)" = "$PB_USER" ] && [ -w "$HOOK_DIR" ]; then
+            install -o "$PB_USER" -g "$PB_GROUP" -m 600 "$SOURCE" "$TARGET"
+          else
+            sudo -n install -o "$PB_USER" -g "$PB_GROUP" -m 600 "$SOURCE" "$TARGET"
+          fi
+          test "$(stat -c '%a' "$TARGET")" = 600
+          REMOTE
+
+      - name: Verify Main Server can reach Relay
+        shell: bash
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          PUBLIC: ${{ env.WESI_RELAY_PUBLIC }}
+        run: |
+          set -euo pipefail
+          SSH_OPTS=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          ssh "${SSH_OPTS[@]}" "$USER@$HOST" \
+            "curl -fsS --max-time 20 'https://$PUBLIC/health' | grep -q '\"ready\":true'"
+          echo 'Main Server -> Foreign Relay HTTPS: OK'
+
+      - name: Deployment summary
+        run: |
+          echo 'Wesi AI Relay is deployed, provider roundtrip passed, anti-replay passed, and Main Server configuration is installed.'
