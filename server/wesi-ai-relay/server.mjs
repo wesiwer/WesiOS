@@ -15,10 +15,8 @@ const host = process.env.WESI_RELAY_HOST || '127.0.0.1';
 const port = Number(process.env.WESI_RELAY_PORT || 8787);
 const secret = String(process.env.WESI_MAIN_SHARED_SECRET || '');
 const googleKey = String(process.env.GEMINI_API_KEY || '');
-// Image/video/music provider endpoints can incur provider charges. Wesi AI is
-// free-by-default, so those routes remain unavailable unless an operator
-// explicitly opts in on the Relay host. Natural TTS is kept separate.
 const paidMediaEnabled = /^(1|true|yes)$/i.test(String(process.env.WESI_ENABLE_PAID_MEDIA || 'false'));
+const MAX_SIGNED_BODY_BYTES = 28 * 1024 * 1024;
 
 function send(res, status, body) {
   res.writeHead(status, {
@@ -45,7 +43,7 @@ async function readBody(req) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 2097152) throw new Error('too_large');
+    if (size > MAX_SIGNED_BODY_BYTES) throw new Error('too_large');
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString('utf8');
@@ -113,6 +111,14 @@ http.createServer(async (req, res) => {
       service: 'wesi-ai-relay',
       ready: secret.length >= 32 && googleKey.length > 0,
       routing: ['fast', 'pro', 'ultra'],
+      attachments: {
+        enabled: true,
+        maxFiles: 4,
+        maxFileBytes: 15 * 1024 * 1024,
+        maxTotalBytes: 18 * 1024 * 1024,
+        multimodal: true,
+        archives: true,
+      },
       media: {
         tts: googleKey.length > 0,
         paidCloudEnabled: paidMediaEnabled,
