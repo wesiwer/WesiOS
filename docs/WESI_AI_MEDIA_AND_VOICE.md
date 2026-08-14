@@ -2,139 +2,202 @@
 
 Status date: 2026-08-14.
 
-This document defines the production contract for voice, image, video and music in Wesi AI. It complements `WESI_AI_SPEC.md` and the current implementation status. The client must never receive provider API keys or call a model provider directly.
+This document records the implemented production contract for voice, image, video and music in Wesi AI. It complements `WESI_AI_SPEC.md` and `WESI_AI_GATEWAY.md`.
 
-## 1. Rich response contract already implemented
+The client never receives provider API keys and never calls Google AI directly.
 
-Wesi AI messages may carry validated data-only content blocks in local message metadata:
+## 1. Rich response contract
 
-- `knowledge` — a verified Knowledge Base article reference;
+Wesi AI messages can carry validated data-only content blocks in local message metadata:
+
+- `knowledge` — verified Knowledge Base article reference;
 - `table` — columns + rows;
 - `chart` — line/bar/pie/scatter numerical series;
 - `diagram` — nodes + directed edges;
-- `media` — image/video/audio/music asset state and WesiOS-served URL.
+- `media` — image/video/audio/music state and WesiOS-controlled URL.
 
-The client does not execute model-authored HTML, JavaScript or Flutter code. Every block has explicit limits and is parsed by `WesiAiContentBlock`.
+The client does not execute model-authored HTML, JavaScript or Flutter code. Every block is parsed by `WesiAiContentBlock` with explicit bounds.
 
-Server presentation tools already expose:
+Verified Main Server tools include:
 
 - `render_table`;
 - `render_chart`;
-- `render_diagram`.
+- `render_diagram`;
+- `generate_image`;
+- `generate_music`;
+- `generate_video` when Relay configuration is ready.
 
-A verified tool result returns `result.contentBlock`; the client attaches that block to the assistant message and persists it with local-first chat history.
+`result.contentBlock` from a verified tool is attached to the assistant message and persisted with local-first chat history.
 
 ## 2. Knowledge Base references
 
-`knowledge_search` remains the source of truth for article visibility. A knowledge card is created only from a server result where:
+`knowledge_search` and `knowledge_article` remain permission-aware Main Server tools.
 
-- `verified == true`;
-- `ok == true`;
-- `tool == knowledge_search`.
+Knowledge cards are produced from verified server results, not arbitrary model-authored article ids. On click the client resolves the real article, rechecks current employee Knowledge permissions and opens `ArticleScreen` directly.
 
-The card carries the returned article id and title. On click the client resolves the local article by id, rechecks current employee Knowledge permissions and opens `ArticleScreen` directly. This means a model-authored fake article id is not enough to create a trusted Knowledge card.
+`knowledge_article` can read a specific permitted article for detailed summary, explanation, comparison and Q&A.
 
-The article body returned by the verified tool remains available to the model for summary, explanation, comparison and Q&A.
+## 3. Full voice conversation — implemented
 
-## 3. Voice conversation
+Voice is no longer only dictation.
 
-### Input — implemented
+Hands-free cycle:
 
-The rich Wesi AI screen uses the existing `speech_to_text` dependency. Dictation:
+```text
+start conversation
+→ listen
+→ detect end of phrase by silence
+→ auto-send exactly once
+→ wait for Wesi AI
+→ speak Zane/Nirvana reply
+→ reopen microphone
+→ repeat
+```
 
-1. starts only from an explicit microphone button;
-2. shows partial recognition in the composer;
-3. does not auto-send;
-4. lets the employee edit the recognized text;
-5. sends the final text through the ordinary authenticated Wesi AI path, so all existing permissions and organization scoping remain in force.
+Implemented safeguards:
 
-### Output — target contract
+- microphone and TTS do not run concurrently;
+- one recognized phrase can produce only one send;
+- a short breathing pause does not prematurely submit the phrase;
+- barge-in/stop interrupts speech before microphone reopens;
+- the UI exposes listening/thinking/speaking states;
+- Lobby speaks each persona with the matching voice profile;
+- if `speech_to_text` silently reaches its continuous-listening limit, the session detects the dead microphone and rearms it without leaving a fake “listening” state.
 
-Two output modes are planned:
+## 4. Local and natural persona voices
 
-1. **Local/system voice** for low-latency accessibility and offline-friendly playback where the platform provides a suitable TTS engine.
-2. **Wesi AI voice** through the Relay using Gemini TTS for persona-specific natural speech.
+### Local fallback
 
-Natural voice output must be stored as a WesiOS media artifact and returned as an `audio` media block. Provider base64 must not be embedded in Hive chat history.
+Android uses the native `wesios/ai_speech` bridge. Windows uses `System.Speech` with base64-transported text to avoid shell interpolation.
 
-Recommended persona voice mapping is configuration, not hardcoded identity. It must be possible to change Zane/Nirvana voices without an app release.
+A critical Android race is closed: `TextToSpeech.speak()` is not treated as finished when playback starts. The MethodChannel Future completes only after `UtteranceProgressListener.onDone` or an explicit stop/error, so the voice session cannot reopen the microphone while the device speaker is still talking.
 
-## 4. Generative media architecture
+### Natural voice
 
-Production flow:
+Preferred path when Foreign Relay is ready:
 
-`Wesi AI tool -> Main Server authorization/quota -> Relay provider adapter -> provider -> Relay -> Main artifact store -> signed/controlled WesiOS URL -> media content block -> client`
+```text
+WesiOS → authenticated Main /api/wesi/ai/tts
+→ signed Main→Relay request
+→ Gemini TTS
+→ Main
+→ in-memory client playback
+```
 
-Provider credentials stay only on Relay (or server-side cloud credentials where Vertex AI requires them).
+The client waits until natural audio playback actually completes before returning to listening.
+
+Default Relay voice mapping:
+
+- Zane: `Charon`;
+- Nirvana: `Sulafat`.
+
+Both can be changed through Relay environment/secrets without releasing a new app version.
+
+If Relay/provider/network/playback fails, the same conversation automatically falls back to the local system voice instead of becoming silent.
+
+Natural TTS currently uses `gemini-3.1-flash-tts-preview`.
+
+## 5. Main ↔ Relay authentication — implemented
+
+HMAC signs:
+
+```text
+requestId + "." + timestamp + "." + rawBody
+```
+
+Relay also keeps a bounded replay cache. A valid request id is accepted once; an exact replay or a request-id substitution is rejected.
+
+Shared transport helpers in `wesi_ai_lib.js` are used for text/media transport so different features do not independently reimplement the signing string.
+
+## 6. Generative media architecture — implemented code-side
+
+Production path:
+
+```text
+verified Wesi AI tool
+→ Main authorization/scope
+→ signed Relay provider call
+→ Google AI
+→ Relay short-lived artifact
+→ signed one-time Main artifact fetch
+→ WesiOS-controlled storage
+→ WesiOS URL
+→ validated media block
+→ client
+```
+
+Provider credentials remain only on Foreign Relay.
 
 ### Image
 
-Use current Gemini native image generation rather than deprecated Imagen endpoints. The Relay receives a normalized request such as:
+`generate_image` uses `gemini-3.1-flash-image` with allowlisted aspect ratios and output sizes.
 
-```json
-{
-  "kind": "image",
-  "prompt": "...",
-  "aspectRatio": "1:1",
-  "imageSize": "1K"
-}
-```
-
-Main returns a `media` block only after the generated bytes are copied into WesiOS-controlled artifact storage.
-
-### Video
-
-Video generation is an asynchronous job. The client must never hold the provider operation name as authority.
-
-Lifecycle:
-
-`queued -> generating -> downloading -> ready | failed | cancelled | expired`
-
-Main stores the Wesi job id and maps it internally to the provider operation. Polling happens server-side. When the provider finishes, Main/Relay downloads the video, verifies type/size, stores it in WesiOS artifact storage and exposes only the WesiOS URL.
+The generated image is not embedded into Hive history as provider base64. Relay converts it into a one-time artifact; Main fetches the bytes over a second signed request, checks size/MIME and stores it in WesiOS media storage.
 
 ### Music
 
-Music follows the same artifact path. Lyria/Vertex authentication is separate from the Gemini API-key path and must stay server-side. Short clip and full-song models are separate product choices and need independent quota/cost limits.
+`generate_music` uses Lyria 3 directly through the Gemini API, so a separate Vertex credential is not required:
 
-### Voice/TTS
+- `lyria-3-clip-preview` — quick clip;
+- `lyria-3-pro-preview` — longer composition with optional WAV output.
 
-TTS is treated as audio generation. The provider may return PCM/base64; the server artifact layer normalizes it to a player-friendly WAV/other supported file before publishing the WesiOS URL.
+The same `GEMINI_API_KEY` therefore covers Wesi AI text, TTS, image, video and music provider calls.
 
-## 5. Media job schema
+### Video
 
-Every media job should contain at minimum:
+`generate_video` starts a Veo long-running operation and immediately returns a verified pending media card. It does not keep the chat HTTP request open for the full generation time.
 
-- `id` — Wesi-generated opaque id;
-- `ownerId`;
-- `employeeId`;
-- `conversationId`;
-- `persona`;
-- `kind` (`image|video|music|tts`);
-- `status`;
-- sanitized request parameters;
-- provider route/model selected by server policy;
-- provider operation id encrypted/server-only when needed;
-- Wesi artifact path after completion;
-- MIME type, byte size and SHA-256;
-- created/updated/expires timestamps;
-- error code without leaking provider secrets.
+The client controller polls only an authenticated status URL on the configured Main Server. Arbitrary model-authored hosts/paths are rejected.
 
-## 6. Cost and abuse controls
+When Veo finishes:
 
-Before enabling model calls:
+1. Relay polls the provider operation;
+2. Relay downloads the video itself using `GEMINI_API_KEY`;
+3. provider download URLs are allowlisted to Google API HTTPS hosts;
+4. MIME and byte limits are checked while streaming;
+5. Relay creates a one-time artifact id;
+6. Main fetches the binary through a new signed HMAC request;
+7. Relay destroys that artifact on first retrieval;
+8. Main stores the result under WesiOS ownership;
+9. status changes to `ready`;
+10. client replaces the pending block in persisted message metadata with the ready block.
 
-- Relay HMAC must bind `requestId + timestamp + rawBody`;
-- Relay must reject replayed request ids inside the freshness window;
-- media job creation must be idempotent per Wesi request id;
-- per-employee and per-owner quotas must exist by media kind;
-- maximum prompt length, image size, video duration/resolution and music duration must be allowlisted;
-- repeated retries must reuse the same job unless the user explicitly requests a new generation;
-- provider URLs are never shown to the client;
-- final assets are size/type/hash checked before exposure.
+Pending video monitoring resumes after app restart because the Main status URL is persisted in local chat history.
 
-The current connected GitHub safety layer blocked the coordinated anti-replay write, so expensive provider endpoints must remain disabled until that atomic change is accepted and tested.
+## 7. Relay artifact transport
 
-## 7. Client media UI — implemented foundation
+Heavy image/music/video bytes are not sent in the normal Relay JSON response.
+
+Relay media cache limits:
+
+- short TTL;
+- max item 128 MiB;
+- max total 256 MiB;
+- max item count;
+- cryptographically random artifact ids;
+- one successful read only.
+
+The binary endpoint `/v1/wesi-ai-artifact` requires the same signed Main identity as ordinary Relay calls. nginx exposes only exact allowlisted Relay endpoints and production HTTPS setup verifies that unsigned calls are rejected.
+
+## 8. WesiOS-owned media storage
+
+Main Server media jobs are stored in the existing `wesios_records` backend under `coll='ai_media'`, scoped to owner and employee.
+
+Generated binary files are stored under the PocketBase data directory, not at provider URLs. Ready files receive opaque random WesiOS tokens and an expiry timestamp.
+
+The client sees only a WesiOS URL under `api.wesi-inc.ru`.
+
+Current checks include:
+
+- kind-specific MIME allowlist;
+- maximum file size;
+- relay-declared size consistency;
+- safe filename format;
+- random access token;
+- expiry validation;
+- employee/owner scope for job status.
+
+## 9. Client media UI
 
 `WesiAiMessageContent` already renders:
 
@@ -144,10 +207,41 @@ The current connected GitHub safety layer blocked the coordinated anti-replay wr
 - pending state;
 - failed state.
 
-Therefore backend media activation does not require another chat UI redesign; it only needs verified `media` blocks with WesiOS-controlled URLs.
+The chat controller now monitors verified pending media jobs and atomically replaces only the matching message block on completion. The updated metadata is persisted locally.
 
-## 8. Message generation animation
+## 10. Message generation animation
 
-The rich chat screen renders the newest assistant message rune-by-rune. Older completed messages do not restart the animation when scrolled back into view. The delay adapts to answer length so long analytical answers do not take minutes to appear.
+The newest assistant text renders rune-by-rune. Completed historical messages do not reanimate when the list rebuilds or scrolls.
 
-This is presentation streaming, not yet transport streaming. True token/SSE streaming remains a separate backend milestone and should eventually feed the same renderer incrementally.
+This is presentation-level typewriter output, not true token transport streaming. `streaming` therefore remains false in server capabilities.
+
+## 11. Dynamic capabilities
+
+Main `/api/wesi/ai/capabilities` reports:
+
+- full local voice conversation independently of provider readiness;
+- `naturalTts`, image/video/music/media only when `.wesi-ai-relay.json` is ready;
+- `streaming: false` until real transport streaming exists.
+
+Thus a build can safely ship before Foreign Relay deployment; provider-backed features become available after server deployment without another client release.
+
+## 12. External activation still required
+
+All provider/media code is prepared, but production provider calls remain inactive until the external infrastructure exists.
+
+Remaining human-owned prerequisites are only:
+
+1. foreign Debian/Ubuntu VPS with Node 20+, SSH/sudo and inbound 22/80/443;
+2. DNS hostname pointing to it;
+3. Gemini API key;
+4. GitHub Secrets `WESI_RELAY_SSH_USER`, `WESI_RELAY_SSH_KEY`, `GEMINI_API_KEY`.
+
+Then run `Deploy Wesi AI End-to-End` once with the Relay hostname. The workflow installs Relay/systemd/nginx/Let's Encrypt, validates provider text + natural TTS + anti-replay, deploys current Main hooks/personas/config to `api.wesi-inc.ru`, restarts PocketBase and verifies protected Wesi AI routes.
+
+No manual shared-secret copying is required; when `WESI_MAIN_SHARED_SECRET` is absent, the workflow generates one and installs the same value on both sides during the atomic deployment.
+
+## 13. Remaining production hardening after activation
+
+Before broad/high-volume paid-media use, Budget/Quota Manager should enforce product-specific per-owner/per-employee cost limits. Current media tools are described as explicit-user-request tools and use strict size/duration/format allowlists, but arbitrary commercial quota numbers are intentionally not invented in code without a product policy.
+
+A retention cleanup policy for expired generated files can also be added once product retention requirements are chosen. Files already carry expiry timestamps and expired links fail closed.
