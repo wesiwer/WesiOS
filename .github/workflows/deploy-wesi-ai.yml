@@ -115,13 +115,12 @@ jobs:
           PY
           chmod 600 relay-secrets.b64
 
-      - name: Install Relay and HTTPS
+      - name: Upload Relay bundle
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
           REMOTE="/tmp/wesi-ai-relay-$GITHUB_RUN_ID"
-          cleanup() { rm -f relay-secrets.b64; ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'" >/dev/null 2>&1 || true; }
-          trap cleanup EXIT
+          echo "REMOTE=$REMOTE" >> "$GITHUB_ENV"
           ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
           scp "${SSH[@]}" \
             server/wesi-ai-relay/*.mjs \
@@ -131,10 +130,51 @@ jobs:
             server/wesi-ai-relay/nginx-relay.conf \
             relay-secrets.b64 \
             "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/"
-          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" \
-            "cd '$REMOTE' && sudo bash deploy-relay.sh --install-from-b64 '$REMOTE/relay-secrets.b64' && sudo bash configure-relay-https.sh '$PUBLIC_HOST'"
-          cleanup
-          trap - EXIT
+          rm -f relay-secrets.b64
+
+      - name: Install Relay service
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          echo '=== Wesi AI: relay install ==='
+          cd "$REMOTE"
+          if ! "${SUDO[@]}" bash -x deploy-relay.sh --install-from-b64 "$REMOTE/relay-secrets.b64"; then
+            code=$?
+            echo "=== relay install failed: $code ===" >&2
+            "${SUDO[@]}" systemctl status wesi-ai-relay --no-pager -l || true
+            "${SUDO[@]}" journalctl -u wesi-ai-relay -n 120 --no-pager || true
+            exit "$code"
+          fi
+          echo '=== relay install OK ==='
+          "${SUDO[@]}" systemctl status wesi-ai-relay --no-pager -l | tail -n 30 || true
+          curl -fsS http://127.0.0.1:8787/health
+          REMOTE_SCRIPT
+
+      - name: Configure Relay HTTPS
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "REMOTE='$REMOTE' PUBLIC_HOST='$PUBLIC_HOST' bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          echo '=== Wesi AI: HTTPS setup ==='
+          cd "$REMOTE"
+          if ! "${SUDO[@]}" bash -x configure-relay-https.sh "$PUBLIC_HOST"; then
+            code=$?
+            echo "=== HTTPS setup failed: $code ===" >&2
+            "${SUDO[@]}" nginx -t || true
+            "${SUDO[@]}" systemctl status nginx --no-pager -l || true
+            "${SUDO[@]}" journalctl -u nginx -n 120 --no-pager || true
+            getent ahostsv4 "$PUBLIC_HOST" || true
+            "${SUDO[@]}" ss -ltnp | grep -E ':(80|443|8787)\b' || true
+            exit "$code"
+          fi
+          echo '=== HTTPS setup OK ==='
+          curl -fsS --max-time 20 "https://$PUBLIC_HOST/health"
+          REMOTE_SCRIPT
 
       - name: Install free provider secrets on Relay
         env:
@@ -153,23 +193,25 @@ jobs:
           chmod 600 providers.b64
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
           scp "${SSH[@]}" providers.b64 "$RELAY_SSH_USER@$RELAY_SSH_HOST:/tmp/wesi-ai-providers.b64"
-          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" 'sudo bash -s' <<'REMOTE'
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          tmp=/tmp/wesi-ai-providers.env.new
           umask 077
-          : > /etc/wesi-ai-providers.env
+          : > "$tmp"
           while IFS= read -r line; do
             [ -n "$line" ] || continue
             key="${line%%=*}"; value="${line#*=}"
-            [ "$key" != "$line" ] || exit 2
-            case "$key" in GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;; *) exit 2;; esac
+            [ "$key" != "$line" ] || { echo 'bad provider line' >&2; exit 2; }
+            case "$key" in GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;; *) echo 'bad provider key' >&2; exit 2;; esac
             decoded="$(printf '%s' "$value" | base64 -d)"
-            [ -n "$decoded" ] && printf '%s=%s\n' "$key" "$decoded" >> /etc/wesi-ai-providers.env
+            [ -n "$decoded" ] && printf '%s=%s\n' "$key" "$decoded" >> "$tmp"
           done < /tmp/wesi-ai-providers.b64
           rm -f /tmp/wesi-ai-providers.b64
-          chown root:wesi-relay /etc/wesi-ai-providers.env
-          chmod 640 /etc/wesi-ai-providers.env
-          systemctl restart wesi-ai-relay
-          systemctl is-active --quiet wesi-ai-relay
+          "${SUDO[@]}" install -o root -g wesi-relay -m 0640 "$tmp" /etc/wesi-ai-providers.env
+          rm -f "$tmp"
+          "${SUDO[@]}" systemctl restart wesi-ai-relay
+          "${SUDO[@]}" systemctl is-active --quiet wesi-ai-relay
           REMOTE
           rm -f providers.b64
 
@@ -223,30 +265,29 @@ jobs:
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          REMOTE="/tmp/wesi-ai-main-$GITHUB_RUN_ID"
-          cleanup() { rm -f wesi-ai-relay.json; ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE'" >/dev/null 2>&1 || true; }
-          trap cleanup EXIT
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
-          scp "${SSH[@]}" server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js server/pb_hooks/.wesi-ai-personas.json wesi-ai-relay.json "$MAIN_USER@$MAIN_HOST:$REMOTE/"
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
+          MAIN_REMOTE="/tmp/wesi-ai-main-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$MAIN_REMOTE' && mkdir -p '$MAIN_REMOTE'"
+          scp "${SSH[@]}" server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js server/pb_hooks/.wesi-ai-personas.json wesi-ai-relay.json "$MAIN_USER@$MAIN_HOST:$MAIN_REMOTE/"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$MAIN_REMOTE' bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
           HOOK_DIR=/opt/pocketbase/pb_hooks
           test -d "$HOOK_DIR" && test -d "$REMOTE"
           PB_USER=$(ps -eo user=,comm= | awk '$2 ~ /^pocketbase$/ {print $1; exit}')
           [ -n "${PB_USER:-}" ] || PB_USER=$(stat -c '%U' "$HOOK_DIR")
           PB_GROUP=$(id -gn "$PB_USER" 2>/dev/null || stat -c '%G' "$HOOK_DIR")
-          install_one() { src="$1"; mode="$2"; dst="$3"; if [ "$(id -un)" = "$PB_USER" ] && [ -w "$HOOK_DIR" ]; then install -o "$PB_USER" -g "$PB_GROUP" -m "$mode" "$src" "$dst"; else sudo -n install -o "$PB_USER" -g "$PB_GROUP" -m "$mode" "$src" "$dst"; fi; }
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          install_one() { "${SUDO[@]}" install -o "$PB_USER" -g "$PB_GROUP" -m "$2" "$1" "$3"; }
           count=0
           for src in "$REMOTE"/wesi_ai_*.js "$REMOTE"/wesi_ai_*.pb.js; do [ -f "$src" ] || continue; install_one "$src" 0644 "$HOOK_DIR/$(basename "$src")"; count=$((count+1)); done
           [ "$count" -gt 8 ] || { echo "Incomplete hook bundle: $count" >&2; exit 1; }
           install_one "$REMOTE/.wesi-ai-personas.json" 0600 "$HOOK_DIR/.wesi-ai-personas.json"
           install_one "$REMOTE/wesi-ai-relay.json" 0600 "$HOOK_DIR/.wesi-ai-relay.json"
-          sudo -n systemctl restart pocketbase
+          "${SUDO[@]}" systemctl restart pocketbase
           for _ in $(seq 1 30); do systemctl is-active --quiet pocketbase && exit 0; sleep 1; done
           systemctl is-active --quiet pocketbase
           REMOTE_SCRIPT
-          cleanup
-          trap - EXIT
+          rm -f wesi-ai-relay.json
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$MAIN_REMOTE'" || true
 
       - name: Verify Main protected Wesi AI routes
         run: |
@@ -260,3 +301,9 @@ jobs:
           check_route POST /api/wesi/ai/tts
           check_route GET /api/wesi/ai/media/jobs/wam_0000000000000000000000000000
           echo 'Wesi AI production deployment complete: Fast / Pro / Ultra + TTS + Main hooks.'
+
+      - name: Cleanup Relay temp bundle
+        if: always()
+        run: |
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '${REMOTE:-/tmp/nonexistent}'" >/dev/null 2>&1 || true
