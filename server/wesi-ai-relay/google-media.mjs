@@ -18,6 +18,8 @@ const VIDEO_ASPECTS = new Set(['16:9', '9:16']);
 const VIDEO_RESOLUTIONS = new Set(['720p', '1080p', '4k']);
 const VIDEO_DURATIONS = new Set(['4', '6', '8']);
 const MUSIC_MODES = new Set(['clip', 'pro']);
+const TTS_SAMPLE_RATE = 24000;
+const MAX_TTS_PCM_BYTES = 20 * 1024 * 1024 - 44;
 
 function boundedText(value, max) {
   const text = String(value || '').trim();
@@ -62,6 +64,38 @@ function outputText(data) {
   return chunks.join('\n').trim();
 }
 
+function isWave(bytes) {
+  return bytes.length >= 12 &&
+    bytes.toString('ascii', 0, 4) === 'RIFF' &&
+    bytes.toString('ascii', 8, 12) === 'WAVE';
+}
+
+/// Gemini TTS currently returns 24kHz mono 16-bit PCM. Android/Windows client
+/// playback expects a real container, so Relay wraps the provider PCM in a
+/// standards-compliant WAV header. If Google later returns a WAV directly,
+/// the RIFF guard prevents double wrapping.
+export function pcm16MonoToWav(raw, sampleRate = TTS_SAMPLE_RATE) {
+  const pcm = Buffer.isBuffer(raw) ? raw : Buffer.from(raw || []);
+  if (!pcm.length || pcm.length > MAX_TTS_PCM_BYTES || pcm.length % 2 !== 0) return null;
+  if (isWave(pcm)) return pcm;
+  const wav = Buffer.allocUnsafe(44 + pcm.length);
+  wav.write('RIFF', 0, 4, 'ascii');
+  wav.writeUInt32LE(36 + pcm.length, 4);
+  wav.write('WAVE', 8, 4, 'ascii');
+  wav.write('fmt ', 12, 4, 'ascii');
+  wav.writeUInt32LE(16, 16);
+  wav.writeUInt16LE(1, 20);
+  wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(sampleRate, 24);
+  wav.writeUInt32LE(sampleRate * 2, 28);
+  wav.writeUInt16LE(2, 32);
+  wav.writeUInt16LE(16, 34);
+  wav.write('data', 36, 4, 'ascii');
+  wav.writeUInt32LE(pcm.length, 40);
+  pcm.copy(wav, 44);
+  return wav;
+}
+
 export function personaVoice(persona, env = process.env) {
   const requested = String(
     String(persona || '').toLowerCase() === 'nirvana'
@@ -89,7 +123,7 @@ export async function callGoogleTts(input, apiKey, options = {}) {
   const body = {
     model: 'gemini-3.1-flash-tts-preview',
     input: `Синтезируй речь на русском языке. ${style}\nПроизнеси дословно только текст после метки [ТЕКСТ], ничего не добавляя.\n[ТЕКСТ]\n${text}`,
-    response_format: {type: 'audio', mime_type: 'audio/wav', sample_rate: 24000, delivery: 'inline'},
+    response_format: {type: 'audio'},
     generation_config: {speech_config: [{voice}]},
   };
 
@@ -116,16 +150,20 @@ export async function callGoogleTts(input, apiKey, options = {}) {
       if (attempt === 0) continue;
       return {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
     }
-    const bytes = Buffer.from(audio.data, 'base64');
-    if (!bytes.length || bytes.length > 20 * 1024 * 1024) return {ok: false, status: 502, code: 'WAI_PROVIDER_BAD_MEDIA'};
+    const providerBytes = Buffer.from(audio.data, 'base64');
+    if (!providerBytes.length || providerBytes.length > MAX_TTS_PCM_BYTES) {
+      return {ok: false, status: 502, code: 'WAI_PROVIDER_BAD_MEDIA'};
+    }
+    const wav = pcm16MonoToWav(providerBytes, TTS_SAMPLE_RATE);
+    if (!wav) return {ok: false, status: 502, code: 'WAI_PROVIDER_BAD_MEDIA'};
     return {
       ok: true,
       media: {
         kind: 'tts',
-        mimeType: String(audio.mime_type || 'audio/wav'),
-        data: bytes.toString('base64'),
-        byteSize: bytes.length,
-        sampleRate: Number(audio.sample_rate || 24000),
+        mimeType: 'audio/wav',
+        data: wav.toString('base64'),
+        byteSize: wav.length,
+        sampleRate: TTS_SAMPLE_RATE,
         voice,
       },
     };
@@ -181,6 +219,7 @@ export async function callGoogleMusic(input, apiKey, options = {}) {
   if (!prompt) return {ok: false, status: 400, code: 'WAI_BAD_MEDIA_REQUEST'};
   const mode = MUSIC_MODES.has(String(input?.mode || '')) ? String(input.mode) : 'clip';
   const model = mode === 'pro' ? 'lyria-3-pro-preview' : 'lyria-3-clip-preview';
+  const wantsWav = mode === 'pro' && input?.format === 'wav';
   const fetchImpl = options.fetchImpl || fetch;
   let response;
   try {
@@ -190,7 +229,7 @@ export async function callGoogleMusic(input, apiKey, options = {}) {
       body: JSON.stringify({
         model,
         input: prompt,
-        ...(mode === 'pro' && input?.format === 'wav' ? {response_format: {type: 'audio', mime_type: 'audio/wav'}} : {}),
+        ...(wantsWav ? {response_format: {type: 'audio'}} : {}),
       }),
       signal: AbortSignal.timeout(mode === 'pro' ? 360000 : 180000),
     });
@@ -208,7 +247,7 @@ export async function callGoogleMusic(input, apiKey, options = {}) {
     ok: true,
     media: {
       kind: 'music',
-      mimeType: String(audio.mime_type || (mode === 'pro' && input?.format === 'wav' ? 'audio/wav' : 'audio/mpeg')),
+      mimeType: String(audio.mime_type || (wantsWav ? 'audio/wav' : 'audio/mpeg')),
       data: bytes.toString('base64'),
       byteSize: bytes.length,
       model,
