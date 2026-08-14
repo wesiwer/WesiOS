@@ -6,6 +6,7 @@ import '../../core/sync/sync_endpoint.dart';
 import '../organizations/services/organization_context.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'models/wesi_ai_content_blocks.dart';
+import 'models/wesi_ai_emotions.dart';
 import 'models/wesi_ai_limits.dart';
 
 class WesiAiApiException implements Exception {
@@ -21,12 +22,14 @@ class WesiAiReply {
   final String requestId;
   final List<WesiAiContentBlock> blocks;
   final Map<String, dynamic> route;
+  final WesiAiEmotionSnapshot? emotions;
 
   const WesiAiReply({
     required this.answer,
     required this.requestId,
     this.blocks = const <WesiAiContentBlock>[],
     this.route = const <String, dynamic>{},
+    this.emotions,
   });
 }
 
@@ -136,6 +139,7 @@ class WesiAiApi {
     required String message,
     required List<WesiAiMessage> history,
     required WesiAiMemorySnapshot memory,
+    required WesiAiEmotionSnapshot emotions,
   }) async {
     final auth = _auth();
     final base = Uri.parse(SyncEndpoint.url);
@@ -149,6 +153,7 @@ class WesiAiApi {
       'conversationId': conversation.id,
       'activeOrganizationId': OrganizationContext.currentOrganizationId,
       'memory': memory.toJson(),
+      'emotions': emotions.toJson(),
       'messages': transportHistory(
         history,
         skip: conversation.contextCompactedMessageCount,
@@ -188,6 +193,9 @@ class WesiAiApi {
         route: json['route'] is Map
             ? Map<String, dynamic>.from(json['route'] as Map)
             : const <String, dynamic>{},
+        emotions: json['emotions'] is Map
+            ? WesiAiEmotionSnapshot.fromJson(json['emotions'])
+            : null,
       );
     } on WesiAiApiException {
       rethrow;
@@ -198,7 +206,10 @@ class WesiAiApi {
     } on TimeoutException {
       throw const WesiAiApiException('NETWORK', 'Wesi AI не успел ответить вовремя');
     } on FormatException {
-      throw const WesiAiApiException('NOT_WESIOS', 'Сервер WesiOS вернул некорректный ответ');
+      throw const WesiAiApiException(
+        'NOT_WESIOS',
+        'Сервер WesiOS вернул некорректный ответ',
+      );
     }
   }
 
@@ -229,7 +240,10 @@ class WesiAiApi {
     } on TimeoutException {
       throw const WesiAiApiException('NETWORK', 'Не удалось получить лимиты вовремя');
     } on FormatException {
-      throw const WesiAiApiException('NOT_WESIOS', 'Сервер WesiOS вернул некорректные лимиты');
+      throw const WesiAiApiException(
+        'NOT_WESIOS',
+        'Сервер WesiOS вернул некорректные лимиты',
+      );
     }
   }
 
@@ -249,7 +263,9 @@ class WesiAiApi {
       _applyAuth(request, auth);
       final response = await request.close().timeout(const Duration(seconds: 40));
       final raw = await utf8.decoder.bind(response).join();
-      if (response.statusCode < 200 || response.statusCode >= 300 || raw.isEmpty) return null;
+      if (response.statusCode < 200 || response.statusCode >= 300 || raw.isEmpty) {
+        return null;
+      }
       final decoded = jsonDecode(raw);
       if (decoded is! Map) return null;
       final map = Map<String, dynamic>.from(decoded);
@@ -272,23 +288,36 @@ class WesiAiApi {
     final session = SyncEndpoint.session;
     final token = session?['token'];
     final sessionId = SyncEndpoint.sessionId;
-    if (!SyncEndpoint.isConnected || token is! String || token.isEmpty || sessionId == null) {
-      throw const WesiAiApiException('NOT_SIGNED_IN', 'Войдите в WesiOS, чтобы использовать Wesi AI');
+    if (!SyncEndpoint.isConnected ||
+        token is! String ||
+        token.isEmpty ||
+        sessionId == null) {
+      throw const WesiAiApiException(
+        'NOT_SIGNED_IN',
+        'Войдите в WesiOS, чтобы использовать Wesi AI',
+      );
     }
     return (token: token, sessionId: sessionId);
   }
 
-  static void _applyAuth(HttpClientRequest request, ({String token, String sessionId}) auth) {
+  static void _applyAuth(
+    HttpClientRequest request,
+    ({String token, String sessionId}) auth,
+  ) {
     request.headers.set(HttpHeaders.authorizationHeader, auth.token);
     request.headers.set('X-WesiOS-Session', auth.sessionId);
   }
 
   static String _messageFor(String code) => switch (code) {
-        'WAI_RELAY_NOT_CONFIGURED' => 'Wesi AI ещё не подключён к серверу моделей',
-        'WAI_PERSONA_ENGINE_NOT_READY' => 'Профиль Wesi AI ещё не готов на сервере',
-        'WAI_PROVIDER_NOT_CONFIGURED' => 'Выбранный провайдер Wesi AI ещё не настроен',
+        'WAI_RELAY_NOT_CONFIGURED' =>
+          'Wesi AI ещё не подключён к серверу моделей',
+        'WAI_PERSONA_ENGINE_NOT_READY' =>
+          'Профиль Wesi AI ещё не готов на сервере',
+        'WAI_PROVIDER_NOT_CONFIGURED' =>
+          'Выбранный провайдер Wesi AI ещё не настроен',
         'WAI_PROVIDER_RATE_LIMIT' => 'Лимит выбранной модели временно исчерпан',
-        'WAI_CONTEXT_COMPACTION_FAILED' => 'Не удалось оптимизировать контекст диалога',
+        'WAI_CONTEXT_COMPACTION_FAILED' =>
+          'Не удалось оптимизировать контекст диалога',
         'WAI_RELAY_UNAVAILABLE' => 'Сервис Wesi AI временно недоступен',
         'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
         'WAI_EMPTY_RESPONSE' => 'Wesi AI вернул пустой ответ',
