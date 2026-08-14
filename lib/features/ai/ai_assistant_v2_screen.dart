@@ -1,5 +1,3 @@
-import 'package:flutter/widgets.dart';
-
 import 'ai_assistant_v3_screen.dart';
 
 /// Backward-compatible route entry for the redesigned Wesi AI experience.
