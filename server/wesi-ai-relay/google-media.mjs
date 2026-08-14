@@ -17,6 +17,7 @@ const IMAGE_SIZES = new Set(['0.5K', '1K', '2K', '4K']);
 const VIDEO_ASPECTS = new Set(['16:9', '9:16']);
 const VIDEO_RESOLUTIONS = new Set(['720p', '1080p', '4k']);
 const VIDEO_DURATIONS = new Set(['4', '6', '8']);
+const MUSIC_MODES = new Set(['clip', 'pro']);
 
 function boundedText(value, max) {
   const text = String(value || '').trim();
@@ -46,6 +47,19 @@ function contentBlock(data, type) {
     }
   }
   return null;
+}
+
+function outputText(data) {
+  if (typeof data?.output_text === 'string') return data.output_text.trim();
+  const steps = Array.isArray(data?.steps) ? data.steps : [];
+  const chunks = [];
+  for (const step of steps) {
+    if (step?.type !== 'model_output' || !Array.isArray(step.content)) continue;
+    for (const block of step.content) {
+      if (block?.type === 'text' && typeof block.text === 'string' && block.text.trim()) chunks.push(block.text.trim());
+    }
+  }
+  return chunks.join('\n').trim();
 }
 
 export function personaVoice(persona, env = process.env) {
@@ -79,9 +93,6 @@ export async function callGoogleTts(input, apiKey, options = {}) {
     generation_config: {speech_config: [{voice}]},
   };
 
-  // Google documents a rare TTS 500 where text tokens are returned instead
-  // of audio. One bounded retry avoids turning that provider quirk into a
-  // broken hands-free conversation, without multiplying paid requests.
   for (let attempt = 0; attempt < 2; attempt++) {
     let response;
     try {
@@ -164,6 +175,49 @@ export async function callGoogleImage(input, apiKey, options = {}) {
   };
 }
 
+export async function callGoogleMusic(input, apiKey, options = {}) {
+  if (!apiKey) return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
+  const prompt = boundedText(input?.prompt, 12000);
+  if (!prompt) return {ok: false, status: 400, code: 'WAI_BAD_MEDIA_REQUEST'};
+  const mode = MUSIC_MODES.has(String(input?.mode || '')) ? String(input.mode) : 'clip';
+  const model = mode === 'pro' ? 'lyria-3-pro-preview' : 'lyria-3-clip-preview';
+  const fetchImpl = options.fetchImpl || fetch;
+  let response;
+  try {
+    response = await fetchImpl(INTERACTIONS_URL, {
+      method: 'POST',
+      headers: {'content-type': 'application/json', 'x-goog-api-key': apiKey},
+      body: JSON.stringify({
+        model,
+        input: prompt,
+        ...(mode === 'pro' && input?.format === 'wav' ? {response_format: {type: 'audio', mime_type: 'audio/wav'}} : {}),
+      }),
+      signal: AbortSignal.timeout(mode === 'pro' ? 360000 : 180000),
+    });
+  } catch (error) {
+    const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+    return {ok: false, status: 502, code: timeout ? 'WAI_PROVIDER_TIMEOUT' : 'WAI_PROVIDER_UNAVAILABLE'};
+  }
+  const data = await readJson(response);
+  if (!response.ok) return providerFailure(response.status);
+  const audio = contentBlock(data, 'audio');
+  if (!audio) return {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
+  const bytes = Buffer.from(audio.data, 'base64');
+  if (!bytes.length || bytes.length > 64 * 1024 * 1024) return {ok: false, status: 502, code: 'WAI_PROVIDER_BAD_MEDIA'};
+  return {
+    ok: true,
+    media: {
+      kind: 'music',
+      mimeType: String(audio.mime_type || (mode === 'pro' && input?.format === 'wav' ? 'audio/wav' : 'audio/mpeg')),
+      data: bytes.toString('base64'),
+      byteSize: bytes.length,
+      model,
+      mode,
+      lyrics: outputText(data).slice(0, 20000),
+    },
+  };
+}
+
 export async function startGoogleVideo(input, apiKey, options = {}) {
   if (!apiKey) return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
   const prompt = boundedText(input?.prompt, 6000);
@@ -221,8 +275,6 @@ export async function getGoogleVideoStatus(operationName, apiKey, options = {}) 
     data?.response?.generatedVideos?.[0]?.video?.uri ||
     '',
   ).trim();
-  // Provider URI is server-to-server state only. Relay may return it to Main,
-  // but Main must never pass it to the WesiOS client as an artifact URL.
   if (!/^https:\/\//.test(uri)) return {ok: true, done: true, failed: true, code: 'WAI_PROVIDER_BAD_RESPONSE'};
   return {ok: true, done: true, failed: false, providerUri: uri};
 }
@@ -230,5 +282,6 @@ export async function getGoogleVideoStatus(operationName, apiKey, options = {}) 
 export const mediaLimits = Object.freeze({
   ttsText: 8000,
   imagePrompt: 12000,
+  musicPrompt: 12000,
   videoPrompt: 6000,
 });
