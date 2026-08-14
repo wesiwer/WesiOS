@@ -39,12 +39,6 @@ test('Google route parser is allowlisted', () => {
   assert.equal(parseGoogleRoute('google/../../secret'), null);
 });
 
-/// Подпись обязана покрывать идентификатор запроса.
-///
-/// Пока он оставался вне подписи, он ни на что не влиял: перехваченный
-/// запрос отправлялся повторно с любым другим идентификатором, и подпись
-/// сходилась. Проверка времени такой повтор не ловит — она пропускает всё,
-/// что моложе окна перекоса.
 test('Relay rejects a signature that does not cover the request id', () => {
   resetReplayCache();
   const secret = 'x'.repeat(48);
@@ -55,7 +49,6 @@ test('Relay rejects a signature that does not cover the request id', () => {
     .digest('hex');
   const result = verifyMainRequest({
     'x-wesi-timestamp': timestamp,
-    // Тот же перехваченный запрос, но под другим идентификатором.
     'x-wesi-request-id': 'wai_swapped_id_0002',
     'x-wesi-signature': signature,
   }, body, secret);
@@ -63,7 +56,6 @@ test('Relay rejects a signature that does not cover the request id', () => {
   assert.equal(result.code, 'WAI_RELAY_AUTH_FAILED');
 });
 
-/// Вторая половина защиты: подлинный запрос принимается ровно один раз.
 test('Relay accepts a request once and rejects the replay', () => {
   resetReplayCache();
   const secret = 'x'.repeat(48);
@@ -86,7 +78,6 @@ test('Relay accepts a request once and rejects the replay', () => {
   assert.equal(second.code, 'WAI_RELAY_REPLAY_DETECTED');
 });
 
-/// Подделка не должна занимать чужой идентификатор заранее.
 test('Relay does not burn a request id on a forged signature', () => {
   resetReplayCache();
   const secret = 'x'.repeat(48);
@@ -112,23 +103,27 @@ test('Relay does not burn a request id on a forged signature', () => {
   assert.equal(real.ok, true, 'настоящий запрос обязан пройти после подделки');
 });
 
-/// Обе стороны обязаны считать одну и ту же строку.
-///
-/// Протокол здесь ровно из двух реализаций, и менять можно только обе
-/// сразу: изменив одну, получаем не «менее безопасно», а полностью
-/// неработающий Wesi AI.
-test('Main server signs exactly what the relay verifies', async () => {
+/// Signing now has a single Main implementation in wesi_ai_lib.js. Chat,
+/// voice and media routes must call that helper instead of cloning HMAC code;
+/// this turns protocol drift into a test failure instead of a production 401.
+test('Main server signs exactly what the relay verifies through one helper', async () => {
   const fs = await import('node:fs');
-  const sources = [
-    'server/pb_hooks/wesi_ai_lib.js',
-    'server/pb_hooks/wesi_ai_routes.pb.js',
+  const root = new URL('../../', import.meta.url);
+  const lib = fs.readFileSync(new URL('server/pb_hooks/wesi_ai_lib.js', root), 'utf8');
+  assert.match(
+    lib,
+    /hs256\(requestId \+ "\." \+ timestamp \+ "\." \+ raw/,
+    'central Main helper must bind request id, timestamp and exact raw body',
+  );
+
+  const routeChecks = [
+    ['server/pb_hooks/wesi_ai_routes.pb.js', /ai\.callRelay\(cfg, payload, relayRequestId\)/],
+    ['server/pb_hooks/wesi_ai_voice.pb.js', /ai\.callRelayJson\(cfg,/],
+    ['server/pb_hooks/wesi_ai_media_tools.js', /ai\.callRelayJson\(cfg,/],
+    ['server/pb_hooks/wesi_ai_media_routes.pb.js', /ai\.callRelayJson\(cfg,/],
   ];
-  for (const path of sources) {
-    const text = fs.readFileSync(new URL(`../../${path}`, import.meta.url), 'utf8');
-    assert.match(
-      text,
-      /hs256\((\w*[Rr]equestId) \+ "\." \+ timestamp \+ "\." \+ raw/,
-      `${path}: подпись обязана начинаться с идентификатора запроса`,
-    );
+  for (const [path, pattern] of routeChecks) {
+    const text = fs.readFileSync(new URL(path, root), 'utf8');
+    assert.match(text, pattern, `${path}: route must use the shared signed Relay transport`);
   }
 });
