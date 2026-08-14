@@ -24,4 +24,4 @@ jobs:
             --ref main \
             -f notes='Wesi AI, secure SSH server connections and Direct SSH Console' \
             -f deploy_to_server=true
-          echo 'WESIOS_RELEASE_0_22_8_DISPATCHED'
+          echo 'WESIOS_RELEASE_0_22_8_DISPATCHED_RETRY_1'
