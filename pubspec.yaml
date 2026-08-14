@@ -1,7 +1,7 @@
 name: wesios
 description: WesiOS - Business Operating System for Wesi Inc.
 publish_to: 'none'
-version: 0.22.7+82
+version: 0.22.8+83
 
 environment:
   sdk: '>=3.0.0 <4.0.0'
