@@ -6,7 +6,7 @@ on:
       public_host:
         description: 'Foreign Relay DNS hostname, e.g. ai-relay.example.com'
         required: true
-        default: 'ai.wesi-wi.su'
+        default: 'ai.wesi-wf.su'
         type: string
   push:
     branches: [main]
@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      PUBLIC_HOST: ${{ inputs.public_host || 'ai.wesi-wi.su' }}
-      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || inputs.public_host || 'ai.wesi-wi.su' }}
+      PUBLIC_HOST: ${{ inputs.public_host || 'ai.wesi-wf.su' }}
+      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || inputs.public_host || 'ai.wesi-wf.su' }}
       RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
@@ -141,8 +141,11 @@ jobs:
           if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
           echo '=== Wesi AI: relay install ==='
           cd "$REMOTE"
-          if ! "${SUDO[@]}" bash -x deploy-relay.sh --install-from-b64 "$REMOTE/relay-secrets.b64"; then
-            code=$?
+          set +e
+          "${SUDO[@]}" bash -x deploy-relay.sh --install-from-b64 "$REMOTE/relay-secrets.b64"
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
             echo "=== relay install failed: $code ===" >&2
             "${SUDO[@]}" systemctl status wesi-ai-relay --no-pager -l || true
             "${SUDO[@]}" journalctl -u wesi-ai-relay -n 120 --no-pager || true
@@ -162,8 +165,11 @@ jobs:
           if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
           echo '=== Wesi AI: HTTPS setup ==='
           cd "$REMOTE"
-          if ! "${SUDO[@]}" bash -x configure-relay-https.sh "$PUBLIC_HOST"; then
-            code=$?
+          set +e
+          "${SUDO[@]}" bash -x configure-relay-https.sh "$PUBLIC_HOST"
+          code=$?
+          set -e
+          if [ "$code" -ne 0 ]; then
             echo "=== HTTPS setup failed: $code ===" >&2
             "${SUDO[@]}" nginx -t || true
             "${SUDO[@]}" systemctl status nginx --no-pager -l || true
