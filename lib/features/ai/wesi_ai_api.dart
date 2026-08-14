@@ -87,7 +87,9 @@ class WesiAiApi {
         answer: '${json['answer'] ?? ''}'.trim(),
         toolResults: json['toolResults'],
       );
-      if (parsed.text.isEmpty && parsed.blocks.isEmpty) {
+      final blocks = <WesiAiContentBlock>[...parsed.blocks];
+      blocks.addAll(_verifiedLocalMediaRequests(json['toolResults']));
+      if (parsed.text.isEmpty && blocks.isEmpty) {
         throw const WesiAiApiException(
           'WAI_EMPTY_RESPONSE',
           'Wesi AI вернул пустой ответ',
@@ -96,7 +98,7 @@ class WesiAiApi {
       return WesiAiReply(
         answer: parsed.text,
         requestId: '${json['requestId'] ?? ''}',
-        blocks: parsed.blocks,
+        blocks: blocks.take(WesiAiContentParser.maxBlocks).toList(growable: false),
       );
     } on WesiAiApiException {
       rethrow;
@@ -109,8 +111,65 @@ class WesiAiApi {
     }
   }
 
+  /// Converts only server-verified media tool results to executable client
+  /// requests. Model-authored `wesi-media` fences never pass this path.
+  static List<WesiAiContentBlock> _verifiedLocalMediaRequests(Object? raw) {
+    if (raw is! List) return const <WesiAiContentBlock>[];
+    final blocks = <WesiAiContentBlock>[];
+    for (final itemRaw in raw) {
+      if (itemRaw is! Map) continue;
+      final item = Map<String, dynamic>.from(itemRaw);
+      if (item['verified'] != true || item['ok'] != true) continue;
+      final resultRaw = item['result'];
+      if (resultRaw is! Map) continue;
+      final result = Map<String, dynamic>.from(resultRaw);
+      final requestRaw = result['localMediaRequest'];
+      if (requestRaw is! Map) continue;
+      final mediaRequest = _sanitizeLocalMediaRequest(Map<String, dynamic>.from(requestRaw));
+      if (mediaRequest == null) continue;
+      blocks.add(WesiAiContentBlock(
+        type: WesiAiContentBlockType.media,
+        data: <String, dynamic>{
+          'mediaType': mediaRequest['mediaType'],
+          'title': mediaRequest['title'],
+          'prompt': mediaRequest['prompt'],
+          'status': 'pending',
+          // This extra field is intentionally created directly here. The
+          // generic content parser strips it from model-authored blocks.
+          'localRequest': mediaRequest,
+        },
+      ));
+    }
+    return blocks;
+  }
+
+  static Map<String, dynamic>? _sanitizeLocalMediaRequest(Map<String, dynamic> raw) {
+    final type = '${raw['mediaType'] ?? ''}'.trim().toLowerCase();
+    if (!const {'image', 'music', 'video'}.contains(type)) return null;
+    final prompt = '${raw['prompt'] ?? ''}'.trim();
+    if (prompt.isEmpty || prompt.length > 12000) return null;
+    final titleRaw = '${raw['title'] ?? ''}'.trim();
+    final title = titleRaw.length <= 240 ? titleRaw : titleRaw.substring(0, 240);
+    final optionsRaw = raw['options'];
+    final options = <String, dynamic>{};
+    if (optionsRaw is Map) {
+      for (final entry in optionsRaw.entries.take(12)) {
+        final key = '${entry.key}'.trim();
+        final value = entry.value;
+        if (!RegExp(r'^[A-Za-z][A-Za-z0-9]{0,39}$').hasMatch(key)) continue;
+        if (value is String && value.length <= 80) options[key] = value;
+        if (value is num || value is bool) options[key] = value;
+      }
+    }
+    return <String, dynamic>{
+      'mediaType': type,
+      'title': title,
+      'prompt': prompt,
+      'options': options,
+    };
+  }
+
   /// Polls only a Main Server media-status URL emitted by a verified tool.
-  /// Arbitrary model-authored URLs are rejected before any request is made.
   Future<WesiAiContentBlock?> mediaJob(String rawStatusUrl) async {
     final base = Uri.parse(SyncEndpoint.url);
     final uri = Uri.tryParse(rawStatusUrl.trim());

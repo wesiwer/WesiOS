@@ -103,9 +103,6 @@ test('Relay does not burn a request id on a forged signature', () => {
   assert.equal(real.ok, true, 'настоящий запрос обязан пройти после подделки');
 });
 
-/// Signing now has a single Main implementation in wesi_ai_lib.js. Chat,
-/// voice and media routes must call that helper instead of cloning HMAC code;
-/// this turns protocol drift into a test failure instead of a production 401.
 test('Main server signs exactly what the relay verifies through one helper', async () => {
   const fs = await import('node:fs');
   const root = new URL('../../', import.meta.url);
@@ -119,11 +116,19 @@ test('Main server signs exactly what the relay verifies through one helper', asy
   const routeChecks = [
     ['server/pb_hooks/wesi_ai_routes.pb.js', /ai\.callRelay\(cfg, payload, relayRequestId\)/],
     ['server/pb_hooks/wesi_ai_voice.pb.js', /ai\.callRelayJson\(cfg,/],
-    ['server/pb_hooks/wesi_ai_media_tools.js', /ai\.callRelayJson\(cfg,/],
     ['server/pb_hooks/wesi_ai_media_routes.pb.js', /ai\.callRelayJson\(cfg,/],
   ];
   for (const [path, pattern] of routeChecks) {
     const text = fs.readFileSync(new URL(path, root), 'utf8');
-    assert.match(text, pattern, `${path}: route must use the shared signed Relay transport`);
+    assert.match(text, pattern, `${path}: server-to-server route must use the shared signed Relay transport`);
   }
+});
+
+test('media tools delegate only a data-only request to the verified WesiOS client', async () => {
+  const fs = await import('node:fs');
+  const root = new URL('../../', import.meta.url);
+  const mediaTools = fs.readFileSync(new URL('server/pb_hooks/wesi_ai_media_tools.js', root), 'utf8');
+  assert.match(mediaTools, /localMediaRequest/);
+  assert.match(mediaTools, /mediaExecution: "verified_client_engine"/);
+  assert.doesNotMatch(mediaTools, /callRelayJson\(/, 'free local media tools must not silently call paid cloud media');
 });

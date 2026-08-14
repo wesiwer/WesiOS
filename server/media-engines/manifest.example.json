@@ -1,0 +1,23 @@
+{
+  "schema": 1,
+  "engines": [
+    {
+      "kind": "image",
+      "id": "example-image-engine",
+      "name": "Example Image Engine",
+      "version": "2026.08.14",
+      "path": "media-engines/packages/image/example-image-engine/2026.08.14/example-image-engine-2026.08.14.zip",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+      "sizeBytes": 1,
+      "license": "Example only — do not publish",
+      "licenseUrl": "https://example.invalid/license",
+      "launcher": "launcher.bat",
+      "platforms": ["windows"],
+      "requirements": {
+        "minRamGb": 16,
+        "recommendedVramGb": 12
+      },
+      "enabled": false
+    }
+  ]
+}
