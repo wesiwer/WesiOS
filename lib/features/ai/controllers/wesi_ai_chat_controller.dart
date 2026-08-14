@@ -2,12 +2,14 @@ import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../models/wesi_ai_chat_models.dart';
 import '../storage/wesi_ai_local_store.dart';
 import '../wesi_ai_api.dart';
+import '../wesi_ai_session_policy.dart';
 
-class WesiAiChatController extends ChangeNotifier {
+class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
   final WesiAiLocalStore store;
   final WesiAiApi api;
   final Set<String> _mediaPolls = <String>{};
@@ -18,15 +20,38 @@ class WesiAiChatController extends ChangeNotifier {
   bool sending = false;
 
   WesiAiChatController({required this.store, this.api = const WesiAiApi()})
-      : state = WesiAiLocalState.empty(store.employeeId);
+      : state = WesiAiLocalState.empty(store.employeeId) {
+    WidgetsBinding.instance.addObserver(this);
+  }
 
   Future<void> load() async {
     state = await store.load();
+    final fresh = WesiAiSessionPolicy.shouldStartFresh();
+    WesiAiSessionPolicy.markModuleOpened();
+    if (fresh) {
+      await _createConversationWithoutNotify(_freshPersona());
+    }
     loading = false;
     notifyListeners();
     for (final message in state.messages) {
       _startPendingMedia(message);
     }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
+    if (lifecycleState == AppLifecycleState.inactive ||
+        lifecycleState == AppLifecycleState.paused ||
+        lifecycleState == AppLifecycleState.detached ||
+        lifecycleState == AppLifecycleState.hidden) {
+      WesiAiSessionPolicy.markAppBackgrounded();
+    }
+  }
+
+  WesiAiPersona _freshPersona() {
+    final active = state.activeConversation;
+    if (active != null && !active.archived) return active.persona;
+    return WesiAiPersona.zane;
   }
 
   Future<void> setTier(WesiAiTier tier) async {
@@ -35,6 +60,11 @@ class WesiAiChatController extends ChangeNotifier {
   }
 
   Future<void> createConversation(WesiAiPersona persona) async {
+    await _createConversationWithoutNotify(persona);
+    await _persist();
+  }
+
+  Future<void> _createConversationWithoutNotify(WesiAiPersona persona) async {
     final now = DateTime.now();
     final id = '${now.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}';
     final title = switch (persona) {
@@ -54,7 +84,6 @@ class WesiAiChatController extends ChangeNotifier {
       conversations: <WesiAiConversation>[c, ...state.conversations],
       activeConversationId: id,
     );
-    await _persist();
   }
 
   Future<void> selectConversation(String id) async {
@@ -64,6 +93,7 @@ class WesiAiChatController extends ChangeNotifier {
       return;
     }
     state = state.copyWith(activeConversationId: id);
+    WesiAiSessionPolicy.markModuleOpened();
     await _persist();
   }
 
@@ -72,6 +102,7 @@ class WesiAiChatController extends ChangeNotifier {
     final clean = text.trim();
     if (c == null || clean.isEmpty || sending) return;
 
+    WesiAiSessionPolicy.markModuleOpened();
     final history = state.messagesFor(c.id);
     final now = DateTime.now();
     final user = WesiAiMessage(
@@ -179,8 +210,6 @@ class WesiAiChatController extends ChangeNotifier {
     String key,
   ) async {
     try {
-      // Veo normally completes well before this window, but a long upper
-      // bound lets a job survive temporary provider/network stalls.
       for (var attempt = 0; attempt < 120 && !_disposed; attempt++) {
         if (attempt > 0) {
           await Future<void>.delayed(const Duration(seconds: 5));
@@ -266,6 +295,7 @@ class WesiAiChatController extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _disposed = true;
     _mediaPolls.clear();
     super.dispose();
