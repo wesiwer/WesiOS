@@ -13,7 +13,7 @@ import '../../features/analytics/analytics_screen.dart';
 import '../../features/knowledge/knowledge_base_screen.dart';
 import '../../features/shield/shield_screen.dart';
 import '../../features/keys/keys_screen.dart';
-import '../../features/ai/ai_assistant_screen.dart';
+import '../../features/ai/ai_assistant_v2_screen.dart';
 import '../../features/settings/settings_screen.dart';
 import '../../features/profile/profile_screen.dart';
 import '../../features/calculator/calculator_screen.dart';
@@ -106,7 +106,7 @@ class AppRouter {
       case '/ai':
         return _slideUpRoute(_AccessGate(
           module: TeamModules.ai,
-          child: AiAssistantScreen(),
+          child: const AiAssistantV2Screen(),
         ));
       case '/shield':
         return _slideUpRoute(_AccessGate(
