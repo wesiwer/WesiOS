@@ -93,8 +93,11 @@ jobs:
           test -f /tmp/wesi-ai-providers.b64
           umask 077
           : > /etc/wesi-ai-providers.env
-          while IFS='=' read -r key value; do
-            [ -n "$key" ] || continue
+          while IFS= read -r line; do
+            [ -n "$line" ] || continue
+            key="${line%%=*}"
+            value="${line#*=}"
+            [ "$key" != "$line" ] || { echo "bad provider line" >&2; exit 2; }
             case "$key" in GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;; *) echo "bad provider key" >&2; exit 2;; esac
             decoded="$(printf '%s' "$value" | base64 -d)"
             [ -n "$decoded" ] || continue
