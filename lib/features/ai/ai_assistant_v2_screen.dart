@@ -7,6 +7,8 @@ import 'storage/wesi_ai_local_store.dart';
 import 'wesi_ai_handoff_controller.dart';
 import 'wesi_ai_managed_controller.dart';
 import 'wesi_ai_voice_controller.dart';
+import 'wesi_ai_voice_devices.dart';
+import 'wesi_ai_voice_session.dart';
 import 'widgets/wesi_ai_message_content.dart';
 
 /// Rich Wesi AI chat shell.
@@ -26,6 +28,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   final TextEditingController _composer = TextEditingController();
   final WesiAiVoiceController _voice = WesiAiVoiceController();
   String _voicePrefix = '';
+  WesiAiVoiceSession? _session;
 
   @override
   void initState() {
@@ -47,6 +50,13 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
   void _onVoiceChanged() {
     if (!mounted) return;
+    // В режиме разговора микрофон принадлежит сессии, а не полю ввода.
+    // Иначе распознанное попадёт и в разговор, и в композер — и уйдёт
+    // вторым сообщением, когда человек нажмёт «отправить».
+    if (_session?.active == true) {
+      setState(() {});
+      return;
+    }
     if (_voice.transcript.isNotEmpty || _voice.listening) {
       final next = <String>[
         _voicePrefix.trim(),
@@ -62,10 +72,67 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     setState(() {});
   }
 
+  /// Включить или выключить голосовой разговор.
+  Future<void> _toggleConversation(WesiAiChatController controller) async {
+    final running = _session;
+    if (running != null && running.active) {
+      await running.stop();
+      if (mounted) setState(() {});
+      return;
+    }
+    final session = _session ??= WesiAiVoiceSession(
+      ear: WesiAiDeviceEar(_voice),
+      mouth: const WesiAiDeviceMouth(),
+      onTurn: (text) => _speakableTurn(controller, text),
+    )
+      ..addListener(_refresh);
+    await session.start();
+    if (!mounted) return;
+    if (!session.active && session.error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(session.error!)),
+      );
+    }
+    setState(() {});
+  }
+
+  /// Отправить услышанное и вернуть то, что нужно произнести.
+  ///
+  /// Ответ берётся из самого чата, а не из отдельного вызова: сообщение
+  /// должно попасть в переписку ровно один раз, и озвучивать нужно именно
+  /// то, что человек увидит на экране. В лобби ответов несколько — каждый
+  /// со своим автором, и каждый прозвучит своим голосом.
+  Future<List<WesiAiSpokenReply>> _speakableTurn(
+    WesiAiChatController controller,
+    String text,
+  ) async {
+    final conversationId = controller.state.activeConversation?.id;
+    if (conversationId == null) return const [];
+    final before = controller.state
+        .messagesFor(conversationId)
+        .map((m) => m.id)
+        .toSet();
+
+    await controller.addUserMessage(text);
+
+    return controller.state
+        .messagesFor(conversationId)
+        .where((m) => !before.contains(m.id))
+        .where((m) =>
+            m.author != WesiAiMessageAuthor.user &&
+            m.author != WesiAiMessageAuthor.tool &&
+            m.text.trim().isNotEmpty)
+        .map((m) => WesiAiSpokenReply(m.text, author: m.author))
+        .toList(growable: false);
+  }
+
   @override
   void dispose() {
     _controller?.removeListener(_refresh);
     _controller?.dispose();
+    _session?.removeListener(_refresh);
+    _session?.stop();
+    _session?.dispose();
     _voice.removeListener(_onVoiceChanged);
     _voice.dispose();
     _composer.dispose();
@@ -272,7 +339,10 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
             ),
           ),
         if (controller.sending) const LinearProgressIndicator(),
-        if (_voice.listening) _voiceStatus(),
+        if (_session?.active == true)
+          _conversationStatus(_session!)
+        else if (_voice.listening)
+          _voiceStatus(),
         _composerBar(controller),
       ],
     );
@@ -372,6 +442,54 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     );
   }
 
+  /// Что делает разговор прямо сейчас.
+  ///
+  /// Без этой строки голосовой режим — чёрный ящик: человек не знает,
+  /// слышат ли его, думает ли система или уже отвечает, и начинает говорить
+  /// в тишину.
+  Widget _conversationStatus(WesiAiVoiceSession session) {
+    final (IconData icon, String label) = switch (session.phase) {
+      WesiAiVoicePhase.listening => (Icons.mic, 'Слушаю…'),
+      WesiAiVoicePhase.thinking => (Icons.more_horiz, 'Думаю…'),
+      WesiAiVoicePhase.speaking => (
+          Icons.graphic_eq,
+          switch (session.speaker) {
+            WesiAiMessageAuthor.zane => 'Говорит Зейн',
+            WesiAiMessageAuthor.nirvana => 'Говорит Нирвана',
+            _ => 'Отвечает Wesi AI',
+          }
+        ),
+      WesiAiVoicePhase.off => (Icons.headset_off, 'Разговор завершён'),
+    };
+    final heard = session.heard.trim();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Theme.of(context).colorScheme.primary),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              session.phase == WesiAiVoicePhase.listening && heard.isNotEmpty
+                  ? heard
+                  : label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (session.phase == WesiAiVoicePhase.speaking ||
+              session.phase == WesiAiVoicePhase.thinking)
+            TextButton(
+              // Перебивание нажатием, а не голосом: микрофон во время
+              // озвучки закрыт намеренно, иначе он услышит сам себя.
+              onPressed: session.bargeIn,
+              child: const Text('Перебить'),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _voiceStatus() => Padding(
         padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
         child: Row(
@@ -412,8 +530,29 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
             const SizedBox(width: 6),
             IconButton.filledTonal(
               tooltip: _voice.listening ? 'Остановить диктовку' : 'Голосовой ввод',
-              onPressed: controller.sending ? null : _toggleVoice,
+              // Диктовка и разговор делят один микрофон, поэтому во время
+              // разговора диктовать нельзя: два хозяина у одного устройства
+              // ввода — это застрявший микрофон.
+              onPressed: controller.sending || _session?.active == true
+                  ? null
+                  : _toggleVoice,
               icon: Icon(_voice.listening ? Icons.stop : Icons.mic_none),
+            ),
+            const SizedBox(width: 6),
+            IconButton.filledTonal(
+              tooltip: _session?.active == true
+                  ? 'Завершить голосовой разговор'
+                  : 'Голосовой разговор',
+              onPressed: () => _toggleConversation(controller),
+              style: _session?.active == true
+                  ? IconButton.styleFrom(
+                      backgroundColor:
+                          Theme.of(context).colorScheme.primaryContainer,
+                    )
+                  : null,
+              icon: Icon(_session?.active == true
+                  ? Icons.headset_off
+                  : Icons.headset_mic_outlined),
             ),
             const SizedBox(width: 6),
             IconButton.filled(

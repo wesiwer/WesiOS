@@ -88,7 +88,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     };
     const raw = JSON.stringify(payload);
     const timestamp = String(Math.floor(Date.now() / 1000));
-    const signature = $security.hs256(timestamp + "." + raw, cfg.sharedSecret);
+    const signature = $security.hs256(relayRequestId + "." + timestamp + "." + raw, cfg.sharedSecret);
     let relay;
     try {
       relay = $http.send({

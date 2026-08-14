@@ -72,7 +72,7 @@ module.exports = {
   callRelay: function(cfg, payload, requestId) {
     const raw = JSON.stringify(payload);
     const timestamp = String(Math.floor(Date.now() / 1000));
-    const signature = $security.hs256(timestamp + "." + raw, cfg.sharedSecret);
+    const signature = $security.hs256(requestId + "." + timestamp + "." + raw, cfg.sharedSecret);
     let relay;
     try {
       relay = $http.send({
