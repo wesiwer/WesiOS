@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../media_engines/wesi_media_engine_runner.dart';
 import '../models/wesi_ai_chat_models.dart';
 import '../storage/wesi_ai_local_store.dart';
 import '../wesi_ai_api.dart';
@@ -11,6 +12,7 @@ class WesiAiChatController extends ChangeNotifier {
   final WesiAiLocalStore store;
   final WesiAiApi api;
   final Set<String> _mediaPolls = <String>{};
+  final Set<String> _localMediaRuns = <String>{};
   bool _disposed = false;
 
   WesiAiLocalState state;
@@ -161,6 +163,23 @@ class WesiAiChatController extends ChangeNotifier {
       if (rawData is! Map) continue;
       final data = Map<String, dynamic>.from(rawData);
       if ('${data['status'] ?? ''}'.toLowerCase() != 'pending') continue;
+
+      // A localRequest exists only when WesiAiApi extracted it from a
+      // server-verified tool result. Generic model-authored media blocks have
+      // this field stripped and therefore can never execute local code.
+      final localRequest = data['localRequest'];
+      if (localRequest is Map) {
+        final key = '${message.id}|local|${data['mediaType']}|${data['prompt']}';
+        if (_localMediaRuns.add(key)) {
+          unawaited(_runLocalMedia(
+            message,
+            Map<String, dynamic>.from(localRequest),
+            key,
+          ));
+        }
+        continue;
+      }
+
       final statusUrl = '${data['url'] ?? ''}'.trim();
       final uri = Uri.tryParse(statusUrl);
       if (uri == null ||
@@ -173,14 +192,102 @@ class WesiAiChatController extends ChangeNotifier {
     }
   }
 
+  Future<void> _runLocalMedia(
+    WesiAiMessage source,
+    Map<String, dynamic> request,
+    String key,
+  ) async {
+    try {
+      final result = await WesiMediaEngineRunner.run(request);
+      if (_disposed) return;
+      await _markLocalRequestFinished(source.id, request, result.ok);
+      final at = DateTime.now();
+      final type = '${request['mediaType'] ?? 'media'}';
+      final label = switch (type) {
+        'image' => 'изображения',
+        'music' => 'музыки',
+        'video' => 'видео',
+        _ => 'медиа',
+      };
+      final text = result.ok
+          ? 'Локальная генерация $label завершена. Файл сохранён: ${result.outputPath}'
+          : result.code == 'WAI_MEDIA_ENGINE_NOT_INSTALLED'
+              ? 'Для генерации $label установите соответствующий Wesi AI Media Engine в Настройки → Модели.'
+              : 'Локальная генерация $label не завершилась (${result.code}).';
+      state = state.copyWith(
+        messages: <WesiAiMessage>[
+          ...state.messages,
+          WesiAiMessage(
+            id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
+            conversationId: source.conversationId,
+            employeeId: store.employeeId,
+            author: WesiAiMessageAuthor.system,
+            kind: result.ok ? WesiAiMessageKind.file : WesiAiMessageKind.error,
+            text: text,
+            createdAt: at,
+            metadata: <String, dynamic>{
+              'code': result.code,
+              'mediaType': type,
+              if (result.outputPath != null) 'localPath': result.outputPath,
+              if (result.mimeType != null) 'mimeType': result.mimeType,
+            },
+          ),
+        ],
+      );
+      await _persist();
+    } finally {
+      _localMediaRuns.remove(key);
+    }
+  }
+
+  Future<void> _markLocalRequestFinished(
+    String messageId,
+    Map<String, dynamic> request,
+    bool ok,
+  ) async {
+    var changed = false;
+    final messages = state.messages.map((message) {
+      if (message.id != messageId) return message;
+      final rawBlocks = message.metadata['blocks'];
+      if (rawBlocks is! List) return message;
+      final nextBlocks = <dynamic>[];
+      for (final raw in rawBlocks) {
+        if (raw is Map) {
+          final block = Map<String, dynamic>.from(raw);
+          final dataRaw = block['data'];
+          if (block['type'] == 'media' && dataRaw is Map) {
+            final data = Map<String, dynamic>.from(dataRaw);
+            final localRaw = data['localRequest'];
+            if (localRaw is Map &&
+                '${localRaw['mediaType'] ?? ''}' == '${request['mediaType'] ?? ''}' &&
+                '${localRaw['prompt'] ?? ''}' == '${request['prompt'] ?? ''}') {
+              data.remove('localRequest');
+              data['status'] = ok ? 'failed' : 'failed';
+              block['data'] = data;
+              nextBlocks.add(block);
+              changed = true;
+              continue;
+            }
+          }
+        }
+        nextBlocks.add(raw);
+      }
+      if (!changed) return message;
+      final metadata = Map<String, dynamic>.from(message.metadata);
+      metadata['blocks'] = nextBlocks;
+      return message.copyWith(metadata: metadata);
+    }).toList(growable: false);
+    if (!changed || _disposed) return;
+    state = state.copyWith(messages: messages);
+    await _persist();
+  }
+
   Future<void> _monitorMedia(
     String messageId,
     String statusUrl,
     String key,
   ) async {
     try {
-      // Veo normally completes well before this window, but a long upper
-      // bound lets a job survive temporary provider/network stalls.
       for (var attempt = 0; attempt < 120 && !_disposed; attempt++) {
         if (attempt > 0) {
           await Future<void>.delayed(const Duration(seconds: 5));
@@ -268,6 +375,7 @@ class WesiAiChatController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _mediaPolls.clear();
+    _localMediaRuns.clear();
     super.dispose();
   }
 }
