@@ -9,10 +9,6 @@ import '../wesi_ai_api.dart';
 import '../wesi_ai_session_policy.dart';
 
 class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
-  // Keep a substantially larger verbatim window before Context Optimizer
-  // engages. The optimizer exists to prevent runaway prompts, not to make the
-  // assistants short-memory. Recent context always wins over the compacted
-  // summary on the server.
   static const int _minUncompactedMessages = 80;
   static const int _recentMessagesToKeep = 32;
   static const int _maxCompactionBatch = 64;
@@ -34,6 +30,7 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> load() async {
     state = await store.load();
+    state = state.copyWith(emotions: state.emotions.decayed());
     final fresh = WesiAiSessionPolicy.shouldStartFresh();
     WesiAiSessionPolicy.markModuleOpened();
     if (fresh) {
@@ -100,7 +97,10 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
     )) {
       return;
     }
-    state = state.copyWith(activeConversationId: id);
+    state = state.copyWith(
+      activeConversationId: id,
+      emotions: state.emotions.decayed(),
+    );
     WesiAiSessionPolicy.markModuleOpened();
     await _persist();
   }
@@ -177,7 +177,6 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
       await _persist();
       return updated;
     } on WesiAiApiException {
-      // Context optimization improves quality/cost but must never block a turn.
       return conversation;
     }
   }
@@ -193,6 +192,7 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
     history = state.messagesFor(c.id);
 
     final now = DateTime.now();
+    final emotionalState = state.emotions.decayed(now);
     final user = WesiAiMessage(
       id: '${now.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
       conversationId: c.id,
@@ -209,6 +209,7 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
     state = state.copyWith(
       messages: <WesiAiMessage>[...state.messages, user],
       conversations: conversations,
+      emotions: emotionalState,
     );
     sending = true;
     await _persist();
@@ -220,6 +221,7 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
         message: clean,
         history: history,
         memory: state.memory,
+        emotions: emotionalState,
       );
       final at = DateTime.now();
       final author = switch (c.persona) {
@@ -237,6 +239,7 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
         metadata: <String, dynamic>{
           'requestId': reply.requestId,
           if (reply.route.isNotEmpty) 'route': reply.route,
+          if (reply.emotions != null) 'emotions': reply.emotions!.toJson(),
           if (reply.blocks.isNotEmpty)
             'blocks': reply.blocks
                 .map((block) => block.toJson())
@@ -245,6 +248,7 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
       );
       state = state.copyWith(
         messages: <WesiAiMessage>[...state.messages, assistant],
+        emotions: reply.emotions ?? emotionalState,
       );
       _startPendingMedia(assistant);
     } on WesiAiApiException catch (e) {
@@ -330,8 +334,8 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
     final blocks = message.metadata['blocks'];
     if (blocks is! List) return false;
     for (final raw in blocks) {
-      if (raw is! Map) continue;
-      final data = raw['data'];
+      final map = raw is Map ? Map<String, dynamic>.from(raw) : null;
+      final data = map?['data'];
       if (data is Map && '${data['url'] ?? ''}' == statusUrl) return true;
     }
     return false;
