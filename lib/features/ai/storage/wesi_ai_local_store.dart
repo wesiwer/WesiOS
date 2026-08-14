@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:hive/hive.dart';
 import '../models/wesi_ai_chat_models.dart';
+import '../models/wesi_ai_emotions.dart';
 
 class WesiAiLocalStore {
   static const String boxName = 'wesios_ai_local_v1';
@@ -18,7 +19,10 @@ class WesiAiLocalStore {
     final box = await _box();
     final raw = box.get(_stateKey);
     if (raw == null || raw.isEmpty) return WesiAiLocalState.empty(employeeId);
-    return WesiAiLocalState.fromJson(jsonDecode(raw) as Map<String, dynamic>, expectedEmployeeId: employeeId);
+    return WesiAiLocalState.fromJson(
+      jsonDecode(raw) as Map<String, dynamic>,
+      expectedEmployeeId: employeeId,
+    );
   }
 
   Future<void> save(WesiAiLocalState state) async {
@@ -37,10 +41,27 @@ class WesiAiLocalState {
   final List<WesiAiConversation> conversations;
   final List<WesiAiMessage> messages;
   final WesiAiMemorySnapshot memory;
+  final WesiAiEmotionSnapshot emotions;
 
-  const WesiAiLocalState({required this.employeeId, required this.tier, required this.activeConversationId, required this.conversations, required this.messages, required this.memory});
+  const WesiAiLocalState({
+    required this.employeeId,
+    required this.tier,
+    required this.activeConversationId,
+    required this.conversations,
+    required this.messages,
+    required this.memory,
+    required this.emotions,
+  });
 
-  factory WesiAiLocalState.empty(String employeeId) => WesiAiLocalState(employeeId: employeeId, tier: WesiAiTier.fast, activeConversationId: null, conversations: const [], messages: const [], memory: const WesiAiMemorySnapshot());
+  factory WesiAiLocalState.empty(String employeeId) => WesiAiLocalState(
+        employeeId: employeeId,
+        tier: WesiAiTier.fast,
+        activeConversationId: null,
+        conversations: const [],
+        messages: const [],
+        memory: const WesiAiMemorySnapshot(),
+        emotions: WesiAiEmotionSnapshot.neutral(),
+      );
 
   WesiAiConversation? get activeConversation {
     final id = activeConversationId;
@@ -52,20 +73,72 @@ class WesiAiLocalState {
   }
 
   List<WesiAiMessage> messagesFor(String conversationId) {
-    final result = messages.where((m) => m.employeeId == employeeId && m.conversationId == conversationId).toList();
+    final result = messages
+        .where((m) =>
+            m.employeeId == employeeId && m.conversationId == conversationId)
+        .toList();
     result.sort((a, b) => a.createdAt.compareTo(b.createdAt));
     return result;
   }
 
-  WesiAiLocalState copyWith({WesiAiTier? tier, String? activeConversationId, bool clearActiveConversation = false, List<WesiAiConversation>? conversations, List<WesiAiMessage>? messages, WesiAiMemorySnapshot? memory}) => WesiAiLocalState(employeeId: employeeId, tier: tier ?? this.tier, activeConversationId: clearActiveConversation ? null : (activeConversationId ?? this.activeConversationId), conversations: conversations ?? this.conversations, messages: messages ?? this.messages, memory: memory ?? this.memory);
+  WesiAiLocalState copyWith({
+    WesiAiTier? tier,
+    String? activeConversationId,
+    bool clearActiveConversation = false,
+    List<WesiAiConversation>? conversations,
+    List<WesiAiMessage>? messages,
+    WesiAiMemorySnapshot? memory,
+    WesiAiEmotionSnapshot? emotions,
+  }) =>
+      WesiAiLocalState(
+        employeeId: employeeId,
+        tier: tier ?? this.tier,
+        activeConversationId: clearActiveConversation
+            ? null
+            : (activeConversationId ?? this.activeConversationId),
+        conversations: conversations ?? this.conversations,
+        messages: messages ?? this.messages,
+        memory: memory ?? this.memory,
+        emotions: emotions ?? this.emotions,
+      );
 
-  Map<String, dynamic> toJson() => {'employeeId': employeeId, 'tier': tier.name, 'activeConversationId': activeConversationId, 'conversations': conversations.map((e) => e.toJson()).toList(), 'messages': messages.map((e) => e.toJson()).toList(), 'memory': memory.toJson()};
+  Map<String, dynamic> toJson() => {
+        'employeeId': employeeId,
+        'tier': tier.name,
+        'activeConversationId': activeConversationId,
+        'conversations': conversations.map((e) => e.toJson()).toList(),
+        'messages': messages.map((e) => e.toJson()).toList(),
+        'memory': memory.toJson(),
+        'emotions': emotions.toJson(),
+      };
 
-  factory WesiAiLocalState.fromJson(Map<String, dynamic> json, {required String expectedEmployeeId}) {
+  factory WesiAiLocalState.fromJson(
+    Map<String, dynamic> json, {
+    required String expectedEmployeeId,
+  }) {
     final storedEmployeeId = json['employeeId'] as String? ?? '';
-    if (storedEmployeeId != expectedEmployeeId) throw StateError('Employee mismatch');
-    final conversations = (json['conversations'] as List? ?? const []).map((e) => WesiAiConversation.fromJson(Map<String, dynamic>.from(e as Map))).where((e) => e.employeeId == expectedEmployeeId).toList();
-    final messages = (json['messages'] as List? ?? const []).map((e) => WesiAiMessage.fromJson(Map<String, dynamic>.from(e as Map))).where((e) => e.employeeId == expectedEmployeeId).toList();
-    return WesiAiLocalState(employeeId: expectedEmployeeId, tier: WesiAiTier.values.byName(json['tier'] as String? ?? 'fast'), activeConversationId: json['activeConversationId'] as String?, conversations: conversations, messages: messages, memory: WesiAiMemorySnapshot.fromJson(Map<String, dynamic>.from(json['memory'] as Map? ?? const {})));
+    if (storedEmployeeId != expectedEmployeeId) {
+      throw StateError('Employee mismatch');
+    }
+    final conversations = (json['conversations'] as List? ?? const [])
+        .map((e) => WesiAiConversation.fromJson(
+            Map<String, dynamic>.from(e as Map)))
+        .where((e) => e.employeeId == expectedEmployeeId)
+        .toList();
+    final messages = (json['messages'] as List? ?? const [])
+        .map((e) => WesiAiMessage.fromJson(Map<String, dynamic>.from(e as Map)))
+        .where((e) => e.employeeId == expectedEmployeeId)
+        .toList();
+    return WesiAiLocalState(
+      employeeId: expectedEmployeeId,
+      tier: WesiAiTier.values.byName(json['tier'] as String? ?? 'fast'),
+      activeConversationId: json['activeConversationId'] as String?,
+      conversations: conversations,
+      messages: messages,
+      memory: WesiAiMemorySnapshot.fromJson(
+        Map<String, dynamic>.from(json['memory'] as Map? ?? const {}),
+      ),
+      emotions: WesiAiEmotionSnapshot.fromJson(json['emotions']),
+    );
   }
 }
