@@ -2,6 +2,7 @@ import http from 'node:http';
 import {verifyMainRequest} from './auth.mjs';
 import {callGoogleText} from './google.mjs';
 import {callProviderText, quotaForRoutes} from './provider-router.mjs';
+import {listProviderModels} from './provider-models.mjs';
 import {
   callGoogleTts,
   callGoogleImage,
@@ -58,11 +59,7 @@ function authenticate(req, raw) {
   const auth = verifyMainRequest(req.headers, raw, secret);
   if (!auth.ok) return {ok: false, auth};
   let request;
-  try {
-    request = JSON.parse(raw);
-  } catch {
-    return {ok: false, badJson: true};
-  }
+  try { request = JSON.parse(raw); } catch { return {ok: false, badJson: true}; }
   if (String(request.requestId || '') !== auth.requestId) {
     return {ok: false, auth: {ok: false, code: 'WAI_RELAY_AUTH_FAILED'}};
   }
@@ -74,13 +71,11 @@ async function execute(request) {
   if (operation === 'limits') {
     return {ok: true, limits: quotaForRoutes(request.input?.routes || {}, providerKeys)};
   }
+  if (operation === 'models') {
+    return {ok: true, providers: await listProviderModels(providerKeys)};
+  }
   if (operation === 'chat' || operation === 'lobby') {
-    return callProviderText(
-      request.route,
-      request.input || {},
-      providerKeys,
-      callGoogleText,
-    );
+    return callProviderText(request.route, request.input || {}, providerKeys, callGoogleText);
   }
   if (operation === 'tts') return callGoogleTts(request.input || {}, providerKeys.google);
   if (operation === 'image') return callGoogleImage(request.input || {}, providerKeys.google);
@@ -91,21 +86,15 @@ async function execute(request) {
     if (!status?.ok || !status.done || status.failed || !status.providerUri) return status;
     const downloaded = await downloadGoogleVideo(status.providerUri, providerKeys.google);
     if (!downloaded?.ok) return downloaded;
-    const cached = putBytes(downloaded.bytes, {
-      kind: 'video',
-      mimeType: downloaded.mimeType,
-    });
+    const cached = putBytes(downloaded.bytes, {kind: 'video', mimeType: downloaded.mimeType});
     if (!cached.ok) return {ok: false, status: 503, code: cached.code};
     return {
       ok: true,
       done: true,
       failed: false,
       media: {
-        kind: 'video',
-        mimeType: cached.mimeType,
-        byteSize: cached.byteSize,
-        relayArtifactId: cached.artifactId,
-        expiresAt: cached.expiresAt,
+        kind: 'video', mimeType: cached.mimeType, byteSize: cached.byteSize,
+        relayArtifactId: cached.artifactId, expiresAt: cached.expiresAt,
       },
     };
   }
@@ -124,6 +113,12 @@ http.createServer(async (req, res) => {
         anthropic: providerKeys.anthropic.length > 0,
         xai: providerKeys.xai.length > 0,
       },
+      apiModes: {
+        google: 'generateContent',
+        openai: 'responses',
+        anthropic: 'messages',
+        xai: 'responses',
+      },
     });
   }
 
@@ -132,11 +127,7 @@ http.createServer(async (req, res) => {
   if (!isMain && !isArtifact) return send(res, 404, {ok: false, code: 'NOT_FOUND'});
 
   let raw;
-  try {
-    raw = await readBody(req);
-  } catch {
-    return send(res, 413, {ok: false, code: 'WAI_RELAY_BODY_TOO_LARGE'});
-  }
+  try { raw = await readBody(req); } catch { return send(res, 413, {ok: false, code: 'WAI_RELAY_BODY_TOO_LARGE'}); }
 
   const parsed = authenticate(req, raw);
   if (!parsed.ok) {
@@ -155,19 +146,14 @@ http.createServer(async (req, res) => {
 
   try {
     const result = await execute(request);
-    if (!result?.ok) {
-      return send(res, result?.status || 502, {ok: false, code: result?.code || 'WAI_PROVIDER_UNAVAILABLE'});
-    }
+    if (!result?.ok) return send(res, result?.status || 502, {ok: false, code: result?.code || 'WAI_PROVIDER_UNAVAILABLE'});
     if (result.limits) return send(res, 200, {ok: true, limits: result.limits});
+    if (result.providers) return send(res, 200, {ok: true, providers: result.providers});
     if (result.answer) return send(res, 200, {ok: true, answer: result.answer, context: result.context || null});
 
     if (result.media) {
-      if (String(result.media.kind || '') === 'tts') {
-        return send(res, 200, {ok: true, media: result.media});
-      }
-      if (result.media.relayArtifactId) {
-        return send(res, 200, {ok: true, media: result.media});
-      }
+      if (String(result.media.kind || '') === 'tts') return send(res, 200, {ok: true, media: result.media});
+      if (result.media.relayArtifactId) return send(res, 200, {ok: true, media: result.media});
       const cached = putMedia(result.media);
       if (!cached.ok) return send(res, 503, {ok: false, code: cached.code});
       const safeMedia = {...result.media};
@@ -180,35 +166,20 @@ http.createServer(async (req, res) => {
     }
 
     if (result.operationName) {
-      return send(res, 200, {
-        ok: true,
-        job: {
-          operationName: result.operationName,
-          model: result.model,
-          aspectRatio: result.aspectRatio,
-          resolution: result.resolution,
-          durationSeconds: result.durationSeconds,
-        },
-      });
+      return send(res, 200, {ok: true, job: {
+        operationName: result.operationName, model: result.model, aspectRatio: result.aspectRatio,
+        resolution: result.resolution, durationSeconds: result.durationSeconds,
+      }});
     }
 
     if (typeof result.done === 'boolean') {
-      return send(res, 200, {
-        ok: true,
-        job: {
-          done: result.done,
-          failed: result.failed === true,
-          code: result.code || null,
-          media: result.media || null,
-        },
-      });
+      return send(res, 200, {ok: true, job: {
+        done: result.done, failed: result.failed === true, code: result.code || null, media: result.media || null,
+      }});
     }
     return send(res, 502, {ok: false, code: 'WAI_RELAY_BAD_RESPONSE'});
   } catch (error) {
     const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
-    return send(res, 502, {
-      ok: false,
-      code: timeout ? 'WAI_PROVIDER_TIMEOUT' : 'WAI_PROVIDER_UNAVAILABLE',
-    });
+    return send(res, 502, {ok: false, code: timeout ? 'WAI_PROVIDER_TIMEOUT' : 'WAI_PROVIDER_UNAVAILABLE'});
   }
 }).listen(port, host, () => console.log(`Wesi AI Relay listening on ${host}:${port}`));
