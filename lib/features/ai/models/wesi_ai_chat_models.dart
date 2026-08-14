@@ -18,14 +18,78 @@ class WesiAiConversation {
   final DateTime updatedAt;
   final bool archived;
   final bool pinned;
+  final String contextSummary;
+  final int contextCompactedMessageCount;
 
-  const WesiAiConversation({required this.id, required this.employeeId, required this.title, required this.persona, required this.createdAt, required this.updatedAt, this.lobbyMode = WesiAiLobbyMode.smart, this.archived = false, this.pinned = false});
+  const WesiAiConversation({
+    required this.id,
+    required this.employeeId,
+    required this.title,
+    required this.persona,
+    required this.createdAt,
+    required this.updatedAt,
+    this.lobbyMode = WesiAiLobbyMode.smart,
+    this.archived = false,
+    this.pinned = false,
+    this.contextSummary = '',
+    this.contextCompactedMessageCount = 0,
+  });
 
-  WesiAiConversation copyWith({String? title, WesiAiPersona? persona, WesiAiLobbyMode? lobbyMode, DateTime? updatedAt, bool? archived, bool? pinned}) => WesiAiConversation(id: id, employeeId: employeeId, title: title ?? this.title, persona: persona ?? this.persona, lobbyMode: lobbyMode ?? this.lobbyMode, createdAt: createdAt, updatedAt: updatedAt ?? this.updatedAt, archived: archived ?? this.archived, pinned: pinned ?? this.pinned);
+  WesiAiConversation copyWith({
+    String? title,
+    WesiAiPersona? persona,
+    WesiAiLobbyMode? lobbyMode,
+    DateTime? updatedAt,
+    bool? archived,
+    bool? pinned,
+    String? contextSummary,
+    int? contextCompactedMessageCount,
+  }) => WesiAiConversation(
+        id: id,
+        employeeId: employeeId,
+        title: title ?? this.title,
+        persona: persona ?? this.persona,
+        lobbyMode: lobbyMode ?? this.lobbyMode,
+        createdAt: createdAt,
+        updatedAt: updatedAt ?? this.updatedAt,
+        archived: archived ?? this.archived,
+        pinned: pinned ?? this.pinned,
+        contextSummary: contextSummary ?? this.contextSummary,
+        contextCompactedMessageCount:
+            contextCompactedMessageCount ?? this.contextCompactedMessageCount,
+      );
 
-  Map<String, dynamic> toJson() => {'id': id, 'employeeId': employeeId, 'title': title, 'persona': persona.name, 'lobbyMode': lobbyMode.name, 'createdAt': createdAt.toIso8601String(), 'updatedAt': updatedAt.toIso8601String(), 'archived': archived, 'pinned': pinned};
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'employeeId': employeeId,
+        'title': title,
+        'persona': persona.name,
+        'lobbyMode': lobbyMode.name,
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+        'archived': archived,
+        'pinned': pinned,
+        'contextSummary': contextSummary,
+        'contextCompactedMessageCount': contextCompactedMessageCount,
+      };
 
-  factory WesiAiConversation.fromJson(Map<String, dynamic> json) => WesiAiConversation(id: json['id'] as String, employeeId: json['employeeId'] as String, title: json['title'] as String? ?? 'Новый чат', persona: WesiAiPersona.values.byName(json['persona'] as String? ?? 'zane'), lobbyMode: WesiAiLobbyMode.values.byName(json['lobbyMode'] as String? ?? 'smart'), createdAt: DateTime.parse(json['createdAt'] as String), updatedAt: DateTime.parse(json['updatedAt'] as String), archived: json['archived'] as bool? ?? false, pinned: json['pinned'] as bool? ?? false);
+  factory WesiAiConversation.fromJson(Map<String, dynamic> json) =>
+      WesiAiConversation(
+        id: json['id'] as String,
+        employeeId: json['employeeId'] as String,
+        title: json['title'] as String? ?? 'Новый чат',
+        persona:
+            WesiAiPersona.values.byName(json['persona'] as String? ?? 'zane'),
+        lobbyMode: WesiAiLobbyMode.values
+            .byName(json['lobbyMode'] as String? ?? 'smart'),
+        createdAt: DateTime.parse(json['createdAt'] as String),
+        updatedAt: DateTime.parse(json['updatedAt'] as String),
+        archived: json['archived'] as bool? ?? false,
+        pinned: json['pinned'] as bool? ?? false,
+        contextSummary: json['contextSummary'] as String? ?? '',
+        contextCompactedMessageCount:
+            json['contextCompactedMessageCount'] as int? ?? 0,
+      );
 }
 
 class WesiAiMessage {
