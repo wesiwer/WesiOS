@@ -145,7 +145,8 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          distribution: 'zulu'
+          # temurin, а не zulu: именно на нём собирается релизный APK.
+          distribution: 'temurin'
           java-version: '17'
 
       - name: Setup Flutter
@@ -194,10 +195,15 @@ jobs:
             "configuration_version": "1"
           }' > android/app/google-services.json
 
-      - name: Setup Android NDK
+      # Без `ndk-version`. С ним действие переустанавливает состав SDK, и
+      # платформа 35 из него пропадает: Gradle падает с «compileSdkVersion is
+      # not specified», хотя в android/app/build.gradle она прописана явно.
+      # Сообщение уводит в сторону — искать надо не в build.gradle.
+      #
+      # Ровно такой шаг, без параметров, собирает и подписывает релизный APK
+      # в release-app.yml. NDK нужной версии AGP дотягивает сам.
+      - name: Setup Android SDK
         uses: android-actions/setup-android@v3
-        with:
-          ndk-version: r25b
 
       - name: Build APK
         env:
