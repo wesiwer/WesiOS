@@ -145,8 +145,7 @@ jobs:
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
-          # temurin, а не zulu: именно на нём собирается релизный APK.
-          distribution: 'temurin'
+          distribution: 'zulu'
           java-version: '17'
 
       - name: Setup Flutter
@@ -195,24 +194,32 @@ jobs:
             "configuration_version": "1"
           }' > android/app/google-services.json
 
-      # Без `ndk-version`. С ним действие переустанавливает состав SDK, и
-      # платформа 35 из него пропадает: Gradle падает с «compileSdkVersion is
-      # not specified», хотя в android/app/build.gradle она прописана явно.
-      # Сообщение уводит в сторону — искать надо не в build.gradle.
-      #
-      # Ровно такой шаг, без параметров, собирает и подписывает релизный APK
-      # в release-app.yml. NDK нужной версии AGP дотягивает сам.
-      - name: Setup Android SDK
+      - name: Setup Android NDK
         uses: android-actions/setup-android@v3
+        with:
+          ndk-version: r25b
 
+      # Отладочная сборка, а не релизная, и это не упрощение проверки.
+      #
+      # android/app/build.gradle намеренно запрещает релизную сборку без
+      # ключей подписи: APK, подписанная отладочным ключом, собиралась, но
+      # не вставала поверх установленного WesiOS. С тех пор этот job падал
+      # by design, а сообщение уводило в сторону — первой из трёх ошибок
+      # шла настоящая («Release signing key is required»), а последними
+      # висели её последствия про compileSdkVersion.
+      #
+      # Ключам подписи здесь взяться неоткуда, да и незачем: этот workflow
+      # проверяет, что приложение собирается под Android. Подписанную
+      # релизную APK собирает release-app.yml, у которого ключи есть, и
+      # делает это на каждом выпуске.
       - name: Build APK
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false'
-        run: flutter build apk --release
+        run: flutter build apk --debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: WesiOS-Android
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 1
