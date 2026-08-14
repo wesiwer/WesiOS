@@ -9,10 +9,14 @@ import '../wesi_ai_api.dart';
 import '../wesi_ai_session_policy.dart';
 
 class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
-  static const int _minUncompactedMessages = 36;
-  static const int _recentMessagesToKeep = 16;
-  static const int _maxCompactionBatch = 48;
-  static const int _minUncompactedChars = 26000;
+  // Keep a substantially larger verbatim window before Context Optimizer
+  // engages. The optimizer exists to prevent runaway prompts, not to make the
+  // assistants short-memory. Recent context always wins over the compacted
+  // summary on the server.
+  static const int _minUncompactedMessages = 80;
+  static const int _recentMessagesToKeep = 32;
+  static const int _maxCompactionBatch = 64;
+  static const int _minUncompactedChars = 64000;
 
   final WesiAiLocalStore store;
   final WesiAiApi api;
