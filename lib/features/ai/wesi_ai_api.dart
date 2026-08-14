@@ -51,13 +51,7 @@ class WesiAiApi {
     required List<WesiAiMessage> history,
     required WesiAiMemorySnapshot memory,
   }) async {
-    final session = SyncEndpoint.session;
-    final token = session?['token'];
-    final sessionId = SyncEndpoint.sessionId;
-    if (!SyncEndpoint.isConnected || token is! String || token.isEmpty || sessionId == null) {
-      throw const WesiAiApiException('NOT_SIGNED_IN', 'Войдите в WesiOS, чтобы использовать Wesi AI');
-    }
-
+    final auth = _auth();
     final base = Uri.parse(SyncEndpoint.url);
     final uri = base.replace(path: '/api/wesi/ai/chat');
     final body = <String, dynamic>{
@@ -74,8 +68,7 @@ class WesiAiApi {
 
     try {
       final request = await _http.postUrl(uri);
-      request.headers.set(HttpHeaders.authorizationHeader, token);
-      request.headers.set('X-WesiOS-Session', sessionId);
+      _applyAuth(request, auth);
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(body));
       final response = await request.close().timeout(const Duration(seconds: 125));
@@ -113,6 +106,58 @@ class WesiAiApi {
     } on FormatException {
       throw const WesiAiApiException('NOT_WESIOS', 'Сервер WesiOS вернул некорректный ответ');
     }
+  }
+
+  /// Polls only a Main Server media-status URL emitted by a verified tool.
+  /// Arbitrary model-authored URLs are rejected before any request is made.
+  Future<WesiAiContentBlock?> mediaJob(String rawStatusUrl) async {
+    final base = Uri.parse(SyncEndpoint.url);
+    final uri = Uri.tryParse(rawStatusUrl.trim());
+    if (uri == null ||
+        uri.scheme != base.scheme ||
+        uri.host != base.host ||
+        uri.port != base.port ||
+        !uri.path.startsWith('/api/wesi/ai/media/jobs/')) {
+      return null;
+    }
+    final auth = _auth();
+    try {
+      final request = await _http.getUrl(uri);
+      _applyAuth(request, auth);
+      final response = await request.close().timeout(const Duration(seconds: 40));
+      final raw = await utf8.decoder.bind(response).join();
+      if (response.statusCode < 200 || response.statusCode >= 300 || raw.isEmpty) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final map = Map<String, dynamic>.from(decoded);
+      if (map['ok'] != true) return null;
+      return WesiAiContentBlock.fromJson(map['contentBlock']);
+    } on SocketException {
+      return null;
+    } on HttpException {
+      return null;
+    } on TimeoutException {
+      return null;
+    } on FormatException {
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static ({String token, String sessionId}) _auth() {
+    final session = SyncEndpoint.session;
+    final token = session?['token'];
+    final sessionId = SyncEndpoint.sessionId;
+    if (!SyncEndpoint.isConnected || token is! String || token.isEmpty || sessionId == null) {
+      throw const WesiAiApiException('NOT_SIGNED_IN', 'Войдите в WesiOS, чтобы использовать Wesi AI');
+    }
+    return (token: token, sessionId: sessionId);
+  }
+
+  static void _applyAuth(HttpClientRequest request, ({String token, String sessionId}) auth) {
+    request.headers.set(HttpHeaders.authorizationHeader, auth.token);
+    request.headers.set('X-WesiOS-Session', auth.sessionId);
   }
 
   static String _messageFor(String code) => switch (code) {
