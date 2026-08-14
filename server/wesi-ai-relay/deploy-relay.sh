@@ -1,20 +1,5 @@
 #!/usr/bin/env bash
-#
 # Install/update Wesi AI Relay on a foreign Linux server.
-#
-# The provider key lives only on this host. Main Wesi Server knows only the
-# Relay HTTPS URL and the shared HMAC secret.
-#
-# Direct install (interactive/admin use):
-#   WESI_MAIN_SHARED_SECRET=... GEMINI_API_KEY=... bash deploy-relay.sh --install
-#
-# CI-safe install:
-#   bash deploy-relay.sh --install-from-b64 /tmp/wesi-relay-secrets.b64
-#
-# The b64 file contains only KEY_B64=value lines and is deleted immediately
-# after decoding. This avoids putting secrets into the remote process command
-# line, where other users could inspect them.
-
 set -euo pipefail
 
 APP_DIR="${WESI_RELAY_DIR:-/opt/wesi-ai-relay}"
@@ -24,21 +9,9 @@ RELAY_HOST="${WESI_RELAY_HOST:-127.0.0.1}"
 RELAY_PORT="${WESI_RELAY_PORT:-8787}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-fail() {
-  echo "$*" >&2
-  exit 2
-}
-
-contains_newline() {
-  case "$1" in
-    *$'\n'*|*$'\r'*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-decode_b64() {
-  printf '%s' "$1" | base64 -d
-}
+fail() { echo "$*" >&2; exit 2; }
+contains_newline() { case "$1" in *$'\n'*|*$'\r'*) return 0 ;; *) return 1 ;; esac; }
+decode_b64() { printf '%s' "$1" | base64 -d; }
 
 load_b64_file() {
   local file="$1"
@@ -70,26 +43,19 @@ require_secrets() {
   [ "${#WESI_MAIN_SHARED_SECRET}" -ge 32 ] || fail "WESI_MAIN_SHARED_SECRET короче 32 символов"
   contains_newline "$WESI_MAIN_SHARED_SECRET" && fail "Shared secret содержит перевод строки"
   contains_newline "$GEMINI_API_KEY" && fail "Gemini key содержит перевод строки"
-  contains_newline "${WESI_ZANE_TTS_VOICE:-Charon}" && fail "Имя голоса Зейна некорректно"
-  contains_newline "${WESI_NIRVANA_TTS_VOICE:-Sulafat}" && fail "Имя голоса Нирваны некорректно"
 }
 
 install_relay() {
   require_secrets
-
   command -v node >/dev/null 2>&1 || fail "Node.js не установлен. Нужен Node 20 или новее."
   local major
   major="$(node -p 'process.versions.node.split(".")[0]')"
   [ "$major" -ge 20 ] || fail "Node $major слишком старый, нужен 20 или новее."
 
   mkdir -p "$APP_DIR"
-  install -m 0644 "$SOURCE_DIR/server.mjs" "$APP_DIR/server.mjs"
-  install -m 0644 "$SOURCE_DIR/auth.mjs" "$APP_DIR/auth.mjs"
-  install -m 0644 "$SOURCE_DIR/google.mjs" "$APP_DIR/google.mjs"
-  install -m 0644 "$SOURCE_DIR/google-media.mjs" "$APP_DIR/google-media.mjs"
-  install -m 0644 "$SOURCE_DIR/google-artifact.mjs" "$APP_DIR/google-artifact.mjs"
-  install -m 0644 "$SOURCE_DIR/media-cache.mjs" "$APP_DIR/media-cache.mjs"
-  install -m 0644 "$SOURCE_DIR/package.json" "$APP_DIR/package.json"
+  for file in server.mjs auth.mjs google.mjs google-media.mjs google-artifact.mjs media-cache.mjs package.json; do
+    install -m 0644 "$SOURCE_DIR/$file" "$APP_DIR/$file"
+  done
 
   umask 077
   cat >"$ENV_FILE" <<ENV
@@ -99,6 +65,10 @@ WESI_RELAY_HOST=$RELAY_HOST
 WESI_RELAY_PORT=$RELAY_PORT
 WESI_ZANE_TTS_VOICE=${WESI_ZANE_TTS_VOICE:-Charon}
 WESI_NIRVANA_TTS_VOICE=${WESI_NIRVANA_TTS_VOICE:-Sulafat}
+# Paid image/video/music APIs are never enabled implicitly. Changing this to
+# true is an explicit operator decision and is intentionally not driven by a
+# normal deployment secret.
+WESI_ENABLE_PAID_MEDIA=${WESI_ENABLE_PAID_MEDIA:-false}
 ENV
 
   id -u wesi-relay >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin wesi-relay
@@ -138,36 +108,21 @@ LockPersonality=true
 WantedBy=multi-user.target
 UNIT
 
-  # MemoryDenyWriteExecute is intentionally NOT enabled. systemd documents it
-  # as incompatible with JIT engines; Node/V8 generates executable code at
-  # runtime. The remaining filesystem/device/kernel/network sandbox remains.
   systemctl daemon-reload
   systemctl enable --now wesi-ai-relay.service
   sleep 1
-
   local health
   health="$(curl -fsS --max-time 10 "http://$RELAY_HOST:$RELAY_PORT/health" || true)"
-  printf '%s' "$health" | grep -q '"ok":true' || {
-    echo "Relay не отвечает корректно на /health. Логи: journalctl -u wesi-ai-relay -n 80" >&2
-    exit 4
-  }
-  printf '%s' "$health" | grep -q '"ready":true' || {
-    echo "Relay запущен, но provider/shared-secret configuration не готова." >&2
-    exit 4
-  }
+  printf '%s' "$health" | grep -q '"ok":true' || fail "Relay не отвечает корректно на /health"
+  printf '%s' "$health" | grep -q '"ready":true' || fail "Relay запущен, но provider/shared-secret configuration не готова"
 
   cat <<TEXT
-Relay запущен на $RELAY_HOST:$RELAY_PORT и готов принимать подписанные запросы.
-
-Рекомендуемые production routes на Main Server:
-  fast    = google/gemini-3.5-flash-lite
-  pro     = google/gemini-3.6-flash
-  maximum = google/gemini-3.6-flash
-
-Natural TTS использует gemini-3.1-flash-tts-preview; голоса можно менять
-через WESI_ZANE_TTS_VOICE / WESI_NIRVANA_TTS_VOICE без релиза приложения.
-Image, Veo video и Lyria 3 music используют тот же GEMINI_API_KEY; тяжёлые
-результаты передаются Main Server только через одноразовые Relay artifacts.
+Relay запущен на $RELAY_HOST:$RELAY_PORT.
+Text routing управляется Main Server (Fast / Pro / Ultra).
+Natural TTS использует Gemini и остаётся серверной функцией.
+Image/video/music по умолчанию НЕ используют платные cloud endpoints:
+WESI_ENABLE_PAID_MEDIA=false. Для бесплатной генерации WesiOS устанавливает
+отдельные Wesi Media Engines из Wesi artifact storage.
 TEXT
 }
 
@@ -180,19 +135,12 @@ uninstall_relay() {
 }
 
 case "${1:---help}" in
-  --install)
-    install_relay
-    ;;
+  --install) install_relay ;;
   --install-from-b64)
     [ $# -eq 2 ] || fail "Использование: $0 --install-from-b64 FILE"
     load_b64_file "$2"
     install_relay
     ;;
-  --uninstall)
-    uninstall_relay
-    ;;
-  *)
-    echo "Использование: $0 [--install|--install-from-b64 FILE|--uninstall]" >&2
-    exit 1
-    ;;
+  --uninstall) uninstall_relay ;;
+  *) echo "Использование: $0 [--install|--install-from-b64 FILE|--uninstall]" >&2; exit 1 ;;
 esac
