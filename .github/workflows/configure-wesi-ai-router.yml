@@ -1,0 +1,145 @@
+name: Configure Wesi AI Router
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_host:
+        description: 'Wesi AI Relay DNS hostname'
+        required: true
+        default: 'ai.wesi-wi.su'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-ai-router-config
+  cancel-in-progress: false
+
+jobs:
+  configure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      PUBLIC_HOST: ${{ inputs.public_host }}
+      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate configuration
+        env:
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+        run: |
+          set -euo pipefail
+          for name in PUBLIC_HOST RELAY_HOST RELAY_USER MAIN_HOST MAIN_USER RELAY_KEY MAIN_KEY SHARED; do
+            [ -n "${!name:-}" ] || { echo "::error::Missing $name"; exit 1; }
+          done
+          [ ${#SHARED} -ge 32 ] || { echo '::error::WESI_MAIN_SHARED_SECRET is too short'; exit 1; }
+          PUBLIC_HOST="${PUBLIC_HOST#https://}"
+          PUBLIC_HOST="${PUBLIC_HOST%%/*}"
+          echo "PUBLIC_HOST=$PUBLIC_HOST" >> "$GITHUB_ENV"
+
+      - name: Prepare SSH
+        env:
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          RELAY_KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+          MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$RELAY_KEY" > ~/.ssh/relay_key
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/relay_key ~/.ssh/main_key
+          if [ -n "${RELAY_KNOWN:-}" ]; then printf '%s\n' "$RELAY_KNOWN" > ~/.ssh/relay_known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null; fi
+          if [ -n "${MAIN_KNOWN:-}" ]; then printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/*known_hosts
+
+      - name: Build sealed optional provider configuration
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, os
+          names = ['GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY']
+          with open('providers.b64','w',encoding='ascii') as f:
+              for name in names:
+                  value = os.environ.get(name, '').strip()
+                  if value:
+                      f.write(name + '=' + base64.b64encode(value.encode()).decode() + '\n')
+          PY
+          chmod 600 providers.b64
+
+      - name: Install provider secrets on Relay
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          scp "${SSH[@]}" providers.b64 "$RELAY_USER@$RELAY_HOST:/tmp/wesi-ai-providers.b64"
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          test -f /tmp/wesi-ai-providers.b64
+          umask 077
+          : > /etc/wesi-ai-providers.env
+          while IFS='=' read -r key value; do
+            [ -n "$key" ] || continue
+            case "$key" in GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;; *) echo "bad provider key" >&2; exit 2;; esac
+            decoded="$(printf '%s' "$value" | base64 -d)"
+            [ -n "$decoded" ] || continue
+            printf '%s=%s\n' "$key" "$decoded" >> /etc/wesi-ai-providers.env
+          done < /tmp/wesi-ai-providers.b64
+          rm -f /tmp/wesi-ai-providers.b64
+          if id -u wesi-relay >/dev/null 2>&1; then chown root:wesi-relay /etc/wesi-ai-providers.env; else chown root:root /etc/wesi-ai-providers.env; fi
+          chmod 640 /etc/wesi-ai-providers.env
+          systemctl restart wesi-ai-relay
+          systemctl is-active --quiet wesi-ai-relay
+          REMOTE
+          rm -f providers.b64
+
+      - name: Switch Main Server to Fast Pro Ultra routing
+        env:
+          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          cfg = {
+              'url': 'https://' + os.environ['PUBLIC_HOST'],
+              'sharedSecret': os.environ['SHARED'],
+              'routes': {'fast':'wesi/fast','pro':'wesi/pro','maximum':'wesi/ultra'},
+          }
+          with open('wesi-ai-relay.json','w',encoding='utf-8') as f: json.dump(cfg,f,ensure_ascii=False)
+          PY
+          chmod 600 wesi-ai-relay.json
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          scp "${SSH[@]}" wesi-ai-relay.json "$MAIN_USER@$MAIN_HOST:/tmp/wesi-ai-relay.json"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          test -d /opt/pocketbase/pb_hooks
+          PB_USER=$(stat -c '%U' /opt/pocketbase/pb_hooks)
+          PB_GROUP=$(stat -c '%G' /opt/pocketbase/pb_hooks)
+          sudo -n install -o "$PB_USER" -g "$PB_GROUP" -m 0600 /tmp/wesi-ai-relay.json /opt/pocketbase/pb_hooks/.wesi-ai-relay.json || install -o "$PB_USER" -g "$PB_GROUP" -m 0600 /tmp/wesi-ai-relay.json /opt/pocketbase/pb_hooks/.wesi-ai-relay.json
+          rm -f /tmp/wesi-ai-relay.json
+          sudo -n systemctl restart pocketbase || systemctl restart pocketbase
+          REMOTE
+          rm -f wesi-ai-relay.json
+
+      - name: Verify Relay health and routing marker
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "https://$PUBLIC_HOST/health" > health.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('health.json',encoding='utf-8'))
+          assert data.get('ok') is True and data.get('ready') is True, data
+          assert data.get('routing') == ['fast','pro','ultra'], data
+          print('Wesi AI Router: Fast / Pro / Ultra ready')
+          PY
