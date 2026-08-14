@@ -164,9 +164,6 @@ class WesiAiChatController extends ChangeNotifier {
       final data = Map<String, dynamic>.from(rawData);
       if ('${data['status'] ?? ''}'.toLowerCase() != 'pending') continue;
 
-      // A localRequest exists only when WesiAiApi extracted it from a
-      // server-verified tool result. Generic model-authored media blocks have
-      // this field stripped and therefore can never execute local code.
       final localRequest = data['localRequest'];
       if (localRequest is Map) {
         final key = '${message.id}|local|${data['mediaType']}|${data['prompt']}';
@@ -262,7 +259,7 @@ class WesiAiChatController extends ChangeNotifier {
                 '${localRaw['mediaType'] ?? ''}' == '${request['mediaType'] ?? ''}' &&
                 '${localRaw['prompt'] ?? ''}' == '${request['prompt'] ?? ''}') {
               data.remove('localRequest');
-              data['status'] = ok ? 'failed' : 'failed';
+              data['status'] = ok ? 'ready' : 'failed';
               block['data'] = data;
               nextBlocks.add(block);
               changed = true;
