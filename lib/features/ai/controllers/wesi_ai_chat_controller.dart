@@ -30,7 +30,11 @@ class WesiAiChatController extends ChangeNotifier {
     try {
       final reply = await api.send(conversation: updated, tier: state.tier, message: clean, history: history, memory: state.memory); final at = DateTime.now();
       final author = switch (c.persona) { WesiAiPersona.zane => WesiAiMessageAuthor.zane, WesiAiPersona.nirvana => WesiAiMessageAuthor.nirvana, WesiAiPersona.lobby => WesiAiMessageAuthor.zane };
-      state = state.copyWith(messages: [...state.messages, WesiAiMessage(id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}', conversationId: c.id, employeeId: store.employeeId, author: author, text: reply.answer, createdAt: at, metadata: {'requestId': reply.requestId})]);
+      state = state.copyWith(messages: [...state.messages, WesiAiMessage(id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}', conversationId: c.id, employeeId: store.employeeId, author: author, text: reply.answer, createdAt: at, metadata: {
+        'requestId': reply.requestId,
+        if (reply.blocks.isNotEmpty)
+          'blocks': reply.blocks.map((block) => block.toJson()).toList(growable: false),
+      })]);
     } on WesiAiApiException catch (e) {
       final at = DateTime.now(); state = state.copyWith(messages: [...state.messages, WesiAiMessage(id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}', conversationId: c.id, employeeId: store.employeeId, author: WesiAiMessageAuthor.system, kind: WesiAiMessageKind.error, text: e.message, createdAt: at, metadata: {'code': e.code})]);
     } finally { sending = false; await _persist(); }
