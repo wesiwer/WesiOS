@@ -7,6 +7,7 @@ import {
   startGoogleVideo,
   getGoogleVideoStatus,
   personaVoice,
+  pcm16MonoToWav,
 } from './google-media.mjs';
 
 function jsonResponse(body, status = 200) {
@@ -23,9 +24,23 @@ test('persona voices are distinct and configurable without client release', () =
   assert.equal(personaVoice('nirvana', {WESI_NIRVANA_TTS_VOICE: 'not-a-voice'}), 'Sulafat');
 });
 
-test('TTS retries one provider 500 and returns bounded inline WAV', async () => {
+test('PCM wrapper produces a valid 24kHz mono 16-bit WAV', () => {
+  const pcm = Buffer.from([0x00, 0x00, 0xff, 0x7f]);
+  const wav = pcm16MonoToWav(pcm, 24000);
+  assert.ok(wav);
+  assert.equal(wav.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(wav.toString('ascii', 8, 12), 'WAVE');
+  assert.equal(wav.readUInt16LE(22), 1);
+  assert.equal(wav.readUInt32LE(24), 24000);
+  assert.equal(wav.readUInt16LE(34), 16);
+  assert.equal(wav.readUInt32LE(40), pcm.length);
+  assert.deepEqual(wav.subarray(44), pcm);
+});
+
+test('TTS retries one provider 500, requests audio only and wraps provider PCM as WAV', async () => {
   let calls = 0;
   let requestBody = null;
+  const pcm = Buffer.from([0x00, 0x00, 0x10, 0x00]);
   const fetchImpl = async (_url, init) => {
     calls++;
     requestBody = JSON.parse(init.body);
@@ -33,7 +48,7 @@ test('TTS retries one provider 500 and returns bounded inline WAV', async () => 
     return jsonResponse({
       steps: [{
         type: 'model_output',
-        content: [{type: 'audio', mime_type: 'audio/wav', sample_rate: 24000, data: Buffer.from('wav').toString('base64')}],
+        content: [{type: 'audio', data: pcm.toString('base64')}],
       }],
     });
   };
@@ -49,8 +64,13 @@ test('TTS retries one provider 500 and returns bounded inline WAV', async () => 
   assert.equal(result.media.kind, 'tts');
   assert.equal(result.media.mimeType, 'audio/wav');
   assert.equal(result.media.voice, 'Charon');
-  assert.equal(Buffer.from(result.media.data, 'base64').toString(), 'wav');
+  const wav = Buffer.from(result.media.data, 'base64');
+  assert.equal(wav.toString('ascii', 0, 4), 'RIFF');
+  assert.equal(wav.toString('ascii', 8, 12), 'WAVE');
+  assert.deepEqual(wav.subarray(44), pcm);
+  assert.equal(result.media.byteSize, pcm.length + 44);
   assert.equal(requestBody.model, 'gemini-3.1-flash-tts-preview');
+  assert.deepEqual(requestBody.response_format, {type: 'audio'});
   assert.equal(requestBody.generation_config.speech_config[0].voice, 'Charon');
 });
 
@@ -98,6 +118,7 @@ test('Lyria clip uses Gemini key and returns MP3 plus lyrics', async () => {
   );
   assert.equal(result.ok, true);
   assert.equal(body.model, 'lyria-3-clip-preview');
+  assert.equal(body.response_format, undefined);
   assert.equal(result.media.kind, 'music');
   assert.equal(result.media.mimeType, 'audio/mpeg');
   assert.equal(result.media.mode, 'clip');
@@ -105,7 +126,7 @@ test('Lyria clip uses Gemini key and returns MP3 plus lyrics', async () => {
   assert.equal(Buffer.from(result.media.data, 'base64').toString(), 'mp3');
 });
 
-test('Lyria Pro can request WAV explicitly', async () => {
+test('Lyria Pro requests WAV using the documented audio response format', async () => {
   let body = null;
   const result = await callGoogleMusic(
     {prompt: 'Полноценная композиция с интро и аутро', mode: 'pro', format: 'wav'},
@@ -117,7 +138,7 @@ test('Lyria Pro can request WAV explicitly', async () => {
   );
   assert.equal(result.ok, true);
   assert.equal(body.model, 'lyria-3-pro-preview');
-  assert.equal(body.response_format.mime_type, 'audio/wav');
+  assert.deepEqual(body.response_format, {type: 'audio'});
   assert.equal(result.media.mimeType, 'audio/wav');
   assert.equal(result.media.mode, 'pro');
 });
