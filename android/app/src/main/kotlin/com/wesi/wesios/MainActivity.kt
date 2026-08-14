@@ -18,9 +18,10 @@ import java.io.File
 
 /**
  * Нативные мосты:
- *  - wesios/updater — установка скачанного APK
- *  - wesios/icon    — переключение activity-alias'ов (тёмная / светлая иконка)
- *  - wesios/haptics — точный тактильный отклик (см. ниже)
+ *  - wesios/updater   — установка скачанного APK
+ *  - wesios/icon      — переключение activity-alias'ов (тёмная / светлая иконка)
+ *  - wesios/haptics   — точный тактильный отклик (см. ниже)
+ *  - wesios/ai_speech — локальная озвучка ответов Wesi AI
  *
  * Смена иконки откладывается до onPause: на многих лаунчерах
  * disable активного alias'а во время работы приложения выкидывает
@@ -37,6 +38,8 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        WesiAiSpeechChannel.register(this, flutterEngine.dartExecutor.binaryMessenger)
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, updaterChannel)
             .setMethodCallHandler { call, result ->
@@ -102,6 +105,11 @@ class MainActivity : FlutterFragmentActivity() {
             }
             pendingLightIcon = null
         }
+    }
+
+    override fun onDestroy() {
+        WesiAiSpeechChannel.shutdown()
+        super.onDestroy()
     }
 
     /**
