@@ -38,6 +38,7 @@ module.exports = {
       code === 'WAI_PROVIDER_RATE_LIMIT' ||
       code === 'WAI_PROVIDER_UNAVAILABLE' ||
       code === 'WAI_PROVIDER_TIMEOUT' ||
-      code === 'WAI_PROVIDER_NOT_CONFIGURED';
+      code === 'WAI_PROVIDER_NOT_CONFIGURED' ||
+      code === 'WAI_PROVIDER_MODEL_NOT_FOUND';
   }
 };
