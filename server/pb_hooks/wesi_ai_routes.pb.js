@@ -6,9 +6,10 @@ routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
   ai.requireAiModule(ctx);
   const cfg = ai.readRelayConfig();
   const personasReady = personaRuntime.load("zane").ready && personaRuntime.load("nirvana").ready;
+  const ultraReady = !!(cfg.routes.ultra.low || cfg.routes.ultra.medium || cfg.routes.ultra.high);
   return e.json(200, {
     product: "Wesi AI",
-    tiers: ["fast", "pro", "maximum"],
+    tiers: ["fast", "pro", "maximum", "ultra"],
     personas: ["zane", "nirvana", "lobby"],
     lobbyModes: ["both", "smart"],
     ready: cfg.ready && personasReady,
@@ -23,8 +24,38 @@ routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
       imageGeneration: cfg.ready,
       videoGeneration: cfg.ready,
       musicGeneration: cfg.ready,
+      ultraRouting: ultraReady,
+      modelLimits: cfg.ready,
       wesiTools: tools.definitions(e, ctx).length > 0
     }
+  });
+}, $apis.requireAuth("users"));
+
+routerAdd("GET", "/api/wesi/ai/limits", (e) => {
+  const ai = require(`${__hooks}/wesi_ai_lib.js`);
+  const ctx = ai.resolveIdentity(e);
+  ai.requireAiModule(ctx);
+  const cfg = ai.readRelayConfig();
+  if (!cfg.ready) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED"});
+  const requestId = "wai_limits_" + Date.now() + "_" + $security.randomString(12);
+  const routes = {
+    fast: cfg.routes.fast,
+    pro: cfg.routes.pro,
+    maximum: cfg.routes.maximum,
+    ultraLow: cfg.routes.ultra.low,
+    ultraMedium: cfg.routes.ultra.medium,
+    ultraHigh: cfg.routes.ultra.high
+  };
+  const relay = ai.callRelayJson(cfg, {
+    requestId: requestId,
+    operation: "limits",
+    input: {routes: routes}
+  }, requestId, 30);
+  if (!relay.ok) return e.json(relay.status, {ok: false, code: relay.code});
+  return e.json(200, {
+    ok: true,
+    limits: relay.result.limits || {},
+    observedAt: new Date().toISOString()
   });
 }, $apis.requireAuth("users"));
 
@@ -32,6 +63,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const ai = require(`${__hooks}/wesi_ai_lib.js`);
   const personaRuntime = require(`${__hooks}/wesi_ai_persona_runtime.js`);
   const tools = require(`${__hooks}/wesi_ai_tools.js`);
+  const ultraRouter = require(`${__hooks}/wesi_ai_ultra_router.js`);
   const ctx = ai.resolveIdentity(e);
   ai.requireAiModule(ctx);
   const body = e.requestInfo().body || {};
@@ -45,7 +77,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const memory = body.memory && typeof body.memory === "object" ? body.memory : {};
 
   if (["zane", "nirvana", "lobby"].indexOf(persona) < 0) throw new BadRequestError("Некорректный режим Wesi AI");
-  if (["fast", "pro", "maximum"].indexOf(tier) < 0) throw new BadRequestError("Некорректный уровень Wesi AI");
+  if (["fast", "pro", "maximum", "ultra"].indexOf(tier) < 0) throw new BadRequestError("Некорректный уровень Wesi AI");
   if (persona === "lobby" && ["both", "smart"].indexOf(lobbyMode) < 0) throw new BadRequestError("Некорректный режим лобби");
   if (!message || message.length > 32000) throw new BadRequestError("Некорректное сообщение Wesi AI");
   if (summary.length > 64000 || history.length > 100) throw new BadRequestError("Слишком большой контекст Wesi AI");
@@ -54,8 +86,16 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const personaBundle = personaRuntime.load(persona);
   if (!personaBundle.ready) return e.json(503, {ok: false, code: "WAI_PERSONA_ENGINE_NOT_READY"});
   const cfg = ai.readRelayConfig();
-  const route = cfg.routes[tier] || "";
-  if (!cfg.ready || !route) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED"});
+  if (!cfg.ready) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED"});
+
+  let routePlan;
+  if (tier === "ultra") {
+    routePlan = ultraRouter.plan(message, cfg.routes.ultra);
+  } else {
+    const route = String(cfg.routes[tier] || "").trim();
+    routePlan = {complexity: tier, candidates: route ? [{level: tier, route: route}] : []};
+  }
+  if (!routePlan.candidates.length) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED"});
 
   const cleanHistory = [];
   for (const item of history) {
@@ -90,15 +130,42 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   }
 
   const requestId = "wai_" + Date.now() + "_" + $security.randomString(12);
+  let stickyCandidate = 0;
+  let effectiveRoute = routePlan.candidates[0];
   const relayCall = function(system, phase) {
-    const relayRequestId = requestId + "_" + phase;
-    const payload = {
-      requestId: relayRequestId,
-      route: route,
-      operation: persona === "lobby" ? "lobby" : "chat",
-      input: {system: system, history: cleanHistory, message: message}
+    let last = null;
+    for (let index = stickyCandidate; index < routePlan.candidates.length; index++) {
+      const candidate = routePlan.candidates[index];
+      const relayRequestId = requestId + "_" + phase + "_" + candidate.level;
+      const payload = {
+        requestId: relayRequestId,
+        route: candidate.route,
+        operation: persona === "lobby" ? "lobby" : "chat",
+        input: {system: system, history: cleanHistory, message: message}
+      };
+      const generated = ai.callRelay(cfg, payload, relayRequestId);
+      if (generated.ok) {
+        stickyCandidate = index;
+        effectiveRoute = candidate;
+        return generated;
+      }
+      last = generated;
+      if (tier !== "ultra" || !ultraRouter.shouldFallback(generated)) return generated;
+    }
+    return last || {ok: false, status: 503, code: "WAI_PROVIDER_UNAVAILABLE"};
+  };
+
+  const routeMeta = function() {
+    const route = String(effectiveRoute && effectiveRoute.route || "");
+    const slash = route.indexOf("/");
+    return {
+      requestedTier: tier,
+      complexity: routePlan.complexity,
+      effectiveLevel: String(effectiveRoute && effectiveRoute.level || tier),
+      provider: slash > 0 ? route.slice(0, slash) : "",
+      model: slash > 0 ? route.slice(slash + 1) : route,
+      fallbackDepth: stickyCandidate
     };
-    return ai.callRelay(cfg, payload, relayRequestId);
   };
 
   const parseToolRequest = function(answer) {
@@ -124,7 +191,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     if (!generated.ok) return e.json(generated.status, {ok: false, code: generated.code, requestId: requestId});
     const toolRequest = toolDefinitions.length ? parseToolRequest(generated.answer) : null;
     if (!toolRequest) {
-      return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, answer: generated.answer, toolResults: toolResults});
+      return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, route: routeMeta(), answer: generated.answer, toolResults: toolResults});
     }
 
     const allowedTool = toolDefinitions.some((item) => String(item.name || "") === toolRequest.name);
@@ -148,5 +215,5 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   ]).join("\n\n");
   const finalGenerated = relayCall(finalSystem, "final");
   if (!finalGenerated.ok) return e.json(finalGenerated.status, {ok: false, code: finalGenerated.code, requestId: requestId});
-  return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, answer: finalGenerated.answer, toolResults: toolResults});
+  return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, route: routeMeta(), answer: finalGenerated.answer, toolResults: toolResults});
 }, $apis.requireAuth("users"));
