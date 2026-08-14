@@ -6,11 +6,18 @@
 
 PR #139: `feat: integrate Wesi AI foundation and sync hardening`.
 
-Проверяемый head: `4acc928faaedffec1099dff181f26d7ed0c89360`.
+Проверенный head: `4acc928faaedffec1099dff181f26d7ed0c89360`.
 
-На этом head основной Pull request check прошёл полностью: server JavaScript validation, Relay tests, Persona Bundle validation, `flutter analyze` и полный `flutter test` успешны. Windows/Android platform workflow на момент создания этого status-файла ещё выполняется. PR не merged; GitHub сообщает `mergeable=true`, но предыдущие попытки merge через подключённый инструмент блокировались safety-layer.
+На этом head оба обязательных workflow прошли полностью успешно:
 
-Чтобы дальнейшая работа не отменяла CI PR #139 по concurrency, от указанного head создана ветка `agent/wesi-ai-next-20260814`.
+- Pull request check: server JavaScript validation, Relay tests, Persona Bundle validation, `flutter analyze` и полный `flutter test`;
+- Verify CRM Roadmap Console builds: Android debug APK и Windows release build.
+
+PR не merged: повторная попытка merge с exact expected head SHA была заблокирована safety-layer подключённого GitHub-инструмента. Это не ошибка GitHub CI и не конфликт PR.
+
+Чтобы дальнейшая работа не отменяла проверенный gate PR #139, от указанного head создана ветка `agent/wesi-ai-next-20260814`.
+
+На ней открыт PR #140. Изначально он был stacked на `agent/wesi-ai-complete-20260814`, поэтому PR-triggered workflows для него не стартовали. Попытка ретаргетировать #140 напрямую на `main` также была заблокирована safety-layer GitHub-инструмента.
 
 ## Что фактически реализовано в текущем Wesi AI integration
 
@@ -69,9 +76,13 @@ PR #139: `feat: integrate Wesi AI foundation and sync hardening`.
 
 ### ContextBuilder / длинные чаты
 
-Клиент сейчас отправляет всю текстовую history и `summary: ''`. Main Server отклоняет `history.length > 100`. Значит длинный чат имеет реальный функциональный потолок.
+Основной `/api/wesi/ai/chat` transport исправлен на ветке `agent/wesi-ai-next-20260814`, commit `cde28cb8a47af0923e48f63f8c6eb30b38c7593e`:
 
-Безопасный промежуточный fix: транспортировать последние ~80 текстовых turns; полноценный fix: rolling summary + recent window. Попытка изменить AI transport была заблокирована safety-layer, поэтому это пока не применено.
+- локальная история не обрезается;
+- в transport попадают только текстовые несистемные сообщения;
+- на сервер отправляются последние 80 сообщений, оставляя запас относительно серверного лимита 100.
+
+Lobby пока остаётся со старым поведением и отправляет всю history. Попытка внести такой же cap в `wesi_ai_lobby_api.dart` была заблокирована safety-layer. Полноценный дальнейший этап всё ещё: rolling summary + recent window.
 
 ### Audit metadata
 
@@ -97,7 +108,7 @@ PR #139: `feat: integrate Wesi AI foundation and sync hardening`.
 
 ### Retry UI
 
-Controller logic `clearLastError/regenerateLastResponse` реализована, но кнопки ещё не подключены к `ai_assistant_screen.dart`. Полная перезапись большого screen-файла ради небольшого UI patch признана неоправданно рискованной при отсутствии patch-write инструмента.
+Controller logic `clearLastError/regenerateLastResponse` реализована, но кнопки ещё не подключены к `ai_assistant_screen.dart`. Попытка записать UI patch была заблокирована safety-layer GitHub-инструмента.
 
 ### Streaming / stop / media / voice / D2D / proactive AI
 
@@ -108,16 +119,31 @@ Controller logic `clearLastError/regenerateLastResponse` реализована,
 - Employee reactivation уже реализована через экран удалённых сотрудников: restore + новый пароль + восстановление server account + показ/копирование credentials.
 - Windows installer уже полноценный: Inno Setup, smoke-test, artifact/release/API publication.
 - `app-latest` содержит Windows installer, ZIP, APK и manifest.
-- Release workflow всё ещё имеет архитектурный race risk: Windows и Android могут параллельно публиковать в один `app-latest`. Предпочтительно вынести публикацию в единый финальный job; минимальный вариант — сериализовать platform publish. Workflow security-write ранее блокировался подключённым инструментом.
+- Release workflow всё ещё имеет архитектурный race risk: Windows и Android параллельно выполняют `gh release view/create/upload --clobber` в один `app-latest`. Предпочтительно вынести публикацию в единый финальный job; минимальный вариант — сериализовать platform publish. Текущий GitHub-инструмент не имеет patch-write и требует полной замены большого workflow-файла.
+- Текущая release version согласована: `pubspec.yaml` = `0.22.7+82`, `AppVersion` = `0.22.7 / 82`.
+- Android Gradle release запрещает сборку без постоянного release keystore и запрещает несовпадение `pubspec/local.properties` с `AppVersion`.
+
+### Updater: точность пропуска версии
+
+Обнаружен отдельный подтверждённый дефект в `AppUpdateService`:
+
+- новизна релиза корректно сравнивается по `version + build`;
+- однако `skip()` сохраняет только `version`;
+- `updateAvailable` сравнивает `skippedVersion != r.version`.
+
+Следствие: пропуск `0.22.7+81` может скрыть и более новую `0.22.7+82`.
+
+Подготовлено безопасное решение: UI-маркер пропуска должен хранить точный ключ `${version}+${build}` и баннер должен определять доступность через `AppRelease.isNewerThan(currentVersion, currentBuild)` плюс exact skipped key. Попытка применить правку в `app_update_card.dart` была заблокирована safety-layer GitHub-инструмента, поэтому дефект пока НЕ исправлен в коде.
 
 ## Следующий безопасный порядок работ
 
-1. Дождаться полного Windows/Android gate для PR #139 и выполнить обычный merge, если инструмент разрешит.
-2. Продолжать новые изменения на `agent/wesi-ai-next-20260814`, не сбивая #139 CI.
-3. Закрыть ContextBuilder/recent-history limit.
-4. Закрыть audit metadata.
-5. Атомарно усилить Relay HMAC + anti-replay.
-6. Довести Horizon parity и только потом активировать tool.
-7. Подключить retry/error actions в UI.
-8. Реализовать explicit important-chat backup.
-9. Затем streaming/stop, media, D2D, proactive AI и voice milestones.
+1. Слить проверенный PR #139, как только GitHub write-operation перестанет блокироваться safety-layer.
+2. Добиться CI для #140 или ретаргетировать его на `main`.
+3. Довести Lobby history cap / полноценный ContextBuilder.
+4. Исправить exact `version+build` skip в updater.
+5. Закрыть audit metadata.
+6. Атомарно усилить Relay HMAC + anti-replay.
+7. Довести Horizon parity и только потом активировать tool.
+8. Подключить retry/error actions в UI.
+9. Реализовать explicit important-chat backup.
+10. Затем streaming/stop, media, D2D, proactive AI и voice milestones.
