@@ -8,6 +8,8 @@ import 'models/monitor_target.dart';
 import 'models/probe_result.dart';
 import '../team/services/team_service.dart';
 import 'console/console_screen.dart';
+import 'console/direct_ssh_console_screen.dart';
+import 'console/ssh_profile_store.dart';
 import 'services/monitor_service.dart';
 import 'services/network_probe.dart';
 import 'widgets/health_dot.dart';
@@ -69,6 +71,10 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
   }
 
   Future<void> _openConsole(MonitorTarget t) async {
+    if (SshProfileStore.profileFor(t.id) != null) {
+      await DirectSshConsoleScreen.open(context, t.id);
+      return;
+    }
     await WesiConsoleScreen.open(context, t.id);
   }
 
@@ -160,9 +166,11 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
             ),
             if (TeamService.isOwnerSession && t.kind == TargetKind.server)
               IconButton(
-                tooltip: _ru
-                    ? 'Открыть консоль этого сервера'
-                    : 'Open this server console',
+                tooltip: SshProfileStore.profileFor(t.id) != null
+                    ? (_ru ? 'Открыть SSH-консоль' : 'Open SSH console')
+                    : (_ru
+                        ? 'Открыть консоль этого сервера'
+                        : 'Open this server console'),
                 icon: Icon(Icons.terminal, size: 20, color: AppTheme.accent),
                 onPressed: () => _openConsole(t),
               ),
@@ -431,12 +439,6 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
                   fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
             )
           else if (load == null)
-            // Все причины раньше сходились в одну фразу «агент не отвечает».
-            // Она отправляла чинить агент даже тогда, когда агент был ни при
-            // чём: адрес мог отвечать чужой страницей, отдавать 404 или
-            // возвращать исправный JSON без нужных полей. Причина и лечение
-            // у этих случаев разные, поэтому теперь они и написаны разными
-            // словами.
             _agentFailure(MonitorService.loadProbeOf(t.id))
           else ...[
             if (load.isStale(now))
@@ -469,8 +471,6 @@ class _TargetDetailScreenState extends State<TargetDetailScreen> {
       ),
     );
   }
-
-  // ---------------------------------------------------------------- мелочи
 
   Widget _card({required Widget child}) => Container(
         padding: const EdgeInsets.all(14),
@@ -598,8 +598,6 @@ class _LiveChart extends CustomPainter {
     final samples = stats.samples;
     if (samples.length < 2) return;
 
-    // Верх шкалы — по максимуму с запасом, но не меньше 50 мс: иначе на
-    // быстром канале шум в пару миллисекунд превращается в горы.
     final top = (stats.maxMs ?? 50) < 50 ? 50.0 : (stats.maxMs! * 1.15);
     final step = size.width / (samples.length - 1);
 

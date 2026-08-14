@@ -3,6 +3,10 @@ function adapters() {
   return [
     require(base + "wesi_ai_task_tools.js"),
     require(base + "wesi_ai_finance_tools.js"),
+    require(base + "wesi_ai_workspace_tools.js"),
+    require(base + "wesi_ai_knowledge_tools.js"),
+    require(base + "wesi_ai_presentation_tools.js"),
+    require(base + "wesi_ai_media_tools.js"),
   ];
 }
 

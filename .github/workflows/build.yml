@@ -199,14 +199,27 @@ jobs:
         with:
           ndk-version: r25b
 
+      # Отладочная сборка, а не релизная, и это не упрощение проверки.
+      #
+      # android/app/build.gradle намеренно запрещает релизную сборку без
+      # ключей подписи: APK, подписанная отладочным ключом, собиралась, но
+      # не вставала поверх установленного WesiOS. С тех пор этот job падал
+      # by design, а сообщение уводило в сторону — первой из трёх ошибок
+      # шла настоящая («Release signing key is required»), а последними
+      # висели её последствия про compileSdkVersion.
+      #
+      # Ключам подписи здесь взяться неоткуда, да и незачем: этот workflow
+      # проверяет, что приложение собирается под Android. Подписанную
+      # релизную APK собирает release-app.yml, у которого ключи есть, и
+      # делает это на каждом выпуске.
       - name: Build APK
         env:
           GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false'
-        run: flutter build apk --release
+        run: flutter build apk --debug
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
           name: WesiOS-Android
-          path: build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-debug.apk
           retention-days: 1

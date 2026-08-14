@@ -12,7 +12,19 @@ routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
     personas: ["zane", "nirvana", "lobby"],
     lobbyModes: ["both", "smart"],
     ready: cfg.ready && personasReady,
-    features: {localFirstChats: true, handoff: true, lobby: true, streaming: false, media: false, wesiTools: tools.definitions(e, ctx).length > 0}
+    features: {
+      localFirstChats: true,
+      handoff: true,
+      lobby: true,
+      voiceConversation: true,
+      naturalTts: cfg.ready,
+      streaming: false,
+      media: cfg.ready,
+      imageGeneration: cfg.ready,
+      videoGeneration: cfg.ready,
+      musicGeneration: cfg.ready,
+      wesiTools: tools.definitions(e, ctx).length > 0
+    }
   });
 }, $apis.requireAuth("users"));
 
@@ -86,25 +98,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
       operation: persona === "lobby" ? "lobby" : "chat",
       input: {system: system, history: cleanHistory, message: message}
     };
-    const raw = JSON.stringify(payload);
-    const timestamp = String(Math.floor(Date.now() / 1000));
-    const signature = $security.hs256(timestamp + "." + raw, cfg.sharedSecret);
-    let relay;
-    try {
-      relay = $http.send({
-        url: cfg.url.replace(/\/$/, "") + "/v1/wesi-ai",
-        method: "POST",
-        body: raw,
-        headers: {"Content-Type": "application/json", "X-Wesi-Request-Id": relayRequestId, "X-Wesi-Timestamp": timestamp, "X-Wesi-Signature": signature},
-        timeout: 120
-      });
-    } catch (_) {
-      return {ok: false, status: 503, code: "WAI_RELAY_UNAVAILABLE"};
-    }
-    if (!relay || relay.statusCode < 200 || relay.statusCode >= 300) return {ok: false, status: 502, code: "WAI_RELAY_BAD_RESPONSE"};
-    const result = relay.json && typeof relay.json === "object" ? relay.json : {};
-    const answer = String(result.answer || "").trim();
-    return answer ? {ok: true, answer: answer} : {ok: false, status: 502, code: "WAI_EMPTY_RESPONSE"};
+    return ai.callRelay(cfg, payload, relayRequestId);
   };
 
   const parseToolRequest = function(answer) {

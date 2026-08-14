@@ -55,9 +55,11 @@ module.exports = {
     const permissions = snapshot.permissions && typeof snapshot.permissions === "object" ? snapshot.permissions : {};
     return {isOwner: false, ownerId: ownerId, employeeId: employeeId, modules: Array.isArray(permissions.modules) ? permissions.modules.map(String) : []};
   },
+
   requireAiModule: function(ctx) {
     if (!ctx || (!ctx.isOwner && ctx.modules.indexOf("ai") < 0)) throw new ForbiddenError("Нет доступа к Wesi AI");
   },
+
   readRelayConfig: function() {
     try {
       const raw = $os.readFile(__hooks + "/.wesi-ai-relay.json");
@@ -66,9 +68,100 @@ module.exports = {
       const url = String(cfg.url || "").trim();
       const sharedSecret = String(cfg.sharedSecret || "").trim();
       const routes = cfg.routes && typeof cfg.routes === "object" ? cfg.routes : {};
-      return {ready: /^https:\/\//.test(url) && sharedSecret.length >= 32, url: url, sharedSecret: sharedSecret, routes: {fast: String(routes.fast || ""), pro: String(routes.pro || ""), maximum: String(routes.maximum || "")}};
-    } catch (_) { return {ready: false, url: "", sharedSecret: "", routes: {fast: "", pro: "", maximum: ""}}; }
+      return {
+        ready: /^https:\/\//.test(url) && sharedSecret.length >= 32,
+        url: url,
+        sharedSecret: sharedSecret,
+        routes: {
+          fast: String(routes.fast || ""),
+          pro: String(routes.pro || ""),
+          maximum: String(routes.maximum || "")
+        }
+      };
+    } catch (_) {
+      return {ready: false, url: "", sharedSecret: "", routes: {fast: "", pro: "", maximum: ""}};
+    }
   },
+
+  callRelayJson: function(cfg, payload, requestId, timeoutSeconds) {
+    const raw = JSON.stringify(payload);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = $security.hs256(requestId + "." + timestamp + "." + raw, cfg.sharedSecret);
+    let relay;
+    try {
+      relay = $http.send({
+        url: cfg.url.replace(/\/$/, "") + "/v1/wesi-ai",
+        method: "POST",
+        body: raw,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Wesi-Request-Id": requestId,
+          "X-Wesi-Timestamp": timestamp,
+          "X-Wesi-Signature": signature
+        },
+        timeout: Math.max(10, Math.min(Number(timeoutSeconds || 120), 420))
+      });
+    } catch (_) {
+      return {ok: false, status: 503, code: "WAI_RELAY_UNAVAILABLE"};
+    }
+    const result = relay && relay.json && typeof relay.json === "object" ? relay.json : {};
+    if (!relay || relay.statusCode < 200 || relay.statusCode >= 300 || result.ok !== true) {
+      const status = relay && relay.statusCode === 429 ? 429 : (relay && relay.statusCode >= 400 && relay.statusCode < 500 ? relay.statusCode : 502);
+      return {ok: false, status: status, code: String(result.code || "WAI_RELAY_BAD_RESPONSE")};
+    }
+    return {ok: true, result: result};
+  },
+
+  callRelay: function(cfg, payload, requestId) {
+    const relay = module.exports.callRelayJson(cfg, payload, requestId, 120);
+    if (!relay.ok) return relay;
+    const answer = String(relay.result.answer || "").trim();
+    return answer ? {ok: true, answer: answer} : {ok: false, status: 502, code: "WAI_EMPTY_RESPONSE"};
+  },
+
+  fetchRelayArtifact: function(cfg, artifactId) {
+    const id = String(artifactId || "").trim();
+    if (!/^[A-Za-z0-9_-]{20,80}$/.test(id)) return {ok: false, status: 400, code: "WAI_RELAY_BAD_ARTIFACT"};
+    const requestId = "wai_art_" + Date.now() + "_" + $security.randomString(12);
+    const payload = {requestId: requestId, artifactId: id};
+    const raw = JSON.stringify(payload);
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    const signature = $security.hs256(requestId + "." + timestamp + "." + raw, cfg.sharedSecret);
+    let relay;
+    try {
+      relay = $http.send({
+        url: cfg.url.replace(/\/$/, "") + "/v1/wesi-ai-artifact",
+        method: "POST",
+        body: raw,
+        headers: {
+          "Content-Type": "application/json",
+          "X-Wesi-Request-Id": requestId,
+          "X-Wesi-Timestamp": timestamp,
+          "X-Wesi-Signature": signature
+        },
+        timeout: 180
+      });
+    } catch (_) {
+      return {ok: false, status: 503, code: "WAI_RELAY_UNAVAILABLE"};
+    }
+    if (!relay || relay.statusCode < 200 || relay.statusCode >= 300 || !Array.isArray(relay.body)) {
+      const result = relay && relay.json && typeof relay.json === "object" ? relay.json : {};
+      return {ok: false, status: 502, code: String(result.code || "WAI_RELAY_ARTIFACT_FAILED")};
+    }
+    if (!relay.body.length || relay.body.length > 128 * 1024 * 1024) {
+      return {ok: false, status: 502, code: "WAI_RELAY_ARTIFACT_TOO_LARGE"};
+    }
+    let mimeType = "application/octet-stream";
+    let kind = "media";
+    const headers = relay.headers && typeof relay.headers === "object" ? relay.headers : {};
+    for (const key of Object.keys(headers)) {
+      const value = Array.isArray(headers[key]) ? headers[key][0] : headers[key];
+      if (String(key).toLowerCase() === "content-type") mimeType = String(value || mimeType).split(";")[0].trim();
+      if (String(key).toLowerCase() === "x-wesi-media-kind") kind = String(value || kind).trim();
+    }
+    return {ok: true, bytes: relay.body, mimeType: mimeType, kind: kind};
+  },
+
   sanitizeMemory: function(memory) {
     const result = {shared: [], zane: [], nirvana: []};
     for (const key of ["shared", "zane", "nirvana"]) {
