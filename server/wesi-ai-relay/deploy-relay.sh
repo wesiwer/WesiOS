@@ -65,7 +65,7 @@ install_node24() {
   apt-get update
   apt-get install -y ca-certificates curl xz-utils
 
-  local machine arch sums filename version tmp expected actual root
+  local machine arch filename version tmp expected actual root
   machine="$(uname -m)"
   case "$machine" in
     x86_64|amd64) arch=x64 ;;
@@ -102,15 +102,26 @@ install_node24() {
   rm -rf "$tmp"
 }
 
+install_attachment_tools() {
+  if command -v 7z >/dev/null 2>&1; then return 0; fi
+  command -v apt-get >/dev/null 2>&1 || fail "7z не найден, а автоустановка archive tools поддерживает Debian/Ubuntu."
+  echo "Устанавливаю безопасный extractor для Wesi AI attachments..."
+  export DEBIAN_FRONTEND=noninteractive
+  apt-get update
+  apt-get install -y p7zip-full file
+  command -v 7z >/dev/null 2>&1 || fail "Не удалось установить 7z"
+}
+
 install_relay() {
   require_secrets
   install_node24
+  install_attachment_tools
   local node_bin
   node_bin="$(command -v node)"
   [ -x "$node_bin" ] || fail "Node.js executable не найден после установки"
 
   mkdir -p "$APP_DIR"
-  for file in server.mjs auth.mjs google.mjs google-media.mjs google-artifact.mjs media-cache.mjs package.json; do
+  for file in server.mjs auth.mjs google.mjs attachment-preprocessor.mjs google-media.mjs google-artifact.mjs media-cache.mjs package.json; do
     install -m 0644 "$SOURCE_DIR/$file" "$APP_DIR/$file"
   done
 
@@ -177,6 +188,7 @@ UNIT
   cat <<TEXT
 Relay запущен на $RELAY_HOST:$RELAY_PORT.
 Text routing управляется Main Server (Fast / Pro / Ultra).
+Universal attachments: image/audio/video/PDF/text/Markdown/documents/archives enabled.
 Natural TTS использует Gemini и остаётся серверной функцией.
 Image/video/music по умолчанию НЕ используют платные cloud endpoints:
 WESI_ENABLE_PAID_MEDIA=false. Для бесплатной генерации WesiOS устанавливает
