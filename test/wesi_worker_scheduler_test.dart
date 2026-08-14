@@ -102,4 +102,62 @@ void main() {
     );
     expect(result.ok, isFalse);
   });
+
+  test('developer pack reuses compatible tools and installs only missing ones', () {
+    final pack = WesiRuntimeCatalog.packs.firstWhere(
+      (item) => item.id == WesiRuntimePackId.developer,
+    );
+    final plan = WesiRuntimeCatalog.planDependencies(
+      pack: pack,
+      platform: WesiWorkerPlatform.windows,
+      detected: const <String, WesiRuntimeDependencyState>{
+        'python': WesiRuntimeDependencyState(
+          dependencyId: 'python',
+          detected: true,
+          compatible: true,
+          version: '3.12.4',
+          path: r'C:\Python312\python.exe',
+        ),
+        'node': WesiRuntimeDependencyState(
+          dependencyId: 'node',
+          detected: true,
+          compatible: true,
+          version: '22.5.1',
+          path: r'C:\Program Files\nodejs\node.exe',
+        ),
+        'jdk': WesiRuntimeDependencyState(
+          dependencyId: 'jdk',
+          detected: true,
+          compatible: true,
+          version: '17.0.12',
+          path: r'C:\Program Files\Java\jdk-17\bin\java.exe',
+        ),
+        'flutter': WesiRuntimeDependencyState(
+          dependencyId: 'flutter',
+          detected: true,
+          compatible: true,
+          version: '3.24.5',
+          path: r'D:\SDK\flutter\bin\flutter.bat',
+        ),
+        'cmake': WesiRuntimeDependencyState(
+          dependencyId: 'cmake',
+          detected: true,
+          compatible: false,
+          version: '3.18.0',
+          path: r'C:\Program Files\CMake\bin\cmake.exe',
+        ),
+      },
+    );
+
+    final byId = <String, WesiRuntimeDependencyPlanItem>{
+      for (final item in plan) item.dependency.id: item,
+    };
+    expect(byId['python']!.action, WesiRuntimeDependencyAction.reuse);
+    expect(byId['node']!.action, WesiRuntimeDependencyAction.reuse);
+    expect(byId['jdk']!.action, WesiRuntimeDependencyAction.reuse);
+    expect(byId['flutter']!.action, WesiRuntimeDependencyAction.reuse);
+    expect(byId['android-sdk']!.action, WesiRuntimeDependencyAction.install);
+    expect(byId['cmake']!.action, WesiRuntimeDependencyAction.upgrade);
+    expect(byId['vs-build-tools']!.action, WesiRuntimeDependencyAction.install);
+  });
 }
