@@ -17,9 +17,12 @@ load_b64_file() {
   local file="$1"
   [ -f "$file" ] || fail "Файл секретов не найден: $file"
   chmod 600 "$file" 2>/dev/null || true
-  local key value decoded
-  while IFS='=' read -r key value; do
-    [ -n "$key" ] || continue
+  local line key value decoded
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    key="${line%%=*}"
+    value="${line#*=}"
+    [ "$key" != "$line" ] || fail "Некорректная строка секретов"
     decoded="$(decode_b64 "$value")" || fail "Не удалось декодировать $key"
     case "$key" in
       WESI_MAIN_SHARED_SECRET_B64) WESI_MAIN_SHARED_SECRET="$decoded" ;;
