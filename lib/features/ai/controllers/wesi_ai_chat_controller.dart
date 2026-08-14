@@ -9,6 +9,11 @@ import '../wesi_ai_api.dart';
 import '../wesi_ai_session_policy.dart';
 
 class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
+  static const int _minUncompactedMessages = 36;
+  static const int _recentMessagesToKeep = 16;
+  static const int _maxCompactionBatch = 48;
+  static const int _minUncompactedChars = 26000;
+
   final WesiAiLocalStore store;
   final WesiAiApi api;
   final Set<String> _mediaPolls = <String>{};
@@ -96,13 +101,93 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
     await _persist();
   }
 
+  List<WesiAiMessage> _transportable(List<WesiAiMessage> messages) => messages
+      .where((m) =>
+          m.kind == WesiAiMessageKind.text &&
+          m.author != WesiAiMessageAuthor.system &&
+          m.author != WesiAiMessageAuthor.tool)
+      .toList(growable: false);
+
+  Future<WesiAiConversation> _compactContextIfNeeded(
+    WesiAiConversation conversation,
+    List<WesiAiMessage> history,
+  ) async {
+    final transportable = _transportable(history);
+    final already = conversation.contextCompactedMessageCount
+        .clamp(0, transportable.length);
+    final uncompacted = transportable.sublist(already);
+    if (uncompacted.length <= _recentMessagesToKeep) return conversation;
+
+    final chars = uncompacted.fold<int>(0, (sum, item) => sum + item.text.length);
+    if (uncompacted.length < _minUncompactedMessages &&
+        chars < _minUncompactedChars) {
+      return conversation;
+    }
+
+    final availableToCompact = uncompacted.length - _recentMessagesToKeep;
+    final batchSize = min(availableToCompact, _maxCompactionBatch);
+    if (batchSize <= 0) return conversation;
+    final batch = uncompacted.sublist(0, batchSize);
+
+    try {
+      final result = await api.compactContext(
+        conversation: conversation,
+        messages: batch,
+        compactedCount: 0,
+      );
+      final updated = conversation.copyWith(
+        contextSummary: result.summary,
+        contextCompactedMessageCount:
+            conversation.contextCompactedMessageCount + result.compactedCount,
+      );
+      final conversations = state.conversations
+          .map((item) => item.id == updated.id ? updated : item)
+          .toList(growable: false);
+      final at = DateTime.now();
+      final event = WesiAiMessage(
+        id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
+        conversationId: updated.id,
+        employeeId: store.employeeId,
+        author: WesiAiMessageAuthor.tool,
+        kind: WesiAiMessageKind.status,
+        text: 'Контекст оптимизирован',
+        createdAt: at,
+        metadata: <String, dynamic>{
+          'blocks': <Map<String, dynamic>>[
+            <String, dynamic>{
+              'type': 'tool',
+              'data': <String, dynamic>{
+                'label': 'Оптимизация контекста',
+                'tool': 'context_optimizer',
+                'compactedMessages': result.compactedCount,
+                'recentMessagesKept': _recentMessagesToKeep,
+              },
+            },
+          ],
+        },
+      );
+      state = state.copyWith(
+        conversations: conversations,
+        messages: <WesiAiMessage>[...state.messages, event],
+      );
+      await _persist();
+      return updated;
+    } on WesiAiApiException {
+      // Context optimization improves quality/cost but must never block a turn.
+      return conversation;
+    }
+  }
+
   Future<void> addUserMessage(String text) async {
-    final c = state.activeConversation;
+    var c = state.activeConversation;
     final clean = text.trim();
     if (c == null || clean.isEmpty || sending) return;
 
     WesiAiSessionPolicy.markModuleOpened();
-    final history = state.messagesFor(c.id);
+    var history = state.messagesFor(c.id);
+    c = await _compactContextIfNeeded(c, history);
+    history = state.messagesFor(c.id);
+
     final now = DateTime.now();
     final user = WesiAiMessage(
       id: '${now.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
@@ -114,7 +199,7 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
     );
     final updated = c.copyWith(updatedAt: now, title: _titleFor(c, clean));
     final conversations = state.conversations
-        .map((x) => x.id == c.id ? updated : x)
+        .map((x) => x.id == c!.id ? updated : x)
         .toList()
       ..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     state = state.copyWith(
