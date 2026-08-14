@@ -91,6 +91,76 @@ function generateMusic(ctx, input) {
   return {ok: true, result: {jobId: saved.payload.jobId, contentBlock: saved.contentBlock}};
 }
 
+function generateVideo(ctx, input) {
+  const base = typeof __hooks !== "undefined" ? __hooks + "/" : "./";
+  const ai = require(base + "wesi_ai_lib.js");
+  const media = require(base + "wesi_ai_media_lib.js");
+  const cfg = ai.readRelayConfig();
+  if (!cfg.ready) return {ok: false, code: "WAI_RELAY_NOT_CONFIGURED", message: "Генерация видео пока не подключена"};
+
+  const prompt = text(input.prompt, 6000);
+  if (!prompt) return {ok: false, code: "VALIDATION_ERROR", message: "Нужно описание видео"};
+  const aspect = ["16:9", "9:16"].indexOf(String(input.aspectRatio || "")) >= 0 ? String(input.aspectRatio) : "16:9";
+  const resolution = ["720p", "1080p", "4k"].indexOf(String(input.resolution || "")) >= 0 ? String(input.resolution) : "720p";
+  let durationSeconds = ["4", "6", "8"].indexOf(String(input.durationSeconds || "")) >= 0 ? String(input.durationSeconds) : "8";
+  if ((resolution === "1080p" || resolution === "4k") && durationSeconds !== "8") durationSeconds = "8";
+  const quality = String(input.quality || "") === "fast" ? "fast" : "quality";
+  const title = text(input.title || "Видео Wesi AI", 240);
+  const record = media.createJob(ctx, "video", prompt, title, {
+    aspectRatio: aspect,
+    resolution: resolution,
+    durationSeconds: durationSeconds,
+    quality: quality
+  });
+
+  const requestId = "wai_video_" + Date.now() + "_" + $security.randomString(12);
+  const relay = ai.callRelayJson(cfg, {
+    requestId: requestId,
+    operation: "video.start",
+    input: {
+      prompt: prompt,
+      aspectRatio: aspect,
+      resolution: resolution,
+      durationSeconds: durationSeconds,
+      quality: quality
+    }
+  }, requestId, 180);
+  if (!relay.ok) {
+    media.failJob(record, relay.code);
+    return {ok: false, code: relay.code, message: "Не удалось запустить генерацию видео"};
+  }
+  const job = relay.result && relay.result.job && typeof relay.result.job === "object" ? relay.result.job : {};
+  const operationName = String(job.operationName || "");
+  if (!/^[A-Za-z0-9._\/-]{4,300}$/.test(operationName) || operationName.indexOf("..") >= 0) {
+    media.failJob(record, "WAI_PROVIDER_BAD_RESPONSE");
+    return {ok: false, code: "WAI_PROVIDER_BAD_RESPONSE", message: "Провайдер не вернул корректную задачу видео"};
+  }
+  const payload = media.payloadOf(record);
+  payload.status = "running";
+  payload.providerOperationName = operationName;
+  payload.providerModel = text(job.model, 120);
+  payload.startedAt = new Date().toISOString();
+  media.savePayload(record, payload);
+
+  const statusUrl = "https://api.wesi-inc.ru/api/wesi/ai/media/jobs/" + encodeURIComponent(payload.jobId);
+  return {
+    ok: true,
+    result: {
+      jobId: payload.jobId,
+      contentBlock: {
+        type: "media",
+        data: {
+          mediaType: "video",
+          title: title,
+          prompt: text(prompt, 2000),
+          status: "pending",
+          url: statusUrl
+        }
+      }
+    }
+  };
+}
+
 module.exports = {
   definitions: function() {
     if (!configReady()) return [];
@@ -122,18 +192,35 @@ module.exports = {
             format: {type: "string", enum: ["mp3", "wav"]}
           }
         }
+      },
+      {
+        name: "generate_video",
+        description: "Запустить асинхронную генерацию видео по явной просьбе пользователя. Возвращает pending-карточку; WesiOS сам отслеживает задачу и заменяет её готовым видео. Не вызывай без прямой просьбы создать видео.",
+        parameters: {
+          type: "object",
+          required: ["prompt"],
+          properties: {
+            prompt: {type: "string"},
+            title: {type: "string"},
+            aspectRatio: {type: "string", enum: ["16:9", "9:16"]},
+            resolution: {type: "string", enum: ["720p", "1080p", "4k"]},
+            durationSeconds: {type: "string", enum: ["4", "6", "8"]},
+            quality: {type: "string", enum: ["fast", "quality"]}
+          }
+        }
       }
     ];
   },
 
   context: function() {
-    return configReady() ? {mediaGeneration: ["image", "music"]} : {};
+    return configReady() ? {mediaGeneration: ["image", "music", "video"]} : {};
   },
 
   execute: function(e, ctx, name, args) {
     const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
     if (name === "generate_image") return generateImage(ctx, input);
     if (name === "generate_music") return generateMusic(ctx, input);
+    if (name === "generate_video") return generateVideo(ctx, input);
     return {ok: false, code: "FORBIDDEN", message: "Неизвестный media tool"};
   }
 };
