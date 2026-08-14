@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {verifyMainRequest} from './auth.mjs';
-import {parseGoogleRoute, callGoogleText} from './google.mjs';
+import {callGoogleText} from './google.mjs';
+import {callProviderText, quotaForRoutes} from './provider-router.mjs';
 import {
   callGoogleTts,
   callGoogleImage,
@@ -14,7 +15,12 @@ import {putMedia, putBytes, takeMedia} from './media-cache.mjs';
 const host = process.env.WESI_RELAY_HOST || '127.0.0.1';
 const port = Number(process.env.WESI_RELAY_PORT || 8787);
 const secret = String(process.env.WESI_MAIN_SHARED_SECRET || '');
-const googleKey = String(process.env.GEMINI_API_KEY || '');
+const providerKeys = {
+  google: String(process.env.GEMINI_API_KEY || ''),
+  openai: String(process.env.OPENAI_API_KEY || ''),
+  anthropic: String(process.env.ANTHROPIC_API_KEY || ''),
+  xai: String(process.env.XAI_API_KEY || ''),
+};
 
 function send(res, status, body) {
   res.writeHead(status, {
@@ -64,19 +70,25 @@ function authenticate(req, raw) {
 
 async function execute(request) {
   const operation = String(request.operation || '');
-  if (operation === 'chat' || operation === 'lobby') {
-    const route = parseGoogleRoute(request.route);
-    if (!route) return {ok: false, status: 400, code: 'WAI_ROUTE_UNAVAILABLE'};
-    return callGoogleText(route.model, request.input || {}, googleKey);
+  if (operation === 'limits') {
+    return {ok: true, limits: quotaForRoutes(request.input?.routes || {}, providerKeys)};
   }
-  if (operation === 'tts') return callGoogleTts(request.input || {}, googleKey);
-  if (operation === 'image') return callGoogleImage(request.input || {}, googleKey);
-  if (operation === 'music') return callGoogleMusic(request.input || {}, googleKey);
-  if (operation === 'video.start') return startGoogleVideo(request.input || {}, googleKey);
+  if (operation === 'chat' || operation === 'lobby') {
+    return callProviderText(
+      request.route,
+      request.input || {},
+      providerKeys,
+      callGoogleText,
+    );
+  }
+  if (operation === 'tts') return callGoogleTts(request.input || {}, providerKeys.google);
+  if (operation === 'image') return callGoogleImage(request.input || {}, providerKeys.google);
+  if (operation === 'music') return callGoogleMusic(request.input || {}, providerKeys.google);
+  if (operation === 'video.start') return startGoogleVideo(request.input || {}, providerKeys.google);
   if (operation === 'video.status') {
-    const status = await getGoogleVideoStatus(request.input?.operationName, googleKey);
+    const status = await getGoogleVideoStatus(request.input?.operationName, providerKeys.google);
     if (!status?.ok || !status.done || status.failed || !status.providerUri) return status;
-    const downloaded = await downloadGoogleVideo(status.providerUri, googleKey);
+    const downloaded = await downloadGoogleVideo(status.providerUri, providerKeys.google);
     if (!downloaded?.ok) return downloaded;
     const cached = putBytes(downloaded.bytes, {
       kind: 'video',
@@ -104,7 +116,13 @@ http.createServer(async (req, res) => {
     return send(res, 200, {
       ok: true,
       service: 'wesi-ai-relay',
-      ready: secret.length >= 32 && googleKey.length > 0,
+      ready: secret.length >= 32 && Object.values(providerKeys).some((key) => key.length > 0),
+      providers: {
+        google: providerKeys.google.length > 0,
+        openai: providerKeys.openai.length > 0,
+        anthropic: providerKeys.anthropic.length > 0,
+        xai: providerKeys.xai.length > 0,
+      },
     });
   }
 
@@ -139,13 +157,10 @@ http.createServer(async (req, res) => {
     if (!result?.ok) {
       return send(res, result?.status || 502, {ok: false, code: result?.code || 'WAI_PROVIDER_UNAVAILABLE'});
     }
+    if (result.limits) return send(res, 200, {ok: true, limits: result.limits});
     if (result.answer) return send(res, 200, {ok: true, answer: result.answer});
 
     if (result.media) {
-      // TTS remains inline because the authenticated voice endpoint consumes
-      // it immediately and it is bounded to 20MB. Heavier generated assets
-      // are converted into a short-lived one-time Relay artifact that only
-      // Main Server can fetch with another signed request.
       if (String(result.media.kind || '') === 'tts') {
         return send(res, 200, {ok: true, media: result.media});
       }
