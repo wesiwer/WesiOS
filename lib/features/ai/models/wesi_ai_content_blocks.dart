@@ -241,7 +241,7 @@ class WesiAiContentParser {
     Object? toolResults,
   }) {
     final blocks = <WesiAiContentBlock>[];
-    _appendVerifiedKnowledge(blocks, toolResults);
+    _appendVerifiedToolBlocks(blocks, toolResults);
 
     var visible = answer;
     final fence = RegExp(
@@ -273,26 +273,37 @@ class WesiAiContentParser {
     );
   }
 
-  static void _appendVerifiedKnowledge(
+  static void _appendVerifiedToolBlocks(
     List<WesiAiContentBlock> blocks,
     Object? rawToolResults,
   ) {
     if (rawToolResults is! List) return;
-    final seen = <String>{};
+    final seenKnowledge = <String>{};
     for (final raw in rawToolResults) {
       if (blocks.length >= maxBlocks || raw is! Map) break;
       final item = Map<String, dynamic>.from(raw);
       if (item['verified'] != true || item['ok'] != true) continue;
-      if ('${item['tool'] ?? ''}' != 'knowledge_search') continue;
       final result = item['result'];
       if (result is! Map) continue;
-      final articles = result['articles'];
+      final resultMap = Map<String, dynamic>.from(result);
+
+      // Presentation tools return one already server-validated data block.
+      final rawContentBlock = resultMap['contentBlock'];
+      if (rawContentBlock is Map && blocks.length < maxBlocks) {
+        final block = WesiAiContentBlock.fromJson(rawContentBlock);
+        if (block != null) blocks.add(block);
+      }
+
+      // Knowledge references are built only from the verified knowledge tool
+      // result, never from an arbitrary article id authored by the model.
+      if ('${item['tool'] ?? ''}' != 'knowledge_search') continue;
+      final articles = resultMap['articles'];
       if (articles is! List) continue;
       for (final rawArticle in articles.take(8)) {
         if (blocks.length >= maxBlocks || rawArticle is! Map) break;
         final article = Map<String, dynamic>.from(rawArticle);
         final id = '${article['id'] ?? ''}'.trim();
-        if (id.isEmpty || !seen.add(id)) continue;
+        if (id.isEmpty || !seenKnowledge.add(id)) continue;
         final text = '${article['text'] ?? ''}'.trim();
         final excerpt = text.length <= 360 ? text : '${text.substring(0, 360)}…';
         final block = WesiAiContentBlock.fromJson(<String, dynamic>{
