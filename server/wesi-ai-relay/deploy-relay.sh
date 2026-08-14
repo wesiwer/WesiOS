@@ -130,15 +130,17 @@ PrivateDevices=true
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true
-RestrictAddressFamilies=AF_INET AF_INET6
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 RestrictNamespaces=true
 LockPersonality=true
-MemoryDenyWriteExecute=true
 
 [Install]
 WantedBy=multi-user.target
 UNIT
 
+  # MemoryDenyWriteExecute is intentionally NOT enabled. systemd documents it
+  # as incompatible with JIT engines; Node/V8 generates executable code at
+  # runtime. The remaining filesystem/device/kernel/network sandbox remains.
   systemctl daemon-reload
   systemctl enable --now wesi-ai-relay.service
   sleep 1
