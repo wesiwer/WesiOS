@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 
 import '../models/wesi_ai_chat_models.dart';
@@ -39,11 +38,11 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState lifecycleState) {
-    if (lifecycleState == AppLifecycleState.inactive ||
-        lifecycleState == AppLifecycleState.paused ||
-        lifecycleState == AppLifecycleState.detached ||
-        lifecycleState == AppLifecycleState.hidden) {
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached ||
+        state == AppLifecycleState.hidden) {
       WesiAiSessionPolicy.markAppBackgrounded();
     }
   }
@@ -148,6 +147,7 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
         createdAt: at,
         metadata: <String, dynamic>{
           'requestId': reply.requestId,
+          if (reply.route.isNotEmpty) 'route': reply.route,
           if (reply.blocks.isNotEmpty)
             'blocks': reply.blocks
                 .map((block) => block.toJson())
@@ -295,6 +295,7 @@ class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    WesiAiSessionPolicy.markModuleClosed();
     WidgetsBinding.instance.removeObserver(this);
     _disposed = true;
     _mediaPolls.clear();
