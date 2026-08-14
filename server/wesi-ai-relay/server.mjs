@@ -15,6 +15,10 @@ const host = process.env.WESI_RELAY_HOST || '127.0.0.1';
 const port = Number(process.env.WESI_RELAY_PORT || 8787);
 const secret = String(process.env.WESI_MAIN_SHARED_SECRET || '');
 const googleKey = String(process.env.GEMINI_API_KEY || '');
+// Image/video/music provider endpoints can incur provider charges. Wesi AI is
+// free-by-default, so those routes remain unavailable unless an operator
+// explicitly opts in on the Relay host. Natural TTS is kept separate.
+const paidMediaEnabled = /^(1|true|yes)$/i.test(String(process.env.WESI_ENABLE_PAID_MEDIA || 'false'));
 
 function send(res, status, body) {
   res.writeHead(status, {
@@ -68,6 +72,11 @@ async function execute(request) {
     return callTextRoute(request.route, request.input || {}, googleKey);
   }
   if (operation === 'tts') return callGoogleTts(request.input || {}, googleKey);
+  if (operation === 'image' || operation === 'music' || operation === 'video.start' || operation === 'video.status') {
+    if (!paidMediaEnabled) {
+      return {ok: false, status: 409, code: 'WAI_LOCAL_MEDIA_ENGINE_REQUIRED'};
+    }
+  }
   if (operation === 'image') return callGoogleImage(request.input || {}, googleKey);
   if (operation === 'music') return callGoogleMusic(request.input || {}, googleKey);
   if (operation === 'video.start') return startGoogleVideo(request.input || {}, googleKey);
@@ -87,7 +96,7 @@ async function execute(request) {
       failed: false,
       media: {
         kind: 'video',
-        mimeType: cached.mimeType,
+        mimeType: downloaded.mimeType,
         byteSize: cached.byteSize,
         relayArtifactId: cached.artifactId,
         expiresAt: cached.expiresAt,
@@ -104,6 +113,14 @@ http.createServer(async (req, res) => {
       service: 'wesi-ai-relay',
       ready: secret.length >= 32 && googleKey.length > 0,
       routing: ['fast', 'pro', 'ultra'],
+      media: {
+        tts: googleKey.length > 0,
+        paidCloudEnabled: paidMediaEnabled,
+        image: paidMediaEnabled,
+        music: paidMediaEnabled,
+        video: paidMediaEnabled,
+        localEngines: true,
+      },
     });
   }
 
