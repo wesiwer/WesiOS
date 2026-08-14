@@ -1,26 +1,19 @@
 #!/usr/bin/env bash
 #
-# Выкладка Wesi AI Relay на зарубежный сервер.
+# Install/update Wesi AI Relay on a foreign Linux server.
 #
-# ЗАЧЕМ ОТДЕЛЬНЫЙ СЕРВЕР. Провайдер модели недоступен из России, и ключ к
-# нему не должен лежать ни в приложении, ни на основном сервере. Поэтому
-# цепочка такая:
+# The provider key lives only on this host. Main Wesi Server knows only the
+# Relay HTTPS URL and the shared HMAC secret.
 #
-#   WesiOS → api.wesi-inc.ru → этот Relay → Gemini → обратно
+# Direct install (interactive/admin use):
+#   WESI_MAIN_SHARED_SECRET=... GEMINI_API_KEY=... bash deploy-relay.sh --install
 #
-# Ключ провайдера живёт только здесь. Основной сервер знает адрес Relay и
-# общий секрет — и больше ничего.
+# CI-safe install:
+#   bash deploy-relay.sh --install-from-b64 /tmp/wesi-relay-secrets.b64
 #
-# УСТАНОВКА (от root на зарубежном сервере):
-#   WESI_MAIN_SHARED_SECRET=... GEMINI_API_KEY=... \
-#     bash deploy-relay.sh --install
-#
-# Секреты передаются переменными окружения и попадают только в файл
-# /etc/wesi-ai-relay.env с правами 600. В командной строке они видны в
-# истории оболочки — очистите её или используйте `read -s`.
-#
-# СНЯТЬ:
-#   bash deploy-relay.sh --uninstall
+# The b64 file contains only KEY_B64=value lines and is deleted immediately
+# after decoding. This avoids putting secrets into the remote process command
+# line, where other users could inspect them.
 
 set -euo pipefail
 
@@ -31,40 +24,69 @@ RELAY_HOST="${WESI_RELAY_HOST:-127.0.0.1}"
 RELAY_PORT="${WESI_RELAY_PORT:-8787}"
 SOURCE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+fail() {
+  echo "$*" >&2
+  exit 2
+}
+
+contains_newline() {
+  case "$1" in
+    *$'\n'*|*$'\r'*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+decode_b64() {
+  printf '%s' "$1" | base64 -d
+}
+
+load_b64_file() {
+  local file="$1"
+  [ -f "$file" ] || fail "Файл секретов не найден: $file"
+  chmod 600 "$file" 2>/dev/null || true
+  local key value decoded
+  while IFS='=' read -r key value; do
+    [ -n "$key" ] || continue
+    decoded="$(decode_b64 "$value")" || fail "Не удалось декодировать $key"
+    case "$key" in
+      WESI_MAIN_SHARED_SECRET_B64) WESI_MAIN_SHARED_SECRET="$decoded" ;;
+      GEMINI_API_KEY_B64) GEMINI_API_KEY="$decoded" ;;
+      WESI_ZANE_TTS_VOICE_B64) WESI_ZANE_TTS_VOICE="$decoded" ;;
+      WESI_NIRVANA_TTS_VOICE_B64) WESI_NIRVANA_TTS_VOICE="$decoded" ;;
+      *) fail "Неизвестное поле в файле секретов: $key" ;;
+    esac
+  done < "$file"
+  rm -f "$file"
+  export WESI_MAIN_SHARED_SECRET GEMINI_API_KEY
+  export WESI_ZANE_TTS_VOICE="${WESI_ZANE_TTS_VOICE:-Charon}"
+  export WESI_NIRVANA_TTS_VOICE="${WESI_NIRVANA_TTS_VOICE:-Sulafat}"
+}
+
 require_secrets() {
   local missing=()
   [ -n "${WESI_MAIN_SHARED_SECRET:-}" ] || missing+=("WESI_MAIN_SHARED_SECRET")
   [ -n "${GEMINI_API_KEY:-}" ] || missing+=("GEMINI_API_KEY")
-  if [ ${#missing[@]} -gt 0 ]; then
-    echo "Не заданы: ${missing[*]}" >&2
-    exit 2
-  fi
-  # Секрет короче 32 символов Relay отвергает сам — лучше сказать об этом
-  # сейчас, чем получить молчаливый 503 после установки.
-  if [ "${#WESI_MAIN_SHARED_SECRET}" -lt 32 ]; then
-    echo "WESI_MAIN_SHARED_SECRET короче 32 символов — Relay такой не примет." >&2
-    exit 2
-  fi
+  [ ${#missing[@]} -eq 0 ] || fail "Не заданы: ${missing[*]}"
+  [ "${#WESI_MAIN_SHARED_SECRET}" -ge 32 ] || fail "WESI_MAIN_SHARED_SECRET короче 32 символов"
+  contains_newline "$WESI_MAIN_SHARED_SECRET" && fail "Shared secret содержит перевод строки"
+  contains_newline "$GEMINI_API_KEY" && fail "Gemini key содержит перевод строки"
+  contains_newline "${WESI_ZANE_TTS_VOICE:-Charon}" && fail "Имя голоса Зейна некорректно"
+  contains_newline "${WESI_NIRVANA_TTS_VOICE:-Sulafat}" && fail "Имя голоса Нирваны некорректно"
 }
 
 install_relay() {
   require_secrets
 
-  command -v node >/dev/null 2>&1 || {
-    echo "Node.js не установлен. Нужен Node 20 или новее." >&2
-    exit 3
-  }
+  command -v node >/dev/null 2>&1 || fail "Node.js не установлен. Нужен Node 20 или новее."
   local major
   major="$(node -p 'process.versions.node.split(".")[0]')"
-  if [ "$major" -lt 20 ]; then
-    echo "Node $major слишком старый, нужен 20 или новее." >&2
-    exit 3
-  fi
+  [ "$major" -ge 20 ] || fail "Node $major слишком старый, нужен 20 или новее."
 
   mkdir -p "$APP_DIR"
   install -m 0644 "$SOURCE_DIR/server.mjs" "$APP_DIR/server.mjs"
   install -m 0644 "$SOURCE_DIR/auth.mjs" "$APP_DIR/auth.mjs"
   install -m 0644 "$SOURCE_DIR/google.mjs" "$APP_DIR/google.mjs"
+  install -m 0644 "$SOURCE_DIR/google-media.mjs" "$APP_DIR/google-media.mjs"
   install -m 0644 "$SOURCE_DIR/package.json" "$APP_DIR/package.json"
 
   umask 077
@@ -73,8 +95,9 @@ WESI_MAIN_SHARED_SECRET=$WESI_MAIN_SHARED_SECRET
 GEMINI_API_KEY=$GEMINI_API_KEY
 WESI_RELAY_HOST=$RELAY_HOST
 WESI_RELAY_PORT=$RELAY_PORT
+WESI_ZANE_TTS_VOICE=${WESI_ZANE_TTS_VOICE:-Charon}
+WESI_NIRVANA_TTS_VOICE=${WESI_NIRVANA_TTS_VOICE:-Sulafat}
 ENV
-  chmod 600 "$ENV_FILE"
 
   id -u wesi-relay >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin wesi-relay
   chown -R root:root "$APP_DIR"
@@ -96,8 +119,6 @@ EnvironmentFile=$ENV_FILE
 ExecStart=/usr/bin/env node $APP_DIR/server.mjs
 Restart=always
 RestartSec=3
-
-# Relay держит ключ провайдера, поэтому у него нет причин уметь что-то ещё.
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
@@ -120,39 +141,27 @@ UNIT
   systemctl enable --now wesi-ai-relay.service
   sleep 1
 
-  local code
-  code="$(curl -sS -o /dev/null -w '%{http_code}' "http://$RELAY_HOST:$RELAY_PORT/health" || echo 000)"
-  if [ "$code" != "200" ]; then
-    echo "Relay не отвечает на /health (код $code). Логи: journalctl -u wesi-ai-relay -n 50" >&2
+  local health
+  health="$(curl -fsS --max-time 10 "http://$RELAY_HOST:$RELAY_PORT/health" || true)"
+  printf '%s' "$health" | grep -q '"ok":true' || {
+    echo "Relay не отвечает корректно на /health. Логи: journalctl -u wesi-ai-relay -n 80" >&2
     exit 4
-  fi
+  }
+  printf '%s' "$health" | grep -q '"ready":true' || {
+    echo "Relay запущен, но provider/shared-secret configuration не готова." >&2
+    exit 4
+  }
 
   cat <<TEXT
+Relay запущен на $RELAY_HOST:$RELAY_PORT и готов принимать подписанные запросы.
 
-Relay запущен на $RELAY_HOST:$RELAY_PORT и отвечает на /health.
+Рекомендуемые production routes на Main Server:
+  fast    = google/gemini-3.5-flash-lite
+  pro     = google/gemini-3.6-flash
+  maximum = google/gemini-3.6-flash
 
-ОСТАЛОСЬ ДВА ШАГА.
-
-1. HTTPS. Relay намеренно слушает только localhost: наружу его выставляет
-   nginx с сертификатом. Пример конфигурации — nginx-relay.conf рядом с
-   этим скриптом.
-
-2. Основной сервер. На api.wesi-inc.ru создайте
-   /opt/pocketbase/pb_hooks/.wesi-ai-relay.json с правами 600:
-
-   {
-     "url": "https://<адрес-relay>",
-     "sharedSecret": "<тот же WESI_MAIN_SHARED_SECRET>",
-     "routes": {
-       "fast": "google/gemini-2.5-flash",
-       "pro": "google/gemini-2.5-pro",
-       "maximum": "google/gemini-2.5-pro"
-     }
-   }
-
-   Секрет обязан совпасть дословно: подпись считается по нему с обеих
-   сторон, и расхождение выглядит как 401, а не как ошибка настройки.
-
+Natural TTS использует gemini-3.1-flash-tts-preview; голоса можно менять
+через WESI_ZANE_TTS_VOICE / WESI_NIRVANA_TTS_VOICE без релиза приложения.
 TEXT
 }
 
@@ -165,10 +174,19 @@ uninstall_relay() {
 }
 
 case "${1:---help}" in
-  --install)   install_relay ;;
-  --uninstall) uninstall_relay ;;
+  --install)
+    install_relay
+    ;;
+  --install-from-b64)
+    [ $# -eq 2 ] || fail "Использование: $0 --install-from-b64 FILE"
+    load_b64_file "$2"
+    install_relay
+    ;;
+  --uninstall)
+    uninstall_relay
+    ;;
   *)
-    echo "Использование: $0 [--install|--uninstall]" >&2
+    echo "Использование: $0 [--install|--install-from-b64 FILE|--uninstall]" >&2
     exit 1
     ;;
 esac
