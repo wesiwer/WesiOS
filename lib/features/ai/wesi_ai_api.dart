@@ -30,6 +30,16 @@ class WesiAiReply {
   });
 }
 
+class WesiAiContextCompaction {
+  final String summary;
+  final int compactedCount;
+
+  const WesiAiContextCompaction({
+    required this.summary,
+    required this.compactedCount,
+  });
+}
+
 class WesiAiApi {
   static const int maxTransportHistoryMessages = 80;
 
@@ -39,13 +49,85 @@ class WesiAiApi {
 
   const WesiAiApi();
 
-  static List<Map<String, String>> transportHistory(List<WesiAiMessage> history) {
+  static List<Map<String, String>> transportHistory(
+    List<WesiAiMessage> history, {
+    int skip = 0,
+  }) {
     final messages = history
-        .where((m) => m.kind == WesiAiMessageKind.text && m.author != WesiAiMessageAuthor.system)
+        .where((m) =>
+            m.kind == WesiAiMessageKind.text &&
+            m.author != WesiAiMessageAuthor.system &&
+            m.author != WesiAiMessageAuthor.tool)
         .map((m) => {'author': m.author.name, 'text': m.text})
         .toList(growable: false);
-    if (messages.length <= maxTransportHistoryMessages) return messages;
-    return messages.sublist(messages.length - maxTransportHistoryMessages);
+    final start = skip.clamp(0, messages.length);
+    final visible = messages.sublist(start);
+    if (visible.length <= maxTransportHistoryMessages) return visible;
+    return visible.sublist(visible.length - maxTransportHistoryMessages);
+  }
+
+  Future<WesiAiContextCompaction> compactContext({
+    required WesiAiConversation conversation,
+    required List<WesiAiMessage> messages,
+    required int compactedCount,
+  }) async {
+    final auth = _auth();
+    final base = Uri.parse(SyncEndpoint.url);
+    final uri = base.replace(path: '/api/wesi/ai/context/compact');
+    final body = <String, dynamic>{
+      'conversationId': conversation.id,
+      'persona': conversation.persona.name,
+      'existingSummary': conversation.contextSummary,
+      'alreadyCompactedCount': compactedCount,
+      'messages': transportHistory(messages, skip: compactedCount),
+    };
+
+    try {
+      final request = await _http.postUrl(uri);
+      _applyAuth(request, auth);
+      request.headers.contentType = ContentType.json;
+      request.write(jsonEncode(body));
+      final response = await request.close().timeout(const Duration(seconds: 90));
+      final raw = await utf8.decoder.bind(response).join();
+      final decoded = raw.isEmpty ? const <String, dynamic>{} : jsonDecode(raw);
+      final json = decoded is Map
+          ? Map<String, dynamic>.from(decoded)
+          : const <String, dynamic>{};
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final code = '${json['code'] ?? 'WAI_CONTEXT_COMPACTION_FAILED'}';
+        throw WesiAiApiException(code, _messageFor(code));
+      }
+      final summary = '${json['summary'] ?? ''}'.trim();
+      final count = json['compactedCount'] is num
+          ? (json['compactedCount'] as num).toInt()
+          : 0;
+      if (summary.isEmpty || count <= 0) {
+        throw const WesiAiApiException(
+          'WAI_CONTEXT_COMPACTION_FAILED',
+          'Не удалось оптимизировать контекст диалога',
+        );
+      }
+      return WesiAiContextCompaction(
+        summary: summary,
+        compactedCount: count,
+      );
+    } on WesiAiApiException {
+      rethrow;
+    } on SocketException {
+      throw const WesiAiApiException('NETWORK', 'Нет связи с сервером WesiOS');
+    } on HttpException {
+      throw const WesiAiApiException('NETWORK', 'Ошибка связи с сервером WesiOS');
+    } on TimeoutException {
+      throw const WesiAiApiException(
+        'NETWORK',
+        'Оптимизация контекста не успела завершиться',
+      );
+    } on FormatException {
+      throw const WesiAiApiException(
+        'NOT_WESIOS',
+        'Сервер вернул некорректный результат оптимизации контекста',
+      );
+    }
   }
 
   Future<WesiAiReply> send({
@@ -63,11 +145,14 @@ class WesiAiApi {
       'tier': tier.name,
       'lobbyMode': conversation.lobbyMode.name,
       'message': message,
-      'summary': '',
+      'summary': conversation.contextSummary,
       'conversationId': conversation.id,
       'activeOrganizationId': OrganizationContext.currentOrganizationId,
       'memory': memory.toJson(),
-      'messages': transportHistory(history),
+      'messages': transportHistory(
+        history,
+        skip: conversation.contextCompactedMessageCount,
+      ),
     };
 
     try {
@@ -148,8 +233,6 @@ class WesiAiApi {
     }
   }
 
-  /// Polls only a Main Server media-status URL emitted by a verified tool.
-  /// Arbitrary model-authored URLs are rejected before any request is made.
   Future<WesiAiContentBlock?> mediaJob(String rawStatusUrl) async {
     final base = Uri.parse(SyncEndpoint.url);
     final uri = Uri.tryParse(rawStatusUrl.trim());
@@ -205,6 +288,7 @@ class WesiAiApi {
         'WAI_PERSONA_ENGINE_NOT_READY' => 'Профиль Wesi AI ещё не готов на сервере',
         'WAI_PROVIDER_NOT_CONFIGURED' => 'Выбранный провайдер Wesi AI ещё не настроен',
         'WAI_PROVIDER_RATE_LIMIT' => 'Лимит выбранной модели временно исчерпан',
+        'WAI_CONTEXT_COMPACTION_FAILED' => 'Не удалось оптимизировать контекст диалога',
         'WAI_RELAY_UNAVAILABLE' => 'Сервис Wesi AI временно недоступен',
         'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
         'WAI_EMPTY_RESPONSE' => 'Wesi AI вернул пустой ответ',
