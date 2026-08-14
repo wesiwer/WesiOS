@@ -70,6 +70,16 @@ class WesiAiChatController extends ChangeNotifier {
     await _persist();
   }
 
+  WesiAiProject? _projectFor(String? projectId) {
+    if (projectId == null) return null;
+    for (final project in state.projects) {
+      if (project.id == projectId && project.employeeId == store.employeeId) {
+        return project;
+      }
+    }
+    return null;
+  }
+
   Future<void> addUserMessage(
     String text, {
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
@@ -140,6 +150,7 @@ class WesiAiChatController extends ChangeNotifier {
         message: clean,
         history: history,
         memory: state.memory,
+        project: _projectFor(updated.projectId),
         attachments: attachments,
       );
       final at = DateTime.now();
