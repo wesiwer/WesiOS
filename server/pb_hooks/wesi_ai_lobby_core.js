@@ -4,6 +4,7 @@ module.exports = {
     const personas = require(`${__hooks}/wesi_ai_persona_runtime.js`);
     const router = require(`${__hooks}/wesi_ai_lobby_router.js`);
     const turn = require(`${__hooks}/wesi_ai_lobby_turn.js`);
+    const emotionEngine = require(`${__hooks}/wesi_ai_emotion_engine.js`);
     const tier = String(body.tier || "fast").trim().toLowerCase();
     const mode = String(body.lobbyMode || "smart").trim().toLowerCase();
     const message = String(body.message || "").trim();
@@ -23,18 +24,56 @@ module.exports = {
     }
     const memory = ai.sanitizeMemory(body.memory && typeof body.memory === "object" ? body.memory : {});
     const rootId = "wai_lobby_" + Date.now() + "_" + $security.randomString(10);
+    const emotionResult = emotionEngine.evaluate(
+      ai,
+      cfg,
+      rootId + "_emotion",
+      "lobby",
+      message,
+      history,
+      emotionEngine.sanitize(body.emotions)
+    );
+    const emotions = emotionResult.emotions;
     const order = mode === "both" ? ["zane", "nirvana"] : router.choose(ai, cfg, route, rootId + "_route", message, history);
     const messages = [];
     for (const name of order) {
       const profile = name === "zane" ? zane : nirvana;
       const personaMemory = name === "zane" ? memory.zane : memory.nirvana;
-      const result = turn.run(ai, cfg, route, rootId + "_" + name, name, profile, message, history, memory.shared, personaMemory, messages, String(body.summary || ""));
+      const personaEmotion = emotions && emotions[name] ? emotions[name] : null;
+      const result = turn.run(
+        ai,
+        cfg,
+        route,
+        rootId + "_" + name,
+        name,
+        profile,
+        message,
+        history,
+        memory.shared,
+        personaMemory,
+        messages,
+        String(body.summary || ""),
+        personaEmotion
+      );
       if (!result.ok) {
-        if (!messages.length) return {status: result.status || 503, body: {ok: false, code: result.code, requestId: rootId}};
+        if (!messages.length) return {status: result.status || 503, body: {ok: false, code: result.code, requestId: rootId, emotions: emotions}};
         continue;
       }
       messages.push({author: name, text: result.answer});
     }
-    return {status: 200, body: {ok: true, requestId: rootId, persona: "lobby", tier, lobbyMode: mode, participants: order, messages, answer: "__WESI_LOBBY_V1__" + JSON.stringify(messages)}};
+    return {
+      status: 200,
+      body: {
+        ok: true,
+        requestId: rootId,
+        persona: "lobby",
+        tier,
+        lobbyMode: mode,
+        participants: order,
+        messages,
+        emotions,
+        answer: "__WESI_LOBBY_V1__" + JSON.stringify(messages)
+      }
+    };
   }
 };
