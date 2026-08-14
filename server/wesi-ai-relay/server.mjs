@@ -8,6 +8,8 @@ import {
   startGoogleVideo,
   getGoogleVideoStatus,
 } from './google-media.mjs';
+import {downloadGoogleVideo} from './google-artifact.mjs';
+import {putMedia, putBytes, takeMedia} from './media-cache.mjs';
 
 const host = process.env.WESI_RELAY_HOST || '127.0.0.1';
 const port = Number(process.env.WESI_RELAY_PORT || 8787);
@@ -23,6 +25,17 @@ function send(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
+function sendArtifact(res, item) {
+  res.writeHead(200, {
+    'content-type': item.mimeType || 'application/octet-stream',
+    'content-length': String(item.bytes.length),
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    'x-wesi-media-kind': item.kind || 'media',
+  });
+  res.end(item.bytes);
+}
+
 async function readBody(req) {
   const chunks = [];
   let size = 0;
@@ -32,6 +45,21 @@ async function readBody(req) {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks).toString('utf8');
+}
+
+function authenticate(req, raw) {
+  const auth = verifyMainRequest(req.headers, raw, secret);
+  if (!auth.ok) return {ok: false, auth};
+  let request;
+  try {
+    request = JSON.parse(raw);
+  } catch {
+    return {ok: false, badJson: true};
+  }
+  if (String(request.requestId || '') !== auth.requestId) {
+    return {ok: false, auth: {ok: false, code: 'WAI_RELAY_AUTH_FAILED'}};
+  }
+  return {ok: true, request};
 }
 
 async function execute(request) {
@@ -46,7 +74,27 @@ async function execute(request) {
   if (operation === 'music') return callGoogleMusic(request.input || {}, googleKey);
   if (operation === 'video.start') return startGoogleVideo(request.input || {}, googleKey);
   if (operation === 'video.status') {
-    return getGoogleVideoStatus(request.input?.operationName, googleKey);
+    const status = await getGoogleVideoStatus(request.input?.operationName, googleKey);
+    if (!status?.ok || !status.done || status.failed || !status.providerUri) return status;
+    const downloaded = await downloadGoogleVideo(status.providerUri, googleKey);
+    if (!downloaded?.ok) return downloaded;
+    const cached = putBytes(downloaded.bytes, {
+      kind: 'video',
+      mimeType: downloaded.mimeType,
+    });
+    if (!cached.ok) return {ok: false, status: 503, code: cached.code};
+    return {
+      ok: true,
+      done: true,
+      failed: false,
+      media: {
+        kind: 'video',
+        mimeType: cached.mimeType,
+        byteSize: cached.byteSize,
+        relayArtifactId: cached.artifactId,
+        expiresAt: cached.expiresAt,
+      },
+    };
   }
   return {ok: false, status: 400, code: 'WAI_OPERATION_UNAVAILABLE'};
 }
@@ -59,9 +107,10 @@ http.createServer(async (req, res) => {
       ready: secret.length >= 32 && googleKey.length > 0,
     });
   }
-  if (req.method !== 'POST' || req.url !== '/v1/wesi-ai') {
-    return send(res, 404, {ok: false, code: 'NOT_FOUND'});
-  }
+
+  const isMain = req.method === 'POST' && req.url === '/v1/wesi-ai';
+  const isArtifact = req.method === 'POST' && req.url === '/v1/wesi-ai-artifact';
+  if (!isMain && !isArtifact) return send(res, 404, {ok: false, code: 'NOT_FOUND'});
 
   let raw;
   try {
@@ -70,19 +119,19 @@ http.createServer(async (req, res) => {
     return send(res, 413, {ok: false, code: 'WAI_RELAY_BODY_TOO_LARGE'});
   }
 
-  const auth = verifyMainRequest(req.headers, raw, secret);
-  if (!auth.ok) {
+  const parsed = authenticate(req, raw);
+  if (!parsed.ok) {
+    if (parsed.badJson) return send(res, 400, {ok: false, code: 'WAI_RELAY_BAD_JSON'});
+    const auth = parsed.auth || {ok: false, code: 'WAI_RELAY_AUTH_FAILED'};
     return send(res, auth.code === 'WAI_RELAY_NOT_CONFIGURED' ? 503 : 401, auth);
   }
+  const request = parsed.request;
 
-  let request;
-  try {
-    request = JSON.parse(raw);
-  } catch {
-    return send(res, 400, {ok: false, code: 'WAI_RELAY_BAD_JSON'});
-  }
-  if (String(request.requestId || '') !== auth.requestId) {
-    return send(res, 401, {ok: false, code: 'WAI_RELAY_AUTH_FAILED'});
+  if (isArtifact) {
+    const artifactId = String(request.artifactId || '');
+    const item = takeMedia(artifactId);
+    if (!item) return send(res, 404, {ok: false, code: 'WAI_RELAY_ARTIFACT_NOT_FOUND'});
+    return sendArtifact(res, item);
   }
 
   try {
@@ -91,7 +140,29 @@ http.createServer(async (req, res) => {
       return send(res, result?.status || 502, {ok: false, code: result?.code || 'WAI_PROVIDER_UNAVAILABLE'});
     }
     if (result.answer) return send(res, 200, {ok: true, answer: result.answer});
-    if (result.media) return send(res, 200, {ok: true, media: result.media});
+
+    if (result.media) {
+      // TTS remains inline because the authenticated voice endpoint consumes
+      // it immediately and it is bounded to 20MB. Heavier generated assets
+      // are converted into a short-lived one-time Relay artifact that only
+      // Main Server can fetch with another signed request.
+      if (String(result.media.kind || '') === 'tts') {
+        return send(res, 200, {ok: true, media: result.media});
+      }
+      if (result.media.relayArtifactId) {
+        return send(res, 200, {ok: true, media: result.media});
+      }
+      const cached = putMedia(result.media);
+      if (!cached.ok) return send(res, 503, {ok: false, code: cached.code});
+      const safeMedia = {...result.media};
+      delete safeMedia.data;
+      safeMedia.relayArtifactId = cached.artifactId;
+      safeMedia.mimeType = cached.mimeType;
+      safeMedia.byteSize = cached.byteSize;
+      safeMedia.expiresAt = cached.expiresAt;
+      return send(res, 200, {ok: true, media: safeMedia});
+    }
+
     if (result.operationName) {
       return send(res, 200, {
         ok: true,
@@ -104,6 +175,7 @@ http.createServer(async (req, res) => {
         },
       });
     }
+
     if (typeof result.done === 'boolean') {
       return send(res, 200, {
         ok: true,
@@ -111,7 +183,7 @@ http.createServer(async (req, res) => {
           done: result.done,
           failed: result.failed === true,
           code: result.code || null,
-          providerUri: result.providerUri || null,
+          media: result.media || null,
         },
       });
     }
