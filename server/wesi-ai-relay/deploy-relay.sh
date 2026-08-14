@@ -174,7 +174,8 @@ WantedBy=multi-user.target
 UNIT
 
   systemctl daemon-reload
-  systemctl enable --now wesi-ai-relay.service
+  systemctl enable wesi-ai-relay.service
+  systemctl restart wesi-ai-relay.service
   sleep 2
   local health
   health="$(curl -fsS --max-time 10 "http://$RELAY_HOST:$RELAY_PORT/health" || true)"
@@ -184,6 +185,7 @@ UNIT
     fail "Relay не отвечает корректно на /health"
   fi
   printf '%s' "$health" | grep -q '"ready":true' || fail "Relay запущен, но provider/shared-secret configuration не готова"
+  printf '%s' "$health" | grep -q '"attachments"' || fail "Relay запущен со старой версией без Universal Attachments"
 
   cat <<TEXT
 Relay запущен на $RELAY_HOST:$RELAY_PORT.
