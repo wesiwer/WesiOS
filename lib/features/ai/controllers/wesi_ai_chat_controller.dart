@@ -9,10 +9,12 @@ import '../wesi_ai_api.dart';
 import '../wesi_ai_session_policy.dart';
 
 class WesiAiChatController extends ChangeNotifier with WidgetsBindingObserver {
-  static const int _minUncompactedMessages = 80;
-  static const int _recentMessagesToKeep = 32;
-  static const int _maxCompactionBatch = 64;
-  static const int _minUncompactedChars = 64000;
+  // Model-aware pruning now happens on Relay. Local compaction is only an
+  // archival safety net for extremely long conversations.
+  static const int _minUncompactedMessages = 900;
+  static const int _recentMessagesToKeep = 320;
+  static const int _maxCompactionBatch = 480;
+  static const int _minUncompactedChars = 3500000;
 
   final WesiAiLocalStore store;
   final WesiAiApi api;
