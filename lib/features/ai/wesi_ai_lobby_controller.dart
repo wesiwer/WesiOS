@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'controllers/wesi_ai_chat_controller.dart';
+import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
 import 'wesi_ai_api.dart';
@@ -14,11 +15,22 @@ class WesiAiLobbyChatController extends WesiAiChatController {
   }) : super(store: store, api: api);
 
   @override
-  Future<void> addUserMessage(String text) async {
+  Future<void> addUserMessage(
+    String text, {
+    List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+  }) async {
     final conversation = state.activeConversation;
     if (conversation == null || conversation.persona != WesiAiPersona.lobby) {
-      return super.addUserMessage(text);
+      return super.addUserMessage(text, attachments: attachments);
     }
+
+    // Multimodal Lobby uses the canonical universal chat path. This avoids
+    // the legacy dual-speaker codec ever dropping file bytes or pretending a
+    // file was seen when it was not.
+    if (attachments.isNotEmpty) {
+      return super.addUserMessage(text, attachments: attachments);
+    }
+
     final clean = text.trim();
     if (clean.isEmpty || sending) return;
     final history = state.messagesFor(conversation.id);
