@@ -6,6 +6,7 @@ import '../../core/sync/sync_endpoint.dart';
 import '../organizations/services/organization_context.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'models/wesi_ai_content_blocks.dart';
+import 'models/wesi_ai_limits.dart';
 
 class WesiAiApiException implements Exception {
   final String code;
@@ -19,11 +20,13 @@ class WesiAiReply {
   final String answer;
   final String requestId;
   final List<WesiAiContentBlock> blocks;
+  final Map<String, dynamic> route;
 
   const WesiAiReply({
     required this.answer,
     required this.requestId,
     this.blocks = const <WesiAiContentBlock>[],
+    this.route = const <String, dynamic>{},
   });
 }
 
@@ -97,6 +100,9 @@ class WesiAiApi {
         answer: parsed.text,
         requestId: '${json['requestId'] ?? ''}',
         blocks: parsed.blocks,
+        route: json['route'] is Map
+            ? Map<String, dynamic>.from(json['route'] as Map)
+            : const <String, dynamic>{},
       );
     } on WesiAiApiException {
       rethrow;
@@ -104,8 +110,41 @@ class WesiAiApi {
       throw const WesiAiApiException('NETWORK', 'Нет связи с сервером WesiOS');
     } on HttpException {
       throw const WesiAiApiException('NETWORK', 'Ошибка связи с сервером WesiOS');
+    } on TimeoutException {
+      throw const WesiAiApiException('NETWORK', 'Wesi AI не успел ответить вовремя');
     } on FormatException {
       throw const WesiAiApiException('NOT_WESIOS', 'Сервер WesiOS вернул некорректный ответ');
+    }
+  }
+
+  Future<WesiAiLimits> limits() async {
+    final auth = _auth();
+    final base = Uri.parse(SyncEndpoint.url);
+    final uri = base.replace(path: '/api/wesi/ai/limits');
+    try {
+      final request = await _http.getUrl(uri);
+      _applyAuth(request, auth);
+      final response = await request.close().timeout(const Duration(seconds: 35));
+      final raw = await utf8.decoder.bind(response).join();
+      if (raw.isEmpty) return const WesiAiLimits({});
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return const WesiAiLimits({});
+      final json = Map<String, dynamic>.from(decoded);
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        final code = '${json['code'] ?? 'WAI_REQUEST_FAILED'}';
+        throw WesiAiApiException(code, _messageFor(code));
+      }
+      return WesiAiLimits.fromJson(json['limits']);
+    } on WesiAiApiException {
+      rethrow;
+    } on SocketException {
+      throw const WesiAiApiException('NETWORK', 'Нет связи с сервером WesiOS');
+    } on HttpException {
+      throw const WesiAiApiException('NETWORK', 'Ошибка связи с сервером WesiOS');
+    } on TimeoutException {
+      throw const WesiAiApiException('NETWORK', 'Не удалось получить лимиты вовремя');
+    } on FormatException {
+      throw const WesiAiApiException('NOT_WESIOS', 'Сервер WesiOS вернул некорректные лимиты');
     }
   }
 
@@ -164,6 +203,8 @@ class WesiAiApi {
   static String _messageFor(String code) => switch (code) {
         'WAI_RELAY_NOT_CONFIGURED' => 'Wesi AI ещё не подключён к серверу моделей',
         'WAI_PERSONA_ENGINE_NOT_READY' => 'Профиль Wesi AI ещё не готов на сервере',
+        'WAI_PROVIDER_NOT_CONFIGURED' => 'Выбранный провайдер Wesi AI ещё не настроен',
+        'WAI_PROVIDER_RATE_LIMIT' => 'Лимит выбранной модели временно исчерпан',
         'WAI_RELAY_UNAVAILABLE' => 'Сервис Wesi AI временно недоступен',
         'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
         'WAI_EMPTY_RESPONSE' => 'Wesi AI вернул пустой ответ',
