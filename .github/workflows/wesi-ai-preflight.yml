@@ -1,0 +1,146 @@
+name: Wesi AI Preflight
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-ai-preflight
+  cancel-in-progress: true
+
+jobs:
+  preflight:
+    name: Validate secrets and deploy bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      WESI_RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      WESI_RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      WESI_RELAY_SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+      WESI_RELAY_SSH_KNOWN_HOSTS: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+      WESI_SERVER_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      WESI_SERVER_USER: ${{ secrets.WESI_SERVER_USER }}
+      WESI_SERVER_SSH_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+      WESI_SERVER_KNOWN_HOSTS: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+      WESI_MAIN_SHARED_SECRET: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+      WESI_ZANE_TTS_VOICE: ${{ secrets.WESI_ZANE_TTS_VOICE }}
+      WESI_NIRVANA_TTS_VOICE: ${{ secrets.WESI_NIRVANA_TTS_VOICE }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate required GitHub Secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+          missing=0
+          require_secret() {
+            local name="$1"
+            local value="${!name:-}"
+            if [ -z "$value" ]; then
+              echo "::error::Missing required GitHub Secret: $name"
+              missing=1
+            else
+              echo "OK: $name is configured"
+            fi
+          }
+
+          require_secret GEMINI_API_KEY
+          require_secret WESI_RELAY_SSH_USER
+          require_secret WESI_RELAY_SSH_KEY
+          require_secret WESI_SERVER_HOST
+          require_secret WESI_SERVER_USER
+          require_secret WESI_SERVER_SSH_KEY
+
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+
+      - name: Validate secret shapes without exposing values
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          [ ${#GEMINI_API_KEY} -ge 20 ] || {
+            echo '::error::GEMINI_API_KEY is unexpectedly short'
+            exit 1
+          }
+
+          validate_ssh_key() {
+            local name="$1"
+            local value="${!name}"
+            if ! grep -Eq '^-----BEGIN (OPENSSH|RSA|EC|DSA|PRIVATE) PRIVATE KEY-----' <<<"$value"; then
+              echo "::error::$name does not look like a PEM/OpenSSH private key"
+              exit 1
+            fi
+          }
+          validate_ssh_key WESI_RELAY_SSH_KEY
+          validate_ssh_key WESI_SERVER_SSH_KEY
+
+          if [ -n "${WESI_MAIN_SHARED_SECRET:-}" ] && [ ${#WESI_MAIN_SHARED_SECRET} -lt 32 ]; then
+            echo '::error::WESI_MAIN_SHARED_SECRET must be at least 32 characters'
+            exit 1
+          fi
+
+          if [ -z "${WESI_MAIN_SHARED_SECRET:-}" ]; then
+            echo '::notice::WESI_MAIN_SHARED_SECRET is optional; production deploy will generate an atomic shared secret.'
+          fi
+          if [ -z "${WESI_RELAY_SSH_HOST:-}" ]; then
+            echo '::notice::WESI_RELAY_SSH_HOST is optional; deploy-wesi-ai.yml falls back to its public_host input.'
+          fi
+          if [ -z "${WESI_RELAY_SSH_KNOWN_HOSTS:-}" ]; then
+            echo '::warning::WESI_RELAY_SSH_KNOWN_HOSTS is not set; production deploy will trust the host key observed by ssh-keyscan at deploy time.'
+          fi
+          if [ -z "${WESI_SERVER_KNOWN_HOSTS:-}" ]; then
+            echo '::warning::WESI_SERVER_KNOWN_HOSTS is not set; production deploy will trust the host key observed by ssh-keyscan at deploy time.'
+          fi
+          if [ -z "${WESI_ZANE_TTS_VOICE:-}" ]; then
+            echo '::notice::WESI_ZANE_TTS_VOICE is not set; Relay will use its built-in/default Zane voice selection.'
+          fi
+          if [ -z "${WESI_NIRVANA_TTS_VOICE:-}" ]; then
+            echo '::notice::WESI_NIRVANA_TTS_VOICE is not set; Relay will use its built-in/default Nirvana voice selection.'
+          fi
+
+      - name: Validate complete Wesi AI source bundle offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 server/build-wesi-ai-personas.py
+          test -s server/pb_hooks/.wesi-ai-personas.json
+
+          relay_count=0
+          for file in server/wesi-ai-relay/*.mjs; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+            relay_count=$((relay_count + 1))
+          done
+          [ "$relay_count" -gt 0 ] || {
+            echo '::error::No Wesi AI Relay modules found'
+            exit 1
+          }
+
+          node --test server/wesi-ai-relay/*.test.mjs
+          bash -n server/wesi-ai-relay/deploy-relay.sh
+          bash -n server/wesi-ai-relay/configure-relay-https.sh
+
+          hook_count=0
+          for file in server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+            hook_count=$((hook_count + 1))
+          done
+          [ "$hook_count" -gt 8 ] || {
+            echo "::error::Incomplete Main Wesi AI hook bundle ($hook_count files)"
+            exit 1
+          }
+
+          test -s .github/workflows/deploy-wesi-ai.yml
+          echo "Wesi AI offline preflight passed: $relay_count Relay modules, $hook_count Main hooks."
+
+      - name: Ready for server availability
+        run: |
+          echo 'All repository-side checks passed.'
+          echo 'When both servers and DNS are available, run Deploy Wesi AI End-to-End and provide the public_host input.'
