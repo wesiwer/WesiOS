@@ -45,6 +45,20 @@ class SshConnectionCheck {
 class SshClientService {
   SshClientService._();
 
+  /// dartssh2 2.11 passes the legacy MD5 host-key digest to this callback.
+  /// Store it in an explicit, human-readable form instead of attempting to
+  /// decode arbitrary digest bytes as UTF-8.
+  static String _fingerprint(dynamic raw) {
+    if (raw is String) return raw;
+    if (raw is Iterable<int>) {
+      final hex = raw
+          .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+          .join(':');
+      return 'MD5:$hex';
+    }
+    return '$raw';
+  }
+
   static Future<String> discoverFingerprint(
     String host,
     int port,
@@ -60,19 +74,17 @@ class SshClientService {
       client = SSHClient(
         socket,
         username: 'host-key-probe',
-        handshakeTimeout: const Duration(seconds: 10),
-        authTimeout: const Duration(seconds: 5),
         onVerifyHostKey: (_, raw) {
-          fingerprint = utf8.decode(raw, allowMalformed: false);
-          // Important: reject here. This lets us show the host key to the
-          // user before any password/private key is ever sent to the host.
+          fingerprint = _fingerprint(raw);
+          // Reject deliberately: the credential is never sent until the user
+          // has seen and accepted the host key fingerprint.
           return false;
         },
       );
       try {
-        await client.authenticated;
+        await client.authenticated.timeout(const Duration(seconds: 10));
       } catch (_) {
-        // Expected: host key verification above intentionally rejects.
+        // Expected: verification above intentionally rejects the first pass.
       }
     } finally {
       client?.close();
@@ -102,7 +114,9 @@ class SshClientService {
       );
       await client.authenticated.timeout(const Duration(seconds: 15));
       final output = utf8.decode(
-        await client.run('printf WESIOS_SSH_OK'),
+        await client
+            .run('printf WESIOS_SSH_OK')
+            .timeout(const Duration(seconds: 15)),
         allowMalformed: true,
       );
       return SshConnectionCheck(
@@ -133,17 +147,33 @@ class SshClientService {
   }) async {
     final started = DateTime.now();
     SSHClient? client;
+    SSHSession? session;
     try {
       client = await _connect(target, profile);
       await client.authenticated.timeout(const Duration(seconds: 15));
-      final result = await client.runWithResult(command).timeout(timeout);
+
+      // runWithResult was added after the Flutter-3.24-compatible package
+      // line. execute() already exposes stdout/stderr/exitCode and works on
+      // dartssh2 2.11, so keep the old Flutter toolchain without losing
+      // command metadata.
+      session = await client.execute(command).timeout(const Duration(seconds: 15));
+      final stdoutFuture = session.stdout.expand((chunk) => chunk).toList();
+      final stderrFuture = session.stderr.expand((chunk) => chunk).toList();
+      await session.done.timeout(timeout);
+      final stdoutBytes = await stdoutFuture;
+      final stderrBytes = await stderrFuture;
+      final exitCode = session.exitCode ?? -1;
+
       return SshCommandResult(
-        ok: (result.exitCode ?? 0) == 0,
-        exitCode: result.exitCode ?? -1,
-        stdout: utf8.decode(result.stdout, allowMalformed: true).trimRight(),
-        stderr: utf8.decode(result.stderr, allowMalformed: true).trimRight(),
+        ok: exitCode == 0,
+        exitCode: exitCode,
+        stdout: utf8.decode(stdoutBytes, allowMalformed: true).trimRight(),
+        stderr: utf8.decode(stderrBytes, allowMalformed: true).trimRight(),
         durationMs: DateTime.now().difference(started).inMilliseconds,
       );
+    } on TimeoutException {
+      session?.close();
+      rethrow;
     } finally {
       client?.close();
     }
@@ -159,7 +189,7 @@ class SshClientService {
     final pinned = profile.hostKeyFingerprint?.trim();
     if (pinned == null || pinned.isEmpty) {
       throw StateError(
-        'Host key ещё не подтверждён. Сначала нажмите «Проверить соединение».',
+        'Host key ещё не подтверждён. Сначала нажмите «Проверить SSH».',
       );
     }
 
@@ -179,10 +209,7 @@ class SshClientService {
           socket,
           username: profile.username,
           onPasswordRequest: () => secret,
-          onVerifyHostKey: (_, raw) =>
-              utf8.decode(raw, allowMalformed: false) == pinned,
-          handshakeTimeout: const Duration(seconds: 10),
-          authTimeout: const Duration(seconds: 15),
+          onVerifyHostKey: (_, raw) => _fingerprint(raw) == pinned,
         );
       }
 
@@ -200,13 +227,10 @@ class SshClientService {
         socket,
         username: profile.username,
         identities: identities,
-        onVerifyHostKey: (_, raw) =>
-            utf8.decode(raw, allowMalformed: false) == pinned,
-        handshakeTimeout: const Duration(seconds: 10),
-        authTimeout: const Duration(seconds: 15),
+        onVerifyHostKey: (_, raw) => _fingerprint(raw) == pinned,
       );
     } catch (_) {
-      await socket.close();
+      socket.close();
       rethrow;
     }
   }
