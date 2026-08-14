@@ -1,167 +1,127 @@
 # Wesi AI Relay
 
-Зарубежный посредник между основным сервером WesiOS и Google AI API.
+Зарубежный multi-provider посредник между основным сервером WesiOS и AI API.
 
 ```text
-WesiOS → api.wesi-inc.ru → Foreign Relay → Google AI → Relay → api.wesi-inc.ru → WesiOS
+WesiOS → Main Wesi Server → Foreign Relay → Gemini / OpenAI / Claude / Grok
 ```
 
-Provider credentials живут **только на Foreign Relay**. Flutter-клиент и основной сервер не получают `GEMINI_API_KEY`.
+Provider credentials живут **только на Foreign Relay**. Flutter-клиент и Main Server никогда не получают API keys.
 
-## Текущий статус
+## Поддерживаемые провайдеры
 
-Код Relay, Main hooks, anti-replay, натуральный TTS, image/music/video adapters, WesiOS media storage и end-to-end deployment workflow подготовлены.
+- Google Gemini — `GEMINI_API_KEY`;
+- OpenAI / ChatGPT — `OPENAI_API_KEY`;
+- Anthropic / Claude — `ANTHROPIC_API_KEY`;
+- xAI / Grok — `XAI_API_KEY`.
 
-**Сам Foreign Relay ещё не развёрнут**, потому что в доступных WesiOS/GitHub данных нет зарубежного VPS и отдельного `GEMINI_API_KEY`.
+Текстовые API:
 
-## Что нужно предоставить один раз
+- Google: Gemini `generateContent`;
+- OpenAI: Responses API `/v1/responses`;
+- Anthropic: Messages API `/v1/messages`;
+- xAI: Responses API `/v1/responses`.
 
-Минимальный внешний набор:
+Relay также умеет получать актуальный каталог моделей непосредственно у каждого провайдера. Protected Main endpoint: `GET /api/wesi/ai/models`.
 
-1. зарубежный Debian/Ubuntu VPS с:
-   - Node.js 20 или новее;
-   - SSH;
-   - пользователем с passwordless `sudo` для deployment-команд;
-   - открытыми TCP 22, 80 и 443;
-2. DNS hostname, например `ai-relay.example.com`, который уже указывает на этот VPS;
-3. `GEMINI_API_KEY` с доступом к нужным Google AI моделям.
+## GitHub Secrets
 
-Firebase Android API key из `android/app/google-services.json` **не является заменой Gemini key**.
-
-Отдельный Vertex key для музыки не требуется: текущий Relay использует Lyria 3 через Gemini API.
-
-## Что добавить в GitHub Secrets
-
-Обязательно:
+Обязательные для deployment:
 
 | Secret | Назначение |
 |---|---|
-| `WESI_RELAY_SSH_USER` | SSH-пользователь зарубежного VPS с `sudo` |
-| `WESI_RELAY_SSH_KEY` | приватный SSH-ключ этого пользователя |
-| `GEMINI_API_KEY` | provider credential, устанавливается только на Relay |
+| `WESI_RELAY_SSH_USER` | SSH-пользователь зарубежного VPS |
+| `WESI_RELAY_SSH_KEY` | приватный SSH-ключ Relay VPS |
+| `GEMINI_API_KEY` | Gemini + media/TTS credential |
+| `WESI_SERVER_HOST` | Main Wesi Server |
+| `WESI_SERVER_USER` | Main SSH user |
+| `WESI_SERVER_SSH_KEY` | Main SSH key |
 
-Уже существующие Main Server secrets workflow использует автоматически:
-
-- `WESI_SERVER_HOST`;
-- `WESI_SERVER_USER`;
-- `WESI_SERVER_SSH_KEY`;
-- `WESI_SERVER_KNOWN_HOSTS` — если задан.
-
-Необязательно:
+Опциональные provider keys:
 
 | Secret | Назначение |
 |---|---|
-| `WESI_RELAY_SSH_HOST` | отдельный SSH host; если не задан, используется DNS hostname из workflow input |
-| `WESI_RELAY_SSH_KNOWN_HOSTS` | pinned SSH host key Relay |
-| `WESI_MAIN_SHARED_SECRET` | постоянный HMAC secret; если не задан, первый deployment генерирует сильный secret и ставит его на Relay и Main |
-| `WESI_ZANE_TTS_VOICE` | override натурального голоса Зейна |
-| `WESI_NIRVANA_TTS_VOICE` | override натурального голоса Нирваны |
+| `OPENAI_API_KEY` | ChatGPT/OpenAI models |
+| `ANTHROPIC_API_KEY` | Claude models |
+| `XAI_API_KEY` | Grok models |
 
-Дефолты голосов: Зейн — `Charon`, Нирвана — `Sulafat`.
+Опциональная инфраструктура:
 
-Для первого запуска `WESI_MAIN_SHARED_SECRET` можно не задавать. Для будущих повторных production-deploy рекомендуется сохранить постоянное случайное значение длиной не менее 32 символов в GitHub Secret: так даже оборванный redeploy не сможет временно оставить Main и Relay на разных HMAC secret.
+- `WESI_RELAY_SSH_HOST`;
+- `WESI_RELAY_SSH_KNOWN_HOSTS`;
+- `WESI_SERVER_KNOWN_HOSTS`;
+- `WESI_MAIN_SHARED_SECRET`;
+- `WESI_ZANE_TTS_VOICE`;
+- `WESI_NIRVANA_TTS_VOICE`.
 
-## Единственный production запуск
+## Маршруты моделей
 
-После появления VPS, DNS и Secrets запустить GitHub Actions workflow:
+Маршруты не зашиты в приложение. Их можно менять GitHub Secrets без Flutter release:
+
+| Secret | Пример |
+|---|---|
+| `WESI_AI_ROUTE_FAST` | `google/gemini-3.5-flash-lite` |
+| `WESI_AI_ROUTE_PRO` | `google/gemini-3.6-flash` |
+| `WESI_AI_ROUTE_MAXIMUM` | `google/gemini-3.6-flash` |
+| `WESI_AI_ROUTE_ULTRA_LOW` | `xai/<актуальная-модель>` |
+| `WESI_AI_ROUTE_ULTRA_MEDIUM` | `openai/<актуальная-модель>` |
+| `WESI_AI_ROUTE_ULTRA_HIGH` | `anthropic/<актуальная-модель>` |
+
+Если route secret не задан, workflow использует рабочий Gemini fallback. Поэтому отсутствие OpenAI/Anthropic/xAI не ломает Wesi AI.
+
+Для получения точных актуальных model IDs после установки используется `GET /api/wesi/ai/models`; Relay сам обращается к provider Models APIs. Это предпочтительнее хранения длинного списка моделей в исходниках.
+
+## Ultra
+
+Логическая схема:
+
+```text
+Low    → обычно Grok
+Medium → обычно ChatGPT
+High   → обычно Claude
+```
+
+Server-side router оценивает сложность запроса и выбирает минимально достаточный уровень. При rate limit, отсутствии provider key, timeout или исчезновении выбранной модели выполняется fallback на следующий доступный уровень. История и память Wesi AI сохраняются.
+
+## Adaptive Context
+
+Relay собирает контекст уже после выбора фактического provider/model. Поэтому при Ultra fallback контекст пересчитывается под окно следующей модели. Клиент не привязан к одному фиксированному context limit.
+
+## Media и голос
+
+Gemini credential дополнительно используется для натурального TTS и Google generative media adapters. Тяжёлые media results передаются через одноразовые Relay artifacts; provider URLs и API keys не передаются Flutter-клиенту.
+
+## Deployment
+
+Запустить GitHub Actions workflow:
 
 `Deploy Wesi AI End-to-End`
 
-Единственный input — DNS hostname Foreign Relay, например:
+Input: DNS hostname Foreign Relay.
 
-`ai-relay.example.com`
+Workflow:
 
-Workflow сам:
+1. валидирует JS/shell/tests;
+2. упаковывает API keys в временный sealed base64 bundle;
+3. устанавливает все Relay `.mjs` modules как hardened systemd service;
+4. настраивает HTTPS;
+5. проверяет `/health`, signed model discovery, Gemini text, TTS и anti-replay;
+6. строит `.wesi-ai-relay.json` с выбранными routes;
+7. выкладывает Main hooks;
+8. проверяет protected Wesi AI routes.
 
-1. валидирует конфигурацию;
-2. собирает Persona Bundle;
-3. проверяет JS/shell и запускает весь Relay test suite;
-4. создаёт единый HMAC secret, если постоянный не задан;
-5. передаёт Relay credentials в закрытом временном bundle, не помещая API key в SSH command line;
-6. ставит Relay как hardened systemd service;
-7. устанавливает nginx и получает Let's Encrypt certificate;
-8. проверяет HTTPS `/health`;
-9. проверяет, что unsigned `/v1/wesi-ai` и `/v1/wesi-ai-artifact` возвращают 401;
-10. делает живой Relay → Gemini text roundtrip;
-11. повторяет тот же подписанный запрос и проверяет `WAI_RELAY_REPLAY_DETECTED`;
-12. делает живой Gemini natural TTS roundtrip;
-13. собирает `.wesi-ai-relay.json` для Main Server;
-14. выкладывает все актуальные `wesi_ai_*` hooks и Persona Bundle на `api.wesi-inc.ru`;
-15. устанавливает private configs с mode 600 и владельцем PocketBase;
-16. перезапускает PocketBase;
-17. проверяет Main → Relay HTTPS;
-18. проверяет, что защищённые Wesi AI routes реально загрузились.
+## Безопасность
 
-Ручного копирования shared secret между двумя серверами после этого нет.
-
-## Provider operations
-
-Один `GEMINI_API_KEY` используется Relay для:
-
-- text routing:
-  - `google/gemini-3.5-flash-lite` — fast;
-  - `google/gemini-3.6-flash` — pro;
-  - `google/gemini-3.6-flash` — maximum;
-- natural speech: `gemini-3.1-flash-tts-preview`;
-- images: `gemini-3.1-flash-image`;
-- video: Veo 3.1 / Veo 3.1 Fast;
-- music: Lyria 3 Clip / Lyria 3 Pro.
-
-Модельные имена являются внутренней инфраструктурой. Пользователь WesiOS видит уровни Wesi AI, а не provider/model selector.
-
-## Защита Main ↔ Relay
-
-Подписывается точная строка:
+Main ↔ Relay подписывает:
 
 ```text
 requestId + "." + timestamp + "." + rawBody
 ```
 
-Relay:
-
-- проверяет HMAC;
-- проверяет freshness;
-- запоминает принятый request id;
-- отклоняет replay;
-- не резервирует request id для запроса с неверной подписью;
-- fail-closed при переполнении bounded replay cache.
-
-Одинаковый контракт покрыт Relay tests и production deployment smoke-test.
-
-## Передача тяжёлых media artifacts
-
-Image/music/video bytes не передаются клиенту как provider base64 и provider URL не сохраняется в истории.
-
-Путь:
-
-```text
-Google → Relay → short-lived one-time Relay artifact
-       → signed Main fetch
-       → WesiOS-controlled storage
-       → WesiOS media URL
-       → client
-```
-
-Relay artifact:
-
-- криптографический opaque id;
-- ограниченный TTL;
-- bounded memory;
-- выдаётся только по отдельному подписанному Main request;
-- уничтожается при первом успешном получении.
-
-Для Veo Relay сам скачивает provider result с `GEMINI_API_KEY`. Каждый HTTP redirect обрабатывается вручную и повторно проверяется по Google API host allowlist **до** передачи API key следующему адресу. Затем проверяются MIME и максимальный размер, и Main получает только Wesi artifact handoff.
-
-## Natural voice fallback
-
-Клиент сначала пытается получить натуральный голос через Main → Relay → Gemini. Если Relay/провайдер недоступен, разговор автоматически продолжает работать через системный Android/Windows TTS.
-
-Gemini TTS возвращает raw PCM 24 kHz mono 16-bit. Relay заворачивает PCM в настоящий RIFF/WAV перед отправкой Main/client. Android bridge завершает `speak()` только после фактического `onDone` озвучки, поэтому hands-free session не открывает микрофон, пока динамик ещё говорит.
+Relay проверяет HMAC, freshness и replay. Provider keys записываются только в `/etc/wesi-ai-relay.env` с ограниченными правами и не попадают в Main Server config или приложение.
 
 ## Локальная проверка
 
 ```bash
 node --test server/wesi-ai-relay/*.test.mjs
 ```
-
-Также production PR gate выполняет `node --check`, Relay tests, Persona validation, Flutter analyze/test, Android и Windows builds.
