@@ -72,7 +72,7 @@ jobs:
           validate_ssh_key() {
             local name="$1"
             local value="${!name}"
-            if ! grep -Eq '^-----BEGIN (OPENSSH|RSA|EC|DSA|PRIVATE) PRIVATE KEY-----' <<<"$value"; then
+            if ! grep -Eq '^-----BEGIN (OPENSSH |RSA |EC |DSA )?PRIVATE KEY-----' <<<"$value"; then
               echo "::error::$name does not look like a PEM/OpenSSH private key"
               exit 1
             fi
