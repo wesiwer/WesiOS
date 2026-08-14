@@ -24,30 +24,17 @@ function prune(now = Date.now()) {
   }
 }
 
-export function putMedia(media, {ttlMs = DEFAULT_TTL_MS} = {}) {
+export function putBytes(rawBytes, metadata = {}, {ttlMs = DEFAULT_TTL_MS} = {}) {
   prune();
-  const encoded = String(media?.data || '');
-  if (!encoded || !/^[A-Za-z0-9+/=]+$/.test(encoded)) {
-    return {ok: false, code: 'WAI_PROVIDER_BAD_MEDIA'};
-  }
-  let bytes;
-  try {
-    bytes = Buffer.from(encoded, 'base64');
-  } catch {
-    return {ok: false, code: 'WAI_PROVIDER_BAD_MEDIA'};
-  }
+  const bytes = Buffer.isBuffer(rawBytes) ? rawBytes : Buffer.from(rawBytes || []);
   if (!bytes.length || bytes.length > MAX_ITEM_BYTES) {
-    return {ok: false, code: 'WAI_PROVIDER_BAD_MEDIA'};
-  }
-  const declared = Number(media?.byteSize || 0);
-  if (declared && declared !== bytes.length) {
     return {ok: false, code: 'WAI_PROVIDER_BAD_MEDIA'};
   }
   const id = crypto.randomBytes(24).toString('base64url');
   const item = {
     bytes,
-    mimeType: String(media?.mimeType || 'application/octet-stream').slice(0, 120),
-    kind: String(media?.kind || 'media').slice(0, 40),
+    mimeType: String(metadata?.mimeType || 'application/octet-stream').slice(0, 120),
+    kind: String(metadata?.kind || 'media').slice(0, 40),
     createdAt: Date.now(),
     expiresAt: Date.now() + Math.max(30_000, Math.min(Number(ttlMs) || DEFAULT_TTL_MS, 30 * 60 * 1000)),
   };
@@ -63,6 +50,27 @@ export function putMedia(media, {ttlMs = DEFAULT_TTL_MS} = {}) {
     byteSize: bytes.length,
     expiresAt: new Date(item.expiresAt).toISOString(),
   };
+}
+
+export function putMedia(media, options = {}) {
+  const encoded = String(media?.data || '');
+  if (!encoded || !/^[A-Za-z0-9+/=]+$/.test(encoded)) {
+    return {ok: false, code: 'WAI_PROVIDER_BAD_MEDIA'};
+  }
+  let bytes;
+  try {
+    bytes = Buffer.from(encoded, 'base64');
+  } catch {
+    return {ok: false, code: 'WAI_PROVIDER_BAD_MEDIA'};
+  }
+  const declared = Number(media?.byteSize || 0);
+  if (declared && declared !== bytes.length) {
+    return {ok: false, code: 'WAI_PROVIDER_BAD_MEDIA'};
+  }
+  return putBytes(bytes, {
+    mimeType: media?.mimeType,
+    kind: media?.kind,
+  }, options);
 }
 
 /// Atomically removes and returns one media artifact. Main Server is expected
