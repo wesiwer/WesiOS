@@ -8,6 +8,10 @@ on:
         required: true
         default: 'ai.wesi-wi.su'
         type: string
+  push:
+    branches: [main]
+    paths:
+      - '.github/wesi-ai-router-deploy.trigger'
 
 permissions:
   contents: read
@@ -21,7 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      PUBLIC_HOST: ${{ inputs.public_host }}
+      PUBLIC_HOST: ${{ inputs.public_host || 'ai.wesi-wi.su' }}
       RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
       RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
