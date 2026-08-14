@@ -110,13 +110,20 @@ jobs:
           ssh -i ~/.ssh/relay_key -o BatchMode=yes "$USER@$HOST" \
             "cd ~/$tmp && sudo -E env WESI_MAIN_SHARED_SECRET='$SHARED' GEMINI_API_KEY='$GEMINI' bash deploy-relay.sh --install && cd ~ && rm -rf ~/$tmp"
 
+      # Проверка наличия адреса живёт внутри скрипта, а не в `if:`. Секрет в
+      # условии шага GitHub не принимает вовсе — и отвергает при этом весь
+      # файл, а не один шаг: workflow не запускается, а в списке появляется
+      # прогон без единой задачи, названный путём к файлу.
       - name: Проверить /health снаружи
-        if: ${{ secrets.WESI_RELAY_PUBLIC_HOST != '' }}
         shell: bash
         env:
           PUBLIC: ${{ secrets.WESI_RELAY_PUBLIC_HOST }}
         run: |
           set -euo pipefail
+          if [ -z "${PUBLIC:-}" ]; then
+            echo "WESI_RELAY_PUBLIC_HOST не задан — проверка снаружи пропущена."
+            exit 0
+          fi
           code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 "https://$PUBLIC/health" || echo 000)"
           if [ "$code" != "200" ]; then
             echo "Relay не отвечает по HTTPS: код $code" >&2
