@@ -1,6 +1,6 @@
 import http from 'node:http';
 import {verifyMainRequest} from './auth.mjs';
-import {parseGoogleRoute, callGoogleText} from './google.mjs';
+import {callTextRoute} from './google.mjs';
 import {
   callGoogleTts,
   callGoogleImage,
@@ -65,9 +65,7 @@ function authenticate(req, raw) {
 async function execute(request) {
   const operation = String(request.operation || '');
   if (operation === 'chat' || operation === 'lobby') {
-    const route = parseGoogleRoute(request.route);
-    if (!route) return {ok: false, status: 400, code: 'WAI_ROUTE_UNAVAILABLE'};
-    return callGoogleText(route.model, request.input || {}, googleKey);
+    return callTextRoute(request.route, request.input || {}, googleKey);
   }
   if (operation === 'tts') return callGoogleTts(request.input || {}, googleKey);
   if (operation === 'image') return callGoogleImage(request.input || {}, googleKey);
@@ -105,6 +103,7 @@ http.createServer(async (req, res) => {
       ok: true,
       service: 'wesi-ai-relay',
       ready: secret.length >= 32 && googleKey.length > 0,
+      routing: ['fast', 'pro', 'ultra'],
     });
   }
 
@@ -139,13 +138,16 @@ http.createServer(async (req, res) => {
     if (!result?.ok) {
       return send(res, result?.status || 502, {ok: false, code: result?.code || 'WAI_PROVIDER_UNAVAILABLE'});
     }
-    if (result.answer) return send(res, 200, {ok: true, answer: result.answer});
+    if (result.answer) {
+      return send(res, 200, {
+        ok: true,
+        answer: result.answer,
+        provider: result.provider || null,
+        model: result.model || null,
+      });
+    }
 
     if (result.media) {
-      // TTS remains inline because the authenticated voice endpoint consumes
-      // it immediately and it is bounded to 20MB. Heavier generated assets
-      // are converted into a short-lived one-time Relay artifact that only
-      // Main Server can fetch with another signed request.
       if (String(result.media.kind || '') === 'tts') {
         return send(res, 200, {ok: true, media: result.media});
       }
