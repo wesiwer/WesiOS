@@ -85,8 +85,6 @@ ln -sfn "$SITE" "$ENABLED"
 nginx -t
 systemctl reload nginx
 
-# Ensure renewal is installed. Debian/Ubuntu certbot packages normally provide
-# certbot.timer; a missing timer is reported rather than silently ignored.
 if systemctl list-unit-files certbot.timer >/dev/null 2>&1; then
   systemctl enable --now certbot.timer >/dev/null 2>&1 || true
 fi
@@ -94,9 +92,12 @@ fi
 curl -fsS --max-time 20 "https://$HOSTNAME/health" | grep -q '"ok":true' \
   || fail "HTTPS configured, but public /health verification failed. Check DNS/firewall/nginx logs."
 
-# The application route must not accept unauthenticated requests. A 401 is the
-# expected result and proves nginx reaches Relay without making it public.
-code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -X POST "https://$HOSTNAME/v1/wesi-ai" || true)"
-[ "$code" = "401" ] || fail "Expected 401 from unsigned Relay request, got HTTP $code."
+# Both write surfaces are internet-reachable through nginx but are usable only
+# by Main Server. An unsigned request must reach Relay and be rejected as 401;
+# 404 would indicate a broken proxy and 2xx would indicate an auth failure.
+for route in /v1/wesi-ai /v1/wesi-ai-artifact; do
+  code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 20 -X POST "https://$HOSTNAME$route" || true)"
+  [ "$code" = "401" ] || fail "Expected 401 from unsigned $route request, got HTTP $code."
+done
 
 echo "Relay HTTPS ready: https://$HOSTNAME"
