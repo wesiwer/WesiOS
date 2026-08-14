@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import {prepareGeminiAttachments} from './attachment-preprocessor.mjs';
 
 const PROVIDER_ENV = '/etc/wesi-ai-providers.env';
 
@@ -25,6 +26,10 @@ export function parseGoogleRoute(route) {
 function parseWesiRoute(route) {
   const match = /^wesi\/(fast|pro|ultra)$/.exec(String(route || '').trim().toLowerCase());
   return match ? match[1] : null;
+}
+
+function hasAttachments(input) {
+  return Array.isArray(input?.attachments) && input.attachments.length > 0;
 }
 
 function openAiMessages(input) {
@@ -73,16 +78,34 @@ export async function callGoogleText(model, input, apiKey) {
     const text = String(item?.text || '');
     if (text) history.push({role: String(item?.author || '') === 'user' ? 'user' : 'model', parts: [{text}]});
   }
-  history.push({role: 'user', parts: [{text: String(input.message || '')}]});
+
+  const userParts = [];
+  const message = String(input.message || '').trim();
+  if (message) userParts.push({text: message});
+  try {
+    const prepared = await prepareGeminiAttachments(input.attachments);
+    userParts.push(...prepared.parts);
+  } catch (error) {
+    return {ok: false, status: 400, code: String(error?.message || 'WAI_ATTACHMENT_INVALID')};
+  }
+  if (!userParts.length) userParts.push({text: 'Проанализируй прикреплённые данные.'});
+  history.push({role: 'user', parts: userParts});
+
   const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST',
     headers: {'content-type': 'application/json', 'x-goog-api-key': apiKey},
     body: JSON.stringify({systemInstruction: {parts: [{text: String(input.system || '')}]}, contents: history}),
-    signal: AbortSignal.timeout(120000),
+    signal: AbortSignal.timeout(180000),
   });
   let data = {};
   try { data = await response.json(); } catch {}
-  if (!response.ok) return {ok: false, status: response.status === 429 ? 429 : 502, code: response.status === 429 ? 'WAI_PROVIDER_RATE_LIMIT' : 'WAI_PROVIDER_REJECTED'};
+  if (!response.ok) {
+    return {
+      ok: false,
+      status: response.status === 429 ? 429 : response.status === 400 ? 400 : 502,
+      code: response.status === 429 ? 'WAI_PROVIDER_RATE_LIMIT' : response.status === 400 ? 'WAI_ATTACHMENT_PROVIDER_REJECTED' : 'WAI_PROVIDER_REJECTED',
+    };
+  }
   const parts = data?.candidates?.[0]?.content?.parts;
   const answer = Array.isArray(parts) ? parts.map((p) => typeof p?.text === 'string' ? p.text : '').join('').trim() : '';
   return answer ? {ok: true, answer} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
@@ -90,6 +113,7 @@ export async function callGoogleText(model, input, apiKey) {
 
 async function callCandidate(candidate, input, googleKey, secrets) {
   if (candidate.provider === 'google') return callGoogleText(candidate.model, input, googleKey);
+  if (hasAttachments(input)) return {ok: false, status: 400, code: 'WAI_PROVIDER_NOT_MULTIMODAL'};
   if (candidate.provider === 'groq') {
     return callOpenAiCompatible({
       url: 'https://api.groq.com/openai/v1/chat/completions',
@@ -112,7 +136,7 @@ async function callCandidate(candidate, input, googleKey, secrets) {
       model: candidate.model,
       apiKey: secrets.OPENROUTER_API_KEY,
       input,
-      headers: {'HTTP-Referer': 'https://wesi-wi.su', 'X-Title': 'Wesi AI'},
+      headers: {'HTTP-Referer': 'https://wesi-wf.su', 'X-Title': 'Wesi AI'},
     });
   }
   return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
@@ -132,6 +156,14 @@ async function callUltra(input, googleKey, secrets) {
   const toolTurn = String(input.system || '').includes('[WESI_AI_TOOL_PROTOCOL]');
   const primaryCandidate = {provider: 'google', model: 'gemini-3.5-flash'};
   const reviewCandidate = {provider: 'groq', model: 'openai/gpt-oss-120b'};
+
+  // Attachments must remain intact. The current free review providers are
+  // text-only in our adapter, so multimodal Ultra uses the strongest Gemini
+  // route directly instead of silently dropping the file content.
+  if (hasAttachments(input)) {
+    const result = await callCandidate(primaryCandidate, input, googleKey, secrets);
+    return result.ok ? {...result, provider: primaryCandidate.provider, model: primaryCandidate.model} : result;
+  }
 
   if (toolTurn || !googleKey || !secrets.GROQ_API_KEY) {
     return firstAvailable([
@@ -171,6 +203,12 @@ export async function callTextRoute(route, input, googleKey) {
   const tier = parseWesiRoute(route);
   if (!tier) return {ok: false, status: 400, code: 'WAI_ROUTE_UNAVAILABLE'};
   const secrets = providerSecrets();
+
+  if (hasAttachments(input)) {
+    const model = tier === 'fast' ? 'gemini-3.5-flash-lite' : 'gemini-3.5-flash';
+    const result = await callGoogleText(model, input, googleKey);
+    return result.ok ? {...result, provider: 'google', model} : result;
+  }
 
   if (tier === 'fast') {
     return firstAvailable([

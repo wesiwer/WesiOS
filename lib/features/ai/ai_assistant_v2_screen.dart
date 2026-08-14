@@ -1,7 +1,9 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../team/services/team_service.dart';
 import 'controllers/wesi_ai_chat_controller.dart';
+import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
 import 'wesi_ai_handoff_controller.dart';
@@ -11,11 +13,6 @@ import 'wesi_ai_voice_devices.dart';
 import 'wesi_ai_voice_session.dart';
 import 'widgets/wesi_ai_message_content.dart';
 
-/// Rich Wesi AI chat shell.
-///
-/// Kept as a separate screen while the original screen remains a safe
-/// rollback target. The route can switch between implementations with one
-/// small import change.
 class AiAssistantV2Screen extends StatefulWidget {
   const AiAssistantV2Screen({super.key});
 
@@ -27,6 +24,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   WesiAiHandoffController? _controller;
   final TextEditingController _composer = TextEditingController();
   final WesiAiVoiceController _voice = WesiAiVoiceController();
+  final List<WesiAiAttachment> _attachments = <WesiAiAttachment>[];
   String _voicePrefix = '';
   WesiAiVoiceSession? _session;
 
@@ -50,9 +48,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
   void _onVoiceChanged() {
     if (!mounted) return;
-    // В режиме разговора микрофон принадлежит сессии, а не полю ввода.
-    // Иначе распознанное попадёт и в разговор, и в композер — и уйдёт
-    // вторым сообщением, когда человек нажмёт «отправить».
     if (_session?.active == true) {
       setState(() {});
       return;
@@ -72,7 +67,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     setState(() {});
   }
 
-  /// Включить или выключить голосовой разговор.
   Future<void> _toggleConversation(WesiAiChatController controller) async {
     final running = _session;
     if (running != null && running.active) {
@@ -84,8 +78,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
       ear: WesiAiDeviceEar(_voice),
       mouth: const WesiAiDeviceMouth(),
       onTurn: (text) => _speakableTurn(controller, text),
-    )
-      ..addListener(_refresh);
+    )..addListener(_refresh);
     await session.start();
     if (!mounted) return;
     if (!session.active && session.error != null) {
@@ -96,12 +89,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     setState(() {});
   }
 
-  /// Отправить услышанное и вернуть то, что нужно произнести.
-  ///
-  /// Ответ берётся из самого чата, а не из отдельного вызова: сообщение
-  /// должно попасть в переписку ровно один раз, и озвучивать нужно именно
-  /// то, что человек увидит на экране. В лобби ответов несколько — каждый
-  /// со своим автором, и каждый прозвучит своим голосом.
   Future<List<WesiAiSpokenReply>> _speakableTurn(
     WesiAiChatController controller,
     String text,
@@ -112,9 +99,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
         .messagesFor(conversationId)
         .map((m) => m.id)
         .toSet();
-
     await controller.addUserMessage(text);
-
     return spokenRepliesFrom(
       messages: controller.state.messagesFor(conversationId),
       alreadySeen: before,
@@ -402,6 +387,10 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     final theme = Theme.of(context);
     final mine = message.author == WesiAiMessageAuthor.user;
     final error = message.kind == WesiAiMessageKind.error;
+    final rawAttachments = message.metadata['attachments'];
+    final attachmentMaps = rawAttachments is List
+        ? rawAttachments.whereType<Map>().toList(growable: false)
+        : const <Map>[];
     return Align(
       alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -419,6 +408,21 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            if (attachmentMaps.isNotEmpty) ...[
+              Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: attachmentMaps.map((raw) {
+                  final map = Map<String, dynamic>.from(raw);
+                  return Chip(
+                    avatar: const Icon(Icons.attach_file, size: 16),
+                    label: Text('${map['name'] ?? 'Файл'}'),
+                    visualDensity: VisualDensity.compact,
+                  );
+                }).toList(growable: false),
+              ),
+              const SizedBox(height: 8),
+            ],
             WesiAiMessageContent(
               key: ValueKey(message.id),
               message: message,
@@ -437,11 +441,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     );
   }
 
-  /// Что делает разговор прямо сейчас.
-  ///
-  /// Без этой строки голосовой режим — чёрный ящик: человек не знает,
-  /// слышат ли его, думает ли система или уже отвечает, и начинает говорить
-  /// в тишину.
   Widget _conversationStatus(WesiAiVoiceSession session) {
     final (IconData icon, String label) = switch (session.phase) {
       WesiAiVoicePhase.listening => (Icons.mic, 'Слушаю…'),
@@ -475,8 +474,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
           if (session.phase == WesiAiVoicePhase.speaking ||
               session.phase == WesiAiVoicePhase.thinking)
             TextButton(
-              // Перебивание нажатием, а не голосом: микрофон во время
-              // озвучки закрыт намеренно, иначе он услышит сам себя.
               onPressed: session.bargeIn,
               child: const Text('Перебить'),
             ),
@@ -507,61 +504,128 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
   Widget _composerBar(WesiAiChatController controller) => Padding(
         padding: const EdgeInsets.all(8),
-        child: Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Expanded(
-              child: TextField(
-                controller: _composer,
-                enabled: !controller.sending,
-                minLines: 1,
-                maxLines: 5,
-                decoration: const InputDecoration(
-                  border: OutlineInputBorder(),
-                  hintText: 'Сообщение Wesi AI',
+            if (_attachments.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 7),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    for (var index = 0; index < _attachments.length; index++)
+                      InputChip(
+                        avatar: const Icon(Icons.attach_file, size: 16),
+                        label: Text(
+                          '${_attachments[index].name} · ${_formatBytes(_attachments[index].byteSize)}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        onDeleted: controller.sending
+                            ? null
+                            : () => setState(() => _attachments.removeAt(index)),
+                      ),
+                  ],
                 ),
-                onSubmitted: controller.sending ? null : (_) => _send(controller),
               ),
-            ),
-            const SizedBox(width: 6),
-            IconButton.filledTonal(
-              tooltip: _voice.listening ? 'Остановить диктовку' : 'Голосовой ввод',
-              // Диктовка и разговор делят один микрофон, поэтому во время
-              // разговора диктовать нельзя: два хозяина у одного устройства
-              // ввода — это застрявший микрофон.
-              onPressed: controller.sending || _session?.active == true
-                  ? null
-                  : _toggleVoice,
-              icon: Icon(_voice.listening ? Icons.stop : Icons.mic_none),
-            ),
-            const SizedBox(width: 6),
-            IconButton.filledTonal(
-              tooltip: _session?.active == true
-                  ? 'Завершить голосовой разговор'
-                  : 'Голосовой разговор',
-              onPressed: () => _toggleConversation(controller),
-              style: _session?.active == true
-                  ? IconButton.styleFrom(
-                      backgroundColor:
-                          Theme.of(context).colorScheme.primaryContainer,
-                    )
-                  : null,
-              icon: Icon(_session?.active == true
-                  ? Icons.headset_off
-                  : Icons.headset_mic_outlined),
-            ),
-            const SizedBox(width: 6),
-            IconButton.filled(
-              onPressed: controller.sending ? null : () => _send(controller),
-              icon: controller.sending
-                  ? const SizedBox.square(
-                      dimension: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.arrow_upward),
+            Row(
+              children: [
+                IconButton.filledTonal(
+                  tooltip: 'Прикрепить файл',
+                  onPressed: controller.sending ? null : _pickAttachments,
+                  icon: const Icon(Icons.attach_file),
+                ),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: TextField(
+                    controller: _composer,
+                    enabled: !controller.sending,
+                    minLines: 1,
+                    maxLines: 5,
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: 'Сообщение или вопрос по файлам',
+                    ),
+                    onSubmitted: controller.sending ? null : (_) => _send(controller),
+                  ),
+                ),
+                const SizedBox(width: 6),
+                IconButton.filledTonal(
+                  tooltip: _voice.listening ? 'Остановить диктовку' : 'Голосовой ввод',
+                  onPressed: controller.sending || _session?.active == true
+                      ? null
+                      : _toggleVoice,
+                  icon: Icon(_voice.listening ? Icons.stop : Icons.mic_none),
+                ),
+                const SizedBox(width: 6),
+                IconButton.filledTonal(
+                  tooltip: _session?.active == true
+                      ? 'Завершить голосовой разговор'
+                      : 'Голосовой разговор',
+                  onPressed: () => _toggleConversation(controller),
+                  style: _session?.active == true
+                      ? IconButton.styleFrom(
+                          backgroundColor:
+                              Theme.of(context).colorScheme.primaryContainer,
+                        )
+                      : null,
+                  icon: Icon(_session?.active == true
+                      ? Icons.headset_off
+                      : Icons.headset_mic_outlined),
+                ),
+                const SizedBox(width: 6),
+                IconButton.filled(
+                  onPressed: controller.sending ? null : () => _send(controller),
+                  icon: controller.sending
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.arrow_upward),
+                ),
+              ],
             ),
           ],
         ),
       );
+
+  Future<void> _pickAttachments() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: true,
+        type: FileType.any,
+      );
+      if (result == null || result.files.isEmpty) return;
+      final next = <WesiAiAttachment>[..._attachments];
+      for (final file in result.files) {
+        next.add(WesiAiAttachment.fromPlatformFile(file));
+      }
+      WesiAiAttachment.validateBatch(next);
+      if (!mounted) return;
+      setState(() {
+        _attachments
+          ..clear()
+          ..addAll(next);
+      });
+    } on FormatException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(e.message)),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Не удалось открыть выбранный файл')),
+      );
+    }
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} МБ';
+    if (bytes >= 1024) return '${(bytes / 1024).toStringAsFixed(0)} КБ';
+    return '$bytes Б';
+  }
 
   Future<void> _toggleVoice() async {
     if (_voice.listening) {
@@ -585,11 +649,13 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   Future<void> _send(WesiAiChatController controller) async {
     if (_voice.listening) await _voice.stop();
     final text = _composer.text.trim();
-    if (text.isEmpty || controller.sending) return;
+    if ((text.isEmpty && _attachments.isEmpty) || controller.sending) return;
+    final attachments = List<WesiAiAttachment>.from(_attachments);
     _composer.clear();
     _voicePrefix = '';
     _voice.clearTranscript();
-    await controller.addUserMessage(text);
+    setState(() => _attachments.clear());
+    await controller.addUserMessage(text, attachments: attachments);
   }
 
   Future<void> _handoff(

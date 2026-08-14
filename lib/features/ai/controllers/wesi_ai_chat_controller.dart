@@ -4,6 +4,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../media_engines/wesi_media_engine_runner.dart';
+import '../models/wesi_ai_attachment.dart';
 import '../models/wesi_ai_chat_models.dart';
 import '../storage/wesi_ai_local_store.dart';
 import '../wesi_ai_api.dart';
@@ -69,22 +70,58 @@ class WesiAiChatController extends ChangeNotifier {
     await _persist();
   }
 
-  Future<void> addUserMessage(String text) async {
+  Future<void> addUserMessage(
+    String text, {
+    List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+  }) async {
     final c = state.activeConversation;
     final clean = text.trim();
-    if (c == null || clean.isEmpty || sending) return;
+    if (c == null || sending || (clean.isEmpty && attachments.isEmpty)) return;
+    try {
+      WesiAiAttachment.validateBatch(attachments);
+    } on FormatException catch (e) {
+      final at = DateTime.now();
+      state = state.copyWith(
+        messages: <WesiAiMessage>[
+          ...state.messages,
+          WesiAiMessage(
+            id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
+            conversationId: c.id,
+            employeeId: store.employeeId,
+            author: WesiAiMessageAuthor.system,
+            kind: WesiAiMessageKind.error,
+            text: e.message,
+            createdAt: at,
+            metadata: const <String, dynamic>{'code': 'WAI_ATTACHMENT_INVALID'},
+          ),
+        ],
+      );
+      await _persist();
+      return;
+    }
 
     final history = state.messagesFor(c.id);
     final now = DateTime.now();
+    final visibleText = clean.isNotEmpty
+        ? clean
+        : 'Вложения: ${attachments.map((item) => item.name).join(', ')}';
     final user = WesiAiMessage(
       id: '${now.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
       conversationId: c.id,
       employeeId: store.employeeId,
       author: WesiAiMessageAuthor.user,
-      text: clean,
+      text: visibleText,
       createdAt: now,
+      metadata: attachments.isEmpty
+          ? const <String, dynamic>{}
+          : <String, dynamic>{
+              'attachments': attachments
+                  .map((attachment) => attachment.toMetadataJson())
+                  .toList(growable: false),
+            },
     );
-    final updated = c.copyWith(updatedAt: now, title: _titleFor(c, clean));
+    final titleSource = clean.isNotEmpty ? clean : attachments.first.name;
+    final updated = c.copyWith(updatedAt: now, title: _titleFor(c, titleSource));
     final conversations = state.conversations
         .map((x) => x.id == c.id ? updated : x)
         .toList()
@@ -103,6 +140,7 @@ class WesiAiChatController extends ChangeNotifier {
         message: clean,
         history: history,
         memory: state.memory,
+        attachments: attachments,
       );
       final at = DateTime.now();
       final author = switch (c.persona) {

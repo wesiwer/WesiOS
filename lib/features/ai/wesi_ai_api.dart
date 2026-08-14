@@ -4,6 +4,7 @@ import 'dart:io';
 
 import '../../core/sync/sync_endpoint.dart';
 import '../organizations/services/organization_context.dart';
+import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'models/wesi_ai_content_blocks.dart';
 
@@ -51,7 +52,9 @@ class WesiAiApi {
     required String message,
     required List<WesiAiMessage> history,
     required WesiAiMemorySnapshot memory,
+    List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
   }) async {
+    WesiAiAttachment.validateBatch(attachments);
     final auth = _auth();
     final base = Uri.parse(SyncEndpoint.url);
     final uri = base.replace(path: '/api/wesi/ai/chat');
@@ -65,6 +68,10 @@ class WesiAiApi {
       'activeOrganizationId': OrganizationContext.currentOrganizationId,
       'memory': memory.toJson(),
       'messages': transportHistory(history),
+      if (attachments.isNotEmpty)
+        'attachments': attachments
+            .map((attachment) => attachment.toTransportJson())
+            .toList(growable: false),
     };
 
     try {
@@ -72,7 +79,7 @@ class WesiAiApi {
       _applyAuth(request, auth);
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(body));
-      final response = await request.close().timeout(const Duration(seconds: 125));
+      final response = await request.close().timeout(const Duration(seconds: 185));
       final raw = await utf8.decoder.bind(response).join();
       Map<String, dynamic> json = const {};
       if (raw.isNotEmpty) {
@@ -106,13 +113,13 @@ class WesiAiApi {
       throw const WesiAiApiException('NETWORK', 'Нет связи с сервером WesiOS');
     } on HttpException {
       throw const WesiAiApiException('NETWORK', 'Ошибка связи с сервером WesiOS');
-    } on FormatException {
-      throw const WesiAiApiException('NOT_WESIOS', 'Сервер WesiOS вернул некорректный ответ');
+    } on TimeoutException {
+      throw const WesiAiApiException('NETWORK', 'Wesi AI не успел обработать вложение');
+    } on FormatException catch (e) {
+      throw WesiAiApiException('WAI_ATTACHMENT_INVALID', e.message);
     }
   }
 
-  /// Converts only server-verified media tool results to executable client
-  /// requests. Model-authored `wesi-media` fences never pass this path.
   static List<WesiAiContentBlock> _verifiedLocalMediaRequests(Object? raw) {
     if (raw is! List) return const <WesiAiContentBlock>[];
     final blocks = <WesiAiContentBlock>[];
@@ -134,8 +141,6 @@ class WesiAiApi {
           'title': mediaRequest['title'],
           'prompt': mediaRequest['prompt'],
           'status': 'pending',
-          // This extra field is intentionally created directly here. The
-          // generic content parser strips it from model-authored blocks.
           'localRequest': mediaRequest,
         },
       ));
@@ -169,7 +174,6 @@ class WesiAiApi {
     };
   }
 
-  /// Polls only a Main Server media-status URL emitted by a verified tool.
   Future<WesiAiContentBlock?> mediaJob(String rawStatusUrl) async {
     final base = Uri.parse(SyncEndpoint.url);
     final uri = Uri.tryParse(rawStatusUrl.trim());
@@ -226,6 +230,12 @@ class WesiAiApi {
         'WAI_RELAY_UNAVAILABLE' => 'Сервис Wesi AI временно недоступен',
         'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
         'WAI_EMPTY_RESPONSE' => 'Wesi AI вернул пустой ответ',
+        'WAI_ATTACHMENT_COUNT' => 'Можно прикрепить не больше 4 файлов',
+        'WAI_ATTACHMENT_TOO_LARGE' => 'Один из файлов слишком большой',
+        'WAI_ATTACHMENTS_TOO_LARGE' => 'Суммарный размер вложений слишком большой',
+        'WAI_ATTACHMENT_BAD_BASE64' || 'WAI_ATTACHMENT_INVALID' || 'WAI_ATTACHMENT_SIZE_MISMATCH' =>
+          'Не удалось прочитать вложение',
+        'WAI_ATTACHMENT_PROVIDER_REJECTED' => 'Модель не смогла обработать этот формат файла',
         _ => 'Не удалось получить ответ Wesi AI',
       };
 }

@@ -19,11 +19,23 @@ routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
       voiceConversation: true,
       naturalTts: cfg.ready,
       streaming: false,
+      attachments: cfg.ready,
+      imageUnderstanding: cfg.ready,
+      videoUnderstanding: cfg.ready,
+      audioUnderstanding: cfg.ready,
+      documentUnderstanding: cfg.ready,
+      archiveUnderstanding: cfg.ready,
+      markdownUnderstanding: cfg.ready,
       media: cfg.ready,
       imageGeneration: cfg.ready,
       videoGeneration: cfg.ready,
       musicGeneration: cfg.ready,
       wesiTools: tools.definitions(e, ctx).length > 0
+    },
+    attachmentLimits: {
+      maxFiles: 4,
+      maxFileBytes: 15728640,
+      maxTotalBytes: 18874368
     }
   });
 }, $apis.requireAuth("users"));
@@ -43,13 +55,40 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const activeOrganizationId = String(body.activeOrganizationId || "").trim();
   const history = Array.isArray(body.messages) ? body.messages : [];
   const memory = body.memory && typeof body.memory === "object" ? body.memory : {};
+  const attachmentsRaw = Array.isArray(body.attachments) ? body.attachments : [];
 
   if (["zane", "nirvana", "lobby"].indexOf(persona) < 0) throw new BadRequestError("Некорректный режим Wesi AI");
   if (["fast", "pro", "maximum"].indexOf(tier) < 0) throw new BadRequestError("Некорректный уровень Wesi AI");
   if (persona === "lobby" && ["both", "smart"].indexOf(lobbyMode) < 0) throw new BadRequestError("Некорректный режим лобби");
-  if (!message || message.length > 32000) throw new BadRequestError("Некорректное сообщение Wesi AI");
+  if ((!message && !attachmentsRaw.length) || message.length > 32000) throw new BadRequestError("Некорректное сообщение Wesi AI");
   if (summary.length > 64000 || history.length > 100) throw new BadRequestError("Слишком большой контекст Wesi AI");
   if (body.provider != null || body.model != null || body.providerModel != null) throw new BadRequestError("Недоступная настройка Wesi AI");
+
+  const cleanAttachments = [];
+  let totalAttachmentBytes = 0;
+  if (attachmentsRaw.length > 4) throw new BadRequestError("Слишком много вложений Wesi AI");
+  for (const raw of attachmentsRaw) {
+    if (!raw || typeof raw !== "object") throw new BadRequestError("Некорректное вложение Wesi AI");
+    let name = String(raw.name || "file").replace(/[\\/\x00-\x1f\x7f]/g, "_").trim();
+    if (!name) name = "file";
+    if (name.length > 180) name = name.slice(name.length - 180);
+    const mimeType = String(raw.mimeType || "application/octet-stream").trim().toLowerCase();
+    if (!/^[a-z0-9!#$&^_.+\-]+\/[a-z0-9!#$&^_.+\-]+$/i.test(mimeType) || mimeType.length > 120) {
+      throw new BadRequestError("Некорректный MIME вложения Wesi AI");
+    }
+    const dataBase64 = String(raw.dataBase64 || "").trim();
+    if (!dataBase64 || dataBase64.length > 20971520 || !/^[A-Za-z0-9+/]*={0,2}$/.test(dataBase64) || dataBase64.length % 4 !== 0) {
+      throw new BadRequestError("Некорректные данные вложения Wesi AI");
+    }
+    const padding = dataBase64.endsWith("==") ? 2 : dataBase64.endsWith("=") ? 1 : 0;
+    const byteSize = Math.floor(dataBase64.length * 3 / 4) - padding;
+    if (byteSize <= 0 || byteSize > 15728640) throw new BadRequestError("Вложение Wesi AI слишком большое");
+    const declared = Number(raw.byteSize || 0);
+    if (declared && declared !== byteSize) throw new BadRequestError("Размер вложения Wesi AI не совпадает");
+    totalAttachmentBytes += byteSize;
+    if (totalAttachmentBytes > 18874368) throw new BadRequestError("Суммарный размер вложений Wesi AI слишком большой");
+    cleanAttachments.push({name: name, mimeType: mimeType, byteSize: byteSize, dataBase64: dataBase64});
+  }
 
   const personaBundle = personaRuntime.load(persona);
   if (!personaBundle.ready) return e.json(503, {ok: false, code: "WAI_PERSONA_ENGINE_NOT_READY"});
@@ -76,6 +115,15 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const personaMemory = persona === "zane" ? cleanMemory.zane : persona === "nirvana" ? cleanMemory.nirvana : cleanMemory.zane.concat(cleanMemory.nirvana);
   if (personaMemory.length) systemParts.push("[WESI_AI_PERSONA_MEMORY]\n" + personaMemory.join("\n"));
   if (persona === "lobby") systemParts.push("[WESI_AI_LOBBY_MODE]\n" + lobbyMode);
+  if (cleanAttachments.length) {
+    systemParts.push(
+      "[WESI_AI_ATTACHMENTS]\n" +
+      "Пользователь приложил файлы. Анализируй их содержимое как часть текущего запроса. " +
+      "Не утверждай, что файл прочитан, если preprocessor сообщил, что бинарный формат не удалось достоверно декодировать. " +
+      "Для изображений разрешены описание сцены, OCR и анализ интерфейса; для аудио/видео — анализ доступного мультимодального содержимого; " +
+      "для документов/Markdown/архивов — анализ извлечённого текста и структуры."
+    );
+  }
   systemParts.push("[WESI_AI_RUNTIME_CONTEXT]\n" + JSON.stringify(runtimeContext));
   if (toolDefinitions.length) {
     systemParts.push(
@@ -96,7 +144,12 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
       requestId: relayRequestId,
       route: route,
       operation: persona === "lobby" ? "lobby" : "chat",
-      input: {system: system, history: cleanHistory, message: message}
+      input: {
+        system: system,
+        history: cleanHistory,
+        message: message || "Проанализируй приложенные файлы.",
+        attachments: cleanAttachments
+      }
     };
     return ai.callRelay(cfg, payload, relayRequestId);
   };
