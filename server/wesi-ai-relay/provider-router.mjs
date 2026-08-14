@@ -3,7 +3,7 @@ import {prepareAdaptiveContext} from './adaptive-context.mjs';
 const quotaSnapshots = new Map();
 
 function routeOf(raw) {
-  const match = /^(google|openai|anthropic|xai)\/([A-Za-z0-9._:-]{2,120})$/.exec(String(raw || '').trim());
+  const match = /^(google|openai|anthropic|xai)\/([A-Za-z0-9._:-]{2,160})$/.exec(String(raw || '').trim());
   return match ? {provider: match[1], model: match[2], route: `${match[1]}/${match[2]}`} : null;
 }
 
@@ -73,39 +73,48 @@ async function jsonResponse(response) {
 function providerError(response) {
   if (response.status === 429) return {ok: false, status: 429, code: 'WAI_PROVIDER_RATE_LIMIT'};
   if (response.status === 401 || response.status === 403) return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
+  if (response.status === 404) return {ok: false, status: 400, code: 'WAI_PROVIDER_MODEL_NOT_FOUND'};
   return {ok: false, status: response.status >= 400 && response.status < 500 ? response.status : 502, code: 'WAI_PROVIDER_REJECTED'};
 }
 
-async function callOpenAi(parsed, input, apiKey) {
+function responseApiText(data) {
+  if (typeof data?.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
+  const parts = [];
+  for (const item of Array.isArray(data?.output) ? data.output : []) {
+    for (const content of Array.isArray(item?.content) ? item.content : []) {
+      if ((content?.type === 'output_text' || content?.type === 'text') && typeof content?.text === 'string') parts.push(content.text);
+    }
+  }
+  return parts.join('').trim();
+}
+
+async function callResponsesApi({url, parsed, input, apiKey, provider}) {
   if (!apiKey) return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
   const prepared = prepareAdaptiveContext(parsed, input);
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch(url, {
     method: 'POST',
     headers: {'content-type': 'application/json', authorization: `Bearer ${apiKey}`},
-    body: JSON.stringify({model: parsed.model, messages: [{role: 'system', content: String(input?.system || '')}, ...prepared.messages]}),
+    body: JSON.stringify({
+      model: parsed.model,
+      instructions: String(input?.system || ''),
+      input: prepared.messages,
+      store: false,
+    }),
     signal: AbortSignal.timeout(120000),
   });
-  captureQuota(parsed.route, response, 'openai');
+  captureQuota(parsed.route, response, provider);
   const data = await jsonResponse(response);
   if (!response.ok) return providerError(response);
-  const answer = String(data?.choices?.[0]?.message?.content || '').trim();
+  const answer = responseApiText(data);
   return answer ? {ok: true, answer, context: prepared.meta} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
 }
 
+async function callOpenAi(parsed, input, apiKey) {
+  return callResponsesApi({url: 'https://api.openai.com/v1/responses', parsed, input, apiKey, provider: 'openai'});
+}
+
 async function callXai(parsed, input, apiKey) {
-  if (!apiKey) return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
-  const prepared = prepareAdaptiveContext(parsed, input);
-  const response = await fetch('https://api.x.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: {'content-type': 'application/json', authorization: `Bearer ${apiKey}`},
-    body: JSON.stringify({model: parsed.model, messages: [{role: 'system', content: String(input?.system || '')}, ...prepared.messages]}),
-    signal: AbortSignal.timeout(120000),
-  });
-  captureQuota(parsed.route, response, 'xai');
-  const data = await jsonResponse(response);
-  if (!response.ok) return providerError(response);
-  const answer = String(data?.choices?.[0]?.message?.content || '').trim();
-  return answer ? {ok: true, answer, context: prepared.meta} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
+  return callResponsesApi({url: 'https://api.x.ai/v1/responses', parsed, input, apiKey, provider: 'xai'});
 }
 
 async function callAnthropic(parsed, input, apiKey) {
@@ -114,20 +123,30 @@ async function callAnthropic(parsed, input, apiKey) {
   const response = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01'},
-    body: JSON.stringify({model: parsed.model, max_tokens: Math.min(16384, prepared.meta.outputReserveTokens), system: String(input?.system || ''), messages: prepared.messages}),
+    body: JSON.stringify({
+      model: parsed.model,
+      max_tokens: Math.min(32768, prepared.meta.outputReserveTokens),
+      system: String(input?.system || ''),
+      messages: prepared.messages,
+    }),
     signal: AbortSignal.timeout(120000),
   });
   captureQuota(parsed.route, response, 'anthropic');
   const data = await jsonResponse(response);
   if (!response.ok) return providerError(response);
-  const answer = Array.isArray(data?.content) ? data.content.map((part) => part?.type === 'text' ? String(part.text || '') : '').join('').trim() : '';
+  const answer = Array.isArray(data?.content)
+    ? data.content.map((part) => part?.type === 'text' ? String(part.text || '') : '').join('').trim()
+    : '';
   return answer ? {ok: true, answer, context: prepared.meta} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
 }
 
 export function describeRoute(raw, keys = {}) {
   const parsed = routeOf(raw);
   if (!parsed) return null;
-  const configured = parsed.provider === 'google' ? Boolean(keys.google) : parsed.provider === 'openai' ? Boolean(keys.openai) : parsed.provider === 'anthropic' ? Boolean(keys.anthropic) : Boolean(keys.xai);
+  const configured = parsed.provider === 'google' ? Boolean(keys.google)
+    : parsed.provider === 'openai' ? Boolean(keys.openai)
+    : parsed.provider === 'anthropic' ? Boolean(keys.anthropic)
+    : Boolean(keys.xai);
   const quota = quotaSnapshots.get(parsed.route) || null;
   return {route: parsed.route, provider: parsed.provider, model: parsed.model, configured, remainingPercent: quota?.remainingPercent ?? null, resetAt: quota?.resetAt ?? null, observedAt: quota?.observedAt ?? null};
 }
@@ -143,7 +162,11 @@ export async function callProviderText(rawRoute, input, keys = {}, callGoogleTex
   if (!parsed) return {ok: false, status: 400, code: 'WAI_ROUTE_UNAVAILABLE'};
   if (parsed.provider === 'google') {
     const prepared = prepareAdaptiveContext(parsed, input);
-    const googleInput = {...input, history: prepared.messages.slice(0, -1).map((item) => ({author: item.role === 'user' ? 'user' : 'assistant', text: item.content})), message: String(input?.message || '')};
+    const googleInput = {
+      ...input,
+      history: prepared.messages.slice(0, -1).map((item) => ({author: item.role === 'user' ? 'user' : 'assistant', text: item.content})),
+      message: String(input?.message || ''),
+    };
     const result = await callGoogleText(parsed.model, googleInput, keys.google);
     return result?.ok ? {...result, context: prepared.meta} : result;
   }
