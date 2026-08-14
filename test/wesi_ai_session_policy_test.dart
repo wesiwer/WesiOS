@@ -13,11 +13,13 @@ void main() {
 
   test('return from another module resumes recent conversation', () {
     final opened = DateTime(2026, 8, 14, 10);
+    final left = opened.add(const Duration(hours: 2));
     WesiAiSessionPolicy.markModuleOpened(opened);
+    WesiAiSessionPolicy.markModuleClosed(left);
 
     expect(
       WesiAiSessionPolicy.shouldStartFresh(
-        opened.add(const Duration(minutes: 12)),
+        left.add(const Duration(minutes: 12)),
       ),
       isFalse,
     );
@@ -25,11 +27,13 @@ void main() {
 
   test('thirty minutes away starts a fresh conversation', () {
     final opened = DateTime(2026, 8, 14, 10);
+    final left = opened.add(const Duration(minutes: 5));
     WesiAiSessionPolicy.markModuleOpened(opened);
+    WesiAiSessionPolicy.markModuleClosed(left);
 
     expect(
       WesiAiSessionPolicy.shouldStartFresh(
-        opened.add(const Duration(minutes: 30)),
+        left.add(const Duration(minutes: 30)),
       ),
       isTrue,
     );
