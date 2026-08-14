@@ -41,6 +41,24 @@ class WesiAiMessage {
 
   const WesiAiMessage({required this.id, required this.conversationId, required this.employeeId, required this.author, required this.text, required this.createdAt, this.kind = WesiAiMessageKind.text, this.replyToId, this.metadata = const {}});
 
+  WesiAiMessage copyWith({
+    WesiAiMessageAuthor? author,
+    WesiAiMessageKind? kind,
+    String? text,
+    String? replyToId,
+    Map<String, dynamic>? metadata,
+  }) => WesiAiMessage(
+        id: id,
+        conversationId: conversationId,
+        employeeId: employeeId,
+        author: author ?? this.author,
+        kind: kind ?? this.kind,
+        text: text ?? this.text,
+        createdAt: createdAt,
+        replyToId: replyToId ?? this.replyToId,
+        metadata: metadata ?? this.metadata,
+      );
+
   Map<String, dynamic> toJson() => {'id': id, 'conversationId': conversationId, 'employeeId': employeeId, 'author': author.name, 'kind': kind.name, 'text': text, 'createdAt': createdAt.toIso8601String(), 'replyToId': replyToId, 'metadata': metadata};
 
   factory WesiAiMessage.fromJson(Map<String, dynamic> json) => WesiAiMessage(id: json['id'] as String, conversationId: json['conversationId'] as String, employeeId: json['employeeId'] as String, author: WesiAiMessageAuthor.values.byName(json['author'] as String), kind: WesiAiMessageKind.values.byName(json['kind'] as String? ?? 'text'), text: json['text'] as String? ?? '', createdAt: DateTime.parse(json['createdAt'] as String), replyToId: json['replyToId'] as String?, metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? const {}));
