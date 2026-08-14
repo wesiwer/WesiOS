@@ -87,6 +87,8 @@ install_relay() {
   install -m 0644 "$SOURCE_DIR/auth.mjs" "$APP_DIR/auth.mjs"
   install -m 0644 "$SOURCE_DIR/google.mjs" "$APP_DIR/google.mjs"
   install -m 0644 "$SOURCE_DIR/google-media.mjs" "$APP_DIR/google-media.mjs"
+  install -m 0644 "$SOURCE_DIR/google-artifact.mjs" "$APP_DIR/google-artifact.mjs"
+  install -m 0644 "$SOURCE_DIR/media-cache.mjs" "$APP_DIR/media-cache.mjs"
   install -m 0644 "$SOURCE_DIR/package.json" "$APP_DIR/package.json"
 
   umask 077
@@ -162,6 +164,8 @@ Relay запущен на $RELAY_HOST:$RELAY_PORT и готов принимат
 
 Natural TTS использует gemini-3.1-flash-tts-preview; голоса можно менять
 через WESI_ZANE_TTS_VOICE / WESI_NIRVANA_TTS_VOICE без релиза приложения.
+Image, Veo video и Lyria 3 music используют тот же GEMINI_API_KEY; тяжёлые
+результаты передаются Main Server только через одноразовые Relay artifacts.
 TEXT
 }
 
