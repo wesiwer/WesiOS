@@ -1,7 +1,10 @@
 package com.wesi.wesios
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import java.util.Locale
@@ -13,6 +16,12 @@ import java.util.Locale
  * assistant message to another network service and does not contain provider
  * credentials. Natural persona voices remain a separate server-side media
  * pipeline.
+ *
+ * Important contract: `speak` completes only when the utterance actually
+ * finishes (or is stopped/failed). The hands-free voice session waits for
+ * this Future before reopening the microphone; returning immediately after
+ * TextToSpeech.speak() would let speech recognition hear the phone's own
+ * speaker and could create a self-conversation loop.
  */
 object WesiAiSpeechChannel {
     private const val CHANNEL = "wesios/ai_speech"
@@ -21,6 +30,17 @@ object WesiAiSpeechChannel {
     private var tts: TextToSpeech? = null
     private var ready = false
     private var registered = false
+    private var pendingResult: MethodChannel.Result? = null
+    private var pendingUtteranceId: String? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    private fun finishPending(success: Boolean, utteranceId: String? = null) {
+        if (utteranceId != null && pendingUtteranceId != utteranceId) return
+        val result = pendingResult ?: return
+        pendingResult = null
+        pendingUtteranceId = null
+        mainHandler.post { result.success(success) }
+    }
 
     fun register(context: Context, messenger: BinaryMessenger) {
         if (registered) return
@@ -30,6 +50,26 @@ object WesiAiSpeechChannel {
             ready = status == TextToSpeech.SUCCESS
             if (ready) {
                 tts?.language = Locale.getDefault()
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) = Unit
+
+                    override fun onDone(utteranceId: String?) {
+                        finishPending(true, utteranceId)
+                    }
+
+                    @Deprecated("Deprecated in Java")
+                    override fun onError(utteranceId: String?) {
+                        finishPending(false, utteranceId)
+                    }
+
+                    override fun onError(utteranceId: String?, errorCode: Int) {
+                        finishPending(false, utteranceId)
+                    }
+
+                    override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                        finishPending(false, utteranceId)
+                    }
+                })
             }
         }
 
@@ -38,6 +78,7 @@ object WesiAiSpeechChannel {
                 "isAvailable" -> result.success(ready)
                 "stop" -> {
                     tts?.stop()
+                    finishPending(false)
                     result.success(true)
                 }
                 "speak" -> {
@@ -62,13 +103,24 @@ object WesiAiSpeechChannel {
                         .coerceIn(0.75f, 1.25f)
                     tts?.setSpeechRate(rate)
                     tts?.setPitch(pitch)
+
+                    // QUEUE_FLUSH interrupts a previous utterance. Complete its
+                    // pending Dart Future before replacing it with the new one.
+                    tts?.stop()
+                    finishPending(false)
+
+                    val utteranceId = "wesi_ai_${System.currentTimeMillis()}"
+                    pendingResult = result
+                    pendingUtteranceId = utteranceId
                     val status = tts?.speak(
                         text,
                         TextToSpeech.QUEUE_FLUSH,
                         null,
-                        "wesi_ai_${System.currentTimeMillis()}",
+                        utteranceId,
                     ) ?: TextToSpeech.ERROR
-                    result.success(status == TextToSpeech.SUCCESS)
+                    if (status != TextToSpeech.SUCCESS) {
+                        finishPending(false, utteranceId)
+                    }
                 }
                 else -> result.notImplemented()
             }
@@ -77,6 +129,7 @@ object WesiAiSpeechChannel {
 
     fun shutdown() {
         tts?.stop()
+        finishPending(false)
         tts?.shutdown()
         tts = null
         ready = false
