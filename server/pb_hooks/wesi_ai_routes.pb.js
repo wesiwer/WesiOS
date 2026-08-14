@@ -18,6 +18,7 @@ routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
       handoff: true,
       lobby: true,
       emotions: true,
+      adaptiveContext: true,
       voiceConversation: true,
       naturalTts: cfg.ready,
       streaming: false,
@@ -83,7 +84,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   if (["fast", "pro", "maximum", "ultra"].indexOf(tier) < 0) throw new BadRequestError("Некорректный уровень Wesi AI");
   if (persona === "lobby" && ["both", "smart"].indexOf(lobbyMode) < 0) throw new BadRequestError("Некорректный режим лобби");
   if (!message || message.length > 32000) throw new BadRequestError("Некорректное сообщение Wesi AI");
-  if (summary.length > 64000 || history.length > 100) throw new BadRequestError("Слишком большой контекст Wesi AI");
+  if (summary.length > 256000 || history.length > 900) throw new BadRequestError("Слишком большой контекст Wesi AI");
   if (body.provider != null || body.model != null || body.providerModel != null) throw new BadRequestError("Недоступная настройка Wesi AI");
 
   const personaBundle = personaRuntime.load(persona);
@@ -101,12 +102,15 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   if (!routePlan.candidates.length) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED"});
 
   const cleanHistory = [];
+  let historyChars = 0;
   for (const item of history) {
     if (!item || typeof item !== "object") continue;
     const author = String(item.author || item.role || "").toLowerCase();
     const text = String(item.text || item.content || "");
     if (["user", "zane", "nirvana", "tool"].indexOf(author) < 0) continue;
     if (text.length > 32000) throw new BadRequestError("Слишком длинное сообщение в контексте");
+    historyChars += text.length;
+    if (historyChars > 6000000) throw new BadRequestError("Слишком большой контекст Wesi AI");
     cleanHistory.push({author: author, text: text});
   }
 
@@ -155,6 +159,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const requestId = "wai_" + Date.now() + "_" + $security.randomString(12);
   let stickyCandidate = 0;
   let effectiveRoute = routePlan.candidates[0];
+  let contextMeta = null;
   const relayCall = function(system, phase) {
     let last = null;
     for (let index = stickyCandidate; index < routePlan.candidates.length; index++) {
@@ -170,6 +175,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
       if (generated.ok) {
         stickyCandidate = index;
         effectiveRoute = candidate;
+        contextMeta = generated.context || contextMeta;
         return generated;
       }
       last = generated;
@@ -187,7 +193,8 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
       effectiveLevel: String(effectiveRoute && effectiveRoute.level || tier),
       provider: slash > 0 ? route.slice(0, slash) : "",
       model: slash > 0 ? route.slice(slash + 1) : route,
-      fallbackDepth: stickyCandidate
+      fallbackDepth: stickyCandidate,
+      context: contextMeta
     };
   };
 
