@@ -45,7 +45,7 @@ jobs:
           [ -n "${RELAY_SSH_HOST:-}" ] || { echo '::error::Foreign Relay SSH host is missing'; exit 1; }
           [ -n "${RELAY_SSH_USER:-}" ] || { echo '::error::Add WESI_RELAY_SSH_USER'; exit 1; }
           [ -n "${RELAY_KEY:-}" ] || { echo '::error::Add WESI_RELAY_SSH_KEY'; exit 1; }
-          [ -n "${GEMINI_KEY:-}" ] || { echo '::error::Add GEMINI_API_KEY'; exit 1; }
+          [ -n "${GEMINI_KEY:-}" ] || { echo '::error::Add GEMINI_API_KEY (required for Wesi AI media/TTS)'; exit 1; }
           [ -n "${MAIN_HOST:-}" ] || { echo '::error::Existing WESI_SERVER_HOST is missing'; exit 1; }
           [ -n "${MAIN_USER:-}" ] || { echo '::error::Existing WESI_SERVER_USER is missing'; exit 1; }
           [ -n "${MAIN_KEY:-}" ] || { echo '::error::Existing WESI_SERVER_SSH_KEY is missing'; exit 1; }
@@ -56,12 +56,7 @@ jobs:
           PROVIDED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
         run: |
           set -euo pipefail
-          if [ -n "${PROVIDED:-}" ]; then
-            SHARED="$PROVIDED"
-          else
-            SHARED="$(openssl rand -hex 32)"
-            echo '::notice::Generated a new Main↔Relay HMAC secret for this atomic deployment.'
-          fi
+          if [ -n "${PROVIDED:-}" ]; then SHARED="$PROVIDED"; else SHARED="$(openssl rand -hex 32)"; fi
           [ ${#SHARED} -ge 32 ] || { echo '::error::WESI_MAIN_SHARED_SECRET is too short'; exit 1; }
           echo "::add-mask::$SHARED"
           echo "WESI_SHARED_SECRET=$SHARED" >> "$GITHUB_ENV"
@@ -103,6 +98,9 @@ jobs:
       - name: Build sealed Relay credentials
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          XAI_KEY: ${{ secrets.XAI_API_KEY }}
           ZANE_VOICE: ${{ secrets.WESI_ZANE_TTS_VOICE }}
           NIRVANA_VOICE: ${{ secrets.WESI_NIRVANA_TTS_VOICE }}
         run: |
@@ -113,10 +111,14 @@ jobs:
               'WESI_MAIN_SHARED_SECRET_B64': os.environ['WESI_SHARED_SECRET'],
               'GEMINI_API_KEY_B64': os.environ['GEMINI_KEY'],
           }
-          if os.environ.get('ZANE_VOICE'):
-              values['WESI_ZANE_TTS_VOICE_B64'] = os.environ['ZANE_VOICE']
-          if os.environ.get('NIRVANA_VOICE'):
-              values['WESI_NIRVANA_TTS_VOICE_B64'] = os.environ['NIRVANA_VOICE']
+          optional = {
+              'OPENAI_API_KEY_B64': os.environ.get('OPENAI_KEY',''),
+              'ANTHROPIC_API_KEY_B64': os.environ.get('ANTHROPIC_KEY',''),
+              'XAI_API_KEY_B64': os.environ.get('XAI_KEY',''),
+              'WESI_ZANE_TTS_VOICE_B64': os.environ.get('ZANE_VOICE',''),
+              'WESI_NIRVANA_TTS_VOICE_B64': os.environ.get('NIRVANA_VOICE',''),
+          }
+          values.update({k:v for k,v in optional.items() if v})
           with open('relay-secrets.b64', 'w', encoding='ascii') as f:
               for key, value in values.items():
                   f.write(key + '=' + base64.b64encode(value.encode()).decode() + '\n')
@@ -147,7 +149,7 @@ jobs:
           cleanup
           trap - EXIT
 
-      - name: Verify HTTPS, provider text, natural TTS and anti-replay
+      - name: Verify HTTPS, model APIs, Gemini text, TTS and anti-replay
         run: |
           set -euo pipefail
           curl -fsS --max-time 20 "https://$PUBLIC_HOST/health" > relay-health.json
@@ -155,7 +157,7 @@ jobs:
           import json
           data = json.load(open('relay-health.json', encoding='utf-8'))
           assert data.get('ok') is True and data.get('ready') is True, data
-          print('Foreign Relay HTTPS: ready')
+          print('Foreign Relay HTTPS:', data.get('providers'))
           PY
           python3 - <<'PY'
           import hashlib, hmac, json, os, time, urllib.error, urllib.request
@@ -170,6 +172,12 @@ jobs:
                   'Content-Type':'application/json', 'X-Wesi-Request-Id':request_id,
                   'X-Wesi-Timestamp':ts, 'X-Wesi-Signature':sig,
               })
+
+          rid = 'wai_deploy_models_' + str(int(time.time()))
+          with urllib.request.urlopen(signed({'requestId':rid,'operation':'models','input':{}}, rid), timeout=40) as r:
+              models = json.load(r)
+          assert models.get('ok') is True and 'google' in (models.get('providers') or {}), models
+          print('Provider Models APIs: reachable')
 
           rid = 'wai_deploy_text_' + str(int(time.time()))
           text_req = signed({
@@ -189,10 +197,7 @@ jobs:
           print('Production anti-replay: OK')
 
           rid = 'wai_deploy_tts_' + str(int(time.time()))
-          tts_req = signed({
-              'requestId':rid, 'operation':'tts',
-              'input':{'persona':'zane','text':'Проверка голоса Wesi AI.'}
-          }, rid)
+          tts_req = signed({'requestId':rid,'operation':'tts','input':{'persona':'zane','text':'Проверка голоса Wesi AI.'}}, rid)
           with urllib.request.urlopen(tts_req, timeout=120) as r:
               tts = json.load(r)
           media = tts.get('media') or {}
@@ -217,17 +222,34 @@ jobs:
           chmod 600 ~/.ssh/main_known_hosts
 
       - name: Build Main Server Relay configuration
+        env:
+          ROUTE_FAST: ${{ secrets.WESI_AI_ROUTE_FAST }}
+          ROUTE_PRO: ${{ secrets.WESI_AI_ROUTE_PRO }}
+          ROUTE_MAXIMUM: ${{ secrets.WESI_AI_ROUTE_MAXIMUM }}
+          ROUTE_ULTRA_LOW: ${{ secrets.WESI_AI_ROUTE_ULTRA_LOW }}
+          ROUTE_ULTRA_MEDIUM: ${{ secrets.WESI_AI_ROUTE_ULTRA_MEDIUM }}
+          ROUTE_ULTRA_HIGH: ${{ secrets.WESI_AI_ROUTE_ULTRA_HIGH }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import json, os
+          import json, os, re
+          def route(name, fallback):
+              value = os.environ.get(name,'').strip() or fallback
+              if not re.fullmatch(r'(google|openai|anthropic|xai)/[A-Za-z0-9._:-]{2,160}', value):
+                  raise SystemExit('Invalid Wesi AI route: ' + name)
+              return value
           config = {
               'url': 'https://' + os.environ['PUBLIC_HOST'],
               'sharedSecret': os.environ['WESI_SHARED_SECRET'],
               'routes': {
-                  'fast':'google/gemini-3.5-flash-lite',
-                  'pro':'google/gemini-3.6-flash',
-                  'maximum':'google/gemini-3.6-flash',
+                  'fast': route('ROUTE_FAST', 'google/gemini-3.5-flash-lite'),
+                  'pro': route('ROUTE_PRO', 'google/gemini-3.6-flash'),
+                  'maximum': route('ROUTE_MAXIMUM', 'google/gemini-3.6-flash'),
+                  'ultra': {
+                      'low': route('ROUTE_ULTRA_LOW', 'google/gemini-3.5-flash-lite'),
+                      'medium': route('ROUTE_ULTRA_MEDIUM', 'google/gemini-3.6-flash'),
+                      'high': route('ROUTE_ULTRA_HIGH', 'google/gemini-3.6-flash'),
+                  },
               },
           }
           with open('wesi-ai-relay.json','w',encoding='utf-8') as f:
@@ -296,9 +318,7 @@ jobs:
             "curl -fsS --max-time 20 'https://$PUBLIC_HOST/health' | grep -q '\"ready\":true'"
 
           check_route() {
-            method="$1"
-            path="$2"
-            code='000'
+            method="$1"; path="$2"; code='000'
             for _ in $(seq 1 15); do
               code="$(curl -sS -o /tmp/wesi-ai-route.out -w '%{http_code}' --max-time 20 -X "$method" "https://api.wesi-inc.ru$path" || true)"
               [ "$code" != '000' ] && break
@@ -312,10 +332,11 @@ jobs:
           }
 
           check_route GET /api/wesi/ai/capabilities
+          check_route GET /api/wesi/ai/models
           check_route POST /api/wesi/ai/tts
           check_route GET /api/wesi/ai/media/jobs/wam_0000000000000000000000000000
           echo 'Main Wesi AI protected routes: loaded'
 
       - name: Done
         run: |
-          echo 'Wesi AI production deployment is complete: Relay + TLS + Gemini + TTS + anti-replay + Main hooks + personas + media routes.'
+          echo 'Wesi AI production deployment complete: Relay + TLS + Gemini + OpenAI + Anthropic + xAI adapters + model discovery + TTS/media + anti-replay + Main hooks.'
