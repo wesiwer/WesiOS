@@ -72,6 +72,15 @@ abstract class WesiAiVoiceEar implements Listenable {
   /// Распознанное на текущий момент. Меняется по ходу речи.
   String get transcript;
 
+  /// Слушает ли микрофон прямо сейчас.
+  ///
+  /// Нужно потому, что распознавание останавливается само: у него свой
+  /// предел непрерывного слушания, и по его истечении оно замолкает, никому
+  /// об этом не сообщая отдельно. Без этого признака разговор остаётся в
+  /// состоянии «слушаю» с мёртвым микрофоном — человек говорит, его никто
+  /// не слышит, и на экране всё выглядит исправно.
+  bool get listening;
+
   void clearTranscript();
 }
 
@@ -139,6 +148,10 @@ class WesiAiVoiceSession extends ChangeNotifier {
   /// договаривался бы в уже выключенном разговоре.
   int _turnToken = 0;
 
+  /// Идёт ли повторное открытие микрофона. Без флага каждое уведомление
+  /// от замолчавшего распознавания запускало бы ещё одну попытку.
+  bool _rearming = false;
+
   WesiAiVoicePhase get phase => _phase;
 
   /// Кто говорит прямо сейчас. Null — не говорит никто.
@@ -191,6 +204,7 @@ class WesiAiVoiceSession extends ChangeNotifier {
 
   Future<void> _listen(int token) async {
     if (token != _turnToken) return;
+    _rearming = false;
     _silenceTimer?.cancel();
     _silenceTimer = null;
     _heard = '';
@@ -210,6 +224,22 @@ class WesiAiVoiceSession extends ChangeNotifier {
 
   void _onEar() {
     if (_phase != WesiAiVoicePhase.listening) return;
+
+    // Распознавание остановилось само, а сказать ещё ничего не успели.
+    // Так бывает после долгой паузы: у плагина есть предел непрерывного
+    // слушания, и по его истечении микрофон замолкает. Разговор при этом
+    // выглядит живым, но не слышит ничего — молчаливая поломка, самая
+    // неприятная из возможных здесь.
+    if (!ear.listening && ear.transcript.trim().isEmpty && !_rearming) {
+      _rearming = true;
+      unawaited(() async {
+        final token = _turnToken;
+        await ear.start();
+        if (token == _turnToken) _rearming = false;
+      }());
+      return;
+    }
+
     final text = ear.transcript.trim();
     if (text == _heard) return;
     _heard = text;

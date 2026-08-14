@@ -131,6 +131,53 @@ void main() {
     session.dispose();
   });
 
+
+  test('микрофон, замолчавший сам, снова открывается', () async {
+    // У распознавания есть свой предел непрерывного слушания, и по его
+    // истечении оно замолкает. Разговор при этом выглядит живым, но не
+    // слышит ничего: человек говорит, а его никто не слушает. Молчаливая
+    // поломка — худшее, что здесь может быть.
+    final e = ear();
+    final session = WesiAiVoiceSession(
+      ear: e,
+      mouth: _Mouth(),
+      silence: const Duration(milliseconds: 30),
+      echoGuard: Duration.zero,
+      onTurn: (_) async => const [],
+    );
+
+    await session.start();
+    expect(e.starts, 1);
+
+    e.dieQuietly();
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    expect(e.starts, 2, reason: 'микрофон обязан открыться заново');
+    expect(e.listening, isTrue);
+    expect(session.phase, WesiAiVoicePhase.listening);
+    session.dispose();
+  });
+
+  test('повторное открытие не превращается в поток попыток', () async {
+    final e = ear();
+    final session = WesiAiVoiceSession(
+      ear: e,
+      mouth: _Mouth(),
+      silence: const Duration(milliseconds: 30),
+      echoGuard: Duration.zero,
+      onTurn: (_) async => const [],
+    );
+
+    await session.start();
+    e.dieQuietly();
+    e.poke();
+    e.poke();
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+
+    expect(e.starts, 2);
+    session.dispose();
+  });
+
   test('пустая тишина ничего не отправляет', () async {
     final e = ear();
     final sent = <String>[];
@@ -418,10 +465,19 @@ void main() {
 /// Микрофон под управлением теста.
 class _Ear extends ChangeNotifier implements WesiAiVoiceEar {
   bool canStart = true;
-  bool listening = false;
+  bool _listening = false;
   int starts = 0;
   int cancelled = 0;
   String _transcript = '';
+
+  /// Распознавание замолчало само, никому об этом не сообщив отдельно.
+  void dieQuietly() {
+    _listening = false;
+    notifyListeners();
+  }
+
+  /// Ещё одно уведомление без изменений — так делает живой плагин.
+  void poke() => notifyListeners();
 
   /// Человек произнёс очередной кусок.
   void say(String text) {
@@ -433,22 +489,25 @@ class _Ear extends ChangeNotifier implements WesiAiVoiceEar {
   Future<bool> start() async {
     if (!canStart) return false;
     starts++;
-    listening = true;
+    _listening = true;
     return true;
   }
 
   @override
-  Future<void> stop() async => listening = false;
+  Future<void> stop() async => _listening = false;
 
   @override
   Future<void> cancel() async {
     cancelled++;
-    listening = false;
+    _listening = false;
     _transcript = '';
   }
 
   @override
   String get transcript => _transcript;
+
+  @override
+  bool get listening => _listening;
 
   @override
   void clearTranscript() => _transcript = '';

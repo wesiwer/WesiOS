@@ -36,6 +36,9 @@ class WesiAiDeviceEar implements WesiAiVoiceEar {
   String get transcript => controller.transcript;
 
   @override
+  bool get listening => controller.listening;
+
+  @override
   void clearTranscript() => controller.clearTranscript();
 
   @override
