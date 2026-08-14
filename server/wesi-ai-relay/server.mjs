@@ -4,6 +4,7 @@ import {parseGoogleRoute, callGoogleText} from './google.mjs';
 import {
   callGoogleTts,
   callGoogleImage,
+  callGoogleMusic,
   startGoogleVideo,
   getGoogleVideoStatus,
 } from './google-media.mjs';
@@ -42,6 +43,7 @@ async function execute(request) {
   }
   if (operation === 'tts') return callGoogleTts(request.input || {}, googleKey);
   if (operation === 'image') return callGoogleImage(request.input || {}, googleKey);
+  if (operation === 'music') return callGoogleMusic(request.input || {}, googleKey);
   if (operation === 'video.start') return startGoogleVideo(request.input || {}, googleKey);
   if (operation === 'video.status') {
     return getGoogleVideoStatus(request.input?.operationName, googleKey);
@@ -109,9 +111,6 @@ http.createServer(async (req, res) => {
           done: result.done,
           failed: result.failed === true,
           code: result.code || null,
-          // This URI remains inside the trusted Main↔Relay path. The Main
-          // server must download/persist it and never expose it as a client
-          // artifact URL.
           providerUri: result.providerUri || null,
         },
       });
