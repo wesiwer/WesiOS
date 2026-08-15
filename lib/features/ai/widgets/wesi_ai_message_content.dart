@@ -91,8 +91,7 @@ class _WesiAiTypewriterTextState extends State<WesiAiTypewriterText> {
   @override
   void didUpdateWidget(covariant WesiAiTypewriterText oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.messageId != widget.messageId ||
-        oldWidget.text != widget.text) {
+    if (oldWidget.messageId != widget.messageId || oldWidget.text != widget.text) {
       _timer?.cancel();
       _prepare();
     }
@@ -100,9 +99,7 @@ class _WesiAiTypewriterTextState extends State<WesiAiTypewriterText> {
 
   void _prepare() {
     _runes = widget.text.runes.toList(growable: false);
-    if (!widget.animate ||
-        _completed.contains(widget.messageId) ||
-        _runes.isEmpty) {
+    if (!widget.animate || _completed.contains(widget.messageId) || _runes.isEmpty) {
       _visible = _runes.length;
       _completed.add(widget.messageId);
       return;
@@ -170,8 +167,7 @@ class _KnowledgeBlock extends StatelessWidget {
     if (article == null || !context.mounted) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text('Статья больше не найдена в Базе знаний')),
+          const SnackBar(content: Text('Статья больше не найдена в Базе знаний')),
         );
       }
       return;
@@ -180,8 +176,7 @@ class _KnowledgeBlock extends StatelessWidget {
     final permissions = TeamService.currentPermissions;
     final allowed = permissions.knowledgeAll ||
         permissions.allowsArticle(article.id) ||
-        (article.parentId != null &&
-            permissions.allowsArticle(article.parentId!));
+        (article.parentId != null && permissions.allowsArticle(article.parentId!));
     if (!allowed) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Нет доступа к этой статье')),
@@ -273,8 +268,7 @@ class _TableBlock extends StatelessWidget {
             if (title.isNotEmpty) ...[
               Text(
                 title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 8),
             ],
@@ -341,8 +335,7 @@ class _ChartBlock extends StatelessWidget {
             if (title.isNotEmpty) ...[
               Text(
                 title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
             ],
@@ -408,8 +401,7 @@ class _AiChartPainter extends CustomPainter {
 
   List<double> _values(Map<String, dynamic> item) =>
       (item['values'] as List? ?? const [])
-          .map((value) =>
-              value is num ? value.toDouble() : double.tryParse('$value'))
+          .map((value) => value is num ? value.toDouble() : double.tryParse('$value'))
           .whereType<double>()
           .where((value) => value.isFinite)
           .toList(growable: false);
@@ -438,8 +430,7 @@ class _AiChartPainter extends CustomPainter {
     const top = 10.0;
     const right = 10.0;
     const bottom = 34.0;
-    final rect =
-        Rect.fromLTRB(left, top, size.width - right, size.height - bottom);
+    final rect = Rect.fromLTRB(left, top, size.width - right, size.height - bottom);
     if (rect.width <= 0 || rect.height <= 0) return;
 
     final all = <double>[];
@@ -460,23 +451,20 @@ class _AiChartPainter extends CustomPainter {
       final y = rect.top + rect.height * i / 4;
       canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
       final value = maxValue - (maxValue - minValue) * i / 4;
-      _label(
-          canvas, _compact(value), Offset(0, y - 7), left - 6, TextAlign.right);
+      _label(canvas, _compact(value), Offset(0, y - 7), left - 6, TextAlign.right);
     }
 
-    final maxPoints =
-        series.map(_values).fold<int>(0, (a, b) => math.max(a, b.length));
+    final maxPoints = series.map(_values).fold<int>(0, (a, b) => math.max(a, b.length));
     if (maxPoints == 0) return;
     double xAt(int index) => maxPoints <= 1
         ? rect.center.dx
         : rect.left + rect.width * index / (maxPoints - 1);
-    double yAt(double value) =>
-        rect.bottom - (value - minValue) / (maxValue - minValue) * rect.height;
+    double yAt(double value) => rect.bottom -
+        (value - minValue) / (maxValue - minValue) * rect.height;
 
     if (bars) {
       final groupWidth = rect.width / math.max(maxPoints, 1);
-      final barWidth =
-          math.max(2.0, groupWidth * 0.72 / math.max(series.length, 1));
+      final barWidth = math.max(2.0, groupWidth * 0.72 / math.max(series.length, 1));
       for (var s = 0; s < series.length; s++) {
         final values = _values(series[s]);
         final paint = Paint()..color = _chartColor(colorScheme, s);
@@ -487,8 +475,7 @@ class _AiChartPainter extends CustomPainter {
           final valueY = yAt(values[i]);
           canvas.drawRRect(
             RRect.fromRectAndRadius(
-              Rect.fromLTRB(x, math.min(zeroY, valueY), x + barWidth,
-                  math.max(zeroY, valueY)),
+              Rect.fromLTRB(x, math.min(zeroY, valueY), x + barWidth, math.max(zeroY, valueY)),
               const Radius.circular(3),
             ),
             paint,
@@ -556,8 +543,7 @@ class _AiChartPainter extends CustomPainter {
       );
       start += sweep;
     }
-    _label(canvas, '100%', Offset(center.dx - 28, center.dy - 9), 56,
-        TextAlign.center);
+    _label(canvas, '100%', Offset(center.dx - 28, center.dy - 9), 56, TextAlign.center);
   }
 
   void _label(
@@ -585,9 +571,7 @@ class _AiChartPainter extends CustomPainter {
     if (abs >= 1000000000) return '${(value / 1000000000).toStringAsFixed(1)}B';
     if (abs >= 1000000) return '${(value / 1000000).toStringAsFixed(1)}M';
     if (abs >= 1000) return '${(value / 1000).toStringAsFixed(1)}K';
-    return value.abs() >= 10
-        ? value.toStringAsFixed(0)
-        : value.toStringAsFixed(1);
+    return value.abs() >= 10 ? value.toStringAsFixed(0) : value.toStringAsFixed(1);
   }
 
   @override
@@ -640,16 +624,14 @@ class _DiagramBlock extends StatelessWidget {
             if (title.isNotEmpty) ...[
               Text(
                 title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 10),
             ],
             for (var i = 0; i < nodes.length; i++) ...[
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primaryContainer.withOpacity(0.35),
                   borderRadius: BorderRadius.circular(10),
@@ -666,14 +648,10 @@ class _DiagramBlock extends StatelessWidget {
                 Center(
                   child: Column(
                     children: [
-                      Icon(Icons.arrow_downward,
-                          size: 18, color: theme.colorScheme.primary),
-                      ...edges
-                          .where((edge) =>
-                              '${edge['from']}' == '${nodes[i]['id']}' &&
-                              nodeById.containsKey('${edge['to']}'))
-                          .take(2)
-                          .map(
+                      Icon(Icons.arrow_downward, size: 18, color: theme.colorScheme.primary),
+                      ...edges.where((edge) =>
+                          '${edge['from']}' == '${nodes[i]['id']}' &&
+                          nodeById.containsKey('${edge['to']}')).take(2).map(
                             (edge) => '${edge['label'] ?? ''}'.trim().isEmpty
                                 ? const SizedBox.shrink()
                                 : Text(
@@ -716,9 +694,7 @@ class _MediaBlock extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
           title: Text(title.isEmpty ? 'Генерация $type' : title),
-          subtitle: Text(status == 'failed'
-              ? 'Генерация не завершилась'
-              : 'Генерируется…'),
+          subtitle: Text(status == 'failed' ? 'Генерация не завершилась' : 'Генерируется…'),
         ),
       );
     }
@@ -726,9 +702,7 @@ class _MediaBlock extends StatelessWidget {
     return switch (type) {
       'image' => _ImageMedia(url: url, title: title),
       'video' => _VideoMedia(url: url, title: title),
-      'audio' ||
-      'music' =>
-        _AudioMedia(url: url, title: title, music: type == 'music'),
+      'audio' || 'music' => _AudioMedia(url: url, title: title, music: type == 'music'),
       _ => const SizedBox.shrink(),
     };
   }
@@ -758,8 +732,7 @@ class _ImageMedia extends StatelessWidget {
             if (title.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.all(10),
-                child: Text(title,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
+                child: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
               ),
           ],
         ),
@@ -813,9 +786,7 @@ class _AudioMediaState extends State<_AudioMedia> {
   Widget build(BuildContext context) => Card(
         child: ListTile(
           leading: Icon(widget.music ? Icons.music_note : Icons.graphic_eq),
-          title: Text(widget.title.isEmpty
-              ? (widget.music ? 'Музыка Wesi AI' : 'Аудио Wesi AI')
-              : widget.title),
+          title: Text(widget.title.isEmpty ? (widget.music ? 'Музыка Wesi AI' : 'Аудио Wesi AI') : widget.title),
           trailing: IconButton.filledTonal(
             onPressed: _toggle,
             icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
@@ -846,8 +817,7 @@ class _VideoMediaState extends State<_VideoMedia> {
 
   Future<void> _load() async {
     try {
-      final controller =
-          VideoPlayerController.networkUrl(Uri.parse(widget.url));
+      final controller = VideoPlayerController.networkUrl(Uri.parse(widget.url));
       await controller.initialize();
       if (!mounted) {
         controller.dispose();
@@ -895,9 +865,7 @@ class _VideoMediaState extends State<_VideoMedia> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           AspectRatio(
-            aspectRatio: controller.value.aspectRatio == 0
-                ? 16 / 9
-                : controller.value.aspectRatio,
+            aspectRatio: controller.value.aspectRatio == 0 ? 16 / 9 : controller.value.aspectRatio,
             child: Stack(
               alignment: Alignment.center,
               children: [
@@ -905,14 +873,10 @@ class _VideoMediaState extends State<_VideoMedia> {
                 IconButton.filled(
                   onPressed: () {
                     setState(() {
-                      controller.value.isPlaying
-                          ? controller.pause()
-                          : controller.play();
+                      controller.value.isPlaying ? controller.pause() : controller.play();
                     });
                   },
-                  icon: Icon(controller.value.isPlaying
-                      ? Icons.pause
-                      : Icons.play_arrow),
+                  icon: Icon(controller.value.isPlaying ? Icons.pause : Icons.play_arrow),
                 ),
               ],
             ),
@@ -920,8 +884,7 @@ class _VideoMediaState extends State<_VideoMedia> {
           if (widget.title.isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(10),
-              child: Text(widget.title,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              child: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.w600)),
             ),
         ],
       ),
