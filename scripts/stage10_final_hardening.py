@@ -2,6 +2,7 @@ from pathlib import Path
 
 # One-shot branch-local validator. The workflow removes this helper after a full
 # successful analyze/test pass and commits only the validated product changes.
+# Retriggered after clean-head PR regression exposed the uncommitted hardening.
 
 
 def patch_controller() -> None:
