@@ -21,6 +21,20 @@ jobs:
         with:
           ref: agent/wesi-ai-stage10-remote-worker
           fetch-depth: 0
+      - name: Apply deterministic QR validation fix
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          model = Path('lib/features/ai/runtime/wesi_remote_worker_models.dart')
+          text = model.read_text()
+          text = text.replace('Uri toUri() {\n    validate();', 'Uri toUri({DateTime? now}) {\n    validate(now: now);')
+          model.write_text(text)
+          test = Path('test/wesi_remote_worker_protocol_test.dart')
+          text = test.read_text()
+          text = text.replace('bootstrap.ticket.toUri().toString()', 'bootstrap.ticket.toUri(now: now).toString()')
+          text = text.replace('bootstrap.ticket.toUri(),\n        now:', 'bootstrap.ticket.toUri(now: now),\n        now:')
+          test.write_text(text)
+          PY
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -57,3 +71,13 @@ jobs:
         run: flutter test test/wesi_remote_worker_protocol_test.dart --plain-name "heartbeat feeds Stage 8 worker profile and expires offline"
       - name: Mailbox replay regression
         run: flutter test test/wesi_remote_worker_protocol_test.dart --plain-name "mailbox is idempotent and worker sequence rejects replay"
+      - name: Commit validated QR fix
+        run: |
+          if git diff --quiet -- lib/features/ai/runtime/wesi_remote_worker_models.dart test/wesi_remote_worker_protocol_test.dart; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/features/ai/runtime/wesi_remote_worker_models.dart test/wesi_remote_worker_protocol_test.dart
+          git commit -m "fix(ai): make remote pairing QR validation deterministic"
+          git push origin HEAD:agent/wesi-ai-stage10-remote-worker
