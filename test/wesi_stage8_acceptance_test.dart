@@ -3,6 +3,7 @@ import 'package:wesios/features/ai/runtime/wesi_job_queue.dart';
 import 'package:wesios/features/ai/runtime/wesi_local_runtime_models.dart';
 import 'package:wesios/features/ai/runtime/wesi_resource_scheduler.dart';
 import 'package:wesios/features/ai/runtime/wesi_resource_scheduler_models.dart';
+import 'package:wesios/features/ai/runtime/wesi_runtime_pack_models.dart';
 
 void main() {
   test('Stage 8 rejects internally inconsistent GPU telemetry', () {
