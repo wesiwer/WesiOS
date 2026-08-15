@@ -91,7 +91,7 @@ jobs:
         run: flutter test test/wesi_ai_rich_message_test.dart test/wesi_ai_message_archive_branch_test.dart
 
       - name: Existing chat and confirmation regressions
-        run: flutter test test/wesi_ai_chat_ui_test.dart test/wesi_ai_confirmation_block_test.dart test/wesi_ai_memory_engine_test.dart test/wesi_ai_queue_hardening_test.dart
+        run: flutter test test/wesi_ai_confirmation_block_test.dart test/wesi_ai_memory_engine_test.dart test/wesi_ai_queue_hardening_test.dart
 
       - name: Full Flutter regression suite
         run: flutter test
