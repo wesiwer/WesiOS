@@ -6,6 +6,7 @@ enum WesiAiContentBlockType {
   chart,
   diagram,
   media,
+  confirmation,
 }
 
 /// Presentation payload attached to a Wesi AI message.
@@ -59,6 +60,33 @@ class WesiAiContentBlock {
               'excerpt': _text(data['excerpt'], 800),
             if (_text(data['section'], 80).isNotEmpty)
               'section': _text(data['section'], 80),
+          },
+        );
+
+      case WesiAiContentBlockType.confirmation:
+        final id = _text(data['id'], 180);
+        final expiresAt = DateTime.tryParse(_text(data['expiresAt'], 80));
+        final rawPreview = data['preview'];
+        if (!RegExp(r'^wai_confirm_[A-Za-z0-9_-]{16,180}$').hasMatch(id) ||
+            expiresAt == null ||
+            rawPreview is! Map) {
+          return null;
+        }
+        final preview = Map<String, dynamic>.from(rawPreview);
+        if (_text(preview['risk'], 24) != 'DESTRUCTIVE') return null;
+        return WesiAiContentBlock(
+          type: type,
+          data: <String, dynamic>{
+            'id': id,
+            'expiresAt': expiresAt.toUtc().toIso8601String(),
+            'preview': <String, dynamic>{
+              'tool': _text(preview['tool'], 120),
+              'module': _text(preview['module'], 80),
+              'action': _text(preview['action'], 80),
+              'risk': 'DESTRUCTIVE',
+              if (_text(preview['targetId'], 180).isNotEmpty)
+                'targetId': _text(preview['targetId'], 180),
+            },
           },
         );
 
@@ -173,7 +201,8 @@ class WesiAiContentBlock {
         final status = _text(data['status'], 24).toLowerCase();
         final url = _safeUrl(data['url']);
         // Pending/failed generation may legitimately have no URL yet.
-        if (url.isEmpty && status != 'pending' && status != 'failed') return null;
+        if (url.isEmpty && status != 'pending' && status != 'failed')
+          return null;
         return WesiAiContentBlock(
           type: type,
           data: <String, dynamic>{
@@ -282,7 +311,19 @@ class WesiAiContentParser {
     for (final raw in rawToolResults) {
       if (blocks.length >= maxBlocks || raw is! Map) break;
       final item = Map<String, dynamic>.from(raw);
-      if (item['verified'] != true || item['ok'] != true) continue;
+      if (item['verified'] != true) continue;
+      if ('${item['code'] ?? ''}' == 'CONFIRMATION_REQUIRED') {
+        final rawConfirmation = item['confirmation'];
+        if (rawConfirmation is Map && blocks.length < maxBlocks) {
+          final block = WesiAiContentBlock.fromJson(<String, dynamic>{
+            'type': 'confirmation',
+            'data': Map<String, dynamic>.from(rawConfirmation),
+          });
+          if (block != null) blocks.add(block);
+        }
+        continue;
+      }
+      if (item['ok'] != true) continue;
       final result = item['result'];
       if (result is! Map) continue;
       final resultMap = Map<String, dynamic>.from(result);
@@ -305,7 +346,8 @@ class WesiAiContentParser {
         final id = '${article['id'] ?? ''}'.trim();
         if (id.isEmpty || !seenKnowledge.add(id)) continue;
         final text = '${article['text'] ?? ''}'.trim();
-        final excerpt = text.length <= 360 ? text : '${text.substring(0, 360)}…';
+        final excerpt =
+            text.length <= 360 ? text : '${text.substring(0, 360)}…';
         final block = WesiAiContentBlock.fromJson(<String, dynamic>{
           'type': 'knowledge',
           'data': <String, dynamic>{

@@ -10,13 +10,7 @@ function payloadOf(record) {
   return {};
 }
 
-function recordAudit(e, ctx, entry) {
-  try {
-    const path = typeof __hooks !== "undefined" ? __hooks + "/wesi_ai_audit.js" : "./wesi_ai_audit.js";
-    const audit = require(path);
-    audit.record(e, ctx, entry);
-  } catch (_) {}
-}
+function recordAudit(e, ctx, entry) { return false; }
 
 function loadAccess(e, ctx) {
   let permissions = {};

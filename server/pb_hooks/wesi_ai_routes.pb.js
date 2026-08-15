@@ -54,6 +54,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const summary = String(body.summary || "").trim();
   const projectContext = String(body.projectContext || "").trim();
   const taskState = body.taskState && typeof body.taskState === "object" && !Array.isArray(body.taskState) ? body.taskState : {};
+  const conversationId = String(body.conversationId || "").trim();
   const activeOrganizationId = String(body.activeOrganizationId || "").trim();
   const history = Array.isArray(body.messages) ? body.messages : [];
   const memory = body.memory && typeof body.memory === "object" ? body.memory : {};
@@ -65,7 +66,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   if ((!message && !attachmentsRaw.length) || message.length > 32000) throw new BadRequestError("Некорректное сообщение Wesi AI");
   let taskStateJson = "{}";
   try { taskStateJson = JSON.stringify(taskState); } catch (_) { throw new BadRequestError("Некорректный task state Wesi AI"); }
-  if (summary.length > 64000 || projectContext.length > 64000 || taskStateJson.length > 12000 || history.length > 100) throw new BadRequestError("Слишком большой контекст Wesi AI");
+  if (summary.length > 64000 || projectContext.length > 64000 || taskStateJson.length > 12000 || history.length > 100 || conversationId.length > 180) throw new BadRequestError("Слишком большой контекст Wesi AI");
   if (body.provider != null || body.model != null || body.providerModel != null) throw new BadRequestError("Недоступная настройка Wesi AI");
 
   const cleanAttachments = [];
@@ -198,8 +199,10 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
       continue;
     }
     seenCalls[signature] = true;
-    const executed = tools.execute(e, ctx, toolRequest.name, toolRequest.arguments, runtimeContext.activeOrganizationId);
-    toolResults.push({tool: toolRequest.name, verified: true, ok: executed.ok === true, code: executed.code || null, message: executed.message || null, alternatives: executed.alternatives || null, result: executed.result || null});
+    const executed = tools.execute(e, ctx, toolRequest.name, toolRequest.arguments, runtimeContext.activeOrganizationId, {
+      persona: persona, conversationId: conversationId, requestId: requestId
+    });
+    toolResults.push({tool: toolRequest.name, verified: true, ok: executed.ok === true, code: executed.code || null, message: executed.message || null, alternatives: executed.alternatives || null, result: executed.result || null, confirmation: executed.confirmation || null});
   }
 
   const finalSystem = systemParts.concat([
@@ -210,3 +213,26 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   if (!finalGenerated.ok) return e.json(finalGenerated.status, {ok: false, code: finalGenerated.code, requestId: requestId});
   return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, answer: finalGenerated.answer, toolResults: toolResults});
 }, $apis.requireAuth("users"));
+
+routerAdd("POST", "/api/wesi/ai/action/confirm", (e) => {
+  const ai = require(`${__hooks}/wesi_ai_lib.js`);
+  const tools = require(`${__hooks}/wesi_ai_tools.js`);
+  const ctx = ai.resolveIdentity(e);
+  ai.requireAiModule(ctx);
+  const body = e.requestInfo().body || {};
+  const confirmationId = String(body.confirmationId || "").trim();
+  const executed = tools.confirm(e, ctx, confirmationId);
+  return e.json(200, {
+    ok: true,
+    toolResult: {
+      tool: String((executed && executed.tool) || "confirmed_action"),
+      verified: true,
+      ok: executed && executed.ok === true,
+      code: executed && executed.code ? executed.code : null,
+      message: executed && executed.message ? executed.message : null,
+      alternatives: executed && executed.alternatives ? executed.alternatives : null,
+      result: executed && executed.result ? executed.result : null,
+    }
+  });
+}, $apis.requireAuth("users"));
+

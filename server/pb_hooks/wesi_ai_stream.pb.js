@@ -160,6 +160,9 @@ routerAdd("POST", "/api/wesi/ai/stream/tool", (e) => {
   const name = String(body.name || "").trim();
   const args = body.arguments && typeof body.arguments === "object" ? body.arguments : {};
   const activeOrganizationId = String(body.activeOrganizationId || "").trim();
+  const requestId = String(body.requestId || "").trim().slice(0, 180);
+  const conversationId = String(body.conversationId || "").trim().slice(0, 180);
+  const persona = String(body.persona || "").trim().slice(0, 40);
   const allowed = tools.definitions(e, ctx).some(function(item) {
     return String(item.name || "") === name;
   });
@@ -169,7 +172,9 @@ routerAdd("POST", "/api/wesi/ai/stream/tool", (e) => {
       toolResult: {tool: name, verified: true, ok: false, code: "FORBIDDEN", message: "Инструмент недоступен текущему сотруднику"}
     });
   }
-  const executed = tools.execute(e, ctx, name, args, activeOrganizationId);
+  const executed = tools.execute(e, ctx, name, args, activeOrganizationId, {
+    requestId: requestId, conversationId: conversationId, persona: persona
+  });
   return e.json(200, {
     ok: true,
     toolResult: {
@@ -179,7 +184,8 @@ routerAdd("POST", "/api/wesi/ai/stream/tool", (e) => {
       code: executed.code || null,
       message: executed.message || null,
       alternatives: executed.alternatives || null,
-      result: executed.result || null
+      result: executed.result || null,
+      confirmation: executed.confirmation || null
     }
   });
 }, $apis.requireAuth("users"));
