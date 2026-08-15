@@ -49,7 +49,6 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       <String, _TransientRetryPayload>{};
   final List<WesiAiQueuedTurn> _queuedTurns = <WesiAiQueuedTurn>[];
   bool _drainingQueue = false;
-  bool _managedDisposed = false;
 
   WesiAiManagedChatController({
     required WesiAiLocalStore store,
@@ -61,9 +60,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       List<WesiAiQueuedTurn>.unmodifiable(_queuedTurns);
   bool get processing => sending || _drainingQueue || _queuedTurns.isNotEmpty;
 
-  void _notify() {
-    if (!_managedDisposed) notifyListeners();
-  }
+  void _notify() => notifyIfActive();
 
   WesiAiMessageSubmitResult submitUserMessage(
     String text, {
@@ -658,12 +655,6 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
         .toList();
     items.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
     return items;
-  }
-
-  @override
-  void dispose() {
-    _managedDisposed = true;
-    super.dispose();
   }
 
   Future<void> _save() async {

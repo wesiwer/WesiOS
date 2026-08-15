@@ -26,7 +26,7 @@ class WesiAiChatController extends ChangeNotifier {
   Future<void> load() async {
     state = await store.load();
     loading = false;
-    notifyListeners();
+    notifyIfActive();
     for (final message in state.messages) {
       _startPendingMedia(message);
     }
@@ -412,9 +412,14 @@ class WesiAiChatController extends ChangeNotifier {
     return text.length <= 42 ? text : '${text.substring(0, 42)}…';
   }
 
+  @protected
+  void notifyIfActive() {
+    if (!_disposed) notifyListeners();
+  }
+
   Future<void> _persist() async {
     await store.save(state);
-    if (!_disposed) notifyListeners();
+    notifyIfActive();
   }
 
   @override

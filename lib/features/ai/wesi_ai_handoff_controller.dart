@@ -78,7 +78,7 @@ class WesiAiHandoffController extends WesiAiManagedChatController {
       clearActiveProject: source.projectId == null,
     );
     await store.save(state);
-    notifyListeners();
+    notifyIfActive();
     return newId;
   }
 }

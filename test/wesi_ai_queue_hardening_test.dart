@@ -52,6 +52,26 @@ class _ControlledApi extends WesiAiApi {
   }
 }
 
+
+class _LobbyControlledApi extends WesiAiApi {
+  final Completer<WesiAiReply> reply = Completer<WesiAiReply>();
+  int calls = 0;
+
+  @override
+  Future<WesiAiReply> send({
+    required WesiAiConversation conversation,
+    required WesiAiTier tier,
+    required String message,
+    required List<WesiAiMessage> history,
+    required WesiAiMemorySnapshot memory,
+    WesiAiProject? project,
+    List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+  }) {
+    calls++;
+    return reply.future;
+  }
+}
+
 Future<void> _waitUntil(bool Function() condition) async {
   for (var attempt = 0; attempt < 400; attempt++) {
     if (condition()) return;
@@ -246,6 +266,36 @@ void main() {
           .where((message) => message.author == WesiAiMessageAuthor.user)
           .map((message) => message.text),
       containsAll(<String>['before-close', 'queued-before-close']),
+    );
+  });
+
+
+  test('lobby completion after dispose never notifies disposed listeners', () async {
+    final api = _LobbyControlledApi();
+    final store = _MemoryStore('employee-1');
+    final controller = WesiAiManagedChatController(store: store, api: api);
+    await controller.load();
+    await controller.createConversation(WesiAiPersona.lobby);
+
+    final sending = controller.addUserMessage('проверь lobby lifecycle');
+    await _waitUntil(() => api.calls == 1);
+    controller.dispose();
+    api.reply.complete(
+      const WesiAiReply(
+        answer:
+            '__WESI_LOBBY_V1__[{"author":"zane","text":"Готово"}]',
+        requestId: 'lobby-dispose-1',
+      ),
+    );
+
+    await sending;
+    expect(
+      store.saved!.messages.any(
+        (message) =>
+            message.author == WesiAiMessageAuthor.zane &&
+            message.text == 'Готово',
+      ),
+      isTrue,
     );
   });
 
