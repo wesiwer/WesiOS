@@ -972,7 +972,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                               ? 'Остановить диктовку'
                               : 'Голосовой ввод',
                           onPressed:
-                              controller.sending || _session?.active == true
+                              controller.processing || _session?.active == true
                                   ? null
                                   : _toggleVoice,
                           icon:
@@ -982,7 +982,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                           tooltip: _session?.active == true
                               ? 'Завершить голосовой разговор'
                               : 'Голосовой разговор',
-                          onPressed: controller.sending
+                          onPressed: controller.processing
                               ? null
                               : () => _toggleConversation(controller),
                           icon: Icon(

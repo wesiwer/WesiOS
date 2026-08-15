@@ -203,4 +203,50 @@ void main() {
     expect(api.attachmentNames[1], <String>['context.txt']);
     expect(controller.state.activeConversationId, secondChat);
   });
+
+  test('disposing screen controller does not interrupt accepted queue', () async {
+    final api = _ControlledApi();
+    final store = _MemoryStore('employee-1');
+    final controller = WesiAiManagedChatController(
+      store: store,
+      api: api,
+    );
+    await controller.load();
+    await controller.createConversation(WesiAiPersona.zane);
+    final conversationId = controller.state.activeConversationId!;
+
+    expect(
+      controller.submitUserMessage('before-close'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => api.prompts.length == 1);
+    expect(
+      controller.submitUserMessage('queued-before-close'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+
+    controller.dispose();
+    api.first.complete(
+      const WesiAiReply(answer: 'reply:before-close', requestId: 'request-1'),
+    );
+
+    await _waitUntil(() {
+      final saved = store.saved;
+      if (saved == null || api.prompts.length < 2) return false;
+      return saved
+          .messagesFor(conversationId)
+          .any((message) => message.text == 'reply:queued-before-close');
+    });
+
+    expect(api.prompts, <String>['before-close', 'queued-before-close']);
+    final saved = store.saved!;
+    expect(
+      saved
+          .messagesFor(conversationId)
+          .where((message) => message.author == WesiAiMessageAuthor.user)
+          .map((message) => message.text),
+      containsAll(<String>['before-close', 'queued-before-close']),
+    );
+  });
+
 }
