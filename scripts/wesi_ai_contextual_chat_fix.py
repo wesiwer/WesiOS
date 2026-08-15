@@ -24,39 +24,40 @@ if 'if (words.length == 4) break;' in text:
     text = text.replace('if (words.length == 4) break;', 'if (words.length == 5) break;', 1)
 chat_ui.write_text(text, encoding='utf-8')
 
-# Keep transient chat handles alive in memory until their first accepted turn.
-# They stay hidden from history and are never persisted before materialization.
-controller = root / 'lib/features/ai/controllers/wesi_ai_chat_controller.dart'
-text = controller.read_text(encoding='utf-8')
-old_drafts = """    final oldDrafts = Set<String>.from(_transientConversationIds);
-    _transientConversationIds
-      ..clear()
-      ..add(id);
-    state = state.copyWith(
-      conversations: <WesiAiConversation>[
-        c,
-        ...state.conversations.where((item) => !oldDrafts.contains(item.id)),
-      ],
-      messages: state.messages
-          .where((message) => !oldDrafts.contains(message.conversationId))
-          .toList(growable: false),
-      activeConversationId: id,
-      conversationMemory: Map<String, WesiAiConversationMemoryState>.fromEntries(
-        state.conversationMemory.entries
-            .where((entry) => !oldDrafts.contains(entry.key)),
-      ),
-    );
-"""
-new_drafts = """    _transientConversationIds.add(id);
-    state = state.copyWith(
-      conversations: <WesiAiConversation>[c, ...state.conversations],
-      activeConversationId: id,
-    );
-"""
-if old_drafts in text:
-    text = text.replace(old_drafts, new_drafts, 1)
-elif new_drafts not in text:
-    raise SystemExit('transient conversation preservation anchor not found')
-controller.write_text(text, encoding='utf-8')
+# Update the legacy queue-context regression to the new lazy-chat contract:
+# the first chat must be materialized by its first accepted turn before a
+# second blank draft is opened. This preserves the original queue/attachment
+# assertion without keeping abandoned empty drafts alive.
+queue_test = root / 'test/wesi_ai_queue_hardening_test.dart'
+text = queue_test.read_text(encoding='utf-8')
+old_case = """    final firstChat = controller.state.activeConversationId!;
 
-print('contextual chat analyzer/topic/lazy-draft fixes applied')
+    await controller.createConversation(WesiAiPersona.nirvana);
+    final secondChat = controller.state.activeConversationId!;
+    await controller.selectConversation(firstChat);
+
+    expect(
+      await controller.submitUserMessage('first-chat'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => api.prompts.length == 1);
+
+    await controller.selectConversation(secondChat);
+"""
+new_case = """    final firstChat = controller.state.activeConversationId!;
+    expect(
+      await controller.submitUserMessage('first-chat'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => api.prompts.length == 1);
+
+    await controller.createConversation(WesiAiPersona.nirvana);
+    final secondChat = controller.state.activeConversationId!;
+"""
+if old_case in text:
+    text = text.replace(old_case, new_case, 1)
+elif new_case not in text:
+    raise SystemExit('queue context regression anchor not found')
+queue_test.write_text(text, encoding='utf-8')
+
+print('contextual chat analyzer/topic/queue fixes applied')
