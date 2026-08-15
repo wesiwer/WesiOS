@@ -95,6 +95,7 @@ class WesiAiConversation {
   final DateTime updatedAt;
   final bool archived;
   final bool pinned;
+  final bool importantForBackup;
   final String? projectId;
 
   const WesiAiConversation({
@@ -107,6 +108,7 @@ class WesiAiConversation {
     this.lobbyMode = WesiAiLobbyMode.smart,
     this.archived = false,
     this.pinned = false,
+    this.importantForBackup = false,
     this.projectId,
   });
 
@@ -117,6 +119,7 @@ class WesiAiConversation {
     DateTime? updatedAt,
     bool? archived,
     bool? pinned,
+    bool? importantForBackup,
     String? projectId,
     bool clearProject = false,
   }) =>
@@ -130,6 +133,7 @@ class WesiAiConversation {
         updatedAt: updatedAt ?? this.updatedAt,
         archived: archived ?? this.archived,
         pinned: pinned ?? this.pinned,
+        importantForBackup: importantForBackup ?? this.importantForBackup,
         projectId: clearProject ? null : (projectId ?? this.projectId),
       );
 
@@ -143,6 +147,7 @@ class WesiAiConversation {
         'updatedAt': updatedAt.toIso8601String(),
         'archived': archived,
         'pinned': pinned,
+        'importantForBackup': importantForBackup,
         'projectId': projectId,
       };
 
@@ -159,6 +164,7 @@ class WesiAiConversation {
         updatedAt: DateTime.parse(json['updatedAt'] as String),
         archived: json['archived'] as bool? ?? false,
         pinned: json['pinned'] as bool? ?? false,
+        importantForBackup: json['importantForBackup'] as bool? ?? false,
         projectId: json['projectId'] as String?,
       );
 }
