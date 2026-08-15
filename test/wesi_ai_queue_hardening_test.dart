@@ -400,7 +400,8 @@ void main() {
       controllerB.state.messagesFor(conversationId).any(
             (message) =>
                 message.metadata['code'] == 'WAI_QUEUE_RECOVERY_UNCERTAIN' &&
-                message.metadata['recoverText'] == 'uncertain-inflight',
+                message.metadata['recoverText'] == 'uncertain-inflight' &&
+                message.text.contains('uncertain-inflight'),
           ),
       isTrue,
     );
@@ -536,5 +537,64 @@ void main() {
     await _waitUntil(() => store.pending.isEmpty);
     expect(apiA.prompts, <String>['first-owned', 'second-owned']);
     expect(apiB.prompts, isEmpty);
+  });
+
+  test('uncertain recovery can be explicitly retried without automatic replay',
+      () async {
+    final store = _MemoryStore('employee-1');
+    final apiA = _ControlledApi();
+    final controllerA = WesiAiManagedChatController(
+      store: store,
+      api: apiA,
+      processSessionId: 'manual-retry-a',
+    );
+    await controllerA.load();
+    await controllerA.createConversation(WesiAiPersona.zane);
+    final conversationId = controllerA.state.activeConversationId!;
+
+    expect(
+      await controllerA.submitUserMessage('manual retry payload'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => apiA.prompts.length == 1);
+    controllerA.dispose();
+
+    final apiB = _ControlledApi();
+    final controllerB = WesiAiManagedChatController(
+      store: store,
+      api: apiB,
+      processSessionId: 'manual-retry-b',
+    );
+    await controllerB.load();
+    expect(apiB.prompts, isEmpty);
+    expect(
+      controllerB.state.messagesFor(conversationId).last.metadata['code'],
+      'WAI_QUEUE_RECOVERY_UNCERTAIN',
+    );
+    expect(
+      controllerB.state.messagesFor(conversationId).last.text,
+      contains('manual retry payload'),
+    );
+
+    final retry = controllerB.regenerateLastResponse();
+    await _waitUntil(() => apiB.prompts.length == 1);
+    expect(apiB.prompts.single, 'manual retry payload');
+    apiB.first.complete(
+      const WesiAiReply(
+        answer: 'reply:manual retry payload',
+        requestId: 'manual-retry-1',
+      ),
+    );
+    await retry;
+    await _waitUntil(() => !controllerB.processing);
+    expect(store.pending, isEmpty);
+    expect(
+      controllerB.state.messagesFor(conversationId).any(
+            (message) =>
+                message.author == WesiAiMessageAuthor.zane &&
+                message.text == 'reply:manual retry payload',
+          ),
+      isTrue,
+    );
   });
 }

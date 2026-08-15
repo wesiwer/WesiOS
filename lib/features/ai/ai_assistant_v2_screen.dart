@@ -512,7 +512,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     final lastErrorCode =
         hasLastError ? '${messages.last.metadata['code'] ?? ''}' : '';
     final canRegenerateLastResponse = hasLastError &&
-        !lastErrorCode.startsWith('WAI_QUEUE_RECOVERY_') &&
         lastErrorCode != 'WAI_REATTACH_REQUIRED' &&
         lastErrorCode != 'WAI_QUEUE_PERSISTENCE_FAILED';
     return Column(
@@ -1073,7 +1072,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
   Future<void> _send(WesiAiManagedChatController controller) async {
     if (_voice.listening) await _voice.stop();
-    final text = _composer.text.trim();
+    final composerSnapshot = _composer.text;
+    final text = composerSnapshot.trim();
     if (text.isEmpty && _attachments.isEmpty) return;
     final attachments = List<WesiAiAttachment>.from(_attachments);
     final result = await controller.submitUserMessage(
@@ -1098,10 +1098,14 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
       );
       return;
     }
-    _composer.clear();
-    _voicePrefix = '';
-    _voice.clearTranscript();
-    setState(() => _attachments.clear());
+    if (_composer.text == composerSnapshot) {
+      _composer.clear();
+      _voicePrefix = '';
+      _voice.clearTranscript();
+    }
+    setState(() {
+      _attachments.removeWhere((item) => attachments.contains(item));
+    });
   }
 
   Future<void> _toggleVoice() async {

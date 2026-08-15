@@ -397,6 +397,10 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     required String text,
   }) {
     final at = DateTime.now();
+    final clean = item.text.trim();
+    final preview = clean.length <= 180 ? clean : '${clean.substring(0, 180)}…';
+    final visibleText =
+        preview.isEmpty ? text : '$text\n\nВосстановленный запрос: «$preview»';
     final metadata = <String, dynamic>{
       'code': code,
       'recoverText': item.text,
@@ -409,7 +413,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       employeeId: store.employeeId,
       author: WesiAiMessageAuthor.system,
       kind: WesiAiMessageKind.error,
-      text: text,
+      text: visibleText,
       createdAt: at,
       metadata: metadata,
     );
@@ -822,6 +826,34 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     final conversation = state.activeConversation;
     if (conversation == null) return;
     final ordered = state.messagesFor(conversation.id);
+    if (ordered.isNotEmpty && ordered.last.kind == WesiAiMessageKind.error) {
+      final lastError = ordered.last;
+      final code = '${lastError.metadata['code'] ?? ''}';
+      if (code == 'WAI_REATTACH_REQUIRED' ||
+          code == 'WAI_QUEUE_PERSISTENCE_FAILED') {
+        return;
+      }
+      if (code == 'WAI_QUEUE_RECOVERY_UNCERTAIN' ||
+          code == 'WAI_QUEUE_RECOVERY_FAILED') {
+        final prompt = '${lastError.metadata['recoverText'] ?? ''}'.trim();
+        if (prompt.isEmpty) return;
+        final pendingQueueId =
+            '${lastError.metadata['pendingQueueId'] ?? ''}'.trim();
+        if (pendingQueueId.isNotEmpty) {
+          try {
+            await store.removePendingQueueItem(pendingQueueId);
+          } catch (_) {}
+        }
+        state = state.copyWith(
+          messages: state.messages
+              .where((message) => message.id != lastError.id)
+              .toList(growable: false),
+        );
+        await _save();
+        await addUserMessage(prompt);
+        return;
+      }
+    }
     var userIndex = -1;
     for (var i = ordered.length - 1; i >= 0; i--) {
       if (ordered[i].author == WesiAiMessageAuthor.user) {
