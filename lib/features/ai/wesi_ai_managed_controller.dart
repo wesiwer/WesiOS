@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
+import 'wesi_ai_api.dart';
+import 'wesi_ai_lobby_api.dart';
 import 'wesi_ai_lobby_controller.dart';
 
 class _TransientRetryPayload {
@@ -32,6 +35,13 @@ class WesiAiQueuedTurn {
   }
 }
 
+enum WesiAiMessageSubmitResult {
+  accepted,
+  queueFull,
+  invalidAttachments,
+  unavailable,
+}
+
 class WesiAiManagedChatController extends WesiAiLobbyChatController {
   static const int maxQueuedTurns = 12;
 
@@ -40,13 +50,46 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   final List<WesiAiQueuedTurn> _queuedTurns = <WesiAiQueuedTurn>[];
   bool _drainingQueue = false;
 
-  WesiAiManagedChatController({required WesiAiLocalStore store})
-      : super(store: store);
+  WesiAiManagedChatController({
+    required WesiAiLocalStore store,
+    WesiAiApi api = const WesiAiLobbyApi(),
+  }) : super(store: store, api: api);
 
   int get queuedTurnCount => _queuedTurns.length;
   List<WesiAiQueuedTurn> get queuedTurns =>
       List<WesiAiQueuedTurn>.unmodifiable(_queuedTurns);
   bool get processing => sending || _drainingQueue || _queuedTurns.isNotEmpty;
+
+  WesiAiMessageSubmitResult submitUserMessage(
+    String text, {
+    List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+  }) {
+    final conversation = state.activeConversation;
+    final clean = text.trim();
+    if (conversation == null || (clean.isEmpty && attachments.isEmpty)) {
+      return WesiAiMessageSubmitResult.unavailable;
+    }
+    try {
+      WesiAiAttachment.validateBatch(attachments);
+    } on FormatException {
+      return WesiAiMessageSubmitResult.invalidAttachments;
+    }
+    if (_queuedTurns.length >= maxQueuedTurns) {
+      return WesiAiMessageSubmitResult.queueFull;
+    }
+
+    _queuedTurns.add(
+      WesiAiQueuedTurn(
+        conversationId: conversation.id,
+        text: clean,
+        attachments: List<WesiAiAttachment>.unmodifiable(attachments),
+        queuedAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
+    unawaited(_drainQueuedTurns());
+    return WesiAiMessageSubmitResult.accepted;
+  }
 
   @override
   Future<void> addUserMessage(
@@ -117,33 +160,64 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     try {
       while (_queuedTurns.isNotEmpty) {
         final turn = _queuedTurns.removeAt(0);
-        WesiAiConversation? target;
-        for (final conversation in state.conversations) {
-          if (conversation.id == turn.conversationId && !conversation.archived) {
-            target = conversation;
-            break;
+        try {
+          WesiAiConversation? target;
+          for (final conversation in state.conversations) {
+            if (conversation.id == turn.conversationId && !conversation.archived) {
+              target = conversation;
+              break;
+            }
+          }
+          if (target == null) {
+            notifyListeners();
+            continue;
+          }
+          if (state.activeConversationId != target.id) {
+            state = state.copyWith(
+              activeConversationId: target.id,
+              activeProjectId: target.projectId,
+              clearActiveProject: target.projectId == null,
+            );
+            await _save();
+          } else {
+            notifyListeners();
+          }
+          await _sendNow(turn.text, attachments: turn.attachments);
+        } catch (_) {
+          try {
+            await _appendQueueItemError(turn.conversationId);
+          } catch (_) {
+            notifyListeners();
           }
         }
-        if (target == null) {
-          notifyListeners();
-          continue;
-        }
-        if (state.activeConversationId != target.id) {
-          state = state.copyWith(
-            activeConversationId: target.id,
-            activeProjectId: target.projectId,
-            clearActiveProject: target.projectId == null,
-          );
-          await _save();
-        } else {
-          notifyListeners();
-        }
-        await _sendNow(turn.text, attachments: turn.attachments);
       }
     } finally {
       _drainingQueue = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _appendQueueItemError(String conversationId) async {
+    final at = DateTime.now();
+    state = state.copyWith(
+      messages: <WesiAiMessage>[
+        ...state.messages,
+        WesiAiMessage(
+          id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
+          conversationId: conversationId,
+          employeeId: store.employeeId,
+          author: WesiAiMessageAuthor.system,
+          kind: WesiAiMessageKind.error,
+          text:
+              'Не удалось обработать одно из сообщений. Остальная очередь продолжает выполняться.',
+          createdAt: at,
+          metadata: const <String, dynamic>{
+            'code': 'WAI_MESSAGE_QUEUE_ITEM_FAILED',
+          },
+        ),
+      ],
+    );
+    await _save();
   }
 
   Future<void> _appendQueueFullError(String conversationId) async {
