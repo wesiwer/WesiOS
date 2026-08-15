@@ -53,7 +53,7 @@ class WesiSelfDebugJobObserver implements WesiSelfDebugObserver {
 
   String _stageFor(WesiSelfDebugProgress progress) {
     final iteration =
-        progress.repairIteration > 0 ? ' #${progress.repairIteration}' : '';
-    return '${progress.phase.name}$iteration: ${progress.message}';
+        progress.repairIteration > 0 ? '.i${progress.repairIteration}' : '';
+    return 'self_debug.${progress.phase.name}$iteration';
   }
 }

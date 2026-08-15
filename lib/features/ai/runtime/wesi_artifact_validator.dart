@@ -116,6 +116,9 @@ class WesiArtifactValidator {
       );
     }
 
+    final digestBefore =
+        await sha256.bind(File(canonicalPath).openRead()).first;
+
     final builtin = await _validateBuiltin(
       descriptor.kind,
       canonicalPath,
@@ -146,12 +149,37 @@ class WesiArtifactValidator {
       externalMetadata = externalResult.metadata;
     }
 
-    final digest = await sha256.bind(File(canonicalPath).openRead()).first;
+    String canonicalAfter;
+    try {
+      canonicalAfter = p.normalize(await file.resolveSymbolicLinks());
+    } on FileSystemException {
+      return const WesiArtifactValidationResult.failure(
+        'ARTIFACT_CHANGED_DURING_VALIDATION',
+        'Artifact path changed during validation',
+      );
+    }
+    final statAfter = await FileStat.stat(canonicalAfter);
+    if (canonicalAfter != canonicalPath ||
+        statAfter.type != FileSystemEntityType.file ||
+        statAfter.size != stat.size) {
+      return const WesiArtifactValidationResult.failure(
+        'ARTIFACT_CHANGED_DURING_VALIDATION',
+        'Artifact identity changed during validation',
+      );
+    }
+    final digestAfter =
+        await sha256.bind(File(canonicalAfter).openRead()).first;
+    if (digestAfter.toString() != digestBefore.toString()) {
+      return const WesiArtifactValidationResult.failure(
+        'ARTIFACT_CHANGED_DURING_VALIDATION',
+        'Artifact contents changed during validation',
+      );
+    }
     final artifact = WesiValidatedArtifact(
       descriptor: descriptor,
-      canonicalPath: canonicalPath,
-      sizeBytes: stat.size,
-      sha256Hex: digest.toString(),
+      canonicalPath: canonicalAfter,
+      sizeBytes: statAfter.size,
+      sha256Hex: digestAfter.toString(),
       validatedAt: (now ?? DateTime.now()).toUtc(),
       validationMetadata: <String, dynamic>{
         ...builtin.metadata,

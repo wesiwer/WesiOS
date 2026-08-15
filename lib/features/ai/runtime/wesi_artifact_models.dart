@@ -33,6 +33,10 @@ class WesiArtifactDescriptor {
   final String? displayName;
   final String? mimeType;
 
+  /// Optional objective verification step that must have succeeded before
+  /// this artifact can be validated/delivered. APK/EXE require build proof.
+  final String? requiredSuccessfulStepId;
+
   const WesiArtifactDescriptor({
     required this.id,
     required this.relativePath,
@@ -40,6 +44,7 @@ class WesiArtifactDescriptor {
     this.maxBytes,
     this.displayName,
     this.mimeType,
+    this.requiredSuccessfulStepId,
   });
 }
 
@@ -71,6 +76,8 @@ class WesiValidatedArtifact {
         if (descriptor.displayName != null)
           'displayName': descriptor.displayName,
         if (descriptor.mimeType != null) 'mimeType': descriptor.mimeType,
+        if (descriptor.requiredSuccessfulStepId != null)
+          'requiredSuccessfulStepId': descriptor.requiredSuccessfulStepId,
         if (validationMetadata.isNotEmpty)
           'validationMetadata': validationMetadata,
       };

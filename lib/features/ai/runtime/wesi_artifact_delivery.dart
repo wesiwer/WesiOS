@@ -50,9 +50,14 @@ class WesiLocalArtifactDeliverySink implements WesiArtifactDeliverySink {
       );
     }
     if (await File(finalPath).exists()) {
+      final existingDigest =
+          await sha256.bind(File(finalPath).openRead()).first;
+      if (existingDigest.toString() == artifact.sha256Hex) {
+        return WesiArtifactDeliveryResult.success(deliveryRef: finalPath);
+      }
       return const WesiArtifactDeliveryResult.failure(
         'ARTIFACT_DELIVERY_COLLISION',
-        'Artifact delivery target already exists',
+        'Artifact delivery target already exists with different contents',
       );
     }
 

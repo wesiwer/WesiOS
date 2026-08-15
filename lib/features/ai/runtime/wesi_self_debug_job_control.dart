@@ -122,8 +122,7 @@ class WesiSelfDebugJobControl implements WesiSelfDebugExecutionControl {
   ) async {
     var current = job;
     var stage = current.currentStage;
-    if (stage == null ||
-        !RegExp(r'^[A-Za-z0-9._:-]{1,128}$').hasMatch(stage)) {
+    if (stage == null || !RegExp(r'^[A-Za-z0-9._:-]{1,128}$').hasMatch(stage)) {
       current = await coordinator.updateProgress(
         jobId,
         progress: current.progress,
@@ -131,8 +130,7 @@ class WesiSelfDebugJobControl implements WesiSelfDebugExecutionControl {
       );
       stage = current.currentStage;
     }
-    if (stage == null ||
-        !RegExp(r'^[A-Za-z0-9._:-]{1,128}$').hasMatch(stage)) {
+    if (stage == null || !RegExp(r'^[A-Za-z0-9._:-]{1,128}$').hasMatch(stage)) {
       throw _stop(
         checkpoint,
         'WSD_JOB_STAGE_INVALID',

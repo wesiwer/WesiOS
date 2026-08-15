@@ -30,7 +30,8 @@ void main() {
           _step('read-check', WesiLocalToolNames.fsReadText),
         ],
       );
-      final firstExecutor = _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[
+      final firstExecutor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[
         () async => WesiLocalToolResult.success(message: 'write complete'),
         () async => throw StateError('simulated process crash'),
       ]);
@@ -44,7 +45,8 @@ void main() {
 
       await expectLater(
         first.run(
-          request: const WesiSelfDebugRequest(id: 'restart-job', goal: 'resume'),
+          request:
+              const WesiSelfDebugRequest(id: 'restart-job', goal: 'resume'),
           runtimeContext: WesiLocalRuntimeContext(workspaceRoot: root.path),
         ),
         throwsA(isA<StateError>()),
@@ -54,7 +56,8 @@ void main() {
         WesiLocalToolNames.fsReadText,
       ]);
 
-      final secondExecutor = _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[
+      final secondExecutor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[
         () async => WesiLocalToolResult.success(message: 'read verified'),
       ]);
       final second = WesiSelfDebugEngine(
@@ -97,13 +100,15 @@ void main() {
       );
       await expectLater(
         first.run(
-          request: const WesiSelfDebugRequest(id: 'uncertain-job', goal: 'write'),
+          request:
+              const WesiSelfDebugRequest(id: 'uncertain-job', goal: 'write'),
           runtimeContext: WesiLocalRuntimeContext(workspaceRoot: root.path),
         ),
         throwsA(isA<StateError>()),
       );
 
-      final retryExecutor = _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
+      final retryExecutor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
       final retry = WesiSelfDebugEngine(
         executor: retryExecutor,
         planner: _Planner(plan),
@@ -122,10 +127,12 @@ void main() {
     });
 
     test('Stage-8 cancellation stops all future self-debug steps', () async {
-      final fixture = await _jobFixture(WesiLocalToolNames.flutterTest, 'cancel-job');
+      final fixture =
+          await _jobFixture(WesiLocalToolNames.flutterTest, 'cancel-job');
       addTearDown(fixture.dispose);
       await fixture.coordinator.requestCancel('cancel-job');
-      final executor = _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
+      final executor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
       final manager = WesiSelfDebugCheckpointManager(
         journal: WesiMemorySelfDebugCheckpointJournal(),
       );
@@ -142,15 +149,19 @@ void main() {
       );
       final result = await engine.run(
         request: const WesiSelfDebugRequest(id: 'cancel-job', goal: 'cancel'),
-        runtimeContext: WesiLocalRuntimeContext(workspaceRoot: fixture.root.path),
+        runtimeContext:
+            WesiLocalRuntimeContext(workspaceRoot: fixture.root.path),
       );
       expect(result.code, 'WSD_CANCELLED');
       expect(executor.tools, isEmpty);
-      expect(fixture.queue.get('cancel-job')!.state, WesiScheduledJobState.cancelled);
+      expect(fixture.queue.get('cancel-job')!.state,
+          WesiScheduledJobState.cancelled);
     });
 
-    test('pause checkpoints Stage 9 and resumes without losing the plan', () async {
-      final fixture = await _jobFixture(WesiLocalToolNames.flutterTest, 'pause-job');
+    test('pause checkpoints Stage 9 and resumes without losing the plan',
+        () async {
+      final fixture =
+          await _jobFixture(WesiLocalToolNames.flutterTest, 'pause-job');
       addTearDown(fixture.dispose);
       await fixture.coordinator.requestPause('pause-job');
       final journal = WesiMemorySelfDebugCheckpointJournal();
@@ -167,7 +178,8 @@ void main() {
           _step('verify', WesiLocalToolNames.fsReadText),
         ],
       );
-      final pausedExecutor = _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
+      final pausedExecutor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
       final paused = WesiSelfDebugEngine(
         executor: pausedExecutor,
         planner: _Planner(plan),
@@ -178,17 +190,20 @@ void main() {
       );
       final pausedResult = await paused.run(
         request: const WesiSelfDebugRequest(id: 'pause-job', goal: 'pause'),
-        runtimeContext: WesiLocalRuntimeContext(workspaceRoot: fixture.root.path),
+        runtimeContext:
+            WesiLocalRuntimeContext(workspaceRoot: fixture.root.path),
       );
       expect(pausedResult.code, 'WSD_PAUSED');
       expect(pausedExecutor.tools, isEmpty);
-      expect(fixture.queue.get('pause-job')!.state, WesiScheduledJobState.paused);
+      expect(
+          fixture.queue.get('pause-job')!.state, WesiScheduledJobState.paused);
       expect(fixture.queue.get('pause-job')!.checkpoint, isNotNull);
       expect(journal.value, isNotNull);
 
       await fixture.coordinator.resume('pause-job');
       await fixture.queue.markRunning('pause-job', workerId: 'desktop-2');
-      final resumedExecutor = _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[
+      final resumedExecutor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[
         () async => WesiLocalToolResult.success(message: 'write'),
         () async => WesiLocalToolResult.success(message: 'verified'),
       ]);
@@ -202,7 +217,8 @@ void main() {
       );
       final result = await resumed.run(
         request: const WesiSelfDebugRequest(id: 'pause-job', goal: 'pause'),
-        runtimeContext: WesiLocalRuntimeContext(workspaceRoot: fixture.root.path),
+        runtimeContext:
+            WesiLocalRuntimeContext(workspaceRoot: fixture.root.path),
       );
       expect(result.ok, isTrue);
       expect(resumedExecutor.tools, <String>[
@@ -212,7 +228,8 @@ void main() {
     });
 
     test('L4 worker loss checkpoints and becomes waitingForWorker', () async {
-      final fixture = await _jobFixture(WesiLocalToolNames.flutterBuild, 'worker-job');
+      final fixture =
+          await _jobFixture(WesiLocalToolNames.flutterBuild, 'worker-job');
       addTearDown(fixture.dispose);
       final manager = WesiSelfDebugCheckpointManager(
         journal: WesiMemorySelfDebugCheckpointJournal(),
@@ -223,7 +240,8 @@ void main() {
       );
       final executor = _CallbackExecutor((call, context) async {
         await control.waitForWorker(manager, reason: 'desktop disappeared');
-        return WesiLocalToolResult.success(message: 'step completed before disconnect');
+        return WesiLocalToolResult.success(
+            message: 'step completed before disconnect');
       });
       final engine = WesiSelfDebugEngine(
         executor: executor,
@@ -242,7 +260,8 @@ void main() {
       );
       final result = await engine.run(
         request: const WesiSelfDebugRequest(id: 'worker-job', goal: 'build'),
-        runtimeContext: WesiLocalRuntimeContext(workspaceRoot: fixture.root.path),
+        runtimeContext:
+            WesiLocalRuntimeContext(workspaceRoot: fixture.root.path),
       );
       expect(result.code, 'WSD_WAITING_FOR_WORKER');
       final job = fixture.queue.get('worker-job')!;
@@ -250,7 +269,8 @@ void main() {
       expect(job.checkpoint, isNotNull);
     });
 
-    test('changed plan after restart is rejected before another tool call', () async {
+    test('changed plan after restart is rejected before another tool call',
+        () async {
       final root = await Directory.systemTemp.createTemp('wesi-sd-plan-');
       addTearDown(() => root.delete(recursive: true));
       final journal = WesiMemorySelfDebugCheckpointJournal();
@@ -275,7 +295,8 @@ void main() {
         ),
         throwsA(isA<StateError>()),
       );
-      final executor = _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
+      final executor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
       final changed = WesiSelfDebugEngine(
         executor: executor,
         planner: _Planner(WesiSelfDebugPlan(
@@ -327,10 +348,12 @@ void main() {
       expect(evidence, contains('REDACTED'));
     });
 
-    test('APK cannot be planned without successful flutterBuild proof', () async {
+    test('APK cannot be planned without successful flutterBuild proof',
+        () async {
       final root = await Directory.systemTemp.createTemp('wesi-sd-proof-');
       addTearDown(() => root.delete(recursive: true));
-      final executor = _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
+      final executor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[]);
       final engine = WesiSelfDebugEngine(
         executor: executor,
         planner: _Planner(WesiSelfDebugPlan(
@@ -362,7 +385,8 @@ void main() {
       final sink = _Sink();
       final engine = WesiSelfDebugEngine(
         executor: _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[
-          () async => WesiLocalToolResult.failure('BUILD_FAILED', 'build failed'),
+          () async =>
+              WesiLocalToolResult.failure('BUILD_FAILED', 'build failed'),
         ]),
         planner: _Planner(WesiSelfDebugPlan(
           verificationSteps: <WesiDebugStep>[
@@ -389,7 +413,8 @@ void main() {
     });
 
     test('artifact mutation during external validation is rejected', () async {
-      final root = await Directory.systemTemp.createTemp('wesi-artifact-toctou-');
+      final root =
+          await Directory.systemTemp.createTemp('wesi-artifact-toctou-');
       addTearDown(() => root.delete(recursive: true));
       final file = File(p.join(root.path, 'output.bin'));
       await file.writeAsString('before');
@@ -411,8 +436,10 @@ void main() {
     });
 
     test('local delivery is idempotent for the same validated hash', () async {
-      final root = await Directory.systemTemp.createTemp('wesi-artifact-source-');
-      final delivery = await Directory.systemTemp.createTemp('wesi-artifact-delivery-');
+      final root =
+          await Directory.systemTemp.createTemp('wesi-artifact-source-');
+      final delivery =
+          await Directory.systemTemp.createTemp('wesi-artifact-delivery-');
       addTearDown(() async {
         await root.delete(recursive: true);
         await delivery.delete(recursive: true);
@@ -455,7 +482,8 @@ class _Planner implements WesiSelfDebugPlanner {
   const _Planner(this.plan);
 
   @override
-  Future<WesiSelfDebugPlan> createPlan(WesiSelfDebugRequest request) async => plan;
+  Future<WesiSelfDebugPlan> createPlan(WesiSelfDebugRequest request) async =>
+      plan;
 
   @override
   Future<WesiRepairProposal> proposeRepair({
@@ -545,7 +573,8 @@ Future<_JobFixture> _jobFixture(String workloadTool, String jobId) async {
   final queue = WesiDurableJobQueue(journal: WesiMemoryJobJournal());
   await queue.restore();
   final coordinator = WesiJobCoordinator(queue: queue);
-  final requirements = WesiTrustedWorkloadRegistry.requirementsFor(workloadTool);
+  final requirements =
+      WesiTrustedWorkloadRegistry.requirementsFor(workloadTool);
   await coordinator.enqueue(id: jobId, requirements: requirements);
   await queue.markRunning(jobId, workerId: 'desktop');
   return _JobFixture(root, queue, coordinator);

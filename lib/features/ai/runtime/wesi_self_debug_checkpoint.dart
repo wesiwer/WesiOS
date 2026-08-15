@@ -61,7 +61,8 @@ class WesiSelfDebugPersistedOutcome {
         code.length > 128 ||
         (exitCode != null && exitCode is! int) ||
         summary is! String ||
-        summary.length > WesiSelfDebugCheckpointManager.maxOutcomeSummaryChars) {
+        summary.length >
+            WesiSelfDebugCheckpointManager.maxOutcomeSummaryChars) {
       throw const WesiSelfDebugStop(
         'WSD_CHECKPOINT_CORRUPT',
         'Persisted self-debug outcome is invalid',
@@ -302,7 +303,8 @@ class WesiSelfDebugCheckpointState {
       toolCalls: toolCalls,
       inFlightStepKey: inFlightStepKey as String?,
       inFlightRisk: inFlightRisk,
-      outcomes: Map<String, WesiSelfDebugPersistedOutcome>.unmodifiable(outcomes),
+      outcomes:
+          Map<String, WesiSelfDebugPersistedOutcome>.unmodifiable(outcomes),
       revision: revision,
       updatedAt: updatedAt.toUtc(),
     );
@@ -507,7 +509,10 @@ class WesiSelfDebugCheckpointManager {
       );
     }
     if (existing == fingerprint) return;
-    final next = <int, String>{...current.repairFingerprints, iteration: fingerprint};
+    final next = <int, String>{
+      ...current.repairFingerprints,
+      iteration: fingerprint
+    };
     _state = current.copyWith(
       repairFingerprints: Map<int, String>.unmodifiable(next),
       repairIteration: iteration,
@@ -522,7 +527,10 @@ class WesiSelfDebugCheckpointManager {
     required int toolCalls,
   }) async {
     final current = _requireState();
-    if (phase.isEmpty || phase.length > 64 || repairIteration < 0 || toolCalls < 0) {
+    if (phase.isEmpty ||
+        phase.length > 64 ||
+        repairIteration < 0 ||
+        toolCalls < 0) {
       throw WesiSelfDebugStop(
         'WSD_CHECKPOINT_POSITION',
         'Self-debug checkpoint position is invalid',
@@ -598,7 +606,8 @@ class WesiSelfDebugCheckpointManager {
       toolCalls: toolCalls,
       inFlightStepKey: null,
       inFlightRisk: null,
-      outcomes: Map<String, WesiSelfDebugPersistedOutcome>.unmodifiable(outcomes),
+      outcomes:
+          Map<String, WesiSelfDebugPersistedOutcome>.unmodifiable(outcomes),
       updatedAt: DateTime.now().toUtc(),
     );
     await _persist();

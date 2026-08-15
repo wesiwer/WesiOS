@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:crypto/crypto.dart';
 
 import 'wesi_artifact_models.dart';
 import 'wesi_artifact_validator.dart';
 import 'wesi_local_runtime_executor.dart';
 import 'wesi_local_runtime_models.dart';
+import 'wesi_self_debug_checkpoint.dart';
+import 'wesi_self_debug_redactor.dart';
 
 enum WesiSelfDebugPhase {
   planning,
@@ -174,6 +179,9 @@ class WesiSelfDebugEngine {
   final WesiArtifactDeliverySink deliverySink;
   final WesiSelfDebugLimits limits;
   final WesiSelfDebugObserver? observer;
+  final WesiSelfDebugCheckpointManager? checkpoint;
+  final WesiSelfDebugExecutionControl? executionControl;
+  final WesiSelfDebugRedactor redactor;
 
   const WesiSelfDebugEngine({
     required this.executor,
@@ -182,13 +190,43 @@ class WesiSelfDebugEngine {
     required this.deliverySink,
     this.limits = const WesiSelfDebugLimits(),
     this.observer,
+    this.checkpoint,
+    this.executionControl,
+    this.redactor = const WesiSelfDebugRedactor(),
   });
 
   Future<WesiSelfDebugResult> run({
     required WesiSelfDebugRequest request,
     required WesiLocalRuntimeContext runtimeContext,
   }) async {
+    try {
+      return await _runInternal(
+        request: request,
+        runtimeContext: runtimeContext,
+      );
+    } on WesiSelfDebugStop catch (stop) {
+      return WesiSelfDebugResult(
+        ok: false,
+        blocked: stop.blocked,
+        code: stop.code,
+        message: stop.message,
+        repairIterations: stop.repairIteration,
+        toolCalls: stop.toolCalls,
+      );
+    }
+  }
+
+  Future<WesiSelfDebugResult> _runInternal({
+    required WesiSelfDebugRequest request,
+    required WesiLocalRuntimeContext runtimeContext,
+  }) async {
     final startedAt = DateTime.now();
+    if (executionControl != null && checkpoint == null) {
+      return _terminalFailure(
+        'WSD_DURABILITY_CONFIG',
+        'Stage-8 execution control requires a durable Stage-9 checkpoint',
+      );
+    }
     if (request.id.trim().isEmpty || request.id.length > 128) {
       return _terminalFailure(
           'WSD_BAD_REQUEST', 'Self-debug request id is invalid');
@@ -208,6 +246,18 @@ class WesiSelfDebugEngine {
     final planError = _validatePlan(plan);
     if (planError != null) return planError;
 
+    final checkpointTarget = checkpoint;
+    if (checkpointTarget != null) {
+      await checkpointTarget.bindPlan(
+        requestId: request.id,
+        planFingerprint: _planFingerprint(plan),
+      );
+      final recovered = checkpointTarget.snapshot!;
+      toolCalls = recovered.toolCalls;
+      repairIteration = recovered.repairIteration;
+      await executionControl?.guard(checkpointTarget);
+    }
+
     final initial = await _runSteps(
       plan.executionSteps,
       phase: WesiSelfDebugPhase.executing,
@@ -215,7 +265,7 @@ class WesiSelfDebugEngine {
       evidence: evidence,
       startedAt: startedAt,
       currentToolCalls: toolCalls,
-      repairIteration: repairIteration,
+      repairIteration: 0,
     );
     toolCalls = initial.toolCalls;
 
@@ -272,6 +322,7 @@ class WesiSelfDebugEngine {
             repairIteration,
             toolCalls,
           );
+          await checkpointTarget?.clear();
           return WesiSelfDebugResult(
             ok: true,
             blocked: false,
@@ -319,6 +370,13 @@ class WesiSelfDebugEngine {
       }
 
       repairIteration++;
+      if (checkpointTarget != null) {
+        await checkpointTarget.updatePosition(
+          phase: WesiSelfDebugPhase.diagnosing.name,
+          repairIteration: repairIteration,
+          toolCalls: toolCalls,
+        );
+      }
       await _progress(
         WesiSelfDebugPhase.diagnosing,
         'Diagnosing failed verification',
@@ -371,6 +429,12 @@ class WesiSelfDebugEngine {
           );
         }
       }
+      if (checkpointTarget != null) {
+        await checkpointTarget.bindRepair(
+          iteration: repairIteration,
+          fingerprint: _repairFingerprint(proposal.repairSteps),
+        );
+      }
       final repair = await _runSteps(
         proposal.repairSteps,
         phase: WesiSelfDebugPhase.repairing,
@@ -412,12 +476,39 @@ class WesiSelfDebugEngine {
         );
       }
     }
+    final verificationById = <String, WesiDebugStep>{
+      for (final step in plan.verificationSteps) step.id: step,
+    };
     final artifactIds = <String>{};
     for (final artifact in plan.artifacts) {
       if (!artifactIds.add(artifact.id)) {
         return _terminalFailure(
           'WSD_ARTIFACT_DUPLICATE',
           'Self-debug plan contains duplicate artifact ids',
+        );
+      }
+      final proofId = artifact.requiredSuccessfulStepId;
+      if (proofId != null) {
+        final proof = verificationById[proofId];
+        if (proof == null) {
+          return _terminalFailure(
+            'WSD_ARTIFACT_PROOF_UNKNOWN',
+            'Artifact proof step is not part of objective verification',
+          );
+        }
+        if ((artifact.kind == WesiArtifactKind.apk ||
+                artifact.kind == WesiArtifactKind.windowsExecutable) &&
+            proof.call.tool != WesiLocalToolNames.flutterBuild) {
+          return _terminalFailure(
+            'WSD_BUILD_PROOF_INVALID',
+            'APK/Windows artifacts require a successful Flutter build proof',
+          );
+        }
+      } else if (artifact.kind == WesiArtifactKind.apk ||
+          artifact.kind == WesiArtifactKind.windowsExecutable) {
+        return _terminalFailure(
+          'WSD_BUILD_PROOF_REQUIRED',
+          'APK/Windows artifacts cannot be delivered without build proof',
         );
       }
     }
@@ -440,7 +531,23 @@ class WesiSelfDebugEngine {
     required int repairIteration,
   }) async {
     var toolCalls = currentToolCalls;
+    final checkpointTarget = checkpoint;
     for (final step in steps) {
+      final stepKey = '${phase.name}:$repairIteration:${step.id}';
+      final persisted = checkpointTarget?.outcomeFor(stepKey);
+      if (persisted != null) {
+        final restored = WesiDebugEvidence(
+          stepId: step.id,
+          tool: step.call.tool,
+          ok: persisted.ok,
+          code: persisted.code,
+          exitCode: persisted.exitCode,
+          summary: persisted.summary,
+        );
+        evidence.add(restored);
+        if (!persisted.ok) return _StepRun(false, toolCalls);
+        continue;
+      }
       if (_wallExpired(startedAt)) {
         evidence.add(const WesiDebugEvidence(
           stepId: 'runtime-limit',
@@ -463,10 +570,43 @@ class WesiSelfDebugEngine {
         ));
         return _StepRun(false, toolCalls);
       }
+      if (checkpointTarget != null) {
+        await checkpointTarget.updatePosition(
+          phase: phase.name,
+          repairIteration: repairIteration,
+          toolCalls: toolCalls,
+        );
+        await executionControl?.guard(checkpointTarget);
+      }
+      final meta = WesiLocalCapabilityRegistry.get(step.call.tool)!;
       toolCalls++;
+      if (checkpointTarget != null) {
+        await checkpointTarget.beforeStep(
+          key: stepKey,
+          stepId: step.id,
+          risk: meta.risk,
+          phase: phase.name,
+          repairIteration: repairIteration,
+          toolCalls: toolCalls,
+        );
+      }
       await _progress(phase, step.label, repairIteration, toolCalls);
       final result = await executor.execute(step.call, runtimeContext);
-      evidence.add(_evidence(step, result));
+      final item = _evidence(step, result);
+      evidence.add(item);
+      if (checkpointTarget != null) {
+        await checkpointTarget.afterStep(
+          outcome: WesiSelfDebugPersistedOutcome(
+            key: stepKey,
+            ok: item.ok,
+            code: item.code,
+            exitCode: item.exitCode,
+            summary: item.summary,
+          ),
+          toolCalls: toolCalls,
+        );
+        await executionControl?.guard(checkpointTarget);
+      }
       if (!result.ok) return _StepRun(false, toolCalls);
     }
     return _StepRun(true, toolCalls);
@@ -479,6 +619,15 @@ class WesiSelfDebugEngine {
     int repairIteration,
     int toolCalls,
   ) async {
+    final checkpointTarget = checkpoint;
+    if (checkpointTarget != null) {
+      await checkpointTarget.updatePosition(
+        phase: WesiSelfDebugPhase.validatingArtifacts.name,
+        repairIteration: repairIteration,
+        toolCalls: toolCalls,
+      );
+      await executionControl?.guard(checkpointTarget);
+    }
     await _progress(
       WesiSelfDebugPhase.validatingArtifacts,
       'Validating artifacts',
@@ -487,6 +636,28 @@ class WesiSelfDebugEngine {
     );
     final out = <WesiValidatedArtifact>[];
     for (final descriptor in descriptors) {
+      final proofId = descriptor.requiredSuccessfulStepId;
+      if (proofId != null) {
+        WesiDebugEvidence? latest;
+        for (final item in evidence.reversed) {
+          if (item.stepId == proofId) {
+            latest = item;
+            break;
+          }
+        }
+        if (latest == null || !latest.ok) {
+          evidence.add(WesiDebugEvidence(
+            stepId: 'artifact:${descriptor.id}',
+            tool: 'artifact.build-proof',
+            ok: false,
+            code: 'ARTIFACT_PROOF_FAILED',
+            exitCode: latest?.exitCode,
+            summary:
+                'Required objective build/verification proof did not succeed',
+          ));
+          return _ArtifactRun(false, out);
+        }
+      }
       final result = await artifactValidator.validate(
         descriptor: descriptor,
         workspaceRoot: workspaceRoot,
@@ -512,6 +683,15 @@ class WesiSelfDebugEngine {
     int repairIteration,
     int toolCalls,
   ) async {
+    final checkpointTarget = checkpoint;
+    if (checkpointTarget != null) {
+      await checkpointTarget.updatePosition(
+        phase: WesiSelfDebugPhase.delivering.name,
+        repairIteration: repairIteration,
+        toolCalls: toolCalls,
+      );
+      await executionControl?.guard(checkpointTarget);
+    }
     await _progress(
       WesiSelfDebugPhase.delivering,
       'Delivering validated artifacts',
@@ -589,9 +769,54 @@ class WesiSelfDebugEngine {
   }
 
   String _bound(String value) {
-    final clean = value.replaceAll('\u0000', '');
+    final clean = redactor.redact(value);
     if (clean.length <= 4096) return clean;
     return '${clean.substring(0, 4096)}…';
+  }
+
+  String _planFingerprint(WesiSelfDebugPlan plan) =>
+      _fingerprint(<String, dynamic>{
+        'execution': plan.executionSteps.map(_stepFingerprintPayload).toList(),
+        'verification':
+            plan.verificationSteps.map(_stepFingerprintPayload).toList(),
+        'artifacts': plan.artifacts
+            .map((artifact) => <String, dynamic>{
+                  'id': artifact.id,
+                  'relativePath': artifact.relativePath,
+                  'kind': artifact.kind.name,
+                  'maxBytes': artifact.maxBytes,
+                  'displayName': artifact.displayName,
+                  'mimeType': artifact.mimeType,
+                  'requiredSuccessfulStepId': artifact.requiredSuccessfulStepId,
+                })
+            .toList(),
+      });
+
+  String _repairFingerprint(List<WesiDebugStep> steps) =>
+      _fingerprint(steps.map(_stepFingerprintPayload).toList());
+
+  Map<String, dynamic> _stepFingerprintPayload(WesiDebugStep step) =>
+      <String, dynamic>{
+        'id': step.id,
+        'label': step.label,
+        'tool': step.call.tool,
+        'arguments': _canonicalize(step.call.arguments),
+      };
+
+  String _fingerprint(dynamic value) {
+    final canonical = jsonEncode(_canonicalize(value));
+    return sha256.convert(utf8.encode(canonical)).toString();
+  }
+
+  dynamic _canonicalize(dynamic value) {
+    if (value is Map) {
+      final keys = value.keys.map((key) => key.toString()).toList()..sort();
+      return <String, dynamic>{
+        for (final key in keys) key: _canonicalize(value[key]),
+      };
+    }
+    if (value is List) return value.map(_canonicalize).toList();
+    return value;
   }
 
   bool _wallExpired(DateTime startedAt) =>
