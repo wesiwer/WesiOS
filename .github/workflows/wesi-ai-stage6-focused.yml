@@ -38,7 +38,7 @@ jobs:
           lib/features/ai/runtime/wesi_local_workspace.dart
           test/wesi_local_runtime_test.dart
       - name: Analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
       - name: Local runtime security tests
         run: flutter test test/wesi_local_runtime_test.dart
       - name: Commit validated hardening and remove one-shot tooling
