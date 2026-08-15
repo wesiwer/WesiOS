@@ -28,7 +28,7 @@ Known Stage-6 Local Runtime tools have trusted base requirements:
 - Flutter tests and significant media work are L3;
 - Flutter build is L4.
 
-Trusted callers may only **tighten** resource requirements. Negative resource deltas are rejected. Long estimated duration or GPU requirements escalate the execution level and foreground requirement.
+Trusted callers may only **tighten** resource requirements. Negative resource deltas are rejected. Long estimated duration or GPU requirements escalate the execution level and foreground requirement. Stage-6 Local Runtime target platforms cannot be widened outside the trusted desktop set.
 
 ## Worker facts and hard filters
 
@@ -98,6 +98,9 @@ The journal:
 
 - caps job/event counts and total encoded size;
 - rejects unknown persisted enums/capabilities instead of dropping them;
+- revalidates persisted job requirements against the trusted workload registry and rejects any downgrade of L-level, capabilities, Runtime Packs, resources or foreground policy;
+- preserves the previous valid in-memory snapshot when restore fails;
+- rolls back an in-memory enqueue/state mutation if durable journal persistence fails;
 - stores bounded status metadata rather than arbitrary process output;
 - serializes mutations;
 - writes through a same-directory temporary file and rollback backup;
