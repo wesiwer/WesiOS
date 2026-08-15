@@ -20,6 +20,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/wesi-ai-stage5-action-broker
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
       - name: Apply one-shot client confirmation patch
         run: python tool/wesi_ai_stage5_client_apply.py
       - name: Format patched Dart files
