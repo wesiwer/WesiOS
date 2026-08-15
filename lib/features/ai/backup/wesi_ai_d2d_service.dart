@@ -74,7 +74,7 @@ class WesiAiD2DDescriptor {
       final expiresAt = DateTime.tryParse('${map['expiresAt'] ?? ''}');
       final address = InternetAddress.tryParse(host);
       if (address == null ||
-          !_isPrivateOrLoopback(address) ||
+          !WesiAiD2DService.isPrivateOrLoopback(address) ||
           port <= 0 ||
           port > 65535 ||
           !RegExp(r'^[A-Za-z0-9_-]{16,180}$').hasMatch(sessionId) ||
@@ -101,22 +101,19 @@ class WesiAiD2DDescriptor {
       throw const FormatException('Некорректный или истёкший D2D descriptor');
     }
   }
-
-  static bool _isPrivateOrLoopback(InternetAddress address) =>
-      WesiAiD2DService.isPrivateOrLoopback(address);
 }
 
 class WesiAiD2DTransferSession {
   final WesiAiD2DDescriptor descriptor;
   final ValueNotifier<WesiAiD2DStatus> status;
-  final HttpServer _server;
+  final ServerSocket _server;
   final Timer _expiryTimer;
   bool _used = false;
 
   WesiAiD2DTransferSession._({
     required this.descriptor,
     required this.status,
-    required HttpServer server,
+    required ServerSocket server,
     required Timer expiryTimer,
   })  : _server = server,
         _expiryTimer = expiryTimer;
@@ -131,13 +128,15 @@ class WesiAiD2DTransferSession {
     }
     status.value = WesiAiD2DStatus.stopped;
     _expiryTimer.cancel();
-    await _server.close(force: true);
+    await _server.close();
   }
 }
 
 class WesiAiD2DService {
   static const Duration sessionTtl = Duration(minutes: 10);
-  static const String _authHeader = 'x-wesi-transfer-auth';
+  static const Duration _connectTimeout = Duration(seconds: 8);
+  static const Duration _frameTimeout = Duration(seconds: 12);
+  static const int _maxControlLineBytes = 1024;
 
   const WesiAiD2DService._();
 
@@ -154,9 +153,15 @@ class WesiAiD2DService {
     final encrypted =
         WesiAiBackupCrypto.encryptTransfer(build.packageBytes, key);
     final host = hostOverride ?? await _privateHost();
+    if (!isPrivateOrLoopback(host)) {
+      throw const FormatException('D2D host находится вне локальной сети');
+    }
     final sessionId = _randomId();
-    final server =
-        await HttpServer.bind(InternetAddress.anyIPv4, 0, shared: false);
+    final server = await ServerSocket.bind(
+      InternetAddress.anyIPv4,
+      0,
+      shared: false,
+    );
     final expiresAt = DateTime.now().toUtc().add(ttl);
     final descriptor = WesiAiD2DDescriptor(
       host: host.address,
@@ -174,7 +179,7 @@ class WesiAiD2DService {
         return;
       }
       status.value = WesiAiD2DStatus.expired;
-      await server.close(force: true);
+      await server.close();
     });
     session = WesiAiD2DTransferSession._(
       descriptor: descriptor,
@@ -185,44 +190,49 @@ class WesiAiD2DService {
 
     unawaited(() async {
       try {
-        await for (final request in server) {
-          if (session._used || DateTime.now().toUtc().isAfter(expiresAt)) {
-            request.response.statusCode = HttpStatus.gone;
-            await request.response.close();
-            continue;
+        await for (final socket in server) {
+          try {
+            if (session._used || DateTime.now().toUtc().isAfter(expiresAt)) {
+              await _sendControl(socket, 'ERR GONE');
+              continue;
+            }
+            if (!isPrivateOrLoopback(socket.remoteAddress)) {
+              await _sendControl(socket, 'ERR FORBIDDEN');
+              continue;
+            }
+            final request = await _readControlLine(socket);
+            final parts = request.split(' ');
+            if (parts.length != 3 ||
+                parts[0] != 'WESI1' ||
+                parts[1] != sessionId) {
+              await _sendControl(socket, 'ERR REQUEST');
+              continue;
+            }
+            final expectedAuth =
+                WesiAiBackupCrypto.transferAuthToken(sessionId, key);
+            if (!WesiAiBackupCrypto.constantTimeEquals(
+              expectedAuth,
+              parts[2],
+            )) {
+              await _sendControl(socket, 'ERR AUTH');
+              continue;
+            }
+            session._used = true;
+            status.value = WesiAiD2DStatus.transferring;
+            socket.add(utf8.encode('OK ${encrypted.lengthInBytes}\n'));
+            socket.add(encrypted);
+            await socket.flush();
+            await socket.close();
+            status.value = WesiAiD2DStatus.completed;
+            expiryTimer.cancel();
+            await server.close();
+            break;
+          } catch (_) {
+            try {
+              await socket.close();
+            } catch (_) {}
+            if (session._used) rethrow;
           }
-          if (!isPrivateOrLoopback(request.connectionInfo?.remoteAddress)) {
-            request.response.statusCode = HttpStatus.forbidden;
-            await request.response.close();
-            continue;
-          }
-          final expectedPath = '/v1/wesi-ai-transfer/$sessionId';
-          if (request.method != 'GET' || request.uri.path != expectedPath) {
-            request.response.statusCode = HttpStatus.notFound;
-            await request.response.close();
-            continue;
-          }
-          final expectedAuth =
-              WesiAiBackupCrypto.transferAuthToken(sessionId, key);
-          final providedAuth = request.headers.value(_authHeader) ?? '';
-          if (!WesiAiBackupCrypto.constantTimeEquals(
-              expectedAuth, providedAuth)) {
-            request.response.statusCode = HttpStatus.unauthorized;
-            await request.response.close();
-            continue;
-          }
-          session._used = true;
-          status.value = WesiAiD2DStatus.transferring;
-          request.response.statusCode = HttpStatus.ok;
-          request.response.headers.contentType = ContentType.binary;
-          request.response.headers.contentLength = encrypted.lengthInBytes;
-          request.response.headers.set('cache-control', 'no-store');
-          request.response.add(encrypted);
-          await request.response.close();
-          status.value = WesiAiD2DStatus.completed;
-          expiryTimer.cancel();
-          await server.close(force: true);
-          break;
         }
       } catch (_) {
         if (status.value != WesiAiD2DStatus.completed &&
@@ -230,7 +240,7 @@ class WesiAiD2DService {
             status.value != WesiAiD2DStatus.expired) {
           status.value = WesiAiD2DStatus.failed;
           expiryTimer.cancel();
-          await server.close(force: true);
+          await server.close();
         }
       }
     }());
@@ -246,45 +256,20 @@ class WesiAiD2DService {
     if (!isPrivateOrLoopback(address)) {
       throw const FormatException('D2D sender находится вне локальной сети');
     }
-    final client = HttpClient()
-      ..connectionTimeout = const Duration(seconds: 8)
-      ..idleTimeout = const Duration(seconds: 12);
+    Socket? socket;
     try {
-      final uri = Uri(
-        scheme: 'http',
-        host: descriptor.host,
-        port: descriptor.port,
-        path: '/v1/wesi-ai-transfer/${descriptor.sessionId}',
+      socket = await Socket.connect(
+        descriptor.host,
+        descriptor.port,
+        timeout: _connectTimeout,
       );
-      final request = await client.getUrl(uri);
-      request.headers.set(
-        _authHeader,
-        WesiAiBackupCrypto.transferAuthToken(
-          descriptor.sessionId,
-          descriptor.key,
-        ),
+      final auth = WesiAiBackupCrypto.transferAuthToken(
+        descriptor.sessionId,
+        descriptor.key,
       );
-      request.headers.set('cache-control', 'no-store');
-      final response =
-          await request.close().timeout(const Duration(seconds: 12));
-      if (response.statusCode != HttpStatus.ok) {
-        throw FormatException(
-            'D2D sender отклонил запрос (${response.statusCode})');
-      }
-      final declared = response.contentLength;
-      if (declared > WesiAiBackupService.maxPackageBytes + 1024 * 1024) {
-        throw const FormatException('D2D пакет превышает допустимый размер');
-      }
-      final builder = BytesBuilder(copy: false);
-      var received = 0;
-      await for (final chunk in response) {
-        received += chunk.length;
-        if (received > WesiAiBackupService.maxPackageBytes + 1024 * 1024) {
-          throw const FormatException('D2D пакет превышает допустимый размер');
-        }
-        builder.add(chunk);
-      }
-      final encrypted = builder.takeBytes();
+      socket.write('WESI1 ${descriptor.sessionId} $auth\n');
+      await socket.flush();
+      final encrypted = await _readPayload(socket);
       final package = WesiAiBackupCrypto.decryptTransfer(
         encrypted,
         descriptor.key,
@@ -295,12 +280,157 @@ class WesiAiD2DService {
       );
     } on SocketException {
       throw const FormatException(
-          'Не удалось подключиться к устройству в LAN/Wi‑Fi');
+        'Не удалось подключиться к устройству в LAN/Wi‑Fi',
+      );
     } on TimeoutException {
       throw const FormatException('D2D соединение истекло по таймауту');
     } finally {
-      client.close(force: true);
+      try {
+        await socket?.close();
+      } catch (_) {}
     }
+  }
+
+  static Future<String> _readControlLine(Socket socket) async {
+    final completer = Completer<String>();
+    final buffer = <int>[];
+    late StreamSubscription<Uint8List> subscription;
+    subscription = socket.listen(
+      (chunk) {
+        if (completer.isCompleted) return;
+        for (final byte in chunk) {
+          if (byte == 10) {
+            try {
+              completer.complete(utf8.decode(buffer).trim());
+            } catch (error, stack) {
+              completer.completeError(error, stack);
+            }
+            subscription.pause();
+            return;
+          }
+          if (byte == 13) continue;
+          buffer.add(byte);
+          if (buffer.length > _maxControlLineBytes) {
+            completer.completeError(
+              const FormatException('D2D control frame слишком большой'),
+            );
+            subscription.pause();
+            return;
+          }
+        }
+      },
+      onError: (Object error, StackTrace stack) {
+        if (!completer.isCompleted) completer.completeError(error, stack);
+      },
+      onDone: () {
+        if (!completer.isCompleted) {
+          completer.completeError(
+            const FormatException('D2D control frame оборван'),
+          );
+        }
+      },
+      cancelOnError: false,
+    );
+    try {
+      return await completer.future.timeout(_frameTimeout);
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
+  static Future<Uint8List> _readPayload(Socket socket) async {
+    final completer = Completer<Uint8List>();
+    final header = <int>[];
+    final body = BytesBuilder(copy: false);
+    int? expectedLength;
+    late StreamSubscription<Uint8List> subscription;
+
+    void fail(Object error, [StackTrace? stack]) {
+      if (completer.isCompleted) return;
+      if (stack == null) {
+        completer.completeError(error);
+      } else {
+        completer.completeError(error, stack);
+      }
+      subscription.pause();
+    }
+
+    subscription = socket.listen(
+      (chunk) {
+        if (completer.isCompleted) return;
+        var index = 0;
+        while (index < chunk.length) {
+          if (expectedLength == null) {
+            final byte = chunk[index++];
+            if (byte == 10) {
+              String line;
+              try {
+                line = utf8.decode(header).trim();
+              } catch (error, stack) {
+                fail(error, stack);
+                return;
+              }
+              if (line.startsWith('ERR ')) {
+                fail(FormatException('D2D sender отклонил запрос: $line'));
+                return;
+              }
+              final match = RegExp(r'^OK ([0-9]{1,12})$').firstMatch(line);
+              final parsed = match == null ? null : int.tryParse(match.group(1)!);
+              if (parsed == null ||
+                  parsed <= 0 ||
+                  parsed > WesiAiBackupService.maxPackageBytes + 1024 * 1024) {
+                fail(const FormatException('Некорректный D2D payload header'));
+                return;
+              }
+              expectedLength = parsed;
+              continue;
+            }
+            if (byte != 13) header.add(byte);
+            if (header.length > _maxControlLineBytes) {
+              fail(const FormatException('D2D response header слишком большой'));
+              return;
+            }
+            continue;
+          }
+          final expected = expectedLength!;
+          final remaining = expected - body.length;
+          final take = (chunk.length - index) < remaining
+              ? chunk.length - index
+              : remaining;
+          if (take > 0) {
+            body.add(Uint8List.sublistView(chunk, index, index + take));
+            index += take;
+          }
+          if (body.length == expected) {
+            if (index != chunk.length) {
+              fail(const FormatException('D2D payload содержит лишние байты'));
+              return;
+            }
+            completer.complete(body.takeBytes());
+            subscription.pause();
+            return;
+          }
+        }
+      },
+      onError: (Object error, StackTrace stack) => fail(error, stack),
+      onDone: () {
+        if (!completer.isCompleted) {
+          fail(const FormatException('D2D payload оборван'));
+        }
+      },
+      cancelOnError: false,
+    );
+    try {
+      return await completer.future.timeout(_frameTimeout);
+    } finally {
+      await subscription.cancel();
+    }
+  }
+
+  static Future<void> _sendControl(Socket socket, String line) async {
+    socket.add(utf8.encode('$line\n'));
+    await socket.flush();
+    await socket.close();
   }
 
   static bool isPrivateOrLoopback(InternetAddress? address) {
@@ -308,8 +438,9 @@ class WesiAiD2DService {
     if (address.isLoopback) return true;
     if (address.type == InternetAddressType.IPv4) {
       final parts = address.address.split('.').map(int.tryParse).toList();
-      if (parts.length != 4 || parts.any((value) => value == null))
+      if (parts.length != 4 || parts.any((value) => value == null)) {
         return false;
+      }
       final a = parts[0]!;
       final b = parts[1]!;
       return a == 10 ||
