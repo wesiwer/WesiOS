@@ -62,7 +62,7 @@ replacement = '''class WesiEd25519RuntimeSignatureVerifier
 }
 
 '''
-text, count = pattern.subn(replacement, text, count=1)
+text, count = pattern.subn(lambda match: replacement, text, count=1)
 if count != 1:
     raise SystemExit('failed to replace Ed25519 verifier')
 
