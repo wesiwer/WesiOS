@@ -16,15 +16,19 @@ jobs:
       - uses: actions/checkout@v4
         with:
           token: ${{ github.token }}
-      - name: Bump version without rewriting pubspec
+      - name: Ensure release version is 0.22.9+84
         run: |
           set -euo pipefail
           sed -i -E 's/^version: .*/version: 0.22.9+84/' pubspec.yaml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add pubspec.yaml
-          git commit -m 'chore(release): WesiOS 0.22.9+84'
-          git push origin HEAD:main
+          if git diff --cached --quiet; then
+            echo 'pubspec already has version 0.22.9+84; no version commit needed'
+          else
+            git commit -m 'chore(release): WesiOS 0.22.9+84'
+            git push origin HEAD:main
+          fi
       - name: Dispatch signed production release
         env:
           GH_TOKEN: ${{ github.token }}
