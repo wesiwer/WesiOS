@@ -30,7 +30,8 @@ class WesiRuntimePackCatalog {
           platforms: _desktop,
           managedArtifactId: 'git-portable',
           bindingId: 'git',
-          description: 'Local-only Git used by typed status/diff/add/commit tools.',
+          description:
+              'Local-only Git used by typed status/diff/add/commit tools.',
           probes: <WesiRuntimeProbe>[
             WesiRuntimeProbe(
               executableNames: const <String>['git'],
@@ -45,7 +46,8 @@ class WesiRuntimePackCatalog {
           kind: WesiRuntimeDependencyKind.executable,
           platforms: _desktop,
           managedArtifactId: 'archive-tools',
-          description: '7-Zip compatible archive tooling used by managed workflows.',
+          description:
+              '7-Zip compatible archive tooling used by managed workflows.',
           probes: <WesiRuntimeProbe>[
             WesiRuntimeProbe(
               executableNames: const <String>['7zz', '7z'],
@@ -157,7 +159,8 @@ class WesiRuntimePackCatalog {
             WesiRuntimeProbe(
               executableNames: const <String>['flutter'],
               arguments: const <String>['--version', '--machine'],
-              versionPattern: RegExp(r'"frameworkVersion"\s*:\s*"([0-9]+(?:\.[0-9]+)+)'),
+              versionPattern:
+                  RegExp(r'"frameworkVersion"\s*:\s*"([0-9]+(?:\.[0-9]+)+)'),
             ),
             WesiRuntimeProbe(
               executableNames: const <String>['flutter'],
@@ -177,7 +180,8 @@ class WesiRuntimePackCatalog {
             WesiRuntimeProbe(
               executableNames: const <String>['adb'],
               arguments: const <String>['version'],
-              versionPattern: RegExp(r'Android Debug Bridge version\s+([0-9]+(?:\.[0-9]+)+)'),
+              versionPattern: RegExp(
+                  r'Android Debug Bridge version\s+([0-9]+(?:\.[0-9]+)+)'),
             ),
           ],
         ),
@@ -188,7 +192,8 @@ class WesiRuntimePackCatalog {
           minimumVersion: '3.22.0',
           platforms: _desktop,
           managedArtifactId: 'cmake-runtime',
-          description: 'Native build generator used when the project requires it.',
+          description:
+              'Native build generator used when the project requires it.',
           probes: <WesiRuntimeProbe>[
             WesiRuntimeProbe(
               executableNames: const <String>['cmake'],
@@ -251,7 +256,8 @@ class WesiRuntimePackCatalog {
     WesiRuntimePackSpec(
       id: WesiRuntimePackId.documents,
       title: 'Documents Pack',
-      description: 'Managed PDF/DOCX/XLSX/PPTX creation and validation toolchain.',
+      description:
+          'Managed PDF/DOCX/XLSX/PPTX creation and validation toolchain.',
       capabilities: const <WesiLocalCapability>[WesiLocalCapability.documents],
       dependencies: <WesiRuntimeDependencySpec>[
         WesiRuntimeDependencySpec(
@@ -292,7 +298,8 @@ class WesiRuntimePackCatalog {
           bindingId: 'ffmpeg',
           bindingSandboxProfile: WesiLocalSandboxProfile.workspaceV1,
           bindingAllowsArbitraryCode: true,
-          description: 'FFmpeg reused when compatible or installed as a managed tool.',
+          description:
+              'FFmpeg reused when compatible or installed as a managed tool.',
           probes: <WesiRuntimeProbe>[
             WesiRuntimeProbe(
               executableNames: const <String>['ffmpeg'],

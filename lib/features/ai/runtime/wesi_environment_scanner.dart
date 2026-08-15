@@ -126,7 +126,8 @@ class WesiEnvironmentScanner {
     return WesiRuntimeScanSnapshot(
       platform: platform,
       scannedAt: DateTime.now().toUtc(),
-      dependencies: Map<String, WesiRuntimeDetectedDependency>.unmodifiable(found),
+      dependencies:
+          Map<String, WesiRuntimeDetectedDependency>.unmodifiable(found),
     );
   }
 
@@ -178,7 +179,8 @@ class WesiEnvironmentScanner {
           .map((name) => p.basename(name).toLowerCase())
           .toSet();
       final executableBase = p.basename(executable).toLowerCase();
-      final executableStem = p.basenameWithoutExtension(executable).toLowerCase();
+      final executableStem =
+          p.basenameWithoutExtension(executable).toLowerCase();
       final nameMatches = candidateNames.isEmpty ||
           candidateNames.contains(executableBase) ||
           candidateNames.contains(executableStem) ||
@@ -195,7 +197,8 @@ class WesiEnvironmentScanner {
       final output = switch (probe.versionStream) {
         WesiRuntimeProbeStream.stdout => outcome.stdout,
         WesiRuntimeProbeStream.stderr => outcome.stderr,
-        WesiRuntimeProbeStream.combined => '${outcome.stdout}\n${outcome.stderr}',
+        WesiRuntimeProbeStream.combined =>
+          '${outcome.stdout}\n${outcome.stderr}',
       };
       final version = extractVersion(output, probe.versionPattern);
       final compatible = dependency.minimumVersion == null
@@ -229,7 +232,7 @@ class WesiEnvironmentScanner {
     final extensions = _candidateExtensions(trimmed);
     for (final directory in pathValue.split(Platform.isWindows ? ';' : ':')) {
       final dir = directory.trim();
-      if (dir.isEmpty) continue;
+      if (dir.isEmpty || !p.isAbsolute(dir)) continue;
       for (final extension in extensions) {
         final candidate = File(p.join(dir, '$trimmed$extension'));
         if (candidate.existsSync()) return candidate.absolute.path;
@@ -264,9 +267,7 @@ class WesiEnvironmentScanner {
       }
       return null;
     }
-    return RegExp(r'([0-9]+(?:\.[0-9]+){1,3})')
-        .firstMatch(output)
-        ?.group(1);
+    return RegExp(r'([0-9]+(?:\.[0-9]+){1,3})').firstMatch(output)?.group(1);
   }
 
   static int compareVersions(String left, String right) {

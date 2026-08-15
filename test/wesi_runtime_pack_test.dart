@@ -1,7 +1,9 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
+import 'package:cryptography/cryptography.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
 import 'package:wesios/features/ai/runtime/wesi_environment_scanner.dart';
@@ -37,7 +39,8 @@ class _AcceptSignature implements WesiRuntimeSignatureVerifier {
   const _AcceptSignature();
 
   @override
-  Future<bool> verifyDescriptor(WesiRuntimeArtifactDescriptor descriptor) async =>
+  Future<bool> verifyDescriptor(
+          WesiRuntimeArtifactDescriptor descriptor) async =>
       true;
 }
 
@@ -45,7 +48,8 @@ class _RejectSignature implements WesiRuntimeSignatureVerifier {
   const _RejectSignature();
 
   @override
-  Future<bool> verifyDescriptor(WesiRuntimeArtifactDescriptor descriptor) async =>
+  Future<bool> verifyDescriptor(
+          WesiRuntimeArtifactDescriptor descriptor) async =>
       false;
 }
 
@@ -137,7 +141,9 @@ WesiRuntimeArtifactDescriptor _descriptor(
       id: 'tool-package',
       platform: WesiRuntimePlatform.linux,
       downloadUri: Uri.parse('https://runtime.example.invalid/tool.zip'),
-      sha256Hex: hashOverride.isEmpty ? sha256.convert(bytes).toString() : hashOverride,
+      sha256Hex: hashOverride.isEmpty
+          ? sha256.convert(bytes).toString()
+          : hashOverride,
       signingKeyId: 'test-key',
       signatureBase64: 'AA==',
       downloadBytes: bytes.length,
@@ -156,12 +162,15 @@ List<int> _zip(String name, List<int> bytes) {
 void main() {
   group('Environment Scanner', () {
     test('compares numeric versions without lexicographic mistakes', () {
-      expect(WesiEnvironmentScanner.compareVersions('3.11.9', '3.9.20'), greaterThan(0));
+      expect(WesiEnvironmentScanner.compareVersions('3.11.9', '3.9.20'),
+          greaterThan(0));
       expect(WesiEnvironmentScanner.compareVersions('20.0.0', '20'), 0);
-      expect(WesiEnvironmentScanner.compareVersions('17.0.1', '17.0.2'), lessThan(0));
+      expect(WesiEnvironmentScanner.compareVersions('17.0.1', '17.0.2'),
+          lessThan(0));
     });
 
-    test('reuses a compatible PATH dependency and executes fixed probe only', () async {
+    test('reuses a compatible PATH dependency and executes fixed probe only',
+        () async {
       final root = await Directory.systemTemp.createTemp('wesi-scan-');
       addTearDown(() => root.delete(recursive: true));
       final executable = File(p.join(root.path, 'tool'));
@@ -188,7 +197,33 @@ void main() {
       expect(runner.calls.single.skip(1), <String>['--version']);
     });
 
-    test('managed dependency wins over system and no-reuse spec stays managed', () async {
+    test('relative PATH entries are ignored during system reuse scanning',
+        () async {
+      final root = await Directory.systemTemp.createTemp('wesi-relative-path-');
+      addTearDown(() => root.delete(recursive: true));
+      final executable = File(p.join(root.path, 'tool'));
+      await executable.writeAsString('fake');
+      final relative = p.relative(root.path, from: Directory.current.path);
+      final runner = _FakeProbeRunner(<String, WesiRuntimeProbeOutcome>{
+        'tool': const WesiRuntimeProbeOutcome(
+          exitCode: 0,
+          stdout: 'Tool 2.4.1',
+          stderr: '',
+          timedOut: false,
+        ),
+      });
+      final scanner = WesiEnvironmentScanner(
+        runner: runner,
+        platform: WesiRuntimePlatform.linux,
+        environment: <String, String>{'PATH': relative},
+      );
+      final detected = await scanner.scanDependency(_toolSpec());
+      expect(detected.detected, isFalse);
+      expect(runner.calls, isEmpty);
+    });
+
+    test('managed dependency wins over system and no-reuse spec stays managed',
+        () async {
       final root = await Directory.systemTemp.createTemp('wesi-managed-');
       addTearDown(() => root.delete(recursive: true));
       final managed = File(p.join(root.path, 'wesi-sandbox'));
@@ -232,13 +267,65 @@ void main() {
     });
   });
 
+  test(
+      'real Ed25519 descriptor verification accepts valid and rejects tampered payload',
+      () async {
+    final algorithm = Ed25519();
+    final keyPair = await algorithm.newKeyPair();
+    final publicKey = await keyPair.extractPublicKey();
+    final unsigned = _descriptor(<int>[1, 2, 3]);
+    final payload =
+        WesiEd25519RuntimeSignatureVerifier.signaturePayload(unsigned);
+    final signed = await algorithm.sign(
+      utf8.encode(payload),
+      keyPair: keyPair,
+    );
+    final descriptor = WesiRuntimeArtifactDescriptor(
+      id: unsigned.id,
+      platform: unsigned.platform,
+      downloadUri: unsigned.downloadUri,
+      sha256Hex: unsigned.sha256Hex,
+      signingKeyId: unsigned.signingKeyId,
+      signatureBase64: base64Encode(signed.bytes),
+      downloadBytes: unsigned.downloadBytes,
+      installedBytes: unsigned.installedBytes,
+      installKind: unsigned.installKind,
+      installRelativePath: unsigned.installRelativePath,
+      executableRelativePath: unsigned.executableRelativePath,
+      version: unsigned.version,
+    );
+    final verifier = WesiEd25519RuntimeSignatureVerifier(
+      <String, List<int>>{'test-key': publicKey.bytes},
+    );
+    expect(await verifier.verifyDescriptor(descriptor), isTrue);
+
+    final tampered = WesiRuntimeArtifactDescriptor(
+      id: descriptor.id,
+      platform: descriptor.platform,
+      downloadUri: Uri.parse('https://runtime.example.invalid/tampered.zip'),
+      sha256Hex: descriptor.sha256Hex,
+      signingKeyId: descriptor.signingKeyId,
+      signatureBase64: descriptor.signatureBase64,
+      downloadBytes: descriptor.downloadBytes,
+      installedBytes: descriptor.installedBytes,
+      installKind: descriptor.installKind,
+      installRelativePath: descriptor.installRelativePath,
+      executableRelativePath: descriptor.executableRelativePath,
+      version: descriptor.version,
+    );
+    expect(await verifier.verifyDescriptor(tampered), isFalse);
+  });
+
   group('Pack planning and artifact policy', () {
-    test('plan chooses reuse, upgrade, install and unsupported deterministically', () {
+    test(
+        'plan chooses reuse, upgrade, install and unsupported deterministically',
+        () {
       final dependency = _toolSpec();
       final manager = WesiRuntimePackManager(
         runtimeRoot: Directory.systemTemp,
         scanner: WesiEnvironmentScanner(platform: WesiRuntimePlatform.linux),
-        artifactCatalog: const WesiStaticRuntimeArtifactCatalog(<String, WesiRuntimeArtifactDescriptor>{}),
+        artifactCatalog: const WesiStaticRuntimeArtifactCatalog(
+            <String, WesiRuntimeArtifactDescriptor>{}),
         signatureVerifier: const _AcceptSignature(),
       );
       WesiRuntimePackPlan planFor(WesiRuntimeDetectedDependency detected) =>
@@ -247,7 +334,9 @@ void main() {
             WesiRuntimeScanSnapshot(
               platform: WesiRuntimePlatform.linux,
               scannedAt: DateTime.utc(2026),
-              dependencies: <String, WesiRuntimeDetectedDependency>{'tool': detected},
+              dependencies: <String, WesiRuntimeDetectedDependency>{
+                'tool': detected
+              },
             ),
           );
 
@@ -274,7 +363,10 @@ void main() {
         WesiRuntimeDependencyAction.upgrade,
       );
       expect(
-        planFor(WesiRuntimeDetectedDependency.missing('tool')).items.single.action,
+        planFor(WesiRuntimeDetectedDependency.missing('tool'))
+            .items
+            .single
+            .action,
         WesiRuntimeDependencyAction.install,
       );
       final unsupported = manager.plan(
@@ -285,10 +377,12 @@ void main() {
           dependencies: const <String, WesiRuntimeDetectedDependency>{},
         ),
       );
-      expect(unsupported.items.single.action, WesiRuntimeDependencyAction.unsupported);
+      expect(unsupported.items.single.action,
+          WesiRuntimeDependencyAction.unsupported);
     });
 
-    test('artifact descriptor rejects credentials, insecure URL and traversal', () {
+    test('artifact descriptor rejects credentials, insecure URL and traversal',
+        () {
       final base = _descriptor(const <int>[1]);
       expect(() => base.validateShape(), returnsNormally);
       final bad = WesiRuntimeArtifactDescriptor(
@@ -314,7 +408,8 @@ void main() {
       final manager = WesiRuntimePackManager(
         runtimeRoot: Directory.systemTemp,
         scanner: WesiEnvironmentScanner(platform: WesiRuntimePlatform.linux),
-        artifactCatalog: WesiStaticRuntimeArtifactCatalog(<String, WesiRuntimeArtifactDescriptor>{
+        artifactCatalog: WesiStaticRuntimeArtifactCatalog(<String,
+            WesiRuntimeArtifactDescriptor>{
           'linux:tool-package': descriptor,
         }),
         signatureVerifier: const _RejectSignature(),
@@ -340,10 +435,11 @@ void main() {
   group('Verified installation', () {
     test('checksum mismatch aborts before extraction', () async {
       final bytes = _zip('bin/tool', const <int>[1, 2, 3]);
-      final descriptor = _descriptor(bytes, hashOverride: '0' * 64);
+      final descriptor = _descriptor(bytes, hashOverride: '${'0' * 64}');
       final root = await Directory.systemTemp.createTemp('wesi-pack-');
       addTearDown(() => root.delete(recursive: true));
-      final runner = _FakeProbeRunner(const <String, WesiRuntimeProbeOutcome>{});
+      final runner =
+          _FakeProbeRunner(const <String, WesiRuntimeProbeOutcome>{});
       final manager = WesiRuntimePackManager(
         runtimeRoot: root,
         scanner: WesiEnvironmentScanner(
@@ -351,7 +447,8 @@ void main() {
           platform: WesiRuntimePlatform.linux,
           environment: const <String, String>{'PATH': ''},
         ),
-        artifactCatalog: WesiStaticRuntimeArtifactCatalog(<String, WesiRuntimeArtifactDescriptor>{
+        artifactCatalog: WesiStaticRuntimeArtifactCatalog(<String,
+            WesiRuntimeArtifactDescriptor>{
           'linux:tool-package': descriptor,
         }),
         signatureVerifier: const _AcceptSignature(),
@@ -375,7 +472,8 @@ void main() {
       );
     });
 
-    test('ZIP traversal is rejected and cannot escape managed runtime root', () async {
+    test('ZIP traversal is rejected and cannot escape managed runtime root',
+        () async {
       final bytes = _zip('../escape', const <int>[1, 2, 3]);
       final descriptor = _descriptor(bytes);
       final root = await Directory.systemTemp.createTemp('wesi-pack-');
@@ -387,7 +485,8 @@ void main() {
           platform: WesiRuntimePlatform.linux,
           environment: const <String, String>{'PATH': ''},
         ),
-        artifactCatalog: WesiStaticRuntimeArtifactCatalog(<String, WesiRuntimeArtifactDescriptor>{
+        artifactCatalog: WesiStaticRuntimeArtifactCatalog(<String,
+            WesiRuntimeArtifactDescriptor>{
           'linux:tool-package': descriptor,
         }),
         signatureVerifier: const _AcceptSignature(),
@@ -412,7 +511,67 @@ void main() {
       expect(await File(p.join(root.parent.path, 'escape')).exists(), isFalse);
     });
 
-    test('post-install scan is mandatory before a dependency becomes reusable', () async {
+    test('failed post-install scan restores the previously active pack',
+        () async {
+      final bytes = _zip('bin/tool', const <int>[1, 2, 3]);
+      final descriptor = _descriptor(bytes);
+      final root = await Directory.systemTemp.createTemp('wesi-pack-rollback-');
+      addTearDown(() => root.delete(recursive: true));
+      final activeRoot =
+          Directory(p.join(root.path, WesiRuntimePackId.core.name));
+      await activeRoot.create(recursive: true);
+      final sentinel = File(p.join(activeRoot.path, 'previous.txt'));
+      await sentinel.writeAsString('previous-active-pack');
+
+      final manager = WesiRuntimePackManager(
+        runtimeRoot: root,
+        scanner: WesiEnvironmentScanner(
+          runner: _FakeProbeRunner(const <String, WesiRuntimeProbeOutcome>{}),
+          platform: WesiRuntimePlatform.linux,
+          environment: const <String, String>{'PATH': ''},
+        ),
+        artifactCatalog: WesiStaticRuntimeArtifactCatalog(
+          <String, WesiRuntimeArtifactDescriptor>{
+            'linux:tool-package': descriptor,
+          },
+        ),
+        signatureVerifier: const _AcceptSignature(),
+        downloader: _BytesDownloader(bytes),
+      );
+      final plan = manager.plan(
+        _pack(_toolSpec()),
+        WesiRuntimeScanSnapshot(
+          platform: WesiRuntimePlatform.linux,
+          scannedAt: DateTime.utc(2026),
+          dependencies: <String, WesiRuntimeDetectedDependency>{
+            'tool': WesiRuntimeDetectedDependency.missing('tool'),
+          },
+        ),
+      );
+
+      await expectLater(
+        manager.installAndActivate(
+          await manager.preview(plan),
+          userConfirmed: true,
+        ),
+        throwsA(
+          isA<WesiRuntimePackException>().having(
+            (e) => e.code,
+            'code',
+            'WRP_POST_SCAN_FAILED',
+          ),
+        ),
+      );
+      expect(await sentinel.exists(), isTrue);
+      expect(await sentinel.readAsString(), 'previous-active-pack');
+      expect(
+        await File(p.join(activeRoot.path, 'tool', 'bin', 'tool')).exists(),
+        isFalse,
+      );
+    });
+
+    test('post-install scan is mandatory before a dependency becomes reusable',
+        () async {
       final bytes = _zip('bin/tool', const <int>[1, 2, 3]);
       final descriptor = _descriptor(bytes);
       final root = await Directory.systemTemp.createTemp('wesi-pack-');
@@ -433,7 +592,8 @@ void main() {
           platform: WesiRuntimePlatform.linux,
           environment: const <String, String>{'PATH': ''},
         ),
-        artifactCatalog: WesiStaticRuntimeArtifactCatalog(<String, WesiRuntimeArtifactDescriptor>{
+        artifactCatalog: WesiStaticRuntimeArtifactCatalog(<String,
+            WesiRuntimeArtifactDescriptor>{
           'linux:tool-package': descriptor,
         }),
         signatureVerifier: const _AcceptSignature(),
@@ -460,7 +620,9 @@ void main() {
   });
 
   group('workspaceV1 wrapper contract', () {
-    test('executor invokes trusted wrapper with limits and target before model args', () async {
+    test(
+        'executor invokes trusted wrapper with limits and target before model args',
+        () async {
       final root = await Directory.systemTemp.createTemp('wesi-wrapper-');
       addTearDown(() => root.delete(recursive: true));
       final script = File(p.join(root.path, 'script.py'));
@@ -498,25 +660,27 @@ void main() {
       );
       expect(result.ok, isTrue);
       expect(runner.executable, '/trusted/wesi-sandbox');
-      expect(runner.arguments, containsAllInOrder(<String>[
-        '--contract',
-        'workspace-v1',
-        '--workspace',
-        root.path,
-        '--memory-bytes',
-        '${512 * 1024 * 1024}',
-        '--workspace-bytes',
-        '${2 * 1024 * 1024 * 1024}',
-        '--cpu-percent',
-        '70',
-        '--network',
-        'deny',
-        '--target',
-        '/trusted/python',
-        '--',
-        script.path,
-        'hello',
-      ]));
+      expect(
+          runner.arguments,
+          containsAllInOrder(<String>[
+            '--contract',
+            'workspace-v1',
+            '--workspace',
+            root.path,
+            '--memory-bytes',
+            '${512 * 1024 * 1024}',
+            '--workspace-bytes',
+            '${2 * 1024 * 1024 * 1024}',
+            '--cpu-percent',
+            '70',
+            '--network',
+            'deny',
+            '--target',
+            '/trusted/python',
+            '--',
+            script.path,
+            'hello',
+          ]));
     });
   });
 }

@@ -265,6 +265,21 @@ class WesiLocalRuntimePolicy {
         'Не настроен локальный runtime: $id',
       );
     }
+    if (!p.isAbsolute(binding.executablePath)) {
+      throw WesiLocalRuntimePolicyException(
+        'WLR_BINDING_PATH_INVALID',
+        'Runtime $id должен использовать доверенный абсолютный executable path',
+      );
+    }
+    if (binding.sandboxProfile == WesiLocalSandboxProfile.workspaceV1) {
+      final target = binding.sandboxTargetPath?.trim() ?? '';
+      if (target.isEmpty || !p.isAbsolute(target)) {
+        throw WesiLocalRuntimePolicyException(
+          'WLR_SANDBOX_TARGET_MISSING',
+          'Runtime $id не содержит доверенный target для workspaceV1 wrapper',
+        );
+      }
+    }
     if (requireSandbox &&
         binding.sandboxProfile != WesiLocalSandboxProfile.workspaceV1) {
       throw WesiLocalRuntimePolicyException(
@@ -336,7 +351,9 @@ class WesiLocalRuntimePolicy {
           'Header $key должен добавляться только доверенным Connector Broker',
         );
       }
-      if (lower == 'host' || lower == 'content-length' || lower == 'connection') {
+      if (lower == 'host' ||
+          lower == 'content-length' ||
+          lower == 'connection') {
         continue;
       }
       out[key] = value;

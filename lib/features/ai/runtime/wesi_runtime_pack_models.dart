@@ -152,8 +152,11 @@ class WesiRuntimePackPlan {
     required this.items,
   });
 
-  bool get supported =>
-      items.every((item) => item.action != WesiRuntimeDependencyAction.unsupported);
+  bool get supported => items.every(
+        (item) =>
+            item.dependency.optional ||
+            item.action != WesiRuntimeDependencyAction.unsupported,
+      );
 
   bool get ready => items.every(
         (item) =>
@@ -218,8 +221,9 @@ class WesiRuntimeArtifactDescriptor {
     }
     if (downloadUri.scheme.toLowerCase() != 'https' ||
         downloadUri.host.isEmpty ||
-        downloadUri.hasUserInfo) {
-      throw const FormatException('Runtime artifact must use credential-free HTTPS');
+        downloadUri.userInfo.isNotEmpty) {
+      throw const FormatException(
+          'Runtime artifact must use credential-free HTTPS');
     }
     if (!RegExp(r'^[a-fA-F0-9]{64}$').hasMatch(sha256Hex)) {
       throw const FormatException('Invalid SHA-256');

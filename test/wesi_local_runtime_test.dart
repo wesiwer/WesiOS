@@ -208,7 +208,8 @@ void main() {
         executables: <String, WesiLocalExecutableBinding>{
           'python': WesiLocalExecutableBinding(
             id: 'python',
-            executablePath: '/trusted/python',
+            executablePath: '/trusted/wesi-sandbox',
+            sandboxTargetPath: '/trusted/python',
             sandboxProfile: WesiLocalSandboxProfile.workspaceV1,
             allowArbitraryCode: true,
           ),
@@ -233,7 +234,17 @@ void main() {
     );
     expect(allowed.ok, isTrue);
     expect(fake.calls, 1);
-    expect(fake.executable, '/trusted/python');
+    expect(fake.executable, '/trusted/wesi-sandbox');
+    expect(
+        fake.arguments,
+        containsAllInOrder(<String>[
+          '--contract',
+          'workspace-v1',
+          '--target',
+          '/trusted/python',
+          '--',
+          '--version',
+        ]));
     expect(fake.environment?['PATH'], '/trusted/bin');
     expect(fake.environment?.containsKey('AWS_SECRET_ACCESS_KEY'), isFalse);
     expect(fake.environment?['HOME'], startsWith(root.path));

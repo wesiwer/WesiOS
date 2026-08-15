@@ -2,17 +2,17 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
-import 'package:pointycastle/export.dart';
+import 'package:cryptography/cryptography.dart';
 
 import 'wesi_environment_scanner.dart';
 import 'wesi_local_runtime_models.dart';
 import 'wesi_local_runtime_policy.dart';
 import 'wesi_runtime_pack_models.dart';
+import 'wesi_runtime_pack_catalog.dart';
 
 class WesiRuntimePackException implements Exception {
   final String code;
@@ -36,7 +36,8 @@ class WesiStaticRuntimeArtifactCatalog implements WesiRuntimeArtifactCatalog {
 
   const WesiStaticRuntimeArtifactCatalog(this.artifacts);
 
-  String _key(String id, WesiRuntimePlatform platform) => '${platform.name}:$id';
+  String _key(String id, WesiRuntimePlatform platform) =>
+      '${platform.name}:$id';
 
   @override
   Future<WesiRuntimeArtifactDescriptor?> resolve(
@@ -98,7 +99,8 @@ class WesiIoRuntimeDownloadClient implements WesiRuntimeDownloadClient {
     try {
       final request = await client.getUrl(uri);
       request.followRedirects = false;
-      final response = await request.close().timeout(const Duration(seconds: 30));
+      final response =
+          await request.close().timeout(const Duration(seconds: 30));
       if (response.isRedirect) {
         throw const WesiRuntimePackException(
           'WRP_DOWNLOAD_REDIRECT_BLOCKED',
@@ -147,22 +149,25 @@ class WesiEd25519RuntimeSignatureVerifier
   const WesiEd25519RuntimeSignatureVerifier(this.publicKeys);
 
   @override
-  Future<bool> verifyDescriptor(WesiRuntimeArtifactDescriptor descriptor) async {
+  Future<bool> verifyDescriptor(
+      WesiRuntimeArtifactDescriptor descriptor) async {
     final key = publicKeys[descriptor.signingKeyId];
     if (key == null || key.length != 32) return false;
     try {
-      final signature = base64Decode(descriptor.signatureBase64);
-      if (signature.length != 64) return false;
-      final signer = Ed25519Signer();
-      signer.init(
-        false,
-        PublicKeyParameter<Ed25519PublicKeyParameters>(
-          Ed25519PublicKeyParameters(Uint8List.fromList(key)),
-        ),
+      final signatureBytes = base64Decode(descriptor.signatureBase64);
+      if (signatureBytes.length != 64) return false;
+      final algorithm = Ed25519();
+      final publicKey = SimplePublicKey(
+        key,
+        type: algorithm.keyPairType,
       );
-      return signer.verifySignature(
-        Uint8List.fromList(utf8.encode(signaturePayload(descriptor))),
-        Ed25519Signature(Uint8List.fromList(signature)),
+      final signature = Signature(
+        signatureBytes,
+        publicKey: publicKey,
+      );
+      return algorithm.verify(
+        utf8.encode(signaturePayload(descriptor)),
+        signature: signature,
       );
     } catch (_) {
       return false;
@@ -174,6 +179,7 @@ class WesiEd25519RuntimeSignatureVerifier
         'wesi-runtime-artifact-v1',
         descriptor.id,
         descriptor.platform.name,
+        descriptor.downloadUri.toString(),
         descriptor.version,
         descriptor.sha256Hex.toLowerCase(),
         '${descriptor.downloadBytes}',
@@ -262,7 +268,8 @@ class WesiRuntimePackManager {
     for (final item in plan.changes) {
       final artifactId = item.dependency.managedArtifactId;
       if (artifactId == null) continue;
-      final descriptor = await artifactCatalog.resolve(artifactId, plan.platform);
+      final descriptor =
+          await artifactCatalog.resolve(artifactId, plan.platform);
       if (descriptor == null) {
         if (item.dependency.optional) continue;
         throw WesiRuntimePackException(
@@ -320,7 +327,8 @@ class WesiRuntimePackManager {
 
     await runtimeRoot.create(recursive: true);
     final rootCanonical = p.normalize(p.absolute(runtimeRoot.path));
-    final packRoot = Directory(p.join(rootCanonical, preview.plan.pack.id.name));
+    final packRoot =
+        Directory(p.join(rootCanonical, preview.plan.pack.id.name));
     final staging = Directory(
       p.join(
         rootCanonical,
@@ -341,26 +349,58 @@ class WesiRuntimePackManager {
       }
       final downloads = Directory(p.join(staging.path, '.downloads'));
       if (await downloads.exists()) await downloads.delete(recursive: true);
-      await _replaceDirectoryAtomically(staging, packRoot);
-
-      final managedPaths = await _managedPathsForPack(preview.plan.pack, packRoot);
-      final verified = await scanner.scan(
-        preview.plan.pack.dependencies,
-        managedExecutablePaths: managedPaths,
+      final verificationDependencies = <WesiRuntimeDependencySpec>[
+        ...preview.plan.pack.dependencies
+      ];
+      final needsSandbox = preview.plan.pack.dependencies.any(
+        (dependency) =>
+            dependency.bindingSandboxProfile ==
+            WesiLocalSandboxProfile.workspaceV1,
       );
-      final verifiedPlan = plan(preview.plan.pack, verified);
-      final blockers = verifiedPlan.items.where(
-        (item) => !item.dependency.optional &&
-            item.action != WesiRuntimeDependencyAction.reuse,
-      );
-      if (blockers.isNotEmpty) {
-        throw WesiRuntimePackException(
-          'WRP_POST_SCAN_FAILED',
-          'Installed Runtime Pack did not pass post-install verification: '
-              '${blockers.map((item) => item.dependency.id).join(', ')}',
+      final coreManagedPaths = <String, String>{};
+      if (needsSandbox && preview.plan.pack.id != WesiRuntimePackId.core) {
+        final corePack = WesiRuntimePackCatalog.byId(WesiRuntimePackId.core);
+        final sandboxDependency = corePack.dependencies.firstWhere(
+          (dependency) => dependency.id == 'wesi-sandbox',
+        );
+        verificationDependencies.add(sandboxDependency);
+        final coreRoot =
+            Directory(p.join(rootCanonical, WesiRuntimePackId.core.name));
+        coreManagedPaths.addAll(
+          await _managedPathsForPack(corePack, coreRoot),
         );
       }
-      return _activation(preview.plan.pack, verified, managedPaths);
+      final backup = await _switchDirectoryForVerification(staging, packRoot);
+      try {
+        final managedPaths =
+            await _managedPathsForPack(preview.plan.pack, packRoot);
+        managedPaths.addAll(coreManagedPaths);
+        final verified = await scanner.scan(
+          verificationDependencies,
+          managedExecutablePaths: managedPaths,
+        );
+        final verifiedPlan = plan(preview.plan.pack, verified);
+        final blockers = verifiedPlan.items.where(
+          (item) =>
+              !item.dependency.optional &&
+              item.action != WesiRuntimeDependencyAction.reuse,
+        );
+        if (blockers.isNotEmpty) {
+          throw WesiRuntimePackException(
+            'WRP_POST_SCAN_FAILED',
+            'Installed Runtime Pack did not pass post-install verification: '
+                '${blockers.map((item) => item.dependency.id).join(', ')}',
+          );
+        }
+        final activation =
+            _activation(preview.plan.pack, verified, managedPaths);
+        if (await backup.exists()) await backup.delete(recursive: true);
+        return activation;
+      } catch (_) {
+        if (await packRoot.exists()) await packRoot.delete(recursive: true);
+        if (await backup.exists()) await backup.rename(packRoot.path);
+        rethrow;
+      }
     } catch (_) {
       if (await staging.exists()) await staging.delete(recursive: true);
       rethrow;
@@ -398,7 +438,8 @@ class WesiRuntimePackManager {
     File package,
     Directory staging,
   ) async {
-    final destination = _safeInstallPath(staging.path, descriptor.installRelativePath);
+    final destination =
+        _safeInstallPath(staging.path, descriptor.installRelativePath);
     if (descriptor.installKind == WesiRuntimeInstallKind.portableFile) {
       await File(destination).parent.create(recursive: true);
       await package.copy(destination);
@@ -425,7 +466,16 @@ class WesiRuntimePackManager {
     await destinationRoot.create(recursive: true);
     for (final entry in archive) {
       final name = entry.name.replaceAll('\\', '/');
-      final output = _safeInstallPath(destinationRoot.path, name);
+      if (!entry.isFile && !name.endsWith('/')) {
+        throw const WesiRuntimePackException(
+          'WRP_ARCHIVE_ENTRY_INVALID',
+          'Runtime archive contains a special/symlink-like entry',
+        );
+      }
+      final pathName = !entry.isFile && name.endsWith('/')
+          ? name.substring(0, name.length - 1)
+          : name;
+      final output = _safeInstallPath(destinationRoot.path, pathName);
       if (entry.isFile) {
         expanded += entry.size;
         if (expanded > descriptor.installedBytes) {
@@ -444,12 +494,6 @@ class WesiRuntimePackManager {
         await File(output).parent.create(recursive: true);
         await File(output).writeAsBytes(content, flush: true);
       } else {
-        if (!name.endsWith('/')) {
-          throw const WesiRuntimePackException(
-            'WRP_ARCHIVE_ENTRY_INVALID',
-            'Runtime archive contains a special/symlink-like entry',
-          );
-        }
         await Directory(output).create(recursive: true);
       }
     }
@@ -486,15 +530,23 @@ class WesiRuntimePackManager {
     for (final dependency in pack.dependencies) {
       final artifactId = dependency.managedArtifactId;
       if (artifactId == null) continue;
-      final descriptor = await artifactCatalog.resolve(artifactId, scanner.platform);
-      if (descriptor == null || descriptor.executableRelativePath == null) continue;
+      final descriptor =
+          await artifactCatalog.resolve(artifactId, scanner.platform);
+      if (descriptor == null) continue;
       final installRoot = _safeInstallPath(
         packRoot.path,
         descriptor.installRelativePath,
       );
-      final executable = descriptor.installKind == WesiRuntimeInstallKind.portableFile
-          ? installRoot
-          : _safeInstallPath(installRoot, descriptor.executableRelativePath!);
+      final executable =
+          descriptor.installKind == WesiRuntimeInstallKind.portableFile
+              ? installRoot
+              : descriptor.executableRelativePath == null
+                  ? ''
+                  : _safeInstallPath(
+                      installRoot,
+                      descriptor.executableRelativePath!,
+                    );
+      if (executable.isEmpty) continue;
       if (File(executable).existsSync()) paths[dependency.id] = executable;
     }
     return paths;
@@ -516,11 +568,13 @@ class WesiRuntimePackManager {
       final bindingId = dependency.bindingId;
       if (bindingId == null) continue;
       final detected = snapshot.get(dependency.id);
-      if (!detected.detected || !detected.compatible ||
+      if (!detected.detected ||
+          !detected.compatible ||
           detected.executablePath == null) {
         continue;
       }
-      if (dependency.bindingSandboxProfile == WesiLocalSandboxProfile.workspaceV1) {
+      if (dependency.bindingSandboxProfile ==
+          WesiLocalSandboxProfile.workspaceV1) {
         if (sandboxPath == null || sandboxPath.isEmpty) {
           throw const WesiRuntimePackException(
             'WRP_SANDBOX_MISSING',
@@ -549,7 +603,8 @@ class WesiRuntimePackManager {
       packId: pack.id,
       verifiedSnapshot: snapshot,
       bindings: WesiLocalRuntimeBindings(
-        executables: Map<String, WesiLocalExecutableBinding>.unmodifiable(executables),
+        executables:
+            Map<String, WesiLocalExecutableBinding>.unmodifiable(executables),
         terminalAllowlist: Set<String>.unmodifiable(terminal),
       ),
       capabilities: Set<WesiLocalCapability>.unmodifiable(pack.capabilities),
@@ -557,7 +612,8 @@ class WesiRuntimePackManager {
   }
 
   static Future<void> _copyDirectory(Directory source, Directory target) async {
-    await for (final entity in source.list(recursive: false, followLinks: false)) {
+    await for (final entity
+        in source.list(recursive: false, followLinks: false)) {
       final type = await FileSystemEntity.type(entity.path, followLinks: false);
       if (type == FileSystemEntityType.link) continue;
       final destination = p.join(target.path, p.basename(entity.path));
@@ -571,7 +627,7 @@ class WesiRuntimePackManager {
     }
   }
 
-  static Future<void> _replaceDirectoryAtomically(
+  static Future<Directory> _switchDirectoryForVerification(
     Directory staging,
     Directory target,
   ) async {
@@ -580,7 +636,7 @@ class WesiRuntimePackManager {
     if (await target.exists()) await target.rename(backup.path);
     try {
       await staging.rename(target.path);
-      if (await backup.exists()) await backup.delete(recursive: true);
+      return backup;
     } catch (_) {
       if (await target.exists()) await target.delete(recursive: true);
       if (await backup.exists()) await backup.rename(target.path);
