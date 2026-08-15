@@ -310,18 +310,16 @@ class WesiAiBackupService {
     };
     for (final imported in decoded.memoryEntries) {
       final existing = memoryById[imported.id];
-      if (existing == null || imported.updatedAt.isAfter(existing.updatedAt)) {
-        memoryById[imported.id] = imported;
-      }
+      memoryById[imported.id] =
+          existing == null ? imported : _mergeMemoryEntries(existing, imported);
     }
     final dedupMemory = <String, WesiAiMemoryEntry>{};
     for (final item in memoryById.values) {
       final key =
           '${item.scope.name}|${item.projectId ?? ''}|${_normalize(item.text)}';
       final previous = dedupMemory[key];
-      if (previous == null || item.updatedAt.isAfter(previous.updatedAt)) {
-        dedupMemory[key] = item;
-      }
+      dedupMemory[key] =
+          previous == null ? item : _mergeMemoryEntries(previous, item);
     }
 
     final conversationMemory = <String, WesiAiConversationMemoryState>{
@@ -608,6 +606,20 @@ class WesiAiBackupService {
     if (value.isEmpty) value = 'artifact.bin';
     if (value.length > 180) value = value.substring(value.length - 180);
     return value;
+  }
+
+  static WesiAiMemoryEntry _mergeMemoryEntries(
+    WesiAiMemoryEntry first,
+    WesiAiMemoryEntry second,
+  ) {
+    final newer = second.updatedAt.isAfter(first.updatedAt) ? second : first;
+    return newer.copyWith(
+      manual: first.manual || second.manual,
+      pinned: first.pinned || second.pinned,
+      importance: first.importance >= second.importance
+          ? first.importance
+          : second.importance,
+    );
   }
 
   static String _normalize(String text) =>
