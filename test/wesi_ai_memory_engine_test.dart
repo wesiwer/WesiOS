@@ -59,6 +59,7 @@ class _CaptureApi extends WesiAiApi {
     Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
   }) async {
     histories.add(List<WesiAiMessage>.from(history));

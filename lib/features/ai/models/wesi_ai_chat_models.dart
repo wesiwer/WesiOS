@@ -97,6 +97,8 @@ class WesiAiConversation {
   final bool pinned;
   final bool importantForBackup;
   final String? projectId;
+  final String? branchedFromConversationId;
+  final String? branchedFromMessageId;
 
   const WesiAiConversation({
     required this.id,
@@ -110,6 +112,8 @@ class WesiAiConversation {
     this.pinned = false,
     this.importantForBackup = false,
     this.projectId,
+    this.branchedFromConversationId,
+    this.branchedFromMessageId,
   });
 
   WesiAiConversation copyWith({
@@ -122,6 +126,8 @@ class WesiAiConversation {
     bool? importantForBackup,
     String? projectId,
     bool clearProject = false,
+    String? branchedFromConversationId,
+    String? branchedFromMessageId,
   }) =>
       WesiAiConversation(
         id: id,
@@ -135,6 +141,10 @@ class WesiAiConversation {
         pinned: pinned ?? this.pinned,
         importantForBackup: importantForBackup ?? this.importantForBackup,
         projectId: clearProject ? null : (projectId ?? this.projectId),
+        branchedFromConversationId:
+            branchedFromConversationId ?? this.branchedFromConversationId,
+        branchedFromMessageId:
+            branchedFromMessageId ?? this.branchedFromMessageId,
       );
 
   Map<String, dynamic> toJson() => {
@@ -149,6 +159,8 @@ class WesiAiConversation {
         'pinned': pinned,
         'importantForBackup': importantForBackup,
         'projectId': projectId,
+        'branchedFromConversationId': branchedFromConversationId,
+        'branchedFromMessageId': branchedFromMessageId,
       };
 
   factory WesiAiConversation.fromJson(Map<String, dynamic> json) =>
@@ -166,6 +178,9 @@ class WesiAiConversation {
         pinned: json['pinned'] as bool? ?? false,
         importantForBackup: json['importantForBackup'] as bool? ?? false,
         projectId: json['projectId'] as String?,
+        branchedFromConversationId:
+            json['branchedFromConversationId'] as String?,
+        branchedFromMessageId: json['branchedFromMessageId'] as String?,
       );
 }
 

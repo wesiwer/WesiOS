@@ -253,7 +253,22 @@ function execute(e, ctx, name, args) {
       const expected=String(input.expectedSha||"").trim(); if(expected&&expected!==currentSha) throw new GithubConnectorError("GITHUB_SHA_CONFLICT","GitHub file changed since it was read",409);
       const payload={message,content:base64Utf8(content),branch:target}; if(currentSha) payload.sha=currentSha;
       const saved=api(e,ctx,input,name,"PUT",prefix+"/contents/"+p.split("/").map(encodeURIComponent).join("/"),null,payload);
-      const d=json(saved)||{}; return {ok:true,result:external({path:p,branch:target,contentSha:String(d.content&&d.content.sha||""),commitSha:String(d.commit&&d.commit.sha||"")})};
+      const d=json(saved)||{}, commitSha=String(d.commit&&d.commit.sha||"");
+      let additions=0,deletions=0,files=[],diffKnown=false;
+      if(/^[a-f0-9]{40,64}$/i.test(commitSha)){
+        try{
+          const detail=api(e,ctx,input,name,"GET",prefix+"/commits/"+encodeURIComponent(commitSha),null,null);
+          const commit=json(detail)||{}, rows=Array.isArray(commit.files)?commit.files:[];
+          const changed=rows.find((item)=>String(item&&item.filename||"")===p);
+          if(changed){
+            additions=Math.max(0,Number(changed.additions||0)||0);
+            deletions=Math.max(0,Number(changed.deletions||0)||0);
+            files=[p];
+            diffKnown=true;
+          }
+        }catch(_){ /* write already succeeded; diff enrichment is best effort */ }
+      }
+      return {ok:true,result:external({path:p,branch:target,contentSha:String(d.content&&d.content.sha||""),commitSha,additions,deletions,files,diffKnown})};
     }
     if (name === "github_pull_request_create") {
       const title=String(input.title||"").trim(), head=branch(input.head,false), base=branch(input.base,true); if(!title||title.length>500) throw new GithubConnectorError("GITHUB_INPUT_INVALID","Pull request title is invalid");

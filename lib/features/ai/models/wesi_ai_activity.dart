@@ -89,15 +89,21 @@ class WesiAiActivityEvent {
   static WesiAiActivityEvent? fromJson(dynamic raw, {int fallbackIndex = 0}) {
     if (raw is! Map) return null;
     final map = Map<String, dynamic>.from(raw);
-    final rawKind = '${map['kind'] ?? map['type'] ?? 'status'}'.trim().toLowerCase();
+    final rawKind =
+        '${map['kind'] ?? map['type'] ?? 'status'}'.trim().toLowerCase();
     final kind = switch (rawKind) {
       'tool' => WesiAiActivityKind.tool,
       'agent' => WesiAiActivityKind.agent,
-      'reasoning' || 'reasoning_summary' || 'work' => WesiAiActivityKind.reasoning,
+      'reasoning' ||
+      'reasoning_summary' ||
+      'work' =>
+        WesiAiActivityKind.reasoning,
       'verification' || 'verify' => WesiAiActivityKind.verification,
       _ => WesiAiActivityKind.status,
     };
-    final sourceName = _clip('${map['sourceName'] ?? map['name'] ?? map['tool'] ?? map['agent'] ?? map['persona'] ?? ''}', 180);
+    final sourceName = _clip(
+        '${map['sourceName'] ?? map['name'] ?? map['tool'] ?? map['agent'] ?? map['persona'] ?? ''}',
+        180);
     final phase = '${map['phase'] ?? ''}'.trim().toLowerCase();
     final explicitLabel = _clip('${map['label'] ?? map['title'] ?? ''}', 240);
     final label = explicitLabel.isNotEmpty
@@ -115,9 +121,8 @@ class WesiAiActivityEvent {
                     : 'Подключён агент · $sourceName',
             WesiAiActivityKind.reasoning => 'Ход работы',
             WesiAiActivityKind.verification => 'Проверка результата',
-            WesiAiActivityKind.status => sourceName.isEmpty
-                ? 'Этап работы'
-                : 'Маршрут · $sourceName',
+            WesiAiActivityKind.status =>
+              sourceName.isEmpty ? 'Этап работы' : 'Маршрут · $sourceName',
           };
     final detail = _clip(
       '${map['detail'] ?? map['message'] ?? map['summary'] ?? map['code'] ?? ''}',
@@ -134,7 +139,9 @@ class WesiAiActivityEvent {
           _nested(map, 'diff', 'deletions') ??
           _nested(map, 'stats', 'deletions'),
     );
-    final filesRaw = map['files'] ?? _nested(map, 'diff', 'files') ?? _nested(map, 'stats', 'files');
+    final filesRaw = map['files'] ??
+        _nested(map, 'diff', 'files') ??
+        _nested(map, 'stats', 'files');
     final files = <String>[];
     if (filesRaw is List) {
       for (final item in filesRaw.take(40)) {
@@ -145,7 +152,8 @@ class WesiAiActivityEvent {
         if (clean.isNotEmpty && !files.contains(clean)) files.add(clean);
       }
     }
-    final offset = _nonNegativeInt(map['textOffset']).clamp(0, 10000000);
+    final offset =
+        _nonNegativeInt(map['textOffset']).clamp(0, 10000000).toInt();
     final startedAt = _date(map['startedAt'] ?? map['at']);
     final completedAt = _date(map['completedAt'] ?? map['finishedAt']);
     final id = _clip('${map['id'] ?? ''}', 180);
@@ -188,7 +196,8 @@ class WesiAiActivityEvent {
   static int totalDeletions(Iterable<WesiAiActivityEvent> events) =>
       events.fold<int>(0, (total, event) => total + event.deletions);
 
-  static Object? _nested(Map<String, dynamic> map, String parent, String child) {
+  static Object? _nested(
+      Map<String, dynamic> map, String parent, String child) {
     final value = map[parent];
     if (value is! Map) return null;
     return value[child];
@@ -206,7 +215,9 @@ class WesiAiActivityEvent {
   }
 
   static String _clip(String value, int max) {
-    final clean = value.replaceAll(RegExp(r'[\u0000-\u0008\u000B\u000C\u000E-\u001F]'), '').trim();
+    final clean = value
+        .replaceAll(RegExp(r'[\u0000-\u0008\u000B\u000C\u000E-\u001F]'), '')
+        .trim();
     return clean.length <= max ? clean : clean.substring(0, max);
   }
 }

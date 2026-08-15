@@ -110,7 +110,7 @@ test('gateway forwards true deltas and final done event without provider metadat
     assert.equal(response.status, 200);
     const events = await readEvents(response);
     assert.equal(relayCalls, 1);
-    assert.deepEqual(events.map((event) => event.type), ['meta', 'delta', 'delta', 'done']);
+    assert.deepEqual(events.map((event) => event.type), ['meta', 'agent', 'activity', 'delta', 'delta', 'agent', 'done']);
     assert.equal(events.filter((event) => event.type === 'delta').map((event) => event.text).join(''), 'Привет');
     assert.equal(JSON.stringify(events).includes('provider'), false);
   });
@@ -129,7 +129,7 @@ test('tool JSON is never leaked and verified tool result precedes final stream',
       toolCalls += 1;
       return jsonResponse({
         ok: true,
-        toolResult: {tool: 'tasks_list', verified: true, ok: true, result: {tasks: []}},
+        toolResult: {tool: 'tasks_list', verified: true, ok: true, result: {tasks: [], additions: 3, deletions: 1, files: ['lib/a.dart']}},
       });
     }
     if (value.endsWith('/v1/wesi-ai-stream')) {
@@ -168,6 +168,13 @@ test('tool JSON is never leaked and verified tool result precedes final stream',
       events.filter((event) => event.type === 'tool').map((event) => event.phase),
       ['start', 'result'],
     );
+    const toolResultEvent = events.find((event) => event.type === 'tool' && event.phase === 'result');
+    assert.equal(toolResultEvent.additions, 3);
+    assert.equal(toolResultEvent.deletions, 1);
+    assert.deepEqual(toolResultEvent.files, ['lib/a.dart']);
+    const leadDone = events.find((event) => event.type === 'agent' && event.phase === 'result');
+    assert.equal(leadDone.additions, 3);
+    assert.equal(leadDone.deletions, 1);
     assert.equal(events.filter((event) => event.type === 'delta').map((event) => event.text).join(''), 'Задач нет.');
     assert.equal(events.at(-1).type, 'done');
     assert.equal(events.at(-1).toolResults[0].verified, true);

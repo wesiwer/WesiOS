@@ -19,6 +19,7 @@ import 'wesi_ai_voice_devices.dart';
 import 'wesi_ai_voice_session.dart';
 import 'widgets/wesi_ai_camera_capture.dart';
 import 'widgets/wesi_ai_message_content.dart';
+import 'widgets/wesi_ai_message_actions.dart';
 
 class AiAssistantV2Screen extends StatefulWidget {
   const AiAssistantV2Screen({super.key});
@@ -245,7 +246,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                   contentPadding: EdgeInsets.zero,
                   leading: Icon(Icons.psychology_alt_outlined),
                   title: Text('Думающий'),
-                  subtitle: Text('Безопасное резюме обработки'),
+                  subtitle: Text('Ход работы раскрыт по умолчанию'),
                 ),
               ),
             ],
@@ -549,7 +550,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
         lastErrorCode != 'WAI_QUEUE_PERSISTENCE_FAILED';
     return Column(
       children: [
-        _conversationHeader(controller, active),
+        _conversationHeader(controller, active, messages),
         Expanded(
           child: messages.isEmpty
               ? _emptyConversationState(active)
@@ -557,7 +558,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                   controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
                   itemCount: messages.length,
-                  itemBuilder: (context, index) => _messageTile(
+                  itemBuilder: (context, index) => _messageTile(controller,
                       messages[index], index == messages.length - 1),
                 ),
         ),
@@ -657,8 +658,12 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   Widget _conversationHeader(
     WesiAiHandoffController controller,
     WesiAiConversation active,
+    List<WesiAiMessage> messages,
   ) {
     final enabled = !controller.processing;
+    final savedMessages = messages
+        .where((message) => message.metadata['savedToChatArchive'] == true)
+        .toList(growable: false);
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 2),
       child: Row(
@@ -702,6 +707,36 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
               ],
             ),
           ],
+          if (active.branchedFromConversationId != null) ...[
+            const SizedBox(width: 8),
+            ActionChip(
+              avatar: const Icon(Icons.account_tree_outlined, size: 16),
+              label: const Text('Ветка'),
+              onPressed: enabled
+                  ? () => controller
+                      .selectConversation(active.branchedFromConversationId!)
+                  : null,
+            ),
+          ],
+          if (savedMessages.isNotEmpty) ...[
+            const SizedBox(width: 4),
+            IconButton(
+              tooltip: 'Архив этого чата',
+              onPressed: () => showModalBottomSheet<void>(
+                context: context,
+                isScrollControlled: true,
+                showDragHandle: true,
+                builder: (_) => WesiAiMessageArchiveSheet(
+                  conversationTitle: active.title,
+                  messages: savedMessages,
+                ),
+              ),
+              icon: Badge(
+                label: Text('${savedMessages.length}'),
+                child: const Icon(Icons.bookmarks_outlined),
+              ),
+            ),
+          ],
           const Spacer(),
           if (active.persona != WesiAiPersona.lobby)
             TextButton.icon(
@@ -718,7 +753,11 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     );
   }
 
-  Widget _messageTile(WesiAiMessage message, bool latest) {
+  Widget _messageTile(
+    WesiAiHandoffController controller,
+    WesiAiMessage message,
+    bool latest,
+  ) {
     final theme = Theme.of(context);
     final mine = message.author == WesiAiMessageAuthor.user;
     final assistant = message.author == WesiAiMessageAuthor.zane ||
@@ -774,8 +813,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                   ),
                 ),
               ),
-            if (assistant && _uiMode == WesiAiUiMode.thinking)
-              _reasoningSummary(message),
             Container(
               padding: EdgeInsets.symmetric(
                 horizontal: mine ? 14 : 2,
@@ -817,10 +854,21 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                     key: ValueKey(message.id),
                     message: message,
                     animateText: latest && assistant,
+                    expandWorkLog: _uiMode == WesiAiUiMode.thinking,
                   ),
                 ],
               ),
             ),
+            if (assistant && message.metadata['transportStreaming'] != true)
+              WesiAiMessageActions(
+                message: message,
+                saved: message.metadata['savedToChatArchive'] == true,
+                onToggleSaved: (saved) =>
+                    controller.setMessageSaved(message.id, saved),
+                onBranch: () async {
+                  await controller.branchConversationFromMessage(message.id);
+                },
+              ),
             if (assistant && latest && message.text.trim().isNotEmpty)
               _followUps(message.text),
             if (!assistant && !mine && !toolLike)
@@ -838,28 +886,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
       ),
     );
   }
-
-  Widget _reasoningSummary(WesiAiMessage message) => Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerLow,
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Icon(Icons.psychology_alt_outlined, size: 18),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Text(
-                WesiAiChatUi.safeReasoningSummary(message),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          ],
-        ),
-      );
 
   Widget _followUps(String answer) {
     final suggestions = WesiAiChatUi.followUps(answer);
@@ -1091,8 +1117,25 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
   Future<void> _capturePhoto() async {
     try {
-      final attachment = await Navigator.of(context).push<WesiAiAttachment>(
-        MaterialPageRoute(builder: (_) => const WesiAiCameraCaptureScreen()),
+      final attachment = await showDialog<WesiAiAttachment>(
+        context: context,
+        barrierColor: Colors.black87,
+        builder: (dialogContext) {
+          final size = MediaQuery.sizeOf(dialogContext);
+          final width = size.width < 620 ? size.width - 24 : 560.0;
+          final height = (size.height * 0.78).clamp(420.0, 720.0).toDouble();
+          return Dialog(
+            insetPadding: const EdgeInsets.all(12),
+            clipBehavior: Clip.antiAlias,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+            child: SizedBox(
+              width: width,
+              height: height,
+              child: const WesiAiCameraCaptureScreen(),
+            ),
+          );
+        },
       );
       if (attachment == null || !mounted) return;
       final next = <WesiAiAttachment>[..._attachments, attachment];

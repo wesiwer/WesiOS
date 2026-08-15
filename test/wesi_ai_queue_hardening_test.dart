@@ -71,6 +71,7 @@ class _ControlledApi extends WesiAiApi {
     Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
   }) {
     prompts.add(message);
@@ -103,6 +104,7 @@ class _LobbyControlledApi extends WesiAiApi {
     Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
   }) {
     calls++;
@@ -126,6 +128,7 @@ class _StreamingControlledApi extends WesiAiApi {
     Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
   }) {
     this.onDelta = onDelta;

@@ -62,26 +62,35 @@ void main() {
     await controller.setMessageSaved('message_ai_000002', true);
 
     expect(
-      controller.state.messages.singleWhere((m) => m.id == 'message_ai_000002').metadata['savedToChatArchive'],
+      controller.state.messages
+          .singleWhere((m) => m.id == 'message_ai_000002')
+          .metadata['savedToChatArchive'],
       true,
     );
     expect(
-      controller.state.messages.singleWhere((m) => m.id == 'message_user_0001').metadata['savedToChatArchive'],
+      controller.state.messages
+          .singleWhere((m) => m.id == 'message_user_0001')
+          .metadata['savedToChatArchive'],
       isNull,
     );
 
     final restored = await store.load();
     expect(
-      restored.messages.singleWhere((m) => m.id == 'message_ai_000002').metadata['savedToChatArchive'],
+      restored.messages
+          .singleWhere((m) => m.id == 'message_ai_000002')
+          .metadata['savedToChatArchive'],
       true,
     );
   });
 
-  test('branch copies history through selected message and records its origin', () async {
-    final branchId = await controller.branchConversationFromMessage('message_ai_000002');
+  test('branch copies history through selected message and records its origin',
+      () async {
+    final branchId =
+        await controller.branchConversationFromMessage('message_ai_000002');
 
     expect(branchId, isNotNull);
-    final branch = controller.state.conversations.singleWhere((c) => c.id == branchId);
+    final branch =
+        controller.state.conversations.singleWhere((c) => c.id == branchId);
     expect(branch.branchedFromConversationId, 'conversation_original_01');
     expect(branch.branchedFromMessageId, 'message_ai_000002');
     expect(controller.state.activeConversationId, branchId);
@@ -89,11 +98,17 @@ void main() {
     final branchMessages = controller.state.messagesFor(branchId!);
     expect(branchMessages, hasLength(2));
     expect(branchMessages.map((m) => m.text), ['Сделай изменение', 'Готово']);
-    expect(branchMessages.every((m) => m.metadata['branchOriginalConversationId'] == 'conversation_original_01'), true);
+    expect(
+        branchMessages.every((m) =>
+            m.metadata['branchOriginalConversationId'] ==
+            'conversation_original_01'),
+        true);
 
     final restored = await store.load();
-    final restoredBranch = restored.conversations.singleWhere((c) => c.id == branchId);
-    expect(restoredBranch.branchedFromConversationId, 'conversation_original_01');
+    final restoredBranch =
+        restored.conversations.singleWhere((c) => c.id == branchId);
+    expect(
+        restoredBranch.branchedFromConversationId, 'conversation_original_01');
     expect(restoredBranch.branchedFromMessageId, 'message_ai_000002');
     expect(restored.messagesFor(branchId), hasLength(2));
   });

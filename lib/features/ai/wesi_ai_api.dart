@@ -21,11 +21,13 @@ class WesiAiReply {
   final String answer;
   final String requestId;
   final List<WesiAiContentBlock> blocks;
+  final List<Map<String, dynamic>> activity;
 
   const WesiAiReply({
     required this.answer,
     required this.requestId,
     this.blocks = const <WesiAiContentBlock>[],
+    this.activity = const <Map<String, dynamic>>[],
   });
 }
 
@@ -122,6 +124,7 @@ class WesiAiApi {
     Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
   }) async {
     WesiAiAttachment.validateBatch(attachments);
@@ -158,6 +161,7 @@ class WesiAiApi {
           auth: auth,
           body: body,
           onDelta: onDelta,
+          onActivity: onActivity,
           cancellation: cancellation,
         );
         if (streamed != null) return streamed;
@@ -197,6 +201,7 @@ class WesiAiApi {
     required ({String token, String sessionId}) auth,
     required Map<String, dynamic> body,
     required void Function(String delta)? onDelta,
+    required void Function(Map<String, dynamic> event)? onActivity,
     required WesiAiRequestCancellation? cancellation,
   }) async {
     if (cancellation?.isCancelled == true) {
@@ -247,8 +252,12 @@ class WesiAiApi {
               done.completeError(WesiAiApiException(code, _messageFor(code)));
               break;
             case 'meta':
-            case 'heartbeat':
             case 'tool':
+            case 'agent':
+            case 'activity':
+              onActivity?.call(event);
+              break;
+            case 'heartbeat':
               break;
           }
         } on FormatException {
@@ -309,7 +318,46 @@ class WesiAiApi {
       requestId: '${json['requestId'] ?? ''}',
       blocks:
           blocks.take(WesiAiContentParser.maxBlocks).toList(growable: false),
+      activity: _activityFromToolResults(json['toolResults']),
     );
+  }
+
+  static List<Map<String, dynamic>> _activityFromToolResults(dynamic raw) {
+    if (raw is! List) return const <Map<String, dynamic>>[];
+    final result = <Map<String, dynamic>>[];
+    for (var index = 0; index < raw.length && index < 80; index++) {
+      final item = raw[index];
+      if (item is! Map) continue;
+      final map = Map<String, dynamic>.from(item);
+      final payloadRaw = map['result'];
+      final payload = payloadRaw is Map
+          ? Map<String, dynamic>.from(payloadRaw)
+          : const <String, dynamic>{};
+      int count(Object? value) {
+        final parsed =
+            value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+        return parsed < 0 ? 0 : parsed;
+      }
+
+      final tool = '${map['tool'] ?? map['name'] ?? ''}'.trim();
+      final filesRaw = payload['files'] ?? map['files'];
+      final files = filesRaw is List
+          ? filesRaw.take(40).map((value) => '$value').toList(growable: false)
+          : const <String>[];
+      result.add(<String, dynamic>{
+        'id': 'tool_result_$index',
+        'kind': 'tool',
+        'sourceName': tool,
+        'label': tool.isEmpty ? 'Инструмент' : 'Инструмент · $tool',
+        'status': 'result',
+        'additions': count(payload['additions'] ?? map['additions']),
+        'deletions': count(payload['deletions'] ?? map['deletions']),
+        if (files.isNotEmpty) 'files': files,
+        if ('${map['code'] ?? ''}'.trim().isNotEmpty)
+          'detail': '${map['code']}',
+      });
+    }
+    return result;
   }
 
   Future<List<Map<String, dynamic>>> _prepareTransportAttachments({

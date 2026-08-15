@@ -31,12 +31,20 @@ class WesiAiMessageActions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final activities = WesiAiActivityEvent.listFrom(message.metadata['activity']);
+    final activities =
+        WesiAiActivityEvent.listFrom(message.metadata['activity']);
     final additions = WesiAiActivityEvent.totalAdditions(activities);
     final deletions = WesiAiActivityEvent.totalDeletions(activities);
-    final hasReview = activities.any((event) => event.kind == WesiAiActivityKind.tool || event.kind == WesiAiActivityKind.agent || event.hasDiff);
-    final positive = theme.brightness == Brightness.dark ? Colors.greenAccent.shade400 : Colors.green.shade700;
-    final negative = theme.brightness == Brightness.dark ? Colors.redAccent.shade100 : Colors.red.shade700;
+    final hasReview = activities.any((event) =>
+        event.kind == WesiAiActivityKind.tool ||
+        event.kind == WesiAiActivityKind.agent ||
+        event.hasDiff);
+    final positive = theme.brightness == Brightness.dark
+        ? Colors.greenAccent.shade400
+        : Colors.green.shade700;
+    final negative = theme.brightness == Brightness.dark
+        ? Colors.redAccent.shade100
+        : Colors.red.shade700;
 
     return Padding(
       padding: const EdgeInsets.only(top: 5),
@@ -55,7 +63,9 @@ class WesiAiMessageActions extends StatelessWidget {
             tooltip: saved ? 'Убрать из архива чата' : 'Сохранить в архив чата',
             visualDensity: VisualDensity.compact,
             onPressed: () => onToggleSaved(!saved),
-            icon: Icon(saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded, size: 20),
+            icon: Icon(
+                saved ? Icons.bookmark_rounded : Icons.bookmark_border_rounded,
+                size: 20),
           ),
           IconButton(
             tooltip: 'Создать ответвление от этого сообщения',
@@ -93,9 +103,13 @@ class WesiAiMessageActions extends StatelessWidget {
                   children: [
                     const Icon(Icons.difference_outlined, size: 16),
                     const SizedBox(width: 6),
-                    Text('+$additions', style: theme.textTheme.labelMedium?.copyWith(color: positive, fontWeight: FontWeight.w700)),
+                    Text('+$additions',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                            color: positive, fontWeight: FontWeight.w700)),
                     const SizedBox(width: 5),
-                    Text('-$deletions', style: theme.textTheme.labelMedium?.copyWith(color: negative, fontWeight: FontWeight.w700)),
+                    Text('-$deletions',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                            color: negative, fontWeight: FontWeight.w700)),
                   ],
                 ),
               ),
@@ -120,12 +134,19 @@ class WesiAiDiffReviewSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final relevant = activities
-        .where((event) => event.kind == WesiAiActivityKind.tool || event.kind == WesiAiActivityKind.agent || event.hasDiff)
+        .where((event) =>
+            event.kind == WesiAiActivityKind.tool ||
+            event.kind == WesiAiActivityKind.agent ||
+            event.hasDiff)
         .toList(growable: false);
     final additions = WesiAiActivityEvent.totalAdditions(relevant);
     final deletions = WesiAiActivityEvent.totalDeletions(relevant);
-    final positive = theme.brightness == Brightness.dark ? Colors.greenAccent.shade400 : Colors.green.shade700;
-    final negative = theme.brightness == Brightness.dark ? Colors.redAccent.shade100 : Colors.red.shade700;
+    final positive = theme.brightness == Brightness.dark
+        ? Colors.greenAccent.shade400
+        : Colors.green.shade700;
+    final negative = theme.brightness == Brightness.dark
+        ? Colors.redAccent.shade100
+        : Colors.red.shade700;
 
     return SafeArea(
       child: FractionallySizedBox(
@@ -140,22 +161,30 @@ class WesiAiDiffReviewSheet extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Сверка изменений', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                        Text('Сверка изменений',
+                            style: theme.textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w700)),
                         const SizedBox(height: 3),
-                        Text('Данные относятся только к этой работе Wesi AI.', style: theme.textTheme.bodySmall),
+                        Text('Данные относятся только к этой работе Wesi AI.',
+                            style: theme.textTheme.bodySmall),
                       ],
                     ),
                   ),
-                  Text('+$additions', style: theme.textTheme.titleMedium?.copyWith(color: positive, fontWeight: FontWeight.w800)),
+                  Text('+$additions',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                          color: positive, fontWeight: FontWeight.w800)),
                   const SizedBox(width: 8),
-                  Text('-$deletions', style: theme.textTheme.titleMedium?.copyWith(color: negative, fontWeight: FontWeight.w800)),
+                  Text('-$deletions',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                          color: negative, fontWeight: FontWeight.w800)),
                 ],
               ),
             ),
             const Divider(height: 1),
             Expanded(
               child: relevant.isEmpty
-                  ? const Center(child: Text('Инструменты не сообщили diff-данные.'))
+                  ? const Center(
+                      child: Text('Инструменты не сообщили diff-данные.'))
                   : ListView.separated(
                       padding: const EdgeInsets.all(14),
                       itemCount: relevant.length,
@@ -202,9 +231,14 @@ class WesiAiMessageArchiveSheet extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Архив этого чата', style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700)),
+                        Text('Архив этого чата',
+                            style: theme.textTheme.titleLarge
+                                ?.copyWith(fontWeight: FontWeight.w700)),
                         const SizedBox(height: 3),
-                        Text(conversationTitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: theme.textTheme.bodySmall),
+                        Text(conversationTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall),
                       ],
                     ),
                   ),
@@ -222,7 +256,8 @@ class WesiAiMessageArchiveSheet extends StatelessWidget {
                       separatorBuilder: (_, __) => const SizedBox(height: 8),
                       itemBuilder: (context, index) {
                         final message = messages[index];
-                        final preview = WesiAiRichParser.plainText(message.text);
+                        final preview =
+                            WesiAiRichParser.plainText(message.text);
                         return Card(
                           margin: EdgeInsets.zero,
                           child: ListTile(
@@ -235,10 +270,12 @@ class WesiAiMessageArchiveSheet extends StatelessWidget {
                             trailing: IconButton(
                               tooltip: 'Копировать',
                               onPressed: () async {
-                                await Clipboard.setData(ClipboardData(text: preview));
+                                await Clipboard.setData(
+                                    ClipboardData(text: preview));
                                 if (!context.mounted) return;
                                 ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('Ответ скопирован')),
+                                  const SnackBar(
+                                      content: Text('Ответ скопирован')),
                                 );
                               },
                               icon: const Icon(Icons.copy_all_outlined),
