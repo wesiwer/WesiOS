@@ -375,7 +375,8 @@ class WesiAiD2DService {
                 return;
               }
               final match = RegExp(r'^OK ([0-9]{1,12})$').firstMatch(line);
-              final parsed = match == null ? null : int.tryParse(match.group(1)!);
+              final parsed =
+                  match == null ? null : int.tryParse(match.group(1)!);
               if (parsed == null ||
                   parsed <= 0 ||
                   parsed > WesiAiBackupService.maxPackageBytes + 1024 * 1024) {
@@ -387,7 +388,8 @@ class WesiAiD2DService {
             }
             if (byte != 13) header.add(byte);
             if (header.length > _maxControlLineBytes) {
-              fail(const FormatException('D2D response header слишком большой'));
+              fail(
+                  const FormatException('D2D response header слишком большой'));
               return;
             }
             continue;
