@@ -176,4 +176,123 @@ for override_path in (
         )
     p.write_text(override_text, encoding='utf-8')
 
+# Final assistant messages must retain the same observable activity that was
+# visible on the transient streaming message. Otherwise tool/agent history
+# disappears after the partial message is replaced or after app restart.
+controller = Path('lib/features/ai/controllers/wesi_ai_chat_controller.dart')
+text = controller.read_text(encoding='utf-8')
+final_metadata_old = '''          'requestId': reply.requestId,
+          if (streamVisible) 'transportStreamed': true,
+          if (reply.blocks.isNotEmpty)
+'''
+final_metadata_new = '''          'requestId': reply.requestId,
+          if (streamVisible) 'transportStreamed': true,
+          if (activity.isNotEmpty)
+            'activity': activity
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList(growable: false),
+          'workStartedAt': workStartedAt.toIso8601String(),
+          'workDurationMs':
+              DateTime.now().toUtc().difference(workStartedAt).inMilliseconds,
+          if (reply.blocks.isNotEmpty)
+'''
+if final_metadata_old in text:
+    text = text.replace(final_metadata_old, final_metadata_new, 1)
+
+close_activity_anchor = '''      final at = DateTime.now();
+      final assistant = WesiAiMessage(
+'''
+close_activity_replacement = '''      final completedAt = DateTime.now().toUtc().toIso8601String();
+      for (var index = 0; index < activity.length; index++) {
+        final current = activity[index];
+        if ('${current['status'] ?? ''}' != 'start') continue;
+        final closed = Map<String, dynamic>.from(current);
+        closed['status'] = 'done';
+        closed['completedAt'] = completedAt;
+        activity[index] = closed;
+      }
+      final at = DateTime.now();
+      final assistant = WesiAiMessage(
+'''
+if "final completedAt = DateTime.now().toUtc().toIso8601String();" not in text and close_activity_anchor in text:
+    text = text.replace(close_activity_anchor, close_activity_replacement, 1)
+controller.write_text(text, encoding='utf-8')
+
+# Extend the existing streaming lifecycle regression so it proves activity is
+# both visible before the answer and durable after the transient message is
+# collapsed into the final assistant message.
+queue_test = Path('test/wesi_ai_queue_hardening_test.dart')
+text = queue_test.read_text(encoding='utf-8')
+if 'void Function(Map<String, dynamic> event)? activityCallback;' not in text:
+    text = text.replace(
+        '''  void Function(String delta)? onDelta;
+
+  @override
+''',
+        '''  void Function(String delta)? onDelta;
+  void Function(Map<String, dynamic> event)? activityCallback;
+
+  @override
+''',
+        1,
+    )
+    text = text.replace(
+        '''    this.onDelta = onDelta;
+    return reply.future;
+''',
+        '''    this.onDelta = onDelta;
+    activityCallback = onActivity;
+    return reply.future;
+''',
+        1,
+    )
+
+stream_test_old = '''    final sending = controller.addUserMessage('stream me');
+    await _waitUntil(() => api.onDelta != null);
+    api.onDelta!('При');
+'''
+stream_test_new = '''    final sending = controller.addUserMessage('stream me');
+    await _waitUntil(() => api.onDelta != null && api.activityCallback != null);
+    api.activityCallback!({
+      'type': 'tool',
+      'phase': 'start',
+      'name': 'github_file_upsert',
+    });
+    api.activityCallback!({
+      'type': 'tool',
+      'phase': 'result',
+      'name': 'github_file_upsert',
+      'additions': 4,
+      'deletions': 2,
+      'files': ['lib/example.dart'],
+    });
+    api.onDelta!('При');
+'''
+if stream_test_old in text:
+    text = text.replace(stream_test_old, stream_test_new, 1)
+
+stream_assert_old = '''    expect(messages.last.metadata['transportStreamed'], isTrue);
+    expect(store.saved!.messagesFor(conversationId).last.text, 'Привет');
+'''
+stream_assert_new = '''    expect(messages.last.metadata['transportStreamed'], isTrue);
+    final activity = messages.last.metadata['activity'];
+    expect(activity, isA<List>());
+    final toolEvent = (activity as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .singleWhere((item) => item['sourceName'] == 'github_file_upsert');
+    expect(toolEvent['additions'], 4);
+    expect(toolEvent['deletions'], 2);
+    expect(toolEvent['files'], ['lib/example.dart']);
+    expect(toolEvent['status'], 'result');
+    final persisted = store.saved!.messagesFor(conversationId).last;
+    expect(persisted.text, 'Привет');
+    expect(persisted.metadata['activity'], isA<List>());
+    expect(persisted.metadata['workStartedAt'], isNotNull);
+    expect(persisted.metadata['workDurationMs'], isA<int>());
+'''
+if stream_assert_old in text:
+    text = text.replace(stream_assert_old, stream_assert_new, 1)
+queue_test.write_text(text, encoding='utf-8')
+
 print('chat UX postfix applied')
