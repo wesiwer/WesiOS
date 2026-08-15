@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import {prepareGeminiAttachments} from './attachment-preprocessor.mjs';
+import {prepareGeminiAttachments, deleteGeminiFiles} from './attachment-preprocessor.mjs';
 
 const PROVIDER_ENV = '/etc/wesi-ai-providers.env';
 
@@ -82,33 +82,39 @@ export async function callGoogleText(model, input, apiKey) {
   const userParts = [];
   const message = String(input.message || '').trim();
   if (message) userParts.push({text: message});
+  let prepared = {parts: [], providerFiles: []};
   try {
-    const prepared = await prepareGeminiAttachments(input.attachments);
+    prepared = await prepareGeminiAttachments(input.attachments, apiKey);
     userParts.push(...prepared.parts);
   } catch (error) {
+    await deleteGeminiFiles(prepared?.providerFiles, apiKey);
     return {ok: false, status: 400, code: String(error?.message || 'WAI_ATTACHMENT_INVALID')};
   }
   if (!userParts.length) userParts.push({text: 'Проанализируй прикреплённые данные.'});
   history.push({role: 'user', parts: userParts});
 
-  const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
-    method: 'POST',
-    headers: {'content-type': 'application/json', 'x-goog-api-key': apiKey},
-    body: JSON.stringify({systemInstruction: {parts: [{text: String(input.system || '')}]}, contents: history}),
-    signal: AbortSignal.timeout(180000),
-  });
-  let data = {};
-  try { data = await response.json(); } catch {}
-  if (!response.ok) {
-    return {
-      ok: false,
-      status: response.status === 429 ? 429 : response.status === 400 ? 400 : 502,
-      code: response.status === 429 ? 'WAI_PROVIDER_RATE_LIMIT' : response.status === 400 ? 'WAI_ATTACHMENT_PROVIDER_REJECTED' : 'WAI_PROVIDER_REJECTED',
-    };
+  try {
+    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+      method: 'POST',
+      headers: {'content-type': 'application/json', 'x-goog-api-key': apiKey},
+      body: JSON.stringify({systemInstruction: {parts: [{text: String(input.system || '')}]}, contents: history}),
+      signal: AbortSignal.timeout(180000),
+    });
+    let data = {};
+    try { data = await response.json(); } catch {}
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status === 429 ? 429 : response.status === 400 ? 400 : 502,
+        code: response.status === 429 ? 'WAI_PROVIDER_RATE_LIMIT' : response.status === 400 ? 'WAI_ATTACHMENT_PROVIDER_REJECTED' : 'WAI_PROVIDER_REJECTED',
+      };
+    }
+    const parts = data?.candidates?.[0]?.content?.parts;
+    const answer = Array.isArray(parts) ? parts.map((p) => typeof p?.text === 'string' ? p.text : '').join('').trim() : '';
+    return answer ? {ok: true, answer} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
+  } finally {
+    await deleteGeminiFiles(prepared.providerFiles, apiKey);
   }
-  const parts = data?.candidates?.[0]?.content?.parts;
-  const answer = Array.isArray(parts) ? parts.map((p) => typeof p?.text === 'string' ? p.text : '').join('').trim() : '';
-  return answer ? {ok: true, answer} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
 }
 
 async function callCandidate(candidate, input, googleKey, secrets) {
