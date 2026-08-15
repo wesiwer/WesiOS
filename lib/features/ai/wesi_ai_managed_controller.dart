@@ -179,6 +179,9 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       await store.savePendingQueueItem(
         _pendingFor(turn, WesiAiPendingQueueStatus.queued),
       );
+      if (!await materializeConversationForFirstTurn(conversation.id)) {
+        throw StateError('Failed to materialize first-turn conversation');
+      }
     } catch (_) {
       _queuedTurns.removeWhere((candidate) => candidate.id == turn.id);
       _acceptingTurn = false;
@@ -1159,7 +1162,10 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
 
   List<WesiAiConversation> get visibleConversations {
     final items = state.conversations
-        .where((c) => !c.archived && c.projectId == state.activeProjectId)
+        .where((c) =>
+            !c.archived &&
+            !isTransientConversation(c.id) &&
+            c.projectId == state.activeProjectId)
         .toList();
     items.sort((a, b) {
       if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
@@ -1177,7 +1183,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   }
 
   Future<void> _save() async {
-    await store.save(state);
+    await store.save(persistableState);
     _notify();
   }
 }

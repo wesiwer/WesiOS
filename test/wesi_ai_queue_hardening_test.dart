@@ -243,18 +243,14 @@ void main() {
     final api = _ControlledApi();
     final controller = await _controller(api);
     final firstChat = controller.state.activeConversationId!;
-
-    await controller.createConversation(WesiAiPersona.nirvana);
-    final secondChat = controller.state.activeConversationId!;
-    await controller.selectConversation(firstChat);
-
     expect(
       await controller.submitUserMessage('first-chat'),
       WesiAiMessageSubmitResult.accepted,
     );
     await _waitUntil(() => api.prompts.length == 1);
 
-    await controller.selectConversation(secondChat);
+    await controller.createConversation(WesiAiPersona.nirvana);
+    final secondChat = controller.state.activeConversationId!;
     final attachment = WesiAiAttachment.fromBytes(
       name: 'context.txt',
       bytes: Uint8List.fromList(<int>[1, 2, 3, 4]),

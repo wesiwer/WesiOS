@@ -1,5 +1,44 @@
 # WesiOS — текущий handoff
 
+## Wesi AI Contextual Follow-ups / Clarification / Lazy Chat — 2026-08-16
+
+**Базовый main:** `de0032be2f52b73557aadb2afdaa3a03fa39c780`  
+**Рабочая ветка:** `agent/wesi-ai-contextual-followups-clarify-lazy-chat`  
+**Validated product commit:** `0721524c63f279fb244cdbb827d501c68594fc45`  
+**Полный one-shot gate:** workflow `31913817766` — success; patcher/persona validation/analyze/focused tests/full Flutter suite/validated commit — все success. Временный workflow и patcher-скрипты после проверки удалены.
+
+### Новый обязательный контракт
+
+- follow-up chips под ответом не являются фиксированным списком: они выделяют тему из последнего пользовательского сообщения/текущего ответа и формулируются вокруг неё; Zane/Nirvana могут иметь разную формулировку, но тема сохраняется;
+- канонические persona source `docs/wesi_ai/personas/ZANE_PERSONA.md` и `NIRVANA_PERSONA.md` больше не требуют постоянного упоминания создателя, Wesi Inc., Wesi AI или WesiOS; эти сведения — контекстная идентичность и используются только по релевантному вопросу/необходимости;
+- интерактивное уточнение задаётся fenced-блоком `question` с JSON `prompt`, `options` (2–5), `allowOther`; UI показывает варианты и `Свой ответ`, а выбор отправляется как обычный пользовательский turn;
+- malformed `question` fail-closed отображается как code block, а не превращается в невалидный интерактив;
+- при активном clarification generic follow-up chips не показываются;
+- `Новый чат` создаёт только transient UI draft: он не виден в истории и не сохраняется на диск до первого принятого пользовательского turn;
+- если открыть другой новый чат, не отправив сообщение в предыдущем, старый пустой draft удаляется; пустые чаты не накапливаются;
+- первый accepted turn материализует conversation в durable state; queue/attachment semantics для уже материализованных чатов сохраняются.
+
+### Проверки
+
+- persona bundle rebuilt и проверен на отсутствие прежних forced-self-promo инструкций;
+- contextual follow-up regression — green;
+- clarification quick reply + malformed JSON regressions — green;
+- real Hive lazy-conversation regression — green;
+- rich-message regressions — green;
+- queue hardening + attachment/chat-context regression на новой first-message семантике — green;
+- memory regressions — green;
+- `flutter analyze --no-fatal-infos` — green;
+- полный `flutter test` всего WesiOS — green.
+
+### Не откатывать
+
+- Не возвращать статический одинаковый follow-up list.
+- Не добавлять branding/создателя в обычные ответы ради persona consistency.
+- Не сохранять пустой conversation при нажатии `Новый чат`; durable boundary — первый accepted turn.
+- Не обходить этот контракт хранением старых blank draft IDs в памяти: abandoned draft должен реально исчезнуть.
+
+---
+
 ## Wesi AI Observable Rich Chat UX — 2026-08-16
 
 **Базовый main перед проходом:** `0f817169913281d5efa4f5ac9b328f8af753e0dd`  

@@ -22,6 +22,7 @@ class WesiAiChatController extends ChangeNotifier {
   bool _disposed = false;
   Completer<void>? _activeTurnInterrupt;
   WesiAiRequestCancellation? _activeRequestCancellation;
+  final Set<String> _transientConversationIds = <String>{};
 
   WesiAiLocalState state;
   bool loading = true;
@@ -34,6 +35,7 @@ class WesiAiChatController extends ChangeNotifier {
   }) : state = WesiAiLocalState.empty(store.employeeId);
 
   Future<void> load() async {
+    _transientConversationIds.clear();
     state = await store.load();
     loading = false;
     notifyIfActive();
@@ -63,11 +65,64 @@ class WesiAiChatController extends ChangeNotifier {
       createdAt: now,
       updatedAt: now,
     );
+    final oldDrafts = Set<String>.from(_transientConversationIds);
+    _transientConversationIds
+      ..clear()
+      ..add(id);
     state = state.copyWith(
-      conversations: <WesiAiConversation>[c, ...state.conversations],
+      conversations: <WesiAiConversation>[
+        c,
+        ...state.conversations.where((item) => !oldDrafts.contains(item.id)),
+      ],
+      messages: state.messages
+          .where((message) => !oldDrafts.contains(message.conversationId))
+          .toList(growable: false),
       activeConversationId: id,
+      conversationMemory:
+          Map<String, WesiAiConversationMemoryState>.fromEntries(
+        state.conversationMemory.entries
+            .where((entry) => !oldDrafts.contains(entry.key)),
+      ),
     );
-    await _persist();
+    // Новый чат существует только как UI draft. Он попадёт в durable history
+    // после первой принятой пользовательской отправки.
+    notifyIfActive();
+  }
+
+  bool isTransientConversation(String id) =>
+      _transientConversationIds.contains(id);
+
+  @protected
+  WesiAiLocalState get persistableState {
+    if (_transientConversationIds.isEmpty) return state;
+    final ids = _transientConversationIds;
+    final activeIsDraft = ids.contains(state.activeConversationId);
+    return state.copyWith(
+      conversations: state.conversations
+          .where((conversation) => !ids.contains(conversation.id))
+          .toList(growable: false),
+      messages: state.messages
+          .where((message) => !ids.contains(message.conversationId))
+          .toList(growable: false),
+      conversationMemory:
+          Map<String, WesiAiConversationMemoryState>.fromEntries(
+        state.conversationMemory.entries
+            .where((entry) => !ids.contains(entry.key)),
+      ),
+      clearActiveConversation: activeIsDraft,
+    );
+  }
+
+  @protected
+  Future<bool> materializeConversationForFirstTurn(String id) async {
+    if (!_transientConversationIds.remove(id)) return true;
+    try {
+      await store.save(persistableState);
+      return true;
+    } catch (_) {
+      _transientConversationIds.add(id);
+      return false;
+    }
   }
 
   Future<void> selectConversation(String id) async {
@@ -233,6 +288,9 @@ class WesiAiChatController extends ChangeNotifier {
       return;
     }
 
+    // Direct callers that bypass ManagedChatController also materialize
+    // the draft at the first valid user message.
+    _transientConversationIds.remove(c.id);
     final fullHistory = state.messagesFor(c.id);
     final history = historyForMemoryRequest(c.id, fullHistory);
     final now = DateTime.now();
@@ -1058,7 +1116,7 @@ class WesiAiChatController extends ChangeNotifier {
   }
 
   Future<void> _persist() async {
-    await store.save(state);
+    await store.save(persistableState);
     notifyIfActive();
   }
 

@@ -17,12 +17,14 @@ class WesiAiMessageContent extends StatelessWidget {
   final WesiAiMessage message;
   final bool animateText;
   final bool expandWorkLog;
+  final WesiAiQuickReply? onQuickReply;
 
   const WesiAiMessageContent({
     super.key,
     required this.message,
     this.animateText = true,
     this.expandWorkLog = false,
+    this.onQuickReply,
   });
 
   @override
@@ -48,6 +50,7 @@ class WesiAiMessageContent extends StatelessWidget {
             expandWorkLog: expandWorkLog,
             workDurationMs:
                 int.tryParse('${message.metadata['workDurationMs'] ?? 0}') ?? 0,
+            onQuickReply: onQuickReply,
           ),
         for (final block in blocks) ...[
           const SizedBox(height: 10),
