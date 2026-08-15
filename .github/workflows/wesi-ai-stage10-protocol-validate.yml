@@ -1,0 +1,47 @@
+name: Wesi AI Stage 10 Protocol Validate
+
+on:
+  push:
+    branches: [agent/wesi-ai-stage10-remote-worker]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-ai-stage10-protocol-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-stage10-remote-worker
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Check formatting
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/features/ai/runtime/wesi_remote_worker_models.dart \
+            lib/features/ai/runtime/wesi_remote_worker_auth.dart \
+            lib/features/ai/runtime/wesi_remote_worker_pairing.dart \
+            lib/features/ai/runtime/wesi_remote_worker_registry.dart \
+            test/wesi_remote_worker_protocol_test.dart
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Stage 8-10 regressions
+        run: |
+          flutter test \
+            test/wesi_resource_scheduler_test.dart \
+            test/wesi_job_queue_test.dart \
+            test/wesi_job_coordinator_test.dart \
+            test/wesi_remote_worker_protocol_test.dart
