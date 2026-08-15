@@ -30,11 +30,9 @@ jobs:
           assert old in text, 'staged constants marker not found'
           text = text.replace(old, new, 1)
 
-          text = text.replace(
-              "for (const entry of entries.slice(0, 512)) {",
-              "for (const entry of entries) {",
-              1,
-          )
+          old_cleanup = "for (const entry of entries.slice(0, 512)) {"
+          assert old_cleanup in text, 'cleanup loop marker not found'
+          text = text.replace(old_cleanup, "for (const entry of entries) {", 1)
 
           marker = "export function startStagedUpload(input = {}) {\n"
           helper = '''function activeStagedBudget(now = Date.now()) {
@@ -69,22 +67,14 @@ jobs:
           assert marker in text, 'startStagedUpload marker not found'
           text = text.replace(marker, helper + marker, 1)
 
-          old = """  if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > STAGED_MAX_FILE_BYTES) {
-            throw new Error('WAI_UPLOAD_TOO_LARGE');
-          }
-          const id = crypto.randomBytes(24).toString('base64url');
-          """
-          new = """  if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > STAGED_MAX_FILE_BYTES) {
-            throw new Error('WAI_UPLOAD_TOO_LARGE');
-          }
-          const budget = activeStagedBudget();
+          id_marker = "  const id = crypto.randomBytes(24).toString('base64url');\n"
+          budget = """  const budget = activeStagedBudget();
           if (budget.uploads >= STAGED_MAX_ACTIVE_UPLOADS || budget.bytes + byteSize > STAGED_MAX_ACTIVE_BYTES) {
             throw new Error('WAI_UPLOAD_CAPACITY');
           }
-          const id = crypto.randomBytes(24).toString('base64url');
           """
-          assert old in text, 'start budget insertion point not found'
-          text = text.replace(old, new, 1)
+          assert id_marker in text, 'upload id marker not found'
+          text = text.replace(id_marker, budget + id_marker, 1)
           p.write_text(text, encoding='utf-8')
 
           server = Path('server/wesi-ai-relay/server.mjs')
