@@ -48,12 +48,20 @@ const CAPABILITIES = {
   audio_vault_update: {module: "audio", action: "update", risk: RISK_WRITE, entityType: "audio_vault_item"},
 
   github_repositories_list: {module: "github", action: "read_repositories", risk: RISK_READ, entityType: "github_repository"},
-  github_file_read: {module: "github", action: "read_file", risk: RISK_READ, entityType: "github_file"},
   github_branches_list: {module: "github", action: "read_branches", risk: RISK_READ, entityType: "github_branch"},
   github_commits_list: {module: "github", action: "read_commits", risk: RISK_READ, entityType: "github_commit"},
-  github_pull_requests_list: {module: "github", action: "read_pull_requests", risk: RISK_READ, entityType: "github_pull_request"},
+  github_file_read: {module: "github", action: "read_file", risk: RISK_READ, entityType: "github_file"},
+  github_actions_runs: {module: "github", action: "read_actions", risk: RISK_READ, entityType: "github_action_run"},
   github_issues_list: {module: "github", action: "read_issues", risk: RISK_READ, entityType: "github_issue"},
-  github_actions_list: {module: "github", action: "read_actions", risk: RISK_READ, entityType: "github_action_run"},
+  github_pull_requests_list: {module: "github", action: "read_pull_requests", risk: RISK_READ, entityType: "github_pull_request"},
+  github_branch_create: {module: "github", action: "create_branch", risk: RISK_WRITE, entityType: "github_branch"},
+  github_file_upsert: {module: "github", action: "upsert_file", risk: RISK_WRITE, entityType: "github_file"},
+  github_pull_request_create: {module: "github", action: "create_pull_request", risk: RISK_WRITE, entityType: "github_pull_request"},
+  github_issue_create: {module: "github", action: "create_issue", risk: RISK_WRITE, entityType: "github_issue"},
+  github_issue_comment: {module: "github", action: "comment_issue", risk: RISK_WRITE, entityType: "github_issue_comment"},
+  github_branch_delete: {module: "github", action: "delete_branch", risk: RISK_DESTRUCTIVE, entityType: "github_branch"},
+  github_pull_request_merge: {module: "github", action: "merge_pull_request", risk: RISK_DESTRUCTIVE, entityType: "github_pull_request"},
+  github_workflow_dispatch: {module: "github", action: "dispatch_workflow", risk: RISK_DESTRUCTIVE, entityType: "github_action_run"},
 
   horizon_snapshot: {module: "horizon", action: "read_snapshot", risk: RISK_READ, entityType: "horizon_snapshot"},
 
