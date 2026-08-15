@@ -2,6 +2,124 @@ import 'wesi_local_runtime_models.dart';
 import 'wesi_resource_scheduler_models.dart';
 import 'wesi_runtime_pack_models.dart';
 
+class WesiAdaptiveExecutionClassifier {
+  WesiAdaptiveExecutionClassifier._();
+
+  static WesiWorkloadLevel classify(WesiAdaptiveExecutionFacts facts) {
+    if (facts.estimatedSteps < 0 ||
+        facts.estimatedDurationSeconds < 0 ||
+        facts.estimatedPeakRamMb < 0 ||
+        facts.estimatedGpuVramMb < 0 ||
+        facts.requestedSubagents < 0) {
+      throw const WesiSchedulerPolicyException(
+        'WS_INVALID_FACTS',
+        'Adaptive execution facts cannot contain negative values',
+      );
+    }
+
+    if (facts.requiresBuild ||
+        facts.requiresBrowserAutomation ||
+        facts.requiresHeavyMedia ||
+        facts.requiresLargeFilePipeline ||
+        facts.estimatedGpuVramMb > 0 ||
+        facts.estimatedDurationSeconds >= 300 ||
+        facts.estimatedPeakRamMb >= 8192) {
+      return WesiWorkloadLevel.l4;
+    }
+    if (facts.requiresSelfDebug ||
+        facts.requestedSubagents >= 2 ||
+        facts.estimatedSteps >= 8 ||
+        facts.estimatedDurationSeconds >= 120) {
+      return WesiWorkloadLevel.l3;
+    }
+    if (facts.requiresLocalRuntime ||
+        facts.requiresValidation ||
+        facts.requestedSubagents == 1 ||
+        facts.estimatedSteps >= 3 ||
+        facts.estimatedDurationSeconds >= 30) {
+      return WesiWorkloadLevel.l2;
+    }
+    if (facts.mutatesState || facts.usesTools || facts.estimatedSteps > 0) {
+      return WesiWorkloadLevel.l1;
+    }
+    return WesiWorkloadLevel.l0;
+  }
+
+  static WesiExecutionBudget budgetFor(WesiWorkloadLevel level) {
+    switch (level) {
+      case WesiWorkloadLevel.l0:
+        return const WesiExecutionBudget(
+          level: WesiWorkloadLevel.l0,
+          foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
+          maxParallelJobs: 4,
+          maxActiveSubagents: 0,
+          maxRepairIterations: 0,
+          maxWallClock: Duration(minutes: 2),
+          localRuntimeAllowed: false,
+          desktopWorkerRequired: false,
+        );
+      case WesiWorkloadLevel.l1:
+        return const WesiExecutionBudget(
+          level: WesiWorkloadLevel.l1,
+          foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
+          maxParallelJobs: 4,
+          maxActiveSubagents: 0,
+          maxRepairIterations: 0,
+          maxWallClock: Duration(minutes: 5),
+          localRuntimeAllowed: true,
+          desktopWorkerRequired: false,
+        );
+      case WesiWorkloadLevel.l2:
+        return const WesiExecutionBudget(
+          level: WesiWorkloadLevel.l2,
+          foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
+          maxParallelJobs: 2,
+          maxActiveSubagents: 1,
+          maxRepairIterations: 1,
+          maxWallClock: Duration(minutes: 20),
+          localRuntimeAllowed: true,
+          desktopWorkerRequired: false,
+        );
+      case WesiWorkloadLevel.l3:
+        return const WesiExecutionBudget(
+          level: WesiWorkloadLevel.l3,
+          foregroundPolicy: WesiForegroundPolicy.foregroundRequired,
+          maxParallelJobs: 1,
+          maxActiveSubagents: 2,
+          maxRepairIterations: 3,
+          maxWallClock: Duration(hours: 1),
+          localRuntimeAllowed: true,
+          desktopWorkerRequired: false,
+        );
+      case WesiWorkloadLevel.l4:
+        return const WesiExecutionBudget(
+          level: WesiWorkloadLevel.l4,
+          foregroundPolicy: WesiForegroundPolicy.foregroundRequired,
+          maxParallelJobs: 1,
+          maxActiveSubagents: 2,
+          maxRepairIterations: 3,
+          maxWallClock: Duration(hours: 2),
+          localRuntimeAllowed: true,
+          desktopWorkerRequired: true,
+        );
+    }
+  }
+
+  static WesiWorkloadLevel escalate(WesiWorkloadLevel current) {
+    switch (current) {
+      case WesiWorkloadLevel.l0:
+        return WesiWorkloadLevel.l1;
+      case WesiWorkloadLevel.l1:
+        return WesiWorkloadLevel.l2;
+      case WesiWorkloadLevel.l2:
+        return WesiWorkloadLevel.l3;
+      case WesiWorkloadLevel.l3:
+      case WesiWorkloadLevel.l4:
+        return WesiWorkloadLevel.l4;
+    }
+  }
+}
+
 class WesiTrustedWorkloadRegistry {
   WesiTrustedWorkloadRegistry._();
 
@@ -15,38 +133,38 @@ class WesiTrustedWorkloadRegistry {
       <String, WesiTrustedWorkloadDescriptor>{
     WesiLocalToolNames.fsList: WesiTrustedWorkloadDescriptor(
       toolName: WesiLocalToolNames.fsList,
-      level: WesiWorkloadLevel.l0,
+      level: WesiWorkloadLevel.l1,
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.filesystem},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 64,
+      minAvailableRamMb: 64,
       minFreeDiskMb: 16,
     ),
     WesiLocalToolNames.fsReadText: WesiTrustedWorkloadDescriptor(
       toolName: WesiLocalToolNames.fsReadText,
-      level: WesiWorkloadLevel.l0,
+      level: WesiWorkloadLevel.l1,
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.filesystem},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 64,
+      minAvailableRamMb: 64,
       minFreeDiskMb: 16,
     ),
     WesiLocalToolNames.gitStatus: WesiTrustedWorkloadDescriptor(
       toolName: WesiLocalToolNames.gitStatus,
-      level: WesiWorkloadLevel.l0,
+      level: WesiWorkloadLevel.l1,
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.git},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 64,
+      minAvailableRamMb: 64,
       minFreeDiskMb: 64,
     ),
     WesiLocalToolNames.gitDiff: WesiTrustedWorkloadDescriptor(
       toolName: WesiLocalToolNames.gitDiff,
-      level: WesiWorkloadLevel.l0,
+      level: WesiWorkloadLevel.l1,
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.git},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 128,
+      minAvailableRamMb: 128,
       minFreeDiskMb: 64,
     ),
     WesiLocalToolNames.fsWriteText: WesiTrustedWorkloadDescriptor(
@@ -55,7 +173,7 @@ class WesiTrustedWorkloadRegistry {
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.filesystem},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 64,
+      minAvailableRamMb: 64,
       minFreeDiskMb: 128,
     ),
     WesiLocalToolNames.fsDelete: WesiTrustedWorkloadDescriptor(
@@ -64,7 +182,7 @@ class WesiTrustedWorkloadRegistry {
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.filesystem},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 64,
+      minAvailableRamMb: 64,
       minFreeDiskMb: 16,
     ),
     WesiLocalToolNames.gitAdd: WesiTrustedWorkloadDescriptor(
@@ -73,7 +191,7 @@ class WesiTrustedWorkloadRegistry {
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.git},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 128,
+      minAvailableRamMb: 128,
       minFreeDiskMb: 128,
     ),
     WesiLocalToolNames.gitCommit: WesiTrustedWorkloadDescriptor(
@@ -82,7 +200,7 @@ class WesiTrustedWorkloadRegistry {
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.git},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 128,
+      minAvailableRamMb: 128,
       minFreeDiskMb: 128,
     ),
     WesiLocalToolNames.httpGet: WesiTrustedWorkloadDescriptor(
@@ -91,7 +209,7 @@ class WesiTrustedWorkloadRegistry {
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.http},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 128,
+      minAvailableRamMb: 128,
       minFreeDiskMb: 64,
     ),
     WesiLocalToolNames.httpPost: WesiTrustedWorkloadDescriptor(
@@ -100,7 +218,7 @@ class WesiTrustedWorkloadRegistry {
       foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.http},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.core},
-      minRamMb: 128,
+      minAvailableRamMb: 128,
       minFreeDiskMb: 64,
     ),
     WesiLocalToolNames.terminalRun: WesiTrustedWorkloadDescriptor(
@@ -110,9 +228,9 @@ class WesiTrustedWorkloadRegistry {
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.terminal},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.developer},
       minCpuCores: 1,
-      minRamMb: 512,
+      maxCpuLoadPercent: 90,
+      minAvailableRamMb: 512,
       minFreeDiskMb: 256,
-      checkpointable: false,
     ),
     WesiLocalToolNames.pythonRun: WesiTrustedWorkloadDescriptor(
       toolName: WesiLocalToolNames.pythonRun,
@@ -121,7 +239,8 @@ class WesiTrustedWorkloadRegistry {
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.python},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.developer},
       minCpuCores: 1,
-      minRamMb: 1024,
+      maxCpuLoadPercent: 90,
+      minAvailableRamMb: 1024,
       minFreeDiskMb: 512,
       checkpointable: true,
     ),
@@ -132,7 +251,8 @@ class WesiTrustedWorkloadRegistry {
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.node},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.developer},
       minCpuCores: 1,
-      minRamMb: 1024,
+      maxCpuLoadPercent: 90,
+      minAvailableRamMb: 1024,
       minFreeDiskMb: 512,
       checkpointable: true,
     ),
@@ -143,9 +263,9 @@ class WesiTrustedWorkloadRegistry {
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.flutter},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.developer},
       minCpuCores: 2,
-      minRamMb: 2048,
+      maxCpuLoadPercent: 85,
+      minAvailableRamMb: 2048,
       minFreeDiskMb: 2048,
-      checkpointable: false,
     ),
     WesiLocalToolNames.documentRun: WesiTrustedWorkloadDescriptor(
       toolName: WesiLocalToolNames.documentRun,
@@ -154,40 +274,44 @@ class WesiTrustedWorkloadRegistry {
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.documents},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.documents},
       minCpuCores: 1,
-      minRamMb: 1024,
+      maxCpuLoadPercent: 90,
+      minAvailableRamMb: 1024,
       minFreeDiskMb: 1024,
       checkpointable: true,
     ),
     WesiLocalToolNames.flutterTest: WesiTrustedWorkloadDescriptor(
       toolName: WesiLocalToolNames.flutterTest,
       level: WesiWorkloadLevel.l3,
-      foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
+      foregroundPolicy: WesiForegroundPolicy.foregroundRequired,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.flutter},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.developer},
       minCpuCores: 2,
-      minRamMb: 3072,
+      maxCpuLoadPercent: 80,
+      minAvailableRamMb: 3072,
       minFreeDiskMb: 4096,
       checkpointable: true,
     ),
     WesiLocalToolNames.flutterBuild: WesiTrustedWorkloadDescriptor(
       toolName: WesiLocalToolNames.flutterBuild,
-      level: WesiWorkloadLevel.l3,
-      foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
+      level: WesiWorkloadLevel.l4,
+      foregroundPolicy: WesiForegroundPolicy.foregroundRequired,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.build},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.developer},
       minCpuCores: 2,
-      minRamMb: 4096,
+      maxCpuLoadPercent: 75,
+      minAvailableRamMb: 4096,
       minFreeDiskMb: 8192,
       checkpointable: true,
     ),
     WesiLocalToolNames.mediaRun: WesiTrustedWorkloadDescriptor(
       toolName: WesiLocalToolNames.mediaRun,
       level: WesiWorkloadLevel.l3,
-      foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
+      foregroundPolicy: WesiForegroundPolicy.foregroundRequired,
       requiredCapabilities: <WesiLocalCapability>{WesiLocalCapability.media},
       requiredPacks: <WesiRuntimePackId>{WesiRuntimePackId.media},
       minCpuCores: 2,
-      minRamMb: 4096,
+      maxCpuLoadPercent: 80,
+      minAvailableRamMb: 4096,
       minFreeDiskMb: 8192,
       checkpointable: true,
     ),
@@ -208,18 +332,20 @@ class WesiTrustedWorkloadRegistry {
     String toolName, {
     WesiExecutionPreference preference = WesiExecutionPreference.automatic,
     Set<WesiWorkerPlatform>? allowedPlatforms,
-    int extraRamMb = 0,
-    int extraGpuVramMb = 0,
-    int extraDiskMb = 0,
+    int extraAvailableRamMb = 0,
+    int extraFreeGpuVramMb = 0,
+    int extraFreeDiskMb = 0,
     int extraCpuCores = 0,
+    int estimatedDurationSeconds = 0,
   }) {
-    if (extraRamMb < 0 ||
-        extraGpuVramMb < 0 ||
-        extraDiskMb < 0 ||
-        extraCpuCores < 0) {
+    if (extraAvailableRamMb < 0 ||
+        extraFreeGpuVramMb < 0 ||
+        extraFreeDiskMb < 0 ||
+        extraCpuCores < 0 ||
+        estimatedDurationSeconds < 0) {
       throw const WesiSchedulerPolicyException(
         'WS_INVALID_REQUIREMENTS',
-        'Resource requirements can only be tightened, never reduced',
+        'Trusted resource requirements can only be tightened',
       );
     }
     final base = require(toolName);
@@ -230,30 +356,44 @@ class WesiTrustedWorkloadRegistry {
         'At least one trusted target platform is required',
       );
     }
+
+    var level = base.level;
+    if (extraFreeGpuVramMb > 0 || estimatedDurationSeconds >= 300) {
+      level = WesiWorkloadLevel.l4;
+    } else if (estimatedDurationSeconds >= 120 && level.index < WesiWorkloadLevel.l3.index) {
+      level = WesiWorkloadLevel.l3;
+    }
+    final foregroundPolicy = level.index >= WesiWorkloadLevel.l3.index
+        ? WesiForegroundPolicy.foregroundRequired
+        : base.foregroundPolicy;
+
     return WesiJobRequirements(
       toolName: base.toolName,
-      level: base.level,
+      level: level,
       requiredCapabilities: base.requiredCapabilities,
       requiredPacks: base.requiredPacks,
       allowedPlatforms: Set<WesiWorkerPlatform>.unmodifiable(platforms),
       minCpuCores: base.minCpuCores + extraCpuCores,
-      minRamMb: base.minRamMb + extraRamMb,
-      minGpuVramMb: base.minGpuVramMb + extraGpuVramMb,
-      minFreeDiskMb: base.minFreeDiskMb + extraDiskMb,
+      maxCpuLoadPercent: base.maxCpuLoadPercent,
+      minAvailableRamMb: base.minAvailableRamMb + extraAvailableRamMb,
+      minFreeGpuVramMb: base.minFreeGpuVramMb + extraFreeGpuVramMb,
+      minFreeDiskMb: base.minFreeDiskMb + extraFreeDiskMb,
+      estimatedDurationSeconds: estimatedDurationSeconds,
       preference: preference,
-      foregroundPolicy: base.foregroundPolicy,
+      foregroundPolicy: foregroundPolicy,
       checkpointable: base.checkpointable,
       remoteAllowed: base.remoteAllowed,
+      allowControlPlane: base.allowControlPlane,
     );
   }
 
   static WesiJobRequirements gpuMediaRequirements({
-    int minGpuVramMb = 8192,
-    int minRamMb = 8192,
+    int minFreeGpuVramMb = 8192,
+    int minAvailableRamMb = 8192,
     int minFreeDiskMb = 16384,
     WesiExecutionPreference preference = WesiExecutionPreference.automatic,
   }) {
-    if (minGpuVramMb <= 0 || minRamMb <= 0 || minFreeDiskMb <= 0) {
+    if (minFreeGpuVramMb <= 0 || minAvailableRamMb <= 0 || minFreeDiskMb <= 0) {
       throw const WesiSchedulerPolicyException(
         'WS_INVALID_REQUIREMENTS',
         'GPU workload resources must be positive',
@@ -266,13 +406,16 @@ class WesiTrustedWorkloadRegistry {
       requiredPacks: const <WesiRuntimePackId>{WesiRuntimePackId.media},
       allowedPlatforms: _desktop,
       minCpuCores: 4,
-      minRamMb: minRamMb,
-      minGpuVramMb: minGpuVramMb,
+      maxCpuLoadPercent: 75,
+      minAvailableRamMb: minAvailableRamMb,
+      minFreeGpuVramMb: minFreeGpuVramMb,
       minFreeDiskMb: minFreeDiskMb,
+      estimatedDurationSeconds: 0,
       preference: preference,
-      foregroundPolicy: WesiForegroundPolicy.backgroundAllowed,
+      foregroundPolicy: WesiForegroundPolicy.foregroundRequired,
       checkpointable: true,
       remoteAllowed: true,
+      allowControlPlane: false,
     );
   }
 }
@@ -300,7 +443,7 @@ class WesiResourceScheduler {
     var hasRemote = false;
     var hasRemoteOffline = false;
     for (final worker in workers) {
-      if (!worker.localDevice) {
+      if (worker.remoteWorker) {
         hasRemote = true;
         if (!worker.online) hasRemoteOffline = true;
       }
@@ -322,8 +465,9 @@ class WesiResourceScheduler {
       return WesiWorkerSelection.ok(preferred.first);
     }
 
-    final preferenceBlocks = job.preference == WesiExecutionPreference.remoteOnly ||
-        job.preference == WesiExecutionPreference.localOnly;
+    final preferenceBlocks =
+        job.preference == WesiExecutionPreference.remoteOnly ||
+            job.preference == WesiExecutionPreference.localOnly;
     if (preferenceBlocks && eligible.isNotEmpty) {
       return WesiWorkerSelection.blocked(
         WesiSchedulerBlockerCode.preference,
@@ -333,9 +477,8 @@ class WesiResourceScheduler {
     }
 
     final code = _bestBlocker(blockers);
-    final remoteWarning = !job.remoteAllowed
-        ? false
-        : (job.preference == WesiExecutionPreference.remoteOnly ||
+    final remoteWarning = job.remoteAllowed &&
+        (job.preference == WesiExecutionPreference.remoteOnly ||
             (hasRemote && hasRemoteOffline));
     return WesiWorkerSelection.blocked(
       code,
@@ -351,7 +494,10 @@ class WesiResourceScheduler {
     if (!worker.online) return WesiSchedulerBlockerCode.offline;
     if (!worker.trusted) return WesiSchedulerBlockerCode.trust;
     if (!worker.policyAllowed) return WesiSchedulerBlockerCode.policy;
-    if (!job.remoteAllowed && !worker.localDevice) {
+    if (worker.controlPlane && (!job.allowControlPlane || job.heavy)) {
+      return WesiSchedulerBlockerCode.policy;
+    }
+    if (!job.remoteAllowed && worker.remoteWorker) {
       return WesiSchedulerBlockerCode.policy;
     }
     if (!job.allowedPlatforms.contains(worker.platform)) {
@@ -363,18 +509,34 @@ class WesiResourceScheduler {
     if (!worker.supportsPacks(job.requiredPacks)) {
       return WesiSchedulerBlockerCode.runtimePacks;
     }
-    if (worker.cpuCores < job.minCpuCores) return WesiSchedulerBlockerCode.cpu;
-    if (worker.ramMb < job.minRamMb + concurrency.reserveRamMb) {
+    if (!worker.resourceSnapshotSane) {
+      return WesiSchedulerBlockerCode.resourceSnapshot;
+    }
+    if (worker.cpuCores < job.minCpuCores ||
+        worker.cpuLoadPercent > job.maxCpuLoadPercent) {
+      return WesiSchedulerBlockerCode.cpu;
+    }
+    if (worker.availableRamMb < job.minAvailableRamMb + concurrency.reserveRamMb) {
       return WesiSchedulerBlockerCode.ram;
     }
-    if (worker.gpuVramMb < job.minGpuVramMb) {
+    if (job.gpuRequired &&
+        worker.freeGpuVramMb <
+            job.minFreeGpuVramMb + concurrency.reserveGpuVramMb) {
       return WesiSchedulerBlockerCode.gpu;
     }
     if (worker.freeDiskMb < job.minFreeDiskMb + concurrency.reserveDiskMb) {
       return WesiSchedulerBlockerCode.disk;
     }
+    if (worker.thermalState == WesiThermalState.critical ||
+        (job.level == WesiWorkloadLevel.l4 &&
+            worker.thermalState == WesiThermalState.serious)) {
+      return WesiSchedulerBlockerCode.thermal;
+    }
+    final heavyNeedsForeground = job.level == WesiWorkloadLevel.l3 ||
+        job.level == WesiWorkloadLevel.l4;
     if (!worker.appForeground &&
-        (job.foregroundPolicy == WesiForegroundPolicy.foregroundRequired ||
+        (heavyNeedsForeground ||
+            job.foregroundPolicy == WesiForegroundPolicy.foregroundRequired ||
             !worker.backgroundExecutionAllowed)) {
       return WesiSchedulerBlockerCode.foreground;
     }
@@ -393,12 +555,12 @@ class WesiResourceScheduler {
       case WesiExecutionPreference.localOnly:
         return eligible.where((worker) => worker.localDevice).toList();
       case WesiExecutionPreference.remoteOnly:
-        return eligible.where((worker) => !worker.localDevice).toList();
+        return eligible.where((worker) => worker.remoteWorker).toList();
       case WesiExecutionPreference.localPreferred:
         final local = eligible.where((worker) => worker.localDevice).toList();
         return local.isNotEmpty ? local : eligible;
       case WesiExecutionPreference.remotePreferred:
-        final remote = eligible.where((worker) => !worker.localDevice).toList();
+        final remote = eligible.where((worker) => worker.remoteWorker).toList();
         return remote.isNotEmpty ? remote : eligible;
       case WesiExecutionPreference.automatic:
         return eligible;
@@ -409,16 +571,22 @@ class WesiResourceScheduler {
     WesiJobRequirements job,
     WesiWorkerResourceProfile worker,
   ) {
+    if (worker.totalActiveJobs >= concurrency.maxTotalJobsPerWorker) return false;
     switch (job.level) {
       case WesiWorkloadLevel.l0:
       case WesiWorkloadLevel.l1:
         return worker.activeLightJobs < concurrency.maxLightJobsPerWorker;
       case WesiWorkloadLevel.l2:
-        return worker.activeCpuJobs < concurrency.maxCpuJobsPerWorker;
+        return worker.activeCpuJobs < concurrency.maxCpuJobsPerWorker &&
+            worker.activeHeavyJobs == 0 &&
+            worker.activeGpuJobs == 0;
       case WesiWorkloadLevel.l3:
-        return worker.activeHeavyJobs < concurrency.maxHeavyJobsPerWorker;
-      case WesiWorkloadLevel.l4:
         return worker.activeHeavyJobs < concurrency.maxHeavyJobsPerWorker &&
+            worker.activeCpuJobs == 0 &&
+            worker.activeGpuJobs == 0;
+      case WesiWorkloadLevel.l4:
+        return worker.activeHeavyJobs == 0 &&
+            worker.activeCpuJobs == 0 &&
             worker.activeGpuJobs < concurrency.maxGpuJobsPerWorker;
     }
   }
@@ -426,17 +594,24 @@ class WesiResourceScheduler {
   int _score(WesiWorkerResourceProfile worker, WesiJobRequirements job) {
     var score = 0;
     if (worker.status == WesiWorkerStatus.online) score += 200;
-    if (worker.localDevice) score += 40;
+    if (job.level.index <= WesiWorkloadLevel.l2.index && worker.localDevice) {
+      score += 80;
+    }
+    if (job.level == WesiWorkloadLevel.l4 && worker.remoteWorker) score += 20;
     score += worker.cpuCores * 10;
-    score += (worker.ramMb - concurrency.reserveRamMb) ~/ 512;
+    score += (worker.availableRamMb - concurrency.reserveRamMb) ~/ 256;
     score += (worker.freeDiskMb - concurrency.reserveDiskMb) ~/ 4096;
-    if (job.gpuRequired) score += worker.gpuVramMb ~/ 256;
-    score -= worker.totalActiveJobs * 50;
+    score += ((100 - worker.cpuLoadPercent).clamp(0, 100)).round();
+    if (job.gpuRequired) score += worker.freeGpuVramMb ~/ 256;
+    score -= worker.totalActiveJobs * 60;
+    if (worker.powerMode == WesiPowerMode.lowPower && job.heavy) score -= 200;
+    if (worker.thermalState == WesiThermalState.fair) score -= 20;
+    if (worker.thermalState == WesiThermalState.serious) score -= 100;
     switch (job.preference) {
       case WesiExecutionPreference.localPreferred:
         if (worker.localDevice) score += 1000;
       case WesiExecutionPreference.remotePreferred:
-        if (!worker.localDevice) score += 1000;
+        if (worker.remoteWorker) score += 1000;
       case WesiExecutionPreference.automatic:
       case WesiExecutionPreference.localOnly:
       case WesiExecutionPreference.remoteOnly:
@@ -446,13 +621,16 @@ class WesiResourceScheduler {
   }
 
   WesiSchedulerBlockerCode _bestBlocker(
-      Set<WesiSchedulerBlockerCode> blockers) {
+    Set<WesiSchedulerBlockerCode> blockers,
+  ) {
     const order = <WesiSchedulerBlockerCode>[
       WesiSchedulerBlockerCode.trust,
       WesiSchedulerBlockerCode.policy,
+      WesiSchedulerBlockerCode.resourceSnapshot,
       WesiSchedulerBlockerCode.runtimePacks,
       WesiSchedulerBlockerCode.capabilities,
       WesiSchedulerBlockerCode.platform,
+      WesiSchedulerBlockerCode.thermal,
       WesiSchedulerBlockerCode.gpu,
       WesiSchedulerBlockerCode.ram,
       WesiSchedulerBlockerCode.disk,
@@ -491,16 +669,20 @@ class WesiResourceScheduler {
         return 'Required worker capabilities are unavailable.';
       case WesiSchedulerBlockerCode.runtimePacks:
         return 'Required Runtime Packs are not installed/verified.';
+      case WesiSchedulerBlockerCode.resourceSnapshot:
+        return 'Worker resource telemetry is invalid or incomplete.';
       case WesiSchedulerBlockerCode.cpu:
-        return 'Available workers do not have enough CPU capacity.';
+        return 'Available workers do not have enough CPU headroom.';
       case WesiSchedulerBlockerCode.ram:
-        return 'Available workers do not have enough RAM headroom.';
+        return 'Available workers do not have enough free RAM headroom.';
       case WesiSchedulerBlockerCode.gpu:
-        return 'Available GPUs do not satisfy the VRAM requirement.';
+        return 'Available GPUs do not satisfy the free VRAM requirement.';
       case WesiSchedulerBlockerCode.disk:
         return 'Available workers do not have enough free disk space.';
+      case WesiSchedulerBlockerCode.thermal:
+        return 'Worker thermal state is unsafe for this workload.';
       case WesiSchedulerBlockerCode.foreground:
-        return 'The worker must be foregrounded or allow background execution.';
+        return 'This workload requires WesiOS to remain open on the execution worker.';
       case WesiSchedulerBlockerCode.concurrency:
         return 'Worker concurrency limits are currently saturated.';
     }
