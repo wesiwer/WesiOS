@@ -175,10 +175,29 @@ function messageRows(app, ownerId, workerId) {
   return rowsForWorker(app, ownerId, COLL_MESSAGE, workerId, MAX_MESSAGES_PER_WORKER);
 }
 
+function messageOrder(a, b) {
+  const job = String(a.jobId || "").localeCompare(String(b.jobId || ""));
+  if (job !== 0) return job;
+  const aGeneration = Number((a.payload && a.payload.generation) || 0);
+  const bGeneration = Number((b.payload && b.payload.generation) || 0);
+  if (aGeneration !== bGeneration) return aGeneration - bGeneration;
+  const aSequence = Number(a.sequence || 0);
+  const bSequence = Number(b.sequence || 0);
+  if (aSequence !== bSequence) return aSequence - bSequence;
+  return String(a.messageId || "").localeCompare(String(b.messageId || ""));
+}
+
 function saveMessage(app, ownerId, workerId, direction, message) {
   const rid = messageRid(direction, workerId, String(message.messageId || ""));
   const existing = findRecord(app, ownerId, COLL_MESSAGE, rid);
-  if (existing) return existing;
+  if (existing) {
+    const existingPayload = payloadOf(existing);
+    if (existingPayload.direction !== direction ||
+        JSON.stringify(existingPayload.message || {}) !== JSON.stringify(message)) {
+      throw new BadRequestError("Wesi Worker message id conflict");
+    }
+    return existing;
+  }
   const rows = messageRows(app, ownerId, workerId);
   const pendingOutbound = rows.filter(function(row) {
     const p = payloadOf(row);
@@ -409,9 +428,9 @@ routerAdd("POST", "/api/wesi/ai/workers/events/poll", (e) => {
     const payload = payloadOf(row);
     if (payload.direction !== "from_worker" || payload.acked === true || !payload.message) continue;
     messages.push(payload.message);
-    if (messages.length >= limit) break;
   }
-  return e.json(200, {ok: true, messages: messages});
+  messages.sort(messageOrder);
+  return e.json(200, {ok: true, messages: messages.slice(0, limit)});
 }, $apis.requireAuth("users"));
 
 routerAdd("POST", "/api/wesi/ai/workers/events/ack", (e) => {
@@ -448,9 +467,9 @@ routerAdd("POST", "/api/wesi/ai/workers/mailbox/poll", (e) => {
     const payload = payloadOf(row);
     if (payload.direction !== "to_worker" || payload.acked === true || !payload.message) continue;
     messages.push(payload.message);
-    if (messages.length >= limit) break;
   }
-  return e.json(200, {ok: true, messages: messages});
+  messages.sort(messageOrder);
+  return e.json(200, {ok: true, messages: messages.slice(0, limit)});
 });
 
 routerAdd("POST", "/api/wesi/ai/workers/message", (e) => {
