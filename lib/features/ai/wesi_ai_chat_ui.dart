@@ -42,19 +42,124 @@ class WesiAiChatUi {
     return 'Сопоставил запрос с контекстом текущего диалога и подготовил итоговый ответ.';
   }
 
-  static List<String> followUps(String answer) {
-    final lower = answer.toLowerCase();
-    if (lower.contains('ошиб') || lower.contains('сборк') || lower.contains('сервер')) {
+  static const Set<String> _followUpStopWords = <String>{
+    'это',
+    'эта',
+    'этот',
+    'эти',
+    'как',
+    'что',
+    'чтобы',
+    'или',
+    'для',
+    'про',
+    'при',
+    'над',
+    'под',
+    'без',
+    'есть',
+    'был',
+    'была',
+    'были',
+    'будет',
+    'нужно',
+    'можно',
+    'только',
+    'теперь',
+    'тогда',
+    'если',
+    'уже',
+    'ещё',
+    'еще',
+    'очень',
+    'который',
+    'которая',
+    'которые',
+    'мне',
+    'тебе',
+    'его',
+    'её',
+    'она',
+    'они',
+    'мой',
+    'моя',
+    'наш',
+    'ваш',
+    'такой',
+    'такая',
+    'сделай',
+    'сделать',
+    'давай',
+    'ответ',
+    'вопрос',
+    'почему',
+    'зачем',
+    'пожалуйста',
+    'просто',
+    'тоже',
+    'там',
+    'тут',
+    'здесь',
+    'the',
+    'and',
+    'for',
+    'with',
+    'from',
+    'this',
+    'that',
+    'into',
+    'your',
+    'you',
+  };
+
+  static String _followUpTopic(String source) {
+    final cleaned = source
+        .replaceAll(RegExp(r'```[\s\S]*?```'), ' ')
+        .replaceAll(RegExp(r'https?://\S+'), ' ')
+        .replaceAll(RegExp(r'[^0-9A-Za-zА-Яа-яЁё_-]+'), ' ');
+    final seen = <String>{};
+    final words = <String>[];
+    for (final raw in cleaned.split(RegExp(r'\s+'))) {
+      final word = raw.trim();
+      final lower = word.toLowerCase();
+      if (word.length < 3 ||
+          _followUpStopWords.contains(lower) ||
+          !seen.add(lower)) {
+        continue;
+      }
+      words.add(word);
+      if (words.length == 5) break;
+    }
+    return words.join(' ');
+  }
+
+  static List<String> followUps({
+    required String answer,
+    String lastUserText = '',
+    WesiAiPersona persona = WesiAiPersona.zane,
+  }) {
+    final topic = _followUpTopic(
+      lastUserText.trim().isNotEmpty ? lastUserText : answer,
+    );
+    if (topic.isEmpty) {
       return const <String>[
-        'Что проверить следующим?',
-        'Покажи основные риски',
-        'Предложи следующий шаг',
+        'Уточни следующий практический шаг',
+        'Какие риски здесь стоит учесть?',
+        'Что ещё важно проверить?',
       ];
     }
-    return const <String>[
-      'Расскажи подробнее',
-      'Что здесь самое важное?',
-      'Предложи следующий шаг',
+    final quoted = '«$topic»';
+    if (persona == WesiAiPersona.nirvana) {
+      return <String>[
+        'Разберём глубже $quoted',
+        'Что в $quoted может быть неочевидно?',
+        'Какие ещё варианты есть для $quoted?',
+      ];
+    }
+    return <String>[
+      'Какой следующий шаг по $quoted?',
+      'Какие риски есть у $quoted?',
+      'Что ещё проверить по $quoted?',
     ];
   }
 }

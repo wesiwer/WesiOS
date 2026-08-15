@@ -26,3 +26,12 @@ WesiOS не показывает скрытую chain-of-thought модели. �
 ## Камера
 
 Камера Wesi AI открывается модальным окном с ограниченной шириной/высотой. Внутренний `CameraPreview` продолжает использовать аппаратный aspect ratio, поэтому изображение не растягивается на весь экран и не деформируется.
+
+## Contextual follow-ups and clarification
+
+- follow-up chips derive their topic from the latest user turn/current answer and must not be a fixed repeated list;
+- a valid fenced `question` JSON block renders 2–5 quick answers and optional `Свой ответ`;
+- selecting an option is an ordinary user turn; malformed question JSON fails back to code rendering;
+- a pending clarification suppresses generic follow-up chips;
+- Zane/Nirvana identity/company/platform facts are contextual and are not injected into unrelated answers;
+- a newly opened chat is a transient draft and enters durable history only after the first accepted user turn.

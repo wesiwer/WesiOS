@@ -20,6 +20,7 @@ import 'wesi_ai_voice_session.dart';
 import 'widgets/wesi_ai_camera_capture.dart';
 import 'widgets/wesi_ai_message_content.dart';
 import 'widgets/wesi_ai_message_actions.dart';
+import 'widgets/wesi_ai_rich_message.dart';
 
 class AiAssistantV2Screen extends StatefulWidget {
   const AiAssistantV2Screen({super.key});
@@ -855,6 +856,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                     message: message,
                     animateText: latest && assistant,
                     expandWorkLog: _uiMode == WesiAiUiMode.thinking,
+                    onQuickReply: (answer) =>
+                        _sendQuickReply(controller, answer),
                   ),
                 ],
               ),
@@ -869,8 +872,11 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                   await controller.branchConversationFromMessage(message.id);
                 },
               ),
-            if (assistant && latest && message.text.trim().isNotEmpty)
-              _followUps(message.text),
+            if (assistant &&
+                latest &&
+                message.text.trim().isNotEmpty &&
+                !WesiAiRichParser.hasClarification(message.text))
+              _followUps(controller, message),
             if (!assistant && !mine && !toolLike)
               Padding(
                 padding: const EdgeInsets.only(top: 5),
@@ -887,8 +893,24 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     );
   }
 
-  Widget _followUps(String answer) {
-    final suggestions = WesiAiChatUi.followUps(answer);
+  Widget _followUps(
+    WesiAiManagedChatController controller,
+    WesiAiMessage answer,
+  ) {
+    final history = controller.state.messagesFor(answer.conversationId);
+    var lastUserText = '';
+    for (final item in history.reversed) {
+      if (item.author == WesiAiMessageAuthor.user) {
+        lastUserText = item.text;
+        break;
+      }
+    }
+    final conversation = controller.state.activeConversation;
+    final suggestions = WesiAiChatUi.followUps(
+      answer: answer.text,
+      lastUserText: lastUserText,
+      persona: conversation?.persona ?? WesiAiPersona.zane,
+    );
     return Padding(
       padding: const EdgeInsets.only(top: 7),
       child: Wrap(
@@ -1152,6 +1174,18 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
         );
       }
     }
+  }
+
+  Future<void> _sendQuickReply(
+    WesiAiManagedChatController controller,
+    String answer,
+  ) async {
+    if (controller.processing || answer.trim().isEmpty) return;
+    _composer.value = TextEditingValue(
+      text: answer.trim(),
+      selection: TextSelection.collapsed(offset: answer.trim().length),
+    );
+    await _send(controller);
   }
 
   Future<void> _send(WesiAiManagedChatController controller) async {

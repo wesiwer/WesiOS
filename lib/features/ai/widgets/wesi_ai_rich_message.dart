@@ -1,9 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/wesi_ai_activity.dart';
 
-enum WesiAiRichBlockKind { text, code, quote, draft }
+enum WesiAiRichBlockKind { text, code, quote, draft, clarification }
 
 class WesiAiRichBlock {
   final WesiAiRichBlockKind kind;
@@ -55,8 +57,13 @@ class WesiAiRichParser {
           'quote',
           'letter'
         }.contains(lower);
+        final kind = lower == 'question'
+            ? WesiAiRichBlockKind.clarification
+            : draft
+                ? WesiAiRichBlockKind.draft
+                : WesiAiRichBlockKind.code;
         blocks.add(WesiAiRichBlock(
-          draft ? WesiAiRichBlockKind.draft : WesiAiRichBlockKind.code,
+          kind,
           body.join('\n'),
           language: language,
         ));
@@ -82,6 +89,16 @@ class WesiAiRichParser {
     return blocks;
   }
 
+  static bool hasClarification(String markdown) {
+    for (final block in parse(markdown)) {
+      if (block.kind == WesiAiRichBlockKind.clarification &&
+          WesiAiClarification.tryParse(block.text) != null) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   static String plainText(String markdown) {
     return markdown
         .replaceAll(RegExp(r'```[^\n]*\n?'), '')
@@ -96,6 +113,45 @@ class WesiAiRichParser {
   }
 }
 
+class WesiAiClarification {
+  final String prompt;
+  final List<String> options;
+  final bool allowOther;
+
+  const WesiAiClarification({
+    required this.prompt,
+    required this.options,
+    required this.allowOther,
+  });
+
+  static WesiAiClarification? tryParse(String raw) {
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return null;
+      final prompt = '${decoded['prompt'] ?? ''}'.trim();
+      final rawOptions = decoded['options'];
+      if (prompt.isEmpty || prompt.length > 1200 || rawOptions is! List)
+        return null;
+      final options = rawOptions
+          .map((item) => '$item'.trim())
+          .where((item) => item.isNotEmpty && item.length <= 240)
+          .toSet()
+          .take(5)
+          .toList(growable: false);
+      if (options.length < 2) return null;
+      return WesiAiClarification(
+        prompt: prompt,
+        options: options,
+        allowOther: decoded['allowOther'] != false,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+}
+
+typedef WesiAiQuickReply = Future<void> Function(String answer);
+
 class WesiAiRichMessage extends StatelessWidget {
   final String messageId;
   final String text;
@@ -103,6 +159,7 @@ class WesiAiRichMessage extends StatelessWidget {
   final bool streaming;
   final bool expandWorkLog;
   final int workDurationMs;
+  final WesiAiQuickReply? onQuickReply;
 
   const WesiAiRichMessage({
     super.key,
@@ -112,6 +169,7 @@ class WesiAiRichMessage extends StatelessWidget {
     this.streaming = false,
     this.expandWorkLog = false,
     this.workDurationMs = 0,
+    this.onQuickReply,
   });
 
   @override
@@ -190,6 +248,18 @@ class WesiAiRichMessage extends StatelessWidget {
         case WesiAiRichBlockKind.text:
           widgets.add(WesiAiFormattedText(text: block.text));
           break;
+        case WesiAiRichBlockKind.clarification:
+          final question = WesiAiClarification.tryParse(block.text);
+          if (question == null) {
+            widgets.add(
+                WesiAiCodeBlock(code: block.text, language: block.language));
+          } else {
+            widgets.add(WesiAiClarificationBlock(
+              question: question,
+              onAnswer: onQuickReply,
+            ));
+          }
+          break;
       }
     }
     return widgets;
@@ -202,6 +272,93 @@ class WesiAiRichMessage extends StatelessWidget {
         'draft' => 'Черновик',
         _ => 'Текст для копирования',
       };
+}
+
+class WesiAiClarificationBlock extends StatelessWidget {
+  final WesiAiClarification question;
+  final WesiAiQuickReply? onAnswer;
+
+  const WesiAiClarificationBlock({
+    super.key,
+    required this.question,
+    this.onAnswer,
+  });
+
+  Future<void> _customAnswer(BuildContext context) async {
+    final controller = TextEditingController();
+    final value = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(question.prompt),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 1,
+          maxLines: 5,
+          decoration: const InputDecoration(hintText: 'Свой ответ'),
+          onSubmitted: (value) => Navigator.pop(dialogContext, value.trim()),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Отмена'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(dialogContext, controller.text.trim()),
+            child: const Text('Ответить'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    if (value != null && value.trim().isNotEmpty) {
+      await onAnswer?.call(value.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerLow,
+        border: Border.all(color: theme.dividerColor),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            question.prompt,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(fontWeight: FontWeight.w700),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 7,
+            runSpacing: 7,
+            children: [
+              for (final option in question.options)
+                ActionChip(
+                  label: Text(option),
+                  onPressed: onAnswer == null ? null : () => onAnswer!(option),
+                ),
+              if (question.allowOther)
+                ActionChip(
+                  avatar: const Icon(Icons.edit_outlined, size: 16),
+                  label: const Text('Свой ответ'),
+                  onPressed:
+                      onAnswer == null ? null : () => _customAnswer(context),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class WesiAiFormattedText extends StatelessWidget {
