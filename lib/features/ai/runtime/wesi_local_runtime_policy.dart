@@ -119,7 +119,7 @@ class WesiLocalRuntimePolicy {
         visibleSegments.first.toLowerCase() == '.wesi') {
       throw const WesiLocalRuntimePolicyException(
         'WLR_INTERNAL_PATH_FORBIDDEN',
-        'Внутреннее состояние local runtime недоступно через model tool calls',
+        'Внутреннее состояние local runtime недоступно AI-инструментам',
       );
     }
 
@@ -265,10 +265,11 @@ class WesiLocalRuntimePolicy {
         'Не настроен локальный runtime: $id',
       );
     }
-    if (requireSandbox && !binding.sandboxed) {
+    if (requireSandbox &&
+        binding.sandboxProfile != WesiLocalSandboxProfile.workspaceV1) {
       throw WesiLocalRuntimePolicyException(
         'WLR_SANDBOX_REQUIRED',
-        'Runtime $id не подтверждён как изолированный',
+        'Runtime $id не подтверждает контракт Wesi workspaceV1',
       );
     }
     if (arbitraryCode && !binding.allowArbitraryCode) {
@@ -335,9 +336,7 @@ class WesiLocalRuntimePolicy {
           'Header $key должен добавляться только доверенным Connector Broker',
         );
       }
-      if (lower == 'host' ||
-          lower == 'content-length' ||
-          lower == 'connection') {
+      if (lower == 'host' || lower == 'content-length' || lower == 'connection') {
         continue;
       }
       out[key] = value;
@@ -409,13 +408,8 @@ class WesiLocalRuntimePolicy {
       if (a == 100 && b >= 64 && b <= 127) return true;
       if (a == 169 && b == 254) return true;
       if (a == 172 && b >= 16 && b <= 31) return true;
-      final c = bytes[2];
       if (a == 192 && b == 168) return true;
-      if (a == 192 && b == 0 && (c == 0 || c == 2)) return true;
-      if (a == 192 && b == 88 && c == 99) return true;
       if (a == 198 && (b == 18 || b == 19)) return true;
-      if (a == 198 && b == 51 && c == 100) return true;
-      if (a == 203 && b == 0 && c == 113) return true;
       if (a >= 224) return true;
       return false;
     }
@@ -425,29 +419,22 @@ class WesiLocalRuntimePolicy {
       final loopback =
           bytes.take(15).every((value) => value == 0) && bytes[15] == 1;
       if (loopback) return true;
+
+      // IPv4-mapped IPv6 must inherit IPv4 policy. Without this check an
+      // address such as ::ffff:127.0.0.1 could bypass the loopback guard.
       final ipv4Mapped = bytes.take(10).every((value) => value == 0) &&
           bytes[10] == 0xff &&
           bytes[11] == 0xff;
       if (ipv4Mapped) {
-        final a = bytes[12];
-        final b = bytes[13];
-        final c = bytes[14];
-        if (a == 0 || a == 10 || a == 127) return true;
-        if (a == 100 && b >= 64 && b <= 127) return true;
-        if (a == 169 && b == 254) return true;
-        if (a == 172 && b >= 16 && b <= 31) return true;
-        if (a == 192 && b == 168) return true;
-        if (a == 192 && b == 0 && (c == 0 || c == 2)) return true;
-        if (a == 192 && b == 88 && c == 99) return true;
-        if (a == 198 && (b == 18 || b == 19)) return true;
-        if (a == 198 && b == 51 && c == 100) return true;
-        if (a == 203 && b == 0 && c == 113) return true;
-        if (a >= 224) return true;
-        return false;
+        return isPrivateOrSpecialAddress(
+          InternetAddress.fromRawAddress(bytes.sublist(12)),
+        );
       }
+
       if ((bytes[0] & 0xfe) == 0xfc) return true; // fc00::/7 unique-local
-      if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80)
-        return true; // fe80::/10
+      if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) {
+        return true; // fe80::/10 link-local
+      }
       if (bytes[0] == 0xff) return true; // multicast
       return false;
     }
