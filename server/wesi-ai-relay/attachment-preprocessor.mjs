@@ -15,6 +15,7 @@ const MAX_EXTRACTED_BYTES = 10 * 1024 * 1024;
 const MAX_TEXT_CHARS_PER_FILE = 350000;
 const MAX_TOTAL_TEXT_CHARS = 1400000;
 const MAX_STAGED_TEXT_READ_BYTES = 2 * 1024 * 1024;
+const MAX_STAGED_TOTAL_ATTACHMENT_BYTES = 512 * 1024 * 1024;
 const MAX_GEMINI_PDF_BYTES = 50 * 1024 * 1024;
 
 const TEXT_EXTENSIONS = new Set([
@@ -271,31 +272,41 @@ export async function prepareGeminiAttachments(raw, apiKey = '') {
   const parts = [];
   const descriptors = [];
   const providerFiles = [];
-  for (const inlineItem of inlineItems) {
-    const staged = inlineItem.mimeType === STAGED_UPLOAD_MIME ? resolveStagedAttachment(inlineItem) : null;
-    const item = staged || inlineItem;
-    descriptors.push({name: item.name, mimeType: item.mimeType, byteSize: item.byteSize});
-    if (isNativeProviderFile(item)) {
-      parts.push({text: `\n[WESI_AI_ATTACHMENT name=${JSON.stringify(item.name)} mime=${JSON.stringify(item.mimeType)} size=${item.byteSize}]`});
-      if (item.filePath) {
-        const providerFile = await uploadGeminiFile(item, apiKey);
-        providerFiles.push(providerFile.name);
-        parts.push({fileData: {mimeType: item.mimeType, fileUri: providerFile.uri}});
-      } else {
-        parts.push({inlineData: {mimeType: item.mimeType, data: item.bytes.toString('base64')}});
+  let actualTotalBytes = 0;
+  try {
+    for (const inlineItem of inlineItems) {
+      const staged = inlineItem.mimeType === STAGED_UPLOAD_MIME ? resolveStagedAttachment(inlineItem) : null;
+      const item = staged || inlineItem;
+      actualTotalBytes += Number(item.byteSize || 0);
+      if (actualTotalBytes > MAX_STAGED_TOTAL_ATTACHMENT_BYTES) {
+        throw new Error('WAI_UPLOAD_BATCH_TOO_LARGE');
       }
-      continue;
+      descriptors.push({name: item.name, mimeType: item.mimeType, byteSize: item.byteSize});
+      if (isNativeProviderFile(item)) {
+        parts.push({text: `\n[WESI_AI_ATTACHMENT name=${JSON.stringify(item.name)} mime=${JSON.stringify(item.mimeType)} size=${item.byteSize}]`});
+        if (item.filePath) {
+          const providerFile = await uploadGeminiFile(item, apiKey);
+          providerFiles.push(providerFile.name);
+          parts.push({fileData: {mimeType: item.mimeType, fileUri: providerFile.uri}});
+        } else {
+          parts.push({inlineData: {mimeType: item.mimeType, data: item.bytes.toString('base64')}});
+        }
+        continue;
+      }
+      const sample = item.filePath ? await stagedPrefix(item) : item.bytes;
+      if (TEXT_EXTENSIONS.has(item.extension) || item.mimeType.startsWith('text/') || mostlyText(sample)) {
+        parts.push({text: `\n[WESI_AI_ATTACHMENT_TEXT ${item.name}]\n${decodeText(sample)}`});
+        continue;
+      }
+      if (ARCHIVE_EXTENSIONS.has(item.extension) || OFFICE_EXTENSIONS.has(item.extension) || /zip|rar|7z|tar|gzip|bzip|xz|officedocument|opendocument|epub/.test(item.mimeType)) {
+        parts.push({text: `\n[WESI_AI_ATTACHMENT_CONTAINER ${item.name}]\n${await extractContainer(item)}`});
+        continue;
+      }
+      parts.push({text: `\n[WESI_AI_ATTACHMENT_BINARY ${item.name}]\n${await genericBinarySummary(item)}`});
     }
-    const sample = item.filePath ? await stagedPrefix(item) : item.bytes;
-    if (TEXT_EXTENSIONS.has(item.extension) || item.mimeType.startsWith('text/') || mostlyText(sample)) {
-      parts.push({text: `\n[WESI_AI_ATTACHMENT_TEXT ${item.name}]\n${decodeText(sample)}`});
-      continue;
-    }
-    if (ARCHIVE_EXTENSIONS.has(item.extension) || OFFICE_EXTENSIONS.has(item.extension) || /zip|rar|7z|tar|gzip|bzip|xz|officedocument|opendocument|epub/.test(item.mimeType)) {
-      parts.push({text: `\n[WESI_AI_ATTACHMENT_CONTAINER ${item.name}]\n${await extractContainer(item)}`});
-      continue;
-    }
-    parts.push({text: `\n[WESI_AI_ATTACHMENT_BINARY ${item.name}]\n${await genericBinarySummary(item)}`});
+    return {parts, descriptors, providerFiles};
+  } catch (error) {
+    await deleteGeminiFiles(providerFiles, apiKey);
+    throw error;
   }
-  return {parts, descriptors, providerFiles};
 }

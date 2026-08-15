@@ -147,7 +147,7 @@ routerAdd("PUT", "/api/wesi/ai/uploads/{id}/chunks/{index}", (e) => {
   try { bytes = toBytes(e.request.body, expected + 1); } catch (_) {
     return e.json(413, {ok: false, code: "WAI_UPLOAD_BAD_CHUNK"});
   }
-  if (!Array.isArray(bytes) || bytes.length !== expected) {
+  if (!bytes || typeof bytes.length !== "number" || bytes.length !== expected) {
     return e.json(400, {ok: false, code: "WAI_UPLOAD_CHUNK_MISMATCH"});
   }
   const cfg = ai.readRelayConfig();
