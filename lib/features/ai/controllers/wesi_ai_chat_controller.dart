@@ -15,6 +15,7 @@ class WesiAiChatController extends ChangeNotifier {
   final Set<String> _mediaPolls = <String>{};
   final Set<String> _localMediaRuns = <String>{};
   bool _disposed = false;
+  Completer<void>? _activeTurnInterrupt;
 
   WesiAiLocalState state;
   bool loading = true;
@@ -131,7 +132,8 @@ class WesiAiChatController extends ChangeNotifier {
             },
     );
     final titleSource = clean.isNotEmpty ? clean : attachments.first.name;
-    final updated = c.copyWith(updatedAt: now, title: _titleFor(c, titleSource));
+    final updated =
+        c.copyWith(updatedAt: now, title: _titleFor(c, titleSource));
     final conversations = state.conversations
         .map((x) => x.id == c.id ? updated : x)
         .toList()
@@ -144,7 +146,7 @@ class WesiAiChatController extends ChangeNotifier {
     await _persist();
 
     try {
-      final reply = await api.send(
+      final reply = await awaitInterruptible(api.send(
         conversation: updated,
         tier: state.tier,
         message: clean,
@@ -152,7 +154,8 @@ class WesiAiChatController extends ChangeNotifier {
         memory: state.memory,
         project: _projectFor(updated.projectId),
         attachments: attachments,
-      );
+      ));
+      if (reply == null) return;
       final at = DateTime.now();
       final author = switch (c.persona) {
         WesiAiPersona.zane => WesiAiMessageAuthor.zane,
@@ -215,7 +218,8 @@ class WesiAiChatController extends ChangeNotifier {
 
       final localRequest = data['localRequest'];
       if (localRequest is Map) {
-        final key = '${message.id}|local|${data['mediaType']}|${data['prompt']}';
+        final key =
+            '${message.id}|local|${data['mediaType']}|${data['prompt']}';
         if (_localMediaRuns.add(key)) {
           unawaited(_runLocalMedia(
             message,
@@ -228,8 +232,7 @@ class WesiAiChatController extends ChangeNotifier {
 
       final statusUrl = '${data['url'] ?? ''}'.trim();
       final uri = Uri.tryParse(statusUrl);
-      if (uri == null ||
-          !uri.path.startsWith('/api/wesi/ai/media/jobs/')) {
+      if (uri == null || !uri.path.startsWith('/api/wesi/ai/media/jobs/')) {
         continue;
       }
       final key = '${message.id}|$statusUrl';
@@ -305,7 +308,8 @@ class WesiAiChatController extends ChangeNotifier {
             final data = Map<String, dynamic>.from(dataRaw);
             final localRaw = data['localRequest'];
             if (localRaw is Map &&
-                '${localRaw['mediaType'] ?? ''}' == '${request['mediaType'] ?? ''}' &&
+                '${localRaw['mediaType'] ?? ''}' ==
+                    '${request['mediaType'] ?? ''}' &&
                 '${localRaw['prompt'] ?? ''}' == '${request['prompt'] ?? ''}') {
               data.remove('localRequest');
               data['status'] = ok ? 'ready' : 'failed';
@@ -411,6 +415,33 @@ class WesiAiChatController extends ChangeNotifier {
     if (!c.title.startsWith('Новый ')) return c.title;
     return text.length <= 42 ? text : '${text.substring(0, 42)}…';
   }
+
+  bool interruptActiveTurn() {
+    final signal = _activeTurnInterrupt;
+    if (signal == null || signal.isCompleted) return false;
+    signal.complete();
+    return true;
+  }
+
+  @protected
+  Future<T?> awaitInterruptible<T>(Future<T> future) async {
+    final signal = Completer<void>();
+    _activeTurnInterrupt = signal;
+    try {
+      final result = await Future.any<(bool interrupted, T? value)>([
+        future.then<(bool interrupted, T? value)>((value) => (false, value)),
+        signal.future.then<(bool interrupted, T? value)>((_) => (true, null)),
+      ]);
+      return result.$1 ? null : result.$2;
+    } finally {
+      if (identical(_activeTurnInterrupt, signal)) {
+        _activeTurnInterrupt = null;
+      }
+    }
+  }
+
+  @protected
+  bool get isDisposed => _disposed;
 
   @protected
   void notifyIfActive() {

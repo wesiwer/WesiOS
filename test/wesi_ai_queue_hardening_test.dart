@@ -10,6 +10,11 @@ import 'package:wesios/features/ai/wesi_ai_managed_controller.dart';
 
 class _MemoryStore extends WesiAiLocalStore {
   WesiAiLocalState? saved;
+  final Map<String, WesiAiPendingQueueItem> pending =
+      <String, WesiAiPendingQueueItem>{};
+  bool failPendingWrites = false;
+  Completer<void>? pendingWriteGate;
+  int pendingWriteCount = 0;
 
   _MemoryStore(String employeeId) : super(employeeId);
 
@@ -20,6 +25,32 @@ class _MemoryStore extends WesiAiLocalStore {
   @override
   Future<void> save(WesiAiLocalState state) async {
     saved = state;
+  }
+
+  @override
+  Future<List<WesiAiPendingQueueItem>> loadPendingQueueItems() async {
+    final result = pending.values.toList(growable: false);
+    result.sort((a, b) => a.queuedAt.compareTo(b.queuedAt));
+    return result;
+  }
+
+  @override
+  Future<void> savePendingQueueItem(WesiAiPendingQueueItem item) async {
+    pendingWriteCount++;
+    final gate = pendingWriteGate;
+    if (pendingWriteCount == 1 && gate != null) await gate.future;
+    if (failPendingWrites) throw StateError('synthetic pending write failure');
+    pending[item.id] = item;
+  }
+
+  @override
+  Future<void> removePendingQueueItem(String id) async {
+    pending.remove(id);
+  }
+
+  @override
+  Future<void> removePendingQueueForConversation(String conversationId) async {
+    pending.removeWhere((_, item) => item.conversationId == conversationId);
   }
 }
 
@@ -51,7 +82,6 @@ class _ControlledApi extends WesiAiApi {
     );
   }
 }
-
 
 class _LobbyControlledApi extends WesiAiApi {
   final Completer<WesiAiReply> reply = Completer<WesiAiReply>();
@@ -96,7 +126,7 @@ void main() {
     final controller = await _controller(api);
 
     expect(
-      controller.submitUserMessage('first'),
+      await controller.submitUserMessage('first'),
       WesiAiMessageSubmitResult.accepted,
     );
     await _waitUntil(() => api.prompts.length == 1);
@@ -105,7 +135,7 @@ void main() {
         index < WesiAiManagedChatController.maxQueuedTurns;
         index++) {
       expect(
-        controller.submitUserMessage('queued-$index'),
+        await controller.submitUserMessage('queued-$index'),
         WesiAiMessageSubmitResult.accepted,
       );
     }
@@ -114,7 +144,7 @@ void main() {
       WesiAiManagedChatController.maxQueuedTurns,
     );
     expect(
-      controller.submitUserMessage('overflow'),
+      await controller.submitUserMessage('overflow'),
       WesiAiMessageSubmitResult.queueFull,
     );
 
@@ -142,12 +172,12 @@ void main() {
     final conversationId = controller.state.activeConversationId!;
 
     expect(
-      controller.submitUserMessage('will-fail'),
+      await controller.submitUserMessage('will-fail'),
       WesiAiMessageSubmitResult.accepted,
     );
     await _waitUntil(() => api.prompts.length == 1);
     expect(
-      controller.submitUserMessage('must-run-after-failure'),
+      await controller.submitUserMessage('must-run-after-failure'),
       WesiAiMessageSubmitResult.accepted,
     );
 
@@ -183,7 +213,7 @@ void main() {
     await controller.selectConversation(firstChat);
 
     expect(
-      controller.submitUserMessage('first-chat'),
+      await controller.submitUserMessage('first-chat'),
       WesiAiMessageSubmitResult.accepted,
     );
     await _waitUntil(() => api.prompts.length == 1);
@@ -194,7 +224,7 @@ void main() {
       bytes: Uint8List.fromList(<int>[1, 2, 3, 4]),
     );
     expect(
-      controller.submitUserMessage(
+      await controller.submitUserMessage(
         'second-chat',
         attachments: <WesiAiAttachment>[attachment],
       ),
@@ -224,7 +254,8 @@ void main() {
     expect(controller.state.activeConversationId, secondChat);
   });
 
-  test('disposing screen controller does not interrupt accepted queue', () async {
+  test('disposing screen controller does not interrupt accepted queue',
+      () async {
     final api = _ControlledApi();
     final store = _MemoryStore('employee-1');
     final controller = WesiAiManagedChatController(
@@ -236,12 +267,12 @@ void main() {
     final conversationId = controller.state.activeConversationId!;
 
     expect(
-      controller.submitUserMessage('before-close'),
+      await controller.submitUserMessage('before-close'),
       WesiAiMessageSubmitResult.accepted,
     );
     await _waitUntil(() => api.prompts.length == 1);
     expect(
-      controller.submitUserMessage('queued-before-close'),
+      await controller.submitUserMessage('queued-before-close'),
       WesiAiMessageSubmitResult.accepted,
     );
 
@@ -269,8 +300,8 @@ void main() {
     );
   });
 
-
-  test('lobby completion after dispose never notifies disposed listeners', () async {
+  test('lobby completion after dispose never notifies disposed listeners',
+      () async {
     final api = _LobbyControlledApi();
     final store = _MemoryStore('employee-1');
     final controller = WesiAiManagedChatController(store: store, api: api);
@@ -282,8 +313,7 @@ void main() {
     controller.dispose();
     api.reply.complete(
       const WesiAiReply(
-        answer:
-            '__WESI_LOBBY_V1__[{"author":"zane","text":"Готово"}]',
+        answer: '__WESI_LOBBY_V1__[{"author":"zane","text":"Готово"}]',
         requestId: 'lobby-dispose-1',
       ),
     );
@@ -299,4 +329,409 @@ void main() {
     );
   });
 
+  test('durable accept fails closed when pending storage cannot be written',
+      () async {
+    final api = _ControlledApi();
+    final store = _MemoryStore('employee-1');
+    final controller = WesiAiManagedChatController(
+      store: store,
+      api: api,
+      processSessionId: 'storage-failure-session',
+    );
+    await controller.load();
+    await controller.createConversation(WesiAiPersona.zane);
+    store.failPendingWrites = true;
+
+    expect(
+      await controller.submitUserMessage('do not lose me'),
+      WesiAiMessageSubmitResult.persistenceFailed,
+    );
+    expect(controller.queuedTurnCount, 0);
+    expect(api.prompts, isEmpty);
+  });
+
+  test('queued text resumes after a real process-session restart', () async {
+    final store = _MemoryStore('employee-1');
+    final apiA = _ControlledApi();
+    final controllerA = WesiAiManagedChatController(
+      store: store,
+      api: apiA,
+      processSessionId: 'process-a',
+    );
+    await controllerA.load();
+    await controllerA.createConversation(WesiAiPersona.zane);
+    final conversationId = controllerA.state.activeConversationId!;
+
+    expect(
+      await controllerA.submitUserMessage('uncertain-inflight'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => apiA.prompts.length == 1);
+    expect(
+      await controllerA.submitUserMessage('resume-after-restart'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    expect(
+      store.pending.values.any(
+        (item) =>
+            item.text == 'uncertain-inflight' &&
+            item.status == WesiAiPendingQueueStatus.inflight,
+      ),
+      isTrue,
+    );
+    expect(
+      store.pending.values.any(
+        (item) =>
+            item.text == 'resume-after-restart' &&
+            item.status == WesiAiPendingQueueStatus.queued,
+      ),
+      isTrue,
+    );
+
+    // Simulate the old UI disappearing and then a brand-new process session.
+    // The old in-flight future deliberately never completes.
+    controllerA.dispose();
+    final apiB = _ControlledApi();
+    final controllerB = WesiAiManagedChatController(
+      store: store,
+      api: apiB,
+      processSessionId: 'process-b',
+    );
+    await controllerB.load();
+    await _waitUntil(() => apiB.prompts.length == 1);
+
+    expect(apiB.prompts, <String>['resume-after-restart']);
+    expect(
+      controllerB.state.messagesFor(conversationId).any(
+            (message) =>
+                message.metadata['code'] == 'WAI_QUEUE_RECOVERY_UNCERTAIN' &&
+                message.metadata['recoverText'] == 'uncertain-inflight' &&
+                message.text.contains('uncertain-inflight'),
+          ),
+      isTrue,
+    );
+
+    apiB.first.complete(
+      const WesiAiReply(
+        answer: 'reply:resume-after-restart',
+        requestId: 'restart-1',
+      ),
+    );
+    await _waitUntil(() => !controllerB.processing);
+    expect(store.pending, isEmpty);
+    expect(
+      controllerB.state.messagesFor(conversationId).any(
+            (message) =>
+                message.author == WesiAiMessageAuthor.zane &&
+                message.text == 'reply:resume-after-restart',
+          ),
+      isTrue,
+    );
+  });
+
+  test('queued attachment survives as reattach intent, never as stored bytes',
+      () async {
+    final store = _MemoryStore('employee-1');
+    final apiA = _ControlledApi();
+    final controllerA = WesiAiManagedChatController(
+      store: store,
+      api: apiA,
+      processSessionId: 'attachment-process-a',
+    );
+    await controllerA.load();
+    await controllerA.createConversation(WesiAiPersona.nirvana);
+    final conversationId = controllerA.state.activeConversationId!;
+
+    expect(
+      await controllerA.submitUserMessage('block-first'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => apiA.prompts.length == 1);
+    final attachment = WesiAiAttachment.fromBytes(
+      name: 'restart-context.txt',
+      bytes: Uint8List.fromList(<int>[1, 2, 3, 4, 5]),
+    );
+    expect(
+      await controllerA.submitUserMessage(
+        'use this after restart',
+        attachments: <WesiAiAttachment>[attachment],
+      ),
+      WesiAiMessageSubmitResult.accepted,
+    );
+
+    final queuedAttachment = store.pending.values.firstWhere(
+      (item) => item.text == 'use this after restart',
+    );
+    expect(queuedAttachment.attachments, hasLength(1));
+    expect(
+      queuedAttachment.attachments.single.keys.toSet(),
+      <String>{'name', 'mimeType', 'byteSize'},
+    );
+    expect(
+      queuedAttachment.attachments.single.containsKey('dataBase64'),
+      isFalse,
+    );
+    expect(
+      queuedAttachment.attachments.single.containsKey('localPath'),
+      isFalse,
+    );
+
+    controllerA.dispose();
+    final apiB = _ControlledApi();
+    final controllerB = WesiAiManagedChatController(
+      store: store,
+      api: apiB,
+      processSessionId: 'attachment-process-b',
+    );
+    await controllerB.load();
+
+    expect(apiB.prompts, isEmpty);
+    expect(store.pending, isEmpty);
+    final messages = controllerB.state.messagesFor(conversationId);
+    expect(
+      messages.any(
+        (message) =>
+            message.metadata['code'] == 'WAI_REATTACH_REQUIRED' &&
+            message.metadata['recoverText'] == 'use this after restart' &&
+            message.text.contains('restart-context.txt'),
+      ),
+      isTrue,
+    );
+  });
+
+  test(
+      'same process session never steals or duplicates another controller queue',
+      () async {
+    final store = _MemoryStore('employee-1');
+    final apiA = _ControlledApi();
+    final controllerA = WesiAiManagedChatController(
+      store: store,
+      api: apiA,
+      processSessionId: 'same-runtime',
+    );
+    await controllerA.load();
+    await controllerA.createConversation(WesiAiPersona.zane);
+
+    expect(
+      await controllerA.submitUserMessage('first-owned'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => apiA.prompts.length == 1);
+    expect(
+      await controllerA.submitUserMessage('second-owned'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    controllerA.dispose();
+
+    final apiB = _ControlledApi();
+    final controllerB = WesiAiManagedChatController(
+      store: store,
+      api: apiB,
+      processSessionId: 'same-runtime',
+    );
+    await controllerB.load();
+    await Future<void>.delayed(const Duration(milliseconds: 30));
+
+    expect(apiB.prompts, isEmpty);
+    expect(controllerB.queuedTurnCount, 0);
+    expect(controllerB.processing, isTrue);
+    expect(store.pending.length, 2);
+
+    apiA.first.complete(
+      const WesiAiReply(answer: 'reply:first-owned', requestId: 'owner-1'),
+    );
+    await _waitUntil(() => store.pending.isEmpty);
+    await _waitUntil(() => !controllerB.processing);
+    expect(apiA.prompts, <String>['first-owned', 'second-owned']);
+    expect(apiB.prompts, isEmpty);
+    expect(
+      controllerB.state.messages.any(
+        (message) => message.text == 'reply:second-owned',
+      ),
+      isTrue,
+    );
+  });
+
+  test('uncertain recovery can be explicitly retried without automatic replay',
+      () async {
+    final store = _MemoryStore('employee-1');
+    final apiA = _ControlledApi();
+    final controllerA = WesiAiManagedChatController(
+      store: store,
+      api: apiA,
+      processSessionId: 'manual-retry-a',
+    );
+    await controllerA.load();
+    await controllerA.createConversation(WesiAiPersona.zane);
+    final conversationId = controllerA.state.activeConversationId!;
+
+    expect(
+      await controllerA.submitUserMessage('manual retry payload'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => apiA.prompts.length == 1);
+    controllerA.dispose();
+
+    final apiB = _ControlledApi();
+    final controllerB = WesiAiManagedChatController(
+      store: store,
+      api: apiB,
+      processSessionId: 'manual-retry-b',
+    );
+    await controllerB.load();
+    expect(apiB.prompts, isEmpty);
+    expect(
+      controllerB.state.messagesFor(conversationId).last.metadata['code'],
+      'WAI_QUEUE_RECOVERY_UNCERTAIN',
+    );
+    expect(
+      controllerB.state.messagesFor(conversationId).last.text,
+      contains('manual retry payload'),
+    );
+
+    final retry = controllerB.regenerateLastResponse();
+    await _waitUntil(() => apiB.prompts.length == 1);
+    expect(apiB.prompts.single, 'manual retry payload');
+    apiB.first.complete(
+      const WesiAiReply(
+        answer: 'reply:manual retry payload',
+        requestId: 'manual-retry-1',
+      ),
+    );
+    await retry;
+    await _waitUntil(() => !controllerB.processing);
+    expect(store.pending, isEmpty);
+    expect(
+      controllerB.state.messagesFor(conversationId).any(
+            (message) =>
+                message.author == WesiAiMessageAuthor.zane &&
+                message.text == 'reply:manual retry payload',
+          ),
+      isTrue,
+    );
+  });
+
+  test('durable acceptance serializes concurrent pending writes', () async {
+    final api = _ControlledApi();
+    final store = _MemoryStore('employee-1');
+    store.pendingWriteGate = Completer<void>();
+    final controller = WesiAiManagedChatController(
+      store: store,
+      api: api,
+      processSessionId: 'accept-race-session',
+    );
+    await controller.load();
+    await controller.createConversation(WesiAiPersona.zane);
+
+    final first = controller.submitUserMessage('first durable write');
+    await _waitUntil(() => store.pendingWriteCount == 1);
+    expect(controller.processing, isTrue);
+    expect(api.prompts, isEmpty);
+
+    expect(
+      await controller.submitUserMessage('second while first is saving'),
+      WesiAiMessageSubmitResult.unavailable,
+    );
+    expect(controller.queuedTurnCount, 1);
+    expect(store.pending, isEmpty);
+    expect(api.prompts, isEmpty);
+
+    store.pendingWriteGate!.complete();
+    expect(await first, WesiAiMessageSubmitResult.accepted);
+    await _waitUntil(() => api.prompts.length == 1);
+    expect(api.prompts, <String>['first durable write']);
+
+    api.first.complete(
+      const WesiAiReply(
+        answer: 'reply:first durable write',
+        requestId: 'accept-race-1',
+      ),
+    );
+    await _waitUntil(() => !controller.processing);
+    expect(store.pending, isEmpty);
+  });
+
+  test('steer correction preempts active reply and runs before deferred work',
+      () async {
+    final api = _ControlledApi();
+    final controller = await _controller(api);
+
+    expect(
+      await controller.submitUserMessage('проверь весь проект'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => api.prompts.length == 1);
+
+    expect(
+      await controller.submitUserMessage('После этого проверь Windows build'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    expect(
+      await controller.submitUserMessage(
+        'Нет, не весь проект, проверяй только Android build',
+      ),
+      WesiAiMessageSubmitResult.accepted,
+    );
+
+    await _waitUntil(() => api.prompts.length >= 2);
+    expect(
+        api.prompts[1], 'Нет, не весь проект, проверяй только Android build');
+    expect(api.prompts, isNot(contains('После этого проверь Windows build')));
+
+    api.first.complete(
+      const WesiAiReply(answer: 'устаревший ответ', requestId: 'old-request'),
+    );
+    await _waitUntil(() => !controller.processing);
+    expect(
+      controller.state.messages
+          .any((message) => message.text == 'устаревший ответ'),
+      isFalse,
+    );
+    expect(
+      controller.state.messages.any(
+        (message) => message.metadata['code'] == 'WAI_QUEUE_SUPERSEDED',
+      ),
+      isTrue,
+    );
+  });
+
+  test('text control stops active work and cancels queued follow-ups',
+      () async {
+    final api = _ControlledApi();
+    final controller = await _controller(api);
+
+    expect(
+      await controller.submitUserMessage('сделай аудит'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => api.prompts.length == 1);
+    expect(
+      await controller.submitUserMessage('После этого собери Windows'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    expect(
+      await controller.submitUserMessage('стой'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+
+    await _waitUntil(() => !controller.processing);
+    expect(api.prompts, <String>['сделай аудит']);
+    expect(
+      controller.state.messages.any(
+        (message) => message.metadata['code'] == 'WAI_CONTROL_APPLIED',
+      ),
+      isTrue,
+    );
+    expect(controller.queuedTurnCount, 0);
+
+    api.first.complete(
+      const WesiAiReply(answer: 'поздний ответ', requestId: 'late-request'),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(
+      controller.state.messages
+          .any((message) => message.text == 'поздний ответ'),
+      isFalse,
+    );
+  });
 }
