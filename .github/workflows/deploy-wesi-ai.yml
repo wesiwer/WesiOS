@@ -82,6 +82,7 @@ jobs:
             count=$((count + 1))
           done
           [ "$count" -gt 8 ] || { echo "::error::Incomplete Main Wesi AI hook bundle ($count files)"; exit 1; }
+          node --check server/pb_migrations/1786830000_wesi_ai_connector_vault.js
 
       - name: Prepare Foreign Relay SSH
         env:
@@ -273,16 +274,40 @@ jobs:
           PY
           chmod 600 wesi-ai-relay.json
 
+      - name: Build optional Main connector environment
+        env:
+          CONNECTOR_VAULT_KEY: ${{ secrets.WESI_CONNECTOR_VAULT_KEY }}
+          GITHUB_OAUTH_CLIENT_ID: ${{ secrets.WESI_GITHUB_OAUTH_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          : > wesi-connectors-env.b64
+          if [ -n "${GITHUB_OAUTH_CLIENT_ID:-}" ] && [ -z "${CONNECTOR_VAULT_KEY:-}" ]; then
+            echo '::error::WESI_GITHUB_OAUTH_CLIENT_ID requires WESI_CONNECTOR_VAULT_KEY'
+            exit 1
+          fi
+          if [ -n "${CONNECTOR_VAULT_KEY:-}" ]; then
+            [[ "$CONNECTOR_VAULT_KEY" =~ ^[A-Za-z0-9_-]{32}$ ]] || { echo '::error::WESI_CONNECTOR_VAULT_KEY must be exactly 32 URL-safe random characters'; exit 1; }
+            echo "::add-mask::$CONNECTOR_VAULT_KEY"
+            printf 'WESI_CONNECTOR_VAULT_KEY=%s\n' "$(printf '%s' "$CONNECTOR_VAULT_KEY" | base64 -w0)" >> wesi-connectors-env.b64
+          fi
+          if [ -n "${GITHUB_OAUTH_CLIENT_ID:-}" ]; then
+            [[ "$GITHUB_OAUTH_CLIENT_ID" =~ ^[A-Za-z0-9_-]{8,200}$ ]] || { echo '::error::WESI_GITHUB_OAUTH_CLIENT_ID is invalid'; exit 1; }
+            printf 'WESI_GITHUB_OAUTH_CLIENT_ID=%s\n' "$(printf '%s' "$GITHUB_OAUTH_CLIENT_ID" | base64 -w0)" >> wesi-connectors-env.b64
+          fi
+          chmod 600 wesi-connectors-env.b64
+
       - name: Deploy Main Wesi AI hooks personas and shared config
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
           MAIN_REMOTE="/tmp/wesi-ai-main-$GITHUB_RUN_ID"
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$MAIN_REMOTE' && mkdir -p '$MAIN_REMOTE'"
-          scp "${SSH[@]}" server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js server/pb_hooks/.wesi-ai-personas.json wesi-ai-relay.json "$MAIN_USER@$MAIN_HOST:$MAIN_REMOTE/"
+          scp "${SSH[@]}" server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js server/pb_hooks/.wesi-ai-personas.json server/pb_migrations/1786830000_wesi_ai_connector_vault.js wesi-ai-relay.json wesi-connectors-env.b64 "$MAIN_USER@$MAIN_HOST:$MAIN_REMOTE/"
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$MAIN_REMOTE' bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
           HOOK_DIR=/opt/pocketbase/pb_hooks
+          PB_ROOT=$(dirname "$HOOK_DIR")
+          MIGRATION_DIR="$PB_ROOT/pb_migrations"
           test -d "$HOOK_DIR" && test -d "$REMOTE"
           PB_USER=$(ps -eo user=,comm= | awk '$2 ~ /^pocketbase$/ {print $1; exit}')
           [ -n "${PB_USER:-}" ] || PB_USER=$(stat -c '%U' "$HOOK_DIR")
@@ -294,11 +319,34 @@ jobs:
           [ "$count" -gt 8 ] || { echo "Incomplete hook bundle: $count" >&2; exit 1; }
           install_one "$REMOTE/.wesi-ai-personas.json" 0600 "$HOOK_DIR/.wesi-ai-personas.json"
           install_one "$REMOTE/wesi-ai-relay.json" 0600 "$HOOK_DIR/.wesi-ai-relay.json"
+          "${SUDO[@]}" mkdir -p "$MIGRATION_DIR"
+          install_one "$REMOTE/1786830000_wesi_ai_connector_vault.js" 0644 "$MIGRATION_DIR/1786830000_wesi_ai_connector_vault.js"
+          if [ -s "$REMOTE/wesi-connectors-env.b64" ]; then
+            tmp_env="$REMOTE/wesi-ai-connectors.env"
+            umask 077
+            : > "$tmp_env"
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              key="${line%%=*}"; encoded="${line#*=}"
+              case "$key" in WESI_CONNECTOR_VAULT_KEY|WESI_GITHUB_OAUTH_CLIENT_ID) ;; *) echo 'invalid connector env key' >&2; exit 2;; esac
+              value="$(printf '%s' "$encoded" | base64 -d)"
+              case "$key" in
+                WESI_CONNECTOR_VAULT_KEY) [[ "$value" =~ ^[A-Za-z0-9_-]{32}$ ]] || { echo 'invalid vault key' >&2; exit 2; } ;;
+                WESI_GITHUB_OAUTH_CLIENT_ID) [[ "$value" =~ ^[A-Za-z0-9_-]{8,200}$ ]] || { echo 'invalid GitHub OAuth client id' >&2; exit 2; } ;;
+              esac
+              printf '%s=%s\n' "$key" "$value" >> "$tmp_env"
+            done < "$REMOTE/wesi-connectors-env.b64"
+            "${SUDO[@]}" install -o root -g "$PB_GROUP" -m 0640 "$tmp_env" /etc/wesi-ai-connectors.env
+            "${SUDO[@]}" mkdir -p /etc/systemd/system/pocketbase.service.d
+            printf '%s\n' '[Service]' 'EnvironmentFile=-/etc/wesi-ai-connectors.env' | "${SUDO[@]}" tee /etc/systemd/system/pocketbase.service.d/wesi-ai-connectors.conf >/dev/null
+            "${SUDO[@]}" chmod 0644 /etc/systemd/system/pocketbase.service.d/wesi-ai-connectors.conf
+            "${SUDO[@]}" systemctl daemon-reload
+          fi
           "${SUDO[@]}" systemctl restart pocketbase
           for _ in $(seq 1 30); do systemctl is-active --quiet pocketbase && exit 0; sleep 1; done
           systemctl is-active --quiet pocketbase
           REMOTE_SCRIPT
-          rm -f wesi-ai-relay.json
+          rm -f wesi-ai-relay.json wesi-connectors-env.b64
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$MAIN_REMOTE'" || true
 
       - name: Verify Main protected Wesi AI routes
@@ -310,6 +358,7 @@ jobs:
             if [ "$code" != '401' ] && [ "$code" != '403' ]; then echo "::error::$method $path not protected/loaded (HTTP $code)"; cat /tmp/wesi-ai-route.out 2>/dev/null || true; exit 1; fi
           }
           check_route GET /api/wesi/ai/capabilities
+          check_route GET /api/wesi/ai/connectors
           check_route POST /api/wesi/ai/tts
           check_route GET /api/wesi/ai/media/jobs/wam_0000000000000000000000000000
           echo 'Wesi AI production deployment complete: Fast / Pro / Ultra + TTS + Main hooks.'
