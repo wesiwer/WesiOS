@@ -685,10 +685,38 @@ class WesiLocalRuntimeExecutor {
     String workingDirectory,
     WesiLocalRuntimeContext context,
   ) async {
+    final sandboxed =
+        binding.sandboxProfile == WesiLocalSandboxProfile.workspaceV1;
+    final processArguments = sandboxed
+        ? <String>[
+            '--contract',
+            'workspace-v1',
+            '--workspace',
+            p.normalize(p.absolute(context.workspaceRoot)),
+            '--cwd',
+            workingDirectory,
+            '--memory-bytes',
+            '${context.limits.maxMemoryBytes}',
+            '--workspace-bytes',
+            '${context.limits.maxWorkspaceBytes}',
+            '--cpu-percent',
+            '${context.limits.maxCpuPercent}',
+            '--timeout-ms',
+            '${context.limits.processTimeout.inMilliseconds}',
+            '--network',
+            'deny',
+            '--target',
+            binding.sandboxTargetPath!,
+            '--',
+            ...arguments,
+          ]
+        : arguments;
     final outcome = await processRunner.run(
       executable: binding.executablePath,
-      arguments: arguments,
-      workingDirectory: workingDirectory,
+      arguments: processArguments,
+      workingDirectory: sandboxed
+          ? p.normalize(p.absolute(context.workspaceRoot))
+          : workingDirectory,
       environment: WesiLocalRuntimePolicy.sanitizedEnvironment(context),
       timeout: context.limits.processTimeout,
       maxStdoutBytes: context.limits.maxStdoutBytes,

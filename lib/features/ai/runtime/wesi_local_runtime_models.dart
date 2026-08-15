@@ -208,6 +208,11 @@ class WesiLocalExecutableBinding {
   /// Host path is runtime-owned configuration and is never supplied by LLM.
   final String executablePath;
 
+  /// For workspaceV1, executablePath is the trusted Wesi sandbox wrapper.
+  /// The real detected runtime binary is stored separately and never supplied
+  /// by model arguments.
+  final String? sandboxTargetPath;
+
   /// Versioned isolation contract attested by trusted runtime provisioning.
   final WesiLocalSandboxProfile sandboxProfile;
 
@@ -217,6 +222,7 @@ class WesiLocalExecutableBinding {
   const WesiLocalExecutableBinding({
     required this.id,
     required this.executablePath,
+    this.sandboxTargetPath,
     this.sandboxProfile = WesiLocalSandboxProfile.none,
     this.allowArbitraryCode = false,
   });
@@ -310,8 +316,7 @@ class WesiLocalRuntimeContext {
         workspaceRoot: workspaceRoot,
         bindings: bindings ?? this.bindings,
         limits: limits ?? this.limits,
-        destructiveConfirmed:
-            destructiveConfirmed ?? this.destructiveConfirmed,
+        destructiveConfirmed: destructiveConfirmed ?? this.destructiveConfirmed,
         allowInsecureHttp: allowInsecureHttp ?? this.allowInsecureHttp,
       );
 }
