@@ -55,6 +55,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   final List<WesiAiQueuedTurn> _queuedTurns = <WesiAiQueuedTurn>[];
   final String _queueSessionId;
   bool _drainingQueue = false;
+  bool _waitingForSameProcessOwner = false;
 
   WesiAiManagedChatController({
     required WesiAiLocalStore store,
@@ -66,7 +67,11 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   int get queuedTurnCount => _queuedTurns.length;
   List<WesiAiQueuedTurn> get queuedTurns =>
       List<WesiAiQueuedTurn>.unmodifiable(_queuedTurns);
-  bool get processing => sending || _drainingQueue || _queuedTurns.isNotEmpty;
+  bool get processing =>
+      sending ||
+      _drainingQueue ||
+      _queuedTurns.isNotEmpty ||
+      _waitingForSameProcessOwner;
 
   void _notify() => notifyIfActive();
 
@@ -225,11 +230,22 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
         } catch (_) {
           _queuedTurns.removeAt(0);
           try {
+            await store.removePendingQueueItem(turn.id);
+          } catch (_) {}
+          final clean = turn.text.trim();
+          final preview =
+              clean.length <= 240 ? clean : '${clean.substring(0, 240)}…';
+          final fileNames =
+              turn.attachments.map((attachment) => attachment.name).join(', ');
+          final recoveryHint = preview.isNotEmpty
+              ? ' Исходный текст: «$preview».'
+              : (fileNames.isNotEmpty ? ' Вложения: $fileNames.' : '');
+          try {
             await _appendLocalSubmissionError(
               turn.conversationId,
               code: 'WAI_QUEUE_PERSISTENCE_FAILED',
               text:
-                  'Не удалось безопасно подготовить сохранённое сообщение к отправке. Оно не было отправлено автоматически.',
+                  'Не удалось безопасно подготовить сохранённое сообщение к отправке. Оно не было отправлено автоматически.$recoveryHint',
             );
           } catch (_) {
             _notify();
@@ -300,6 +316,16 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       return;
     }
     if (pending.isEmpty) return;
+
+    final sameProcessOwned = pending.any(
+      (item) =>
+          item.status != WesiAiPendingQueueStatus.completed &&
+          item.processSessionId == _queueSessionId,
+    );
+    if (sameProcessOwned) {
+      _startSameProcessOwnerWait();
+      return;
+    }
 
     final recoveryMessages = <WesiAiMessage>[];
     for (final item in pending) {
@@ -389,6 +415,44 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       _notify();
     }
     if (_queuedTurns.isNotEmpty) unawaited(_drainQueuedTurns());
+  }
+
+  void _startSameProcessOwnerWait() {
+    if (_waitingForSameProcessOwner || isDisposed) return;
+    _waitingForSameProcessOwner = true;
+    _notify();
+    unawaited(_waitForSameProcessOwner());
+  }
+
+  Future<void> _waitForSameProcessOwner() async {
+    while (!isDisposed && _waitingForSameProcessOwner) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      List<WesiAiPendingQueueItem> pending;
+      try {
+        pending = await store.loadPendingQueueItems();
+      } catch (_) {
+        continue;
+      }
+      final stillOwned = pending.any(
+        (item) =>
+            item.status != WesiAiPendingQueueStatus.completed &&
+            item.processSessionId == _queueSessionId,
+      );
+      if (stillOwned) continue;
+
+      try {
+        // The previous controller always persists state before retiring its
+        // last pending record. Reloading here therefore cannot miss its reply.
+        await super.load();
+      } catch (_) {
+        continue;
+      }
+      if (isDisposed) return;
+      _waitingForSameProcessOwner = false;
+      await _recoverPendingQueue();
+      _notify();
+      return;
+    }
   }
 
   WesiAiMessage _recoveryError(

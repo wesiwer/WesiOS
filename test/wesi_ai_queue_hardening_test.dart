@@ -529,14 +529,22 @@ void main() {
 
     expect(apiB.prompts, isEmpty);
     expect(controllerB.queuedTurnCount, 0);
+    expect(controllerB.processing, isTrue);
     expect(store.pending.length, 2);
 
     apiA.first.complete(
       const WesiAiReply(answer: 'reply:first-owned', requestId: 'owner-1'),
     );
     await _waitUntil(() => store.pending.isEmpty);
+    await _waitUntil(() => !controllerB.processing);
     expect(apiA.prompts, <String>['first-owned', 'second-owned']);
     expect(apiB.prompts, isEmpty);
+    expect(
+      controllerB.state.messages.any(
+        (message) => message.text == 'reply:second-owned',
+      ),
+      isTrue,
+    );
   });
 
   test('uncertain recovery can be explicitly retried without automatic replay',

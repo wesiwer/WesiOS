@@ -131,7 +131,8 @@ class WesiAiChatController extends ChangeNotifier {
             },
     );
     final titleSource = clean.isNotEmpty ? clean : attachments.first.name;
-    final updated = c.copyWith(updatedAt: now, title: _titleFor(c, titleSource));
+    final updated =
+        c.copyWith(updatedAt: now, title: _titleFor(c, titleSource));
     final conversations = state.conversations
         .map((x) => x.id == c.id ? updated : x)
         .toList()
@@ -215,7 +216,8 @@ class WesiAiChatController extends ChangeNotifier {
 
       final localRequest = data['localRequest'];
       if (localRequest is Map) {
-        final key = '${message.id}|local|${data['mediaType']}|${data['prompt']}';
+        final key =
+            '${message.id}|local|${data['mediaType']}|${data['prompt']}';
         if (_localMediaRuns.add(key)) {
           unawaited(_runLocalMedia(
             message,
@@ -228,8 +230,7 @@ class WesiAiChatController extends ChangeNotifier {
 
       final statusUrl = '${data['url'] ?? ''}'.trim();
       final uri = Uri.tryParse(statusUrl);
-      if (uri == null ||
-          !uri.path.startsWith('/api/wesi/ai/media/jobs/')) {
+      if (uri == null || !uri.path.startsWith('/api/wesi/ai/media/jobs/')) {
         continue;
       }
       final key = '${message.id}|$statusUrl';
@@ -305,7 +306,8 @@ class WesiAiChatController extends ChangeNotifier {
             final data = Map<String, dynamic>.from(dataRaw);
             final localRaw = data['localRequest'];
             if (localRaw is Map &&
-                '${localRaw['mediaType'] ?? ''}' == '${request['mediaType'] ?? ''}' &&
+                '${localRaw['mediaType'] ?? ''}' ==
+                    '${request['mediaType'] ?? ''}' &&
                 '${localRaw['prompt'] ?? ''}' == '${request['prompt'] ?? ''}') {
               data.remove('localRequest');
               data['status'] = ok ? 'ready' : 'failed';
@@ -411,6 +413,9 @@ class WesiAiChatController extends ChangeNotifier {
     if (!c.title.startsWith('Новый ')) return c.title;
     return text.length <= 42 ? text : '${text.substring(0, 42)}…';
   }
+
+  @protected
+  bool get isDisposed => _disposed;
 
   @protected
   void notifyIfActive() {
