@@ -1,0 +1,61 @@
+name: Validate Wesi AI Stage 5 broker core
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage5-action-broker
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wesi-ai-stage5-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  apply-and-test:
+    if: ${{ !contains(github.event.head_commit.message, '[stage5-core-applied]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply Stage 5 broker integration
+        run: python tool/wesi_ai_stage5_core_apply.py
+      - name: Validate server JavaScript
+        run: |
+          node --check server/pb_hooks/wesi_ai_capability_registry.js
+          node --check server/pb_hooks/wesi_ai_risk_policy.js
+          node --check server/pb_hooks/wesi_ai_action_broker.js
+          node --check server/pb_hooks/wesi_ai_audit.js
+          node --check server/pb_hooks/wesi_ai_tools.js
+          node --check server/pb_hooks/wesi_ai_task_tools.js
+          node --check server/pb_hooks/wesi_ai_routes.pb.js
+          node --check server/pb_hooks/wesi_ai_stream.pb.js
+      - name: Test Action Broker
+        run: node --test server/wesi-ai-relay/action-broker.test.mjs
+      - name: Test existing Relay policy regressions
+        run: |
+          node --test server/wesi-ai-relay/tools-policy.test.mjs
+          node --test server/wesi-ai-relay/task-read-scope.test.mjs
+          node --test server/wesi-ai-relay/finance-tools.test.mjs
+      - name: Commit validated broker integration
+        run: |
+          set -euo pipefail
+          git config user.name 'wesi-ai-stage5-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/pb_hooks server/wesi-ai-relay/action-broker.test.mjs
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'feat(ai): integrate central Action Broker [stage5-core-applied]'
+          for attempt in 1 2 3; do
+            git fetch origin agent/wesi-ai-stage5-action-broker
+            if git rebase origin/agent/wesi-ai-stage5-action-broker; then
+              if git push origin HEAD:agent/wesi-ai-stage5-action-broker; then exit 0; fi
+            else
+              git rebase --abort || true
+              exit 1
+            fi
+            sleep 2
+          done
+          exit 1
