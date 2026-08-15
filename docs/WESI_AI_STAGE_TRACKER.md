@@ -7,8 +7,8 @@
 | Этап | Статус | Содержание |
 |---|---|---|
 | 1/16 | **DONE** | Smart Queue: CONTROL > STEER > DEFERRED, Stop/Steer, restart-safe durable outbox, superseded follow-ups, lifecycle hardening. PR #163, main `0d138773c4692fbb55b504cd3e635a7c01492540`. |
-| 2/16 | **IN REVIEW** | True network streaming: provider SSE → Relay → Main Stream Gateway → WesiOS NDJSON, tool shielding, transport cancel, single persisted final answer. PR #164. |
-| 3/16 | TODO | Memory Engine: rolling summaries, shared/persona memory, retrieval, task/project memory, user controls. |
+| 2/16 | **DONE** | True network streaming: provider SSE → Relay → Main Stream Gateway → WesiOS NDJSON, tool shielding, transport cancel, single persisted final answer. PR #164, main `b58a73bb59b60297f1fb44df20b66a1c1426483c`. |
+| 3/16 | **IN PROGRESS** | Memory Engine: rolling summaries, shared/persona memory, retrieval, task/project memory, user controls. |
 | 4/16 | TODO | Explicit important-chat backup + encrypted LAN/Wi-Fi D2D transfer of chats/memory/artifacts. |
 | 5/16 | TODO | Unified Capability Registry / Action Broker / Risk Policy / Audit + full WesiOS read/write tools. |
 | 6/16 | TODO | Controlled Wesi Local Runtime: filesystem, terminal, Git, HTTP, Python/Node/Flutter/build/document/media tools. |
