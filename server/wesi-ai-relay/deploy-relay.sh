@@ -4,6 +4,7 @@ set -euo pipefail
 
 APP_DIR="${WESI_RELAY_DIR:-/opt/wesi-ai-relay}"
 ENV_FILE="/etc/wesi-ai-relay.env"
+PROVIDER_ENV_FILE="/etc/wesi-ai-providers.env"
 SERVICE="/etc/systemd/system/wesi-ai-relay.service"
 RELAY_HOST="${WESI_RELAY_HOST:-127.0.0.1}"
 RELAY_PORT="${WESI_RELAY_PORT:-8787}"
@@ -29,6 +30,9 @@ load_b64_file() {
       GEMINI_API_KEY_B64) GEMINI_API_KEY="$decoded" ;;
       WESI_ZANE_TTS_VOICE_B64) WESI_ZANE_TTS_VOICE="$decoded" ;;
       WESI_NIRVANA_TTS_VOICE_B64) WESI_NIRVANA_TTS_VOICE="$decoded" ;;
+      GROQ_API_KEY_B64) GROQ_API_KEY="$decoded" ;;
+      MISTRAL_API_KEY_B64) MISTRAL_API_KEY="$decoded" ;;
+      OPENROUTER_API_KEY_B64) OPENROUTER_API_KEY="$decoded" ;;
       *) fail "Неизвестное поле в файле секретов: $key" ;;
     esac
   done < "$file"
@@ -46,6 +50,10 @@ require_secrets() {
   [ "${#WESI_MAIN_SHARED_SECRET}" -ge 32 ] || fail "WESI_MAIN_SHARED_SECRET короче 32 символов"
   if contains_newline "$WESI_MAIN_SHARED_SECRET"; then fail "Shared secret содержит перевод строки"; fi
   if contains_newline "$GEMINI_API_KEY"; then fail "Gemini key содержит перевод строки"; fi
+  local optional
+  for optional in GROQ_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY; do
+    if [ -n "${!optional:-}" ] && contains_newline "${!optional}"; then fail "$optional содержит перевод строки"; fi
+  done
   return 0
 }
 
@@ -121,7 +129,7 @@ install_relay() {
   [ -x "$node_bin" ] || fail "Node.js executable не найден после установки"
 
   mkdir -p "$APP_DIR"
-  for file in server.mjs auth.mjs google.mjs attachment-preprocessor.mjs google-media.mjs google-artifact.mjs media-cache.mjs package.json; do
+  for file in server.mjs auth.mjs google.mjs text-stream.mjs attachment-preprocessor.mjs staged-upload.mjs google-media.mjs google-artifact.mjs media-cache.mjs package.json; do
     install -m 0644 "$SOURCE_DIR/$file" "$APP_DIR/$file"
   done
 
@@ -136,10 +144,15 @@ WESI_NIRVANA_TTS_VOICE=${WESI_NIRVANA_TTS_VOICE:-Sulafat}
 WESI_ENABLE_PAID_MEDIA=${WESI_ENABLE_PAID_MEDIA:-false}
 ENV
 
+  : >"$PROVIDER_ENV_FILE"
+  [ -n "${GROQ_API_KEY:-}" ] && printf "GROQ_API_KEY=%s\n" "$GROQ_API_KEY" >>"$PROVIDER_ENV_FILE"
+  [ -n "${MISTRAL_API_KEY:-}" ] && printf "MISTRAL_API_KEY=%s\n" "$MISTRAL_API_KEY" >>"$PROVIDER_ENV_FILE"
+  [ -n "${OPENROUTER_API_KEY:-}" ] && printf "OPENROUTER_API_KEY=%s\n" "$OPENROUTER_API_KEY" >>"$PROVIDER_ENV_FILE"
+
   id -u wesi-relay >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin wesi-relay
   chown -R root:root "$APP_DIR"
-  chown root:wesi-relay "$ENV_FILE"
-  chmod 640 "$ENV_FILE"
+  chown root:wesi-relay "$ENV_FILE" "$PROVIDER_ENV_FILE"
+  chmod 640 "$ENV_FILE" "$PROVIDER_ENV_FILE"
 
   cat >"$SERVICE" <<UNIT
 [Unit]
@@ -200,7 +213,7 @@ TEXT
 
 uninstall_relay() {
   systemctl disable --now wesi-ai-relay.service 2>/dev/null || true
-  rm -f "$SERVICE" "$ENV_FILE"
+  rm -f "$SERVICE" "$ENV_FILE" "$PROVIDER_ENV_FILE"
   rm -rf "$APP_DIR"
   systemctl daemon-reload
   echo "Relay снят. Пользователь wesi-relay оставлен."
