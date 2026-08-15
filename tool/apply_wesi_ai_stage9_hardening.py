@@ -37,6 +37,13 @@ replace_all_nonempty(
     'const _BuiltinValidation.fail(',
     '_BuiltinValidation.fail(',
 )
+# A RandomAccessFile cannot be closed while an async read is still pending.
+# Await the read before the finally block closes the handle.
+replace_once(
+    validator,
+    '      return handle.read(count);',
+    '      return await handle.read(count);',
+)
 
 engine = 'lib/features/ai/runtime/wesi_self_debug_engine.dart'
 replace_once(
