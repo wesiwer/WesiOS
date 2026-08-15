@@ -2,7 +2,8 @@ name: Wesi AI Stage 10 Network Hardening
 
 on:
   push:
-    branches: [agent/wesi-ai-stage10-remote-worker-finalize]
+    branches:
+      - agent/wesi-ai-stage10-remote-worker-finalize
   workflow_dispatch:
 
 permissions:
@@ -21,147 +22,26 @@ jobs:
         with:
           ref: agent/wesi-ai-stage10-remote-worker-finalize
           fetch-depth: 0
-      - name: Apply Stage 10 distributed-state hardening
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
 
-          route = Path('server/pb_hooks/wesi_ai_remote_worker.pb.js')
-          text = route.read_text()
-          text = text.replace('method: e.request.method,', 'method: "POST",')
-          text = text.replace(
-              'findRecord(record.app(), record.getString("owner"), COLL_CREDENTIAL, String(stored.credentialId))',
-              'findRecord(e.app, record.getString("owner"), COLL_CREDENTIAL, String(stored.credentialId))',
-          )
-          text = text.replace('record.app().save(record);', 'e.app.save(record);')
-          assert 'record.app()' not in text
-          route.write_text(text)
+      - name: Apply distributed-state hardening
+        run: python3 scripts/stage10_network_hardening.py
 
-          controller = Path('lib/features/ai/runtime/wesi_remote_worker_controller.dart')
-          text = controller.read_text()
-          text = text.replace(
-              "import 'wesi_job_coordinator.dart';\n",
-              "import 'wesi_job_coordinator.dart';\nimport 'wesi_local_runtime_models.dart';\n",
-              1,
-          )
-          text = text.replace(
-              "      if (lease == null || lease.expiredAt(current)) continue;\n      await leases.renew(\n",
-              "      if (lease == null || lease.expiredAt(current)) continue;\n      // A live heartbeat proves only connectivity. Until the worker durably\n      // acknowledges the assignment receipt, extending the lease could leave a\n      // job running forever even though the actual command was never received.\n      if (!lease.assignmentAcked) continue;\n      await leases.renew(\n",
-              1,
-          )
-          old = """      if (job.requirements.checkpointable && !checkpointCurrent) {
-        await coordinator.fail(
-          job.id,
-          failureCode: 'WRW_WORKER_LOST_UNCHECKPOINTED',
-          message:
-              'Remote worker disappeared before a current durable checkpoint was saved',
-          now: current,
-        );
-        await leases.remove(job.id);
-        continue;
-      }
-
-      await coordinator.waitForWorker(
-"""
-          new = """      if (job.requirements.checkpointable && !checkpointCurrent) {
-        await coordinator.fail(
-          job.id,
-          failureCode: 'WRW_WORKER_LOST_UNCHECKPOINTED',
-          message:
-              'Remote worker disappeared before a current durable checkpoint was saved',
-          now: current,
-        );
-        await leases.remove(job.id);
-        continue;
-      }
-
-      // A non-checkpointable read can be safely retried on the same paired
-      // worker. Write/destructive work is fail-closed because a lost response
-      // cannot prove whether its side effect already happened.
-      final risk = WesiLocalCapabilityRegistry.get(job.requirements.toolName)?.risk;
-      if (!job.requirements.checkpointable && risk != WesiLocalRisk.read) {
-        await coordinator.fail(
-          job.id,
-          failureCode: 'WRW_WORKER_LOST_UNCHECKPOINTED',
-          message:
-              'Remote worker disappeared during non-checkpointable state-changing work',
-          now: current,
-        );
-        await leases.remove(job.id);
-        continue;
-      }
-
-      await coordinator.waitForWorker(
-"""
-          assert old in text
-          text = text.replace(old, new, 1)
-          controller.write_text(text)
-
-          bridge = Path('lib/features/ai/runtime/wesi_remote_worker_control_plane_bridge.dart')
-          text = bridge.read_text()
-          old = """  Future<WesiRemoteWorkerDispatchResult> dispatchNext({DateTime? now}) async {
-    final result = await controller.dispatchNext(now: now);
-    final workerId = result.decision.job.workerId;
-    if (result.dispatched) {
-      _requireExecution(result.decision.job.id);
-      if (workerId != null) await flushOutbound(workerId);
-    }
-    return result;
-  }
-"""
-          new = """  Future<WesiRemoteWorkerDispatchResult> dispatchNext({DateTime? now}) async {
-    final candidates = coordinator.jobs
-        .where((job) =>
-            job.state == WesiScheduledJobState.queued &&
-            job.requirements.remoteAllowed &&
-            job.requirements.preference != WesiExecutionPreference.localOnly &&
-            executionStore.get(job.id) != null)
-        .toList(growable: false)
-      ..sort((a, b) {
-        final priority = b.priority.index.compareTo(a.priority.index);
-        if (priority != 0) return priority;
-        final queued = a.queuedAt.compareTo(b.queuedAt);
-        if (queued != 0) return queued;
-        return a.id.compareTo(b.id);
-      });
-    if (candidates.isEmpty) {
-      throw const WesiRemoteWorkerProtocolException(
-        'WRW_NO_REMOTE_JOB',
-        'There is no queued remote job with a durable execution payload',
-      );
-    }
-
-    WesiRemoteWorkerDispatchResult? firstBlocked;
-    for (final job in candidates) {
-      final result = await controller.dispatchJob(job.id, now: now);
-      if (result.dispatched) {
-        final workerId = result.decision.job.workerId;
-        if (workerId != null) await flushOutbound(workerId);
-        return result;
-      }
-      firstBlocked ??= result;
-    }
-    return firstBlocked!;
-  }
-"""
-          assert old in text
-          bridge.write_text(text.replace(old, new, 1))
-          PY
-      - name: Validate server JavaScript syntax
+      - name: Validate server JavaScript
         run: |
           node --check server/pb_hooks/wesi_ai_remote_worker_lib.js
           node --check server/pb_hooks/wesi_ai_remote_worker.pb.js
           node --test server/wesi-ai-stream/remote_worker_protocol.test.mjs
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
           channel: stable
           cache: true
+
       - name: Get dependencies
         run: flutter pub get
+
       - name: Format Stage 10 network files
         run: |
           dart format \
@@ -177,8 +57,10 @@ jobs:
             test/wesi_remote_worker_hardening_test.dart \
             test/wesi_remote_worker_http_transport_test.dart \
             test/wesi_remote_worker_agent_test.dart
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
+
       - name: Stage 8-10 regressions
         run: |
           flutter test \
@@ -190,16 +72,15 @@ jobs:
             test/wesi_remote_worker_hardening_test.dart \
             test/wesi_remote_worker_http_transport_test.dart \
             test/wesi_remote_worker_agent_test.dart
-      - name: Commit validated network transport and remove one-shot workflow
+
+      - name: Commit validated transport and cleanup one-shot files
         shell: bash
         run: |
           set -euo pipefail
           rm -f .github/workflows/wesi-ai-stage10-network-hardening.yml
+          rm -f scripts/stage10_network_hardening.py
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          if git diff --cached --quiet; then
-            exit 0
-          fi
           git commit -m "feat(ai): harden Stage 10 remote worker network transport"
           git push origin HEAD:agent/wesi-ai-stage10-remote-worker-finalize
