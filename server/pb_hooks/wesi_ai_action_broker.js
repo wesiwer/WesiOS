@@ -36,6 +36,18 @@ function normalizeInvocation(invocation) {
   };
 }
 
+function confirmationBinding(e, ctx) {
+  const authId = e && e.auth ? String(e.auth.id || "") : "";
+  let sessionId = "";
+  try {
+    sessionId = String(e.request.header.get("X-WesiOS-Session") || "").trim();
+  } catch (_) {}
+  return $security.hs256(
+    authId + "." + sessionId,
+    "wesi-ai-confirm." + String(ctx.ownerId || "") + "." + String(ctx.employeeId || ""),
+  );
+}
+
 function organizationIdOf(activeOrganizationId, args) {
   const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
   return String(input.organizationId || activeOrganizationId || "org_wesi_inc").slice(0, 180);
@@ -43,7 +55,7 @@ function organizationIdOf(activeOrganizationId, args) {
 
 function entityIdOf(result, args, name) {
   const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
-  const direct = input.id || input.taskId || input.eventId || input.articleId || input.clientId || input.dealId || input.transactionId || input.roadmapId || input.audioId || input.notificationId;
+  const direct = input.id || input.taskId || input.eventId || input.articleId || input.clientId || input.dealId || input.transactionId || input.roadmapId || input.beatId || input.audioId || input.notificationId;
   if (direct != null && String(direct).trim()) return String(direct).slice(0, 180);
   if (result && typeof result === "object" && !Array.isArray(result)) {
     for (const key of ["id", "task", "event", "article", "client", "deal", "transaction", "roadmap", "audio", "notification"]) {
@@ -93,6 +105,7 @@ function createConfirmation(e, ctx, capability, name, args, activeOrganizationId
   const payload = {
     id: id,
     employeeId: String(ctx.employeeId || ""),
+    authBinding: confirmationBinding(e, ctx),
     tool: String(name || ""),
     args: JSON.parse(encoded),
     activeOrganizationId: String(activeOrganizationId || ""),
@@ -202,7 +215,11 @@ module.exports = {
     if (!record) return {ok: false, code: "CONFIRMATION_EXPIRED", message: "Подтверждение истекло или уже использовано"};
     const ticket = payloadOf(record);
     const expires = Date.parse(String(ticket.expiresAt || ""));
-    if (String(ticket.employeeId || "") !== String(ctx.employeeId || "") || !Number.isFinite(expires) || expires <= Date.now() || ticket.usedAt) {
+    const bound = String(ticket.authBinding || "");
+    const currentBinding = confirmationBinding(e, ctx);
+    if (String(ticket.employeeId || "") !== String(ctx.employeeId || "") ||
+        !bound || bound !== currentBinding ||
+        !Number.isFinite(expires) || expires <= Date.now() || ticket.usedAt) {
       try { e.app.delete(record); } catch (_) {}
       return {ok: false, code: "CONFIRMATION_EXPIRED", message: "Подтверждение истекло или принадлежит другой сессии"};
     }
@@ -237,6 +254,10 @@ module.exports = {
       recordResult(e, ctx, capability, name, ticket.args || {}, ticket.activeOrganizationId || "", invocation, denied, evaluated.decision);
       return denied;
     }
-    return executeAdapter(e, ctx, adapter, capability, name, ticket.args || {}, ticket.activeOrganizationId || "", invocation, evaluated.decision);
+    const confirmed = executeAdapter(e, ctx, adapter, capability, name, ticket.args || {}, ticket.activeOrganizationId || "", invocation, evaluated.decision);
+    if (confirmed && typeof confirmed === "object" && !Array.isArray(confirmed) && !confirmed.tool) {
+      confirmed.tool = name;
+    }
+    return confirmed;
   },
 };
