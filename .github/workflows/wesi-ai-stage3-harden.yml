@@ -74,4 +74,18 @@ jobs:
           git add lib/features/ai server/pb_hooks test/wesi_ai_memory_engine_test.dart
           if git diff --cached --quiet; then exit 0; fi
           git commit -m 'test(ai): harden Memory Engine integration [stage3-hardened]'
-          git push origin HEAD:agent/wesi-ai-stage3-memory-engine
+          for attempt in 1 2 3; do
+            git fetch origin agent/wesi-ai-stage3-memory-engine
+            if git rebase origin/agent/wesi-ai-stage3-memory-engine; then
+              if git push origin HEAD:agent/wesi-ai-stage3-memory-engine; then
+                exit 0
+              fi
+            else
+              git rebase --abort || true
+              echo "Stage 3 hardening rebase conflict" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+          echo 'Could not publish validated Stage 3 hardening after retries' >&2
+          exit 1
