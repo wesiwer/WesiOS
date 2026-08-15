@@ -13,6 +13,8 @@ class _MemoryStore extends WesiAiLocalStore {
   final Map<String, WesiAiPendingQueueItem> pending =
       <String, WesiAiPendingQueueItem>{};
   bool failPendingWrites = false;
+  Completer<void>? pendingWriteGate;
+  int pendingWriteCount = 0;
 
   _MemoryStore(String employeeId) : super(employeeId);
 
@@ -34,6 +36,9 @@ class _MemoryStore extends WesiAiLocalStore {
 
   @override
   Future<void> savePendingQueueItem(WesiAiPendingQueueItem item) async {
+    pendingWriteCount++;
+    final gate = pendingWriteGate;
+    if (pendingWriteCount == 1 && gate != null) await gate.future;
     if (failPendingWrites) throw StateError('synthetic pending write failure');
     pending[item.id] = item;
   }
@@ -604,5 +609,45 @@ void main() {
           ),
       isTrue,
     );
+  });
+
+  test('durable acceptance serializes concurrent pending writes', () async {
+    final api = _ControlledApi();
+    final store = _MemoryStore('employee-1');
+    store.pendingWriteGate = Completer<void>();
+    final controller = WesiAiManagedChatController(
+      store: store,
+      api: api,
+      processSessionId: 'accept-race-session',
+    );
+    await controller.load();
+    await controller.createConversation(WesiAiPersona.zane);
+
+    final first = controller.submitUserMessage('first durable write');
+    await _waitUntil(() => store.pendingWriteCount == 1);
+    expect(controller.processing, isTrue);
+    expect(api.prompts, isEmpty);
+
+    expect(
+      await controller.submitUserMessage('second while first is saving'),
+      WesiAiMessageSubmitResult.unavailable,
+    );
+    expect(controller.queuedTurnCount, 1);
+    expect(store.pending, isEmpty);
+    expect(api.prompts, isEmpty);
+
+    store.pendingWriteGate!.complete();
+    expect(await first, WesiAiMessageSubmitResult.accepted);
+    await _waitUntil(() => api.prompts.length == 1);
+    expect(api.prompts, <String>['first durable write']);
+
+    api.first.complete(
+      const WesiAiReply(
+        answer: 'reply:first durable write',
+        requestId: 'accept-race-1',
+      ),
+    );
+    await _waitUntil(() => !controller.processing);
+    expect(store.pending, isEmpty);
   });
 }

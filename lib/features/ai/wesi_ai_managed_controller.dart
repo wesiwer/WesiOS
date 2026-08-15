@@ -56,6 +56,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   final String _queueSessionId;
   bool _drainingQueue = false;
   bool _waitingForSameProcessOwner = false;
+  bool _acceptingTurn = false;
 
   WesiAiManagedChatController({
     required WesiAiLocalStore store,
@@ -71,7 +72,8 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       sending ||
       _drainingQueue ||
       _queuedTurns.isNotEmpty ||
-      _waitingForSameProcessOwner;
+      _waitingForSameProcessOwner ||
+      _acceptingTurn;
 
   void _notify() => notifyIfActive();
 
@@ -92,6 +94,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     required List<WesiAiAttachment> attachments,
     required bool startDrain,
   }) async {
+    if (_acceptingTurn) return WesiAiMessageSubmitResult.unavailable;
     final conversation = state.activeConversation;
     final clean = text.trim();
     if (conversation == null || (clean.isEmpty && attachments.isEmpty)) {
@@ -106,6 +109,8 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       return WesiAiMessageSubmitResult.queueFull;
     }
 
+    _acceptingTurn = true;
+    _notify();
     final queuedAt = DateTime.now();
     final turn = WesiAiQueuedTurn(
       id: 'queue_${queuedAt.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
@@ -123,9 +128,11 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       );
     } catch (_) {
       _queuedTurns.removeWhere((candidate) => candidate.id == turn.id);
+      _acceptingTurn = false;
       _notify();
       return WesiAiMessageSubmitResult.persistenceFailed;
     }
+    _acceptingTurn = false;
     _notify();
     if (startDrain) unawaited(_drainQueuedTurns());
     return WesiAiMessageSubmitResult.accepted;
