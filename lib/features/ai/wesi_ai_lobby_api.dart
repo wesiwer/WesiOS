@@ -27,6 +27,7 @@ class WesiAiLobbyApi extends WesiAiApi {
     Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
   }) async {
     WesiAiAttachment.validateBatch(attachments);
@@ -42,6 +43,7 @@ class WesiAiLobbyApi extends WesiAiApi {
         taskState: taskState,
         attachments: attachments,
         onDelta: onDelta,
+        onActivity: onActivity,
         cancellation: cancellation,
       );
     }
@@ -61,6 +63,7 @@ class WesiAiLobbyApi extends WesiAiApi {
         taskState: taskState,
         attachments: attachments,
         onDelta: onDelta,
+        onActivity: onActivity,
         cancellation: cancellation,
       );
     }

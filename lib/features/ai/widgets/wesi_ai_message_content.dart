@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:audioplayers/audioplayers.dart';
@@ -12,15 +11,18 @@ import '../../team/services/team_service.dart';
 import '../models/wesi_ai_chat_models.dart';
 import '../models/wesi_ai_content_blocks.dart';
 import '../wesi_ai_action_api.dart';
+import 'wesi_ai_rich_message.dart';
 
 class WesiAiMessageContent extends StatelessWidget {
   final WesiAiMessage message;
   final bool animateText;
+  final bool expandWorkLog;
 
   const WesiAiMessageContent({
     super.key,
     required this.message,
     this.animateText = true,
+    this.expandWorkLog = false,
   });
 
   @override
@@ -34,112 +36,24 @@ class WesiAiMessageContent extends StatelessWidget {
       }
     }
 
-    final assistant = message.author == WesiAiMessageAuthor.zane ||
-        message.author == WesiAiMessageAuthor.nirvana;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (message.text.isNotEmpty)
-          WesiAiTypewriterText(
+        if (message.text.isNotEmpty || message.metadata['activity'] is List)
+          WesiAiRichMessage(
             messageId: message.id,
             text: message.text,
-            animate: animateText &&
-                assistant &&
-                message.metadata['transportStreaming'] != true &&
-                message.metadata['transportStreamed'] != true,
+            activityRaw: message.metadata['activity'],
+            streaming: message.metadata['transportStreaming'] == true,
+            expandWorkLog: expandWorkLog,
+            workDurationMs:
+                int.tryParse('${message.metadata['workDurationMs'] ?? 0}') ?? 0,
           ),
         for (final block in blocks) ...[
           const SizedBox(height: 10),
           _BlockView(block: block),
         ],
       ],
-    );
-  }
-}
-
-/// Reveals a new AI reply rune-by-rune. Completed messages are remembered for
-/// the lifetime of the process, so scrolling an old message back into view
-/// does not restart the animation.
-class WesiAiTypewriterText extends StatefulWidget {
-  final String messageId;
-  final String text;
-  final bool animate;
-
-  const WesiAiTypewriterText({
-    super.key,
-    required this.messageId,
-    required this.text,
-    required this.animate,
-  });
-
-  @override
-  State<WesiAiTypewriterText> createState() => _WesiAiTypewriterTextState();
-}
-
-class _WesiAiTypewriterTextState extends State<WesiAiTypewriterText> {
-  static final Set<String> _completed = <String>{};
-  Timer? _timer;
-  late List<int> _runes;
-  int _visible = 0;
-
-  @override
-  void initState() {
-    super.initState();
-    _prepare();
-  }
-
-  @override
-  void didUpdateWidget(covariant WesiAiTypewriterText oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.messageId != widget.messageId ||
-        oldWidget.text != widget.text) {
-      _timer?.cancel();
-      _prepare();
-    }
-  }
-
-  void _prepare() {
-    _runes = widget.text.runes.toList(growable: false);
-    if (!widget.animate ||
-        _completed.contains(widget.messageId) ||
-        _runes.isEmpty) {
-      _visible = _runes.length;
-      _completed.add(widget.messageId);
-      return;
-    }
-    _visible = 0;
-    final delay = _runes.length > 1600
-        ? 2
-        : _runes.length > 700
-            ? 4
-            : _runes.length > 250
-                ? 7
-                : 13;
-    _timer = Timer.periodic(Duration(milliseconds: delay), (_) {
-      if (!mounted) return;
-      if (_visible >= _runes.length) {
-        _timer?.cancel();
-        _completed.add(widget.messageId);
-        return;
-      }
-      setState(() => _visible++);
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final text = String.fromCharCodes(_runes.take(_visible));
-    final theme = Theme.of(context);
-    return Text(
-      text,
-      style: theme.textTheme.bodyMedium?.copyWith(height: 1.45),
     );
   }
 }

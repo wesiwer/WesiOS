@@ -193,6 +193,33 @@ function writeNdjson(res, event) {
   return true;
 }
 
+function diffStatsFromToolResult(toolResult) {
+  const payload = toolResult && typeof toolResult.result === 'object' && !Array.isArray(toolResult.result)
+    ? toolResult.result
+    : {};
+  const additions = Math.max(0, Number(payload.additions || toolResult?.additions || 0) || 0);
+  const deletions = Math.max(0, Number(payload.deletions || toolResult?.deletions || 0) || 0);
+  const rawFiles = Array.isArray(payload.files) ? payload.files : (Array.isArray(toolResult?.files) ? toolResult.files : []);
+  const files = rawFiles.slice(0, 40).map((item) => {
+    if (item && typeof item === 'object') return String(item.path || item.filename || item.name || '').slice(0, 500);
+    return String(item || '').slice(0, 500);
+  }).filter(Boolean);
+  return {additions, deletions, files};
+}
+
+function aggregateDiffStats(toolResults) {
+  let additions = 0;
+  let deletions = 0;
+  const files = new Set();
+  for (const result of toolResults) {
+    const stats = diffStatsFromToolResult(result);
+    additions += stats.additions;
+    deletions += stats.deletions;
+    for (const file of stats.files) files.add(file);
+  }
+  return {additions, deletions, files: [...files].slice(0, 80)};
+}
+
 function relayPayload(prepared, toolResults, phase, finalOnly = false) {
   const requestId = `${prepared.requestId}_${phase}`;
   const systemParts = [...prepared.systemParts];
@@ -299,6 +326,19 @@ export function createGateway(options = {}) {
         persona: prepared.persona,
         tier: prepared.tier,
       });
+      writeNdjson(res, {
+        type: 'agent',
+        phase: 'start',
+        name: prepared.persona,
+        role: 'lead',
+      });
+      writeNdjson(res, {
+        type: 'activity',
+        kind: 'reasoning',
+        phase: 'result',
+        label: 'Контекст подготовлен',
+        detail: 'История, память, проект и доступные инструменты проверены.',
+      });
 
       const toolResults = [];
       const seenCalls = new Set();
@@ -319,6 +359,16 @@ export function createGateway(options = {}) {
           if (!streamed.revealed && streamed.buffer) {
             writeNdjson(res, {type: 'delta', text: streamed.buffer});
           }
+          const totalDiff = aggregateDiffStats(toolResults);
+          writeNdjson(res, {
+            type: 'agent',
+            phase: 'result',
+            name: prepared.persona,
+            role: 'lead',
+            additions: totalDiff.additions,
+            deletions: totalDiff.deletions,
+            files: totalDiff.files,
+          });
           writeNdjson(res, {
             type: 'done',
             requestId: prepared.requestId,
@@ -361,12 +411,16 @@ export function createGateway(options = {}) {
           toolResult = toolResponse.toolResult;
         }
         toolResults.push(toolResult);
+        const diff = diffStatsFromToolResult(toolResult);
         writeNdjson(res, {
           type: 'tool',
           phase: 'result',
           name: toolRequest.name,
           ok: toolResult?.ok === true,
           code: toolResult?.code || null,
+          additions: diff.additions,
+          deletions: diff.deletions,
+          files: diff.files,
         });
       }
 
@@ -380,6 +434,16 @@ export function createGateway(options = {}) {
         signal: abort.signal,
         fetchImpl,
         res,
+      });
+      const totalDiff = aggregateDiffStats(toolResults);
+      writeNdjson(res, {
+        type: 'agent',
+        phase: 'result',
+        name: prepared.persona,
+        role: 'lead',
+        additions: totalDiff.additions,
+        deletions: totalDiff.deletions,
+        files: totalDiff.files,
       });
       writeNdjson(res, {
         type: 'done',

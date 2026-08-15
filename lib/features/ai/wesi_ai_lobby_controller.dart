@@ -89,7 +89,11 @@ class WesiAiLobbyChatController extends WesiAiChatController {
             author: turns[i].author,
             text: turns[i].text,
             createdAt: at,
-            metadata: {'requestId': reply.requestId, 'lobby': true},
+            metadata: <String, dynamic>{
+              'requestId': reply.requestId,
+              'lobby': true,
+              if (reply.activity.isNotEmpty) 'activity': reply.activity,
+            },
           ),
         );
       }

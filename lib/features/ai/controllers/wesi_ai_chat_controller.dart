@@ -80,6 +80,92 @@ class WesiAiChatController extends ChangeNotifier {
     await _persist();
   }
 
+  Future<void> setMessageSaved(String messageId, bool saved) async {
+    var changed = false;
+    final messages = state.messages.map((message) {
+      if (message.id != messageId || message.employeeId != store.employeeId) {
+        return message;
+      }
+      final metadata = Map<String, dynamic>.from(message.metadata);
+      if (saved) {
+        metadata['savedToChatArchive'] = true;
+      } else {
+        metadata.remove('savedToChatArchive');
+      }
+      changed = true;
+      return message.copyWith(metadata: metadata);
+    }).toList(growable: false);
+    if (!changed) return;
+    state = state.copyWith(messages: messages);
+    await _persist();
+  }
+
+  Future<String?> branchConversationFromMessage(String messageId) async {
+    WesiAiMessage? target;
+    for (final message in state.messages) {
+      if (message.id == messageId && message.employeeId == store.employeeId) {
+        target = message;
+        break;
+      }
+    }
+    if (target == null) return null;
+    WesiAiConversation? source;
+    for (final conversation in state.conversations) {
+      if (conversation.id == target.conversationId &&
+          conversation.employeeId == store.employeeId) {
+        source = conversation;
+        break;
+      }
+    }
+    if (source == null) return null;
+    final sourceMessages = state.messagesFor(source.id);
+    final targetIndex =
+        sourceMessages.indexWhere((message) => message.id == messageId);
+    if (targetIndex < 0) return null;
+
+    final now = DateTime.now();
+    final newId = '${now.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}';
+    final copied = <WesiAiMessage>[];
+    for (var index = 0; index <= targetIndex; index++) {
+      final original = sourceMessages[index];
+      copied.add(WesiAiMessage(
+        id: '${newId}_branch_$index',
+        conversationId: newId,
+        employeeId: store.employeeId,
+        author: original.author,
+        kind: original.kind,
+        text: original.text,
+        createdAt: original.createdAt,
+        metadata: <String, dynamic>{
+          ...original.metadata,
+          'branchOriginalConversationId': source.id,
+          'branchOriginalMessageId': original.id,
+        },
+      ));
+    }
+    final branch = WesiAiConversation(
+      id: newId,
+      employeeId: store.employeeId,
+      title: 'Ветка · ${source.title}',
+      persona: source.persona,
+      lobbyMode: source.lobbyMode,
+      projectId: source.projectId,
+      createdAt: now,
+      updatedAt: now,
+      branchedFromConversationId: source.id,
+      branchedFromMessageId: messageId,
+    );
+    state = state.copyWith(
+      conversations: <WesiAiConversation>[branch, ...state.conversations],
+      messages: <WesiAiMessage>[...state.messages, ...copied],
+      activeConversationId: newId,
+      activeProjectId: source.projectId,
+      clearActiveProject: source.projectId == null,
+    );
+    await _persist();
+    return newId;
+  }
+
   Future<void> setConversationBackupImportant(
     String conversationId,
     bool important,
@@ -188,8 +274,183 @@ class WesiAiChatController extends ChangeNotifier {
       WesiAiPersona.lobby => WesiAiMessageAuthor.zane
     };
     final streamMessageId = '${user.id}_transport_stream';
+    final workStartedAt = DateTime.now().toUtc();
+    final activity = <Map<String, dynamic>>[];
+    final openTools = <String, int>{};
+    final openAgents = <String, int>{};
+    var activitySequence = 0;
     var streamedText = '';
-    var streamVisible = false;
+    var streamVisible = c.persona != WesiAiPersona.lobby;
+
+    Map<String, dynamic> streamMetadata(bool streaming) => <String, dynamic>{
+          if (streaming) 'transportStreaming': true,
+          'activity': activity
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList(growable: false),
+          'workStartedAt': workStartedAt.toIso8601String(),
+          'workDurationMs':
+              DateTime.now().toUtc().difference(workStartedAt).inMilliseconds,
+        };
+
+    void publishPartial() {
+      if (c.persona == WesiAiPersona.lobby) return;
+      final partial = WesiAiMessage(
+        id: streamMessageId,
+        conversationId: c.id,
+        employeeId: store.employeeId,
+        author: author,
+        text: streamedText,
+        createdAt: workStartedAt.toLocal(),
+        metadata: streamMetadata(true),
+      );
+      final withoutPartial = state.messages
+          .where((message) => message.id != streamMessageId)
+          .toList(growable: false);
+      state =
+          state.copyWith(messages: <WesiAiMessage>[...withoutPartial, partial]);
+      streamVisible = true;
+      notifyIfActive();
+    }
+
+    Map<String, dynamic> activityEntry({
+      required String kind,
+      required String label,
+      String sourceName = '',
+      String detail = '',
+      String status = '',
+      int additions = 0,
+      int deletions = 0,
+      List<dynamic> files = const <dynamic>[],
+    }) {
+      final at = DateTime.now().toUtc();
+      return <String, dynamic>{
+        'id': '${user.id}_activity_${activitySequence++}',
+        'kind': kind,
+        'label': label,
+        if (sourceName.isNotEmpty) 'sourceName': sourceName,
+        if (detail.isNotEmpty) 'detail': detail,
+        if (status.isNotEmpty) 'status': status,
+        'textOffset': streamedText.length,
+        'startedAt': at.toIso8601String(),
+        if (status == 'result' || status == 'done')
+          'completedAt': at.toIso8601String(),
+        'additions': additions < 0 ? 0 : additions,
+        'deletions': deletions < 0 ? 0 : deletions,
+        if (files.isNotEmpty)
+          'files':
+              files.take(40).map((item) => '$item').toList(growable: false),
+      };
+    }
+
+    int safeCount(Object? value) {
+      final count = value is num ? value.toInt() : int.tryParse('$value') ?? 0;
+      return count < 0 ? 0 : count;
+    }
+
+    void onActivity(Map<String, dynamic> raw) {
+      final type = '${raw['type'] ?? 'activity'}'.toLowerCase();
+      final phase = '${raw['phase'] ?? ''}'.toLowerCase();
+      final name =
+          '${raw['name'] ?? raw['agent'] ?? raw['persona'] ?? ''}'.trim();
+      final additions = safeCount(raw['additions']);
+      final deletions = safeCount(raw['deletions']);
+      final files = raw['files'] is List
+          ? List<dynamic>.from(raw['files'] as List)
+          : const <dynamic>[];
+      if (type == 'tool') {
+        if (phase == 'start') {
+          activity.add(activityEntry(
+            kind: 'tool',
+            label: name.isEmpty ? 'Запущен инструмент' : 'Инструмент · $name',
+            sourceName: name,
+            status: 'start',
+          ));
+          if (name.isNotEmpty) openTools[name] = activity.length - 1;
+        } else {
+          final index = name.isEmpty ? null : openTools.remove(name);
+          if (index != null && index >= 0 && index < activity.length) {
+            final current = Map<String, dynamic>.from(activity[index]);
+            current['status'] = 'result';
+            current['completedAt'] = DateTime.now().toUtc().toIso8601String();
+            current['additions'] = additions;
+            current['deletions'] = deletions;
+            if (files.isNotEmpty)
+              current['files'] =
+                  files.take(40).map((item) => '$item').toList(growable: false);
+            final code = '${raw['code'] ?? ''}'.trim();
+            if (code.isNotEmpty) current['detail'] = code;
+            activity[index] = current;
+          } else {
+            activity.add(activityEntry(
+              kind: 'tool',
+              label:
+                  name.isEmpty ? 'Инструмент завершён' : 'Инструмент · $name',
+              sourceName: name,
+              status: 'result',
+              additions: additions,
+              deletions: deletions,
+              files: files,
+            ));
+          }
+        }
+      } else if (type == 'agent') {
+        if (phase == 'start') {
+          activity.add(activityEntry(
+            kind: 'agent',
+            label: name.isEmpty ? 'Подключён агент' : 'Агент · $name',
+            sourceName: name,
+            status: 'start',
+          ));
+          if (name.isNotEmpty) openAgents[name] = activity.length - 1;
+        } else {
+          final index = name.isEmpty ? null : openAgents.remove(name);
+          if (index != null && index >= 0 && index < activity.length) {
+            final current = Map<String, dynamic>.from(activity[index]);
+            current['status'] = 'result';
+            current['completedAt'] = DateTime.now().toUtc().toIso8601String();
+            current['additions'] = additions;
+            current['deletions'] = deletions;
+            if (files.isNotEmpty)
+              current['files'] =
+                  files.take(40).map((item) => '$item').toList(growable: false);
+            activity[index] = current;
+          } else {
+            activity.add(activityEntry(
+              kind: 'agent',
+              label: name.isEmpty ? 'Агент завершил работу' : 'Агент · $name',
+              sourceName: name,
+              status: 'result',
+              additions: additions,
+              deletions: deletions,
+              files: files,
+            ));
+          }
+        }
+      } else if (type == 'meta') {
+        final persona = '${raw['persona'] ?? ''}'.trim();
+        final tier = '${raw['tier'] ?? ''}'.trim();
+        activity.add(activityEntry(
+          kind: 'status',
+          label: 'Контекст и маршрут подготовлены',
+          sourceName: persona,
+          detail: [if (persona.isNotEmpty) persona, if (tier.isNotEmpty) tier]
+              .join(' · '),
+          status: 'done',
+        ));
+      } else if (type == 'activity') {
+        activity.add(activityEntry(
+          kind: '${raw['kind'] ?? 'reasoning'}',
+          label: '${raw['label'] ?? 'Ход работы'}'.trim(),
+          sourceName: name,
+          detail: '${raw['detail'] ?? raw['message'] ?? ''}'.trim(),
+          status: phase.isEmpty ? '${raw['status'] ?? ''}' : phase,
+          additions: additions,
+          deletions: deletions,
+          files: files,
+        ));
+      }
+      publishPartial();
+    }
 
     void removeTransientStream() {
       if (!streamVisible) return;
@@ -206,23 +467,18 @@ class WesiAiChatController extends ChangeNotifier {
     void onDelta(String delta) {
       if (delta.isEmpty || c.persona == WesiAiPersona.lobby) return;
       streamedText += delta;
-      final at = DateTime.now();
-      final partial = WesiAiMessage(
-        id: streamMessageId,
-        conversationId: c.id,
-        employeeId: store.employeeId,
-        author: author,
-        text: streamedText,
-        createdAt: at,
-        metadata: const <String, dynamic>{'transportStreaming': true},
-      );
-      final withoutPartial = state.messages
-          .where((message) => message.id != streamMessageId)
-          .toList(growable: false);
-      state =
-          state.copyWith(messages: <WesiAiMessage>[...withoutPartial, partial]);
-      streamVisible = true;
-      notifyIfActive();
+      publishPartial();
+    }
+
+    if (streamVisible) {
+      activity.add(activityEntry(
+        kind: 'reasoning',
+        label: 'Подготавливаю ответ',
+        detail:
+            'Собираю контекст диалога, память, проект и доступные действия.',
+        status: 'start',
+      ));
+      publishPartial();
     }
 
     final cancellation = WesiAiRequestCancellation();
@@ -239,11 +495,52 @@ class WesiAiChatController extends ChangeNotifier {
         taskState: conversationMemoryFor(updated.id).taskState,
         attachments: attachments,
         onDelta: onDelta,
+        onActivity: onActivity,
         cancellation: cancellation,
       ));
       if (reply == null) {
         removeTransientStream();
         return;
+      }
+      for (final finalEvent in reply.activity) {
+        final sourceName =
+            '${finalEvent['sourceName'] ?? finalEvent['name'] ?? finalEvent['tool'] ?? ''}'
+                .trim();
+        final kind = '${finalEvent['kind'] ?? 'tool'}';
+        var merged = false;
+        if (sourceName.isNotEmpty) {
+          for (var index = activity.length - 1; index >= 0; index--) {
+            final current = activity[index];
+            if ('${current['sourceName'] ?? ''}' == sourceName &&
+                '${current['kind'] ?? ''}' == kind) {
+              final next = Map<String, dynamic>.from(current);
+              next['additions'] = safeCount(finalEvent['additions']);
+              next['deletions'] = safeCount(finalEvent['deletions']);
+              if (finalEvent['files'] is List)
+                next['files'] = List<dynamic>.from(finalEvent['files'] as List);
+              next['status'] = 'result';
+              next['completedAt'] ??= DateTime.now().toUtc().toIso8601String();
+              activity[index] = next;
+              merged = true;
+              break;
+            }
+          }
+        }
+        if (!merged) {
+          final copy = Map<String, dynamic>.from(finalEvent);
+          copy['id'] ??= '${user.id}_activity_${activitySequence++}';
+          copy['textOffset'] ??= streamedText.length;
+          activity.add(copy);
+        }
+      }
+      final completedAt = DateTime.now().toUtc().toIso8601String();
+      for (var index = 0; index < activity.length; index++) {
+        final current = activity[index];
+        if ('${current['status'] ?? ''}' != 'start') continue;
+        final closed = Map<String, dynamic>.from(current);
+        closed['status'] = 'done';
+        closed['completedAt'] = completedAt;
+        activity[index] = closed;
       }
       final at = DateTime.now();
       final assistant = WesiAiMessage(
@@ -258,6 +555,13 @@ class WesiAiChatController extends ChangeNotifier {
         metadata: <String, dynamic>{
           'requestId': reply.requestId,
           if (streamVisible) 'transportStreamed': true,
+          if (activity.isNotEmpty)
+            'activity': activity
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList(growable: false),
+          'workStartedAt': workStartedAt.toIso8601String(),
+          'workDurationMs':
+              DateTime.now().toUtc().difference(workStartedAt).inMilliseconds,
           if (reply.blocks.isNotEmpty)
             'blocks': reply.blocks
                 .map((block) => block.toJson())

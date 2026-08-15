@@ -71,6 +71,7 @@ class _ControlledApi extends WesiAiApi {
     Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
   }) {
     prompts.add(message);
@@ -103,6 +104,7 @@ class _LobbyControlledApi extends WesiAiApi {
     Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
   }) {
     calls++;
@@ -113,6 +115,7 @@ class _LobbyControlledApi extends WesiAiApi {
 class _StreamingControlledApi extends WesiAiApi {
   final Completer<WesiAiReply> reply = Completer<WesiAiReply>();
   void Function(String delta)? onDelta;
+  void Function(Map<String, dynamic> event)? activityCallback;
 
   @override
   Future<WesiAiReply> send({
@@ -126,9 +129,11 @@ class _StreamingControlledApi extends WesiAiApi {
     Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
   }) {
     this.onDelta = onDelta;
+    activityCallback = onActivity;
     return reply.future;
   }
 }
@@ -777,7 +782,20 @@ void main() {
     final conversationId = controller.state.activeConversationId!;
 
     final sending = controller.addUserMessage('stream me');
-    await _waitUntil(() => api.onDelta != null);
+    await _waitUntil(() => api.onDelta != null && api.activityCallback != null);
+    api.activityCallback!({
+      'type': 'tool',
+      'phase': 'start',
+      'name': 'github_file_upsert',
+    });
+    api.activityCallback!({
+      'type': 'tool',
+      'phase': 'result',
+      'name': 'github_file_upsert',
+      'additions': 4,
+      'deletions': 2,
+      'files': ['lib/example.dart'],
+    });
     api.onDelta!('При');
     api.onDelta!('вет');
     await _waitUntil(() => controller.state.messagesFor(conversationId).any(
@@ -797,6 +815,20 @@ void main() {
         1);
     expect(messages.last.text, 'Привет');
     expect(messages.last.metadata['transportStreamed'], isTrue);
-    expect(store.saved!.messagesFor(conversationId).last.text, 'Привет');
+    final activity = messages.last.metadata['activity'];
+    expect(activity, isA<List>());
+    final toolEvent = (activity as List)
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .singleWhere((item) => item['sourceName'] == 'github_file_upsert');
+    expect(toolEvent['additions'], 4);
+    expect(toolEvent['deletions'], 2);
+    expect(toolEvent['files'], ['lib/example.dart']);
+    expect(toolEvent['status'], 'result');
+    final persisted = store.saved!.messagesFor(conversationId).last;
+    expect(persisted.text, 'Привет');
+    expect(persisted.metadata['activity'], isA<List>());
+    expect(persisted.metadata['workStartedAt'], isNotNull);
+    expect(persisted.metadata['workDurationMs'], isA<int>());
   });
 }
