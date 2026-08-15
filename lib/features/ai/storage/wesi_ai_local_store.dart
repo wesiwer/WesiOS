@@ -1,13 +1,17 @@
 import 'dart:convert';
+
 import 'package:hive/hive.dart';
+
 import '../models/wesi_ai_chat_models.dart';
 
 class WesiAiLocalStore {
   static const String boxName = 'wesios_ai_local_v1';
+  static const int schemaVersion = 2;
   final String employeeId;
   const WesiAiLocalStore(this.employeeId);
 
   String get _stateKey => 'employee:$employeeId';
+  String get _corruptBackupKey => 'employee:$employeeId:corrupt-backup';
 
   Future<Box<String>> _box() async {
     if (Hive.isBoxOpen(boxName)) return Hive.box<String>(boxName);
@@ -18,7 +22,21 @@ class WesiAiLocalStore {
     final box = await _box();
     final raw = box.get(_stateKey);
     if (raw == null || raw.isEmpty) return WesiAiLocalState.empty(employeeId);
-    return WesiAiLocalState.fromJson(jsonDecode(raw) as Map<String, dynamic>, expectedEmployeeId: employeeId);
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) throw const FormatException('AI state is not an object');
+      return WesiAiLocalState.fromJson(
+        Map<String, dynamic>.from(decoded),
+        expectedEmployeeId: employeeId,
+      );
+    } catch (_) {
+      // Повреждённый/несовместимый локальный state не должен блокировать весь
+      // AI-модуль. Сохраняем только одну последнюю копию для диагностики и
+      // стартуем чистое состояние текущего сотрудника.
+      try { await box.put(_corruptBackupKey, raw); } catch (_) {}
+      try { await box.delete(_stateKey); } catch (_) {}
+      return WesiAiLocalState.empty(employeeId);
+    }
   }
 
   Future<void> save(WesiAiLocalState state) async {
@@ -108,6 +126,7 @@ class WesiAiLocalState {
       );
 
   Map<String, dynamic> toJson() => {
+        'schemaVersion': WesiAiLocalStore.schemaVersion,
         'employeeId': employeeId,
         'tier': tier.name,
         'activeConversationId': activeConversationId,
@@ -121,30 +140,89 @@ class WesiAiLocalState {
   factory WesiAiLocalState.fromJson(Map<String, dynamic> json, {required String expectedEmployeeId}) {
     final storedEmployeeId = json['employeeId'] as String? ?? '';
     if (storedEmployeeId != expectedEmployeeId) throw StateError('Employee mismatch');
-    final projects = (json['projects'] as List? ?? const [])
-        .map((e) => WesiAiProject.fromJson(Map<String, dynamic>.from(e as Map)))
-        .where((e) => e.employeeId == expectedEmployeeId)
-        .toList();
-    final conversations = (json['conversations'] as List? ?? const [])
-        .map((e) => WesiAiConversation.fromJson(Map<String, dynamic>.from(e as Map)))
-        .where((e) => e.employeeId == expectedEmployeeId)
-        .toList();
-    final messages = (json['messages'] as List? ?? const [])
-        .map((e) => WesiAiMessage.fromJson(Map<String, dynamic>.from(e as Map)))
-        .where((e) => e.employeeId == expectedEmployeeId)
-        .toList();
+
+    final projects = <WesiAiProject>[];
+    for (final raw in (json['projects'] as List? ?? const [])) {
+      try {
+        if (raw is! Map) continue;
+        final project = WesiAiProject.fromJson(Map<String, dynamic>.from(raw));
+        if (project.employeeId == expectedEmployeeId) projects.add(project);
+      } catch (_) {}
+    }
     final projectIds = projects.map((project) => project.id).toSet();
-    final rawActiveProject = json['activeProjectId'] as String?;
+
+    final conversations = <WesiAiConversation>[];
+    for (final raw in (json['conversations'] as List? ?? const [])) {
+      try {
+        if (raw is! Map) continue;
+        var conversation = WesiAiConversation.fromJson(Map<String, dynamic>.from(raw));
+        if (conversation.employeeId != expectedEmployeeId) continue;
+        if (conversation.projectId != null && !projectIds.contains(conversation.projectId)) {
+          conversation = conversation.copyWith(clearProject: true);
+        }
+        conversations.add(conversation);
+      } catch (_) {}
+    }
+    final conversationIds = conversations.map((conversation) => conversation.id).toSet();
+
+    final messages = <WesiAiMessage>[];
+    for (final raw in (json['messages'] as List? ?? const [])) {
+      try {
+        if (raw is! Map) continue;
+        final message = WesiAiMessage.fromJson(Map<String, dynamic>.from(raw));
+        if (message.employeeId == expectedEmployeeId && conversationIds.contains(message.conversationId)) {
+          messages.add(message);
+        }
+      } catch (_) {}
+    }
+
+    WesiAiTier tier = WesiAiTier.fast;
+    final rawTier = '${json['tier'] ?? 'fast'}';
+    for (final candidate in WesiAiTier.values) {
+      if (candidate.name == rawTier) {
+        tier = candidate;
+        break;
+      }
+    }
+
     final rawActiveConversation = json['activeConversationId'] as String?;
+    WesiAiConversation? activeConversation;
+    if (rawActiveConversation != null) {
+      for (final conversation in conversations) {
+        if (conversation.id == rawActiveConversation && !conversation.archived) {
+          activeConversation = conversation;
+          break;
+        }
+      }
+    }
+
+    final rawActiveProject = json['activeProjectId'] as String?;
+    String? activeProjectId;
+    if (activeConversation != null) {
+      // Активный чат является более сильным источником истины: проект в UI
+      // обязан совпадать с projectId этого чата после миграции/переноса.
+      activeProjectId = activeConversation.projectId;
+    } else if (rawActiveProject != null && projectIds.contains(rawActiveProject)) {
+      activeProjectId = rawActiveProject;
+    }
+
+    WesiAiMemorySnapshot memory = const WesiAiMemorySnapshot();
+    try {
+      final rawMemory = json['memory'];
+      if (rawMemory is Map) {
+        memory = WesiAiMemorySnapshot.fromJson(Map<String, dynamic>.from(rawMemory));
+      }
+    } catch (_) {}
+
     return WesiAiLocalState(
       employeeId: expectedEmployeeId,
-      tier: WesiAiTier.values.byName(json['tier'] as String? ?? 'fast'),
-      activeConversationId: conversations.any((c) => c.id == rawActiveConversation) ? rawActiveConversation : null,
-      activeProjectId: projectIds.contains(rawActiveProject) ? rawActiveProject : null,
+      tier: tier,
+      activeConversationId: activeConversation?.id,
+      activeProjectId: activeProjectId,
       projects: projects,
       conversations: conversations,
       messages: messages,
-      memory: WesiAiMemorySnapshot.fromJson(Map<String, dynamic>.from(json['memory'] as Map? ?? const {})),
+      memory: memory,
     );
   }
 }
