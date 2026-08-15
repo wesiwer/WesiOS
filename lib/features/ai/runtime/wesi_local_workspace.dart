@@ -159,9 +159,8 @@ class WesiLocalRuntimeSession {
       final length = await file.length();
       if (length > 4 * 1024 * 1024) {
         final lines = await file.readAsLines();
-        final kept = lines.length <= 2000
-            ? lines
-            : lines.sublist(lines.length - 2000);
+        final kept =
+            lines.length <= 2000 ? lines : lines.sublist(lines.length - 2000);
         await file.writeAsString('${kept.join('\n')}\n', flush: true);
       }
     } catch (_) {

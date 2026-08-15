@@ -335,7 +335,9 @@ class WesiLocalRuntimePolicy {
           'Header $key должен добавляться только доверенным Connector Broker',
         );
       }
-      if (lower == 'host' || lower == 'content-length' || lower == 'connection') {
+      if (lower == 'host' ||
+          lower == 'content-length' ||
+          lower == 'connection') {
         continue;
       }
       out[key] = value;
@@ -361,7 +363,7 @@ class WesiLocalRuntimePolicy {
         'Разрешён HTTPS; обычный HTTP требует отдельной доверенной политики',
       );
     }
-    if (uri.hasUserInfo) {
+    if (uri.userInfo.isNotEmpty) {
       throw const WesiLocalRuntimePolicyException(
         'WLR_URL_CREDENTIALS_FORBIDDEN',
         'Credentials в URL запрещены',
@@ -420,7 +422,8 @@ class WesiLocalRuntimePolicy {
     if (address.type == InternetAddressType.IPv6 && bytes.length == 16) {
       final allZero = bytes.every((value) => value == 0);
       if (allZero) return true;
-      final loopback = bytes.take(15).every((value) => value == 0) && bytes[15] == 1;
+      final loopback =
+          bytes.take(15).every((value) => value == 0) && bytes[15] == 1;
       if (loopback) return true;
       final ipv4Mapped = bytes.take(10).every((value) => value == 0) &&
           bytes[10] == 0xff &&
@@ -443,7 +446,8 @@ class WesiLocalRuntimePolicy {
         return false;
       }
       if ((bytes[0] & 0xfe) == 0xfc) return true; // fc00::/7 unique-local
-      if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80) return true; // fe80::/10
+      if (bytes[0] == 0xfe && (bytes[1] & 0xc0) == 0x80)
+        return true; // fe80::/10
       if (bytes[0] == 0xff) return true; // multicast
       return false;
     }

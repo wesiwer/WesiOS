@@ -166,7 +166,8 @@ class WesiLocalRuntimeExecutor {
         stdout: result.stdout,
         stderr: result.stderr,
         data: result.data,
-        duration: result.duration == Duration.zero ? watch.elapsed : result.duration,
+        duration:
+            result.duration == Duration.zero ? watch.elapsed : result.duration,
       );
     } on WesiLocalRuntimePolicyException catch (error) {
       watch.stop();
@@ -266,7 +267,8 @@ class WesiLocalRuntimeExecutor {
       case WesiLocalToolNames.httpPost:
         return _http(call, context, method: 'POST');
       case WesiLocalToolNames.pythonRun:
-        return _script(call, meta, context, bindingId: 'python', extensions: const {'.py'});
+        return _script(call, meta, context,
+            bindingId: 'python', extensions: const {'.py'});
       case WesiLocalToolNames.nodeRun:
         return _script(
           call,
@@ -312,13 +314,20 @@ class WesiLocalRuntimeExecutor {
     final root = p.normalize(p.absolute(context.workspaceRoot));
     final entries = <Map<String, dynamic>>[];
     await for (final entity in Directory(path).list(followLinks: false)) {
+      // `.wesi` stores runtime HOME/tmp/hooks/audit and is deliberately not
+      // part of the model-visible workspace namespace.
+      if (p.equals(path, root) &&
+          p.basename(entity.path).toLowerCase() == '.wesi') {
+        continue;
+      }
       if (entries.length >= context.limits.maxDirectoryEntries) {
         throw const WesiLocalRuntimePolicyException(
           'WLR_DIRECTORY_TOO_LARGE',
           'Каталог содержит слишком много записей',
         );
       }
-      final entityType = await FileSystemEntity.type(entity.path, followLinks: false);
+      final entityType =
+          await FileSystemEntity.type(entity.path, followLinks: false);
       int? bytes;
       if (entityType == FileSystemEntityType.file) {
         try {
@@ -337,7 +346,8 @@ class WesiLocalRuntimeExecutor {
       });
     }
     entries.sort((a, b) => '${a['path']}'.compareTo('${b['path']}'));
-    return WesiLocalToolResult.success(data: <String, dynamic>{'entries': entries});
+    return WesiLocalToolResult.success(
+        data: <String, dynamic>{'entries': entries});
   }
 
   Future<WesiLocalToolResult> _fsReadText(
@@ -348,7 +358,8 @@ class WesiLocalRuntimeExecutor {
       context,
       call.arguments['path'],
     );
-    if (await FileSystemEntity.type(path, followLinks: false) != FileSystemEntityType.file) {
+    if (await FileSystemEntity.type(path, followLinks: false) !=
+        FileSystemEntityType.file) {
       throw const WesiLocalRuntimePolicyException(
         'WLR_NOT_FILE',
         'Для чтения нужен файл workspace',
@@ -366,7 +377,8 @@ class WesiLocalRuntimeExecutor {
     final text = utf8.decode(bytes, allowMalformed: false);
     return WesiLocalToolResult.success(
       data: <String, dynamic>{
-        'path': p.relative(path, from: context.workspaceRoot).replaceAll('\\', '/'),
+        'path':
+            p.relative(path, from: context.workspaceRoot).replaceAll('\\', '/'),
         'text': text,
         'bytes': bytes.length,
       },
@@ -391,15 +403,18 @@ class WesiLocalRuntimeExecutor {
     }
     final parent = Directory(p.dirname(path));
     if (!await parent.exists()) await parent.create(recursive: true);
-    await WesiLocalRuntimePolicy.resolveWritePath(context, p.relative(path, from: context.workspaceRoot));
-    final temp = File('$path.wesi-tmp-${DateTime.now().microsecondsSinceEpoch}');
+    await WesiLocalRuntimePolicy.resolveWritePath(
+        context, p.relative(path, from: context.workspaceRoot));
+    final temp =
+        File('$path.wesi-tmp-${DateTime.now().microsecondsSinceEpoch}');
     await temp.writeAsBytes(bytes, flush: true);
     final target = File(path);
     if (await target.exists()) await target.delete();
     await temp.rename(path);
     return WesiLocalToolResult.success(
       data: <String, dynamic>{
-        'path': p.relative(path, from: context.workspaceRoot).replaceAll('\\', '/'),
+        'path':
+            p.relative(path, from: context.workspaceRoot).replaceAll('\\', '/'),
         'bytes': bytes.length,
       },
     );
@@ -423,7 +438,8 @@ class WesiLocalRuntimeExecutor {
     final type = await FileSystemEntity.type(path, followLinks: false);
     if (type == FileSystemEntityType.directory) {
       final recursive = call.arguments['recursive'] == true;
-      if (!recursive && await Directory(path).list(followLinks: false).isNotEmpty) {
+      if (!recursive &&
+          !(await Directory(path).list(followLinks: false).isEmpty)) {
         throw const WesiLocalRuntimePolicyException(
           'WLR_DIRECTORY_NOT_EMPTY',
           'Непустой каталог требует recursive=true и явного подтверждения',
@@ -508,13 +524,18 @@ class WesiLocalRuntimeExecutor {
           );
         }
         for (final path in paths) {
-          WesiLocalRuntimePolicy.lexicalWorkspacePath(context, p.join(p.relative(workingDirectory, from: context.workspaceRoot), path));
+          WesiLocalRuntimePolicy.lexicalWorkspacePath(
+              context,
+              p.join(p.relative(workingDirectory, from: context.workspaceRoot),
+                  path));
         }
         args = <String>[...common, 'add', '--', ...paths];
         break;
       case 'commit':
         final message = '${call.arguments['message'] ?? ''}'.trim();
-        if (message.isEmpty || message.length > 500 || message.contains('\u0000')) {
+        if (message.isEmpty ||
+            message.length > 500 ||
+            message.contains('\u0000')) {
           throw const WesiLocalRuntimePolicyException(
             'WLR_GIT_MESSAGE_INVALID',
             'Некорректное сообщение commit',
@@ -559,7 +580,8 @@ class WesiLocalRuntimeExecutor {
       context,
     );
     final workingDirectory = await _workingDirectory(call, context);
-    return _runProcess(binding, <String>[script, ...args], workingDirectory, context);
+    return _runProcess(
+        binding, <String>[script, ...args], workingDirectory, context);
   }
 
   Future<WesiLocalToolResult> _flutter(
@@ -586,7 +608,14 @@ class WesiLocalRuntimeExecutor {
       args = <String>['test', ...extra];
     } else if (action == 'build') {
       final target = '${call.arguments['target'] ?? ''}'.trim().toLowerCase();
-      const targets = <String>{'apk', 'appbundle', 'windows', 'linux', 'macos', 'web'};
+      const targets = <String>{
+        'apk',
+        'appbundle',
+        'windows',
+        'linux',
+        'macos',
+        'web'
+      };
       if (!targets.contains(target)) {
         throw const WesiLocalRuntimePolicyException(
           'WLR_BUILD_TARGET_FORBIDDEN',
@@ -640,7 +669,8 @@ class WesiLocalRuntimeExecutor {
       call.arguments['cwd'] ?? '.',
       allowRoot: true,
     );
-    if (await FileSystemEntity.type(path, followLinks: false) != FileSystemEntityType.directory) {
+    if (await FileSystemEntity.type(path, followLinks: false) !=
+        FileSystemEntityType.directory) {
       throw const WesiLocalRuntimePolicyException(
         'WLR_NOT_DIRECTORY',
         'cwd должен быть каталогом workspace',
@@ -704,8 +734,10 @@ class WesiLocalRuntimeExecutor {
     WesiLocalRuntimeContext context, {
     required String method,
   }) async {
-    var uri = WesiLocalRuntimePolicy.validateHttpUri(call.arguments['url'], context);
-    var headers = WesiLocalRuntimePolicy.sanitizeHttpHeaders(call.arguments['headers']);
+    var uri =
+        WesiLocalRuntimePolicy.validateHttpUri(call.arguments['url'], context);
+    var headers =
+        WesiLocalRuntimePolicy.sanitizeHttpHeaders(call.arguments['headers']);
     final rawBody = method == 'POST' ? '${call.arguments['body'] ?? ''}' : '';
     final bodyBytes = utf8.encode(rawBody);
     if (bodyBytes.length > context.limits.maxHttpRequestBytes) {
@@ -726,22 +758,31 @@ class WesiLocalRuntimeExecutor {
         );
       }
       final pinnedAddress = addresses.first;
+      final expectedScheme = requestUri.scheme.toLowerCase();
       final expectedHost = requestUri.host.toLowerCase();
-      final client = httpClientFactory()
-        ..findProxy = (_) => 'DIRECT'
-        ..connectionFactory = (url, proxyHost, proxyPort) {
-          if (proxyHost != null || proxyPort != null ||
-              url.host.toLowerCase() != expectedHost) {
-            throw const WesiLocalRuntimePolicyException(
-              'WLR_SSRF_BLOCKED',
-              'HTTP connection не соответствует проверенному назначению',
-            );
-          }
-          final port = url.hasPort
-              ? url.port
-              : (url.scheme.toLowerCase() == 'https' ? 443 : 80);
-          return Socket.startConnect(pinnedAddress, port);
-        };
+      final expectedPort = requestUri.hasPort
+          ? requestUri.port
+          : (expectedScheme == 'https' ? 443 : 80);
+      final client = httpClientFactory();
+      client.findProxy = (_) => 'DIRECT';
+      client.connectionFactory = (url, proxyHost, proxyPort) {
+        final targetScheme = url.scheme.toLowerCase();
+        final targetPort =
+            url.hasPort ? url.port : (targetScheme == 'https' ? 443 : 80);
+        if (proxyHost != null ||
+            proxyPort != null ||
+            targetScheme != expectedScheme ||
+            url.host.toLowerCase() != expectedHost ||
+            targetPort != expectedPort) {
+          throw const WesiLocalRuntimePolicyException(
+            'WLR_SSRF_BLOCKED',
+            'HTTP connection не соответствует проверенному назначению',
+          );
+        }
+        // Socket uses the already validated address; the request URI keeps
+        // the original HTTPS hostname for normal HttpClient TLS validation.
+        return Socket.startConnect(pinnedAddress, targetPort);
+      };
       try {
         final request = method == 'GET'
             ? await client.getUrl(requestUri)
@@ -749,7 +790,8 @@ class WesiLocalRuntimeExecutor {
         request.followRedirects = false;
         headers.forEach(request.headers.set);
         if (bodyBytes.isNotEmpty) request.add(bodyBytes);
-        final response = await request.close().timeout(const Duration(seconds: 30));
+        final response =
+            await request.close().timeout(const Duration(seconds: 30));
 
         if (response.isRedirect) {
           if (method != 'GET') {

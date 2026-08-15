@@ -68,7 +68,8 @@ void main() {
       throwsA(isA<WesiLocalRuntimePolicyException>()),
     );
     expect(
-      () => WesiLocalRuntimePolicy.lexicalWorkspacePath(context, root.parent.path),
+      () => WesiLocalRuntimePolicy.lexicalWorkspacePath(
+          context, root.parent.path),
       throwsA(isA<WesiLocalRuntimePolicyException>()),
     );
     expect(
@@ -346,7 +347,8 @@ void main() {
     );
     expect(result.ok, isTrue);
 
-    final audit = File(p.join(workspace.rootPath, '.wesi', 'runtime_audit.jsonl'));
+    final audit =
+        File(p.join(workspace.rootPath, '.wesi', 'runtime_audit.jsonl'));
     final raw = await audit.readAsString();
     expect(raw, contains('local.fs.write_text'));
     expect(raw, isNot(contains('TOP_SECRET_CONTENT')));
