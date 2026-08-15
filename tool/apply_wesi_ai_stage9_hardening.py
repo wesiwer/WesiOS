@@ -10,6 +10,15 @@ def replace_once(path: str, old: str, new: str) -> None:
     p.write_text(text.replace(old, new, 1), encoding='utf-8')
 
 
+def replace_all_nonempty(path: str, old: str, new: str) -> None:
+    p = Path(path)
+    text = p.read_text(encoding='utf-8')
+    count = text.count(old)
+    if count < 1:
+        raise SystemExit(f'{path}: expected at least one anchor: {old[:80]!r}')
+    p.write_text(text.replace(old, new), encoding='utf-8')
+
+
 validator = 'lib/features/ai/runtime/wesi_artifact_validator.dart'
 replace_once(
     validator,
@@ -20,6 +29,13 @@ replace_once(
     validator,
     '''      case WesiArtifactKind.docx:\n      case WesiArtifactKind.xlsx:\n      case WesiArtifactKind.pptx:\n      case WesiArtifactKind.apk:\n      case WesiArtifactKind.video:\n      case WesiArtifactKind.other:\n        return true;\n      case WesiArtifactKind.text:\n      case WesiArtifactKind.json:\n      case WesiArtifactKind.pdf:\n      case WesiArtifactKind.zip:\n      case WesiArtifactKind.windowsExecutable:\n      case WesiArtifactKind.png:\n      case WesiArtifactKind.jpeg:\n      case WesiArtifactKind.wav:\n      case WesiArtifactKind.mp3:\n      case WesiArtifactKind.sourceArchive:\n        return false;''',
     '''      case WesiArtifactKind.pdf:\n      case WesiArtifactKind.zip:\n      case WesiArtifactKind.sourceArchive:\n      case WesiArtifactKind.docx:\n      case WesiArtifactKind.xlsx:\n      case WesiArtifactKind.pptx:\n      case WesiArtifactKind.apk:\n      case WesiArtifactKind.windowsExecutable:\n      case WesiArtifactKind.wav:\n      case WesiArtifactKind.mp3:\n      case WesiArtifactKind.video:\n      case WesiArtifactKind.other:\n        return true;\n      case WesiArtifactKind.text:\n      case WesiArtifactKind.json:\n      case WesiArtifactKind.png:\n      case WesiArtifactKind.jpeg:\n        return false;''',
+)
+# `_BuiltinValidation.fail` carries runtime code/message values. It cannot be a
+# const constructor because its nested result is built from those parameters.
+replace_all_nonempty(
+    validator,
+    'const _BuiltinValidation.fail(',
+    '_BuiltinValidation.fail(',
 )
 
 engine = 'lib/features/ai/runtime/wesi_self_debug_engine.dart'
