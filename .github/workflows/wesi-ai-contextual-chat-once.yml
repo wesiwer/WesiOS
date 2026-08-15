@@ -22,8 +22,9 @@ jobs:
 
       - name: Validate and apply patcher
         run: |
-          python -m py_compile scripts/wesi_ai_contextual_chat_once.py
+          python -m py_compile scripts/wesi_ai_contextual_chat_once.py scripts/wesi_ai_contextual_chat_fix.py
           python scripts/wesi_ai_contextual_chat_once.py
+          python scripts/wesi_ai_contextual_chat_fix.py
 
       - name: Validate persona bundle source
         run: |
