@@ -8,9 +8,12 @@ function adapters() {
     require(base + "wesi_ai_task_tools.js"),
     require(base + "wesi_ai_task_write_tools.js"),
     require(base + "wesi_ai_finance_tools.js"),
+    require(base + "wesi_ai_finance_write_tools.js"),
     require(base + "wesi_ai_workspace_tools.js"),
     require(base + "wesi_ai_calendar_write_tools.js"),
+    require(base + "wesi_ai_crm_write_tools.js"),
     require(base + "wesi_ai_knowledge_tools.js"),
+    require(base + "wesi_ai_knowledge_write_tools.js"),
     require(base + "wesi_ai_horizon_tools.js"),
     require(base + "wesi_ai_presentation_tools.js"),
     require(base + "wesi_ai_media_tools.js"),
@@ -38,8 +41,6 @@ module.exports = {
       if (!Array.isArray(items)) continue;
       for (const item of items) {
         const decorated = registry.decorateDefinition(item);
-        // Fail closed: an adapter cannot expose a tool that has no central
-        // capability/risk metadata.
         if (decorated) out.push(decorated);
       }
     }
