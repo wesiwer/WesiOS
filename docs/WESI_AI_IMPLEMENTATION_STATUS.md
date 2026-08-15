@@ -26,14 +26,17 @@
 - staged storage resource protection: максимум 32 активные upload-сессии и 1 GiB суммарно заявленного активного staged storage на Relay;
 - `WAI_UPLOAD_CAPACITY` возвращает контролируемую ошибку вместо бесконтрольного заполнения диска.
 
-Проверки для этого блока:
+Проверки для финального head PR #153:
 - Node/Relay test suite — green;
 - staged upload assembly/capability/cleanup/capacity regression tests — green;
 - `flutter analyze` — green;
 - Flutter tests — green;
 - Android debug build — green;
-- Windows release build — green до последних server-only resource-limit правок; после этих правок Flutter source не менялся;
-- signed production release workflow автоматически запущен на `main` после merge и отслеживается отдельно.
+- Windows release build — green.
+
+Отдельно ранее успешно завершён signed production release #111 для версии `0.22.9+84`. Он был запущен **до** merge PR #153. После #153 новый production release автоматически не запускался; следующий релиз выполняется только по отдельному явному запросу.
+
+Целевые Persona Co-Agent и Adaptive Execution требования перенесены на актуальный `main` через PR #154. Это нормативное ТЗ будущего агентного слоя, а не утверждение, что полноценная Co-Agent/subagent runtime уже реализована.
 
 ## Внешний production blocker
 
@@ -71,4 +74,4 @@
 
 PR #149 (`feat(ai): add local runtime and remote worker foundation`) оставлен как отложенная работа. Он был stacked поверх старого PR #148; перед продолжением тяжёлого блока его изменения нужно перенести/перебазировать на актуальный `main`, а не мержить старый stack как есть.
 
-PR #148 закрыт как superseded PR #153.
+PR #148 закрыт как superseded PR #153. Старый конфликтный PR #151 закрыт как superseded PR #154.
