@@ -167,8 +167,7 @@ void main() {
     expect(await File(p.join(root.path, 'docs', 'a.txt')).exists(), isFalse);
   });
 
-  test('terminal cannot use arbitrary or unsandboxed executable bindings',
-      () async {
+  test('terminal requires the exact workspaceV1 sandbox contract', () async {
     final root = await _workspace();
     addTearDown(() => root.delete(recursive: true));
     final fake = _FakeRunner();
@@ -181,7 +180,7 @@ void main() {
           'python': WesiLocalExecutableBinding(
             id: 'python',
             executablePath: '/trusted/python',
-            sandboxed: false,
+            sandboxProfile: WesiLocalSandboxProfile.none,
             allowArbitraryCode: true,
           ),
         },
@@ -210,7 +209,7 @@ void main() {
           'python': WesiLocalExecutableBinding(
             id: 'python',
             executablePath: '/trusted/python',
-            sandboxed: true,
+            sandboxProfile: WesiLocalSandboxProfile.workspaceV1,
             allowArbitraryCode: true,
           ),
         },
