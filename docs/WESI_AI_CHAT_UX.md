@@ -29,9 +29,15 @@ WesiOS не показывает скрытую chain-of-thought модели. �
 
 ## Contextual follow-ups and clarification
 
+Post-Stage-10 UX/persona hardening: PR #180.
+
 - follow-up chips derive their topic from the latest user turn/current answer and must not be a fixed repeated list;
+- follow-ups are also intent-aware: debugging/errors, planning/implementation, comparison/choice, finance/calculation, creative work and explanatory questions receive different continuation actions rather than the same three generic templates;
 - a valid fenced `question` JSON block renders 2–5 quick answers and optional `Свой ответ`;
 - selecting an option is an ordinary user turn; malformed question JSON fails back to code rendering;
 - a pending clarification suppresses generic follow-up chips;
 - Zane/Nirvana identity/company/platform facts are contextual and are not injected into unrelated answers;
-- a newly opened chat is a transient draft and enters durable history only after the first accepted user turn.
+- creator/Wesi Inc./Wesi AI/WesiOS may be mentioned when the user asks about identity, origin, creator, company/owner, platform/ecosystem or when objectively required by the task;
+- a newly opened chat is a transient draft and enters durable history only after the first accepted user turn;
+- opening another blank new chat abandons the previous blank draft instead of accumulating empty conversations;
+- queue/attachment context remains durable for conversations that have already been materialized by an accepted turn.
