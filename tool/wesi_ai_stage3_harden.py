@@ -53,7 +53,9 @@ helper = r'''  @protected
             message.kind == WesiAiMessageKind.text &&
             message.author != WesiAiMessageAuthor.system)
         .toList(growable: false);
-    final start = memory.summarizedMessageCount.clamp(0, textMessages.length);
+    final start = memory.summarizedMessageCount
+        .clamp(0, textMessages.length)
+        .toInt();
     final unsummarized = textMessages.sublist(start);
     if (unsummarized.length <= 24) return unsummarized;
     return unsummarized.sublist(unsummarized.length - 24);
@@ -71,10 +73,9 @@ old = '''      final relevant = relevantMemoryFor(conversation, latestUserText);
         project: _projectFor(conversation.projectId),
       );
 '''
-new = '''      final start = conversationMemory.summarizedMessageCount.clamp(
-        0,
-        textMessages.length,
-      );
+new = '''      final start = conversationMemory.summarizedMessageCount
+          .clamp(0, textMessages.length)
+          .toInt();
       if (start >= textMessages.length) return;
       final pending = textMessages.sublist(start);
       final batch = pending.length <= 24 ? pending : pending.sublist(0, 24);
@@ -283,12 +284,15 @@ p = Path('test/wesi_ai_memory_engine_test.dart')
 s = p.read_text(encoding='utf-8')
 s = replace_once(s,
 "import 'package:flutter_test/flutter_test.dart';\n",
-"import 'dart:async';\n\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:wesios/features/ai/controllers/wesi_ai_chat_controller.dart';\nimport 'package:wesios/features/ai/memory/wesi_ai_memory_api.dart';\n", 'test imports head')
+"import 'dart:async';\n\nimport 'package:flutter_test/flutter_test.dart';\nimport 'package:wesios/features/ai/controllers/wesi_ai_chat_controller.dart';\nimport 'package:wesios/features/ai/memory/wesi_ai_memory_api.dart';\n", 'test imports')
+s = replace_once(s,
+"import 'package:wesios/features/ai/models/wesi_ai_chat_models.dart';\n",
+"import 'package:wesios/features/ai/models/wesi_ai_attachment.dart';\nimport 'package:wesios/features/ai/models/wesi_ai_chat_models.dart';\n", 'attachment import')
 s = replace_once(s,
 "import 'package:wesios/features/ai/storage/wesi_ai_local_store.dart';\n",
-"import 'package:wesios/features/ai/storage/wesi_ai_local_store.dart';\nimport 'package:wesios/features/ai/wesi_ai_api.dart';\n", 'test api import')
-classes_anchor = 'void main() {'
-classes = r'''class _MemoryStore extends WesiAiLocalStore {
+"import 'package:wesios/features/ai/storage/wesi_ai_local_store.dart';\nimport 'package:wesios/features/ai/wesi_ai_api.dart';\n", 'api import')
+insert = r'''
+class _MemoryStore extends WesiAiLocalStore {
   WesiAiLocalState? saved;
   _MemoryStore(super.employeeId);
 
@@ -302,8 +306,10 @@ classes = r'''class _MemoryStore extends WesiAiLocalStore {
   }
 }
 
-class _CaptureApi extends WesiAiApi {
-  final List<List<WesiAiMessage>> histories = <List<WesiAiMessage>>[];
+class _RecordingApi extends WesiAiApi {
+  List<WesiAiMessage> history = const <WesiAiMessage>[];
+  String summary = '';
+  Map<String, dynamic> taskState = const <String, dynamic>{};
 
   @override
   Future<WesiAiReply> send({
@@ -319,8 +325,9 @@ class _CaptureApi extends WesiAiApi {
     void Function(String delta)? onDelta,
     WesiAiRequestCancellation? cancellation,
   }) async {
-    histories.add(List<WesiAiMessage>.from(history));
-    onDelta?.call('Готово');
+    this.history = history;
+    summary = conversationSummary;
+    this.taskState = taskState;
     return const WesiAiReply(answer: 'Готово', requestId: 'memory-test');
   }
 }
@@ -329,7 +336,7 @@ class _FakeMemoryApi extends WesiAiMemoryApi {
   final WesiAiMemoryProcessResult? result;
   final bool fail;
   int calls = 0;
-  final List<List<WesiAiMessage>> batches = <List<WesiAiMessage>>[];
+  final List<List<String>> batches = <List<String>>[];
 
   _FakeMemoryApi({this.result, this.fail = false});
 
@@ -343,7 +350,7 @@ class _FakeMemoryApi extends WesiAiMemoryApi {
     WesiAiProject? project,
   }) async {
     calls++;
-    batches.add(List<WesiAiMessage>.from(recentMessages));
+    batches.add(recentMessages.map((message) => message.text).toList());
     if (fail) {
       throw const WesiAiApiException(
         'WAI_MEMORY_FAILED',
@@ -352,14 +359,14 @@ class _FakeMemoryApi extends WesiAiMemoryApi {
     }
     return result ??
         const WesiAiMemoryProcessResult(
-          summary: 'summary',
+          summary: '',
           taskState: <String, dynamic>{},
           memories: <WesiAiMemoryCandidate>[],
         );
   }
 }
 
-Future<void> _waitMemory(bool Function() condition) async {
+Future<void> _waitUntil(bool Function() condition) async {
   for (var attempt = 0; attempt < 300; attempt++) {
     if (condition()) return;
     await Future<void>.delayed(const Duration(milliseconds: 5));
@@ -368,13 +375,51 @@ Future<void> _waitMemory(bool Function() condition) async {
 }
 
 '''
-s = replace_once(s, classes_anchor, classes + classes_anchor, 'test helper classes')
+s = replace_once(s, 'void main() {\n', insert + 'void main() {\n', 'test helpers')
 end = s.rfind('\n}')
-if end < 0:
-    raise SystemExit('test closing brace missing')
+if end < 0: raise SystemExit('test closing brace missing')
 extra = r'''
 
-  test('successful background processor persists summary task state and memory', () async {
+  test('manual memory controls persist locally and reject secret-like text', () async {
+    final store = _MemoryStore('employee-controls');
+    final controller = WesiAiChatController(
+      store: store,
+      api: _RecordingApi(),
+      memoryApi: _FakeMemoryApi(),
+    );
+    await controller.load();
+    await controller.createConversation(WesiAiPersona.zane);
+
+    expect(
+      await controller.addManualMemory(
+        WesiAiMemoryScope.shared,
+        'Предпочитает короткие отчёты',
+      ),
+      isTrue,
+    );
+    expect(controller.state.memoryEntries.length, 1);
+    expect(
+      await controller.addManualMemory(
+        WesiAiMemoryScope.shared,
+        'API key: secret-1234567890',
+      ),
+      isFalse,
+    );
+    await controller.setAutoMemoryEnabled(false);
+    expect(controller.state.memorySettings.autoMemoryEnabled, isFalse);
+    await controller.setActiveConversationMemoryEnabled(false);
+    expect(
+      controller.state
+          .conversationMemory[controller.state.activeConversationId!]
+          ?.memoryEnabled,
+      isFalse,
+    );
+    await controller.deleteMemory(controller.state.memoryEntries.single.id);
+    expect(controller.state.memoryEntries, isEmpty);
+    expect(store.saved, isNotNull);
+  });
+
+  test('successful background processor applies summary task state and memory', () async {
     final store = _MemoryStore('employee-process');
     final memoryApi = _FakeMemoryApi(
       result: const WesiAiMemoryProcessResult(
@@ -391,44 +436,66 @@ extra = r'''
     );
     final controller = WesiAiChatController(
       store: store,
-      api: _CaptureApi(),
+      api: _RecordingApi(),
       memoryApi: memoryApi,
     );
     await controller.load();
     await controller.createConversation(WesiAiPersona.zane);
     final conversationId = controller.state.activeConversationId!;
+
     await controller.addUserMessage('Запомни: я предпочитаю режим Pro');
-    await _waitMemory(() => memoryApi.calls == 1 && controller.state.memoryEntries.isNotEmpty);
-    expect(controller.state.memoryEntries.single.text, 'Пользователь предпочитает режим Pro');
-    expect(controller.state.conversationMemory[conversationId]?.rollingSummary,
-        'Пользователь попросил запомнить настройку.');
-    expect(controller.state.conversationMemory[conversationId]?.taskState['goal'],
-        'держать настройку');
+    await _waitUntil(
+      () => memoryApi.calls == 1 && controller.state.memoryEntries.isNotEmpty,
+    );
+
+    expect(
+      controller.state.memoryEntries.single.text,
+      'Пользователь предпочитает режим Pro',
+    );
+    expect(
+      controller.state.conversationMemory[conversationId]?.rollingSummary,
+      'Пользователь попросил запомнить настройку.',
+    );
+    expect(
+      controller.state.conversationMemory[conversationId]?.taskState['goal'],
+      'держать настройку',
+    );
   });
 
-  test('memory processor failure never turns successful chat into an error', () async {
+  test('memory processor failure never turns a successful chat into an error', () async {
     final store = _MemoryStore('employee-failure');
     final memoryApi = _FakeMemoryApi(fail: true);
     final controller = WesiAiChatController(
       store: store,
-      api: _CaptureApi(),
+      api: _RecordingApi(),
       memoryApi: memoryApi,
     );
     await controller.load();
     await controller.createConversation(WesiAiPersona.zane);
     final conversationId = controller.state.activeConversationId!;
+
     await controller.addUserMessage('Запомни это важное правило');
-    await _waitMemory(() => memoryApi.calls == 1);
+    await _waitUntil(() => memoryApi.calls == 1);
     await Future<void>.delayed(const Duration(milliseconds: 20));
+
     final messages = controller.state.messagesFor(conversationId);
-    expect(messages.any((message) =>
-        message.author == WesiAiMessageAuthor.zane && message.text == 'Готово'), isTrue);
-    expect(messages.any((message) => message.kind == WesiAiMessageKind.error), isFalse);
+    expect(
+      messages.any(
+        (message) =>
+            message.author == WesiAiMessageAuthor.zane &&
+            message.text == 'Готово',
+      ),
+      isTrue,
+    );
+    expect(
+      messages.any((message) => message.kind == WesiAiMessageKind.error),
+      isFalse,
+    );
   });
 
-  test('rolling summary removes summarized raw history from next request', () async {
+  test('rolling summary removes summarized prefix from next transport history', () async {
     final store = _MemoryStore('employee-history');
-    final api = _CaptureApi();
+    final api = _RecordingApi();
     final controller = WesiAiChatController(
       store: store,
       api: api,
@@ -436,66 +503,111 @@ extra = r'''
     );
     await controller.load();
     await controller.createConversation(WesiAiPersona.zane);
-    final conversationId = controller.state.activeConversationId!;
-    final base = DateTime(2026, 8, 15, 10);
-    controller.state = controller.state.copyWith(
-      messages: <WesiAiMessage>[
-        for (var i = 0; i < 6; i++)
-          WesiAiMessage(
-            id: 'old_memory_message_$i',
-            conversationId: conversationId,
-            employeeId: store.employeeId,
-            author: i.isEven ? WesiAiMessageAuthor.user : WesiAiMessageAuthor.zane,
-            text: 'old-$i',
-            createdAt: base.add(Duration(minutes: i)),
-          ),
-      ],
+    final conversation = controller.state.activeConversation!;
+    final now = DateTime(2026, 8, 15);
+    final messages = <WesiAiMessage>[
+      for (var index = 0; index < 6; index++)
+        WesiAiMessage(
+          id: 'history-$index',
+          conversationId: conversation.id,
+          employeeId: store.employeeId,
+          author: index.isEven
+              ? WesiAiMessageAuthor.user
+              : WesiAiMessageAuthor.zane,
+          text: 'old-$index',
+          createdAt: now.add(Duration(seconds: index)),
+        ),
+    ];
+    store.saved = controller.state.copyWith(
+      messages: messages,
       conversationMemory: <String, WesiAiConversationMemoryState>{
-        conversationId: WesiAiConversationMemoryState(
-          conversationId: conversationId,
-          rollingSummary: 'old-0..old-3 summarized',
+        conversation.id: WesiAiConversationMemoryState(
+          conversationId: conversation.id,
+          rollingSummary: 'old 0..3',
+          taskState: const <String, dynamic>{'goal': 'continue'},
           summarizedMessageCount: 4,
         ),
       },
     );
-    await controller.addUserMessage('новый вопрос без запоминания');
-    expect(api.histories.last.map((message) => message.text).toList(),
-        <String>['old-4', 'old-5']);
+    await controller.load();
+
+    await controller.addUserMessage('new question');
+    expect(api.history.map((message) => message.text), <String>['old-4', 'old-5']);
+    expect(api.summary, 'old 0..3');
+    expect(api.taskState['goal'], 'continue');
   });
 
-  test('long unsummarized chat is compacted oldest-first in batches of 24', () async {
+  test('compaction advances by bounded oldest-first batch instead of skipping gap', () async {
     final store = _MemoryStore('employee-batch');
-    final memoryApi = _FakeMemoryApi();
+    final memoryApi = _FakeMemoryApi(
+      result: const WesiAiMemoryProcessResult(
+        summary: 'batch summary',
+        taskState: <String, dynamic>{},
+        memories: <WesiAiMemoryCandidate>[],
+      ),
+    );
     final controller = WesiAiChatController(
       store: store,
-      api: _CaptureApi(),
+      api: _RecordingApi(),
       memoryApi: memoryApi,
     );
     await controller.load();
     await controller.createConversation(WesiAiPersona.zane);
-    final conversationId = controller.state.activeConversationId!;
-    final base = DateTime(2026, 8, 15, 9);
-    controller.state = controller.state.copyWith(
-      messages: <WesiAiMessage>[
-        for (var i = 0; i < 30; i++)
-          WesiAiMessage(
-            id: 'batch_memory_message_$i',
-            conversationId: conversationId,
-            employeeId: store.employeeId,
-            author: i.isEven ? WesiAiMessageAuthor.user : WesiAiMessageAuthor.zane,
-            text: 'message-$i',
-            createdAt: base.add(Duration(minutes: i)),
-          ),
-      ],
+    final conversation = controller.state.activeConversation!;
+    final now = DateTime(2026, 8, 15);
+    final messages = <WesiAiMessage>[
+      for (var index = 0; index < 30; index++)
+        WesiAiMessage(
+          id: 'batch-$index',
+          conversationId: conversation.id,
+          employeeId: store.employeeId,
+          author: index.isEven
+              ? WesiAiMessageAuthor.user
+              : WesiAiMessageAuthor.zane,
+          text: 'batch-$index',
+          createdAt: now.add(Duration(seconds: index)),
+        ),
+    ];
+    store.saved = controller.state.copyWith(
+      messages: messages,
+      conversationMemory: <String, WesiAiConversationMemoryState>{
+        conversation.id: WesiAiConversationMemoryState(
+          conversationId: conversation.id,
+        ),
+      },
     );
-    await controller.addUserMessage('запомни текущий контекст');
-    await _waitMemory(() => memoryApi.calls == 1);
+    await controller.load();
+
+    await controller.addUserMessage('Запомни прогресс');
+    await _waitUntil(() => memoryApi.calls == 1);
     expect(memoryApi.batches.single.length, 24);
-    expect(memoryApi.batches.single.first.text, 'message-0');
-    expect(memoryApi.batches.single.last.text, 'message-23');
-    await _waitMemory(() =>
-        controller.state.conversationMemory[conversationId]?.summarizedMessageCount == 24);
+    expect(memoryApi.batches.single.first, 'batch-0');
+    expect(memoryApi.batches.single.last, 'batch-23');
+    expect(
+      controller.state
+          .conversationMemory[conversation.id]
+          ?.summarizedMessageCount,
+      24,
+    );
   });
 '''
 s = s[:end] + extra + s[end:]
+p.write_text(s, encoding='utf-8')
+
+# Local corrupted state: task state must be bounded and orphan chat-memory discarded by existing id check.
+p = Path('lib/features/ai/memory/wesi_ai_memory_models.dart')
+s = p.read_text(encoding='utf-8')
+s = replace_once(s,
+'''    final taskState = taskRaw is Map
+        ? Map<String, dynamic>.from(taskRaw)
+        : const <String, dynamic>{};
+''',
+'''    Map<String, dynamic> taskState = const <String, dynamic>{};
+    if (taskRaw is Map) {
+      final candidate = Map<String, dynamic>.from(taskRaw);
+      try {
+        if (candidate.toString().length <= 12000) taskState = candidate;
+      } catch (_) {}
+    }
+''', 'local task state bound')
 p.write_text(s, encoding='utf-8')
