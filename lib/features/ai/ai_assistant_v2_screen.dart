@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../team/services/team_service.dart';
 import 'backup/wesi_ai_backup_sheet.dart';
 import 'controllers/wesi_ai_chat_controller.dart';
+import 'connectors/wesi_connector_manager_sheet.dart';
 import 'models/wesi_ai_attachment.dart';
 import 'memory/wesi_ai_memory_sheet.dart';
 import 'models/wesi_ai_chat_models.dart';
@@ -195,6 +196,16 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Коннекторы Wesi AI',
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (_) => const WesiConnectorManagerSheet(),
+            ),
+            icon: const Icon(Icons.hub_outlined),
+          ),
           IconButton(
             tooltip: 'Backup и перенос Wesi AI',
             onPressed: () => showModalBottomSheet<void>(
