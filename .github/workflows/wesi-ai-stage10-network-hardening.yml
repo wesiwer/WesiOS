@@ -16,7 +16,7 @@ concurrency:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
         with:
@@ -56,22 +56,14 @@ jobs:
             test/wesi_remote_worker_controller_test.dart \
             test/wesi_remote_worker_hardening_test.dart \
             test/wesi_remote_worker_http_transport_test.dart \
-            test/wesi_remote_worker_agent_test.dart
+            test/wesi_remote_worker_agent_test.dart \
+            test/wesi_remote_worker_pause_lifecycle_test.dart
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
 
-      - name: Stage 8-10 regressions
-        run: |
-          flutter test \
-            test/wesi_resource_scheduler_test.dart \
-            test/wesi_job_queue_test.dart \
-            test/wesi_job_coordinator_test.dart \
-            test/wesi_remote_worker_protocol_test.dart \
-            test/wesi_remote_worker_controller_test.dart \
-            test/wesi_remote_worker_hardening_test.dart \
-            test/wesi_remote_worker_http_transport_test.dart \
-            test/wesi_remote_worker_agent_test.dart
+      - name: Full regression suite
+        run: flutter test
 
       - name: Commit validated transport and cleanup one-shot files
         shell: bash
