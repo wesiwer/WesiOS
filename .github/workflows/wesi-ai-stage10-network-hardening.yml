@@ -67,18 +67,49 @@ jobs:
           status=$?
           printf '%s\n' "$output"
           if [ "$status" -ne 0 ]; then
-            while IFS= read -r line; do
-              [ -z "$line" ] && continue
-              safe="${line//'%'/'%25'}"
-              safe="${safe//$'\r'/'%0D'}"
-              safe="${safe//$'\n'/'%0A'}"
-              echo "::error::$safe"
-            done <<< "$output"
+            safe="${output//'%'/'%25'}"
+            safe="${safe//$'\r'/'%0D'}"
+            safe="${safe//$'\n'/'%0A'}"
+            echo "::error title=Flutter analyze failed::$safe"
             exit "$status"
           fi
 
       - name: Full regression suite
-        run: flutter test
+        shell: bash
+        run: |
+          set +e
+          flutter test --reporter json > /tmp/flutter-tests.json
+          status=$?
+          if [ "$status" -ne 0 ]; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          names = {}
+          errors = []
+          for line in Path('/tmp/flutter-tests.json').read_text(errors='replace').splitlines():
+              try:
+                  event = json.loads(line)
+              except Exception:
+                  continue
+              if event.get('type') == 'testStart':
+                  test = event.get('test') or {}
+                  names[test.get('id')] = test.get('name') or '<unknown test>'
+              elif event.get('type') == 'error':
+                  test_id = event.get('testID')
+                  errors.append((
+                      names.get(test_id, f'testID={test_id}'),
+                      str(event.get('error') or 'Test failed'),
+                      str(event.get('stackTrace') or ''),
+                  ))
+          if not errors:
+              print('::error title=Flutter test failed::flutter test exited non-zero without a JSON error event')
+          for name, error, stack in errors[:20]:
+              message = f'{name}\n{error}\n{stack}'.replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
+              print(f'::error title=Failed Flutter regression::{message}')
+          PY
+            exit "$status"
+          fi
 
       - name: Commit validated transport and cleanup one-shot files
         shell: bash
