@@ -19,6 +19,20 @@ jobs:
           fetch-depth: 0
       - name: Apply Stage 3 hardening
         run: python tool/wesi_ai_stage3_harden.py
+      - name: Fix memory regression imports
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('test/wesi_ai_memory_engine_test.dart')
+          s = p.read_text(encoding='utf-8')
+          anchor = "import 'package:wesios/features/ai/models/wesi_ai_chat_models.dart';\n"
+          addition = "import 'package:wesios/features/ai/models/wesi_ai_attachment.dart';\n" + anchor
+          if "models/wesi_ai_attachment.dart" not in s:
+              if anchor not in s:
+                  raise SystemExit('missing memory test import anchor')
+              s = s.replace(anchor, addition, 1)
+          p.write_text(s, encoding='utf-8')
+          PY
       - name: Validate server context paths
         run: |
           set -euo pipefail
