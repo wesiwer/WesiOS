@@ -53,6 +53,7 @@ jobs:
           grep -q "untrustedExternalData" server/pb_hooks/wesi_ai_github_connector.js
           grep -q "branchOriginalConversationId" lib/features/ai/controllers/wesi_ai_chat_controller.dart
           grep -q "savedToChatArchive" lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          grep -q "onActivity: onActivity" lib/features/ai/wesi_ai_lobby_api.dart
           ! grep -R --line-number "safeReasoningSummary(message)" lib/features/ai || exit 1
 
       - name: Setup Flutter
@@ -75,10 +76,13 @@ jobs:
             lib/features/ai/widgets/wesi_ai_message_content.dart \
             lib/features/ai/controllers/wesi_ai_chat_controller.dart \
             lib/features/ai/wesi_ai_api.dart \
+            lib/features/ai/wesi_ai_lobby_api.dart \
             lib/features/ai/wesi_ai_lobby_controller.dart \
             lib/features/ai/ai_assistant_v2_screen.dart \
             test/wesi_ai_rich_message_test.dart \
-            test/wesi_ai_message_archive_branch_test.dart
+            test/wesi_ai_message_archive_branch_test.dart \
+            test/wesi_ai_memory_engine_test.dart \
+            test/wesi_ai_queue_hardening_test.dart
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
@@ -87,7 +91,7 @@ jobs:
         run: flutter test test/wesi_ai_rich_message_test.dart test/wesi_ai_message_archive_branch_test.dart
 
       - name: Existing chat and confirmation regressions
-        run: flutter test test/wesi_ai_chat_ui_test.dart test/wesi_ai_confirmation_block_test.dart
+        run: flutter test test/wesi_ai_chat_ui_test.dart test/wesi_ai_confirmation_block_test.dart test/wesi_ai_memory_engine_test.dart test/wesi_ai_queue_hardening_test.dart
 
       - name: Full Flutter regression suite
         run: flutter test
@@ -106,6 +110,7 @@ jobs:
             lib/features/ai/widgets/wesi_ai_message_content.dart \
             lib/features/ai/controllers/wesi_ai_chat_controller.dart \
             lib/features/ai/wesi_ai_api.dart \
+            lib/features/ai/wesi_ai_lobby_api.dart \
             lib/features/ai/wesi_ai_lobby_controller.dart \
             lib/features/ai/ai_assistant_v2_screen.dart \
             server/wesi-ai-stream/gateway.mjs \
@@ -113,6 +118,8 @@ jobs:
             server/pb_hooks/wesi_ai_github_connector.js \
             test/wesi_ai_rich_message_test.dart \
             test/wesi_ai_message_archive_branch_test.dart \
+            test/wesi_ai_memory_engine_test.dart \
+            test/wesi_ai_queue_hardening_test.dart \
             docs/WESI_AI_CHAT_UX.md
           if git diff --cached --quiet; then
             echo 'No new product diff to commit; already validated.'
