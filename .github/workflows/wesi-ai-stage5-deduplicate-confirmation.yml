@@ -1,0 +1,45 @@
+name: Fix duplicate Wesi AI confirmation widget
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage5-action-broker
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wesi-ai-stage5-deduplicate-confirmation
+  cancel-in-progress: true
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-stage5-action-broker
+      - name: Remove only the second confirmation widget definition
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('lib/features/ai/widgets/wesi_ai_message_content.dart')
+          text = p.read_text(encoding='utf-8')
+          marker = 'class _ActionConfirmationBlock extends StatefulWidget {'
+          first = text.find(marker)
+          second = text.find(marker, first + len(marker))
+          third = text.find(marker, second + len(marker)) if second >= 0 else -1
+          end = text.find('class _KnowledgeBlock extends StatelessWidget {', second)
+          if first < 0 or second < 0 or third >= 0 or end < 0:
+              raise SystemExit(f'unexpected confirmation widget count/boundary: first={first}, second={second}, third={third}, end={end}')
+          p.write_text(text[:second] + text[end:], encoding='utf-8')
+          PY
+      - name: Commit product fix and remove this one-shot workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/wesi-ai-stage5-deduplicate-confirmation.yml
+          git add lib/features/ai/widgets/wesi_ai_message_content.dart
+          git commit -m "fix(ai): remove duplicate confirmation widget"
+          git push origin HEAD:agent/wesi-ai-stage5-action-broker
