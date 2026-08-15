@@ -55,6 +55,23 @@ const CAPABILITIES = {
   generate_image: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
   generate_music: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
   generate_video: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
+
+
+  github_repositories_list: {module: "connectors", action: "github_repositories_list", risk: RISK_READ, entityType: "github_repository"},
+  github_branches_list: {module: "connectors", action: "github_branches_list", risk: RISK_READ, entityType: "github_branch"},
+  github_commits_list: {module: "connectors", action: "github_commits_list", risk: RISK_READ, entityType: "github_commit"},
+  github_file_read: {module: "connectors", action: "github_file_read", risk: RISK_READ, entityType: "github_file"},
+  github_actions_runs: {module: "connectors", action: "github_actions_runs", risk: RISK_READ, entityType: "github_action_run"},
+  github_issues_list: {module: "connectors", action: "github_issues_list", risk: RISK_READ, entityType: "github_issue"},
+  github_pull_requests_list: {module: "connectors", action: "github_pull_requests_list", risk: RISK_READ, entityType: "github_pull_request"},
+  github_branch_create: {module: "connectors", action: "github_branch_create", risk: RISK_WRITE, entityType: "github_branch"},
+  github_file_upsert: {module: "connectors", action: "github_file_upsert", risk: RISK_WRITE, entityType: "github_file"},
+  github_pull_request_create: {module: "connectors", action: "github_pull_request_create", risk: RISK_WRITE, entityType: "github_pull_request"},
+  github_issue_create: {module: "connectors", action: "github_issue_create", risk: RISK_WRITE, entityType: "github_issue"},
+  github_issue_comment: {module: "connectors", action: "github_issue_comment", risk: RISK_WRITE, entityType: "github_comment"},
+  github_branch_delete: {module: "connectors", action: "github_branch_delete", risk: RISK_DESTRUCTIVE, entityType: "github_branch"},
+  github_pull_request_merge: {module: "connectors", action: "github_pull_request_merge", risk: RISK_DESTRUCTIVE, entityType: "github_pull_request"},
+  github_workflow_dispatch: {module: "connectors", action: "github_workflow_dispatch", risk: RISK_DESTRUCTIVE, entityType: "github_action_run"},
 };
 
 function copyMeta(name, raw) {
