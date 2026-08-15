@@ -46,12 +46,26 @@ class WesiAiApi {
     return messages.sublist(messages.length - maxTransportHistoryMessages);
   }
 
+  static String projectContext(WesiAiProject? project) {
+    if (project == null) return '';
+    final parts = <String>['[WESI_AI_PROJECT]', 'Название: ${project.title}'];
+    if (project.description.trim().isNotEmpty) {
+      parts.add('Описание: ${project.description.trim()}');
+    }
+    if (project.instructions.trim().isNotEmpty) {
+      parts.add('Инструкции проекта:\n${project.instructions.trim()}');
+    }
+    parts.add('Все чаты с этим projectId относятся к одному рабочему проекту. Учитывай этот контекст в текущем диалоге.');
+    return parts.join('\n');
+  }
+
   Future<WesiAiReply> send({
     required WesiAiConversation conversation,
     required WesiAiTier tier,
     required String message,
     required List<WesiAiMessage> history,
     required WesiAiMemorySnapshot memory,
+    WesiAiProject? project,
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
   }) async {
     WesiAiAttachment.validateBatch(attachments);
@@ -63,8 +77,9 @@ class WesiAiApi {
       'tier': tier.name,
       'lobbyMode': conversation.lobbyMode.name,
       'message': message,
-      'summary': '',
+      'summary': projectContext(project),
       'conversationId': conversation.id,
+      if (conversation.projectId != null) 'projectId': conversation.projectId,
       'activeOrganizationId': OrganizationContext.currentOrganizationId,
       'memory': memory.toJson(),
       'messages': transportHistory(history),

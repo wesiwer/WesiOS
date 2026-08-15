@@ -25,14 +25,27 @@ class WesiAiAttachment {
     if (data == null) {
       throw const FormatException('Файл не удалось прочитать');
     }
-    if (data.lengthInBytes > maxFileBytes) {
+    return WesiAiAttachment.fromBytes(
+      name: file.name,
+      bytes: data,
+    );
+  }
+
+  factory WesiAiAttachment.fromBytes({
+    required String name,
+    required Uint8List bytes,
+    String? mimeType,
+  }) {
+    if (bytes.isEmpty) throw const FormatException('Файл пустой');
+    if (bytes.lengthInBytes > maxFileBytes) {
       throw const FormatException('Файл больше 15 МБ');
     }
+    final safeName = _safeName(name);
     return WesiAiAttachment(
-      name: _safeName(file.name),
-      mimeType: _mimeFor(file.name),
-      byteSize: data.lengthInBytes,
-      bytes: data,
+      name: safeName,
+      mimeType: mimeType ?? _mimeFor(safeName),
+      byteSize: bytes.lengthInBytes,
+      bytes: bytes,
     );
   }
 
