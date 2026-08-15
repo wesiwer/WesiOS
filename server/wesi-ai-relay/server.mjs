@@ -1,6 +1,7 @@
 import http from 'node:http';
 import {verifyMainRequest} from './auth.mjs';
 import {callTextRoute} from './google.mjs';
+import {streamTextRoute} from './text-stream.mjs';
 import {
   callGoogleTts,
   callGoogleImage,
@@ -137,6 +138,7 @@ http.createServer(async (req, res) => {
       service: 'wesi-ai-relay',
       ready: secret.length >= 32 && googleKey.length > 0,
       routing: ['fast', 'pro', 'ultra'],
+      streaming: true,
       attachments: {
         enabled: true,
         maxFiles: 4,
@@ -161,8 +163,9 @@ http.createServer(async (req, res) => {
   }
 
   const isMain = req.method === 'POST' && req.url === '/v1/wesi-ai';
+  const isStream = req.method === 'POST' && req.url === '/v1/wesi-ai-stream';
   const isArtifact = req.method === 'POST' && req.url === '/v1/wesi-ai-artifact';
-  if (!isMain && !isArtifact) return send(res, 404, {ok: false, code: 'NOT_FOUND'});
+  if (!isMain && !isStream && !isArtifact) return send(res, 404, {ok: false, code: 'NOT_FOUND'});
 
   let raw;
   try {
@@ -184,6 +187,50 @@ http.createServer(async (req, res) => {
     const item = takeMedia(artifactId);
     if (!item) return send(res, 404, {ok: false, code: 'WAI_RELAY_ARTIFACT_NOT_FOUND'});
     return sendArtifact(res, item);
+  }
+
+  if (isStream) {
+    if (String(request.operation || '') !== 'chat.stream') {
+      return send(res, 400, {ok: false, code: 'WAI_OPERATION_UNAVAILABLE'});
+    }
+    res.writeHead(200, {
+      'content-type': 'application/x-ndjson; charset=utf-8',
+      'cache-control': 'no-store, no-transform',
+      'x-content-type-options': 'nosniff',
+      'x-accel-buffering': 'no',
+    });
+    const abort = new AbortController();
+    res.on('close', () => {
+      if (!res.writableEnded) abort.abort();
+    });
+    const writeEvent = (event) => {
+      if (!res.destroyed && !res.writableEnded) res.write(`${JSON.stringify(event)}\n`);
+    };
+    try {
+      const result = await streamTextRoute(
+        request.route,
+        request.input || {},
+        googleKey,
+        abort.signal,
+        (text) => writeEvent({type: 'delta', text}),
+      );
+      if (!result?.ok) {
+        writeEvent({
+          type: 'error',
+          status: result?.status || 502,
+          code: result?.code || 'WAI_PROVIDER_UNAVAILABLE',
+        });
+      } else {
+        writeEvent({type: 'done', answer: result.answer});
+      }
+      res.end();
+    } catch (error) {
+      if (abort.signal.aborted || res.destroyed) return;
+      const timeout = error?.name === 'TimeoutError' || error?.name === 'AbortError';
+      writeEvent({type: 'error', code: timeout ? 'WAI_PROVIDER_TIMEOUT' : 'WAI_PROVIDER_UNAVAILABLE'});
+      res.end();
+    }
+    return;
   }
 
   try {

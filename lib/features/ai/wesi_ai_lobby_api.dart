@@ -24,6 +24,8 @@ class WesiAiLobbyApi extends WesiAiApi {
     required WesiAiMemorySnapshot memory,
     WesiAiProject? project,
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    void Function(String delta)? onDelta,
+    WesiAiRequestCancellation? cancellation,
   }) async {
     WesiAiAttachment.validateBatch(attachments);
     if (conversation.persona != WesiAiPersona.lobby) {
@@ -35,6 +37,8 @@ class WesiAiLobbyApi extends WesiAiApi {
         memory: memory,
         project: project,
         attachments: attachments,
+        onDelta: onDelta,
+        cancellation: cancellation,
       );
     }
 
@@ -50,6 +54,8 @@ class WesiAiLobbyApi extends WesiAiApi {
         memory: memory,
         project: project,
         attachments: attachments,
+        onDelta: onDelta,
+        cancellation: cancellation,
       );
     }
 

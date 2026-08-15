@@ -43,7 +43,10 @@ class WesiAiMessageContent extends StatelessWidget {
           WesiAiTypewriterText(
             messageId: message.id,
             text: message.text,
-            animate: animateText && assistant,
+            animate: animateText &&
+                assistant &&
+                message.metadata['transportStreaming'] != true &&
+                message.metadata['transportStreamed'] != true,
           ),
         for (final block in blocks) ...[
           const SizedBox(height: 10),

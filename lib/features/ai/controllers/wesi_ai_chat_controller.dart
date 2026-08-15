@@ -16,6 +16,7 @@ class WesiAiChatController extends ChangeNotifier {
   final Set<String> _localMediaRuns = <String>{};
   bool _disposed = false;
   Completer<void>? _activeTurnInterrupt;
+  WesiAiRequestCancellation? _activeRequestCancellation;
 
   WesiAiLocalState state;
   bool loading = true;
@@ -145,6 +146,51 @@ class WesiAiChatController extends ChangeNotifier {
     sending = true;
     await _persist();
 
+    final author = switch (c.persona) {
+      WesiAiPersona.zane => WesiAiMessageAuthor.zane,
+      WesiAiPersona.nirvana => WesiAiMessageAuthor.nirvana,
+      WesiAiPersona.lobby => WesiAiMessageAuthor.zane
+    };
+    final streamMessageId = '${user.id}_transport_stream';
+    var streamedText = '';
+    var streamVisible = false;
+
+    void removeTransientStream() {
+      if (!streamVisible) return;
+      state = state.copyWith(
+        messages: state.messages
+            .where((message) => message.id != streamMessageId)
+            .toList(growable: false),
+      );
+      streamVisible = false;
+      streamedText = '';
+      notifyIfActive();
+    }
+
+    void onDelta(String delta) {
+      if (delta.isEmpty || c.persona == WesiAiPersona.lobby) return;
+      streamedText += delta;
+      final at = DateTime.now();
+      final partial = WesiAiMessage(
+        id: streamMessageId,
+        conversationId: c.id,
+        employeeId: store.employeeId,
+        author: author,
+        text: streamedText,
+        createdAt: at,
+        metadata: const <String, dynamic>{'transportStreaming': true},
+      );
+      final withoutPartial = state.messages
+          .where((message) => message.id != streamMessageId)
+          .toList(growable: false);
+      state =
+          state.copyWith(messages: <WesiAiMessage>[...withoutPartial, partial]);
+      streamVisible = true;
+      notifyIfActive();
+    }
+
+    final cancellation = WesiAiRequestCancellation();
+    _activeRequestCancellation = cancellation;
     try {
       final reply = await awaitInterruptible(api.send(
         conversation: updated,
@@ -154,16 +200,18 @@ class WesiAiChatController extends ChangeNotifier {
         memory: state.memory,
         project: _projectFor(updated.projectId),
         attachments: attachments,
+        onDelta: onDelta,
+        cancellation: cancellation,
       ));
-      if (reply == null) return;
+      if (reply == null) {
+        removeTransientStream();
+        return;
+      }
       final at = DateTime.now();
-      final author = switch (c.persona) {
-        WesiAiPersona.zane => WesiAiMessageAuthor.zane,
-        WesiAiPersona.nirvana => WesiAiMessageAuthor.nirvana,
-        WesiAiPersona.lobby => WesiAiMessageAuthor.zane
-      };
       final assistant = WesiAiMessage(
-        id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
+        id: streamVisible
+            ? streamMessageId
+            : '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
         conversationId: c.id,
         employeeId: store.employeeId,
         author: author,
@@ -171,17 +219,24 @@ class WesiAiChatController extends ChangeNotifier {
         createdAt: at,
         metadata: <String, dynamic>{
           'requestId': reply.requestId,
+          if (streamVisible) 'transportStreamed': true,
           if (reply.blocks.isNotEmpty)
             'blocks': reply.blocks
                 .map((block) => block.toJson())
                 .toList(growable: false),
         },
       );
+      final withoutPartial = state.messages
+          .where((message) => message.id != streamMessageId)
+          .toList(growable: false);
       state = state.copyWith(
-        messages: <WesiAiMessage>[...state.messages, assistant],
+        messages: <WesiAiMessage>[...withoutPartial, assistant],
       );
+      streamVisible = false;
       _startPendingMedia(assistant);
     } on WesiAiApiException catch (e) {
+      removeTransientStream();
+      if (e.code == 'WAI_CANCELLED') return;
       final at = DateTime.now();
       state = state.copyWith(
         messages: <WesiAiMessage>[
@@ -199,6 +254,9 @@ class WesiAiChatController extends ChangeNotifier {
         ],
       );
     } finally {
+      if (identical(_activeRequestCancellation, cancellation)) {
+        _activeRequestCancellation = null;
+      }
       sending = false;
       await _persist();
     }
@@ -417,8 +475,9 @@ class WesiAiChatController extends ChangeNotifier {
   }
 
   bool interruptActiveTurn() {
+    final transportCancelled = _activeRequestCancellation?.cancel() ?? false;
     final signal = _activeTurnInterrupt;
-    if (signal == null || signal.isCompleted) return false;
+    if (signal == null || signal.isCompleted) return transportCancelled;
     signal.complete();
     return true;
   }

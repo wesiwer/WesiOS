@@ -1,0 +1,234 @@
+name: Deploy Wesi AI Streaming
+
+on:
+  workflow_dispatch:
+    inputs:
+      public_host:
+        description: 'Foreign Relay DNS hostname'
+        required: true
+        default: 'ai.wesi-wf.su'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-ai-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-streaming:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      PUBLIC_HOST: ${{ inputs.public_host }}
+      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || inputs.public_host }}
+      RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate required configuration
+        env:
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          PUBLIC_HOST="${PUBLIC_HOST#https://}"
+          PUBLIC_HOST="${PUBLIC_HOST%%/*}"
+          if ! [[ "$PUBLIC_HOST" =~ ^([A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)+[A-Za-z]{2,63}$ ]]; then
+            echo '::error::public_host must be a DNS hostname'
+            exit 1
+          fi
+          [ -n "${RELAY_SSH_HOST:-}" ] || { echo '::error::Missing Relay SSH host'; exit 1; }
+          [ -n "${RELAY_SSH_USER:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_USER'; exit 1; }
+          [ -n "${RELAY_KEY:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_KEY'; exit 1; }
+          [ -n "${MAIN_HOST:-}" ] || { echo '::error::Missing WESI_SERVER_HOST'; exit 1; }
+          [ -n "${MAIN_USER:-}" ] || { echo '::error::Missing WESI_SERVER_USER'; exit 1; }
+          [ -n "${MAIN_KEY:-}" ] || { echo '::error::Missing WESI_SERVER_SSH_KEY'; exit 1; }
+          [ -n "${GEMINI_KEY:-}" ] || { echo '::error::Missing GEMINI_API_KEY'; exit 1; }
+          echo "PUBLIC_HOST=$PUBLIC_HOST" >> "$GITHUB_ENV"
+
+      - name: Resolve deployment secrets
+        env:
+          PROVIDED_SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+        run: |
+          set -euo pipefail
+          if [ -n "${PROVIDED_SHARED:-}" ]; then
+            SHARED="$PROVIDED_SHARED"
+          else
+            SHARED="$(openssl rand -hex 32)"
+          fi
+          [ ${#SHARED} -ge 32 ] || { echo '::error::WESI_MAIN_SHARED_SECRET is too short'; exit 1; }
+          STREAM_SECRET="$(openssl rand -hex 32)"
+          echo "::add-mask::$SHARED"
+          echo "::add-mask::$STREAM_SECRET"
+          echo "WESI_SHARED_SECRET=$SHARED" >> "$GITHUB_ENV"
+          echo "WESI_STREAM_SECRET=$STREAM_SECRET" >> "$GITHUB_ENV"
+
+      - name: Validate streaming source bundle
+        run: |
+          set -euo pipefail
+          python3 server/build-wesi-ai-personas.py
+          test -s server/pb_hooks/.wesi-ai-personas.json
+          for file in server/wesi-ai-relay/*.mjs server/wesi-ai-stream/*.mjs; do node --check "$file"; done
+          node --test server/wesi-ai-relay/*.test.mjs
+          node --test server/wesi-ai-stream/*.test.mjs
+          for file in server/wesi-ai-relay/*.sh server/wesi-ai-stream/*.sh; do bash -n "$file"; done
+          count=0
+          for file in server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+            count=$((count + 1))
+          done
+          [ "$count" -gt 8 ] || { echo '::error::Incomplete Main Wesi AI hook bundle'; exit 1; }
+
+      - name: Prepare SSH
+        env:
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          RELAY_KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$RELAY_KEY" > ~/.ssh/relay_key
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/relay_key ~/.ssh/main_key
+          if [ -n "${RELAY_KNOWN:-}" ]; then
+            printf '%s\n' "$RELAY_KNOWN" > ~/.ssh/relay_known_hosts
+          else
+            ssh-keyscan -H "$RELAY_SSH_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null
+          fi
+          if [ -n "${MAIN_KNOWN:-}" ]; then
+            printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known_hosts
+          else
+            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/relay_known_hosts ~/.ssh/main_known_hosts
+
+      - name: Build sealed configuration
+        env:
+          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+          ZANE_VOICE: ${{ secrets.WESI_ZANE_TTS_VOICE }}
+          NIRVANA_VOICE: ${{ secrets.WESI_NIRVANA_TTS_VOICE }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, json, os
+          relay = {
+              'WESI_MAIN_SHARED_SECRET_B64': os.environ['WESI_SHARED_SECRET'],
+              'GEMINI_API_KEY_B64': os.environ['GEMINI_KEY'],
+          }
+          if os.environ.get('ZANE_VOICE'):
+              relay['WESI_ZANE_TTS_VOICE_B64'] = os.environ['ZANE_VOICE']
+          if os.environ.get('NIRVANA_VOICE'):
+              relay['WESI_NIRVANA_TTS_VOICE_B64'] = os.environ['NIRVANA_VOICE']
+          with open('relay-secrets.b64', 'w', encoding='ascii') as f:
+              for key, value in relay.items():
+                  f.write(key + '=' + base64.b64encode(value.encode()).decode() + '\n')
+
+          main_cfg = {
+              'url': 'https://' + os.environ['PUBLIC_HOST'],
+              'sharedSecret': os.environ['WESI_SHARED_SECRET'],
+              'streamSecret': os.environ['WESI_STREAM_SECRET'],
+              'routes': {'fast': 'wesi/fast', 'pro': 'wesi/pro', 'maximum': 'wesi/ultra'},
+          }
+          with open('wesi-ai-relay.json', 'w', encoding='utf-8') as f:
+              json.dump(main_cfg, f, ensure_ascii=False)
+
+          stream = {
+              'WESI_STREAM_SECRET_B64': os.environ['WESI_STREAM_SECRET'],
+              'WESI_MAIN_SHARED_SECRET_B64': os.environ['WESI_SHARED_SECRET'],
+              'WESI_RELAY_URL_B64': 'https://' + os.environ['PUBLIC_HOST'],
+              'WESI_POCKETBASE_URL_B64': 'http://127.0.0.1:8090',
+          }
+          with open('stream-secrets.b64', 'w', encoding='ascii') as f:
+              for key, value in stream.items():
+                  f.write(key + '=' + base64.b64encode(value.encode()).decode() + '\n')
+          PY
+          chmod 600 relay-secrets.b64 wesi-ai-relay.json stream-secrets.b64
+
+      - name: Deploy Foreign Relay streaming endpoint
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          REMOTE="/tmp/wesi-ai-stream-relay-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" \
+            server/wesi-ai-relay/*.mjs \
+            server/wesi-ai-relay/package.json \
+            server/wesi-ai-relay/deploy-relay.sh \
+            server/wesi-ai-relay/configure-relay-https.sh \
+            server/wesi-ai-relay/nginx-relay.conf \
+            relay-secrets.b64 \
+            "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "REMOTE='$REMOTE' PUBLIC_HOST='$PUBLIC_HOST' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          cd "$REMOTE"
+          "${SUDO[@]}" bash deploy-relay.sh --install-from-b64 "$REMOTE/relay-secrets.b64"
+          "${SUDO[@]}" bash configure-relay-https.sh "$PUBLIC_HOST"
+          "${SUDO[@]}" systemctl is-active --quiet wesi-ai-relay
+          curl -fsS --max-time 10 http://127.0.0.1:8787/health
+          REMOTE
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'" || true
+
+      - name: Deploy Main hooks and stream gateway
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          REMOTE="/tmp/wesi-ai-stream-main-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" \
+            server/pb_hooks/wesi_ai_*.js \
+            server/pb_hooks/wesi_ai_*.pb.js \
+            server/pb_hooks/.wesi-ai-personas.json \
+            wesi-ai-relay.json \
+            stream-secrets.b64 \
+            "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+          scp "${SSH[@]}" -r server/wesi-ai-stream "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          test -d "$HOOK_DIR"
+          PB_USER=$(ps -eo user=,comm= | awk '$2 ~ /^pocketbase$/ {print $1; exit}')
+          [ -n "${PB_USER:-}" ] || PB_USER=$(stat -c '%U' "$HOOK_DIR")
+          PB_GROUP=$(id -gn "$PB_USER" 2>/dev/null || stat -c '%G' "$HOOK_DIR")
+          for src in "$REMOTE"/wesi_ai_*.js "$REMOTE"/wesi_ai_*.pb.js; do
+            [ -f "$src" ] || continue
+            "${SUDO[@]}" install -o "$PB_USER" -g "$PB_GROUP" -m 0644 "$src" "$HOOK_DIR/$(basename "$src")"
+          done
+          "${SUDO[@]}" install -o "$PB_USER" -g "$PB_GROUP" -m 0600 "$REMOTE/.wesi-ai-personas.json" "$HOOK_DIR/.wesi-ai-personas.json"
+          "${SUDO[@]}" install -o "$PB_USER" -g "$PB_GROUP" -m 0600 "$REMOTE/wesi-ai-relay.json" "$HOOK_DIR/.wesi-ai-relay.json"
+          "${SUDO[@]}" systemctl restart pocketbase
+          for _ in $(seq 1 30); do
+            if "${SUDO[@]}" systemctl is-active --quiet pocketbase; then break; fi
+            sleep 1
+          done
+          "${SUDO[@]}" systemctl is-active --quiet pocketbase
+          bash "$REMOTE/wesi-ai-stream/deploy-stream-gateway.sh" "$REMOTE/wesi-ai-stream" "$REMOTE/stream-secrets.b64"
+          bash "$REMOTE/wesi-ai-stream/configure-main-nginx.sh"
+          curl -fsS --max-time 10 http://127.0.0.1:8792/health
+          REMOTE
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE'" || true
+
+      - name: Verify protected streaming route
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "https://$PUBLIC_HOST/health" | grep -q '"streaming":true'
+          code="$(curl -sS -o /tmp/wesi-stream.out -w '%{http_code}' --max-time 20 -X POST https://api.wesi-inc.ru/api/wesi/ai/chat/stream -H 'Content-Type: application/json' -d '{"persona":"zane","tier":"fast","message":"ping"}' || true)"
+          if [ "$code" != 401 ] && [ "$code" != 403 ]; then
+            echo "::error::Streaming route must be protected; got HTTP $code"
+            cat /tmp/wesi-stream.out || true
+            exit 1
+          fi
+          echo 'Wesi AI true streaming deployment is ready.'
+
+      - name: Cleanup local sealed files
+        if: always()
+        run: rm -f relay-secrets.b64 wesi-ai-relay.json stream-secrets.b64

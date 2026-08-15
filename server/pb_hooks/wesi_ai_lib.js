@@ -68,10 +68,12 @@ module.exports = {
       const url = String(cfg.url || "").trim();
       const sharedSecret = String(cfg.sharedSecret || "").trim();
       const routes = cfg.routes && typeof cfg.routes === "object" ? cfg.routes : {};
+      const streamSecret = String(cfg.streamSecret || "").trim();
       return {
         ready: /^https:\/\//.test(url) && sharedSecret.length >= 32,
         url: url,
         sharedSecret: sharedSecret,
+        streamSecret: streamSecret,
         routes: {
           fast: String(routes.fast || ""),
           pro: String(routes.pro || ""),
@@ -79,7 +81,7 @@ module.exports = {
         }
       };
     } catch (_) {
-      return {ready: false, url: "", sharedSecret: "", routes: {fast: "", pro: "", maximum: ""}};
+      return {ready: false, url: "", sharedSecret: "", streamSecret: "", routes: {fast: "", pro: "", maximum: ""}};
     }
   },
 
