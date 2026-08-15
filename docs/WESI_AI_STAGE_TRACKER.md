@@ -1,4 +1,4 @@
-# Wesi AI — Stage Tracker 7/16
+# Wesi AI — Stage Tracker 8/16
 
 **Статус документа:** живой фактический трекер реализации.  
 **Источник требований:** `WESI_AI_MASTER_SPEC.md` и обязательные Wesi AI addendum/specs.  
@@ -12,8 +12,8 @@
 | 4/16 | **DONE** | Explicit important-chat backup + encrypted LAN/Wi-Fi D2D: important-chat opt-in, authenticated encrypted `.wbackup`, bounded ZIP preflight, employee-isolated idempotent restore/merge, artifact restore, one-time HMAC/AES-GCM raw-TCP LAN transfer with private-address policy and TTL. PR #166, main `6d929fbe9eb018e310de0479d42ed4e4e9e876ba`. Full PR analyze/test, Android debug build and Windows release build passed. No production deploy/release triggered. |
 | 5/16 | **DONE** | Unified Capability Registry / Action Broker / Risk Policy / Audit + WesiOS read/write tools. Fail-closed tool registry, READ/WRITE/DESTRUCTIVE classes, session-bound one-time destructive confirmation tickets, verified-only confirmation UI, unified server audit, and brokered Tasks/Calendar/Treasury/CRM/Knowledge/Roadmap/Audio Vault/Team context. PR #167, main `93a8b23c97a9913b505d1db3b8df5ced56c86373`. Full PR analyze/test, Android debug build and Windows release build passed. No production deploy/release triggered. |
 | 6/16 | **DONE** | Controlled Wesi Local Runtime: typed fail-closed filesystem/terminal/Git/HTTP/Python/Node/Flutter/build/document/media executor, isolated workspace policy, `workspaceV1` sandbox contract, SSRF/DNS pinning, sanitized process environment and metadata-only audit. PR #168, main `e626469de2164bbd68e1c7c5db11e10536eca93d`. Full PR analyze/test, Android debug build and Windows release build passed. No production deploy/release triggered. |
-| 7/16 | **IN PROGRESS** | Environment Scanner + Core/Developer/Browser/Documents/Media Runtime Packs and dependency reuse/install/upgrade. |
-| 8/16 | TODO | Resource Scheduler, L0–L4 classification, foreground/background policy, jobs/checkpoints/pause/resume. |
+| 7/16 | **DONE** | Verified Environment Scanner + Core/Developer/Browser/Documents/Media Runtime Packs, absolute-PATH system reuse, signed Ed25519 artifacts, bounded extraction, post-install rescan, atomic rollback and `workspaceV1` activation. PR #169, main `538f5cd092de6538a42a9aa84938c4e255d46a3b`. Full PR analyze/test, Android debug build and Windows release build passed. No production deploy/release triggered. |
+| 8/16 | **IN PROGRESS** | Resource Scheduler, L0–L4 adaptive classification, resource/foreground policy, bounded durable jobs, checkpoints, pause/resume and `waiting_for_worker`. |
 | 9/16 | TODO | Self-debug loop + validated artifact creation/build delivery. |
 | 10/16 | TODO | Remote Worker: QR pairing, device credentials, heartbeat/capabilities, remote jobs/progress/reconnect. |
 | 11/16 | TODO | Connectors: production GitHub first, then Drive/Gmail/Calendar/Slack/Telegram/etc. |
