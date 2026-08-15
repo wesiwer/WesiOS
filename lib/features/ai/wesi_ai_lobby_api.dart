@@ -22,6 +22,7 @@ class WesiAiLobbyApi extends WesiAiApi {
     required String message,
     required List<WesiAiMessage> history,
     required WesiAiMemorySnapshot memory,
+    WesiAiProject? project,
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
   }) async {
     WesiAiAttachment.validateBatch(attachments);
@@ -32,13 +33,14 @@ class WesiAiLobbyApi extends WesiAiApi {
         message: message,
         history: history,
         memory: memory,
+        project: project,
         attachments: attachments,
       );
     }
 
     // The canonical /chat route already understands the Lobby persona and is
-    // the universal multimodal path. Use it whenever files are attached so
-    // no attachment can be silently dropped by the legacy Lobby endpoint.
+    // the universal multimodal/staged-upload path. Use it whenever files are
+    // attached so no attachment can be silently dropped by the Lobby endpoint.
     if (attachments.isNotEmpty) {
       return super.send(
         conversation: conversation,
@@ -46,6 +48,7 @@ class WesiAiLobbyApi extends WesiAiApi {
         message: message,
         history: history,
         memory: memory,
+        project: project,
         attachments: attachments,
       );
     }
@@ -64,14 +67,12 @@ class WesiAiLobbyApi extends WesiAiApi {
       'tier': tier.name,
       'lobbyMode': conversation.lobbyMode.name,
       'message': message,
-      'summary': '',
+      'summary': WesiAiApi.projectContext(project),
       'conversationId': conversation.id,
+      if (conversation.projectId != null) 'projectId': conversation.projectId,
       'activeOrganizationId': OrganizationContext.currentOrganizationId,
       'memory': memory.toJson(),
-      'messages': history
-          .where((m) => m.kind == WesiAiMessageKind.text && m.author != WesiAiMessageAuthor.system)
-          .map((m) => {'author': m.author.name, 'text': m.text})
-          .toList(),
+      'messages': WesiAiApi.transportHistory(history),
     };
 
     try {
