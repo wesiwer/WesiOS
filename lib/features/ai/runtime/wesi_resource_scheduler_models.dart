@@ -309,7 +309,7 @@ class WesiWorkerResourceProfile {
       availableRamMb <= totalRamMb &&
       totalGpuVramMb >= 0 &&
       freeGpuVramMb >= 0 &&
-      (totalGpuVramMb == 0 || freeGpuVramMb <= totalGpuVramMb) &&
+      freeGpuVramMb <= totalGpuVramMb &&
       freeDiskMb >= 0 &&
       activeLightJobs >= 0 &&
       activeCpuJobs >= 0 &&

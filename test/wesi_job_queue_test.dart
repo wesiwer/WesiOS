@@ -155,6 +155,50 @@ void main() {
       expect(queue.get('job')!.state, WesiScheduledJobState.running);
     });
 
+    test('stale checkpoint cannot be used for worker-loss resume', () async {
+      final queue = WesiDurableJobQueue(journal: WesiMemoryJobJournal());
+      await queue.restore();
+      await queue.enqueue(id: 'job', requirements: _checkpointable());
+      await queue.markRunning('job', workerId: 'desktop');
+      await queue.checkpoint(
+        'job',
+        checkpoint: WesiJobCheckpointRef(
+          checkpointId: 'cp-old',
+          version: 1,
+          stage: 'compile',
+          progress: 0.4,
+          createdAt: DateTime.utc(2026, 8, 15),
+        ),
+      );
+      await queue.updateProgress('job', progress: 0.7, stage: 'tests');
+
+      await expectLater(
+        queue.waitForWorker('job'),
+        throwsA(
+          isA<WesiJobQueueException>().having(
+            (error) => error.code,
+            'code',
+            'WJQ_CHECKPOINT_REQUIRED',
+          ),
+        ),
+      );
+      expect(queue.get('job')!.state, WesiScheduledJobState.running);
+
+      await queue.checkpoint(
+        'job',
+        checkpoint: WesiJobCheckpointRef(
+          checkpointId: 'cp-current',
+          version: 1,
+          stage: 'tests',
+          progress: 0.7,
+          createdAt: DateTime.utc(2026, 8, 15, 0, 1),
+        ),
+      );
+      final waiting = await queue.waitForWorker('job');
+      expect(waiting.state, WesiScheduledJobState.waitingForWorker);
+      expect(waiting.checkpoint!.checkpointId, 'cp-current');
+    });
+
     test('checkpointed worker loss becomes waiting_for_worker and is resumable',
         () async {
       final queue = WesiDurableJobQueue(journal: WesiMemoryJobJournal());
@@ -345,6 +389,42 @@ void main() {
         ),
       );
       expect(queue.get('job')!.state, WesiScheduledJobState.queued);
+    });
+
+    test('restore rejects paused state with a stale checkpoint', () async {
+      final journal = WesiMemoryJobJournal();
+      final queue = WesiDurableJobQueue(journal: journal);
+      await queue.restore();
+      await queue.enqueue(id: 'job', requirements: _checkpointable());
+      await queue.markRunning('job', workerId: 'desktop');
+      await queue.requestPause('job');
+      await queue.checkpoint(
+        'job',
+        checkpoint: WesiJobCheckpointRef(
+          checkpointId: 'cp-restore',
+          version: 1,
+          stage: 'tests',
+          progress: 0.5,
+          createdAt: DateTime.utc(2026, 8, 15),
+        ),
+      );
+      await queue.markPaused('job');
+      journal.value = journal.value!.replaceFirst(
+        '"stage":"tests","progress":0.5,"createdAt"',
+        '"stage":"compile","progress":0.5,"createdAt"',
+      );
+
+      final restored = WesiDurableJobQueue(journal: journal);
+      await expectLater(
+        restored.restore(),
+        throwsA(
+          isA<WesiJobQueueException>().having(
+            (error) => error.code,
+            'code',
+            'WJQ_CORRUPT_JOURNAL',
+          ),
+        ),
+      );
     });
 
     test('oversized journal fails before JSON parsing', () async {

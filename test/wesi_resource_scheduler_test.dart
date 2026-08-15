@@ -422,6 +422,20 @@ void main() {
       expect(result.blockerCode, WesiSchedulerBlockerCode.resourceSnapshot);
     });
 
+    test('GPU telemetry cannot report free VRAM when total VRAM is zero', () {
+      final requirements = WesiTrustedWorkloadRegistry.gpuMediaRequirements(
+        minFreeGpuVramMb: 1024,
+      );
+      final result = scheduler.select(
+        job: requirements,
+        workers: <WesiWorkerResourceProfile>[
+          _worker(totalGpuVramMb: 0, freeGpuVramMb: 4096),
+        ],
+      );
+      expect(result.ok, isFalse);
+      expect(result.blockerCode, WesiSchedulerBlockerCode.resourceSnapshot);
+    });
+
     test('localPreferred stays local when both workers satisfy policy', () {
       final requirements = WesiTrustedWorkloadRegistry.requirementsFor(
         WesiLocalToolNames.gitStatus,

@@ -374,10 +374,10 @@ class WesiDurableJobQueue {
         if (job.state != WesiScheduledJobState.pauseRequested) {
           throw _badTransition(job, 'paused');
         }
-        if (job.checkpoint == null) {
+        if (!_checkpointMatchesCurrentState(job)) {
           throw const WesiJobQueueException(
             'WJQ_CHECKPOINT_REQUIRED',
-            'A checkpoint is required before pausing this job',
+            'A current checkpoint is required before pausing this job',
           );
         }
         final at = (now ?? DateTime.now()).toUtc();
@@ -410,10 +410,10 @@ class WesiDurableJobQueue {
         if (job.requirements.checkpointable &&
             (job.state == WesiScheduledJobState.running ||
                 job.state == WesiScheduledJobState.pauseRequested) &&
-            job.checkpoint == null) {
+            !_checkpointMatchesCurrentState(job)) {
           throw const WesiJobQueueException(
             'WJQ_CHECKPOINT_REQUIRED',
-            'Checkpointable running work must checkpoint before losing its worker',
+            'Checkpointable running work must save a current checkpoint before losing its worker',
           );
         }
         final at = (now ?? DateTime.now()).toUtc();
@@ -782,11 +782,45 @@ WesiScheduledJob _jobFromJson(Map<String, dynamic> json) {
     return _eventFromJson(raw.map((key, value) => MapEntry('$key', value)));
   }).toList(growable: false);
 
-  if (state == WesiScheduledJobState.running &&
-      (workerId == null || startedAt == null)) {
+  final active = state == WesiScheduledJobState.running ||
+      state == WesiScheduledJobState.pauseRequested ||
+      state == WesiScheduledJobState.cancelling;
+  if (active && (workerId == null || startedAt == null)) {
     throw const WesiJobQueueException(
       'WJQ_CORRUPT_JOURNAL',
-      'Running job is missing its worker/start metadata',
+      'Active job is missing its worker/start metadata',
+    );
+  }
+  final workerMustBeReleased = state == WesiScheduledJobState.queued ||
+      state == WesiScheduledJobState.paused ||
+      state == WesiScheduledJobState.waitingForWorker ||
+      state == WesiScheduledJobState.blocked ||
+      state == WesiScheduledJobState.cancelled ||
+      state == WesiScheduledJobState.succeeded ||
+      state == WesiScheduledJobState.failed;
+  if (workerMustBeReleased && workerId != null) {
+    throw const WesiJobQueueException(
+      'WJQ_CORRUPT_JOURNAL',
+      'Persisted job retains a worker outside active execution',
+    );
+  }
+  final checkpointIsCurrent = checkpoint != null &&
+      checkpoint.progress == progress &&
+      checkpoint.stage == currentStage;
+  if (state == WesiScheduledJobState.paused &&
+      (!requirements.checkpointable || !checkpointIsCurrent)) {
+    throw const WesiJobQueueException(
+      'WJQ_CORRUPT_JOURNAL',
+      'Paused job is missing its current checkpoint',
+    );
+  }
+  if (state == WesiScheduledJobState.waitingForWorker &&
+      requirements.checkpointable &&
+      startedAt != null &&
+      !checkpointIsCurrent) {
+    throw const WesiJobQueueException(
+      'WJQ_CORRUPT_JOURNAL',
+      'Checkpointable waiting job is missing its current checkpoint',
     );
   }
   final terminal = state == WesiScheduledJobState.cancelled ||
@@ -896,6 +930,13 @@ WesiJobEvent _eventFromJson(Map<String, dynamic> json) => WesiJobEvent(
       at: _requiredDate(json['at']),
       message: _requiredString(json['message'], 512),
     );
+
+bool _checkpointMatchesCurrentState(WesiScheduledJob job) {
+  final checkpoint = job.checkpoint;
+  return checkpoint != null &&
+      checkpoint.progress == job.progress &&
+      checkpoint.stage == job.currentStage;
+}
 
 void _validateRequirements(WesiJobRequirements value) {
   if (value.toolName.trim().isEmpty ||
