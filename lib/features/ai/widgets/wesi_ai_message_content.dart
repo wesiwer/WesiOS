@@ -283,6 +283,128 @@ class _ActionConfirmationBlockState extends State<_ActionConfirmationBlock> {
   }
 }
 
+class _ActionConfirmationBlock extends StatefulWidget {
+  final Map<String, dynamic> data;
+
+  const _ActionConfirmationBlock({required this.data});
+
+  @override
+  State<_ActionConfirmationBlock> createState() =>
+      _ActionConfirmationBlockState();
+}
+
+class _ActionConfirmationBlockState extends State<_ActionConfirmationBlock> {
+  bool _running = false;
+  bool _terminal = false;
+  bool _success = false;
+  String? _message;
+
+  Future<void> _confirm() async {
+    if (_running || _terminal) return;
+    final id = '${widget.data['id'] ?? ''}'.trim();
+    final expiresAt = DateTime.tryParse('${widget.data['expiresAt'] ?? ''}');
+    if (expiresAt == null || !expiresAt.isAfter(DateTime.now().toUtc())) {
+      setState(() {
+        _terminal = true;
+        _message = 'Срок подтверждения истёк. Повторите запрос к Wesi AI.';
+      });
+      return;
+    }
+    setState(() => _running = true);
+    final result = await const WesiAiActionApi().confirm(id);
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+      _success = result.ok;
+      _message = result.ok
+          ? 'Действие выполнено.'
+          : (result.message ?? 'Не удалось выполнить действие.');
+      _terminal = result.ok ||
+          (result.code != null &&
+              result.code != 'NETWORK' &&
+              result.code != 'WAI_CONFIRMATION_BAD_RESPONSE');
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final previewRaw = widget.data['preview'];
+    final preview = previewRaw is Map
+        ? Map<String, dynamic>.from(previewRaw)
+        : const <String, dynamic>{};
+    final module = '${preview['module'] ?? ''}'.trim();
+    final action = '${preview['action'] ?? ''}'.trim();
+    final target = '${preview['targetId'] ?? ''}'.trim();
+    final expiresAt = DateTime.tryParse('${widget.data['expiresAt'] ?? ''}');
+    final expired =
+        expiresAt == null || !expiresAt.isAfter(DateTime.now().toUtc());
+    final disabled = _running || _terminal || expired;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.warning_amber_rounded,
+                    color: theme.colorScheme.error),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Требуется подтверждение действия',
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              [
+                if (module.isNotEmpty) 'Раздел: $module',
+                if (action.isNotEmpty) 'Действие: $action',
+                if (target.isNotEmpty) 'Объект: $target',
+              ].join(' · '),
+              style: theme.textTheme.bodySmall,
+            ),
+            const SizedBox(height: 10),
+            if (_message != null) ...[
+              Text(
+                _message!,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: _success
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.error,
+                ),
+              ),
+              const SizedBox(height: 8),
+            ],
+            FilledButton.icon(
+              onPressed: disabled ? null : _confirm,
+              icon: _running
+                  ? const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.verified_user_outlined),
+              label: Text(
+                _success
+                    ? 'Выполнено'
+                    : expired
+                        ? 'Подтверждение истекло'
+                        : 'Подтвердить действие',
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _KnowledgeBlock extends StatelessWidget {
   final Map<String, dynamic> data;
 
