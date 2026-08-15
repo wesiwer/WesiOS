@@ -39,6 +39,7 @@ jobs:
           node --check server/pb_hooks/wesi_ai_capability_registry.js
           node --check server/pb_hooks/wesi_ai_routes.pb.js
           node --test server/wesi-ai-stream/connector_protocol.test.mjs
+          node --test server/wesi-ai-relay/action-broker.test.mjs
 
       - name: Enforce connector security invariants
         shell: bash
@@ -79,7 +80,7 @@ jobs:
         run: flutter analyze --no-fatal-infos
 
       - name: Focused connector tests
-        run: flutter test test/wesi_connector_models_test.dart test/wesi_ai_action_broker_contract_test.dart
+        run: flutter test test/wesi_connector_models_test.dart test/wesi_ai_confirmation_block_test.dart
 
       - name: Full regression suite
         run: flutter test
