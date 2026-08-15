@@ -3,7 +3,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {execFile} from 'node:child_process';
 import {promisify} from 'node:util';
-import {resolveStagedAttachment, STAGED_UPLOAD_MIME} from './staged-upload.mjs';
+import {resolveStagedAttachment, STAGED_UPLOAD_MIME, cancelStagedUpload} from './staged-upload.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -267,16 +267,26 @@ export async function deleteGeminiFiles(fileNames, apiKey) {
   }
 }
 
+export function deleteStagedUploads(uploadIds) {
+  for (const raw of Array.isArray(uploadIds) ? uploadIds : []) {
+    const uploadId = String(raw || '');
+    if (!uploadId) continue;
+    try { cancelStagedUpload({uploadId}); } catch {}
+  }
+}
+
 export async function prepareGeminiAttachments(raw, apiKey = '') {
   const inlineItems = sanitizeAttachments(raw);
   const parts = [];
   const descriptors = [];
   const providerFiles = [];
+  const stagedUploadIds = [];
   let actualTotalBytes = 0;
   try {
     for (const inlineItem of inlineItems) {
       const staged = inlineItem.mimeType === STAGED_UPLOAD_MIME ? resolveStagedAttachment(inlineItem) : null;
       const item = staged || inlineItem;
+      if (staged?.uploadId) stagedUploadIds.push(staged.uploadId);
       actualTotalBytes += Number(item.byteSize || 0);
       if (actualTotalBytes > MAX_STAGED_TOTAL_ATTACHMENT_BYTES) {
         throw new Error('WAI_UPLOAD_BATCH_TOO_LARGE');

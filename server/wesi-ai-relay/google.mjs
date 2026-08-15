@@ -1,5 +1,5 @@
 import fs from 'node:fs';
-import {prepareGeminiAttachments, deleteGeminiFiles} from './attachment-preprocessor.mjs';
+import {prepareGeminiAttachments, deleteGeminiFiles, deleteStagedUploads} from './attachment-preprocessor.mjs';
 
 const PROVIDER_ENV = '/etc/wesi-ai-providers.env';
 
@@ -82,12 +82,13 @@ export async function callGoogleText(model, input, apiKey) {
   const userParts = [];
   const message = String(input.message || '').trim();
   if (message) userParts.push({text: message});
-  let prepared = {parts: [], providerFiles: []};
+  let prepared = {parts: [], providerFiles: [], stagedUploadIds: []};
   try {
     prepared = await prepareGeminiAttachments(input.attachments, apiKey);
     userParts.push(...prepared.parts);
   } catch (error) {
     await deleteGeminiFiles(prepared?.providerFiles, apiKey);
+    deleteStagedUploads(prepared?.stagedUploadIds);
     return {ok: false, status: 400, code: String(error?.message || 'WAI_ATTACHMENT_INVALID')};
   }
   if (!userParts.length) userParts.push({text: 'Проанализируй прикреплённые данные.'});
@@ -114,6 +115,7 @@ export async function callGoogleText(model, input, apiKey) {
     return answer ? {ok: true, answer} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
   } finally {
     await deleteGeminiFiles(prepared.providerFiles, apiKey);
+    deleteStagedUploads(prepared.stagedUploadIds);
   }
 }
 
