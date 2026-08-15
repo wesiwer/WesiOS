@@ -1,0 +1,48 @@
+name: Apply Wesi AI Stage 2 server streaming
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage2-streaming
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-test:
+    if: ${{ !contains(github.event.head_commit.message, '[stage2-server-applied]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply server streaming patch
+        run: python tool/wesi_ai_stage2_server_patch.py
+      - name: Validate JavaScript
+        run: |
+          set -euo pipefail
+          for file in server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js server/wesi-ai-relay/*.mjs server/wesi-ai-stream/*.mjs; do
+            [ -f "$file" ] || continue
+            node --check "$file"
+          done
+      - name: Validate shell
+        run: |
+          set -euo pipefail
+          for file in server/wesi-ai-relay/*.sh server/wesi-ai-stream/*.sh; do
+            [ -f "$file" ] || continue
+            bash -n "$file"
+          done
+      - name: Test Relay
+        run: node --test server/wesi-ai-relay/*.test.mjs
+      - name: Test Main stream gateway
+        run: node --test server/wesi-ai-stream/*.test.mjs
+      - name: Commit validated server implementation
+        run: |
+          set -euo pipefail
+          git config user.name 'wesi-ai-stage2-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server .github/workflows/pr-check.yml .github/workflows/deploy-wesi-ai.yml
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'feat(ai): implement end-to-end server streaming [stage2-server-applied]'
+          git push origin HEAD:agent/wesi-ai-stage2-streaming
