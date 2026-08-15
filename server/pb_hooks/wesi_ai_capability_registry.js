@@ -47,6 +47,14 @@ const CAPABILITIES = {
   audio_vault_list: {module: "audio", action: "read", risk: RISK_READ, entityType: "audio_vault_item"},
   audio_vault_update: {module: "audio", action: "update", risk: RISK_WRITE, entityType: "audio_vault_item"},
 
+  github_repositories_list: {module: "github", action: "read_repositories", risk: RISK_READ, entityType: "github_repository"},
+  github_file_read: {module: "github", action: "read_file", risk: RISK_READ, entityType: "github_file"},
+  github_branches_list: {module: "github", action: "read_branches", risk: RISK_READ, entityType: "github_branch"},
+  github_commits_list: {module: "github", action: "read_commits", risk: RISK_READ, entityType: "github_commit"},
+  github_pull_requests_list: {module: "github", action: "read_pull_requests", risk: RISK_READ, entityType: "github_pull_request"},
+  github_issues_list: {module: "github", action: "read_issues", risk: RISK_READ, entityType: "github_issue"},
+  github_actions_list: {module: "github", action: "read_actions", risk: RISK_READ, entityType: "github_action_run"},
+
   horizon_snapshot: {module: "horizon", action: "read_snapshot", risk: RISK_READ, entityType: "horizon_snapshot"},
 
   render_table: {module: "presentation", action: "render", risk: RISK_READ, entityType: "presentation"},
