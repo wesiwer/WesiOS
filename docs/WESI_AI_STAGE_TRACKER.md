@@ -1,4 +1,4 @@
-# Wesi AI — Stage Tracker 3/16
+# Wesi AI — Stage Tracker 4/16
 
 **Статус документа:** живой фактический трекер реализации.  
 **Источник требований:** `WESI_AI_MASTER_SPEC.md` и обязательные Wesi AI addendum/specs.  
@@ -9,8 +9,8 @@
 | 1/16 | **DONE** | Smart Queue: CONTROL > STEER > DEFERRED, Stop/Steer, restart-safe durable outbox, superseded follow-ups, lifecycle hardening. PR #163, main `0d138773c4692fbb55b504cd3e635a7c01492540`. |
 | 2/16 | **DONE** | True network streaming: provider SSE → Relay → Main Stream Gateway → WesiOS NDJSON, tool shielding, transport cancel, single persisted final answer. PR #164, main `b58a73bb59b60297f1fb44df20b66a1c1426483c`. Full PR test gate, Android debug build and Windows release build passed. Production streaming deploy not triggered. |
 | 3/16 | **DONE** | Local-first Memory Engine: schema v3 + safe legacy migration, structured shared/persona/project memory, per-chat rolling summary and task state, relevant retrieval, background extraction, secret filtering/dedup/caps, user memory controls and separated summary/project/task transport. PR #165, main `fddc5e52d27cb931f5cbdc22f42742c9d96a2524`. Full PR analyze/test, Android debug build and Windows release build passed. |
-| 4/16 | **IN PROGRESS** | Explicit important-chat backup + encrypted LAN/Wi-Fi D2D transfer of chats/memory/artifacts. |
-| 5/16 | TODO | Unified Capability Registry / Action Broker / Risk Policy / Audit + full WesiOS read/write tools. |
+| 4/16 | **DONE** | Explicit important-chat backup + encrypted LAN/Wi-Fi D2D: important-chat opt-in, authenticated encrypted `.wbackup`, bounded ZIP preflight, employee-isolated idempotent restore/merge, artifact restore, one-time HMAC/AES-GCM raw-TCP LAN transfer with private-address policy and TTL. PR #166, main `6d929fbe9eb018e310de0479d42ed4e4e9e876ba`. Full PR analyze/test, Android debug build and Windows release build passed. No production deploy/release triggered. |
+| 5/16 | **IN PROGRESS** | Unified Capability Registry / Action Broker / Risk Policy / Audit + full WesiOS read/write tools. |
 | 6/16 | TODO | Controlled Wesi Local Runtime: filesystem, terminal, Git, HTTP, Python/Node/Flutter/build/document/media tools. |
 | 7/16 | TODO | Environment Scanner + Core/Developer/Browser/Documents/Media Runtime Packs and dependency reuse/install/upgrade. |
 | 8/16 | TODO | Resource Scheduler, L0–L4 classification, foreground/background policy, jobs/checkpoints/pause/resume. |
