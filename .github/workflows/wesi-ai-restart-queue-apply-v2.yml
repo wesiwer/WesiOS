@@ -1,0 +1,37 @@
+name: Apply Wesi AI Restart Safe Queue V2
+
+on:
+  push:
+    branches:
+      - chatgpt/wesi-ai-restart-safe-queue-v2
+    paths:
+      - tool/wesi_ai_restart_queue_patch.py
+      - .github/workflows/wesi-ai-restart-queue-apply-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/wesi-ai-restart-safe-queue-v2
+          fetch-depth: 0
+
+      - name: Apply durable queue patch
+        run: python3 tool/wesi_ai_restart_queue_patch.py
+
+      - name: Validate patch whitespace
+        run: git diff --check
+
+      - name: Commit applied changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/features/ai/storage/wesi_ai_local_store.dart lib/features/ai/wesi_ai_managed_controller.dart lib/features/ai/ai_assistant_v2_screen.dart docs/WESI_AI_CHAT_INTERACTION_SPEC.md
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(ai): persist accepted chat queue across restarts"
+          git push origin HEAD:chatgpt/wesi-ai-restart-safe-queue-v2
