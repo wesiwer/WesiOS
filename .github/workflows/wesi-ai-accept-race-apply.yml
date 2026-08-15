@@ -1,0 +1,50 @@
+name: Apply Wesi AI Durable Accept Race Fix
+
+on:
+  push:
+    branches:
+      - chatgpt/wesi-ai-restart-safe-queue-v2
+    paths:
+      - tool/wesi_ai_accept_race_patch.py
+      - .github/workflows/wesi-ai-accept-race-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/wesi-ai-restart-safe-queue-v2
+          fetch-depth: 0
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Apply race fix
+        run: python3 tool/wesi_ai_accept_race_patch.py
+
+      - name: Format changed Dart files
+        run: |
+          dart format \
+            lib/features/ai/wesi_ai_managed_controller.dart \
+            test/wesi_ai_queue_hardening_test.dart
+
+      - name: Validate whitespace
+        run: git diff --check
+
+      - name: Commit production fix and self-clean helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/features/ai/wesi_ai_managed_controller.dart test/wesi_ai_queue_hardening_test.dart
+          git rm tool/wesi_ai_accept_race_patch.py .github/workflows/wesi-ai-accept-race-apply.yml
+          git commit -m "fix(ai): serialize durable queue acceptance"
+          git push origin HEAD:chatgpt/wesi-ai-restart-safe-queue-v2
