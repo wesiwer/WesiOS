@@ -53,6 +53,6 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/wesi-ai-stage7-focused.yml tool/wesi_ai_stage7_apply.py tool/wesi_ai_stage7_fix.py
-          git add lib/features/ai/runtime test/wesi_local_runtime_test.dart test/wesi_runtime_pack_test.dart docs/WESI_AI_RUNTIME_PACKS.md pubspec.yaml pubspec.lock
+          git add lib/features/ai/runtime test/wesi_local_runtime_test.dart test/wesi_runtime_pack_test.dart docs/WESI_AI_RUNTIME_PACKS.md pubspec.yaml
           git commit -m "feat(ai): add verified environment scanner and runtime packs"
           git push origin HEAD:agent/wesi-ai-stage7-runtime-packs
