@@ -1,6 +1,7 @@
 import 'dart:math';
 
 import 'controllers/wesi_ai_chat_controller.dart';
+import 'memory/wesi_ai_memory_api.dart';
 import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
@@ -12,7 +13,8 @@ class WesiAiLobbyChatController extends WesiAiChatController {
   WesiAiLobbyChatController({
     required WesiAiLocalStore store,
     WesiAiApi api = const WesiAiLobbyApi(),
-  }) : super(store: store, api: api);
+    WesiAiMemoryApi memoryApi = const WesiAiMemoryApi(),
+  }) : super(store: store, api: api, memoryApi: memoryApi);
 
   @override
   Future<void> addUserMessage(
@@ -33,7 +35,8 @@ class WesiAiLobbyChatController extends WesiAiChatController {
 
     final clean = text.trim();
     if (clean.isEmpty || sending) return;
-    final history = state.messagesFor(conversation.id);
+    final fullHistory = state.messagesFor(conversation.id);
+    final history = historyForMemoryRequest(conversation.id, fullHistory);
     final now = DateTime.now();
     final user = WesiAiMessage(
       id: _id(now),

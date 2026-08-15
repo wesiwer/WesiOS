@@ -22,13 +22,18 @@ module.exports = {
       if (["user", "zane", "nirvana", "tool"].indexOf(author) >= 0 && text.length <= 32000) history.push({author, text});
     }
     const memory = ai.sanitizeMemory(body.memory && typeof body.memory === "object" ? body.memory : {});
+    const projectContext = String(body.projectContext || "").trim();
+    const taskState = body.taskState && typeof body.taskState === "object" && !Array.isArray(body.taskState) ? body.taskState : {};
+    let taskStateJson = "{}";
+    try { taskStateJson = JSON.stringify(taskState); } catch (_) { return {status: 400, body: {ok: false, code: "WAI_BAD_LOBBY_REQUEST"}}; }
+    if (projectContext.length > 64000 || taskStateJson.length > 12000) return {status: 400, body: {ok: false, code: "WAI_BAD_LOBBY_REQUEST"}};
     const rootId = "wai_lobby_" + Date.now() + "_" + $security.randomString(10);
     const order = mode === "both" ? ["zane", "nirvana"] : router.choose(ai, cfg, route, rootId + "_route", message, history);
     const messages = [];
     for (const name of order) {
       const profile = name === "zane" ? zane : nirvana;
       const personaMemory = name === "zane" ? memory.zane : memory.nirvana;
-      const result = turn.run(ai, cfg, route, rootId + "_" + name, name, profile, message, history, memory.shared, personaMemory, messages, String(body.summary || ""));
+      const result = turn.run(ai, cfg, route, rootId + "_" + name, name, profile, message, history, memory.shared, personaMemory, memory.project, messages, String(body.summary || ""), projectContext, taskStateJson);
       if (!result.ok) {
         if (!messages.length) return {status: result.status || 503, body: {ok: false, code: result.code, requestId: rootId}};
         continue;

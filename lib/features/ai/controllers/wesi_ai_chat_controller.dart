@@ -18,7 +18,7 @@ class WesiAiChatController extends ChangeNotifier {
   final Set<String> _mediaPolls = <String>{};
   final Set<String> _localMediaRuns = <String>{};
   final Set<String> _memoryRefreshes = <String>{};
-  final WesiAiMemoryApi memoryApi = const WesiAiMemoryApi();
+  final WesiAiMemoryApi memoryApi;
   bool _disposed = false;
   Completer<void>? _activeTurnInterrupt;
   WesiAiRequestCancellation? _activeRequestCancellation;
@@ -27,8 +27,11 @@ class WesiAiChatController extends ChangeNotifier {
   bool loading = true;
   bool sending = false;
 
-  WesiAiChatController({required this.store, this.api = const WesiAiApi()})
-      : state = WesiAiLocalState.empty(store.employeeId);
+  WesiAiChatController({
+    required this.store,
+    this.api = const WesiAiApi(),
+    this.memoryApi = const WesiAiMemoryApi(),
+  }) : state = WesiAiLocalState.empty(store.employeeId);
 
   Future<void> load() async {
     state = await store.load();
@@ -117,7 +120,8 @@ class WesiAiChatController extends ChangeNotifier {
       return;
     }
 
-    final history = state.messagesFor(c.id);
+    final fullHistory = state.messagesFor(c.id);
+    final history = historyForMemoryRequest(c.id, fullHistory);
     final now = DateTime.now();
     final visibleText = clean.isNotEmpty
         ? clean
@@ -276,6 +280,27 @@ class WesiAiChatController extends ChangeNotifier {
       WesiAiConversationMemoryState(conversationId: conversationId);
 
   @protected
+  List<WesiAiMessage> historyForMemoryRequest(
+    String conversationId,
+    List<WesiAiMessage> history,
+  ) {
+    final memory = conversationMemoryFor(conversationId);
+    if (memory.rollingSummary.trim().isEmpty ||
+        memory.summarizedMessageCount <= 0) {
+      return history;
+    }
+    final textMessages = history
+        .where((message) =>
+            message.kind == WesiAiMessageKind.text &&
+            message.author != WesiAiMessageAuthor.system)
+        .toList(growable: false);
+    final start = memory.summarizedMessageCount.clamp(0, textMessages.length);
+    final unsummarized = textMessages.sublist(start);
+    if (unsummarized.length <= 24) return unsummarized;
+    return unsummarized.sublist(unsummarized.length - 24);
+  }
+
+  @protected
   WesiAiMemorySnapshot relevantMemoryFor(
     WesiAiConversation conversation,
     String query,
@@ -320,10 +345,18 @@ class WesiAiChatController extends ChangeNotifier {
       )) {
         return;
       }
+      final start = conversationMemory.summarizedMessageCount.clamp(
+        0,
+        textMessages.length,
+      );
+      if (start >= textMessages.length) return;
+      final pending = textMessages.sublist(start);
+      final batch = pending.length <= 24 ? pending : pending.sublist(0, 24);
+      if (batch.isEmpty) return;
       final relevant = relevantMemoryFor(conversation, latestUserText);
       final result = await memoryApi.process(
         conversation: conversation,
-        recentMessages: textMessages,
+        recentMessages: batch,
         previousSummary: conversationMemory.rollingSummary,
         taskState: conversationMemory.taskState,
         memory: relevant,
@@ -346,7 +379,7 @@ class WesiAiChatController extends ChangeNotifier {
       nextConversationMemory[conversation.id] = conversationMemory.copyWith(
         rollingSummary: result.summary,
         taskState: result.taskState,
-        summarizedMessageCount: textMessages.length,
+        summarizedMessageCount: start + batch.length,
       );
       state = state.copyWith(
         memoryEntries: merged,

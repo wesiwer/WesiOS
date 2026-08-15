@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'memory/wesi_ai_memory_api.dart';
 import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
@@ -70,9 +71,10 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   WesiAiManagedChatController({
     required WesiAiLocalStore store,
     WesiAiApi api = const WesiAiLobbyApi(),
+    WesiAiMemoryApi memoryApi = const WesiAiMemoryApi(),
     String? processSessionId,
   })  : _queueSessionId = processSessionId ?? _runtimeQueueSessionId,
-        super(store: store, api: api);
+        super(store: store, api: api, memoryApi: memoryApi);
 
   int get queuedTurnCount => _queuedTurns.length;
   List<WesiAiQueuedTurn> get queuedTurns =>
