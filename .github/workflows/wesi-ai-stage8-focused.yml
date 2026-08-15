@@ -36,8 +36,10 @@ jobs:
           lib/features/ai/runtime/wesi_resource_scheduler_models.dart
           lib/features/ai/runtime/wesi_resource_scheduler.dart
           lib/features/ai/runtime/wesi_job_queue.dart
+          lib/features/ai/runtime/wesi_job_coordinator.dart
           test/wesi_resource_scheduler_test.dart
           test/wesi_job_queue_test.dart
+          test/wesi_job_coordinator_test.dart
       - name: Analyze
         run: flutter analyze --no-fatal-infos
       - name: Stage 6-8 runtime and scheduler tests
@@ -47,11 +49,12 @@ jobs:
           test/wesi_runtime_pack_test.dart
           test/wesi_resource_scheduler_test.dart
           test/wesi_job_queue_test.dart
+          test/wesi_job_coordinator_test.dart
       - name: Commit validated Stage 8 and remove one-shot tooling
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/wesi-ai-stage8-focused.yml tool/wesi_ai_stage8_fix.py docs/.stage8-placeholder
-          git add lib/features/ai/runtime/wesi_resource_scheduler_models.dart lib/features/ai/runtime/wesi_resource_scheduler.dart lib/features/ai/runtime/wesi_job_queue.dart test/wesi_resource_scheduler_test.dart test/wesi_job_queue_test.dart docs/WESI_AI_RESOURCE_SCHEDULER.md docs/WESI_AI_STAGE_TRACKER.md
+          git add lib/features/ai/runtime/wesi_resource_scheduler_models.dart lib/features/ai/runtime/wesi_resource_scheduler.dart lib/features/ai/runtime/wesi_job_queue.dart lib/features/ai/runtime/wesi_job_coordinator.dart test/wesi_resource_scheduler_test.dart test/wesi_job_queue_test.dart test/wesi_job_coordinator_test.dart docs/WESI_AI_RESOURCE_SCHEDULER.md docs/WESI_AI_STAGE_TRACKER.md
           git commit -m "feat(ai): add adaptive resource scheduler and durable jobs"
           git push origin HEAD:agent/wesi-ai-stage8-resource-scheduler
