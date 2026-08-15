@@ -2,14 +2,14 @@ name: Wesi AI contextual and visual UX one-shot
 
 on:
   push:
-    branches: [agent/wesi-ai-contextual-followups-clarify-lazy-chat]
+    branches: [agent/wesi-ai-contextual-visual-final]
   workflow_dispatch:
 
 permissions:
   contents: write
 
 concurrency:
-  group: wesi-ai-contextual-visual-once
+  group: wesi-ai-contextual-visual-once-final
   cancel-in-progress: true
 
 jobs:
@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/wesi-ai-contextual-followups-clarify-lazy-chat
+          ref: agent/wesi-ai-contextual-visual-final
           fetch-depth: 0
 
       - name: Validate and apply product patch
@@ -104,4 +104,4 @@ jobs:
             exit 0
           fi
           git commit -m 'feat(ai): contextual chat, clarifications, visualizations, and lazy history'
-          git push origin HEAD:agent/wesi-ai-contextual-followups-clarify-lazy-chat
+          git push origin HEAD:agent/wesi-ai-contextual-visual-final
