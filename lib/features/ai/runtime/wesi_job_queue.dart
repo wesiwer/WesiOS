@@ -699,11 +699,14 @@ Map<String, dynamic> _jobToJson(WesiScheduledJob job) => <String, dynamic>{
       'queuedAt': job.queuedAt.toUtc().toIso8601String(),
       'updatedAt': job.updatedAt.toUtc().toIso8601String(),
       if (job.workerId != null) 'workerId': job.workerId,
-      if (job.startedAt != null) 'startedAt': job.startedAt!.toUtc().toIso8601String(),
-      if (job.finishedAt != null) 'finishedAt': job.finishedAt!.toUtc().toIso8601String(),
+      if (job.startedAt != null)
+        'startedAt': job.startedAt!.toUtc().toIso8601String(),
+      if (job.finishedAt != null)
+        'finishedAt': job.finishedAt!.toUtc().toIso8601String(),
       'progress': job.progress,
       if (job.currentStage != null) 'currentStage': job.currentStage,
-      if (job.checkpoint != null) 'checkpoint': _checkpointToJson(job.checkpoint!),
+      if (job.checkpoint != null)
+        'checkpoint': _checkpointToJson(job.checkpoint!),
       if (job.failureCode != null) 'failureCode': job.failureCode,
       'events': job.events.map(_eventToJson).toList(growable: false),
     };
@@ -711,7 +714,8 @@ Map<String, dynamic> _jobToJson(WesiScheduledJob job) => <String, dynamic>{
 WesiScheduledJob _jobFromJson(Map<String, dynamic> json) {
   final id = _requiredString(json['id'], 128);
   _validateId(id, 'job id');
-  final requirements = _requirementsFromJson(_requiredMap(json['requirements']));
+  final requirements =
+      _requirementsFromJson(_requiredMap(json['requirements']));
   _validateRequirements(requirements);
   final priority = _requiredEnum(WesiJobPriority.values, json['priority']);
   final state = _requiredEnum(WesiScheduledJobState.values, json['state']);
@@ -737,7 +741,8 @@ WesiScheduledJob _jobFromJson(Map<String, dynamic> json) {
   final failureCode = _optionalString(json['failureCode'], 128);
   if (failureCode != null) _validateCode(failureCode);
   final rawEvents = json['events'];
-  if (rawEvents is! List || rawEvents.length > WesiDurableJobQueue.maxEventsPerJob) {
+  if (rawEvents is! List ||
+      rawEvents.length > WesiDurableJobQueue.maxEventsPerJob) {
     throw const WesiJobQueueException(
       'WJQ_CORRUPT_JOURNAL',
       'Persisted job event collection is invalid',
@@ -795,7 +800,8 @@ Map<String, dynamic> _requirementsToJson(WesiJobRequirements value) =>
       'requiredCapabilities':
           value.requiredCapabilities.map((item) => item.name).toList(),
       'requiredPacks': value.requiredPacks.map((item) => item.name).toList(),
-      'allowedPlatforms': value.allowedPlatforms.map((item) => item.name).toList(),
+      'allowedPlatforms':
+          value.allowedPlatforms.map((item) => item.name).toList(),
       'minCpuCores': value.minCpuCores,
       'maxCpuLoadPercent': value.maxCpuLoadPercent,
       'minAvailableRamMb': value.minAvailableRamMb,
@@ -813,8 +819,8 @@ WesiJobRequirements _requirementsFromJson(Map<String, dynamic> json) =>
     WesiJobRequirements(
       toolName: _requiredString(json['toolName'], 160),
       level: _requiredEnum(WesiWorkloadLevel.values, json['level']),
-      requiredCapabilities:
-          _requiredEnumSet(WesiLocalCapability.values, json['requiredCapabilities']),
+      requiredCapabilities: _requiredEnumSet(
+          WesiLocalCapability.values, json['requiredCapabilities']),
       requiredPacks:
           _requiredEnumSet(WesiRuntimePackId.values, json['requiredPacks']),
       allowedPlatforms:
@@ -825,7 +831,8 @@ WesiJobRequirements _requirementsFromJson(Map<String, dynamic> json) =>
       minFreeGpuVramMb: _int(json['minFreeGpuVramMb']),
       minFreeDiskMb: _int(json['minFreeDiskMb']),
       estimatedDurationSeconds: _int(json['estimatedDurationSeconds']),
-      preference: _requiredEnum(WesiExecutionPreference.values, json['preference']),
+      preference:
+          _requiredEnum(WesiExecutionPreference.values, json['preference']),
       foregroundPolicy:
           _requiredEnum(WesiForegroundPolicy.values, json['foregroundPolicy']),
       checkpointable: json['checkpointable'] == true,

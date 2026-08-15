@@ -121,7 +121,8 @@ void main() {
       expect(resumed.checkpoint!.stage, 'tests');
     });
 
-    test('worker loss requires a checkpoint when the running job supports it', () async {
+    test('worker loss requires a checkpoint when the running job supports it',
+        () async {
       final queue = WesiDurableJobQueue(journal: WesiMemoryJobJournal());
       await queue.restore();
       await queue.enqueue(id: 'job', requirements: _checkpointable());
@@ -140,7 +141,8 @@ void main() {
       expect(queue.get('job')!.state, WesiScheduledJobState.running);
     });
 
-    test('checkpointed worker loss becomes waiting_for_worker and is resumable', () async {
+    test('checkpointed worker loss becomes waiting_for_worker and is resumable',
+        () async {
       final queue = WesiDurableJobQueue(journal: WesiMemoryJobJournal());
       await queue.restore();
       await queue.enqueue(id: 'job', requirements: _checkpointable());
@@ -168,7 +170,8 @@ void main() {
       expect(resumed.progress, 0.4);
     });
 
-    test('non-checkpointable workload cannot pretend to pause safely', () async {
+    test('non-checkpointable workload cannot pretend to pause safely',
+        () async {
       final queue = WesiDurableJobQueue(journal: WesiMemoryJobJournal());
       await queue.restore();
       await queue.enqueue(id: 'git-status', requirements: _nonCheckpointable());
@@ -205,7 +208,8 @@ void main() {
       );
     });
 
-    test('queued cancellation is immediate, running cancellation is two-phase', () async {
+    test('queued cancellation is immediate, running cancellation is two-phase',
+        () async {
       final queue = WesiDurableJobQueue(journal: WesiMemoryJobJournal());
       await queue.restore();
       await queue.enqueue(id: 'queued', requirements: _nonCheckpointable());
@@ -234,12 +238,14 @@ void main() {
       );
     });
 
-    test('unknown persisted capability is rejected instead of dropped', () async {
+    test('unknown persisted capability is rejected instead of dropped',
+        () async {
       final journal = WesiMemoryJobJournal();
       final queue = WesiDurableJobQueue(journal: journal);
       await queue.restore();
       await queue.enqueue(id: 'job', requirements: _checkpointable());
-      journal.value = journal.value!.replaceFirst('"python"', '"futureCapability"');
+      journal.value =
+          journal.value!.replaceFirst('"python"', '"futureCapability"');
 
       final restored = WesiDurableJobQueue(journal: journal);
       await expectLater(
@@ -256,7 +262,8 @@ void main() {
 
     test('oversized journal fails before JSON parsing', () async {
       final journal = WesiMemoryJobJournal(
-        'x' * (WesiDurableJobQueue.maxJournalBytes + 1),
+        List<String>.filled(WesiDurableJobQueue.maxJournalBytes + 1, 'x')
+            .join(),
       );
       final queue = WesiDurableJobQueue(journal: journal);
       await expectLater(

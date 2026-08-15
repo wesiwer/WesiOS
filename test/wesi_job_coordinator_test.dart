@@ -93,7 +93,8 @@ void main() {
     expect(coordinator['build-job']!.state, WesiScheduledJobState.queued);
   });
 
-  test('checkpointed worker loss resumes from the same durable checkpoint', () async {
+  test('checkpointed worker loss resumes from the same durable checkpoint',
+      () async {
     final journal = WesiMemoryJobJournal();
     final queue = WesiDurableJobQueue(journal: journal);
     final coordinator = WesiJobCoordinator(queue: queue);

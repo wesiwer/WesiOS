@@ -216,7 +216,8 @@ class WesiJobRequirements {
 
   bool get gpuRequired => minFreeGpuVramMb > 0;
 
-  bool get heavy => level == WesiWorkloadLevel.l3 || level == WesiWorkloadLevel.l4;
+  bool get heavy =>
+      level == WesiWorkloadLevel.l3 || level == WesiWorkloadLevel.l4;
 }
 
 class WesiWorkerResourceProfile {
@@ -468,9 +469,11 @@ class WesiScheduledJob {
       state: state ?? this.state,
       queuedAt: queuedAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      workerId: identical(workerId, _unset) ? this.workerId : workerId as String?,
-      startedAt:
-          identical(startedAt, _unset) ? this.startedAt : startedAt as DateTime?,
+      workerId:
+          identical(workerId, _unset) ? this.workerId : workerId as String?,
+      startedAt: identical(startedAt, _unset)
+          ? this.startedAt
+          : startedAt as DateTime?,
       finishedAt: identical(finishedAt, _unset)
           ? this.finishedAt
           : finishedAt as DateTime?,

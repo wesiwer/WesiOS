@@ -158,7 +158,8 @@ void main() {
   group('Trusted workload registry', () {
     test('does not classify Local Runtime work as L0', () {
       expect(
-        WesiTrustedWorkloadRegistry.require(WesiLocalToolNames.fsReadText).level,
+        WesiTrustedWorkloadRegistry.require(WesiLocalToolNames.fsReadText)
+            .level,
         WesiWorkloadLevel.l1,
       );
       expect(
@@ -167,11 +168,13 @@ void main() {
         WesiWorkloadLevel.l2,
       );
       expect(
-        WesiTrustedWorkloadRegistry.require(WesiLocalToolNames.flutterTest).level,
+        WesiTrustedWorkloadRegistry.require(WesiLocalToolNames.flutterTest)
+            .level,
         WesiWorkloadLevel.l3,
       );
       expect(
-        WesiTrustedWorkloadRegistry.require(WesiLocalToolNames.flutterBuild).level,
+        WesiTrustedWorkloadRegistry.require(WesiLocalToolNames.flutterBuild)
+            .level,
         WesiWorkloadLevel.l4,
       );
     });
@@ -182,7 +185,8 @@ void main() {
         estimatedDurationSeconds: 180,
       );
       expect(longPython.level, WesiWorkloadLevel.l3);
-      expect(longPython.foregroundPolicy, WesiForegroundPolicy.foregroundRequired);
+      expect(
+          longPython.foregroundPolicy, WesiForegroundPolicy.foregroundRequired);
 
       final gpuPython = WesiTrustedWorkloadRegistry.requirementsFor(
         WesiLocalToolNames.pythonRun,
@@ -318,7 +322,9 @@ void main() {
       final result = scheduler.select(
         job: requirements,
         workers: <WesiWorkerResourceProfile>[
-          _worker(installedPacks: const <WesiRuntimePackId>{WesiRuntimePackId.core}),
+          _worker(installedPacks: const <WesiRuntimePackId>{
+            WesiRuntimePackId.core
+          }),
         ],
       );
       expect(result.ok, isFalse);
