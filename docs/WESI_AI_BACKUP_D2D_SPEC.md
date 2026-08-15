@@ -37,7 +37,7 @@ Backup не должен молча копировать все диалоги.
 - `manifest.json`;
 - `artifacts/...` — реальные бинарные файлы без base64-дублирования в history.
 
-Формат package — ZIP только как контейнер. ZIP никогда не считается trust boundary: import обязан проверять имена entries, размер, количество файлов и запрещать absolute path / `..` / traversal.
+Формат package — ZIP только как контейнер. ZIP никогда не считается trust boundary: import обязан проверять central directory и declared sizes до распаковки, имена entries, размер, количество файлов, степень сжатия и запрещать duplicate/absolute path / `..` / traversal, encrypted/unsupported entries и ZIP64, если он явно не поддержан безопасным декодером.
 
 Manifest содержит:
 - schema/version;
@@ -80,10 +80,10 @@ Sender создаёт одноразовую transfer session:
 - случайный sessionId;
 - случайный 256-bit session key;
 - TTL максимум 10 минут;
-- одно успешное скачивание;
+- одно успешное получение;
 - после success/expiry listener закрывается, ключ забывается.
 
-Canonical package шифруется AES-256-GCM session key до отправки в сеть. Plaintext package по HTTP не передаётся.
+Canonical package шифруется AES-256-GCM session key **до** отправки в сеть. Plaintext package по сети не передаётся. Stage 4 использует ограниченный raw TCP framed protocol вместо HTTP, чтобы не требовать Android cleartext HTTP exceptions; TCP transport сам по себе не является trust boundary — confidentiality/integrity обеспечиваются AES-GCM, а доступ к session дополнительно аутентифицируется.
 
 Receiver получает out-of-band transfer descriptor, содержащий:
 - private-LAN sender address;
@@ -92,7 +92,7 @@ Receiver получает out-of-band transfer descriptor, содержащий:
 - one-time key;
 - короткий fingerprint для визуальной проверки.
 
-Request к sender дополнительно аутентифицируется HMAC-SHA256 от sessionId/session key. Простое угадывание URL не должно выдавать ciphertext.
+Первый control frame к sender дополнительно аутентифицируется HMAC-SHA256 от sessionId/session key. Простое сканирование ephemeral port или угадывание sessionId не должно выдавать ciphertext.
 
 ## 7. LAN boundary
 
@@ -128,7 +128,7 @@ Import не должен стирать локальные данные.
 - при совпадении conversation ID выбирается более свежая metadata, а `importantForBackup` объединяется через OR;
 - messages dedup по message ID;
 - memory entries dedup по id и нормализованному scope/text;
-- более новая memory entry сохраняет приоритет, pinned/manual не теряются;
+- более новая memory entry сохраняет актуальный текст/metadata, при этом pinned/manual и максимальная importance не теряются;
 - per-chat memory state выбирается по большему `summarizedMessageCount`, если оба валидны;
 - imported local artifact path заменяет только путь соответствующего imported message;
 - pending Smart Queue не импортируется.
@@ -152,7 +152,9 @@ Backup/D2D не должен запускать production deploy или server 
 Перед merge Stage 4:
 - crypto roundtrip + wrong-passphrase/tamper rejection;
 - package traversal/size/employee isolation tests;
+- ZIP preflight duplicate/declared-size/bomb-guard tests до decompression;
 - idempotent merge tests;
+- memory pinned/manual/importance preservation test;
 - artifact path restore test;
 - D2D one-time/TTL/auth tests;
 - Important-only selection test;
