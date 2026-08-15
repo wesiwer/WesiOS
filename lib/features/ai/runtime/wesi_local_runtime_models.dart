@@ -16,6 +16,25 @@ enum WesiLocalCapability {
   media,
 }
 
+enum WesiLocalSandboxProfile {
+  /// Direct host execution. Safe only for tools that do not require a sandbox.
+  none,
+
+  /// Versioned WesiOS sandbox contract for arbitrary project code/toolchains.
+  ///
+  /// A trusted Runtime Pack may advertise this profile only when the bound
+  /// executable is an OS sandbox wrapper that enforces all of the following:
+  /// - filesystem access is limited to the selected workspace;
+  /// - `.wesi` internal state and host secrets are inaccessible to child code;
+  /// - CPU/RAM/workspace-disk/time quotas are enforceable;
+  /// - network is denied by default or routed through an explicit policy;
+  /// - no Docker socket, host shell/session credentials or privileged paths.
+  ///
+  /// The LLM cannot choose or serialize this profile. Stage 7 Environment
+  /// Scanner/Runtime Packs are the only intended producer of such bindings.
+  workspaceV1,
+}
+
 class WesiLocalToolNames {
   WesiLocalToolNames._();
 
@@ -189,8 +208,8 @@ class WesiLocalExecutableBinding {
   /// Host path is runtime-owned configuration and is never supplied by LLM.
   final String executablePath;
 
-  /// True only when execution is wrapped by an OS/process sandbox driver.
-  final bool sandboxed;
+  /// Versioned isolation contract attested by trusted runtime provisioning.
+  final WesiLocalSandboxProfile sandboxProfile;
 
   /// Arbitrary scripts/project code may run only through such a binding.
   final bool allowArbitraryCode;
@@ -198,9 +217,11 @@ class WesiLocalExecutableBinding {
   const WesiLocalExecutableBinding({
     required this.id,
     required this.executablePath,
-    this.sandboxed = false,
+    this.sandboxProfile = WesiLocalSandboxProfile.none,
     this.allowArbitraryCode = false,
   });
+
+  bool get sandboxed => sandboxProfile != WesiLocalSandboxProfile.none;
 }
 
 class WesiLocalRuntimeBindings {
@@ -234,6 +255,13 @@ class WesiLocalRuntimeLimits {
   final int maxArguments;
   final int maxArgumentLength;
 
+  /// Limits handed to an OS sandbox driver by Stage 7 Runtime Packs. The
+  /// Stage 6 executor deliberately does not pretend Dart can enforce host CPU,
+  /// RAM or filesystem quotas for arbitrary child processes by itself.
+  final int maxMemoryBytes;
+  final int maxWorkspaceBytes;
+  final int maxCpuPercent;
+
   const WesiLocalRuntimeLimits({
     this.processTimeout = const Duration(minutes: 3),
     this.maxStdoutBytes = 2 * 1024 * 1024,
@@ -245,6 +273,9 @@ class WesiLocalRuntimeLimits {
     this.maxDirectoryEntries = 2000,
     this.maxArguments = 128,
     this.maxArgumentLength = 4096,
+    this.maxMemoryBytes = 1024 * 1024 * 1024,
+    this.maxWorkspaceBytes = 4 * 1024 * 1024 * 1024,
+    this.maxCpuPercent = 80,
   });
 }
 
@@ -252,7 +283,13 @@ class WesiLocalRuntimeContext {
   final String workspaceRoot;
   final WesiLocalRuntimeBindings bindings;
   final WesiLocalRuntimeLimits limits;
+
+  /// Set only by trusted orchestration after explicit user confirmation.
+  /// Model arguments are never deserialized into this field.
   final bool destructiveConfirmed;
+
+  /// Trusted policy override for controlled LAN/dev scenarios; never sourced
+  /// from a model tool call.
   final bool allowInsecureHttp;
 
   const WesiLocalRuntimeContext({
@@ -273,7 +310,8 @@ class WesiLocalRuntimeContext {
         workspaceRoot: workspaceRoot,
         bindings: bindings ?? this.bindings,
         limits: limits ?? this.limits,
-        destructiveConfirmed: destructiveConfirmed ?? this.destructiveConfirmed,
+        destructiveConfirmed:
+            destructiveConfirmed ?? this.destructiveConfirmed,
         allowInsecureHttp: allowInsecureHttp ?? this.allowInsecureHttp,
       );
 }
