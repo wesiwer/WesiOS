@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 enum WesiAiMemoryScope { shared, zane, nirvana, project }
 
 class WesiAiMemoryEntry {
@@ -220,9 +222,10 @@ class WesiAiConversationMemoryState {
     }
     Map<String, dynamic> taskState = const <String, dynamic>{};
     if (taskRaw is Map) {
-      final candidate = Map<String, dynamic>.from(taskRaw);
       try {
-        if (candidate.toString().length <= 12000) taskState = candidate;
+        final candidate = Map<String, dynamic>.from(taskRaw);
+        final encoded = jsonEncode(candidate);
+        if (encoded.length <= 12000) taskState = candidate;
       } catch (_) {}
     }
     return WesiAiConversationMemoryState(
