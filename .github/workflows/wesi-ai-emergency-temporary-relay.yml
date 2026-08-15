@@ -1,4 +1,4 @@
-name: Wesi AI Emergency Finalize Minimum AI
+name: Wesi AI Emergency Hot Reload Minimum AI
 
 on:
   push:
@@ -14,33 +14,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  finalize:
+  hot-reload:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 15
     env:
       RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Resolve temporary Relay hostname
         id: host
         shell: bash
         run: |
           set -euo pipefail
-          if [[ "$RELAY_SSH_HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
-            IP="$RELAY_SSH_HOST"
-          else
-            IP="$(getent ahostsv4 "$RELAY_SSH_HOST" | awk 'NR==1 {print $1}')"
-          fi
+          if [[ "$RELAY_SSH_HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then IP="$RELAY_SSH_HOST"; else IP="$(getent ahostsv4 "$RELAY_SSH_HOST" | awk 'NR==1 {print $1}')"; fi
           [ -n "${IP:-}" ] || { echo '::error::Could not resolve Relay IPv4'; exit 1; }
           HOST="wesi-ai-${IP//./-}.nip.io"
-          [ "$(getent ahostsv4 "$HOST" | awk 'NR==1 {print $1}' || true)" = "$IP" ] || {
-            echo '::error::Temporary hostname does not resolve to Relay'; exit 1;
-          }
+          [ "$(getent ahostsv4 "$HOST" | awk 'NR==1 {print $1}' || true)" = "$IP" ] || { echo '::error::Temporary hostname mismatch'; exit 1; }
           echo "public_host=$HOST" >> "$GITHUB_OUTPUT"
-          echo "Temporary Relay: https://$HOST" >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Verify live temporary Relay
+      - name: Verify live Relay to Gemini
         env:
           PUBLIC_HOST: ${{ steps.host.outputs.public_host }}
           SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
@@ -50,99 +45,100 @@ jobs:
           curl -fsS --max-time 20 "https://$PUBLIC_HOST/health" | grep -q '"ready":true'
           [ -n "${SHARED:-}" ] && [ "${#SHARED}" -ge 32 ] || { echo '::error::Missing shared secret'; exit 1; }
           echo "::add-mask::$SHARED"
-          node <<'NODE' > /tmp/wesi-smoke.env
-          const crypto=require('crypto');
-          const id=`wai_final_${process.env.GITHUB_RUN_ID}_${Date.now()}`;
-          const ts=String(Math.floor(Date.now()/1000));
+          node <<'NODE' >/tmp/smoke.env
+          const c=require('crypto'); const id=`wai_hot_${process.env.GITHUB_RUN_ID}_${Date.now()}`; const ts=String(Math.floor(Date.now()/1000));
           const body=JSON.stringify({requestId:id,operation:'chat',route:'wesi/fast',input:{system:'Reply briefly.',history:[],message:'Reply with exactly WESI_OK'}});
-          const sig=crypto.createHmac('sha256',process.env.SHARED).update(`${id}.${ts}.${body}`).digest('hex');
+          const sig=c.createHmac('sha256',process.env.SHARED).update(`${id}.${ts}.${body}`).digest('hex');
           console.log(`RID=${id}`); console.log(`TS=${ts}`); console.log(`SIG=${sig}`); console.log(`BODY=${Buffer.from(body).toString('base64')}`);
           NODE
-          source /tmp/wesi-smoke.env
-          printf '%s' "$BODY" | base64 -d >/tmp/wesi-smoke.json
-          code="$(curl -sS -o /tmp/wesi-smoke-out.json -w '%{http_code}' --max-time 90 -X POST "https://$PUBLIC_HOST/v1/wesi-ai" -H 'Content-Type: application/json' -H "X-Wesi-Timestamp: $TS" -H "X-Wesi-Request-Id: $RID" -H "X-Wesi-Signature: $SIG" --data-binary @/tmp/wesi-smoke.json)"
-          [ "$code" = 200 ] || { echo "::error::Live Gemini smoke HTTP $code"; cat /tmp/wesi-smoke-out.json; exit 1; }
+          source /tmp/smoke.env; printf '%s' "$BODY" | base64 -d >/tmp/smoke.json
+          code="$(curl -sS -o /tmp/smoke-out.json -w '%{http_code}' --max-time 90 -X POST "https://$PUBLIC_HOST/v1/wesi-ai" -H 'Content-Type: application/json' -H "X-Wesi-Timestamp: $TS" -H "X-Wesi-Request-Id: $RID" -H "X-Wesi-Signature: $SIG" --data-binary @/tmp/smoke.json)"
+          [ "$code" = 200 ] || { echo "::error::Relay Gemini smoke HTTP $code"; cat /tmp/smoke-out.json; exit 1; }
           python3 - <<'PY'
           import json
-          d=json.load(open('/tmp/wesi-smoke-out.json',encoding='utf-8'))
-          assert d.get('ok') is True and str(d.get('answer','')).strip(), d
+          d=json.load(open('/tmp/smoke-out.json',encoding='utf-8')); assert d.get('ok') is True and str(d.get('answer','')).strip(), d
           print('LIVE_RELAY_GEMINI_OK')
           PY
+
+      - name: Build Persona bundle
+        run: |
+          set -euo pipefail
+          python3 server/build-wesi-ai-personas.py
+          test -s server/pb_hooks/.wesi-ai-personas.json
+          for f in server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js; do [ -f "$f" ] && node --check "$f"; done
 
       - name: Prepare Main SSH
         env:
           MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
           MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
-        shell: bash
         run: |
           set -euo pipefail
-          [ -n "${MAIN_HOST:-}" ] && [ -n "${MAIN_USER:-}" ] && [ -n "${MAIN_KEY:-}" ] || { echo '::error::Missing Main SSH configuration'; exit 1; }
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key && chmod 600 ~/.ssh/main_key
           if [ -n "${MAIN_KNOWN:-}" ]; then printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Ensure Main reads the temporary Relay config without restart
-        env:
-          PUBLIC_HOST: ${{ steps.host.outputs.public_host }}
-          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+      - name: Hot reload current Wesi AI hooks without sudo
         shell: bash
         run: |
           set -euo pipefail
-          python3 - <<'PY'
-          import json,os
-          with open('/tmp/wesi-ai-relay.json','w',encoding='utf-8') as f:
-              json.dump({'url':'https://'+os.environ['PUBLIC_HOST'],'sharedSecret':os.environ['SHARED'],'routes':{'fast':'wesi/fast','pro':'wesi/pro','maximum':'wesi/ultra'}},f)
-          PY
-          chmod 600 /tmp/wesi-ai-relay.json
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          scp "${SSH[@]}" /tmp/wesi-ai-relay.json "$MAIN_USER@$MAIN_HOST:/tmp/wesi-ai-relay-emergency.json"
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "EXPECTED='https://$PUBLIC_HOST' bash -s" <<'REMOTE'
+          REMOTE="/tmp/wesi-ai-hot-hooks-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js server/pb_hooks/.wesi-ai-personas.json "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
           set -euo pipefail
-          TARGET=/opt/pocketbase/pb_hooks/.wesi-ai-relay.json
-          test -f "$TARGET"
-          current_url="$(python3 - "$TARGET" <<'PY'
-          import json,sys
-          try:
-              print(str(json.load(open(sys.argv[1],encoding='utf-8')).get('url','')))
-          except Exception:
-              print('')
-          PY
-          )"
-          echo "Current Main Relay URL: $current_url"
-          if [ "$current_url" != "$EXPECTED" ]; then
-            if [ -w "$TARGET" ]; then
-              cat /tmp/wesi-ai-relay-emergency.json > "$TARGET"
-            elif [ -w "$(dirname "$TARGET")" ]; then
-              cp /tmp/wesi-ai-relay-emergency.json "$TARGET"
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          test -d "$HOOK_DIR"
+          missing=""
+          blocked=""
+          updated=0
+          for src in "$REMOTE"/wesi_ai_*.js "$REMOTE"/wesi_ai_*.pb.js "$REMOTE/.wesi-ai-personas.json"; do
+            [ -f "$src" ] || continue
+            base="$(basename "$src")"
+            dst="$HOOK_DIR/$base"
+            if [ -e "$dst" ]; then
+              if [ -w "$dst" ]; then
+                cat "$src" > "$dst"
+                updated=$((updated+1))
+              else
+                blocked="$blocked $base"
+              fi
+            elif [ -w "$HOOK_DIR" ]; then
+              cp "$src" "$dst"
+              case "$base" in .wesi-ai-personas.json) chmod 600 "$dst";; *) chmod 644 "$dst";; esac
+              updated=$((updated+1))
             else
-              echo '::error::Main relay config is still old and current SSH account cannot write it.'
-              stat -c 'target=%U:%G mode=%a' "$TARGET" || true
-              stat -c 'dir=%U:%G mode=%a' "$(dirname "$TARGET")" || true
-              exit 1
+              missing="$missing $base"
             fi
+          done
+          echo "Updated Wesi AI hook files: $updated"
+          if [ -n "$blocked" ] || [ -n "$missing" ]; then
+            echo "Blocked existing files:$blocked"
+            echo "Missing/uncreatable files:$missing"
+            echo 'Safe permission diagnostics:'
+            stat -c 'hooks_dir owner=%U group=%G mode=%a' "$HOOK_DIR" || true
+            for f in "$HOOK_DIR"/wesi_ai_routes.pb.js "$HOOK_DIR"/wesi_ai_lib.js; do [ -e "$f" ] && stat -c '%n owner=%U group=%G mode=%a' "$f"; done
+            exit 1
           fi
-          rm -f /tmp/wesi-ai-relay-emergency.json
-          python3 - "$TARGET" "$EXPECTED" <<'PY'
-          import json,sys
-          d=json.load(open(sys.argv[1],encoding='utf-8'))
-          assert d.get('url') == sys.argv[2], d.get('url')
-          assert len(str(d.get('sharedSecret',''))) >= 32
-          assert d.get('routes',{}).get('fast') == 'wesi/fast'
-          print('MAIN_RELAY_CONFIG_OK')
-          PY
+          rm -rf "$REMOTE"
           REMOTE
 
-      - name: Verify Main Wesi AI route is loaded
+      - name: Wait for PocketBase JS hook auto reload and verify route
         shell: bash
         run: |
           set -euo pipefail
-          code="$(curl -sS -o /tmp/wesi-main-ai.out -w '%{http_code}' --max-time 20 -X POST 'https://api.wesi-inc.ru/api/wesi/ai/chat' -H 'Content-Type: application/json' -d '{"persona":"zane","tier":"fast","message":"ping"}' || true)"
+          code=""
+          for _ in $(seq 1 30); do
+            code="$(curl -sS -o /tmp/main-ai.out -w '%{http_code}' --max-time 10 -X POST 'https://api.wesi-inc.ru/api/wesi/ai/chat' -H 'Content-Type: application/json' -d '{"persona":"zane","tier":"fast","message":"ping"}' || true)"
+            if [ "$code" = 401 ] || [ "$code" = 403 ]; then break; fi
+            sleep 2
+          done
           if [ "$code" != 401 ] && [ "$code" != 403 ]; then
-            echo "::error::Expected protected Wesi AI route; got HTTP $code"
-            cat /tmp/wesi-main-ai.out || true
+            echo "::error::Wesi AI route did not hot-reload; HTTP $code"
+            cat /tmp/main-ai.out || true
             exit 1
           fi
           echo 'LIVE Relay→Gemini: OK' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Main Relay config: temporary HTTPS Relay active; PocketBase restart is not required because Wesi AI reads the config per request.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Minimum Wesi AI path is ready: WesiOS → api.wesi-inc.ru → temporary Relay → Gemini.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'PocketBase Wesi AI hooks: hot-reloaded without sudo/systemctl.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Minimum path READY: WesiOS → https://api.wesi-inc.ru → temporary Relay → Gemini.' >> "$GITHUB_STEP_SUMMARY"
