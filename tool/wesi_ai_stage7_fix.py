@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 manager = ROOT / 'lib/features/ai/runtime/wesi_runtime_pack_manager.dart'
 text = manager.read_text(encoding='utf-8')
+text = text.replace("import 'dart:typed_data';\n", '', 1)
 text = text.replace(
     "import 'package:pointycastle/export.dart';\n",
     "import 'package:cryptography/cryptography.dart';\n",
