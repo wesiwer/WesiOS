@@ -80,6 +80,69 @@ if '_replaceDirectoryAtomically(' in text:
     raise SystemExit('stale atomic replacement call remains')
 if '_switchDirectoryForVerification(' not in text:
     raise SystemExit('verification-time atomic switch helper missing')
+
+# Managed executable paths must be discovered only after staging has been
+# atomically moved into the final pack root. Looking at packRoot before the
+# switch produces an empty map for a first install and makes the mandatory
+# post-install scan fail even though the artifact is present.
+old_scan = '''      final managedPaths =
+          await _managedPathsForPack(preview.plan.pack, packRoot);
+      final verificationDependencies =
+          <WesiRuntimeDependencySpec>[...preview.plan.pack.dependencies];
+      final needsSandbox = preview.plan.pack.dependencies.any(
+        (dependency) =>
+            dependency.bindingSandboxProfile ==
+            WesiLocalSandboxProfile.workspaceV1,
+      );
+      if (needsSandbox && preview.plan.pack.id != WesiRuntimePackId.core) {
+        final corePack = WesiRuntimePackCatalog.byId(WesiRuntimePackId.core);
+        final sandboxDependency = corePack.dependencies.firstWhere(
+          (dependency) => dependency.id == 'wesi-sandbox',
+        );
+        verificationDependencies.add(sandboxDependency);
+        final coreRoot = Directory(p.join(rootCanonical, WesiRuntimePackId.core.name));
+        managedPaths.addAll(await _managedPathsForPack(corePack, coreRoot));
+      }
+      final backup = await _switchDirectoryForVerification(staging, packRoot);
+      try {
+        final verified = await scanner.scan(
+          verificationDependencies,
+          managedExecutablePaths: managedPaths,
+        );
+'''
+new_scan = '''      final verificationDependencies =
+          <WesiRuntimeDependencySpec>[...preview.plan.pack.dependencies];
+      final needsSandbox = preview.plan.pack.dependencies.any(
+        (dependency) =>
+            dependency.bindingSandboxProfile ==
+            WesiLocalSandboxProfile.workspaceV1,
+      );
+      final coreManagedPaths = <String, String>{};
+      if (needsSandbox && preview.plan.pack.id != WesiRuntimePackId.core) {
+        final corePack = WesiRuntimePackCatalog.byId(WesiRuntimePackId.core);
+        final sandboxDependency = corePack.dependencies.firstWhere(
+          (dependency) => dependency.id == 'wesi-sandbox',
+        );
+        verificationDependencies.add(sandboxDependency);
+        final coreRoot =
+            Directory(p.join(rootCanonical, WesiRuntimePackId.core.name));
+        coreManagedPaths.addAll(
+          await _managedPathsForPack(corePack, coreRoot),
+        );
+      }
+      final backup = await _switchDirectoryForVerification(staging, packRoot);
+      try {
+        final managedPaths =
+            await _managedPathsForPack(preview.plan.pack, packRoot);
+        managedPaths.addAll(coreManagedPaths);
+        final verified = await scanner.scan(
+          verificationDependencies,
+          managedExecutablePaths: managedPaths,
+        );
+'''
+if old_scan not in text:
+    raise SystemExit('post-install managed path ordering anchor missing')
+text = text.replace(old_scan, new_scan, 1)
 manager.write_text(text, encoding='utf-8')
 
 # Add a regression that exercises the real Ed25519 verifier instead of only
