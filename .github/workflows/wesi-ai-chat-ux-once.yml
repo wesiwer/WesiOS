@@ -1,0 +1,122 @@
+name: Wesi AI Observable Chat UX One Shot
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-chat-ux-parity-secure
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wesi-ai-chat-ux-once
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-chat-ux-parity-secure
+          fetch-depth: 0
+
+      - name: Repair and syntax-check one-shot patcher
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/wesi_ai_chat_ux_fix.py
+          python3 -m py_compile scripts/wesi_ai_chat_ux_once.py scripts/wesi_ai_chat_ux_postfix.py
+
+      - name: Generate observable chat UX product slice
+        run: |
+          set -euo pipefail
+          python3 scripts/wesi_ai_chat_ux_once.py
+          python3 scripts/wesi_ai_chat_ux_postfix.py
+
+      - name: Validate streaming and connector JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --check server/pb_hooks/wesi_ai_github_connector.js
+          node --test server/wesi-ai-stream/*.test.mjs
+
+      - name: Security and observability guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "type: 'agent'" server/wesi-ai-stream/gateway.mjs
+          grep -q "type: 'activity'" server/wesi-ai-stream/gateway.mjs
+          grep -q "diffStatsFromToolResult" server/wesi-ai-stream/gateway.mjs
+          grep -q "untrustedExternalData" server/pb_hooks/wesi_ai_github_connector.js
+          grep -q "branchOriginalConversationId" lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          grep -q "savedToChatArchive" lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          ! grep -R --line-number "safeReasoningSummary(message)" lib/features/ai || exit 1
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Format product files
+        run: |
+          dart format \
+            lib/features/ai/models/wesi_ai_activity.dart \
+            lib/features/ai/models/wesi_ai_chat_models.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            lib/features/ai/widgets/wesi_ai_message_actions.dart \
+            lib/features/ai/widgets/wesi_ai_message_content.dart \
+            lib/features/ai/controllers/wesi_ai_chat_controller.dart \
+            lib/features/ai/wesi_ai_api.dart \
+            lib/features/ai/wesi_ai_lobby_controller.dart \
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            test/wesi_ai_rich_message_test.dart \
+            test/wesi_ai_message_archive_branch_test.dart
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Focused rich chat UX tests
+        run: flutter test test/wesi_ai_rich_message_test.dart test/wesi_ai_message_archive_branch_test.dart
+
+      - name: Existing chat and confirmation regressions
+        run: flutter test test/wesi_ai_chat_ui_test.dart test/wesi_ai_confirmation_block_test.dart
+
+      - name: Full Flutter regression suite
+        run: flutter test
+
+      - name: Commit validated product slice
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            lib/features/ai/models/wesi_ai_activity.dart \
+            lib/features/ai/models/wesi_ai_chat_models.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            lib/features/ai/widgets/wesi_ai_message_actions.dart \
+            lib/features/ai/widgets/wesi_ai_message_content.dart \
+            lib/features/ai/controllers/wesi_ai_chat_controller.dart \
+            lib/features/ai/wesi_ai_api.dart \
+            lib/features/ai/wesi_ai_lobby_controller.dart \
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            server/wesi-ai-stream/gateway.mjs \
+            server/wesi-ai-stream/gateway.test.mjs \
+            server/pb_hooks/wesi_ai_github_connector.js \
+            test/wesi_ai_rich_message_test.dart \
+            test/wesi_ai_message_archive_branch_test.dart \
+            docs/WESI_AI_CHAT_UX.md
+          if git diff --cached --quiet; then
+            echo 'No new product diff to commit; already validated.'
+            exit 0
+          fi
+          git commit -m 'feat(ai): add observable rich chat UX'
+          git push origin HEAD:agent/wesi-ai-chat-ux-parity-secure
