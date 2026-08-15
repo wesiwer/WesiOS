@@ -68,7 +68,8 @@ class WesiValidatedArtifact {
         'sizeBytes': sizeBytes,
         'sha256': sha256Hex,
         'validatedAt': validatedAt.toUtc().toIso8601String(),
-        if (descriptor.displayName != null) 'displayName': descriptor.displayName,
+        if (descriptor.displayName != null)
+          'displayName': descriptor.displayName,
         if (descriptor.mimeType != null) 'mimeType': descriptor.mimeType,
         if (validationMetadata.isNotEmpty)
           'validationMetadata': validationMetadata,

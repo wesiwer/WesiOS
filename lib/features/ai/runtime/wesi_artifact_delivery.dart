@@ -56,7 +56,8 @@ class WesiLocalArtifactDeliverySink implements WesiArtifactDeliverySink {
       );
     }
 
-    final temp = File('$finalPath.tmp-${DateTime.now().microsecondsSinceEpoch}');
+    final temp =
+        File('$finalPath.tmp-${DateTime.now().microsecondsSinceEpoch}');
     try {
       await source.openRead().pipe(temp.openWrite());
       final copiedDigest = await sha256.bind(temp.openRead()).first;

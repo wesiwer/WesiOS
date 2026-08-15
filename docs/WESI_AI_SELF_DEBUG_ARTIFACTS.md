@@ -44,9 +44,9 @@ The validator rejects:
 - mismatched simple-format signatures;
 - complex formats without a trusted external validator.
 
-Built-in validators cover bounded UTF-8 text, JSON, PDF header, ZIP signature, PE/MZ executable header, PNG/JPEG, WAV and basic MP3 headers.
+Built-in prechecks cover bounded UTF-8 text, JSON, PDF/ZIP/PE/image/audio signatures. Only UTF-8 text, JSON, PNG and JPEG may pass without a second validator.
 
-Complex container/runtime formats such as DOCX/XLSX/PPTX/APK/video require a trusted external validator. File extension or model assertion is insufficient.
+PDF/ZIP/source archives, DOCX/XLSX/PPTX/APK, Windows executables, WAV/MP3, video and unknown formats require a trusted external validator after the built-in precheck. File extension, magic bytes or model assertion alone are insufficient.
 
 After validation, SHA-256 and size are recorded. Delivery re-hashes the source before copying, copies through a temporary file, verifies the copied hash and atomically publishes the result. A file changed after validation is rejected.
 

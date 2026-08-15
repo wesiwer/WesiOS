@@ -9,7 +9,8 @@ import 'package:wesios/features/ai/runtime/wesi_local_runtime_models.dart';
 import 'package:wesios/features/ai/runtime/wesi_self_debug_engine.dart';
 
 void main() {
-  test('repairs failed verification, re-tests and only then delivers', () async {
+  test('repairs failed verification, re-tests and only then delivers',
+      () async {
     final root = await Directory.systemTemp.createTemp('wesi-self-debug-');
     addTearDown(() => root.delete(recursive: true));
     await File(p.join(root.path, 'result.txt')).writeAsString('verified');
@@ -69,7 +70,8 @@ void main() {
     expect(executor.calls, 4);
   });
 
-  test('repeated objective failure becomes blocker instead of infinite loop', () async {
+  test('repeated objective failure becomes blocker instead of infinite loop',
+      () async {
     final root = await Directory.systemTemp.createTemp('wesi-self-debug-');
     addTearDown(() => root.delete(recursive: true));
 
@@ -212,7 +214,8 @@ class _Planner implements WesiSelfDebugPlanner {
   _Planner({required this.plan, this.repairs = const <WesiRepairProposal>[]});
 
   @override
-  Future<WesiSelfDebugPlan> createPlan(WesiSelfDebugRequest request) async => plan;
+  Future<WesiSelfDebugPlan> createPlan(WesiSelfDebugRequest request) async =>
+      plan;
 
   @override
   Future<WesiRepairProposal> proposeRepair({

@@ -190,7 +190,8 @@ class WesiSelfDebugEngine {
   }) async {
     final startedAt = DateTime.now();
     if (request.id.trim().isEmpty || request.id.length > 128) {
-      return _terminalFailure('WSD_BAD_REQUEST', 'Self-debug request id is invalid');
+      return _terminalFailure(
+          'WSD_BAD_REQUEST', 'Self-debug request id is invalid');
     }
     if (request.goal.trim().isEmpty || request.goal.length > 16000) {
       return _terminalFailure('WSD_BAD_GOAL', 'Self-debug goal is invalid');
@@ -201,7 +202,8 @@ class WesiSelfDebugEngine {
     final evidence = <WesiDebugEvidence>[];
     final failureFingerprints = <String, int>{};
 
-    await _progress(WesiSelfDebugPhase.planning, 'Planning execution', repairIteration, toolCalls);
+    await _progress(WesiSelfDebugPhase.planning, 'Planning execution',
+        repairIteration, toolCalls);
     final plan = await planner.createPlan(request);
     final planError = _validatePlan(plan);
     if (planError != null) return planError;
@@ -233,7 +235,8 @@ class WesiSelfDebugEngine {
         needsRepair = !verification.ok;
       }
 
-      List<WesiValidatedArtifact> validatedArtifacts = const <WesiValidatedArtifact>[];
+      List<WesiValidatedArtifact> validatedArtifacts =
+          const <WesiValidatedArtifact>[];
       if (!needsRepair) {
         final validation = await _validateArtifacts(
           plan.artifacts,
@@ -411,8 +414,28 @@ class WesiSelfDebugEngine {
   }) async {
     var toolCalls = currentToolCalls;
     for (final step in steps) {
-      if (_wallExpired(startedAt)) return _StepRun(false, toolCalls);
-      if (toolCalls >= limits.maxToolCalls) return _StepRun(false, toolCalls);
+      if (_wallExpired(startedAt)) {
+        evidence.add(const WesiDebugEvidence(
+          stepId: 'runtime-limit',
+          tool: 'self-debug.wall-time',
+          ok: false,
+          code: 'WSD_WALL_TIME_EXCEEDED',
+          exitCode: null,
+          summary: 'Self-debug wall-time limit reached',
+        ));
+        return _StepRun(false, toolCalls);
+      }
+      if (toolCalls >= limits.maxToolCalls) {
+        evidence.add(const WesiDebugEvidence(
+          stepId: 'runtime-limit',
+          tool: 'self-debug.tool-budget',
+          ok: false,
+          code: 'WSD_TOOL_CALL_LIMIT',
+          exitCode: null,
+          summary: 'Self-debug tool-call limit reached',
+        ));
+        return _StepRun(false, toolCalls);
+      }
       toolCalls++;
       await _progress(phase, step.label, repairIteration, toolCalls);
       final result = await executor.execute(step.call, runtimeContext);
@@ -483,7 +506,8 @@ class WesiSelfDebugEngine {
           refs,
         );
       }
-      if (last.deliveryRef != null) refs[artifact.descriptor.id] = last.deliveryRef!;
+      if (last.deliveryRef != null)
+        refs[artifact.descriptor.id] = last.deliveryRef!;
     }
     return _DeliveryRun(true, 'OK', 'Artifacts delivered', refs);
   }
@@ -491,8 +515,11 @@ class WesiSelfDebugEngine {
   WesiDebugEvidence _evidence(WesiDebugStep step, WesiLocalToolResult result) {
     final chunks = <String>[
       result.message,
-      if (result.stderr != null && result.stderr!.trim().isNotEmpty) result.stderr!,
-      if (!result.ok && result.stdout != null && result.stdout!.trim().isNotEmpty)
+      if (result.stderr != null && result.stderr!.trim().isNotEmpty)
+        result.stderr!,
+      if (!result.ok &&
+          result.stdout != null &&
+          result.stdout!.trim().isNotEmpty)
         result.stdout!,
     ];
     return WesiDebugEvidence(

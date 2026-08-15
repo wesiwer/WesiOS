@@ -1,4 +1,4 @@
-# Wesi AI — Stage Tracker 8/16
+# Wesi AI — Stage Tracker 9/16
 
 **Статус документа:** живой фактический трекер реализации.  
 **Источник требований:** `WESI_AI_MASTER_SPEC.md` и обязательные Wesi AI addendum/specs.  
@@ -13,8 +13,8 @@
 | 5/16 | **DONE** | Unified Capability Registry / Action Broker / Risk Policy / Audit + WesiOS read/write tools. Fail-closed tool registry, READ/WRITE/DESTRUCTIVE classes, session-bound one-time destructive confirmation tickets, verified-only confirmation UI, unified server audit, and brokered Tasks/Calendar/Treasury/CRM/Knowledge/Roadmap/Audio Vault/Team context. PR #167, main `93a8b23c97a9913b505d1db3b8df5ced56c86373`. Full PR analyze/test, Android debug build and Windows release build passed. No production deploy/release triggered. |
 | 6/16 | **DONE** | Controlled Wesi Local Runtime: typed fail-closed filesystem/terminal/Git/HTTP/Python/Node/Flutter/build/document/media executor, isolated workspace policy, `workspaceV1` sandbox contract, SSRF/DNS pinning, sanitized process environment and metadata-only audit. PR #168, main `e626469de2164bbd68e1c7c5db11e10536eca93d`. Full PR analyze/test, Android debug build and Windows release build passed. No production deploy/release triggered. |
 | 7/16 | **DONE** | Verified Environment Scanner + Core/Developer/Browser/Documents/Media Runtime Packs, absolute-PATH system reuse, signed Ed25519 artifacts, bounded extraction, post-install rescan, atomic rollback and `workspaceV1` activation. PR #169, main `538f5cd092de6538a42a9aa84938c4e255d46a3b`. Full PR analyze/test, Android debug build and Windows release build passed. No production deploy/release triggered. |
-| 8/16 | **IN PROGRESS** | Resource Scheduler, L0–L4 adaptive classification, resource/foreground policy, bounded durable jobs, checkpoints, pause/resume and `waiting_for_worker`. |
-| 9/16 | TODO | Self-debug loop + validated artifact creation/build delivery. |
+| 8/16 | **DONE** | Adaptive L0–L4 Resource Scheduler, trusted capability/resource/foreground policy, Control Plane heavy-work boundary, bounded durable job journal, checkpoints, pause/resume, `waiting_for_worker` and coordinator integration. PR #170, main `4fca3101927d4686e365aaf33530786ea7345b82`. Full PR analyze/test, Android debug build and Windows release build passed. No production deploy/release triggered. |
+| 9/16 | **IN PROGRESS** | Bounded self-debug loop + objective verify/diagnose/repair/re-test + fail-closed validated artifact creation and delivery. |
 | 10/16 | TODO | Remote Worker: QR pairing, device credentials, heartbeat/capabilities, remote jobs/progress/reconnect. |
 | 11/16 | TODO | Connectors: production GitHub first, then Drive/Gmail/Calendar/Slack/Telegram/etc. |
 | 12/16 | TODO | Real Persona Lead/Co-Agent runtime: typed internal handoff, review/revision/joint integration. |

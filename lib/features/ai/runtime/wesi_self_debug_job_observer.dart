@@ -8,17 +8,21 @@ import 'wesi_self_debug_engine.dart';
 class WesiSelfDebugJobObserver implements WesiSelfDebugObserver {
   final WesiJobCoordinator coordinator;
   final String jobId;
+  double _lastProgress = 0;
 
-  const WesiSelfDebugJobObserver({
+  WesiSelfDebugJobObserver({
     required this.coordinator,
     required this.jobId,
   });
 
   @override
   Future<void> onProgress(WesiSelfDebugProgress progress) async {
+    final requested = _progressFor(progress.phase);
+    final monotonic = requested < _lastProgress ? _lastProgress : requested;
+    _lastProgress = monotonic;
     await coordinator.updateProgress(
       jobId,
-      progress: _progressFor(progress.phase),
+      progress: monotonic,
       stage: _stageFor(progress),
     );
   }
@@ -48,9 +52,8 @@ class WesiSelfDebugJobObserver implements WesiSelfDebugObserver {
   }
 
   String _stageFor(WesiSelfDebugProgress progress) {
-    final iteration = progress.repairIteration > 0
-        ? ' #${progress.repairIteration}'
-        : '';
+    final iteration =
+        progress.repairIteration > 0 ? ' #${progress.repairIteration}' : '';
     return '${progress.phase.name}$iteration: ${progress.message}';
   }
 }

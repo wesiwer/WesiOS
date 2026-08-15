@@ -12,9 +12,8 @@ class WesiArtifactValidator {
 
   const WesiArtifactValidator({
     this.defaultMaxBytes = 1024 * 1024 * 1024,
-    this.externalValidators = const <
-        WesiArtifactKind,
-        WesiArtifactExternalValidator>{},
+    this.externalValidators =
+        const <WesiArtifactKind, WesiArtifactExternalValidator>{},
   });
 
   Future<WesiArtifactValidationResult> validate({
@@ -164,23 +163,23 @@ class WesiArtifactValidator {
 
   bool _requiresExternalValidator(WesiArtifactKind kind) {
     switch (kind) {
+      case WesiArtifactKind.pdf:
+      case WesiArtifactKind.zip:
+      case WesiArtifactKind.sourceArchive:
       case WesiArtifactKind.docx:
       case WesiArtifactKind.xlsx:
       case WesiArtifactKind.pptx:
       case WesiArtifactKind.apk:
+      case WesiArtifactKind.windowsExecutable:
+      case WesiArtifactKind.wav:
+      case WesiArtifactKind.mp3:
       case WesiArtifactKind.video:
       case WesiArtifactKind.other:
         return true;
       case WesiArtifactKind.text:
       case WesiArtifactKind.json:
-      case WesiArtifactKind.pdf:
-      case WesiArtifactKind.zip:
-      case WesiArtifactKind.windowsExecutable:
       case WesiArtifactKind.png:
       case WesiArtifactKind.jpeg:
-      case WesiArtifactKind.wav:
-      case WesiArtifactKind.mp3:
-      case WesiArtifactKind.sourceArchive:
         return false;
     }
   }
@@ -194,20 +193,21 @@ class WesiArtifactValidator {
     switch (kind) {
       case WesiArtifactKind.text:
         try {
-          final bytes = await _readPrefix(file, size.clamp(1, 1024 * 1024));
+          final bytes =
+              await _readPrefix(file, size.clamp(1, 1024 * 1024).toInt());
           utf8.decode(bytes);
           return const _BuiltinValidation.ok(<String, dynamic>{
             'validator': 'utf8',
           });
         } on FormatException {
-          return const _BuiltinValidation.fail(
+          return _BuiltinValidation.fail(
             'ARTIFACT_TEXT_INVALID',
             'Text artifact is not valid UTF-8',
           );
         }
       case WesiArtifactKind.json:
         if (size > 16 * 1024 * 1024) {
-          return const _BuiltinValidation.fail(
+          return _BuiltinValidation.fail(
             'ARTIFACT_JSON_TOO_LARGE',
             'JSON artifact exceeds the built-in parser limit',
           );
@@ -218,7 +218,7 @@ class WesiArtifactValidator {
             'validator': 'jsonDecode',
           });
         } on FormatException {
-          return const _BuiltinValidation.fail(
+          return _BuiltinValidation.fail(
             'ARTIFACT_JSON_INVALID',
             'JSON artifact is invalid',
           );
@@ -267,7 +267,7 @@ class WesiArtifactValidator {
             ? const _BuiltinValidation.ok(<String, dynamic>{
                 'validator': 'riff-wave-header',
               })
-            : const _BuiltinValidation.fail(
+            : _BuiltinValidation.fail(
                 'ARTIFACT_WAV_INVALID',
                 'WAV artifact header is invalid',
               );
@@ -281,7 +281,7 @@ class WesiArtifactValidator {
             ? const _BuiltinValidation.ok(<String, dynamic>{
                 'validator': 'mp3-header',
               })
-            : const _BuiltinValidation.fail(
+            : _BuiltinValidation.fail(
                 'ARTIFACT_MP3_INVALID',
                 'MP3 artifact header is invalid',
               );
@@ -305,7 +305,7 @@ class WesiArtifactValidator {
         ? const _BuiltinValidation.ok(<String, dynamic>{
             'validator': 'zip-signature',
           })
-        : const _BuiltinValidation.fail(
+        : _BuiltinValidation.fail(
             'ARTIFACT_ZIP_INVALID',
             'ZIP-based artifact header is invalid',
           );
@@ -329,7 +329,7 @@ class WesiArtifactValidator {
   Future<List<int>> _readPrefix(File file, int count) async {
     final handle = await file.open();
     try {
-      return handle.read(count);
+      return await handle.read(count);
     } finally {
       await handle.close();
     }
@@ -365,7 +365,7 @@ class _BuiltinValidation {
           metadata: metadata,
         );
 
-  const _BuiltinValidation.fail(String code, String message)
+  _BuiltinValidation.fail(String code, String message)
       : this._(
           ok: false,
           result: WesiArtifactValidationResult.failure(code, message),

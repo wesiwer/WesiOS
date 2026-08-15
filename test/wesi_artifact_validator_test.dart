@@ -80,7 +80,8 @@ void main() {
   test('complex artifact requires trusted external validator', () async {
     final root = await Directory.systemTemp.createTemp('wesi-artifact-');
     addTearDown(() => root.delete(recursive: true));
-    await File(p.join(root.path, 'app.apk')).writeAsBytes(<int>[0x50, 0x4B, 0x03, 0x04]);
+    await File(p.join(root.path, 'app.apk'))
+        .writeAsBytes(<int>[0x50, 0x4B, 0x03, 0x04]);
 
     final result = await const WesiArtifactValidator().validate(
       descriptor: const WesiArtifactDescriptor(
