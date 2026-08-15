@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -190,16 +191,19 @@ WesiRemoteWorkerHeartbeat _heartbeat(String workerId, DateTime now) =>
       sentAt: now,
     );
 
-class _FixedRandom implements dynamic {
+class _FixedRandom implements Random {
   int _value = 1;
 
+  @override
   int nextInt(int max) {
     final value = _value % max;
     _value++;
     return value;
   }
 
+  @override
   bool nextBool() => true;
 
+  @override
   double nextDouble() => 0.5;
 }
