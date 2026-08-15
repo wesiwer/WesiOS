@@ -14,6 +14,14 @@ test.after(() => {
   fs.rmSync(root, {recursive: true, force: true});
 });
 
+test('staged upload rejects oversized metadata before allocating file data', () => {
+  assert.throws(() => staged.startStagedUpload({
+    name: 'too-large.bin',
+    mimeType: 'application/octet-stream',
+    byteSize: staged.STAGED_MAX_FILE_BYTES + 1,
+  }), /WAI_UPLOAD_TOO_LARGE/);
+});
+
 test('staged upload assembles bounded chunks and resolves opaque transport ref', async () => {
   const text = '# Wesi AI\n' + 'large staged markdown line\n'.repeat(45000);
   const source = Buffer.from(text, 'utf8');
