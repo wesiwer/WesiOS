@@ -146,4 +146,34 @@ if message_content.exists():
         text = text.replace(old, '', 1)
     message_content.write_text(text, encoding='utf-8')
 
+# WesiAiApi.send gained an optional observable activity callback. Every
+# subclass/test double must keep an override-compatible named parameter even
+# when that implementation does not consume activity itself.
+signature_old = '''    void Function(String delta)? onDelta,
+    WesiAiRequestCancellation? cancellation,
+'''
+signature_new = '''    void Function(String delta)? onDelta,
+    void Function(Map<String, dynamic> event)? onActivity,
+    WesiAiRequestCancellation? cancellation,
+'''
+for override_path in (
+    'lib/features/ai/wesi_ai_lobby_api.dart',
+    'test/wesi_ai_memory_engine_test.dart',
+    'test/wesi_ai_queue_hardening_test.dart',
+):
+    p = Path(override_path)
+    override_text = p.read_text(encoding='utf-8')
+    override_text = override_text.replace(signature_old, signature_new)
+    if override_path.endswith('wesi_ai_lobby_api.dart'):
+        override_text = override_text.replace(
+            '''        onDelta: onDelta,
+        cancellation: cancellation,
+''',
+            '''        onDelta: onDelta,
+        onActivity: onActivity,
+        cancellation: cancellation,
+''',
+        )
+    p.write_text(override_text, encoding='utf-8')
+
 print('chat UX postfix applied')
