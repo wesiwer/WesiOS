@@ -62,7 +62,8 @@ jobs:
             lib/features/ai/widgets/wesi_ai_message_content.dart \
             lib/features/ai/ai_assistant_v2_screen.dart \
             test/wesi_ai_contextual_followup_clarification_test.dart \
-            test/wesi_ai_lazy_conversation_test.dart
+            test/wesi_ai_lazy_conversation_test.dart \
+            test/wesi_ai_queue_hardening_test.dart
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
@@ -92,7 +93,8 @@ jobs:
             lib/features/ai/wesi_ai_managed_controller.dart \
             lib/features/ai/widgets/wesi_ai_rich_message.dart \
             lib/features/ai/widgets/wesi_ai_message_content.dart \
-            lib/features/ai/ai_assistant_v2_screen.dart
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            test/wesi_ai_queue_hardening_test.dart
           if ! git diff --cached --quiet; then
             git commit -m "feat(ai): contextual followups clarification and lazy chats"
             git push origin HEAD:agent/wesi-ai-contextual-followups-clarify-lazy-chat
