@@ -59,6 +59,7 @@ test('staged upload assembles bounded chunks, resolves ref and can be released i
   assert.match(prepared.parts[0].text, /# Wesi AI/);
 
   deleteStagedUploads(prepared.stagedUploadIds);
+  assert.equal(fs.existsSync(path.join(root, started.id)), false);
   const refBytes = Buffer.from(transport.dataBase64, 'base64');
   assert.throws(() => staged.resolveStagedAttachment({
     name: transport.name,
