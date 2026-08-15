@@ -41,3 +41,11 @@ Post-Stage-10 UX/persona hardening: PR #180.
 - a newly opened chat is a transient draft and enters durable history only after the first accepted user turn;
 - opening another blank new chat abandons the previous blank draft instead of accumulating empty conversations;
 - queue/attachment context remains durable for conversations that have already been materialized by an accepted turn.
+
+## Таблицы и графики в ответах
+
+- Markdown-таблицы рендерятся как отдельные горизонтально прокручиваемые таблицы с быстрым копированием TSV.
+- Для числовых визуализаций поддерживается fenced-блок `wesi-chart` с bounded JSON-spec и типами `bar`, `line`, `pie`, `scatter`.
+- Chart renderer не исполняет JS/HTML/Flutter-код; malformed или oversized spec fail-closed показывается как обычный code block.
+- Визуализация хранится прямо в тексте сообщения, поэтому сохраняется в истории, архиве и ветках без отдельного серверного состояния.
+
