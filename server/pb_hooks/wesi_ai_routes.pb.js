@@ -140,6 +140,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
       "Для реальных данных или действий WesiOS используй только инструменты ниже. " +
       "Чтобы вызвать инструмент, ответь ТОЛЬКО JSON без markdown: " +
       "{\"wesiTool\":{\"name\":\"tool_name\",\"arguments\":{}}}. " +
+      "Поле wesiTool зарезервировано только для реального служебного вызова: не показывай и не цитируй этот envelope пользователю как пример. " +
       "Никогда не утверждай, что действие выполнено, пока сервер не вернул verified result. " +
       "Если сервер вернул FORBIDDEN, объясни отказ в характере персоны и предложи допустимые alternatives.\n" +
       JSON.stringify(toolDefinitions)
@@ -163,19 +164,84 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     return ai.callRelay(cfg, payload, relayRequestId);
   };
 
-  const parseToolRequest = function(answer) {
-    let text = String(answer || "").trim();
-    if (text.indexOf("```json") === 0 && text.lastIndexOf("```") > 6) text = text.slice(7, text.lastIndexOf("```")).trim();
-    else if (text.indexOf("```") === 0 && text.lastIndexOf("```") > 3) text = text.slice(3, text.lastIndexOf("```")).trim();
+  const stripLeadingReasoningBlocks = function(value) {
+    let text = String(value || "").trim();
+    for (let turn = 0; turn < 3; turn++) {
+      const match = text.match(/^<(think|analysis|reasoning)>/i);
+      if (!match) break;
+      const closing = "</" + match[1] + ">";
+      const end = text.toLowerCase().indexOf(closing.toLowerCase(), match[0].length);
+      if (end < 0) break;
+      text = text.slice(end + closing.length).trim();
+    }
+    return text;
+  };
+
+  const stripOuterCodeFence = function(value) {
+    const text = String(value || "").trim();
+    const match = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+    return match ? String(match[1] || "").trim() : text;
+  };
+
+  const jsonObjectAt = function(text, start) {
+    if (start < 0 || text[start] !== "{") return null;
+    let depth = 0;
+    let quoted = false;
+    let escaped = false;
+    for (let index = start; index < text.length; index++) {
+      const ch = text[index];
+      if (quoted) {
+        if (escaped) escaped = false;
+        else if (ch === "\\") escaped = true;
+        else if (ch === "\"") quoted = false;
+        continue;
+      }
+      if (ch === "\"") { quoted = true; continue; }
+      if (ch === "{") depth += 1;
+      if (ch === "}") {
+        depth -= 1;
+        if (depth === 0) return {json: text.slice(start, index + 1), end: index + 1};
+        if (depth < 0) return null;
+      }
+    }
+    return null;
+  };
+
+  const parseToolEnvelope = function(value) {
     try {
-      const parsed = JSON.parse(text);
-      const req = parsed && parsed.wesiTool && typeof parsed.wesiTool === "object" ? parsed.wesiTool : null;
+      const parsed = JSON.parse(value);
+      const req = parsed && parsed.wesiTool && typeof parsed.wesiTool === "object" && !Array.isArray(parsed.wesiTool) ? parsed.wesiTool : null;
       if (!req) return null;
       const name = String(req.name || "").trim();
-      const args = req.arguments && typeof req.arguments === "object" ? req.arguments : {};
+      const args = req.arguments && typeof req.arguments === "object" && !Array.isArray(req.arguments) ? req.arguments : {};
       if (!name) return null;
       return {name: name, arguments: args};
     } catch (_) { return null; }
+  };
+
+  const safeToolChatter = function(value) {
+    const text = String(value || "").replace(/```(?:json)?/gi, "").trim();
+    if (!text) return true;
+    if (text.length > 240) return false;
+    if (/(?:пример|например|формат|образец|example|format|sample)/i.test(text)) return false;
+    return /(?:инструмент|вызов|использ|запущ|провер|получ|найд|посмотр|tool|call|invoke|use|run|check|fetch|look)/i.test(text);
+  };
+
+  const hasToolProtocolMarker = function(answer) {
+    return /(?:[\"']?wesiTool[\"']?\s*:)/.test(String(answer || ""));
+  };
+
+  const parseToolRequest = function(answer) {
+    let text = stripLeadingReasoningBlocks(answer);
+    text = stripOuterCodeFence(text);
+    const direct = parseToolEnvelope(text);
+    if (direct) return direct;
+    const start = text.indexOf("{");
+    if (start < 0) return null;
+    const candidate = jsonObjectAt(text, start);
+    if (!candidate) return null;
+    if (!safeToolChatter(text.slice(0, start)) || !safeToolChatter(text.slice(candidate.end))) return null;
+    return parseToolEnvelope(candidate.json);
   };
 
   const toolResults = [];
@@ -186,6 +252,10 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     if (!generated.ok) return e.json(generated.status, {ok: false, code: generated.code, requestId: requestId});
     const toolRequest = toolDefinitions.length ? parseToolRequest(generated.answer) : null;
     if (!toolRequest) {
+      if (toolDefinitions.length && hasToolProtocolMarker(generated.answer)) {
+        toolResults.push({tool: "wesi_tool_protocol", verified: true, ok: false, code: "INVALID_TOOL_CALL", message: "Служебный вызов инструмента не прошёл проверку формата и не был выполнен"});
+        continue;
+      }
       return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, answer: generated.answer, toolResults: toolResults});
     }
 
@@ -212,6 +282,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   ]).join("\n\n");
   const finalGenerated = relayCall(finalSystem, "final");
   if (!finalGenerated.ok) return e.json(finalGenerated.status, {ok: false, code: finalGenerated.code, requestId: requestId});
+  if (hasToolProtocolMarker(finalGenerated.answer)) return e.json(502, {ok: false, code: "WAI_TOOL_PROTOCOL_INVALID", requestId: requestId});
   return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, answer: finalGenerated.answer, toolResults: toolResults});
 }, $apis.requireAuth("users"));
 
@@ -236,4 +307,3 @@ routerAdd("POST", "/api/wesi/ai/action/confirm", (e) => {
     }
   });
 }, $apis.requireAuth("users"));
-
