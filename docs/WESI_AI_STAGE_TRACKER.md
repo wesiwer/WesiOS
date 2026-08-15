@@ -1,0 +1,30 @@
+# Wesi AI — Stage Tracker 1/16
+
+**Статус документа:** живой фактический трекер реализации.  
+**Источник требований:** `WESI_AI_MASTER_SPEC.md` и обязательные Wesi AI addendum/specs.  
+**Правило:** `DONE` ставится только после merge в `main` и зелёных обязательных gates. Код только в рабочей ветке/PR не считается завершённым этапом.
+
+| Этап | Статус | Содержание |
+|---|---|---|
+| 1/16 | **DONE** | Smart Queue: CONTROL > STEER > DEFERRED, Stop/Steer, restart-safe durable outbox, superseded follow-ups, lifecycle hardening. PR #163, main `0d138773c4692fbb55b504cd3e635a7c01492540`. |
+| 2/16 | **IN REVIEW** | True network streaming: provider SSE → Relay → Main Stream Gateway → WesiOS NDJSON, tool shielding, transport cancel, single persisted final answer. PR #164. |
+| 3/16 | TODO | Memory Engine: rolling summaries, shared/persona memory, retrieval, task/project memory, user controls. |
+| 4/16 | TODO | Explicit important-chat backup + encrypted LAN/Wi-Fi D2D transfer of chats/memory/artifacts. |
+| 5/16 | TODO | Unified Capability Registry / Action Broker / Risk Policy / Audit + full WesiOS read/write tools. |
+| 6/16 | TODO | Controlled Wesi Local Runtime: filesystem, terminal, Git, HTTP, Python/Node/Flutter/build/document/media tools. |
+| 7/16 | TODO | Environment Scanner + Core/Developer/Browser/Documents/Media Runtime Packs and dependency reuse/install/upgrade. |
+| 8/16 | TODO | Resource Scheduler, L0–L4 classification, foreground/background policy, jobs/checkpoints/pause/resume. |
+| 9/16 | TODO | Self-debug loop + validated artifact creation/build delivery. |
+| 10/16 | TODO | Remote Worker: QR pairing, device credentials, heartbeat/capabilities, remote jobs/progress/reconnect. |
+| 11/16 | TODO | Connectors: production GitHub first, then Drive/Gmail/Calendar/Slack/Telegram/etc. |
+| 12/16 | TODO | Real Persona Lead/Co-Agent runtime: typed internal handoff, review/revision/joint integration. |
+| 13/16 | TODO | Dynamic specialized subagents + scoped context/tools/budgets + conflict-safe multi-agent workspace. |
+| 14/16 | TODO | Full Media Engines/workflows: image edit/reference, music stems, video composition/FFmpeg/voice/SFX/subtitles. |
+| 15/16 | TODO | Proactive AI, Budget/Quota Manager, security/prompt-injection/permission/revoke hardening. |
+| 16/16 | TODO | Final autonomous E2E acceptance scenarios, production activation and release gates. |
+
+## Текущий порядок
+
+Этапы выполняются последовательно. Следующий тяжёлый слой не считается начатым вместо предыдущего, пока предыдущий не прошёл обязательные tests/build gates и не попал в `main`.
+
+Внешняя серверная/DNS активация ведётся как параллельный инфраструктурный blocker и не заставляет переносить тяжёлые вычисления на основной VPS.
