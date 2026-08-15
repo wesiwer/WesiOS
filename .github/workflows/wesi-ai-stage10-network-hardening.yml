@@ -60,7 +60,22 @@ jobs:
             test/wesi_remote_worker_pause_lifecycle_test.dart
 
       - name: Analyze
-        run: flutter analyze --no-fatal-infos
+        shell: bash
+        run: |
+          set +e
+          output="$(flutter analyze --no-fatal-infos 2>&1)"
+          status=$?
+          printf '%s\n' "$output"
+          if [ "$status" -ne 0 ]; then
+            while IFS= read -r line; do
+              [ -z "$line" ] && continue
+              safe="${line//'%'/'%25'}"
+              safe="${safe//$'\r'/'%0D'}"
+              safe="${safe//$'\n'/'%0A'}"
+              echo "::error::$safe"
+            done <<< "$output"
+            exit "$status"
+          fi
 
       - name: Full regression suite
         run: flutter test
