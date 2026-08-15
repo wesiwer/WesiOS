@@ -16,7 +16,8 @@ class WesiAiTableData {
     final separator = _cells(lines[1]);
     if (header.length < 2 || separator.length != header.length) return null;
     final separatorPattern = RegExp(r'^:?-{3,}:?$');
-    if (!separator.every((cell) => separatorPattern.hasMatch(cell.trim()))) return null;
+    if (!separator.every((cell) => separatorPattern.hasMatch(cell.trim())))
+      return null;
     final rows = <List<String>>[];
     for (final line in lines.skip(2)) {
       if (!line.contains('|')) break;
@@ -97,7 +98,9 @@ class WesiAiTableBlock extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 7, 6, 6),
             child: Row(
               children: [
-                const Expanded(child: Text('Таблица', style: TextStyle(fontWeight: FontWeight.w700))),
+                const Expanded(
+                    child: Text('Таблица',
+                        style: TextStyle(fontWeight: FontWeight.w700))),
                 IconButton(
                   tooltip: 'Копировать таблицу',
                   visualDensity: VisualDensity.compact,
@@ -113,7 +116,9 @@ class WesiAiTableBlock extends StatelessWidget {
             child: DataTable(
               columns: [
                 for (final header in table.headers)
-                  DataColumn(label: Text(header, style: const TextStyle(fontWeight: FontWeight.w700))),
+                  DataColumn(
+                      label: Text(header,
+                          style: const TextStyle(fontWeight: FontWeight.w700))),
               ],
               rows: [
                 for (final row in table.rows)
@@ -202,8 +207,10 @@ class WesiAiChartSpec {
           if (rawValues is! List) return null;
           final values = <double>[];
           for (final value in rawValues.take(24)) {
-            final number = value is num ? value.toDouble() : double.tryParse('$value');
-            if (number == null || !number.isFinite || number.abs() > 1e15) return null;
+            final number =
+                value is num ? value.toDouble() : double.tryParse('$value');
+            if (number == null || !number.isFinite || number.abs() > 1e15)
+              return null;
             values.add(number);
           }
           if (values.isEmpty) return null;
@@ -219,7 +226,8 @@ class WesiAiChartSpec {
           final y = item['y'];
           final dx = x is num ? x.toDouble() : double.tryParse('$x');
           final dy = y is num ? y.toDouble() : double.tryParse('$y');
-          if (dx == null || dy == null || !dx.isFinite || !dy.isFinite) return null;
+          if (dx == null || dy == null || !dx.isFinite || !dy.isFinite)
+            return null;
           final label = '${item['label'] ?? ''}'.trim();
           if (label.length > 80) return null;
           points.add(WesiAiScatterPoint(x: dx, y: dy, label: label));
@@ -229,7 +237,8 @@ class WesiAiChartSpec {
         if (points.length < 2) return null;
       } else {
         if (labels.isEmpty || series.isEmpty) return null;
-        if (series.any((item) => item.values.length != labels.length)) return null;
+        if (series.any((item) => item.values.length != labels.length))
+          return null;
         if (type == WesiAiChartType.pie && series.length != 1) return null;
       }
       return WesiAiChartSpec(
@@ -271,10 +280,14 @@ class WesiAiChartBlock extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (spec.title.isNotEmpty)
-            Text(spec.title, style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700)),
+            Text(spec.title,
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700)),
           if (spec.description.isNotEmpty) ...[
             const SizedBox(height: 3),
-            Text(spec.description, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
+            Text(spec.description,
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           ],
           const SizedBox(height: 12),
           SizedBox(
@@ -289,7 +302,8 @@ class WesiAiChartBlock extends StatelessWidget {
               ),
             ),
           ),
-          if (spec.type != WesiAiChartType.scatter && spec.series.length > 1) ...[
+          if (spec.type != WesiAiChartType.scatter &&
+              spec.series.length > 1) ...[
             const SizedBox(height: 8),
             Wrap(
               spacing: 12,
@@ -297,7 +311,12 @@ class WesiAiChartBlock extends StatelessWidget {
               children: [
                 for (var index = 0; index < spec.series.length; index++)
                   Row(mainAxisSize: MainAxisSize.min, children: [
-                    Container(width: 10, height: 10, decoration: BoxDecoration(color: accents[index % accents.length], shape: BoxShape.circle)),
+                    Container(
+                        width: 10,
+                        height: 10,
+                        decoration: BoxDecoration(
+                            color: accents[index % accents.length],
+                            shape: BoxShape.circle)),
                     const SizedBox(width: 5),
                     Text(spec.series[index].name),
                   ]),
@@ -316,20 +335,34 @@ class _WesiAiChartPainter extends CustomPainter {
   final Color muted;
   final List<Color> accents;
 
-  const _WesiAiChartPainter({required this.spec, required this.foreground, required this.muted, required this.accents});
+  const _WesiAiChartPainter(
+      {required this.spec,
+      required this.foreground,
+      required this.muted,
+      required this.accents});
 
   @override
   void paint(Canvas canvas, Size size) {
     switch (spec.type) {
-      case WesiAiChartType.bar: _paintBar(canvas, size); break;
-      case WesiAiChartType.line: _paintLine(canvas, size); break;
-      case WesiAiChartType.pie: _paintPie(canvas, size); break;
-      case WesiAiChartType.scatter: _paintScatter(canvas, size); break;
+      case WesiAiChartType.bar:
+        _paintBar(canvas, size);
+        break;
+      case WesiAiChartType.line:
+        _paintLine(canvas, size);
+        break;
+      case WesiAiChartType.pie:
+        _paintPie(canvas, size);
+        break;
+      case WesiAiChartType.scatter:
+        _paintScatter(canvas, size);
+        break;
     }
   }
 
-  Rect _plot(Size size) => Rect.fromLTWH(36, 8, math.max(20.0, size.width - 44), math.max(20.0, size.height - 40));
-  List<double> get _allValues => <double>[for (final s in spec.series) ...s.values];
+  Rect _plot(Size size) => Rect.fromLTWH(
+      36, 8, math.max(20.0, size.width - 44), math.max(20.0, size.height - 40));
+  List<double> get _allValues =>
+      <double>[for (final s in spec.series) ...s.values];
 
   (double, double) _range(List<double> values) {
     var minValue = values.reduce(math.min);
@@ -343,15 +376,20 @@ class _WesiAiChartPainter extends CustomPainter {
     return (minValue, maxValue);
   }
 
-  double _y(double value, Rect plot, double minValue, double maxValue) => plot.bottom - ((value - minValue) / (maxValue - minValue)) * plot.height;
+  double _y(double value, Rect plot, double minValue, double maxValue) =>
+      plot.bottom - ((value - minValue) / (maxValue - minValue)) * plot.height;
 
   void _axes(Canvas canvas, Rect plot, double minValue, double maxValue) {
-    final grid = Paint()..color = muted.withOpacity(0.55)..strokeWidth = 1;
+    final grid = Paint()
+      ..color = muted.withOpacity(0.55)
+      ..strokeWidth = 1;
     for (var i = 0; i <= 4; i++) {
       final y = plot.top + plot.height * i / 4;
       canvas.drawLine(Offset(plot.left, y), Offset(plot.right, y), grid);
       final value = maxValue - (maxValue - minValue) * i / 4;
-      _text(canvas, _format(value), Offset(0, y - 7), 10, foreground.withOpacity(0.72), maxWidth: 34);
+      _text(canvas, _format(value), Offset(0, y - 7), 10,
+          foreground.withOpacity(0.72),
+          maxWidth: 34);
     }
   }
 
@@ -366,12 +404,22 @@ class _WesiAiChartPainter extends CustomPainter {
       for (var s = 0; s < spec.series.length; s++) {
         final value = spec.series[s].values[i];
         final valueY = _y(value, plot, minValue, maxValue);
-        final left = plot.left + i * groupWidth + groupWidth * 0.14 + s * barWidth;
-        final rect = Rect.fromLTRB(left, math.min(zeroY, valueY), left + barWidth * 0.82, math.max(zeroY, valueY));
-        canvas.drawRRect(RRect.fromRectAndRadius(rect, const Radius.circular(3)), Paint()..color = accents[s % accents.length]);
+        final left =
+            plot.left + i * groupWidth + groupWidth * 0.14 + s * barWidth;
+        final rect = Rect.fromLTRB(left, math.min(zeroY, valueY),
+            left + barWidth * 0.82, math.max(zeroY, valueY));
+        canvas.drawRRect(
+            RRect.fromRectAndRadius(rect, const Radius.circular(3)),
+            Paint()..color = accents[s % accents.length]);
       }
       if (spec.labels.length <= 10 || i.isEven) {
-        _text(canvas, spec.labels[i], Offset(plot.left + i * groupWidth, plot.bottom + 6), 9, foreground.withOpacity(0.72), maxWidth: groupWidth);
+        _text(
+            canvas,
+            spec.labels[i],
+            Offset(plot.left + i * groupWidth, plot.bottom + 6),
+            9,
+            foreground.withOpacity(0.72),
+            maxWidth: groupWidth);
       }
     }
   }
@@ -384,36 +432,60 @@ class _WesiAiChartPainter extends CustomPainter {
       final values = spec.series[s].values;
       final path = Path();
       for (var i = 0; i < values.length; i++) {
-        final x = values.length == 1 ? plot.center.dx : plot.left + plot.width * i / (values.length - 1);
+        final x = values.length == 1
+            ? plot.center.dx
+            : plot.left + plot.width * i / (values.length - 1);
         final point = Offset(x, _y(values[i], plot, minValue, maxValue));
-        if (i == 0) path.moveTo(point.dx, point.dy); else path.lineTo(point.dx, point.dy);
-        canvas.drawCircle(point, 3.2, Paint()..color = accents[s % accents.length]);
+        if (i == 0)
+          path.moveTo(point.dx, point.dy);
+        else
+          path.lineTo(point.dx, point.dy);
+        canvas.drawCircle(
+            point, 3.2, Paint()..color = accents[s % accents.length]);
       }
-      canvas.drawPath(path, Paint()..color = accents[s % accents.length]..style = PaintingStyle.stroke..strokeWidth = 2.2..strokeCap = StrokeCap.round..strokeJoin = StrokeJoin.round);
+      canvas.drawPath(
+          path,
+          Paint()
+            ..color = accents[s % accents.length]
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 2.2
+            ..strokeCap = StrokeCap.round
+            ..strokeJoin = StrokeJoin.round);
     }
     for (var i = 0; i < spec.labels.length; i++) {
       if (spec.labels.length > 8 && !i.isEven) continue;
-      final x = spec.labels.length == 1 ? plot.center.dx : plot.left + plot.width * i / (spec.labels.length - 1);
-      _text(canvas, spec.labels[i], Offset(x - 24, plot.bottom + 6), 9, foreground.withOpacity(0.72), maxWidth: 48);
+      final x = spec.labels.length == 1
+          ? plot.center.dx
+          : plot.left + plot.width * i / (spec.labels.length - 1);
+      _text(canvas, spec.labels[i], Offset(x - 24, plot.bottom + 6), 9,
+          foreground.withOpacity(0.72),
+          maxWidth: 48);
     }
   }
 
   void _paintPie(Canvas canvas, Size size) {
-    final values = spec.series.first.values.map((v) => math.max(0.0, v)).toList(growable: false);
+    final values = spec.series.first.values
+        .map((v) => math.max(0.0, v))
+        .toList(growable: false);
     final total = values.fold<double>(0, (sum, value) => sum + value);
     if (total <= 0) return;
     final radius = math.min(size.width * 0.28, size.height * 0.38);
-    final rect = Rect.fromCircle(center: Offset(size.width * 0.34, size.height / 2), radius: radius);
+    final rect = Rect.fromCircle(
+        center: Offset(size.width * 0.34, size.height / 2), radius: radius);
     var start = -math.pi / 2;
     for (var i = 0; i < values.length; i++) {
       final sweep = values[i] / total * math.pi * 2;
-      canvas.drawArc(rect, start, sweep, true, Paint()..color = accents[i % accents.length]);
+      canvas.drawArc(rect, start, sweep, true,
+          Paint()..color = accents[i % accents.length]);
       start += sweep;
     }
     var y = 18.0;
     for (var i = 0; i < spec.labels.length && i < 8; i++) {
-      canvas.drawCircle(Offset(size.width * 0.68, y + 5), 4, Paint()..color = accents[i % accents.length]);
-      _text(canvas, '${spec.labels[i]} · ${_format(values[i] / total * 100)}%', Offset(size.width * 0.68 + 10, y - 2), 10, foreground, maxWidth: size.width * 0.3);
+      canvas.drawCircle(Offset(size.width * 0.68, y + 5), 4,
+          Paint()..color = accents[i % accents.length]);
+      _text(canvas, '${spec.labels[i]} · ${_format(values[i] / total * 100)}%',
+          Offset(size.width * 0.68 + 10, y - 2), 10, foreground,
+          maxWidth: size.width * 0.3);
       y += 24;
     }
   }
@@ -424,8 +496,14 @@ class _WesiAiChartPainter extends CustomPainter {
     final ys = spec.points.map((p) => p.y).toList(growable: false);
     var minX = xs.reduce(math.min), maxX = xs.reduce(math.max);
     var minY = ys.reduce(math.min), maxY = ys.reduce(math.max);
-    if (minX == maxX) { minX -= 1; maxX += 1; }
-    if (minY == maxY) { minY -= 1; maxY += 1; }
+    if (minX == maxX) {
+      minX -= 1;
+      maxX += 1;
+    }
+    if (minY == maxY) {
+      minY -= 1;
+      maxY += 1;
+    }
     _axes(canvas, plot, minY, maxY);
     for (final point in spec.points) {
       final x = plot.left + (point.x - minX) / (maxX - minX) * plot.width;
@@ -434,9 +512,12 @@ class _WesiAiChartPainter extends CustomPainter {
     }
   }
 
-  void _text(Canvas canvas, String value, Offset offset, double size, Color color, {double maxWidth = 80}) {
+  void _text(
+      Canvas canvas, String value, Offset offset, double size, Color color,
+      {double maxWidth = 80}) {
     final painter = TextPainter(
-      text: TextSpan(text: value, style: TextStyle(fontSize: size, color: color)),
+      text:
+          TextSpan(text: value, style: TextStyle(fontSize: size, color: color)),
       textDirection: TextDirection.ltr,
       maxLines: 1,
       ellipsis: '…',
@@ -449,10 +530,14 @@ class _WesiAiChartPainter extends CustomPainter {
     if (abs >= 1e9) return '${(value / 1e9).toStringAsFixed(1)}B';
     if (abs >= 1e6) return '${(value / 1e6).toStringAsFixed(1)}M';
     if (abs >= 1e3) return '${(value / 1e3).toStringAsFixed(1)}K';
-    if ((value - value.roundToDouble()).abs() < 0.001) return value.round().toString();
+    if ((value - value.roundToDouble()).abs() < 0.001)
+      return value.round().toString();
     return value.toStringAsFixed(1);
   }
 
   @override
-  bool shouldRepaint(covariant _WesiAiChartPainter oldDelegate) => oldDelegate.spec != spec || oldDelegate.foreground != foreground || oldDelegate.muted != muted;
+  bool shouldRepaint(covariant _WesiAiChartPainter oldDelegate) =>
+      oldDelegate.spec != spec ||
+      oldDelegate.foreground != foreground ||
+      oldDelegate.muted != muted;
 }

@@ -32,12 +32,15 @@ void main() {
     final budgetText = budget.join(' ').toLowerCase();
     expect(androidText, contains('android'));
     expect(androidText, contains('kotlin'));
-    expect(androidText, anyOf(contains('причин'), contains('исправ'), contains('лог')));
+    expect(androidText,
+        anyOf(contains('причин'), contains('исправ'), contains('лог')));
     expect(domain.join(' ').toLowerCase(), contains('домен'));
     expect(creativeText, contains('облож'));
-    expect(creativeText, anyOf(contains('направлен'), contains('иде'), contains('альтернатив')));
+    expect(creativeText,
+        anyOf(contains('направлен'), contains('иде'), contains('альтернатив')));
     expect(budgetText, contains('бюджет'));
-    expect(budgetText, anyOf(contains('расч'), contains('допущ'), contains('сценар')));
+    expect(budgetText,
+        anyOf(contains('расч'), contains('допущ'), contains('сценар')));
     expect(android, isNot(equals(domain)));
     expect(android, isNot(equals(creative)));
     expect(creative, isNot(equals(budget)));
@@ -45,7 +48,8 @@ void main() {
 
   testWidgets('question block sends a selected quick answer', (tester) async {
     String? answer;
-    const text = '''Нужно уточнение.\n\n```question\n{"prompt":"Какая платформа нужна?","options":["Android","iOS","Windows"],"allowOther":true}\n```''';
+    const text =
+        '''Нужно уточнение.\n\n```question\n{"prompt":"Какая платформа нужна?","options":["Android","iOS","Windows"],"allowOther":true}\n```''';
 
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
@@ -65,7 +69,8 @@ void main() {
     expect(answer, 'Android');
   });
 
-  testWidgets('malformed question JSON fails closed to code rendering', (tester) async {
+  testWidgets('malformed question JSON fails closed to code rendering',
+      (tester) async {
     const text = '```question\nnot-json\n```';
     await tester.pumpWidget(const MaterialApp(
       home: Scaffold(

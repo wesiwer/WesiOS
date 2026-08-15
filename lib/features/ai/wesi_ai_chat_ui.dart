@@ -141,8 +141,7 @@ class WesiAiChatUi {
     String lastUserText = '',
     WesiAiPersona persona = WesiAiPersona.zane,
   }) {
-    final topicSource =
-        lastUserText.trim().isNotEmpty ? lastUserText : answer;
+    final topicSource = lastUserText.trim().isNotEmpty ? lastUserText : answer;
     final topic = _followUpTopic(topicSource);
     if (topic.isEmpty) {
       return const <String>[

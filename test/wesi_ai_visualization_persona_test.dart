@@ -16,7 +16,8 @@ void main() {
       final blocks = WesiAiRichParser.parse(markdown.trim());
       expect(blocks, hasLength(1));
       expect(blocks.single.kind, WesiAiRichBlockKind.table);
-      final table = WesiAiTableData.tryParseMarkdown(blocks.single.text.split('\n'));
+      final table =
+          WesiAiTableData.tryParseMarkdown(blocks.single.text.split('\n'));
       expect(table, isNotNull);
       expect(table!.headers, ['Модель', 'Балл']);
       expect(table.rows, [
@@ -66,12 +67,16 @@ void main() {
 ```
 ''';
       final blocks = WesiAiRichParser.parse(markdown);
-      expect(blocks.any((block) => block.kind == WesiAiRichBlockKind.chart), isTrue);
+      expect(blocks.any((block) => block.kind == WesiAiRichBlockKind.chart),
+          isTrue);
     });
   });
 
-  test('Nirvana keeps ordinary no-profanity voice but allows explicit creative exception', () {
-    final text = File('docs/wesi_ai/personas/NIRVANA_PERSONA.md').readAsStringSync();
+  test(
+      'Nirvana keeps ordinary no-profanity voice but allows explicit creative exception',
+      () {
+    final text =
+        File('docs/wesi_ai/personas/NIRVANA_PERSONA.md').readAsStringSync();
     expect(text, contains('ПРОФЕССИОНАЛЬНОЕ ТВОРЧЕСКОЕ ИСКЛЮЧЕНИЕ'));
     expect(text, contains('рэп/песню/художественный текст/диалог/роль'));
     expect(text, contains('В обычной речи ты не материшься'));

@@ -9,7 +9,8 @@ import 'package:wesios/features/ai/storage/wesi_ai_local_store.dart';
 class _TestController extends WesiAiChatController {
   _TestController(WesiAiLocalStore store) : super(store: store);
 
-  Future<bool> materialize(String id) => materializeConversationForFirstTurn(id);
+  Future<bool> materialize(String id) =>
+      materializeConversationForFirstTurn(id);
 }
 
 void main() {
