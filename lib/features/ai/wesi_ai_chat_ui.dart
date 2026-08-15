@@ -44,9 +44,7 @@ class WesiAiChatUi {
 
   static List<String> followUps(String answer) {
     final lower = answer.toLowerCase();
-    if (lower.contains('ошиб') ||
-        lower.contains('сборк') ||
-        lower.contains('сервер')) {
+    if (lower.contains('ошиб') || lower.contains('сборк') || lower.contains('сервер')) {
       return const <String>[
         'Что проверить следующим?',
         'Покажи основные риски',

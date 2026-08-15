@@ -234,8 +234,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                       Expanded(
                         child: messages.isEmpty
                             ? const Center(
-                                child: Text(
-                                    'История этого чата хранится локально'),
+                                child: Text('История этого чата хранится локально'),
                               )
                             : ListView.builder(
                                 padding: const EdgeInsets.all(12),
@@ -269,7 +268,8 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
                                   border: OutlineInputBorder(),
                                   hintText: 'Сообщение Wesi AI',
                                 ),
-                                onSubmitted: c.sending ? null : (_) => _send(c),
+                                onSubmitted:
+                                    c.sending ? null : (_) => _send(c),
                               ),
                             ),
                             const SizedBox(width: 6),

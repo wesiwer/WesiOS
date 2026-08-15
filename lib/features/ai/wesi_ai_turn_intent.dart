@@ -43,8 +43,8 @@ class WesiAiTurnIntentClassifier {
     };
     if (exact.contains(value)) return true;
     return RegExp(
-          r'^(стой|стоп|остановись|прекрати|отмени|хватит)(\b|[,.!?:;])',
-        ).hasMatch(value) ||
+      r'^(стой|стоп|остановись|прекрати|отмени|хватит)(\b|[,.!?:;])',
+    ).hasMatch(value) ||
         value.startsWith('не делай это') ||
         value.startsWith('дальше не продолжай') ||
         value.startsWith('ничего больше не делай');
@@ -97,6 +97,8 @@ class WesiAiTurnIntentClassifier {
     return markers.any(value.contains);
   }
 
-  static String _normalize(String text) =>
-      text.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  static String _normalize(String text) => text
+      .trim()
+      .toLowerCase()
+      .replaceAll(RegExp(r'\s+'), ' ');
 }

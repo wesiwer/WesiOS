@@ -6,16 +6,7 @@ enum WesiAiLobbyMode { both, smart }
 
 enum WesiAiMessageAuthor { user, zane, nirvana, system, tool }
 
-enum WesiAiMessageKind {
-  text,
-  image,
-  video,
-  audio,
-  file,
-  action,
-  status,
-  error
-}
+enum WesiAiMessageKind { text, image, video, audio, file, action, status, error }
 
 class WesiAiProject {
   final String id;
@@ -47,8 +38,7 @@ class WesiAiProject {
     DateTime? updatedAt,
     bool? pinned,
     bool? archived,
-  }) =>
-      WesiAiProject(
+  }) => WesiAiProject(
         id: id,
         employeeId: employeeId,
         title: title ?? this.title,
@@ -119,8 +109,7 @@ class WesiAiConversation {
     bool? pinned,
     String? projectId,
     bool clearProject = false,
-  }) =>
-      WesiAiConversation(
+  }) => WesiAiConversation(
         id: id,
         employeeId: employeeId,
         title: title ?? this.title,
@@ -146,15 +135,12 @@ class WesiAiConversation {
         'projectId': projectId,
       };
 
-  factory WesiAiConversation.fromJson(Map<String, dynamic> json) =>
-      WesiAiConversation(
+  factory WesiAiConversation.fromJson(Map<String, dynamic> json) => WesiAiConversation(
         id: json['id'] as String,
         employeeId: json['employeeId'] as String,
         title: json['title'] as String? ?? 'Новый чат',
-        persona:
-            WesiAiPersona.values.byName(json['persona'] as String? ?? 'zane'),
-        lobbyMode: WesiAiLobbyMode.values
-            .byName(json['lobbyMode'] as String? ?? 'smart'),
+        persona: WesiAiPersona.values.byName(json['persona'] as String? ?? 'zane'),
+        lobbyMode: WesiAiLobbyMode.values.byName(json['lobbyMode'] as String? ?? 'smart'),
         createdAt: DateTime.parse(json['createdAt'] as String),
         updatedAt: DateTime.parse(json['updatedAt'] as String),
         archived: json['archived'] as bool? ?? false,
@@ -174,16 +160,7 @@ class WesiAiMessage {
   final String? replyToId;
   final Map<String, dynamic> metadata;
 
-  const WesiAiMessage(
-      {required this.id,
-      required this.conversationId,
-      required this.employeeId,
-      required this.author,
-      required this.text,
-      required this.createdAt,
-      this.kind = WesiAiMessageKind.text,
-      this.replyToId,
-      this.metadata = const {}});
+  const WesiAiMessage({required this.id, required this.conversationId, required this.employeeId, required this.author, required this.text, required this.createdAt, this.kind = WesiAiMessageKind.text, this.replyToId, this.metadata = const {}});
 
   WesiAiMessage copyWith({
     WesiAiMessageAuthor? author,
@@ -191,8 +168,7 @@ class WesiAiMessage {
     String? text,
     String? replyToId,
     Map<String, dynamic>? metadata,
-  }) =>
-      WesiAiMessage(
+  }) => WesiAiMessage(
         id: id,
         conversationId: conversationId,
         employeeId: employeeId,
@@ -204,42 +180,16 @@ class WesiAiMessage {
         metadata: metadata ?? this.metadata,
       );
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'conversationId': conversationId,
-        'employeeId': employeeId,
-        'author': author.name,
-        'kind': kind.name,
-        'text': text,
-        'createdAt': createdAt.toIso8601String(),
-        'replyToId': replyToId,
-        'metadata': metadata
-      };
+  Map<String, dynamic> toJson() => {'id': id, 'conversationId': conversationId, 'employeeId': employeeId, 'author': author.name, 'kind': kind.name, 'text': text, 'createdAt': createdAt.toIso8601String(), 'replyToId': replyToId, 'metadata': metadata};
 
-  factory WesiAiMessage.fromJson(Map<String, dynamic> json) => WesiAiMessage(
-      id: json['id'] as String,
-      conversationId: json['conversationId'] as String,
-      employeeId: json['employeeId'] as String,
-      author: WesiAiMessageAuthor.values.byName(json['author'] as String),
-      kind: WesiAiMessageKind.values.byName(json['kind'] as String? ?? 'text'),
-      text: json['text'] as String? ?? '',
-      createdAt: DateTime.parse(json['createdAt'] as String),
-      replyToId: json['replyToId'] as String?,
-      metadata:
-          Map<String, dynamic>.from(json['metadata'] as Map? ?? const {}));
+  factory WesiAiMessage.fromJson(Map<String, dynamic> json) => WesiAiMessage(id: json['id'] as String, conversationId: json['conversationId'] as String, employeeId: json['employeeId'] as String, author: WesiAiMessageAuthor.values.byName(json['author'] as String), kind: WesiAiMessageKind.values.byName(json['kind'] as String? ?? 'text'), text: json['text'] as String? ?? '', createdAt: DateTime.parse(json['createdAt'] as String), replyToId: json['replyToId'] as String?, metadata: Map<String, dynamic>.from(json['metadata'] as Map? ?? const {}));
 }
 
 class WesiAiMemorySnapshot {
   final List<String> shared;
   final List<String> zane;
   final List<String> nirvana;
-  const WesiAiMemorySnapshot(
-      {this.shared = const [], this.zane = const [], this.nirvana = const []});
-  Map<String, dynamic> toJson() =>
-      {'shared': shared, 'zane': zane, 'nirvana': nirvana};
-  factory WesiAiMemorySnapshot.fromJson(Map<String, dynamic> json) =>
-      WesiAiMemorySnapshot(
-          shared: List<String>.from(json['shared'] as List? ?? const []),
-          zane: List<String>.from(json['zane'] as List? ?? const []),
-          nirvana: List<String>.from(json['nirvana'] as List? ?? const []));
+  const WesiAiMemorySnapshot({this.shared = const [], this.zane = const [], this.nirvana = const []});
+  Map<String, dynamic> toJson() => {'shared': shared, 'zane': zane, 'nirvana': nirvana};
+  factory WesiAiMemorySnapshot.fromJson(Map<String, dynamic> json) => WesiAiMemorySnapshot(shared: List<String>.from(json['shared'] as List? ?? const []), zane: List<String>.from(json['zane'] as List? ?? const []), nirvana: List<String>.from(json['nirvana'] as List? ?? const []));
 }

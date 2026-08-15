@@ -173,8 +173,7 @@ class WesiAiContentBlock {
         final status = _text(data['status'], 24).toLowerCase();
         final url = _safeUrl(data['url']);
         // Pending/failed generation may legitimately have no URL yet.
-        if (url.isEmpty && status != 'pending' && status != 'failed')
-          return null;
+        if (url.isEmpty && status != 'pending' && status != 'failed') return null;
         return WesiAiContentBlock(
           type: type,
           data: <String, dynamic>{
@@ -306,8 +305,7 @@ class WesiAiContentParser {
         final id = '${article['id'] ?? ''}'.trim();
         if (id.isEmpty || !seenKnowledge.add(id)) continue;
         final text = '${article['text'] ?? ''}'.trim();
-        final excerpt =
-            text.length <= 360 ? text : '${text.substring(0, 360)}…';
+        final excerpt = text.length <= 360 ? text : '${text.substring(0, 360)}…';
         final block = WesiAiContentBlock.fromJson(<String, dynamic>{
           'type': 'knowledge',
           'data': <String, dynamic>{

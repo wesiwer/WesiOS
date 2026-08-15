@@ -31,24 +31,20 @@ class WesiMediaEngineRunner {
       _ => null,
     };
     if (kind == null) {
-      return const WesiMediaRunResult(
-          ok: false, code: 'WAI_MEDIA_REQUEST_INVALID');
+      return const WesiMediaRunResult(ok: false, code: 'WAI_MEDIA_REQUEST_INVALID');
     }
     if (!await WesiMediaEngineService.isInstalled(kind)) {
-      return const WesiMediaRunResult(
-          ok: false, code: 'WAI_MEDIA_ENGINE_NOT_INSTALLED');
+      return const WesiMediaRunResult(ok: false, code: 'WAI_MEDIA_ENGINE_NOT_INSTALLED');
     }
 
     final prompt = '${raw['prompt'] ?? ''}'.trim();
     if (prompt.isEmpty || prompt.length > 12000) {
-      return const WesiMediaRunResult(
-          ok: false, code: 'WAI_MEDIA_REQUEST_INVALID');
+      return const WesiMediaRunResult(ok: false, code: 'WAI_MEDIA_REQUEST_INVALID');
     }
     final options = raw['options'] is Map
         ? Map<String, dynamic>.from(raw['options'] as Map)
         : <String, dynamic>{};
-    final result =
-        await WesiMediaEngineService.generate(kind, <String, dynamic>{
+    final result = await WesiMediaEngineService.generate(kind, <String, dynamic>{
       'prompt': prompt,
       'options': options,
     });
@@ -60,23 +56,18 @@ class WesiMediaEngineRunner {
     }
 
     final relative = '${result['output'] ?? ''}'.replaceAll('\\', '/').trim();
-    if (relative.isEmpty ||
-        relative.startsWith('/') ||
-        relative.split('/').contains('..')) {
-      return const WesiMediaRunResult(
-          ok: false, code: 'WAI_MEDIA_ENGINE_BAD_OUTPUT');
+    if (relative.isEmpty || relative.startsWith('/') || relative.split('/').contains('..')) {
+      return const WesiMediaRunResult(ok: false, code: 'WAI_MEDIA_ENGINE_BAD_OUTPUT');
     }
     final root = await WesiMediaEngineService.engineDir(kind);
-    final output = File(
-        '${root.path}${Platform.pathSeparator}${relative.replaceAll('/', Platform.pathSeparator)}');
+    final output = File('${root.path}${Platform.pathSeparator}${relative.replaceAll('/', Platform.pathSeparator)}');
     final rootPath = root.absolute.path;
     final outputPath = output.absolute.path;
     final prefix = rootPath.endsWith(Platform.pathSeparator)
         ? rootPath
         : '$rootPath${Platform.pathSeparator}';
     if (!outputPath.startsWith(prefix) || !await output.exists()) {
-      return const WesiMediaRunResult(
-          ok: false, code: 'WAI_MEDIA_ENGINE_BAD_OUTPUT');
+      return const WesiMediaRunResult(ok: false, code: 'WAI_MEDIA_ENGINE_BAD_OUTPUT');
     }
     return WesiMediaRunResult(
       ok: true,
