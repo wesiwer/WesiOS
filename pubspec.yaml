@@ -51,6 +51,7 @@ dependencies:
   archive: ^3.6.1
   local_auth: ^2.2.0
   crypto: ^3.0.3
+  pointycastle: ^3.9.1
   local_notifier: ^0.1.6
   dartssh2: 2.11.0
 
