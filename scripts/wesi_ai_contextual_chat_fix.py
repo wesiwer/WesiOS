@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 from pathlib import Path
 
+# Validation trigger: product changes are committed only after the full one-shot gate passes.
 root = Path(__file__).resolve().parents[1]
 
 screen = root / 'lib/features/ai/ai_assistant_v2_screen.dart'
