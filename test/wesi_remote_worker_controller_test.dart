@@ -438,7 +438,7 @@ Future<_Harness> _harness({
   );
 }
 
-Future<void> _enqueueBuild(
+Future<WesiScheduledJob> _enqueueBuild(
   WesiJobCoordinator coordinator,
   String id,
   DateTime now,
