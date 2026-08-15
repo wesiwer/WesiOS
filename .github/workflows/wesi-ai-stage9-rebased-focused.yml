@@ -1,0 +1,60 @@
+name: Validate rebased Wesi AI Stage 9
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage9-self-debug-artifacts-rebased
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wesi-ai-stage9-rebased-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-stage9-self-debug-artifacts-rebased
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Verify Stage 9 formatting
+        run: >-
+          dart format --output=none --set-exit-if-changed
+          lib/features/ai/runtime/wesi_artifact_models.dart
+          lib/features/ai/runtime/wesi_artifact_validator.dart
+          lib/features/ai/runtime/wesi_artifact_delivery.dart
+          lib/features/ai/runtime/wesi_self_debug_engine.dart
+          lib/features/ai/runtime/wesi_self_debug_job_observer.dart
+          test/wesi_artifact_validator_test.dart
+          test/wesi_self_debug_engine_test.dart
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Stage 6-9 focused regressions
+        run: >-
+          flutter test
+          test/wesi_local_runtime_test.dart
+          test/wesi_runtime_pack_test.dart
+          test/wesi_resource_scheduler_test.dart
+          test/wesi_job_queue_test.dart
+          test/wesi_job_coordinator_test.dart
+          test/wesi_stage8_acceptance_test.dart
+          test/wesi_artifact_validator_test.dart
+          test/wesi_self_debug_engine_test.dart
+      - name: Remove one-shot focused workflow
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/wesi-ai-stage9-rebased-focused.yml
+          git commit -m "chore(ai): remove Stage 9 rebase validation workflow"
+          git push origin HEAD:agent/wesi-ai-stage9-self-debug-artifacts-rebased
