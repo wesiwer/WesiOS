@@ -14,6 +14,8 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
   const lobbyMode = String(body.lobbyMode || "smart").trim().toLowerCase();
   const message = String(body.message || "").trim();
   const summary = String(body.summary || "").trim();
+  const projectContext = String(body.projectContext || "").trim();
+  const taskState = body.taskState && typeof body.taskState === "object" && !Array.isArray(body.taskState) ? body.taskState : {};
   const conversationId = String(body.conversationId || "").trim();
   const activeOrganizationId = String(body.activeOrganizationId || "").trim();
   const history = Array.isArray(body.messages) ? body.messages : [];
@@ -32,7 +34,9 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
   if ((!message && !attachmentsRaw.length) || message.length > 32000) {
     throw new BadRequestError("Некорректное сообщение Wesi AI");
   }
-  if (summary.length > 64000 || history.length > 100 || conversationId.length > 160) {
+  let taskStateJson = "{}";
+  try { taskStateJson = JSON.stringify(taskState); } catch (_) { throw new BadRequestError("Некорректный task state Wesi AI"); }
+  if (summary.length > 64000 || projectContext.length > 64000 || taskStateJson.length > 12000 || history.length > 100 || conversationId.length > 160) {
     throw new BadRequestError("Слишком большой контекст Wesi AI");
   }
   if (body.provider != null || body.model != null || body.providerModel != null) {
@@ -89,9 +93,12 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
   const runtimeContext = tools.context(e, ctx, activeOrganizationId);
   const systemParts = [personaBundle.prompt];
   if (summary) systemParts.push("[WESI_AI_CONVERSATION_SUMMARY]\n" + summary);
+  if (projectContext) systemParts.push("[WESI_AI_PROJECT_CONTEXT]\n" + projectContext);
+  if (taskStateJson !== "{}") systemParts.push("[WESI_AI_TASK_STATE]\n" + taskStateJson);
   if (cleanMemory.shared.length) systemParts.push("[WESI_AI_SHARED_MEMORY]\n" + cleanMemory.shared.join("\n"));
   const personaMemory = persona === "zane" ? cleanMemory.zane : cleanMemory.nirvana;
   if (personaMemory.length) systemParts.push("[WESI_AI_PERSONA_MEMORY]\n" + personaMemory.join("\n"));
+  if (cleanMemory.project.length) systemParts.push("[WESI_AI_PROJECT_MEMORY]\n" + cleanMemory.project.join("\n"));
   if (cleanAttachments.length) {
     systemParts.push(
       "[WESI_AI_ATTACHMENTS]\n" +

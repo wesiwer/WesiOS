@@ -165,8 +165,8 @@ module.exports = {
   },
 
   sanitizeMemory: function(memory) {
-    const result = {shared: [], zane: [], nirvana: []};
-    for (const key of ["shared", "zane", "nirvana"]) {
+    const result = {shared: [], zane: [], nirvana: [], project: []};
+    for (const key of ["shared", "zane", "nirvana", "project"]) {
       const values = Array.isArray(memory[key]) ? memory[key] : [];
       result[key] = values.slice(0, 80).map(function(v) { return String(v).slice(0, 4000); });
     }

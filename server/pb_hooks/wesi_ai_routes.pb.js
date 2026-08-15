@@ -52,6 +52,8 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const lobbyMode = String(body.lobbyMode || "smart").trim().toLowerCase();
   const message = String(body.message || "").trim();
   const summary = String(body.summary || "").trim();
+  const projectContext = String(body.projectContext || "").trim();
+  const taskState = body.taskState && typeof body.taskState === "object" && !Array.isArray(body.taskState) ? body.taskState : {};
   const activeOrganizationId = String(body.activeOrganizationId || "").trim();
   const history = Array.isArray(body.messages) ? body.messages : [];
   const memory = body.memory && typeof body.memory === "object" ? body.memory : {};
@@ -61,7 +63,9 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   if (["fast", "pro", "maximum"].indexOf(tier) < 0) throw new BadRequestError("Некорректный уровень Wesi AI");
   if (persona === "lobby" && ["both", "smart"].indexOf(lobbyMode) < 0) throw new BadRequestError("Некорректный режим лобби");
   if ((!message && !attachmentsRaw.length) || message.length > 32000) throw new BadRequestError("Некорректное сообщение Wesi AI");
-  if (summary.length > 64000 || history.length > 100) throw new BadRequestError("Слишком большой контекст Wesi AI");
+  let taskStateJson = "{}";
+  try { taskStateJson = JSON.stringify(taskState); } catch (_) { throw new BadRequestError("Некорректный task state Wesi AI"); }
+  if (summary.length > 64000 || projectContext.length > 64000 || taskStateJson.length > 12000 || history.length > 100) throw new BadRequestError("Слишком большой контекст Wesi AI");
   if (body.provider != null || body.model != null || body.providerModel != null) throw new BadRequestError("Недоступная настройка Wesi AI");
 
   const cleanAttachments = [];
@@ -111,9 +115,12 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const runtimeContext = tools.context(e, ctx, activeOrganizationId);
   const systemParts = [personaBundle.prompt];
   if (summary) systemParts.push("[WESI_AI_CONVERSATION_SUMMARY]\n" + summary);
+  if (projectContext) systemParts.push("[WESI_AI_PROJECT_CONTEXT]\n" + projectContext);
+  if (taskStateJson !== "{}") systemParts.push("[WESI_AI_TASK_STATE]\n" + taskStateJson);
   if (cleanMemory.shared.length) systemParts.push("[WESI_AI_SHARED_MEMORY]\n" + cleanMemory.shared.join("\n"));
   const personaMemory = persona === "zane" ? cleanMemory.zane : persona === "nirvana" ? cleanMemory.nirvana : cleanMemory.zane.concat(cleanMemory.nirvana);
   if (personaMemory.length) systemParts.push("[WESI_AI_PERSONA_MEMORY]\n" + personaMemory.join("\n"));
+  if (cleanMemory.project.length) systemParts.push("[WESI_AI_PROJECT_MEMORY]\n" + cleanMemory.project.join("\n"));
   if (persona === "lobby") systemParts.push("[WESI_AI_LOBBY_MODE]\n" + lobbyMode);
   if (cleanAttachments.length) {
     systemParts.push(

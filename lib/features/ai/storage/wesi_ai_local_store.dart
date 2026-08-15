@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:hive/hive.dart';
 
+import '../memory/wesi_ai_memory_models.dart';
 import '../models/wesi_ai_chat_models.dart';
 
 enum WesiAiPendingQueueStatus { queued, inflight, completed }
@@ -144,7 +145,7 @@ class WesiAiPendingQueueItem {
 
 class WesiAiLocalStore {
   static const String boxName = 'wesios_ai_local_v1';
-  static const int schemaVersion = 2;
+  static const int schemaVersion = 3;
   final String employeeId;
   const WesiAiLocalStore(this.employeeId);
 
@@ -259,6 +260,9 @@ class WesiAiLocalState {
   final List<WesiAiConversation> conversations;
   final List<WesiAiMessage> messages;
   final WesiAiMemorySnapshot memory;
+  final List<WesiAiMemoryEntry> memoryEntries;
+  final WesiAiMemorySettings memorySettings;
+  final Map<String, WesiAiConversationMemoryState> conversationMemory;
 
   const WesiAiLocalState({
     required this.employeeId,
@@ -269,6 +273,9 @@ class WesiAiLocalState {
     required this.conversations,
     required this.messages,
     required this.memory,
+    this.memoryEntries = const <WesiAiMemoryEntry>[],
+    this.memorySettings = const WesiAiMemorySettings(),
+    this.conversationMemory = const <String, WesiAiConversationMemoryState>{},
   });
 
   factory WesiAiLocalState.empty(String employeeId) => WesiAiLocalState(
@@ -280,6 +287,9 @@ class WesiAiLocalState {
         conversations: const [],
         messages: const [],
         memory: const WesiAiMemorySnapshot(),
+        memoryEntries: const <WesiAiMemoryEntry>[],
+        memorySettings: const WesiAiMemorySettings(),
+        conversationMemory: const <String, WesiAiConversationMemoryState>{},
       );
 
   WesiAiConversation? get activeConversation {
@@ -309,6 +319,24 @@ class WesiAiLocalState {
     return result;
   }
 
+  static WesiAiMemorySnapshot _snapshotFromEntries(
+    List<WesiAiMemoryEntry> entries,
+  ) =>
+      WesiAiMemorySnapshot(
+        shared: entries
+            .where((entry) => entry.scope == WesiAiMemoryScope.shared)
+            .map((entry) => entry.text)
+            .toList(growable: false),
+        zane: entries
+            .where((entry) => entry.scope == WesiAiMemoryScope.zane)
+            .map((entry) => entry.text)
+            .toList(growable: false),
+        nirvana: entries
+            .where((entry) => entry.scope == WesiAiMemoryScope.nirvana)
+            .map((entry) => entry.text)
+            .toList(growable: false),
+      );
+
   WesiAiLocalState copyWith({
     WesiAiTier? tier,
     String? activeConversationId,
@@ -319,6 +347,9 @@ class WesiAiLocalState {
     List<WesiAiConversation>? conversations,
     List<WesiAiMessage>? messages,
     WesiAiMemorySnapshot? memory,
+    List<WesiAiMemoryEntry>? memoryEntries,
+    WesiAiMemorySettings? memorySettings,
+    Map<String, WesiAiConversationMemoryState>? conversationMemory,
   }) =>
       WesiAiLocalState(
         employeeId: employeeId,
@@ -332,7 +363,13 @@ class WesiAiLocalState {
         projects: projects ?? this.projects,
         conversations: conversations ?? this.conversations,
         messages: messages ?? this.messages,
-        memory: memory ?? this.memory,
+        memory: memory ??
+            (memoryEntries == null
+                ? this.memory
+                : _snapshotFromEntries(memoryEntries)),
+        memoryEntries: memoryEntries ?? this.memoryEntries,
+        memorySettings: memorySettings ?? this.memorySettings,
+        conversationMemory: conversationMemory ?? this.conversationMemory,
       );
 
   Map<String, dynamic> toJson() => {
@@ -344,7 +381,11 @@ class WesiAiLocalState {
         'projects': projects.map((e) => e.toJson()).toList(),
         'conversations': conversations.map((e) => e.toJson()).toList(),
         'messages': messages.map((e) => e.toJson()).toList(),
-        'memory': memory.toJson(),
+        'memory': _snapshotFromEntries(memoryEntries).toJson(),
+        'memoryEntries': memoryEntries.map((entry) => entry.toJson()).toList(),
+        'memorySettings': memorySettings.toJson(),
+        'conversationMemory':
+            conversationMemory.values.map((item) => item.toJson()).toList(),
       };
 
   factory WesiAiLocalState.fromJson(Map<String, dynamic> json,
@@ -424,14 +465,79 @@ class WesiAiLocalState {
       activeProjectId = rawActiveProject;
     }
 
-    WesiAiMemorySnapshot memory = const WesiAiMemorySnapshot();
+    WesiAiMemorySnapshot legacyMemory = const WesiAiMemorySnapshot();
     try {
       final rawMemory = json['memory'];
       if (rawMemory is Map) {
-        memory =
+        legacyMemory =
             WesiAiMemorySnapshot.fromJson(Map<String, dynamic>.from(rawMemory));
       }
     } catch (_) {}
+
+    final memoryEntries = <WesiAiMemoryEntry>[];
+    final rawEntries = json['memoryEntries'];
+    if (rawEntries is List) {
+      for (final raw in rawEntries) {
+        try {
+          if (raw is! Map) continue;
+          memoryEntries.add(WesiAiMemoryEntry.fromJson(
+            Map<String, dynamic>.from(raw),
+            expectedEmployeeId: expectedEmployeeId,
+          ));
+        } catch (_) {}
+      }
+    }
+    if (memoryEntries.isEmpty) {
+      final migratedAt = DateTime.now();
+      void migrate(List<String> values, WesiAiMemoryScope scope) {
+        for (var index = 0; index < values.length; index++) {
+          final text = values[index].trim();
+          if (text.isEmpty || text.length > 2000) continue;
+          memoryEntries.add(WesiAiMemoryEntry(
+            id: 'memory_migrated_${scope.name}_$index',
+            employeeId: expectedEmployeeId,
+            scope: scope,
+            text: text,
+            createdAt: migratedAt,
+            updatedAt: migratedAt,
+          ));
+        }
+      }
+
+      migrate(legacyMemory.shared, WesiAiMemoryScope.shared);
+      migrate(legacyMemory.zane, WesiAiMemoryScope.zane);
+      migrate(legacyMemory.nirvana, WesiAiMemoryScope.nirvana);
+    }
+
+    var memorySettings = const WesiAiMemorySettings();
+    try {
+      final rawSettings = json['memorySettings'];
+      if (rawSettings is Map) {
+        memorySettings = WesiAiMemorySettings.fromJson(
+          Map<String, dynamic>.from(rawSettings),
+        );
+      }
+    } catch (_) {}
+
+    final conversationMemory = <String, WesiAiConversationMemoryState>{};
+    for (final conversation in conversations) {
+      conversationMemory[conversation.id] = WesiAiConversationMemoryState(
+        conversationId: conversation.id,
+      );
+    }
+    final rawConversationMemory = json['conversationMemory'];
+    if (rawConversationMemory is List) {
+      for (final raw in rawConversationMemory) {
+        try {
+          if (raw is! Map) continue;
+          final item = WesiAiConversationMemoryState.fromJson(
+            Map<String, dynamic>.from(raw),
+            knownConversationIds: conversationIds,
+          );
+          conversationMemory[item.conversationId] = item;
+        } catch (_) {}
+      }
+    }
 
     return WesiAiLocalState(
       employeeId: expectedEmployeeId,
@@ -441,7 +547,13 @@ class WesiAiLocalState {
       projects: projects,
       conversations: conversations,
       messages: messages,
-      memory: memory,
+      memory: _snapshotFromEntries(memoryEntries),
+      memoryEntries: List<WesiAiMemoryEntry>.unmodifiable(memoryEntries),
+      memorySettings: memorySettings,
+      conversationMemory:
+          Map<String, WesiAiConversationMemoryState>.unmodifiable(
+        conversationMemory,
+      ),
     );
   }
 }
