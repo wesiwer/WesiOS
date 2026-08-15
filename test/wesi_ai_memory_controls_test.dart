@@ -53,7 +53,7 @@ void main() {
     expect(store.saved, isNotNull);
   });
 
-  test('project memory requires active project and clear only affects that project', () async {
+  test('project memory requires active project', () async {
     final store = _MemoryStore('employee-project-memory');
     final controller = WesiAiChatController(store: store);
     await controller.load();
@@ -73,7 +73,9 @@ void main() {
       <String, dynamic>{
         'conversationId': 'conversation-1',
         'rollingSummary': 'summary',
-        'taskState': <String, dynamic>{'payload': 'x' * 13000},
+        'taskState': <String, dynamic>{
+          'payload': List<String>.filled(13000, 'x').join(),
+        },
         'summarizedMessageCount': 3,
         'memoryEnabled': true,
       },
