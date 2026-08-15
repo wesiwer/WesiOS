@@ -8,7 +8,7 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'wesi-ai-stage-test-'));
 process.env.WESI_RELAY_UPLOAD_DIR = root;
 
 const staged = await import(`./staged-upload.mjs?test=${Date.now()}`);
-const {prepareGeminiAttachments} = await import(`./attachment-preprocessor.mjs?test=${Date.now()}`);
+const {prepareGeminiAttachments, deleteStagedUploads} = await import(`./attachment-preprocessor.mjs?test=${Date.now()}`);
 
 test.after(() => {
   fs.rmSync(root, {recursive: true, force: true});
@@ -22,7 +22,7 @@ test('staged upload rejects oversized metadata before allocating file data', () 
   }), /WAI_UPLOAD_TOO_LARGE/);
 });
 
-test('staged upload assembles bounded chunks and resolves opaque transport ref', async () => {
+test('staged upload assembles bounded chunks, resolves ref and can be released immediately', async () => {
   const text = '# Wesi AI\n' + 'large staged markdown line\n'.repeat(45000);
   const source = Buffer.from(text, 'utf8');
   assert.ok(source.length > staged.STAGED_CHUNK_BYTES);
@@ -54,8 +54,18 @@ test('staged upload assembles bounded chunks and resolves opaque transport ref',
   const prepared = await prepareGeminiAttachments([transport]);
   assert.equal(prepared.descriptors[0].name, 'export.md');
   assert.equal(prepared.descriptors[0].byteSize, source.length);
+  assert.deepEqual(prepared.stagedUploadIds, [started.id]);
   assert.match(prepared.parts[0].text, /WESI_AI_ATTACHMENT_TEXT export\.md/);
   assert.match(prepared.parts[0].text, /# Wesi AI/);
+
+  deleteStagedUploads(prepared.stagedUploadIds);
+  const refBytes = Buffer.from(transport.dataBase64, 'base64');
+  assert.throws(() => staged.resolveStagedAttachment({
+    name: transport.name,
+    mimeType: transport.mimeType,
+    byteSize: refBytes.length,
+    bytes: refBytes,
+  }), /WAI_UPLOAD_NOT_FOUND/);
 });
 
 test('staged upload rejects a chunk with wrong length', () => {
