@@ -715,13 +715,37 @@ class WesiLocalRuntimeExecutor {
       );
     }
 
-    final client = httpClientFactory();
-    try {
-      for (var redirect = 0; redirect <= 5; redirect++) {
-        await WesiLocalRuntimePolicy.requirePublicHttpDestination(uri);
+    for (var redirect = 0; redirect <= 5; redirect++) {
+      final requestUri = uri;
+      final addresses = await InternetAddress.lookup(requestUri.host);
+      if (addresses.isEmpty ||
+          addresses.any(WesiLocalRuntimePolicy.isPrivateOrSpecialAddress)) {
+        throw const WesiLocalRuntimePolicyException(
+          'WLR_SSRF_BLOCKED',
+          'HTTP-назначение попадает в private/internal/special network',
+        );
+      }
+      final pinnedAddress = addresses.first;
+      final expectedHost = requestUri.host.toLowerCase();
+      final client = httpClientFactory()
+        ..findProxy = (_) => 'DIRECT'
+        ..connectionFactory = (url, proxyHost, proxyPort) {
+          if (proxyHost != null || proxyPort != null ||
+              url.host.toLowerCase() != expectedHost) {
+            throw const WesiLocalRuntimePolicyException(
+              'WLR_SSRF_BLOCKED',
+              'HTTP connection не соответствует проверенному назначению',
+            );
+          }
+          final port = url.hasPort
+              ? url.port
+              : (url.scheme.toLowerCase() == 'https' ? 443 : 80);
+          return Socket.startConnect(pinnedAddress, port);
+        };
+      try {
         final request = method == 'GET'
-            ? await client.getUrl(uri)
-            : await client.postUrl(uri);
+            ? await client.getUrl(requestUri)
+            : await client.postUrl(requestUri);
         request.followRedirects = false;
         headers.forEach(request.headers.set);
         if (bodyBytes.isNotEmpty) request.add(bodyBytes);
@@ -741,7 +765,10 @@ class WesiLocalRuntimeExecutor {
               'Слишком много или повреждённый HTTP redirect',
             );
           }
-          uri = WesiLocalRuntimePolicy.validateHttpUri(uri.resolve(location), context);
+          uri = WesiLocalRuntimePolicy.validateHttpUri(
+            requestUri.resolve(location),
+            context,
+          );
           headers = const <String, String>{};
           await response.drain<void>();
           continue;
@@ -760,20 +787,20 @@ class WesiLocalRuntimeExecutor {
           message: 'HTTP ${response.statusCode}',
           data: <String, dynamic>{
             'status': response.statusCode,
-            'url': uri.toString(),
+            'url': requestUri.toString(),
             'contentType': contentType,
             'body': collected.text,
             if (collected.truncated) 'truncated': true,
           },
         );
+      } finally {
+        client.close(force: true);
       }
-      throw const WesiLocalRuntimePolicyException(
-        'WLR_HTTP_REDIRECT_FAILED',
-        'Слишком много HTTP redirect',
-      );
-    } finally {
-      client.close(force: true);
     }
+    throw const WesiLocalRuntimePolicyException(
+      'WLR_HTTP_REDIRECT_FAILED',
+      'Слишком много HTTP redirect',
+    );
   }
 
   Future<_BoundedText> _collectHttpBody(
