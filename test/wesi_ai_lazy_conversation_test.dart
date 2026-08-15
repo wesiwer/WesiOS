@@ -41,7 +41,9 @@ void main() {
     final secondDraft = controller.state.activeConversation;
     expect(secondDraft, isNotNull);
     expect(secondDraft!.id, isNot(firstDraft.id));
-    expect(controller.state.conversations, hasLength(1));
+    expect(controller.state.conversations, hasLength(2));
+    expect(controller.isTransientConversation(firstDraft.id), isTrue);
+    expect(controller.isTransientConversation(secondDraft.id), isTrue);
     expect((await store.load()).conversations, isEmpty);
 
     expect(await controller.materialize(secondDraft.id), isTrue);
@@ -49,5 +51,6 @@ void main() {
     expect(durable.conversations, hasLength(1));
     expect(durable.conversations.single.id, secondDraft.id);
     expect(durable.activeConversationId, secondDraft.id);
+    expect(controller.isTransientConversation(firstDraft.id), isTrue);
   });
 }
