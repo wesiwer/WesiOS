@@ -4,8 +4,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/wesi_ai_activity.dart';
+import 'wesi_ai_visualization.dart';
 
-enum WesiAiRichBlockKind { text, code, quote, draft, clarification }
+enum WesiAiRichBlockKind {
+  text,
+  code,
+  quote,
+  draft,
+  clarification,
+  table,
+  chart
+}
 
 class WesiAiRichBlock {
   final WesiAiRichBlockKind kind;
@@ -59,15 +68,36 @@ class WesiAiRichParser {
         }.contains(lower);
         final kind = lower == 'question'
             ? WesiAiRichBlockKind.clarification
-            : draft
-                ? WesiAiRichBlockKind.draft
-                : WesiAiRichBlockKind.code;
+            : const <String>{'chart', 'wesi-chart', 'wesi_chart'}
+                    .contains(lower)
+                ? WesiAiRichBlockKind.chart
+                : draft
+                    ? WesiAiRichBlockKind.draft
+                    : WesiAiRichBlockKind.code;
         blocks.add(WesiAiRichBlock(
           kind,
           body.join('\n'),
           language: language,
         ));
         continue;
+      }
+      if (line.contains('|') && index + 1 < lines.length) {
+        final tableLines = <String>[line, lines[index + 1]];
+        var scan = index + 2;
+        while (scan < lines.length && lines[scan].contains('|')) {
+          tableLines.add(lines[scan]);
+          scan++;
+        }
+        final parsedTable = WesiAiTableData.tryParseMarkdown(tableLines);
+        if (parsedTable != null) {
+          flushText();
+          blocks.add(WesiAiRichBlock(
+            WesiAiRichBlockKind.table,
+            tableLines.take(2 + parsedTable.rows.length).join('\n'),
+          ));
+          index += 2 + parsedTable.rows.length;
+          continue;
+        }
       }
       if (line.trimLeft().startsWith('>')) {
         flushText();
@@ -258,6 +288,24 @@ class WesiAiRichMessage extends StatelessWidget {
               question: question,
               onAnswer: onQuickReply,
             ));
+          }
+          break;
+        case WesiAiRichBlockKind.table:
+          final table =
+              WesiAiTableData.tryParseMarkdown(block.text.split('\n'));
+          if (table == null) {
+            widgets.add(WesiAiFormattedText(text: block.text));
+          } else {
+            widgets.add(WesiAiTableBlock(table: table));
+          }
+          break;
+        case WesiAiRichBlockKind.chart:
+          final chart = WesiAiChartSpec.tryParse(block.text);
+          if (chart == null) {
+            widgets.add(
+                WesiAiCodeBlock(code: block.text, language: block.language));
+          } else {
+            widgets.add(WesiAiChartBlock(spec: chart));
           }
           break;
       }
