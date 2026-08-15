@@ -52,10 +52,8 @@ jobs:
           grep -q 'WESI_AI_UNTRUSTED_EXTERNAL_CONTENT' server/pb_hooks/wesi_ai_routes.pb.js
           grep -q 'GITHUB_WRITE_RESULT_UNKNOWN' server/pb_hooks/wesi_ai_github_connector.js
           grep -q 'GITHUB_PROTECTED_BRANCH' server/pb_hooks/wesi_ai_github_connector.js
-          if grep -R --line-number -E 'wesios_records|const GITHUB_COLL *= *["'"']ai_github_connector["'"']' \
-            server/pb_hooks/wesi_ai_github_connector.js \
-            server/pb_hooks/wesi_ai_connectors.pb.js \
-            server/pb_hooks/wesi_ai_connector_vault.js; then
+          files=(server/pb_hooks/wesi_ai_github_connector.js server/pb_hooks/wesi_ai_connectors.pb.js server/pb_hooks/wesi_ai_connector_vault.js)
+          if grep -n -F 'wesios_records' "${files[@]}" || grep -n -F 'const GITHUB_COLL = "ai_github_connector"' "${files[@]}"; then
             echo '::error::Legacy client-synced GitHub credential storage leaked into secure connector path'
             exit 1
           fi
