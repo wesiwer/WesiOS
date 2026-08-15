@@ -533,6 +533,15 @@ class WesiAiChatController extends ChangeNotifier {
           activity.add(copy);
         }
       }
+      final completedAt = DateTime.now().toUtc().toIso8601String();
+      for (var index = 0; index < activity.length; index++) {
+        final current = activity[index];
+        if ('${current['status'] ?? ''}' != 'start') continue;
+        final closed = Map<String, dynamic>.from(current);
+        closed['status'] = 'done';
+        closed['completedAt'] = completedAt;
+        activity[index] = closed;
+      }
       final at = DateTime.now();
       final assistant = WesiAiMessage(
         id: streamVisible
@@ -546,6 +555,13 @@ class WesiAiChatController extends ChangeNotifier {
         metadata: <String, dynamic>{
           'requestId': reply.requestId,
           if (streamVisible) 'transportStreamed': true,
+          if (activity.isNotEmpty)
+            'activity': activity
+                .map((item) => Map<String, dynamic>.from(item))
+                .toList(growable: false),
+          'workStartedAt': workStartedAt.toIso8601String(),
+          'workDurationMs':
+              DateTime.now().toUtc().difference(workStartedAt).inMilliseconds,
           if (reply.blocks.isNotEmpty)
             'blocks': reply.blocks
                 .map((block) => block.toJson())
