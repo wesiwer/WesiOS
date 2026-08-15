@@ -4,6 +4,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../team/services/team_service.dart';
+import 'backup/wesi_ai_backup_sheet.dart';
 import 'controllers/wesi_ai_chat_controller.dart';
 import 'models/wesi_ai_attachment.dart';
 import 'memory/wesi_ai_memory_sheet.dart';
@@ -194,6 +195,16 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Backup и перенос Wesi AI',
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (_) => WesiAiBackupSheet(controller: controller),
+            ),
+            icon: const Icon(Icons.backup_outlined),
+          ),
           IconButton(
             tooltip: 'Память Wesi AI',
             onPressed: () => showModalBottomSheet<void>(
