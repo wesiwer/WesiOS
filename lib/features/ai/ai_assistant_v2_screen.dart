@@ -418,8 +418,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                 avatar: const Icon(Icons.spa_outlined, size: 16),
                 label: const Text('Нирвана'),
                 onPressed: enabled
-                    ? () =>
-                        controller.createConversation(WesiAiPersona.nirvana)
+                    ? () => controller.createConversation(WesiAiPersona.nirvana)
                     : null,
               ),
               ActionChip(
@@ -510,6 +509,12 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
     final hasLastError =
         messages.isNotEmpty && messages.last.kind == WesiAiMessageKind.error;
+    final lastErrorCode =
+        hasLastError ? '${messages.last.metadata['code'] ?? ''}' : '';
+    final canRegenerateLastResponse = hasLastError &&
+        !lastErrorCode.startsWith('WAI_QUEUE_RECOVERY_') &&
+        lastErrorCode != 'WAI_REATTACH_REQUIRED' &&
+        lastErrorCode != 'WAI_QUEUE_PERSISTENCE_FAILED';
     return Column(
       children: [
         _conversationHeader(controller, active),
@@ -520,8 +525,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                   controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
                   itemCount: messages.length,
-                  itemBuilder: (context, index) =>
-                      _messageTile(messages[index], index == messages.length - 1),
+                  itemBuilder: (context, index) => _messageTile(
+                      messages[index], index == messages.length - 1),
                 ),
         ),
         if (hasLastError && !controller.processing)
@@ -530,11 +535,12 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
             child: Wrap(
               spacing: 8,
               children: [
-                FilledButton.tonalIcon(
-                  onPressed: controller.regenerateLastResponse,
-                  icon: const Icon(Icons.refresh),
-                  label: const Text('Повторить ответ'),
-                ),
+                if (canRegenerateLastResponse)
+                  FilledButton.tonalIcon(
+                    onPressed: controller.regenerateLastResponse,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Повторить ответ'),
+                  ),
                 TextButton.icon(
                   onPressed: controller.clearLastError,
                   icon: const Icon(Icons.close),
@@ -957,7 +963,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                           icon: const Icon(Icons.photo_camera_outlined),
                         ),
                         const Spacer(),
-                        if (controller.sending || controller.queuedTurnCount > 0)
+                        if (controller.sending ||
+                            controller.queuedTurnCount > 0)
                           Padding(
                             padding: const EdgeInsets.only(right: 6),
                             child: Text(
@@ -975,8 +982,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                               controller.processing || _session?.active == true
                                   ? null
                                   : _toggleVoice,
-                          icon:
-                              Icon(_voice.listening ? Icons.stop : Icons.mic_none),
+                          icon: Icon(
+                              _voice.listening ? Icons.stop : Icons.mic_none),
                         ),
                         IconButton(
                           tooltip: _session?.active == true
@@ -1069,17 +1076,19 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     final text = _composer.text.trim();
     if (text.isEmpty && _attachments.isEmpty) return;
     final attachments = List<WesiAiAttachment>.from(_attachments);
-    final result = controller.submitUserMessage(
+    final result = await controller.submitUserMessage(
       text,
       attachments: attachments,
     );
+    if (!mounted) return;
     if (result != WesiAiMessageSubmitResult.accepted) {
-      if (!mounted) return;
       final message = switch (result) {
         WesiAiMessageSubmitResult.queueFull =>
           'Очередь заполнена. Дождитесь обработки сообщения.',
         WesiAiMessageSubmitResult.invalidAttachments =>
           'Не удалось отправить сообщение: проверьте вложения.',
+        WesiAiMessageSubmitResult.persistenceFailed =>
+          'Не удалось надёжно сохранить сообщение. Текст оставлен в поле ввода.',
         WesiAiMessageSubmitResult.unavailable =>
           'Не удалось отправить сообщение в текущий чат.',
         WesiAiMessageSubmitResult.accepted => '',
@@ -1374,8 +1383,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
       await _moveConversation(controller, conversation);
     } else if (action == 'archive') {
       await controller.archiveConversation(conversation.id);
-    } else if (action == 'delete' &&
-        await _confirmDelete(conversation.title)) {
+    } else if (action == 'delete' && await _confirmDelete(conversation.title)) {
       await controller.deleteConversation(conversation.id);
     }
   }
@@ -1421,8 +1429,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   ) async {
     if (action == 'restore') {
       await controller.restoreConversation(conversation.id);
-    } else if (action == 'delete' &&
-        await _confirmDelete(conversation.title)) {
+    } else if (action == 'delete' && await _confirmDelete(conversation.title)) {
       await controller.deleteConversation(conversation.id);
     }
   }
