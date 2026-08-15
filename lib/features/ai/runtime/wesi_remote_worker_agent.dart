@@ -384,6 +384,24 @@ class WesiRemoteWorkerAgent {
     }
 
     if (outcome.disposition == WesiRemoteWorkerExecutionDisposition.paused) {
+      if (!control.pauseRequested) {
+        final failed = _resultMessage(
+          assignment,
+          leaseId: leaseId,
+          generation: generation,
+          sequence: 3,
+          now: completedAt,
+          outcome: const WesiRemoteWorkerExecutionOutcome(
+            disposition: WesiRemoteWorkerExecutionDisposition.failed,
+            code: 'WRW_UNEXPECTED_PAUSE',
+            message:
+                'Remote execution reported a pause without a Control Plane pause request',
+          ),
+        );
+        await receipts.markCompleted(assignment.messageId, failed);
+        await transport.sendWorkerMessage(credential, failed, now: completedAt);
+        return;
+      }
       await transport.sendWorkerMessage(
         credential,
         WesiRemoteJobMessage(
@@ -403,6 +421,17 @@ class WesiRemoteWorkerAgent {
         ),
         now: completedAt,
       );
+      final pauseId = control.pauseMessageId;
+      if (pauseId != null) {
+        await _sendAck(
+          jobId: assignment.jobId,
+          leaseId: leaseId,
+          generation: generation,
+          ackedMessageId: pauseId,
+          sequence: 4,
+          now: completedAt,
+        );
+      }
       return;
     }
 
