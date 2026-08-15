@@ -240,4 +240,68 @@ void main() {
       isFalse,
     );
   });
+
+  test('package decoder rejects duplicate archive names', () async {
+    final manifest = utf8.encode(jsonEncode(<String, dynamic>{
+      'format': 'wesi-ai-backup',
+      'version': 1,
+      'employeeId': 'employee_duplicate',
+      'createdAt': DateTime(2026, 8, 15).toUtc().toIso8601String(),
+      'projects': <dynamic>[],
+      'conversations': <dynamic>[],
+      'messages': <dynamic>[],
+      'memoryEntries': <dynamic>[],
+      'memorySettings': <String, dynamic>{},
+      'conversationMemory': <dynamic>[],
+      'artifacts': <dynamic>[],
+    }));
+    final archive = Archive()
+      ..addFile(ArchiveFile('manifest.json', manifest.length, manifest))
+      ..addFile(ArchiveFile('manifest.json', manifest.length, manifest));
+    final encoded = ZipEncoder().encode(archive)!;
+    expect(
+      () => WesiAiBackupService.importPackage(
+        package: Uint8List.fromList(encoded),
+        current: WesiAiLocalState.empty('employee_duplicate'),
+      ),
+      throwsA(isA<FormatException>()),
+    );
+  });
+
+  test('ZIP preflight rejects forged oversized declared entry before decode',
+      () async {
+    final source = await WesiAiBackupService.buildImportantPackage(
+      _state('employee_declared_size'),
+    );
+    final bytes = Uint8List.fromList(source.packageBytes);
+    const centralSignature = <int>[0x50, 0x4b, 0x01, 0x02];
+    var central = -1;
+    for (var i = 0; i <= bytes.length - centralSignature.length; i++) {
+      var matches = true;
+      for (var j = 0; j < centralSignature.length; j++) {
+        if (bytes[i + j] != centralSignature[j]) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
+        central = i;
+        break;
+      }
+    }
+    expect(central, greaterThanOrEqualTo(0));
+    final data = ByteData.sublistView(bytes);
+    data.setUint32(
+      central + 24,
+      WesiAiBackupService.maxArtifactBytes + 1,
+      Endian.little,
+    );
+    expect(
+      () => WesiAiBackupService.importPackage(
+        package: bytes,
+        current: WesiAiLocalState.empty('employee_declared_size'),
+      ),
+      throwsA(isA<FormatException>()),
+    );
+  });
 }
