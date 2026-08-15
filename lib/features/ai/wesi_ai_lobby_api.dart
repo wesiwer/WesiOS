@@ -24,6 +24,8 @@ class WesiAiLobbyApi extends WesiAiApi {
     required WesiAiMemorySnapshot memory,
     WesiAiProject? project,
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    void Function(String delta)? onDelta,
+    WesiAiRequestCancellation? cancellation,
   }) async {
     WesiAiAttachment.validateBatch(attachments);
     if (conversation.persona != WesiAiPersona.lobby) {
@@ -35,6 +37,8 @@ class WesiAiLobbyApi extends WesiAiApi {
         memory: memory,
         project: project,
         attachments: attachments,
+        onDelta: onDelta,
+        cancellation: cancellation,
       );
     }
 
@@ -50,14 +54,20 @@ class WesiAiLobbyApi extends WesiAiApi {
         memory: memory,
         project: project,
         attachments: attachments,
+        onDelta: onDelta,
+        cancellation: cancellation,
       );
     }
 
     final session = SyncEndpoint.session;
     final token = session?['token'];
     final sessionId = SyncEndpoint.sessionId;
-    if (!SyncEndpoint.isConnected || token is! String || token.isEmpty || sessionId == null) {
-      throw const WesiAiApiException('NOT_SIGNED_IN', 'Войдите в WesiOS, чтобы использовать Wesi AI');
+    if (!SyncEndpoint.isConnected ||
+        token is! String ||
+        token.isEmpty ||
+        sessionId == null) {
+      throw const WesiAiApiException(
+          'NOT_SIGNED_IN', 'Войдите в WesiOS, чтобы использовать Wesi AI');
     }
 
     final base = Uri.parse(SyncEndpoint.url);
@@ -81,7 +91,8 @@ class WesiAiLobbyApi extends WesiAiApi {
       request.headers.set('X-WesiOS-Session', sessionId);
       request.headers.contentType = ContentType.json;
       request.write(jsonEncode(body));
-      final response = await request.close().timeout(const Duration(seconds: 125));
+      final response =
+          await request.close().timeout(const Duration(seconds: 125));
       final raw = await utf8.decoder.bind(response).join();
       Map<String, dynamic> json = const {};
       if (raw.isNotEmpty) {
@@ -93,24 +104,32 @@ class WesiAiLobbyApi extends WesiAiApi {
         throw WesiAiApiException(code, _messageFor(code));
       }
       final answer = '${json['answer'] ?? ''}'.trim();
-      if (answer.isEmpty) throw const WesiAiApiException('WAI_EMPTY_RESPONSE', 'Wesi AI вернул пустой ответ');
-      return WesiAiReply(answer: answer, requestId: '${json['requestId'] ?? ''}');
+      if (answer.isEmpty)
+        throw const WesiAiApiException(
+            'WAI_EMPTY_RESPONSE', 'Wesi AI вернул пустой ответ');
+      return WesiAiReply(
+          answer: answer, requestId: '${json['requestId'] ?? ''}');
     } on WesiAiApiException {
       rethrow;
     } on SocketException {
       throw const WesiAiApiException('NETWORK', 'Нет связи с сервером WesiOS');
     } on HttpException {
-      throw const WesiAiApiException('NETWORK', 'Ошибка связи с сервером WesiOS');
+      throw const WesiAiApiException(
+          'NETWORK', 'Ошибка связи с сервером WesiOS');
     } on TimeoutException {
-      throw const WesiAiApiException('NETWORK', 'Lobby не успел ответить вовремя');
+      throw const WesiAiApiException(
+          'NETWORK', 'Lobby не успел ответить вовремя');
     } on FormatException {
-      throw const WesiAiApiException('NOT_WESIOS', 'Сервер WesiOS вернул некорректный ответ');
+      throw const WesiAiApiException(
+          'NOT_WESIOS', 'Сервер WesiOS вернул некорректный ответ');
     }
   }
 
   static String _messageFor(String code) => switch (code) {
-        'WAI_RELAY_NOT_CONFIGURED' => 'Wesi AI ещё не подключён к серверу моделей',
-        'WAI_PERSONA_ENGINE_NOT_READY' => 'Профиль Wesi AI ещё не готов на сервере',
+        'WAI_RELAY_NOT_CONFIGURED' =>
+          'Wesi AI ещё не подключён к серверу моделей',
+        'WAI_PERSONA_ENGINE_NOT_READY' =>
+          'Профиль Wesi AI ещё не готов на сервере',
         'WAI_RELAY_UNAVAILABLE' => 'Сервис Wesi AI временно недоступен',
         'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
         'WAI_EMPTY_RESPONSE' => 'Wesi AI вернул пустой ответ',

@@ -5,7 +5,8 @@ import 'storage/wesi_ai_local_store.dart';
 import 'wesi_ai_managed_controller.dart';
 
 class WesiAiHandoffController extends WesiAiManagedChatController {
-  WesiAiHandoffController({required WesiAiLocalStore store}) : super(store: store);
+  WesiAiHandoffController({required WesiAiLocalStore store})
+      : super(store: store);
 
   /// Creates a new persona-owned conversation after the UI has obtained
   /// explicit user consent. The source chat remains intact.

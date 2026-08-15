@@ -205,10 +205,30 @@ class WesiAiAttachment {
       'html' || 'htm' => 'text/html',
       'css' => 'text/css',
       'js' || 'mjs' || 'cjs' => 'text/javascript',
-      'dart' || 'py' || 'java' || 'kt' || 'swift' || 'c' || 'h' || 'cpp' || 'hpp' || 'cs' || 'go' || 'rs' || 'rb' || 'php' || 'sh' || 'ps1' || 'sql' => 'text/plain',
-      'docx' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      'xlsx' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-      'pptx' => 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+      'dart' ||
+      'py' ||
+      'java' ||
+      'kt' ||
+      'swift' ||
+      'c' ||
+      'h' ||
+      'cpp' ||
+      'hpp' ||
+      'cs' ||
+      'go' ||
+      'rs' ||
+      'rb' ||
+      'php' ||
+      'sh' ||
+      'ps1' ||
+      'sql' =>
+        'text/plain',
+      'docx' =>
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'xlsx' =>
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'pptx' =>
+        'application/vnd.openxmlformats-officedocument.presentationml.presentation',
       'doc' => 'application/msword',
       'xls' => 'application/vnd.ms-excel',
       'ppt' => 'application/vnd.ms-powerpoint',

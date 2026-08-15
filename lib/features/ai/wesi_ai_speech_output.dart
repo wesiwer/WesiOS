@@ -19,7 +19,8 @@ import 'models/wesi_ai_chat_models.dart';
 ///
 /// No provider credential is ever present in the Flutter client.
 class WesiAiSpeechOutput {
-  static const MethodChannel _androidChannel = MethodChannel('wesios/ai_speech');
+  static const MethodChannel _androidChannel =
+      MethodChannel('wesios/ai_speech');
   static final AudioPlayer _naturalPlayer = AudioPlayer();
   static final HttpClient _http = HttpClient()
     ..connectionTimeout = const Duration(seconds: 12)
@@ -94,9 +95,12 @@ class WesiAiSpeechOutput {
         'persona': author == WesiAiMessageAuthor.nirvana ? 'nirvana' : 'zane',
         'text': text.length <= 8000 ? text : text.substring(0, 8000),
       }));
-      final response = await request.close().timeout(const Duration(seconds: 125));
+      final response =
+          await request.close().timeout(const Duration(seconds: 125));
       final raw = await utf8.decoder.bind(response).join();
-      if (response.statusCode < 200 || response.statusCode >= 300 || raw.isEmpty) {
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300 ||
+          raw.isEmpty) {
         return false;
       }
       final decoded = jsonDecode(raw);
@@ -159,7 +163,8 @@ class WesiAiSpeechOutput {
     final profile = _profile(author);
     if (Platform.isAndroid) {
       try {
-        return await _androidChannel.invokeMethod<bool>('speak', <String, dynamic>{
+        return await _androidChannel
+                .invokeMethod<bool>('speak', <String, dynamic>{
               'text': clean,
               'languageTag': languageTag,
               'rate': profile.rate,
@@ -226,9 +231,12 @@ class WesiAiSpeechOutput {
     if (process != null) process.kill();
   }
 
-  static _SpeechProfile _profile(WesiAiMessageAuthor? author) => switch (author) {
-        WesiAiMessageAuthor.zane => const _SpeechProfile(rate: 0.96, pitch: 0.90),
-        WesiAiMessageAuthor.nirvana => const _SpeechProfile(rate: 1.00, pitch: 1.05),
+  static _SpeechProfile _profile(WesiAiMessageAuthor? author) =>
+      switch (author) {
+        WesiAiMessageAuthor.zane =>
+          const _SpeechProfile(rate: 0.96, pitch: 0.90),
+        WesiAiMessageAuthor.nirvana =>
+          const _SpeechProfile(rate: 1.00, pitch: 1.05),
         _ => const _SpeechProfile(rate: 1.00, pitch: 1.00),
       };
 }

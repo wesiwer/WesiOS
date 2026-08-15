@@ -9,7 +9,8 @@ class WesiAiCameraCaptureScreen extends StatefulWidget {
   const WesiAiCameraCaptureScreen({super.key});
 
   @override
-  State<WesiAiCameraCaptureScreen> createState() => _WesiAiCameraCaptureScreenState();
+  State<WesiAiCameraCaptureScreen> createState() =>
+      _WesiAiCameraCaptureScreenState();
 }
 
 class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
@@ -42,7 +43,8 @@ class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
     }
     try {
       final cameras = _cameras.isEmpty ? await availableCameras() : _cameras;
-      if (cameras.isEmpty) throw CameraException('NoCamera', 'Камера не найдена');
+      if (cameras.isEmpty)
+        throw CameraException('NoCamera', 'Камера не найдена');
       final index = (cameraIndex ?? _cameraIndex).clamp(0, cameras.length - 1);
       final previous = _controller;
       _controller = null;
@@ -70,8 +72,10 @@ class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
       setState(() {
         _loading = false;
         _error = switch (e.code) {
-          'CameraAccessDenied' => 'Доступ к камере запрещён. Разрешите камеру в настройках устройства.',
-          'CameraAccessDeniedWithoutPrompt' => 'Доступ к камере отключён в настройках устройства.',
+          'CameraAccessDenied' =>
+            'Доступ к камере запрещён. Разрешите камеру в настройках устройства.',
+          'CameraAccessDeniedWithoutPrompt' =>
+            'Доступ к камере отключён в настройках устройства.',
           'CameraAccessRestricted' => 'Доступ к камере ограничен системой.',
           _ => e.description ?? 'Не удалось открыть камеру',
         };
@@ -89,7 +93,8 @@ class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
-    if (state == AppLifecycleState.inactive || state == AppLifecycleState.paused) {
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
       _controller = null;
       controller.dispose();
     } else if (state == AppLifecycleState.resumed) {
@@ -106,7 +111,8 @@ class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
 
   Future<void> _takePicture() async {
     final controller = _controller;
-    if (controller == null || !controller.value.isInitialized || _capturing) return;
+    if (controller == null || !controller.value.isInitialized || _capturing)
+      return;
     setState(() => _capturing = true);
     try {
       final shot = await controller.takePicture();
@@ -126,7 +132,8 @@ class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
       setState(() => _capturing = false);
     } on FormatException catch (e) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
       setState(() => _capturing = false);
     } catch (_) {
       if (!mounted) return;
@@ -189,7 +196,8 @@ class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
                 child: IconButton.filled(
                   style: IconButton.styleFrom(backgroundColor: Colors.black54),
                   onPressed: _loading || _capturing ? null : _switchCamera,
-                  icon: const Icon(Icons.cameraswitch_outlined, color: Colors.white),
+                  icon: const Icon(Icons.cameraswitch_outlined,
+                      color: Colors.white),
                 ),
               ),
             Positioned(
@@ -198,7 +206,9 @@ class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
               bottom: 28,
               child: Center(
                 child: GestureDetector(
-                  onTap: controller != null && !_loading && !_capturing ? _takePicture : null,
+                  onTap: controller != null && !_loading && !_capturing
+                      ? _takePicture
+                      : null,
                   child: Container(
                     width: 78,
                     height: 78,
@@ -210,7 +220,8 @@ class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
                     child: _capturing
                         ? const Padding(
                             padding: EdgeInsets.all(22),
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
+                            child: CircularProgressIndicator(
+                                color: Colors.white, strokeWidth: 3),
                           )
                         : null,
                   ),

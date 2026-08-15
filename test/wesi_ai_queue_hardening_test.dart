@@ -68,6 +68,8 @@ class _ControlledApi extends WesiAiApi {
     required WesiAiMemorySnapshot memory,
     WesiAiProject? project,
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    void Function(String delta)? onDelta,
+    WesiAiRequestCancellation? cancellation,
   }) {
     prompts.add(message);
     attachmentNames.add(
@@ -96,8 +98,31 @@ class _LobbyControlledApi extends WesiAiApi {
     required WesiAiMemorySnapshot memory,
     WesiAiProject? project,
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    void Function(String delta)? onDelta,
+    WesiAiRequestCancellation? cancellation,
   }) {
     calls++;
+    return reply.future;
+  }
+}
+
+class _StreamingControlledApi extends WesiAiApi {
+  final Completer<WesiAiReply> reply = Completer<WesiAiReply>();
+  void Function(String delta)? onDelta;
+
+  @override
+  Future<WesiAiReply> send({
+    required WesiAiConversation conversation,
+    required WesiAiTier tier,
+    required String message,
+    required List<WesiAiMessage> history,
+    required WesiAiMemorySnapshot memory,
+    WesiAiProject? project,
+    List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    void Function(String delta)? onDelta,
+    WesiAiRequestCancellation? cancellation,
+  }) {
+    this.onDelta = onDelta;
     return reply.future;
   }
 }
@@ -733,5 +758,39 @@ void main() {
           .any((message) => message.text == 'поздний ответ'),
       isFalse,
     );
+  });
+
+  test(
+      'transport deltas are visible before final reply and collapse into one persisted message',
+      () async {
+    final api = _StreamingControlledApi();
+    final store = _MemoryStore('employee-stream');
+    final controller = WesiAiManagedChatController(store: store, api: api);
+    await controller.load();
+    await controller.createConversation(WesiAiPersona.zane);
+    final conversationId = controller.state.activeConversationId!;
+
+    final sending = controller.addUserMessage('stream me');
+    await _waitUntil(() => api.onDelta != null);
+    api.onDelta!('При');
+    api.onDelta!('вет');
+    await _waitUntil(() => controller.state.messagesFor(conversationId).any(
+          (message) =>
+              message.metadata['transportStreaming'] == true &&
+              message.text == 'Привет',
+        ));
+
+    api.reply
+        .complete(const WesiAiReply(answer: 'Привет', requestId: 'stream-1'));
+    await sending;
+    final messages = controller.state.messagesFor(conversationId);
+    expect(
+        messages
+            .where((message) => message.author == WesiAiMessageAuthor.zane)
+            .length,
+        1);
+    expect(messages.last.text, 'Привет');
+    expect(messages.last.metadata['transportStreamed'], isTrue);
+    expect(store.saved!.messagesFor(conversationId).last.text, 'Привет');
   });
 }
