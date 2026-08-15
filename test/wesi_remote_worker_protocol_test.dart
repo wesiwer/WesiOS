@@ -21,7 +21,7 @@ void main() {
       deviceFingerprint: 'a' * 64,
       now: now,
     );
-    final uri = bootstrap.ticket.toUri().toString();
+    final uri = bootstrap.ticket.toUri(now: now).toString();
     expect(uri, isNot(contains(bootstrap.pollSecret)));
     expect(uri, isNot(contains('credential')));
     final parsed = WesiWorkerPairingTicket.fromUri(
@@ -75,7 +75,8 @@ void main() {
       ),
       throwsA(isA<WesiRemoteWorkerProtocolException>()),
     );
-    service.revokeWorker(credential.workerId, now: now.add(const Duration(minutes: 2)));
+    service.revokeWorker(credential.workerId,
+        now: now.add(const Duration(minutes: 2)));
     expect(
       service.verifyCredentialSecret(
         credentialId: credential.credentialId,
@@ -105,7 +106,7 @@ void main() {
     );
     expect(
       () => WesiWorkerPairingTicket.fromUri(
-        bootstrap.ticket.toUri(),
+        bootstrap.ticket.toUri(now: now),
         now: now.add(const Duration(minutes: 6)),
       ),
       throwsA(isA<WesiRemoteWorkerProtocolException>()),
@@ -163,21 +164,29 @@ void main() {
       isFalse,
     );
     final replay = WesiWorkerReplayGuard();
-    expect(replay.accept(request.credentialId, request.nonce, now: now), isTrue);
-    expect(replay.accept(request.credentialId, request.nonce, now: now), isFalse);
+    expect(
+        replay.accept(request.credentialId, request.nonce, now: now), isTrue);
+    expect(
+        replay.accept(request.credentialId, request.nonce, now: now), isFalse);
   });
 
   test('heartbeat feeds Stage 8 worker profile and expires offline', () {
-    final registry = WesiRemoteWorkerRegistry(heartbeatTtl: const Duration(seconds: 30));
+    final registry =
+        WesiRemoteWorkerRegistry(heartbeatTtl: const Duration(seconds: 30));
     final profile = _profile('w' * 32, now);
-    final json = WesiRemoteWorkerHeartbeat(profile: profile, sentAt: now).toJson();
+    final json =
+        WesiRemoteWorkerHeartbeat(profile: profile, sentAt: now).toJson();
     final parsed = WesiRemoteWorkerHeartbeat.fromJson(json);
     registry.applyHeartbeat(parsed, now: now);
-    final live = registry.schedulerWorkers(now: now.add(const Duration(seconds: 10))).single;
+    final live = registry
+        .schedulerWorkers(now: now.add(const Duration(seconds: 10)))
+        .single;
     expect(live.status, WesiWorkerStatus.online);
     expect(live.role, WesiWorkerRole.remoteWorker);
     expect(live.trust, WesiWorkerTrust.paired);
-    final stale = registry.schedulerWorkers(now: now.add(const Duration(seconds: 40))).single;
+    final stale = registry
+        .schedulerWorkers(now: now.add(const Duration(seconds: 40)))
+        .single;
     expect(stale.status, WesiWorkerStatus.offline);
     expect(stale.appForeground, isFalse);
   });

@@ -65,11 +65,10 @@ class WesiWorkerPairingTicket {
     }
   }
 
-  Uri toUri() {
-    validate();
-    final encodedName = base64Url
-        .encode(utf8.encode(workerName))
-        .replaceAll('=', '');
+  Uri toUri({DateTime? now}) {
+    validate(now: now);
+    final encodedName =
+        base64Url.encode(utf8.encode(workerName)).replaceAll('=', '');
     return Uri(
       scheme: scheme,
       host: host,
@@ -189,8 +188,10 @@ class WesiRemoteWorkerHeartbeat {
           'freeDiskMb': profile.freeDiskMb,
           'thermalState': profile.thermalState.name,
           'powerMode': profile.powerMode.name,
-          'capabilities': profile.capabilities.map((e) => e.name).toList()..sort(),
-          'installedPacks': profile.installedPacks.map((e) => e.name).toList()..sort(),
+          'capabilities': profile.capabilities.map((e) => e.name).toList()
+            ..sort(),
+          'installedPacks': profile.installedPacks.map((e) => e.name).toList()
+            ..sort(),
           'activeLightJobs': profile.activeLightJobs,
           'activeCpuJobs': profile.activeCpuJobs,
           'activeHeavyJobs': profile.activeHeavyJobs,
@@ -199,7 +200,8 @@ class WesiRemoteWorkerHeartbeat {
       };
 
   factory WesiRemoteWorkerHeartbeat.fromJson(Map<String, dynamic> json) {
-    if (json['v'] != wesiRemoteWorkerProtocolVersion || json['worker'] is! Map) {
+    if (json['v'] != wesiRemoteWorkerProtocolVersion ||
+        json['worker'] is! Map) {
       throw const WesiRemoteWorkerProtocolException(
         'WRW_BAD_HEARTBEAT',
         'Heartbeat payload is invalid',
@@ -289,7 +291,8 @@ class WesiRemoteWorkerHeartbeat {
     }
     return WesiRemoteWorkerHeartbeat(
       profile: profile,
-      sentAt: profile.lastSeenAt ?? DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
+      sentAt: profile.lastSeenAt ??
+          DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
     );
   }
 }
