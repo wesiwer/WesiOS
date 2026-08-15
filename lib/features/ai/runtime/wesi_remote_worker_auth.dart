@@ -156,8 +156,8 @@ class WesiRemoteWorkerRequestSigner {
     var diff = left.length ^ right.length;
     final maxLength = max(left.length, right.length);
     for (var i = 0; i < maxLength; i++) {
-      diff |= (i < left.length ? left[i] : 0) ^
-          (i < right.length ? right[i] : 0);
+      diff |=
+          (i < left.length ? left[i] : 0) ^ (i < right.length ? right[i] : 0);
     }
     return diff == 0;
   }

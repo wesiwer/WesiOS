@@ -78,7 +78,8 @@ class WesiRemoteWorkerRegistry {
     final current = (now ?? DateTime.now()).toUtc();
     return _profiles.values.map((profile) {
       final lastSeen = profile.lastSeenAt;
-      final fresh = lastSeen != null && current.difference(lastSeen) <= heartbeatTtl;
+      final fresh =
+          lastSeen != null && current.difference(lastSeen) <= heartbeatTtl;
       if (fresh) return profile;
       return WesiWorkerResourceProfile(
         id: profile.id,

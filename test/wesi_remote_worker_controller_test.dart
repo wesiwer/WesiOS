@@ -173,7 +173,8 @@ void main() {
     expect(harness.leases.get('resume-job'), isNull);
   });
 
-  test('paused job remains pinned to the same remote workspace worker', () async {
+  test('paused job remains pinned to the same remote workspace worker',
+      () async {
     final harness = await _harness(
       randomSeed: 13,
       heartbeatTtl: const Duration(seconds: 15),
@@ -235,8 +236,10 @@ void main() {
       now: later,
     );
     expect(blocked.dispatched, isFalse);
-    expect(blocked.decision.selection.blockerCode, WesiSchedulerBlockerCode.offline);
-    expect(harness.coordinator['pause-job']!.state, WesiScheduledJobState.queued);
+    expect(blocked.decision.selection.blockerCode,
+        WesiSchedulerBlockerCode.offline);
+    expect(
+        harness.coordinator['pause-job']!.state, WesiScheduledJobState.queued);
 
     final workerReturns = later.add(const Duration(seconds: 1));
     await harness.controller.acceptHeartbeat(

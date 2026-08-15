@@ -25,8 +25,7 @@ class WesiMemoryRemoteWorkerLeaseJournal
   }
 }
 
-class WesiFileRemoteWorkerLeaseJournal
-    implements WesiRemoteWorkerLeaseJournal {
+class WesiFileRemoteWorkerLeaseJournal implements WesiRemoteWorkerLeaseJournal {
   final File file;
   final int maxBytes;
 

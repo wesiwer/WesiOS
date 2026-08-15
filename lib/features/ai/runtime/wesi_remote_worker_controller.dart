@@ -432,9 +432,8 @@ class WesiRemoteWorkerController {
         remoteWarning: true,
       );
     }
-    final effective = candidates
-        .map(_withCoordinatorLoad)
-        .toList(growable: false);
+    final effective =
+        candidates.map(_withCoordinatorLoad).toList(growable: false);
     return coordinator.scheduler.select(
       job: job.requirements,
       workers: effective,
@@ -515,8 +514,7 @@ class WesiRemoteWorkerController {
       await leases.markAssignmentAcked(job.id);
     }
     if (job.state == WesiScheduledJobState.cancelling &&
-        ackedMessageId ==
-            _messageId(WesiRemoteJobMessageKind.cancel, lease)) {
+        ackedMessageId == _messageId(WesiRemoteJobMessageKind.cancel, lease)) {
       final cancelled = await coordinator.markCancelled(job.id, now: now);
       await leases.remove(job.id);
       return cancelled;
@@ -630,12 +628,12 @@ class WesiRemoteWorkerController {
       await leases.remove(job.id);
       return completed;
     }
-    final rawMessage = '${message.payload['message'] ?? 'Remote execution failed'}'
-        .replaceAll(RegExp(r'[\r\n\t\u0000]'), ' ')
-        .trim();
-    final safeMessage = rawMessage.length <= 512
-        ? rawMessage
-        : rawMessage.substring(0, 512);
+    final rawMessage =
+        '${message.payload['message'] ?? 'Remote execution failed'}'
+            .replaceAll(RegExp(r'[\r\n\t\u0000]'), ' ')
+            .trim();
+    final safeMessage =
+        rawMessage.length <= 512 ? rawMessage : rawMessage.substring(0, 512);
     final failed = await coordinator.fail(
       job.id,
       failureCode: 'WRW_REMOTE_EXECUTION_FAILED',
