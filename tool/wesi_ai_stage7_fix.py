@@ -67,10 +67,6 @@ text, count = pattern.subn(lambda match: replacement, text, count=1)
 if count != 1:
     raise SystemExit('failed to replace Ed25519 verifier')
 
-# The Stage-7 integration patch intentionally switches the staging directory
-# only at verification time. Its broad idempotence guard can leave the old
-# pre-verification swap call behind, while the helper itself is renamed. Remove
-# that stale call explicitly so post-install verification remains rollback-safe.
 text = text.replace(
     '      await _replaceDirectoryAtomically(staging, packRoot);\n\n',
     '',
@@ -81,10 +77,6 @@ if '_replaceDirectoryAtomically(' in text:
 if '_switchDirectoryForVerification(' not in text:
     raise SystemExit('verification-time atomic switch helper missing')
 
-# Managed executable paths must be discovered only after staging has been
-# atomically moved into the final pack root. Looking at packRoot before the
-# switch produces an empty map for a first install and makes the mandatory
-# post-install scan fail even though the artifact is present.
 old_scan = '''      final managedPaths =
           await _managedPathsForPack(preview.plan.pack, packRoot);
       final verificationDependencies =
@@ -145,8 +137,28 @@ if old_scan not in text:
 text = text.replace(old_scan, new_scan, 1)
 manager.write_text(text, encoding='utf-8')
 
-# Add a regression that exercises the real Ed25519 verifier instead of only
-# fake accept/reject implementations.
+# PATH entries used for system reuse must be absolute. Relative PATH components
+# can resolve against the app working directory and let an untrusted local file
+# impersonate a trusted system runtime during the scanner probe.
+scanner = ROOT / 'lib/features/ai/runtime/wesi_environment_scanner.dart'
+scanner_text = scanner.read_text(encoding='utf-8')
+path_anchor = '''    for (final directory in pathValue.split(Platform.isWindows ? ';' : ':')) {
+      final dir = directory.trim();
+      if (dir.isEmpty) continue;
+      for (final extension in extensions) {
+'''
+path_replacement = '''    for (final directory in pathValue.split(Platform.isWindows ? ';' : ':')) {
+      final dir = directory.trim();
+      if (dir.isEmpty || !p.isAbsolute(dir)) continue;
+      for (final extension in extensions) {
+'''
+if path_anchor not in scanner_text:
+    raise SystemExit('scanner PATH anchor missing')
+scanner.write_text(scanner_text.replace(path_anchor, path_replacement, 1), encoding='utf-8')
+
+# Add regressions for the real Ed25519 implementation, relative PATH rejection,
+# and restoration of the previously active pack when post-install verification
+# fails after the atomic switch.
 test = ROOT / 'test/wesi_runtime_pack_test.dart'
 test_text = test.read_text(encoding='utf-8')
 if "package:cryptography/cryptography.dart" not in test_text:
@@ -155,8 +167,42 @@ if "package:cryptography/cryptography.dart" not in test_text:
         "import 'package:crypto/crypto.dart';\nimport 'package:cryptography/cryptography.dart';\n",
         1,
     )
-marker = "  group('Pack planning and artifact policy', () {\n"
-regression = r'''  test('real Ed25519 descriptor verification accepts valid and rejects tampered payload', () async {
+if "import 'dart:convert';" not in test_text:
+    test_text = test_text.replace("import 'dart:io';\n", "import 'dart:convert';\nimport 'dart:io';\n", 1)
+
+path_test_anchor = "    test('managed dependency wins over system and no-reuse spec stays managed', () async {\n"
+path_test = r'''    test('relative PATH entries are ignored during system reuse scanning', () async {
+      final root = await Directory.systemTemp.createTemp('wesi-relative-path-');
+      addTearDown(() => root.delete(recursive: true));
+      final executable = File(p.join(root.path, 'tool'));
+      await executable.writeAsString('fake');
+      final relative = p.relative(root.path, from: Directory.current.path);
+      final runner = _FakeProbeRunner(<String, WesiRuntimeProbeOutcome>{
+        'tool': const WesiRuntimeProbeOutcome(
+          exitCode: 0,
+          stdout: 'Tool 2.4.1',
+          stderr: '',
+          timedOut: false,
+        ),
+      });
+      final scanner = WesiEnvironmentScanner(
+        runner: runner,
+        platform: WesiRuntimePlatform.linux,
+        environment: <String, String>{'PATH': relative},
+      );
+      final detected = await scanner.scanDependency(_toolSpec());
+      expect(detected.detected, isFalse);
+      expect(runner.calls, isEmpty);
+    });
+
+'''
+if path_test not in test_text:
+    if path_test_anchor not in test_text:
+        raise SystemExit('relative PATH test anchor missing')
+    test_text = test_text.replace(path_test_anchor, path_test + path_test_anchor, 1)
+
+crypto_marker = "  group('Pack planning and artifact policy', () {\n"
+crypto_test = r'''  test('real Ed25519 descriptor verification accepts valid and rejects tampered payload', () async {
     final algorithm = Ed25519();
     final keyPair = await algorithm.newKeyPair();
     final publicKey = await keyPair.extractPublicKey();
@@ -203,13 +249,75 @@ regression = r'''  test('real Ed25519 descriptor verification accepts valid and 
   });
 
 '''
-if regression not in test_text:
-    if marker not in test_text:
-        raise SystemExit('test insertion anchor missing')
-    test_text = test_text.replace(marker, regression + marker, 1)
-# utf8/base64 are used by the real verifier regression.
-if "import 'dart:convert';" not in test_text:
-    test_text = test_text.replace("import 'dart:io';\n", "import 'dart:convert';\nimport 'dart:io';\n", 1)
+if crypto_test not in test_text:
+    if crypto_marker not in test_text:
+        raise SystemExit('crypto test anchor missing')
+    test_text = test_text.replace(crypto_marker, crypto_test + crypto_marker, 1)
+
+rollback_anchor = "    test('post-install scan is mandatory before a dependency becomes reusable', () async {\n"
+rollback_test = r'''    test('failed post-install scan restores the previously active pack', () async {
+      final bytes = _zip('bin/tool', const <int>[1, 2, 3]);
+      final descriptor = _descriptor(bytes);
+      final root = await Directory.systemTemp.createTemp('wesi-pack-rollback-');
+      addTearDown(() => root.delete(recursive: true));
+      final activeRoot = Directory(p.join(root.path, WesiRuntimePackId.core.name));
+      await activeRoot.create(recursive: true);
+      final sentinel = File(p.join(activeRoot.path, 'previous.txt'));
+      await sentinel.writeAsString('previous-active-pack');
+
+      final manager = WesiRuntimePackManager(
+        runtimeRoot: root,
+        scanner: WesiEnvironmentScanner(
+          runner: _FakeProbeRunner(const <String, WesiRuntimeProbeOutcome>{}),
+          platform: WesiRuntimePlatform.linux,
+          environment: const <String, String>{'PATH': ''},
+        ),
+        artifactCatalog: WesiStaticRuntimeArtifactCatalog(
+          <String, WesiRuntimeArtifactDescriptor>{
+            'linux:tool-package': descriptor,
+          },
+        ),
+        signatureVerifier: const _AcceptSignature(),
+        downloader: _BytesDownloader(bytes),
+      );
+      final plan = manager.plan(
+        _pack(_toolSpec()),
+        WesiRuntimeScanSnapshot(
+          platform: WesiRuntimePlatform.linux,
+          scannedAt: DateTime.utc(2026),
+          dependencies: <String, WesiRuntimeDetectedDependency>{
+            'tool': WesiRuntimeDetectedDependency.missing('tool'),
+          },
+        ),
+      );
+
+      await expectLater(
+        manager.installAndActivate(
+          await manager.preview(plan),
+          userConfirmed: true,
+        ),
+        throwsA(
+          isA<WesiRuntimePackException>().having(
+            (e) => e.code,
+            'code',
+            'WRP_POST_SCAN_FAILED',
+          ),
+        ),
+      );
+      expect(await sentinel.exists(), isTrue);
+      expect(await sentinel.readAsString(), 'previous-active-pack');
+      expect(
+        await File(p.join(activeRoot.path, 'tool', 'bin', 'tool')).exists(),
+        isFalse,
+      );
+    });
+
+'''
+if rollback_test not in test_text:
+    if rollback_anchor not in test_text:
+        raise SystemExit('rollback test anchor missing')
+    test_text = test_text.replace(rollback_anchor, rollback_test + rollback_anchor, 1)
+
 test.write_text(test_text, encoding='utf-8')
 
 print('Stage 7 compile/security fix applied')
