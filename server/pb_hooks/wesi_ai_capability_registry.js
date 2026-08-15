@@ -15,7 +15,7 @@ const CAPABILITIES = {
   finance_transaction_delete: {module: "treasury", action: "delete", risk: RISK_DESTRUCTIVE, entityType: "transaction"},
 
   organizations_list: {module: "organizations", action: "read", risk: RISK_READ, entityType: "organization"},
-  team_list: {module: "team", action: "read", risk: RISK_READ, entityType: "employee"},
+  team_list: {module: "contacts", action: "read_team", risk: RISK_READ, entityType: "employee"},
 
   calendar_events: {module: "calendar", action: "read", risk: RISK_READ, entityType: "calendar_event"},
   calendar_create: {module: "calendar", action: "create", risk: RISK_WRITE, entityType: "calendar_event"},
@@ -44,11 +44,8 @@ const CAPABILITIES = {
   roadmap_update: {module: "roadmap", action: "update", risk: RISK_WRITE, entityType: "roadmap_item"},
   roadmap_archive: {module: "roadmap", action: "archive", risk: RISK_DESTRUCTIVE, entityType: "roadmap_item"},
 
-  audio_vault_list: {module: "audio_vault", action: "read", risk: RISK_READ, entityType: "audio_vault_item"},
-  audio_vault_update: {module: "audio_vault", action: "update", risk: RISK_WRITE, entityType: "audio_vault_item"},
-
-  notifications_list: {module: "notifications", action: "read", risk: RISK_READ, entityType: "notification"},
-  notification_mark_read: {module: "notifications", action: "update", risk: RISK_WRITE, entityType: "notification"},
+  audio_vault_list: {module: "audio", action: "read", risk: RISK_READ, entityType: "audio_vault_item"},
+  audio_vault_update: {module: "audio", action: "update", risk: RISK_WRITE, entityType: "audio_vault_item"},
 
   horizon_snapshot: {module: "horizon", action: "read_snapshot", risk: RISK_READ, entityType: "horizon_snapshot"},
 
@@ -76,27 +73,15 @@ module.exports = {
   RISK_READ: RISK_READ,
   RISK_WRITE: RISK_WRITE,
   RISK_DESTRUCTIVE: RISK_DESTRUCTIVE,
-
-  get: function(name) {
-    return copyMeta(name, CAPABILITIES[String(name || "")]);
-  },
-
+  get: function(name) { return copyMeta(name, CAPABILITIES[String(name || "")]); },
   decorateDefinition: function(definition) {
     if (!definition || typeof definition !== "object") return definition;
     const meta = module.exports.get(definition.name);
     if (!meta) return null;
     const out = {};
     for (const key of Object.keys(definition)) out[key] = definition[key];
-    out.wesiCapability = {
-      module: meta.module,
-      action: meta.action,
-      risk: meta.risk,
-      confirmationRequired: meta.confirmationRequired,
-    };
+    out.wesiCapability = {module: meta.module, action: meta.action, risk: meta.risk, confirmationRequired: meta.confirmationRequired};
     return out;
   },
-
-  registeredNames: function() {
-    return Object.keys(CAPABILITIES);
-  },
+  registeredNames: function() { return Object.keys(CAPABILITIES); },
 };
