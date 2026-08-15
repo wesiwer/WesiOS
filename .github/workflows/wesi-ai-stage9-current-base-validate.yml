@@ -1,0 +1,52 @@
+name: Wesi AI Stage 9 Current Base Validate
+
+on:
+  push:
+    branches: [agent/wesi-ai-stage9-self-debug-artifacts-current]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-ai-stage9-current-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-stage9-self-debug-artifacts-current
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Verify formatting
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/features/ai/runtime/wesi_artifact_delivery.dart \
+            lib/features/ai/runtime/wesi_artifact_models.dart \
+            lib/features/ai/runtime/wesi_artifact_validator.dart \
+            lib/features/ai/runtime/wesi_self_debug_engine.dart \
+            lib/features/ai/runtime/wesi_self_debug_job_observer.dart \
+            test/wesi_artifact_validator_test.dart \
+            test/wesi_self_debug_engine_test.dart
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Stage 6-9 runtime regressions
+        run: |
+          flutter test \
+            test/wesi_local_runtime_test.dart \
+            test/wesi_runtime_pack_test.dart \
+            test/wesi_resource_scheduler_test.dart \
+            test/wesi_job_queue_test.dart \
+            test/wesi_job_coordinator_test.dart \
+            test/wesi_artifact_validator_test.dart \
+            test/wesi_self_debug_engine_test.dart
