@@ -1,62 +1,168 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 
 class WesiAiAttachment {
+  /// Ограничение количества файлов относится и к inline, и к staged upload.
   static const int maxFiles = 4;
-  static const int maxFileBytes = 15 * 1024 * 1024;
-  static const int maxTotalBytes = 18 * 1024 * 1024;
+
+  /// Маленькие вложения по-прежнему можно передавать одним подписанным JSON.
+  static const int inlineMaxFileBytes = 15 * 1024 * 1024;
+  static const int inlineMaxTotalBytes = 18 * 1024 * 1024;
+
+  /// Большие файлы не Base64-кодируются целиком. Они идут чанками через Main
+  /// Server и временно собираются на Foreign Relay. Лимиты намеренно ниже
+  /// теоретических provider limits, чтобы не забивать диск/память устройств.
+  static const int stagedMaxFileBytes = 256 * 1024 * 1024;
+  static const int stagedMaxTotalBytes = 512 * 1024 * 1024;
+  static const int stagedChunkBytes = 1024 * 1024;
+
+  // Старые имена оставлены как aliases для совместимости существующего кода.
+  static const int maxFileBytes = inlineMaxFileBytes;
+  static const int maxTotalBytes = inlineMaxTotalBytes;
 
   final String name;
   final String mimeType;
   final int byteSize;
-  final Uint8List bytes;
+  final Uint8List? _bytes;
+  final String? localPath;
 
-  const WesiAiAttachment({
+  const WesiAiAttachment._({
     required this.name,
     required this.mimeType,
     required this.byteSize,
-    required this.bytes,
-  });
+    required Uint8List? bytes,
+    required this.localPath,
+  }) : _bytes = bytes;
 
   factory WesiAiAttachment.fromPlatformFile(PlatformFile file) {
+    if (file.size <= 0) {
+      throw const FormatException('Файл пустой');
+    }
+    if (file.size > stagedMaxFileBytes) {
+      throw const FormatException('Файл больше 256 МБ');
+    }
+    final safeName = _safeName(file.name);
     final data = file.bytes;
-    if (data == null) {
-      throw const FormatException('Файл не удалось прочитать');
+    if (data != null) {
+      return WesiAiAttachment.fromBytes(name: safeName, bytes: data);
     }
-    if (data.lengthInBytes > maxFileBytes) {
-      throw const FormatException('Файл больше 15 МБ');
+    final path = file.path?.trim();
+    if (path == null || path.isEmpty) {
+      throw const FormatException('Файл не удалось открыть для отправки');
     }
-    return WesiAiAttachment(
-      name: _safeName(file.name),
-      mimeType: _mimeFor(file.name),
-      byteSize: data.lengthInBytes,
-      bytes: data,
+    return WesiAiAttachment._(
+      name: safeName,
+      mimeType: _mimeFor(safeName),
+      byteSize: file.size,
+      bytes: null,
+      localPath: path,
     );
   }
 
-  Map<String, dynamic> toTransportJson() => <String, dynamic>{
-        'name': name,
-        'mimeType': mimeType,
-        'byteSize': byteSize,
-        'dataBase64': base64Encode(bytes),
-      };
+  factory WesiAiAttachment.fromBytes({
+    required String name,
+    required Uint8List bytes,
+    String? mimeType,
+  }) {
+    if (bytes.isEmpty) throw const FormatException('Файл пустой');
+    if (bytes.lengthInBytes > stagedMaxFileBytes) {
+      throw const FormatException('Файл больше 256 МБ');
+    }
+    final safeName = _safeName(name);
+    return WesiAiAttachment._(
+      name: safeName,
+      mimeType: mimeType ?? _mimeFor(safeName),
+      byteSize: bytes.lengthInBytes,
+      bytes: bytes,
+      localPath: null,
+    );
+  }
 
+  bool get isMemoryBacked => _bytes != null;
+
+  int get chunkCount => (byteSize + stagedChunkBytes - 1) ~/ stagedChunkBytes;
+
+  /// Тяжёлые bytes/path специально не попадают в локальную историю чата.
   Map<String, dynamic> toMetadataJson() => <String, dynamic>{
         'name': name,
         'mimeType': mimeType,
         'byteSize': byteSize,
       };
 
+  Future<Map<String, dynamic>> toInlineTransportJson() async {
+    if (byteSize > inlineMaxFileBytes) {
+      throw const FormatException('Файл требует поэтапной загрузки');
+    }
+    final data = await readChunk(0, byteSize);
+    if (data.lengthInBytes != byteSize) {
+      throw const FormatException('Файл изменился или больше недоступен');
+    }
+    return <String, dynamic>{
+      'name': name,
+      'mimeType': mimeType,
+      'byteSize': byteSize,
+      'dataBase64': base64Encode(data),
+    };
+  }
+
+  Future<Uint8List> readChunk(int offset, int length) async {
+    if (offset < 0 || length < 0 || offset > byteSize) {
+      throw const FormatException('Некорректный диапазон файла');
+    }
+    final safeLength = math.min(length, byteSize - offset);
+    final data = _bytes;
+    if (data != null) {
+      return Uint8List.sublistView(data, offset, offset + safeLength);
+    }
+
+    final path = localPath;
+    if (path == null || path.isEmpty) {
+      throw const FormatException('Файл больше недоступен на устройстве');
+    }
+    RandomAccessFile? handle;
+    try {
+      handle = await File(path).open(mode: FileMode.read);
+      final actualLength = await handle.length();
+      if (actualLength != byteSize) {
+        throw const FormatException('Файл изменился после прикрепления');
+      }
+      await handle.setPosition(offset);
+      return await handle.read(safeLength);
+    } on FileSystemException {
+      throw const FormatException('Файл больше недоступен на устройстве');
+    } finally {
+      await handle?.close();
+    }
+  }
+
   static void validateBatch(List<WesiAiAttachment> items) {
     if (items.length > maxFiles) {
       throw const FormatException('Можно прикрепить не больше 4 файлов');
     }
-    final total = items.fold<int>(0, (sum, item) => sum + item.byteSize);
-    if (total > maxTotalBytes) {
-      throw const FormatException('Суммарный размер вложений больше 18 МБ');
+    var total = 0;
+    for (final item in items) {
+      if (item.byteSize <= 0) throw const FormatException('Файл пустой');
+      if (item.byteSize > stagedMaxFileBytes) {
+        throw const FormatException('Один из файлов больше 256 МБ');
+      }
+      total += item.byteSize;
+      if (total > stagedMaxTotalBytes) {
+        throw const FormatException('Суммарный размер вложений больше 512 МБ');
+      }
     }
+  }
+
+  static bool requiresStagedUpload(List<WesiAiAttachment> items) {
+    var total = 0;
+    for (final item in items) {
+      if (item.byteSize > inlineMaxFileBytes) return true;
+      total += item.byteSize;
+    }
+    return total > inlineMaxTotalBytes;
   }
 
   static String _safeName(String raw) {

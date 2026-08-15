@@ -10,6 +10,14 @@ import {
 } from './google-media.mjs';
 import {downloadGoogleVideo} from './google-artifact.mjs';
 import {putMedia, putBytes, takeMedia} from './media-cache.mjs';
+import {
+  STAGED_CHUNK_BYTES,
+  STAGED_MAX_FILE_BYTES,
+  startStagedUpload,
+  putStagedChunk,
+  completeStagedUpload,
+  cancelStagedUpload,
+} from './staged-upload.mjs';
 
 const host = process.env.WESI_RELAY_HOST || '127.0.0.1';
 const port = Number(process.env.WESI_RELAY_PORT || 8787);
@@ -64,8 +72,26 @@ function authenticate(req, raw) {
   return {ok: true, request};
 }
 
+function stagedError(error) {
+  const code = String(error?.message || 'WAI_UPLOAD_FAILED');
+  const status = code === 'WAI_UPLOAD_NOT_FOUND' ? 404 : code === 'WAI_UPLOAD_EXPIRED' ? 410 : code === 'WAI_UPLOAD_CAPACITY' ? 507 : 400;
+  return {ok: false, status, code: code.startsWith('WAI_') ? code : 'WAI_UPLOAD_FAILED'};
+}
+
 async function execute(request) {
   const operation = String(request.operation || '');
+  if (operation === 'attachment.upload.start') {
+    try { return {ok: true, upload: startStagedUpload(request.input || {})}; } catch (error) { return stagedError(error); }
+  }
+  if (operation === 'attachment.upload.chunk') {
+    try { return {ok: true, upload: putStagedChunk(request.input || {})}; } catch (error) { return stagedError(error); }
+  }
+  if (operation === 'attachment.upload.complete') {
+    try { return {ok: true, transportAttachment: await completeStagedUpload(request.input || {})}; } catch (error) { return stagedError(error); }
+  }
+  if (operation === 'attachment.upload.cancel') {
+    try { return {ok: true, cancelled: cancelStagedUpload(request.input || {}).cancelled === true}; } catch (error) { return stagedError(error); }
+  }
   if (operation === 'chat' || operation === 'lobby') {
     return callTextRoute(request.route, request.input || {}, googleKey);
   }
@@ -116,6 +142,10 @@ http.createServer(async (req, res) => {
         maxFiles: 4,
         maxFileBytes: 15 * 1024 * 1024,
         maxTotalBytes: 18 * 1024 * 1024,
+        stagedUpload: true,
+        stagedChunkBytes: STAGED_CHUNK_BYTES,
+        stagedMaxFileBytes: STAGED_MAX_FILE_BYTES,
+        stagedMaxTotalBytes: 512 * 1024 * 1024,
         multimodal: true,
         archives: true,
       },
@@ -161,6 +191,11 @@ http.createServer(async (req, res) => {
     if (!result?.ok) {
       return send(res, result?.status || 502, {ok: false, code: result?.code || 'WAI_PROVIDER_UNAVAILABLE'});
     }
+    if (result.upload) return send(res, 200, {ok: true, upload: result.upload});
+    if (result.transportAttachment) {
+      return send(res, 200, {ok: true, transportAttachment: result.transportAttachment});
+    }
+    if (typeof result.cancelled === 'boolean') return send(res, 200, {ok: true, cancelled: result.cancelled});
     if (result.answer) {
       return send(res, 200, {
         ok: true,

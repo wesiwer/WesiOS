@@ -66,6 +66,7 @@ class WesiAiHandoffController extends WesiAiManagedChatController {
       employeeId: store.employeeId,
       title: '$targetName · ${source.title}',
       persona: target,
+      projectId: source.projectId,
       createdAt: now,
       updatedAt: now,
     );
@@ -73,6 +74,8 @@ class WesiAiHandoffController extends WesiAiManagedChatController {
       conversations: [conversation, ...state.conversations],
       messages: [...state.messages, ...copied],
       activeConversationId: newId,
+      activeProjectId: source.projectId,
+      clearActiveProject: source.projectId == null,
     );
     await store.save(state);
     notifyListeners();
