@@ -270,6 +270,99 @@ class WesiSelfDebugEngine {
     toolCalls = initial.toolCalls;
 
     var needsRepair = !initial.ok;
+    final recoveredPhase = checkpointTarget?.snapshot?.currentPhase;
+    if (!needsRepair &&
+        repairIteration > 0 &&
+        (recoveredPhase == WesiSelfDebugPhase.diagnosing.name ||
+            recoveredPhase == WesiSelfDebugPhase.repairing.name)) {
+      final previousVerification = await _runSteps(
+        plan.verificationSteps,
+        phase: WesiSelfDebugPhase.verifying,
+        runtimeContext: runtimeContext,
+        evidence: evidence,
+        startedAt: startedAt,
+        currentToolCalls: toolCalls,
+        repairIteration: repairIteration - 1,
+      );
+      toolCalls = previousVerification.toolCalls;
+      if (previousVerification.ok) {
+        return _blocked(
+          'WSD_CHECKPOINT_INCONSISTENT',
+          'Recovered repair phase has no preceding objective failure',
+          repairIteration,
+          toolCalls,
+          evidence,
+        );
+      }
+      await checkpointTarget!.updatePosition(
+        phase: WesiSelfDebugPhase.diagnosing.name,
+        repairIteration: repairIteration,
+        toolCalls: toolCalls,
+      );
+      final resumedProposal = await planner.proposeRepair(
+        request: request,
+        plan: plan,
+        iteration: repairIteration,
+        evidence: _boundedEvidence(evidence),
+      );
+      if (resumedProposal.blocked) {
+        return _blocked(
+          resumedProposal.blockerCode ?? 'WSD_OBJECTIVE_BLOCKER',
+          resumedProposal.blockerMessage ??
+              'Planner reported an objective blocker',
+          repairIteration,
+          toolCalls,
+          evidence,
+        );
+      }
+      if (resumedProposal.repairSteps.isEmpty ||
+          resumedProposal.repairSteps.length >
+              limits.maxRepairStepsPerIteration) {
+        return _blocked(
+          'WSD_BAD_REPAIR_PLAN',
+          'Recovered repair proposal is empty or exceeds the bounded step limit',
+          repairIteration,
+          toolCalls,
+          evidence,
+        );
+      }
+      final resumedIds = <String>{};
+      for (final step in resumedProposal.repairSteps) {
+        if (step.id.trim().isEmpty || !resumedIds.add(step.id)) {
+          return _blocked(
+            'WSD_BAD_REPAIR_PLAN',
+            'Recovered repair proposal contains empty or duplicate step ids',
+            repairIteration,
+            toolCalls,
+            evidence,
+          );
+        }
+        if (WesiLocalCapabilityRegistry.get(step.call.tool) == null) {
+          return _blocked(
+            'WSD_UNKNOWN_TOOL',
+            'Recovered repair proposal contains an unknown local tool',
+            repairIteration,
+            toolCalls,
+            evidence,
+          );
+        }
+      }
+      await checkpointTarget.bindRepair(
+        iteration: repairIteration,
+        fingerprint: _repairFingerprint(resumedProposal.repairSteps),
+      );
+      final resumedRepair = await _runSteps(
+        resumedProposal.repairSteps,
+        phase: WesiSelfDebugPhase.repairing,
+        runtimeContext: runtimeContext,
+        evidence: evidence,
+        startedAt: startedAt,
+        currentToolCalls: toolCalls,
+        repairIteration: repairIteration,
+      );
+      toolCalls = resumedRepair.toolCalls;
+      needsRepair = !resumedRepair.ok;
+    }
     while (true) {
       if (!needsRepair) {
         final verification = await _runSteps(
@@ -810,9 +903,12 @@ class WesiSelfDebugEngine {
 
   dynamic _canonicalize(dynamic value) {
     if (value is Map) {
-      final keys = value.keys.map((key) => key.toString()).toList()..sort();
+      final entries = value.entries
+          .map((entry) => MapEntry(entry.key.toString(), entry.value))
+          .toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
       return <String, dynamic>{
-        for (final key in keys) key: _canonicalize(value[key]),
+        for (final entry in entries) entry.key: _canonicalize(entry.value),
       };
     }
     if (value is List) return value.map(_canonicalize).toList();

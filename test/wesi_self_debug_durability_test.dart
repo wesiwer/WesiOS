@@ -77,6 +77,88 @@ void main() {
       expect(journal.value, isNull);
     });
 
+    test('restart resumes interrupted READ inside the same repair iteration',
+        () async {
+      final root =
+          await Directory.systemTemp.createTemp('wesi-sd-repair-read-');
+      addTearDown(() => root.delete(recursive: true));
+      final journal = WesiMemorySelfDebugCheckpointJournal();
+      final plan = WesiSelfDebugPlan(
+        verificationSteps: <WesiDebugStep>[
+          _step('verify', WesiLocalToolNames.fsReadText),
+        ],
+      );
+      final firstPlanner = _RepairPlanner(
+        plan: plan,
+        repair: WesiRepairProposal(
+          repairSteps: <WesiDebugStep>[
+            _step('diagnostic-read', WesiLocalToolNames.fsReadText),
+            _step('repair-write', WesiLocalToolNames.fsWriteText),
+          ],
+        ),
+      );
+      final firstExecutor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[
+        () async =>
+            WesiLocalToolResult.failure('VERIFY_FAILED', 'needs repair'),
+        () async => throw StateError('crash during repair read'),
+      ]);
+      final first = WesiSelfDebugEngine(
+        executor: firstExecutor,
+        planner: firstPlanner,
+        artifactValidator: const WesiArtifactValidator(),
+        deliverySink: _Sink(),
+        checkpoint: WesiSelfDebugCheckpointManager(journal: journal),
+      );
+      await expectLater(
+        first.run(
+          request: const WesiSelfDebugRequest(
+            id: 'repair-read-job',
+            goal: 'resume repair',
+          ),
+          runtimeContext: WesiLocalRuntimeContext(workspaceRoot: root.path),
+        ),
+        throwsA(isA<StateError>()),
+      );
+
+      final secondExecutor =
+          _SequenceExecutor(<Future<WesiLocalToolResult> Function()>[
+        () async => WesiLocalToolResult.success(message: 'diagnostic read'),
+        () async => WesiLocalToolResult.success(message: 'repair write'),
+        () async => WesiLocalToolResult.success(message: 'verification passed'),
+      ]);
+      final secondPlanner = _RepairPlanner(
+        plan: plan,
+        repair: WesiRepairProposal(
+          repairSteps: <WesiDebugStep>[
+            _step('diagnostic-read', WesiLocalToolNames.fsReadText),
+            _step('repair-write', WesiLocalToolNames.fsWriteText),
+          ],
+        ),
+      );
+      final second = WesiSelfDebugEngine(
+        executor: secondExecutor,
+        planner: secondPlanner,
+        artifactValidator: const WesiArtifactValidator(),
+        deliverySink: _Sink(),
+        checkpoint: WesiSelfDebugCheckpointManager(journal: journal),
+      );
+      final result = await second.run(
+        request: const WesiSelfDebugRequest(
+          id: 'repair-read-job',
+          goal: 'resume repair',
+        ),
+        runtimeContext: WesiLocalRuntimeContext(workspaceRoot: root.path),
+      );
+      expect(result.ok, isTrue);
+      expect(secondPlanner.repairCalls, 1);
+      expect(secondExecutor.tools, <String>[
+        WesiLocalToolNames.fsReadText,
+        WesiLocalToolNames.fsWriteText,
+        WesiLocalToolNames.fsReadText,
+      ]);
+    });
+
     test('restart never repeats an uncertain in-flight WRITE', () async {
       final root = await Directory.systemTemp.createTemp('wesi-sd-uncertain-');
       addTearDown(() => root.delete(recursive: true));
@@ -493,6 +575,29 @@ class _Planner implements WesiSelfDebugPlanner {
     required List<WesiDebugEvidence> evidence,
   }) async =>
       const WesiRepairProposal.blocked('NO_REPAIR', 'No repair available');
+}
+
+class _RepairPlanner implements WesiSelfDebugPlanner {
+  final WesiSelfDebugPlan plan;
+  final WesiRepairProposal repair;
+  int repairCalls = 0;
+
+  _RepairPlanner({required this.plan, required this.repair});
+
+  @override
+  Future<WesiSelfDebugPlan> createPlan(WesiSelfDebugRequest request) async =>
+      plan;
+
+  @override
+  Future<WesiRepairProposal> proposeRepair({
+    required WesiSelfDebugRequest request,
+    required WesiSelfDebugPlan plan,
+    required int iteration,
+    required List<WesiDebugEvidence> evidence,
+  }) async {
+    repairCalls++;
+    return repair;
+  }
 }
 
 class _SequenceExecutor extends WesiLocalRuntimeExecutor {
