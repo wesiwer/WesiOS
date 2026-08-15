@@ -20,8 +20,11 @@ jobs:
     timeout-minutes: 50
     env:
       RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
       GH_TOKEN: ${{ github.token }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Resolve temporary public hostname
         id: host
         shell: bash
@@ -66,6 +69,52 @@ jobs:
           echo "Temporary public hostname: **$PUBLIC_HOST**" >> "$GITHUB_STEP_SUMMARY"
           echo "This hostname replaces only the Foreign Relay DNS name. WesiOS still uses https://api.wesi-inc.ru." >> "$GITHUB_STEP_SUMMARY"
           echo "Temporary Relay hostname prepared: $PUBLIC_HOST"
+
+      - name: Repair missing Relay runtime modules
+        shell: bash
+        env:
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          RELAY_KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [ -n "${RELAY_SSH_USER:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_USER'; exit 1; }
+          [ -n "${RELAY_KEY:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_KEY'; exit 1; }
+
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$RELAY_KEY" > ~/.ssh/relay_emergency_key
+          chmod 600 ~/.ssh/relay_emergency_key
+          if [ -n "${RELAY_KNOWN:-}" ]; then
+            printf '%s\n' "$RELAY_KNOWN" > ~/.ssh/relay_emergency_known_hosts
+          else
+            ssh-keyscan -H "$RELAY_SSH_HOST" > ~/.ssh/relay_emergency_known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/relay_emergency_known_hosts
+          SSH=(-i "$HOME/.ssh/relay_emergency_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_emergency_known_hosts")
+          REMOTE="/tmp/wesi-ai-emergency-modules-$GITHUB_RUN_ID"
+
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" \
+            server/wesi-ai-relay/text-stream.mjs \
+            server/wesi-ai-relay/staged-upload.mjs \
+            "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/"
+
+          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          "${SUDO[@]}" mkdir -p /opt/wesi-ai-relay
+          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/text-stream.mjs" /opt/wesi-ai-relay/text-stream.mjs
+          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/staged-upload.mjs" /opt/wesi-ai-relay/staged-upload.mjs
+          "${SUDO[@]}" systemctl restart wesi-ai-relay.service
+          for _ in $(seq 1 20); do
+            if curl -fsS --max-time 5 http://127.0.0.1:8787/health >/tmp/wesi-relay-health.json 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+          curl -fsS --max-time 5 http://127.0.0.1:8787/health | grep -q '"ok":true'
+          rm -rf "$REMOTE"
+          REMOTE
+          echo 'Relay runtime module repair verified.'
 
       - name: Dispatch existing Wesi AI streaming deployment
         id: dispatch
