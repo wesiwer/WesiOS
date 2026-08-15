@@ -518,7 +518,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     try {
       final result = await FilePicker.platform.pickFiles(
         allowMultiple: true,
-        withData: true,
+        withData: false,
         type: FileType.any,
       );
       if (result == null || result.files.isEmpty) return;
