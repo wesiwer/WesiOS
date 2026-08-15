@@ -47,7 +47,7 @@ A worker profile carries:
 - foreground/background availability;
 - active light/CPU/heavy/GPU job counters.
 
-Invalid resource telemetry fails closed.
+Invalid resource telemetry fails closed. Available RAM cannot exceed total RAM and free GPU VRAM cannot exceed total GPU VRAM; a zero total with non-zero free VRAM is rejected as inconsistent telemetry.
 
 A candidate is rejected when any hard requirement is not satisfied: trust/policy, platform, capability, Runtime Pack, CPU headroom, available RAM, free VRAM, free disk, thermal safety, foreground requirement or concurrency limit.
 
@@ -92,13 +92,14 @@ with controlled branches for:
 - `running -> cancelling -> cancelled`;
 - `queued -> blocked -> queued` after the blocker is resolved.
 
-Checkpointable running work must create a validated checkpoint before a safe pause or worker-loss transition. Progress is monotonic.
+Checkpointable running work must create a validated **current** checkpoint before a safe pause or worker-loss transition. A stale checkpoint whose stage/progress no longer matches current job state is rejected. Progress is monotonic.
 
 The journal:
 
 - caps job/event counts and total encoded size;
 - rejects unknown persisted enums/capabilities instead of dropping them;
 - revalidates persisted job requirements against the trusted workload registry and rejects any downgrade of L-level, capabilities, Runtime Packs, resources or foreground policy;
+- validates restore invariants so active states keep worker/start metadata, non-active states release workers, and paused/checkpointable waiting jobs cannot restore from stale checkpoints;
 - preserves the previous valid in-memory snapshot when restore fails;
 - rolls back an in-memory enqueue/state mutation if durable journal persistence fails;
 - stores bounded status metadata rather than arbitrary process output;
