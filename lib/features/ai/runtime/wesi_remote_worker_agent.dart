@@ -7,6 +7,7 @@ import 'wesi_remote_worker_execution_store.dart';
 import 'wesi_remote_worker_http_transport.dart';
 import 'wesi_remote_worker_models.dart';
 import 'wesi_remote_worker_receipt_store.dart';
+import 'wesi_resource_scheduler_models.dart';
 
 class WesiRemoteWorkerExecutionControl {
   bool cancelRequested = false;
