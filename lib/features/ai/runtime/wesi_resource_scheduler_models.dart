@@ -9,6 +9,12 @@ enum WesiWorkerStatus { offline, online, busy, paused }
 
 enum WesiWorkerTrust { local, paired, untrusted }
 
+enum WesiWorkerRole { localDevice, remoteWorker, controlPlane }
+
+enum WesiThermalState { unknown, nominal, fair, serious, critical }
+
+enum WesiPowerMode { unknown, normal, lowPower, charging }
+
 enum WesiExecutionPreference {
   automatic,
   localPreferred,
@@ -17,11 +23,7 @@ enum WesiExecutionPreference {
   remoteOnly,
 }
 
-enum WesiForegroundPolicy {
-  foregroundRequired,
-  backgroundAllowed,
-  backgroundPreferred,
-}
+enum WesiForegroundPolicy { foregroundRequired, backgroundAllowed }
 
 enum WesiJobPriority { low, normal, high, urgent }
 
@@ -30,6 +32,7 @@ enum WesiScheduledJobState {
   running,
   pauseRequested,
   paused,
+  waitingForWorker,
   cancelling,
   cancelled,
   succeeded,
@@ -46,10 +49,12 @@ enum WesiSchedulerBlockerCode {
   platform,
   capabilities,
   runtimePacks,
+  resourceSnapshot,
   cpu,
   ram,
   gpu,
   disk,
+  thermal,
   foreground,
   concurrency,
 }
@@ -62,6 +67,7 @@ enum WesiJobEventKind {
   checkpointed,
   pauseRequested,
   paused,
+  waitingForWorker,
   resumed,
   cancelRequested,
   cancelled,
@@ -80,6 +86,65 @@ class WesiSchedulerPolicyException implements Exception {
   String toString() => '$code: $message';
 }
 
+/// Trusted orchestration facts used to choose the minimum sufficient L0-L4
+/// execution path. These values are application-owned policy inputs and are not
+/// deserialized directly from LLM tool arguments.
+class WesiAdaptiveExecutionFacts {
+  final bool mutatesState;
+  final bool usesTools;
+  final bool requiresLocalRuntime;
+  final bool requiresValidation;
+  final bool requiresBuild;
+  final bool requiresBrowserAutomation;
+  final bool requiresHeavyMedia;
+  final bool requiresLargeFilePipeline;
+  final bool requiresSelfDebug;
+  final int estimatedSteps;
+  final int estimatedDurationSeconds;
+  final int estimatedPeakRamMb;
+  final int estimatedGpuVramMb;
+  final int requestedSubagents;
+
+  const WesiAdaptiveExecutionFacts({
+    this.mutatesState = false,
+    this.usesTools = false,
+    this.requiresLocalRuntime = false,
+    this.requiresValidation = false,
+    this.requiresBuild = false,
+    this.requiresBrowserAutomation = false,
+    this.requiresHeavyMedia = false,
+    this.requiresLargeFilePipeline = false,
+    this.requiresSelfDebug = false,
+    this.estimatedSteps = 0,
+    this.estimatedDurationSeconds = 0,
+    this.estimatedPeakRamMb = 0,
+    this.estimatedGpuVramMb = 0,
+    this.requestedSubagents = 0,
+  });
+}
+
+class WesiExecutionBudget {
+  final WesiWorkloadLevel level;
+  final WesiForegroundPolicy foregroundPolicy;
+  final int maxParallelJobs;
+  final int maxActiveSubagents;
+  final int maxRepairIterations;
+  final Duration maxWallClock;
+  final bool localRuntimeAllowed;
+  final bool desktopWorkerRequired;
+
+  const WesiExecutionBudget({
+    required this.level,
+    required this.foregroundPolicy,
+    required this.maxParallelJobs,
+    required this.maxActiveSubagents,
+    required this.maxRepairIterations,
+    required this.maxWallClock,
+    required this.localRuntimeAllowed,
+    required this.desktopWorkerRequired,
+  });
+}
+
 class WesiTrustedWorkloadDescriptor {
   final String toolName;
   final WesiWorkloadLevel level;
@@ -87,11 +152,13 @@ class WesiTrustedWorkloadDescriptor {
   final Set<WesiLocalCapability> requiredCapabilities;
   final Set<WesiRuntimePackId> requiredPacks;
   final int minCpuCores;
-  final int minRamMb;
-  final int minGpuVramMb;
+  final double maxCpuLoadPercent;
+  final int minAvailableRamMb;
+  final int minFreeGpuVramMb;
   final int minFreeDiskMb;
   final bool checkpointable;
   final bool remoteAllowed;
+  final bool allowControlPlane;
 
   const WesiTrustedWorkloadDescriptor({
     required this.toolName,
@@ -100,11 +167,13 @@ class WesiTrustedWorkloadDescriptor {
     required this.requiredCapabilities,
     this.requiredPacks = const <WesiRuntimePackId>{},
     this.minCpuCores = 1,
-    this.minRamMb = 0,
-    this.minGpuVramMb = 0,
+    this.maxCpuLoadPercent = 95,
+    this.minAvailableRamMb = 0,
+    this.minFreeGpuVramMb = 0,
     this.minFreeDiskMb = 0,
     this.checkpointable = false,
     this.remoteAllowed = true,
+    this.allowControlPlane = false,
   });
 }
 
@@ -115,13 +184,16 @@ class WesiJobRequirements {
   final Set<WesiRuntimePackId> requiredPacks;
   final Set<WesiWorkerPlatform> allowedPlatforms;
   final int minCpuCores;
-  final int minRamMb;
-  final int minGpuVramMb;
+  final double maxCpuLoadPercent;
+  final int minAvailableRamMb;
+  final int minFreeGpuVramMb;
   final int minFreeDiskMb;
+  final int estimatedDurationSeconds;
   final WesiExecutionPreference preference;
   final WesiForegroundPolicy foregroundPolicy;
   final bool checkpointable;
   final bool remoteAllowed;
+  final bool allowControlPlane;
 
   const WesiJobRequirements({
     required this.toolName,
@@ -130,16 +202,20 @@ class WesiJobRequirements {
     required this.requiredPacks,
     required this.allowedPlatforms,
     required this.minCpuCores,
-    required this.minRamMb,
-    required this.minGpuVramMb,
+    required this.maxCpuLoadPercent,
+    required this.minAvailableRamMb,
+    required this.minFreeGpuVramMb,
     required this.minFreeDiskMb,
+    required this.estimatedDurationSeconds,
     required this.preference,
     required this.foregroundPolicy,
     required this.checkpointable,
     required this.remoteAllowed,
+    required this.allowControlPlane,
   });
 
-  bool get gpuRequired => minGpuVramMb > 0 || level == WesiWorkloadLevel.l4;
+  bool get gpuRequired => minFreeGpuVramMb > 0;
+
   bool get heavy => level == WesiWorkloadLevel.l3 || level == WesiWorkloadLevel.l4;
 }
 
@@ -149,14 +225,20 @@ class WesiWorkerResourceProfile {
   final WesiWorkerPlatform platform;
   final WesiWorkerStatus status;
   final WesiWorkerTrust trust;
-  final bool localDevice;
+  final WesiWorkerRole role;
   final bool policyAllowed;
   final bool appForeground;
   final bool backgroundExecutionAllowed;
   final int cpuCores;
-  final int ramMb;
-  final int gpuVramMb;
+  final double cpuLoadPercent;
+  final int totalRamMb;
+  final int availableRamMb;
+  final String? gpuName;
+  final int totalGpuVramMb;
+  final int freeGpuVramMb;
   final int freeDiskMb;
+  final WesiThermalState thermalState;
+  final WesiPowerMode powerMode;
   final Set<WesiLocalCapability> capabilities;
   final Set<WesiRuntimePackId> installedPacks;
   final int activeLightJobs;
@@ -171,16 +253,22 @@ class WesiWorkerResourceProfile {
     required this.platform,
     required this.status,
     required this.trust,
-    required this.localDevice,
+    required this.role,
     required this.policyAllowed,
     required this.appForeground,
     required this.backgroundExecutionAllowed,
     required this.cpuCores,
-    required this.ramMb,
-    required this.gpuVramMb,
+    required this.cpuLoadPercent,
+    required this.totalRamMb,
+    required this.availableRamMb,
     required this.freeDiskMb,
     required this.capabilities,
     required this.installedPacks,
+    this.gpuName,
+    this.totalGpuVramMb = 0,
+    this.freeGpuVramMb = 0,
+    this.thermalState = WesiThermalState.unknown,
+    this.powerMode = WesiPowerMode.unknown,
     this.activeLightJobs = 0,
     this.activeCpuJobs = 0,
     this.activeHeavyJobs = 0,
@@ -191,6 +279,17 @@ class WesiWorkerResourceProfile {
   bool get online =>
       status == WesiWorkerStatus.online || status == WesiWorkerStatus.busy;
 
+  bool get localDevice => role == WesiWorkerRole.localDevice;
+
+  bool get remoteWorker => role == WesiWorkerRole.remoteWorker;
+
+  bool get controlPlane => role == WesiWorkerRole.controlPlane;
+
+  bool get desktop =>
+      platform == WesiWorkerPlatform.windows ||
+      platform == WesiWorkerPlatform.linux ||
+      platform == WesiWorkerPlatform.macos;
+
   bool supportsCapabilities(Set<WesiLocalCapability> required) =>
       required.every(capabilities.contains);
 
@@ -199,6 +298,22 @@ class WesiWorkerResourceProfile {
 
   bool get trusted =>
       trust == WesiWorkerTrust.local || trust == WesiWorkerTrust.paired;
+
+  bool get resourceSnapshotSane =>
+      cpuCores > 0 &&
+      cpuLoadPercent >= 0 &&
+      cpuLoadPercent <= 100 &&
+      totalRamMb >= 0 &&
+      availableRamMb >= 0 &&
+      availableRamMb <= totalRamMb &&
+      totalGpuVramMb >= 0 &&
+      freeGpuVramMb >= 0 &&
+      (totalGpuVramMb == 0 || freeGpuVramMb <= totalGpuVramMb) &&
+      freeDiskMb >= 0 &&
+      activeLightJobs >= 0 &&
+      activeCpuJobs >= 0 &&
+      activeHeavyJobs >= 0 &&
+      activeGpuJobs >= 0;
 
   int get totalActiveJobs =>
       activeLightJobs + activeCpuJobs + activeHeavyJobs + activeGpuJobs;
@@ -209,7 +324,9 @@ class WesiSchedulerConcurrencyPolicy {
   final int maxCpuJobsPerWorker;
   final int maxHeavyJobsPerWorker;
   final int maxGpuJobsPerWorker;
+  final int maxTotalJobsPerWorker;
   final int reserveRamMb;
+  final int reserveGpuVramMb;
   final int reserveDiskMb;
 
   const WesiSchedulerConcurrencyPolicy({
@@ -217,7 +334,9 @@ class WesiSchedulerConcurrencyPolicy {
     this.maxCpuJobsPerWorker = 2,
     this.maxHeavyJobsPerWorker = 1,
     this.maxGpuJobsPerWorker = 1,
+    this.maxTotalJobsPerWorker = 6,
     this.reserveRamMb = 1024,
+    this.reserveGpuVramMb = 512,
     this.reserveDiskMb = 2048,
   });
 }
@@ -254,16 +373,24 @@ class WesiWorkerSelection {
 class WesiJobCheckpointRef {
   final String checkpointId;
   final int version;
+  final String stage;
+  final double progress;
   final DateTime createdAt;
 
   const WesiJobCheckpointRef({
     required this.checkpointId,
     required this.version,
+    required this.stage,
+    required this.progress,
     required this.createdAt,
   });
 
   void validate() {
-    if (!RegExp(r'^[A-Za-z0-9._-]{1,128}$').hasMatch(checkpointId) || version < 1) {
+    if (!RegExp(r'^[A-Za-z0-9._:-]{1,128}$').hasMatch(checkpointId) ||
+        !RegExp(r'^[A-Za-z0-9._:-]{1,128}$').hasMatch(stage) ||
+        version < 1 ||
+        progress < 0 ||
+        progress > 1) {
       throw const WesiSchedulerPolicyException(
         'WS_BAD_CHECKPOINT',
         'Checkpoint reference is invalid',
