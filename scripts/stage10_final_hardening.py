@@ -1,5 +1,8 @@
 from pathlib import Path
 
+# One-shot branch-local validator. The workflow removes this helper after a full
+# successful analyze/test pass and commits only the validated product changes.
+
 
 def patch_controller() -> None:
     path = Path("lib/features/ai/runtime/wesi_remote_worker_controller.dart")
