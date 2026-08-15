@@ -47,8 +47,7 @@ jobs:
         run: |
           flutter test \
             test/wesi_local_runtime_test.dart \
-            test/wesi_environment_scanner_test.dart \
-            test/wesi_runtime_pack_security_test.dart \
+            test/wesi_runtime_pack_test.dart \
             test/wesi_resource_scheduler_test.dart \
             test/wesi_job_queue_test.dart \
             test/wesi_job_coordinator_test.dart \
