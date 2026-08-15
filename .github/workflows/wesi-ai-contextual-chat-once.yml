@@ -1,0 +1,98 @@
+name: Wesi AI contextual chat one-shot
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-contextual-followups-clarify-lazy-chat
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wesi-ai-contextual-chat-once
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate and apply patcher
+        run: |
+          python -m py_compile scripts/wesi_ai_contextual_chat_once.py
+          python scripts/wesi_ai_contextual_chat_once.py
+
+      - name: Validate persona bundle source
+        run: |
+          python server/build-wesi-ai-personas.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data = json.loads(Path('server/pb_hooks/.wesi-ai-personas.json').read_text(encoding='utf-8'))
+          for name in ('zane', 'nirvana'):
+              prompt = data['personas'][name]
+              assert 'КОНТЕКСТНАЯ ИДЕНТИЧНОСТЬ' in prompt
+              assert 'УТОЧНЯЮЩИЕ ВОПРОСЫ' in prompt
+              assert 'не упоминай создателя, компанию, Wesi AI или WesiOS без релевантного вопроса' in prompt
+              assert '```question' in prompt
+          assert 'говори о нем всегда с искренним уважением' not in data['personas']['zane']
+          assert 'о котором ты всегда говоришь с глубоким восхищением' not in data['personas']['nirvana']
+          PY
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: stable
+          cache: true
+
+      - name: Dependencies
+        run: flutter pub get
+
+      - name: Format
+        run: |
+          dart format \
+            lib/features/ai/wesi_ai_chat_ui.dart \
+            lib/features/ai/controllers/wesi_ai_chat_controller.dart \
+            lib/features/ai/wesi_ai_managed_controller.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            lib/features/ai/widgets/wesi_ai_message_content.dart \
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            test/wesi_ai_contextual_followup_clarification_test.dart \
+            test/wesi_ai_lazy_conversation_test.dart
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Focused contextual chat regressions
+        run: |
+          flutter test test/wesi_ai_contextual_followup_clarification_test.dart
+          flutter test test/wesi_ai_lazy_conversation_test.dart
+          flutter test test/wesi_ai_rich_message_test.dart
+          flutter test test/wesi_ai_queue_hardening_test.dart
+          flutter test test/wesi_ai_memory_engine_test.dart
+
+      - name: Full Flutter regression suite
+        run: flutter test
+
+      - name: Commit validated product slice
+        if: success()
+        run: |
+          git config user.name "wesiwer"
+          git config user.email "actions@users.noreply.github.com"
+          git add \
+            docs/wesi_ai/personas/ZANE_PERSONA.md \
+            docs/wesi_ai/personas/NIRVANA_PERSONA.md \
+            docs/WESI_AI_CHAT_UX.md \
+            lib/features/ai/wesi_ai_chat_ui.dart \
+            lib/features/ai/controllers/wesi_ai_chat_controller.dart \
+            lib/features/ai/wesi_ai_managed_controller.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            lib/features/ai/widgets/wesi_ai_message_content.dart \
+            lib/features/ai/ai_assistant_v2_screen.dart
+          if ! git diff --cached --quiet; then
+            git commit -m "feat(ai): contextual followups clarification and lazy chats"
+            git push origin HEAD:agent/wesi-ai-contextual-followups-clarify-lazy-chat
+          fi
