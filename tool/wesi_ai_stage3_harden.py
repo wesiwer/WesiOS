@@ -65,7 +65,7 @@ s = replace_once(s,
 "import 'package:wesios/features/ai/controllers/wesi_ai_chat_controller.dart';\nimport 'package:wesios/features/ai/memory/wesi_ai_memory_api.dart';\nimport 'package:wesios/features/ai/memory/wesi_ai_memory_engine.dart';\n", 'test controller imports')
 s = replace_once(s,
 "import 'package:wesios/features/ai/storage/wesi_ai_local_store.dart';\n",
-"import 'package:wesios/features/ai/storage/wesi_ai_local_store.dart';\nimport 'package:wesios/features/ai/wesi_ai_api.dart';\n", 'test api import')
+"import 'package:wesios/features/ai/models/wesi_ai_attachment.dart';\nimport 'package:wesios/features/ai/storage/wesi_ai_local_store.dart';\nimport 'package:wesios/features/ai/wesi_ai_api.dart';\n", 'test api and attachment imports')
 insert_anchor = 'void main() {'
 classes = r'''class _MemoryStore extends WesiAiLocalStore {
   WesiAiLocalState? saved;
