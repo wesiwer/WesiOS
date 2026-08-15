@@ -49,6 +49,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       <String, _TransientRetryPayload>{};
   final List<WesiAiQueuedTurn> _queuedTurns = <WesiAiQueuedTurn>[];
   bool _drainingQueue = false;
+  bool _managedDisposed = false;
 
   WesiAiManagedChatController({
     required WesiAiLocalStore store,
@@ -59,6 +60,10 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   List<WesiAiQueuedTurn> get queuedTurns =>
       List<WesiAiQueuedTurn>.unmodifiable(_queuedTurns);
   bool get processing => sending || _drainingQueue || _queuedTurns.isNotEmpty;
+
+  void _notify() {
+    if (!_managedDisposed) notifyListeners();
+  }
 
   WesiAiMessageSubmitResult submitUserMessage(
     String text, {
@@ -86,7 +91,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
         queuedAt: DateTime.now(),
       ),
     );
-    notifyListeners();
+    _notify();
     unawaited(_drainQueuedTurns());
     return WesiAiMessageSubmitResult.accepted;
   }
@@ -113,7 +118,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
           queuedAt: DateTime.now(),
         ),
       );
-      notifyListeners();
+      _notify();
       return;
     }
 
@@ -156,7 +161,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   Future<void> _drainQueuedTurns() async {
     if (_drainingQueue || sending || _queuedTurns.isEmpty) return;
     _drainingQueue = true;
-    notifyListeners();
+    _notify();
     try {
       while (_queuedTurns.isNotEmpty) {
         final turn = _queuedTurns.removeAt(0);
@@ -169,7 +174,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
             }
           }
           if (target == null) {
-            notifyListeners();
+            _notify();
             continue;
           }
           if (state.activeConversationId != target.id) {
@@ -180,20 +185,20 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
             );
             await _save();
           } else {
-            notifyListeners();
+            _notify();
           }
           await _sendNow(turn.text, attachments: turn.attachments);
         } catch (_) {
           try {
             await _appendQueueItemError(turn.conversationId);
           } catch (_) {
-            notifyListeners();
+            _notify();
           }
         }
       }
     } finally {
       _drainingQueue = false;
-      notifyListeners();
+      _notify();
     }
   }
 
@@ -655,8 +660,14 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     return items;
   }
 
+  @override
+  void dispose() {
+    _managedDisposed = true;
+    super.dispose();
+  }
+
   Future<void> _save() async {
     await store.save(state);
-    notifyListeners();
+    _notify();
   }
 }
