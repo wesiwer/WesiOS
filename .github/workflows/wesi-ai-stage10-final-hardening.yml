@@ -1,0 +1,70 @@
+name: Wesi AI Stage 10 Final Hardening
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage10-remote-worker-finalize
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wesi-ai-stage10-final-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-stage10-remote-worker-finalize
+          fetch-depth: 0
+
+      - name: Apply final distributed-state hardening
+        run: python3 scripts/stage10_final_hardening.py
+
+      - name: Validate server JavaScript
+        run: |
+          node --check server/pb_hooks/wesi_ai_remote_worker_lib.js
+          node --check server/pb_hooks/wesi_ai_remote_worker.pb.js
+          node --test server/wesi-ai-stream/remote_worker_protocol.test.mjs
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Format hardened files
+        run: |
+          dart format \
+            lib/features/ai/runtime/wesi_remote_worker_controller.dart \
+            lib/features/ai/runtime/wesi_remote_worker_control_plane_bridge.dart \
+            lib/features/ai/runtime/wesi_remote_worker_agent.dart \
+            test/wesi_remote_worker_hardening_test.dart \
+            test/wesi_remote_worker_pause_lifecycle_test.dart
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Full regression suite
+        run: flutter test
+
+      - name: Commit validated product changes and remove one-shot files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/wesi-ai-stage10-final-hardening.yml
+          rm -f scripts/stage10_final_hardening.py
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(ai): finalize Stage 10 distributed-state hardening"
+          git push origin HEAD:agent/wesi-ai-stage10-remote-worker-finalize
