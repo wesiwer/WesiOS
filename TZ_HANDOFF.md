@@ -1,3 +1,54 @@
+# WesiOS — текущий handoff
+
+## Wesi AI Observable Rich Chat UX — 2026-08-16
+
+**Базовый main перед проходом:** `0f817169913281d5efa4f5ac9b328f8af753e0dd`  
+**Рабочая ветка:** `agent/wesi-ai-chat-ux-parity-secure`  
+**Validated product commit:** `c3ba4699655093fcbd332118cc530e63283a33f1`  
+**Последний полный one-shot gate:** workflow `31911490007` — success; временный workflow и патчеры после проверки удалены.
+
+### Что является source of truth по chat UX
+
+Подробный контракт: `docs/WESI_AI_CHAT_UX.md`.
+
+Реализовано:
+
+- обычный ответ больше не выводится одним сырым `Text`: fenced code имеет отдельную карточку, язык, быстрый copy и полноэкранный просмотр;
+- `> quote` и fenced `text/message/email/draft/letter` отображаются как переносимые текстовые блоки с вертикальной линией и copy;
+- inline `**bold**`, `*italic*`, `` `code` `` рендерятся и не показывают служебные markdown-маркеры;
+- вместо выдуманного reasoning summary используется раскрываемый **наблюдаемый ход работы**: реальные `meta/activity/tool/agent` события streaming protocol; скрытая chain-of-thought не выводится;
+- work log виден ещё до первого токена финального ответа, во время работы раскрыт автоматически и сохраняется в `WesiAiMessage.metadata.activity` вместе с финальным сообщением;
+- tool/agent events привязаны к `textOffset`, поэтому renderer может показывать их в месте хода ответа, а не сваливать всё в отдельный хвост;
+- у каждого tool/agent event есть отдельные `additions/deletions/files`; общий badge открывает diff-review;
+- для `github_file_upsert` `+/-` берутся из GitHub commit detail после уже успешной записи; enrichment не повторяет WRITE и не может создать дубликат side effect;
+- под завершённым ответом есть copy, bookmark в архив **только текущего чата**, branch conversation от выбранного сообщения и diff review;
+- ветка чата сохраняет `branchedFromConversationId` и `branchedFromMessageId`, копирует историю только до выбранного сообщения и переживает reload;
+- камера Wesi AI открывается компактным modal dialog вместо fullscreen, при этом внутренний `CameraPreview` сохраняет аппаратный aspect ratio;
+- server streaming gateway теперь отдаёт lead-agent start/result и фактические activity/tool lifecycle events; неизвестные diff-числа не выдумываются и остаются нулевыми.
+
+### Проверки
+
+На validated product slice прошли:
+
+- `node --check` streaming gateway и GitHub connector;
+- весь `server/wesi-ai-stream/*.test.mjs`;
+- observability/security guards;
+- `flutter analyze --no-fatal-infos`;
+- новые rich-chat widget/parser tests;
+- durable Hive tests для chat-local archive и conversation branch;
+- расширенный streaming regression: tool activity видна до финала, затем остаётся в финальном сообщении и persisted store;
+- существующие confirmation/memory/queue regressions;
+- полный `flutter test` всего WesiOS.
+
+### Не откатывать
+
+- Не возвращать `safeReasoningSummary` как искусственную «мысль модели».
+- Не показывать скрытую chain-of-thought как будто это реальная телеметрия. Пользовательский блок — только наблюдаемые этапы/действия.
+- Не считать `+/-` токенами или временем. В WesiOS это исключительно реальные добавленные/удалённые строки, когда backend может их подтвердить.
+- Не возвращать отдельный конкурирующий renderer для code/quotes/activity: единый слой — `WesiAiRichMessage`.
+
+---
+
 # WesiOS — Horizon Top-Tier A→G final handoff
 
 **Дата:** 2026-08-10  
