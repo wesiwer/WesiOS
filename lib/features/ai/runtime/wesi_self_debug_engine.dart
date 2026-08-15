@@ -350,6 +350,27 @@ class WesiSelfDebugEngine {
           evidence,
         );
       }
+      final repairIds = <String>{};
+      for (final step in proposal.repairSteps) {
+        if (step.id.trim().isEmpty || !repairIds.add(step.id)) {
+          return _blocked(
+            'WSD_BAD_REPAIR_PLAN',
+            'Repair proposal contains empty or duplicate step ids',
+            repairIteration,
+            toolCalls,
+            evidence,
+          );
+        }
+        if (WesiLocalCapabilityRegistry.get(step.call.tool) == null) {
+          return _blocked(
+            'WSD_UNKNOWN_TOOL',
+            'Repair proposal contains an unknown local tool',
+            repairIteration,
+            toolCalls,
+            evidence,
+          );
+        }
+      }
       final repair = await _runSteps(
         proposal.repairSteps,
         phase: WesiSelfDebugPhase.repairing,
@@ -399,6 +420,12 @@ class WesiSelfDebugEngine {
           'Self-debug plan contains duplicate artifact ids',
         );
       }
+    }
+    if (plan.verificationSteps.isEmpty) {
+      return _terminalFailure(
+        'WSD_VERIFICATION_REQUIRED',
+        'Self-debug plan must contain objective verification before success',
+      );
     }
     return null;
   }

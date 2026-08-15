@@ -17,7 +17,9 @@ A model response is never proof of success. Completion requires objective tool r
 
 - accepts only typed Stage-6 `WesiLocalToolCall` steps from the fail-closed capability registry;
 - caps initial plan steps, verification steps, repair steps, total tool calls, repair iterations, evidence size, wall time and delivery attempts;
+- requires at least one objective verification step before execution can be reported successful;
 - re-runs the verification plan after every repair;
+- validates repair-step ids and Local Runtime tool names before any repair execution;
 - converts repeated identical objective failures into `WSD_REPEATED_FAILURE` instead of looping forever;
 - allows the planner to report an objective blocker;
 - never marks a run successful before all declared artifacts validate and delivery succeeds;

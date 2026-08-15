@@ -151,6 +151,83 @@ void main() {
     expect(result.code, 'DELIVERY_DOWN');
   });
 
+  test('requires objective verification before executing a plan', () async {
+    final root = await Directory.systemTemp.createTemp('wesi-self-debug-');
+    addTearDown(() => root.delete(recursive: true));
+    final executor = _ScriptedExecutor(<WesiLocalToolResult>[]);
+    final engine = WesiSelfDebugEngine(
+      executor: executor,
+      planner: _Planner(
+        plan: WesiSelfDebugPlan(
+          executionSteps: <WesiDebugStep>[
+            _step('edit', WesiLocalToolNames.fsWriteText),
+          ],
+        ),
+      ),
+      artifactValidator: const WesiArtifactValidator(),
+      deliverySink: _DeliverySink(),
+    );
+
+    final result = await engine.run(
+      request: const WesiSelfDebugRequest(
+        id: 'job-no-verify',
+        goal: 'do not trust an unverified result',
+      ),
+      runtimeContext: WesiLocalRuntimeContext(workspaceRoot: root.path),
+    );
+
+    expect(result.ok, isFalse);
+    expect(result.code, 'WSD_VERIFICATION_REQUIRED');
+    expect(executor.calls, 0);
+  });
+
+  test('rejects unknown repair tool before executor call', () async {
+    final root = await Directory.systemTemp.createTemp('wesi-self-debug-');
+    addTearDown(() => root.delete(recursive: true));
+    final executor = _ScriptedExecutor(<WesiLocalToolResult>[
+      WesiLocalToolResult.failure('TEST_FAILED', 'tests failed'),
+    ]);
+    final engine = WesiSelfDebugEngine(
+      executor: executor,
+      planner: _Planner(
+        plan: WesiSelfDebugPlan(
+          verificationSteps: <WesiDebugStep>[
+            _step('verify', WesiLocalToolNames.flutterTest),
+          ],
+        ),
+        repairs: const <WesiRepairProposal>[
+          WesiRepairProposal(
+            repairSteps: <WesiDebugStep>[
+              WesiDebugStep(
+                id: 'unsafe-repair',
+                label: 'unsafe repair',
+                call: WesiLocalToolCall(
+                  id: 'unsafe-repair-call',
+                  tool: 'local.root.shell',
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      artifactValidator: const WesiArtifactValidator(),
+      deliverySink: _DeliverySink(),
+    );
+
+    final result = await engine.run(
+      request: const WesiSelfDebugRequest(
+        id: 'job-unsafe-repair',
+        goal: 'reject unsafe repair',
+      ),
+      runtimeContext: WesiLocalRuntimeContext(workspaceRoot: root.path),
+    );
+
+    expect(result.ok, isFalse);
+    expect(result.blocked, isTrue);
+    expect(result.code, 'WSD_UNKNOWN_TOOL');
+    expect(executor.calls, 1);
+  });
+
   test('rejects unknown local tool before execution', () async {
     final root = await Directory.systemTemp.createTemp('wesi-self-debug-');
     addTearDown(() => root.delete(recursive: true));
