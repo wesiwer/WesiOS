@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wesios/features/ai/models/wesi_ai_attachment.dart';
 
 void main() {
-  test('markdown export is classified as text/markdown', () {
+  test('markdown export is classified as text/markdown', () async {
     final attachment = WesiAiAttachment.fromPlatformFile(
       PlatformFile(
         name: 'exported-chat.md',
@@ -14,7 +14,8 @@ void main() {
       ),
     );
     expect(attachment.mimeType, 'text/markdown');
-    expect(attachment.toTransportJson()['dataBase64'], isNotEmpty);
+    final transport = await attachment.toInlineTransportJson();
+    expect(transport['dataBase64'], isNotEmpty);
   });
 
   test('unknown extension is still accepted as octet-stream', () {
@@ -29,15 +30,29 @@ void main() {
   });
 
   test('batch rejects more than four attachments', () {
-    final item = WesiAiAttachment(
+    final item = WesiAiAttachment.fromBytes(
       name: 'a.txt',
-      mimeType: 'text/plain',
-      byteSize: 1,
       bytes: Uint8List.fromList(<int>[65]),
+      mimeType: 'text/plain',
     );
     expect(
       () => WesiAiAttachment.validateBatch(List<WesiAiAttachment>.filled(5, item)),
       throwsFormatException,
+    );
+  });
+
+  test('inline transport rejects files that require staging', () async {
+    final attachment = WesiAiAttachment.fromPlatformFile(
+      PlatformFile(
+        name: 'large.bin',
+        size: 20 * 1024 * 1024,
+        path: '/not-opened-by-this-test/large.bin',
+      ),
+    );
+    expect(WesiAiAttachment.requiresStagedUpload([attachment]), isTrue);
+    expect(
+      attachment.toInlineTransportJson,
+      throwsA(isA<FormatException>()),
     );
   });
 }
