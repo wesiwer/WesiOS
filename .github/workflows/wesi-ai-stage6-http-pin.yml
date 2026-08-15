@@ -1,0 +1,36 @@
+name: Harden Wesi Local HTTP
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage6-local-runtime
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wesi-ai-stage6-http-pin-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-stage6-local-runtime
+      - name: Apply DNS pinning hardening
+        run: python tool/wesi_ai_stage6_http_pin_apply.py
+      - name: Remove one-shot patch files
+        run: |
+          rm tool/wesi_ai_stage6_http_pin_apply.py
+          rm .github/workflows/wesi-ai-stage6-http-pin.yml
+      - name: Commit hardening
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix(ai): pin local HTTP to validated public address"
+          git push origin HEAD:agent/wesi-ai-stage6-local-runtime
