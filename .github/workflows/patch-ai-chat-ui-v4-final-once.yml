@@ -1,0 +1,166 @@
+name: Finish AI chat UI v4 once
+
+on:
+  push:
+    paths:
+      - '.github/workflows/patch-ai-chat-ui-v4-final-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: chatgpt/ai-chat-ui-hardening-v4
+          token: ${{ github.token }}
+      - name: Apply ordinary chat UX patch
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('lib/features/ai/ai_assistant_v2_screen.dart')
+          text = p.read_text(encoding='utf-8')
+
+          def once(old, new, label):
+              global text
+              if old not in text:
+                  raise SystemExit(f'{label} marker missing')
+              text = text.replace(old, new, 1)
+
+          once("import 'package:file_picker/file_picker.dart';\n", "import 'dart:async';\n\nimport 'package:file_picker/file_picker.dart';\n", 'async import')
+          once("import 'wesi_ai_handoff_controller.dart';\n", "import 'wesi_ai_handoff_controller.dart';\nimport 'wesi_ai_chat_ui.dart';\n", 'ui import')
+          once("  WesiAiVoiceSession? _session;\n", "  WesiAiVoiceSession? _session;\n  DateTime? _sendingSince;\n  Timer? _sendingTicker;\n  bool _creatingInitial = false;\n", 'state')
+
+          pattern = re.compile(r"  void _refresh\(\) \{\n.*?\n  \}\n\n  void _onVoiceChanged", re.S)
+          replacement = """  void _refresh() {
+            final controller = _controller;
+            if (controller != null && !controller.loading) {
+              if (WesiAiChatUi.shouldCreateInitialConversation(controller.state) && !_creatingInitial) {
+                _creatingInitial = true;
+                unawaited(
+                  controller.createConversation(WesiAiPersona.zane).whenComplete(() {
+                    _creatingInitial = false;
+                    if (mounted) setState(() {});
+                  }),
+                );
+              }
+              _syncSendingClock(controller.sending);
+            }
+            if (mounted) setState(() {});
+          }
+
+          void _syncSendingClock(bool sending) {
+            if (sending) {
+              if (_sendingSince != null) return;
+              _sendingSince = DateTime.now();
+              _sendingTicker ??= Timer.periodic(const Duration(seconds: 1), (_) {
+                if (mounted) setState(() {});
+              });
+              return;
+            }
+            _sendingSince = null;
+            _sendingTicker?.cancel();
+            _sendingTicker = null;
+          }
+
+          void _onVoiceChanged"""
+          text, count = pattern.subn(lambda _: replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('refresh marker missing')
+
+          once("    _voice.dispose();\n    _composer.dispose();\n", "    _voice.dispose();\n    _sendingTicker?.cancel();\n    _composer.dispose();\n", 'dispose')
+
+          tier_pattern = re.compile(
+              r"            items: const \[\n"
+              r"              DropdownMenuItem\(value: WesiAiTier\.fast, child: Text\('Wesi AI Быстрый'\)\),\n"
+              r"              DropdownMenuItem\(value: WesiAiTier\.pro, child: Text\('Wesi AI Pro'\)\),\n"
+              r"              DropdownMenuItem\(value: WesiAiTier\.maximum, child: Text\('Wesi AI Максимальный'\)\),\n"
+              r"            \],"
+          )
+          tier_replacement = """            items: WesiAiTier.values
+                .map((tier) => DropdownMenuItem<WesiAiTier>(
+                      value: tier,
+                      child: Text('Wesi AI ${WesiAiChatUi.tierLabel(tier)}'),
+                    ))
+                .toList(growable: false),"""
+          text, count = tier_pattern.subn(lambda _: tier_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit('tier menu marker missing')
+
+          once("    if (active == null) {\n      return Center(\n", "    if (active == null) {\n      if (_creatingInitial) {\n        return const Center(child: CircularProgressIndicator());\n      }\n      return Center(\n", 'active empty')
+          once("          child: messages.isEmpty\n              ? const Center(child: Text('История этого чата хранится локально'))\n              : ListView.builder(\n", "          child: messages.isEmpty\n              ? _emptyConversationState(active)\n              : ListView.builder(\n", 'message empty')
+          once("        if (controller.sending) const LinearProgressIndicator(),\n", "        if (controller.sending) _sendingStatus(),\n", 'sending')
+
+          header = "  Widget _conversationHeader(WesiAiHandoffController controller, WesiAiConversation active) {\n"
+          if header not in text:
+              raise SystemExit('header marker missing')
+          insert = """  Widget _emptyConversationState(WesiAiConversation active) {
+            final theme = Theme.of(context);
+            return Center(
+              child: Padding(
+                padding: const EdgeInsets.all(28),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.auto_awesome_rounded, size: 54, color: theme.colorScheme.primary),
+                    const SizedBox(height: 16),
+                    Text(
+                      WesiAiChatUi.personaEmptyLabel(active.persona),
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      active.projectId == null
+                          ? 'Напишите сообщение или прикрепите файл, чтобы начать диалог.'
+                          : 'Контекст и инструкции текущего проекта будут учтены автоматически.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          Widget _sendingStatus() {
+            final since = _sendingSince;
+            final elapsed = since == null ? Duration.zero : DateTime.now().difference(since);
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(12, 5, 12, 7),
+              child: Row(
+                children: [
+                  const SizedBox.square(dimension: 16, child: CircularProgressIndicator(strokeWidth: 2)),
+                  const SizedBox(width: 9),
+                  Text(WesiAiChatUi.sendingLabel(elapsed)),
+                ],
+              ),
+            );
+          }
+
+          """
+          text = text.replace(header, insert + header, 1)
+          p.write_text(text, encoding='utf-8')
+
+          p = Path('server/pb_hooks/wesi_ai_routes.pb.js')
+          text = p.read_text(encoding='utf-8')
+          old = "    attachmentLimits: {\n      maxFiles: 4,\n      maxFileBytes: 15728640,\n      maxTotalBytes: 18874368\n    }"
+          new = "    attachmentLimits: {\n      maxFiles: 4,\n      maxFileBytes: 15728640,\n      maxTotalBytes: 18874368,\n      inlineMaxFileBytes: 15728640,\n      inlineMaxTotalBytes: 18874368,\n      stagedMaxFileBytes: 268435456,\n      stagedMaxTotalBytes: 536870912,\n      stagedChunkBytes: 1048576\n    }"
+          if old not in text:
+              raise SystemExit('main limits marker missing')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
+          dart format lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/wesi_ai_chat_ui.dart
+          node --check server/pb_hooks/wesi_ai_routes.pb.js
+          rm -f .github/workflows/patch-ai-chat-ui-v4-once.yml .github/workflows/patch-ai-chat-ui-v4-final-once.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/wesi_ai_chat_ui.dart server/pb_hooks/wesi_ai_routes.pb.js .github/workflows/patch-ai-chat-ui-v4-once.yml .github/workflows/patch-ai-chat-ui-v4-final-once.yml
+          git commit -m 'feat(ai): polish ordinary chat UX and report staged limits'
+          git push origin HEAD:chatgpt/ai-chat-ui-hardening-v4
