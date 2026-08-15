@@ -74,7 +74,7 @@ function authenticate(req, raw) {
 
 function stagedError(error) {
   const code = String(error?.message || 'WAI_UPLOAD_FAILED');
-  const status = code === 'WAI_UPLOAD_NOT_FOUND' ? 404 : code === 'WAI_UPLOAD_EXPIRED' ? 410 : 400;
+  const status = code === 'WAI_UPLOAD_NOT_FOUND' ? 404 : code === 'WAI_UPLOAD_EXPIRED' ? 410 : code === 'WAI_UPLOAD_CAPACITY' ? 507 : 400;
   return {ok: false, status, code: code.startsWith('WAI_') ? code : 'WAI_UPLOAD_FAILED'};
 }
 

@@ -7,6 +7,8 @@ export const STAGED_UPLOAD_MIME = 'application/x-wesi-upload-ref';
 export const STAGED_CHUNK_BYTES = 1024 * 1024;
 export const STAGED_MAX_FILE_BYTES = 256 * 1024 * 1024;
 export const STAGED_TTL_MS = 60 * 60 * 1000;
+export const STAGED_MAX_ACTIVE_BYTES = 1024 * 1024 * 1024;
+export const STAGED_MAX_ACTIVE_UPLOADS = 32;
 
 const ROOT = process.env.WESI_RELAY_UPLOAD_DIR || path.join(os.tmpdir(), 'wesi-ai-staged-uploads-v1');
 const ID_RE = /^[A-Za-z0-9_-]{20,96}$/;
@@ -81,7 +83,7 @@ export function cleanupExpiredStagedUploads(now = Date.now()) {
   ensureRoot();
   let entries = [];
   try { entries = fs.readdirSync(ROOT, {withFileTypes: true}); } catch { return; }
-  for (const entry of entries.slice(0, 512)) {
+  for (const entry of entries) {
     if (!entry.isDirectory() || !ID_RE.test(entry.name)) continue;
     try {
       const meta = loadMeta(entry.name, {allowExpired: true});
@@ -94,6 +96,34 @@ export function cleanupExpiredStagedUploads(now = Date.now()) {
   }
 }
 
+function activeStagedBudget(now = Date.now()) {
+  ensureRoot();
+  let entries = [];
+  try { entries = fs.readdirSync(ROOT, {withFileTypes: true}); } catch { return {uploads: 0, bytes: 0}; }
+  let uploads = 0;
+  let bytes = 0;
+  for (const entry of entries) {
+    if (!entry.isDirectory() || !ID_RE.test(entry.name)) continue;
+    try {
+      const meta = loadMeta(entry.name, {allowExpired: true});
+      if (Number(meta.expiresAt || 0) <= now) {
+        fs.rmSync(uploadDir(entry.name), {recursive: true, force: true});
+        continue;
+      }
+      const declared = Number(meta.byteSize || 0);
+      if (!Number.isSafeInteger(declared) || declared <= 0 || declared > STAGED_MAX_FILE_BYTES) {
+        fs.rmSync(uploadDir(entry.name), {recursive: true, force: true});
+        continue;
+      }
+      uploads += 1;
+      bytes += declared;
+    } catch {
+      try { fs.rmSync(uploadDir(entry.name), {recursive: true, force: true}); } catch {}
+    }
+  }
+  return {uploads, bytes};
+}
+
 export function startStagedUpload(input = {}) {
   cleanupExpiredStagedUploads();
   const name = safeName(input.name);
@@ -103,6 +133,10 @@ export function startStagedUpload(input = {}) {
   if (!Number.isSafeInteger(byteSize) || byteSize <= 0 || byteSize > STAGED_MAX_FILE_BYTES) {
     throw new Error('WAI_UPLOAD_TOO_LARGE');
   }
+  const budget = activeStagedBudget();
+if (budget.uploads >= STAGED_MAX_ACTIVE_UPLOADS || budget.bytes + byteSize > STAGED_MAX_ACTIVE_BYTES) {
+  throw new Error('WAI_UPLOAD_CAPACITY');
+}
   const id = crypto.randomBytes(24).toString('base64url');
   const cap = crypto.randomBytes(24).toString('base64url');
   const chunkSize = STAGED_CHUNK_BYTES;
