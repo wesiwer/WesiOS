@@ -47,13 +47,14 @@ jobs:
           node --test server/wesi-ai-stream/connector_protocol.test.mjs
           node --test server/wesi-ai-relay/action-broker.test.mjs
 
-      - name: Commit validated deploy workflow only
+      - name: Export exact validated deploy workflow
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p tmp
+          cp .github/workflows/deploy-wesi-ai.yml tmp/stage11-validated-deploy-wesi-ai.yml
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add .github/workflows/deploy-wesi-ai.yml
-          git diff --cached --quiet && { echo '::error::No deploy hardening diff generated'; exit 1; }
-          git commit -m 'ci(ai): deploy connector vault and sealed configuration'
+          git add tmp/stage11-validated-deploy-wesi-ai.yml
+          git commit -m 'ci(ai): export validated Stage 11 deploy workflow'
           git push origin HEAD:agent/wesi-ai-stage11-connectors-secure-gpt56
