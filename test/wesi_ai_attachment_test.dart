@@ -29,6 +29,25 @@ void main() {
     expect(attachment.mimeType, 'application/octet-stream');
   });
 
+  test('history metadata never exposes bytes or local file path', () {
+    final attachment = WesiAiAttachment.fromPlatformFile(
+      PlatformFile(
+        name: 'private.txt',
+        size: 12,
+        path: '/private/device/path/private.txt',
+      ),
+    );
+    final metadata = attachment.toMetadataJson();
+    expect(metadata, <String, dynamic>{
+      'name': 'private.txt',
+      'mimeType': 'text/plain',
+      'byteSize': 12,
+    });
+    expect(metadata.containsKey('localPath'), isFalse);
+    expect(metadata.containsKey('dataBase64'), isFalse);
+    expect(metadata.containsKey('bytes'), isFalse);
+  });
+
   test('batch rejects more than four attachments', () {
     final item = WesiAiAttachment.fromBytes(
       name: 'a.txt',
