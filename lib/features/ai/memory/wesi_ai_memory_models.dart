@@ -218,9 +218,13 @@ class WesiAiConversationMemoryState {
         count > 1000000) {
       throw const FormatException('Invalid Wesi AI conversation memory');
     }
-    final taskState = taskRaw is Map
-        ? Map<String, dynamic>.from(taskRaw)
-        : const <String, dynamic>{};
+    Map<String, dynamic> taskState = const <String, dynamic>{};
+    if (taskRaw is Map) {
+      final candidate = Map<String, dynamic>.from(taskRaw);
+      try {
+        if (candidate.toString().length <= 12000) taskState = candidate;
+      } catch (_) {}
+    }
     return WesiAiConversationMemoryState(
       conversationId: conversationId,
       rollingSummary: summary,
