@@ -1,0 +1,141 @@
+name: Wesi AI Emergency Temporary Relay
+
+on:
+  push:
+    branches:
+      - ops/wesi-ai-temporary-relay-nip
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: wesi-ai-emergency-temporary-relay
+  cancel-in-progress: false
+
+jobs:
+  dispatch-temporary-relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    env:
+      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Resolve temporary public hostname
+        id: host
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -n "${RELAY_SSH_HOST:-}" ] || {
+            echo '::error::WESI_RELAY_SSH_HOST is required for the domainless emergency deploy.'
+            exit 1
+          }
+
+          if [[ "$RELAY_SSH_HOST" =~ ^([0-9]{1,3}\.){3}[0-9]{1,3}$ ]]; then
+            IP="$RELAY_SSH_HOST"
+          else
+            IP="$(getent ahostsv4 "$RELAY_SSH_HOST" | awk 'NR==1 {print $1}')"
+          fi
+          [ -n "${IP:-}" ] || {
+            echo '::error::Could not resolve WESI_RELAY_SSH_HOST to IPv4.'
+            exit 1
+          }
+
+          python3 - "$IP" <<'PY'
+          import ipaddress, sys
+          ip = ipaddress.ip_address(sys.argv[1])
+          if ip.version != 4 or not ip.is_global:
+              raise SystemExit('Relay address must be a public IPv4 address')
+          PY
+
+          PUBLIC_HOST="wesi-ai-${IP//./-}.nip.io"
+          RESOLVED=""
+          for _ in $(seq 1 12); do
+            RESOLVED="$(getent ahostsv4 "$PUBLIC_HOST" | awk 'NR==1 {print $1}' || true)"
+            [ "$RESOLVED" = "$IP" ] && break
+            sleep 5
+          done
+          if [ "$RESOLVED" != "$IP" ]; then
+            echo '::error::Temporary nip.io hostname did not resolve to the Relay IPv4.'
+            exit 1
+          fi
+
+          echo "public_host=$PUBLIC_HOST" >> "$GITHUB_OUTPUT"
+          echo "### Wesi AI emergency Relay" >> "$GITHUB_STEP_SUMMARY"
+          echo "Temporary public hostname: **$PUBLIC_HOST**" >> "$GITHUB_STEP_SUMMARY"
+          echo "This hostname replaces only the Foreign Relay DNS name. WesiOS still uses https://api.wesi-inc.ru." >> "$GITHUB_STEP_SUMMARY"
+          echo "Temporary Relay hostname prepared: $PUBLIC_HOST"
+
+      - name: Dispatch existing Wesi AI streaming deployment
+        id: dispatch
+        shell: bash
+        env:
+          PUBLIC_HOST: ${{ steps.host.outputs.public_host }}
+        run: |
+          set -euo pipefail
+          STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          echo "started_at=$STARTED_AT" >> "$GITHUB_OUTPUT"
+
+          PAYLOAD="$(python3 - "$PUBLIC_HOST" <<'PY'
+          import json, sys
+          print(json.dumps({"ref":"main","inputs":{"public_host":sys.argv[1]}}))
+          PY
+          )"
+
+          curl --fail-with-body -sS \
+            -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            -H 'X-GitHub-Api-Version: 2022-11-28' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/deploy-wesi-ai-streaming.yml/dispatches" \
+            -d "$PAYLOAD"
+
+          echo "Dispatched existing Deploy Wesi AI Streaming workflow for $PUBLIC_HOST"
+
+      - name: Wait for the production deployment result
+        shell: bash
+        env:
+          STARTED_AT: ${{ steps.dispatch.outputs.started_at }}
+          PUBLIC_HOST: ${{ steps.host.outputs.public_host }}
+        run: |
+          set -euo pipefail
+          RUN_ID=""
+          for _ in $(seq 1 30); do
+            RUN_ID="$(curl --fail-with-body -sS \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/workflows/deploy-wesi-ai-streaming.yml/runs?event=workflow_dispatch&branch=main&per_page=20" \
+              | python3 -c 'import json,sys,os; d=json.load(sys.stdin); s=os.environ["STARTED_AT"]; print(next((str(r["id"]) for r in d.get("workflow_runs",[]) if r.get("created_at","") >= s), ""))')"
+            [ -n "$RUN_ID" ] && break
+            sleep 5
+          done
+          [ -n "$RUN_ID" ] || {
+            echo '::error::Could not locate the dispatched deployment run.'
+            exit 1
+          }
+          echo "Deployment run: $RUN_ID"
+          echo "Deployment run: $RUN_ID" >> "$GITHUB_STEP_SUMMARY"
+
+          for _ in $(seq 1 180); do
+            JSON="$(curl --fail-with-body -sS \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              -H 'X-GitHub-Api-Version: 2022-11-28' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/runs/$RUN_ID")"
+            read -r STATUS CONCLUSION < <(printf '%s' "$JSON" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d.get("status", ""), d.get("conclusion") or "")')
+            echo "Deploy status: $STATUS ${CONCLUSION:-}"
+            if [ "$STATUS" = completed ]; then
+              if [ "$CONCLUSION" != success ]; then
+                echo "::error::Wesi AI temporary Relay deployment failed: $CONCLUSION"
+                exit 1
+              fi
+              echo "Temporary Relay deployment succeeded: https://$PUBLIC_HOST" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 15
+          done
+
+          echo '::error::Timed out waiting for Wesi AI temporary Relay deployment.'
+          exit 1
