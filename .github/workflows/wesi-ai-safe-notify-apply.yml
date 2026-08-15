@@ -1,0 +1,37 @@
+name: Apply Wesi AI Safe Notify Hardening
+
+on:
+  push:
+    branches:
+      - chatgpt/wesi-ai-safe-notify-hierarchy
+    paths:
+      - tool/wesi_ai_safe_notify_patch.py
+      - .github/workflows/wesi-ai-safe-notify-apply.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: chatgpt/wesi-ai-safe-notify-hierarchy
+          fetch-depth: 0
+
+      - name: Apply safe notification patch
+        run: python3 tool/wesi_ai_safe_notify_patch.py
+
+      - name: Validate patch whitespace
+        run: git diff --check
+
+      - name: Commit applied changes
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/wesi_ai_lobby_controller.dart lib/features/ai/wesi_ai_handoff_controller.dart lib/features/ai/wesi_ai_managed_controller.dart test/wesi_ai_queue_hardening_test.dart
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(ai): centralize disposal-safe notifications"
+          git push origin HEAD:chatgpt/wesi-ai-safe-notify-hierarchy
