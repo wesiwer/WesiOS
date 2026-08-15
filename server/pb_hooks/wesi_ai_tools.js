@@ -17,7 +17,6 @@ function adapters() {
     require(base + "wesi_ai_roadmap_tools.js"),
     require(base + "wesi_ai_audio_tools.js"),
     require(base + "wesi_ai_team_tools.js"),
-    require(base + "wesi_ai_github_tools.js"),
     require(base + "wesi_ai_horizon_tools.js"),
     require(base + "wesi_ai_presentation_tools.js"),
     require(base + "wesi_ai_media_tools.js"),
