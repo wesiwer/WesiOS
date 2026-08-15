@@ -6,8 +6,10 @@ function adapters() {
   const base = basePath();
   return [
     require(base + "wesi_ai_task_tools.js"),
+    require(base + "wesi_ai_task_write_tools.js"),
     require(base + "wesi_ai_finance_tools.js"),
     require(base + "wesi_ai_workspace_tools.js"),
+    require(base + "wesi_ai_calendar_write_tools.js"),
     require(base + "wesi_ai_knowledge_tools.js"),
     require(base + "wesi_ai_horizon_tools.js"),
     require(base + "wesi_ai_presentation_tools.js"),
