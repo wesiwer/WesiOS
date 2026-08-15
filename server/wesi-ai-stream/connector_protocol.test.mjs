@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 const require=createRequire(import.meta.url);
 const policy=require('../pb_hooks/wesi_ai_connector_policy.js');
+const registry=require('../pb_hooks/wesi_ai_capability_registry.js');
 const github=require('../pb_hooks/wesi_ai_github_connector.js');
 
 test('GitHub connector policy separates READ WRITE DESTRUCTIVE and workflow scope',()=>{
@@ -10,6 +11,20 @@ test('GitHub connector policy separates READ WRITE DESTRUCTIVE and workflow scop
   assert.equal(policy.spec('github_file_upsert').risk,'WRITE');
   assert.equal(policy.spec('github_pull_request_merge').risk,'DESTRUCTIVE');
   assert.deepEqual(policy.spec('github_workflow_dispatch').scopes,['repo','workflow']);
+});
+
+test('every GitHub connector tool is registered in Action Broker with identical risk',()=>{
+  const names=policy.toolNames();
+  assert.equal(names.length,15);
+  for(const name of names){
+    const spec=policy.spec(name);
+    const meta=registry.get(name);
+    assert.ok(meta,`missing capability registry entry for ${name}`);
+    assert.equal(meta.module,'connectors',name);
+    assert.equal(meta.risk,spec.risk,`${name} risk mismatch`);
+    assert.equal(meta.confirmationRequired,spec.risk==='DESTRUCTIVE',`${name} confirmation mismatch`);
+  }
+  assert.equal(registry.get('github_actions_list'),null);
 });
 
 test('protected branch names and traversal-like paths fail closed',()=>{
