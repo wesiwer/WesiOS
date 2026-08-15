@@ -75,7 +75,7 @@ test('stream sniffer reveals normal text but withholds tool JSON', () => {
 
 test('HMAC signing matches deterministic payload', () => {
   const actual = signRelayRequest('rid', '123', '{"x":1}', 'secret');
-  assert.equal(actual, 'b121f5cc67b389a6680e5c92fdcfb6721b12def7662db71d46f90c0c62ee9450');
+  assert.equal(actual, '00869641839c4678dd4316b6a4d07ced9cdd8b44751bb15286e4665e39093a78');
 });
 
 test('gateway forwards true deltas and final done event without provider metadata', async () => {

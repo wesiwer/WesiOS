@@ -18,7 +18,7 @@ routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
       lobby: true,
       voiceConversation: true,
       naturalTts: cfg.ready,
-      streaming: false,
+      streaming: cfg.ready && String(cfg.streamSecret || "").length >= 32,
       attachments: cfg.ready,
       imageUnderstanding: cfg.ready,
       videoUnderstanding: cfg.ready,
