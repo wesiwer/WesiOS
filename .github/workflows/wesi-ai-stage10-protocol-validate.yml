@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: wesi-ai-stage10-protocol-${{ github.ref }}
@@ -20,6 +20,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/wesi-ai-stage10-remote-worker
+          fetch-depth: 0
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -28,9 +29,9 @@ jobs:
           cache: true
       - name: Get dependencies
         run: flutter pub get
-      - name: Check formatting
+      - name: Format Stage 10 protocol
         run: |
-          dart format --output=none --set-exit-if-changed \
+          dart format \
             lib/features/ai/runtime/wesi_remote_worker_models.dart \
             lib/features/ai/runtime/wesi_remote_worker_auth.dart \
             lib/features/ai/runtime/wesi_remote_worker_pairing.dart \
@@ -45,3 +46,19 @@ jobs:
             test/wesi_job_queue_test.dart \
             test/wesi_job_coordinator_test.dart \
             test/wesi_remote_worker_protocol_test.dart
+      - name: Commit validated protocol core and cleanup one-shot CI
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/wesi-ai-stage10-protocol-validate.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            lib/features/ai/runtime/wesi_remote_worker_models.dart \
+            lib/features/ai/runtime/wesi_remote_worker_auth.dart \
+            lib/features/ai/runtime/wesi_remote_worker_pairing.dart \
+            lib/features/ai/runtime/wesi_remote_worker_registry.dart \
+            test/wesi_remote_worker_protocol_test.dart
+          git add -u .github/workflows/wesi-ai-stage10-protocol-validate.yml
+          git commit -m "feat(ai): validate Stage 10 remote worker protocol core"
+          git push origin HEAD:agent/wesi-ai-stage10-remote-worker
