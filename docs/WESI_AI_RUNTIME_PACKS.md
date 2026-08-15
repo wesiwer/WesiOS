@@ -23,7 +23,7 @@ Full Visual Studio IDE is not a requirement. Windows native builds target Visual
 
 The scanner is trusted application code, not a model tool. It:
 
-1. resolves only fixed dependency executable names from trusted managed paths or the system `PATH`;
+1. resolves only fixed dependency executable names from trusted managed paths or absolute directories in the system `PATH`;
 2. runs only fixed version/probe arguments declared in the Runtime Pack catalog;
 3. does not accept shell commands from the LLM;
 4. bounds probe runtime and captured output;
@@ -31,7 +31,7 @@ The scanner is trusted application code, not a model tool. It:
 6. compares versions numerically;
 7. returns compatibility state.
 
-A managed dependency with `allowSystemReuse=false` is never satisfied by an arbitrary executable found on `PATH`.
+Relative `PATH` entries are ignored so an executable in the application working directory cannot impersonate a system runtime. A managed dependency with `allowSystemReuse=false` is never satisfied by an arbitrary executable found on `PATH`.
 
 ## Planning
 
@@ -51,11 +51,12 @@ A managed artifact descriptor is trusted only when all of the following hold:
 - credential-free HTTPS URL;
 - exact platform/artifact id match;
 - signed metadata with pinned Ed25519 public key id;
+- signed payload binds the artifact URL, version, SHA-256, exact sizes, install kind and paths;
 - exact declared download size;
 - SHA-256 of downloaded bytes matches the signed descriptor;
 - install paths are relative and remain under the WesiOS managed runtime root.
 
-Generic runtime downloads do not receive cookies, API keys or connector secrets. DNS/private-address checks and validated-address pinning are applied before download.
+Generic runtime downloads do not receive cookies, API keys or connector secrets. DNS/private-address checks and validated-address pinning are applied before download. Redirects are rejected for signed artifact URLs.
 
 ZIP extraction is bounded by entry count, signed installed-size limit and an in-process archive size ceiling. Absolute paths, traversal and special/symlink-like entries are rejected. Archive entries are materialized only as regular files/directories under the managed runtime directory.
 
@@ -65,7 +66,7 @@ Installation is explicit: WesiOS first creates an install preview containing dow
 
 After installation the Environment Scanner runs again. A Runtime Pack is not activated merely because files were copied: all non-optional dependencies must be detected and compatible in the post-install scan.
 
-Installation uses a staging directory and replacement/rollback boundary so a failed update does not intentionally leave the active pack half-written.
+Installation uses a staging directory and atomic verification switch. If post-install verification fails, WesiOS removes the failed candidate and restores the previously active pack.
 
 ## `workspaceV1` activation
 
@@ -79,6 +80,10 @@ Stage 7 makes that profile concrete:
 - model arguments appear only after the wrapper separator and cannot change the wrapper target or limits.
 
 The `wesi-sandbox` provider itself is Wesi-managed and must pass its fixed `--contract-version` probe. A Developer/Documents/Media binding cannot activate without a verified Core sandbox provider.
+
+## Provisioning configuration
+
+Live runtime artifact descriptors and pinned Ed25519 public verification keys are trusted provisioning configuration. Stage 7 supplies the verified catalog/manager interfaces and does not commit package credentials, private signing material, or fabricated production artifacts. A missing signed artifact remains fail-closed as `WRP_ARTIFACT_UNAVAILABLE` rather than falling back to an arbitrary download.
 
 ## Stage boundary
 
