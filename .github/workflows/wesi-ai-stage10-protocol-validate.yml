@@ -39,26 +39,21 @@ jobs:
             test/wesi_remote_worker_protocol_test.dart
       - name: Analyze
         run: flutter analyze --no-fatal-infos
-      - name: Stage 8-10 regressions
+      - name: Stage 8 regressions
         run: |
           flutter test \
             test/wesi_resource_scheduler_test.dart \
             test/wesi_job_queue_test.dart \
-            test/wesi_job_coordinator_test.dart \
-            test/wesi_remote_worker_protocol_test.dart
-      - name: Commit validated protocol core and cleanup one-shot CI
-        shell: bash
-        run: |
-          set -euo pipefail
-          rm -f .github/workflows/wesi-ai-stage10-protocol-validate.yml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            lib/features/ai/runtime/wesi_remote_worker_models.dart \
-            lib/features/ai/runtime/wesi_remote_worker_auth.dart \
-            lib/features/ai/runtime/wesi_remote_worker_pairing.dart \
-            lib/features/ai/runtime/wesi_remote_worker_registry.dart \
-            test/wesi_remote_worker_protocol_test.dart
-          git add -u .github/workflows/wesi-ai-stage10-protocol-validate.yml
-          git commit -m "feat(ai): validate Stage 10 remote worker protocol core"
-          git push origin HEAD:agent/wesi-ai-stage10-remote-worker
+            test/wesi_job_coordinator_test.dart
+      - name: Pairing QR regression
+        run: flutter test test/wesi_remote_worker_protocol_test.dart --plain-name "pairing QR excludes poll secret and credential"
+      - name: Pairing one-time regression
+        run: flutter test test/wesi_remote_worker_protocol_test.dart --plain-name "pairing claim and credential delivery are one-time"
+      - name: Pairing scope expiry regression
+        run: flutter test test/wesi_remote_worker_protocol_test.dart --plain-name "pairing rejects wrong owner scope and expired QR"
+      - name: HMAC replay regression
+        run: flutter test test/wesi_remote_worker_protocol_test.dart --plain-name "HMAC signing rejects body tamper, stale request and replay"
+      - name: Heartbeat regression
+        run: flutter test test/wesi_remote_worker_protocol_test.dart --plain-name "heartbeat feeds Stage 8 worker profile and expires offline"
+      - name: Mailbox replay regression
+        run: flutter test test/wesi_remote_worker_protocol_test.dart --plain-name "mailbox is idempotent and worker sequence rejects replay"
