@@ -650,4 +650,88 @@ void main() {
     await _waitUntil(() => !controller.processing);
     expect(store.pending, isEmpty);
   });
+
+  test('steer correction preempts active reply and runs before deferred work',
+      () async {
+    final api = _ControlledApi();
+    final controller = await _controller(api);
+
+    expect(
+      await controller.submitUserMessage('проверь весь проект'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => api.prompts.length == 1);
+
+    expect(
+      await controller.submitUserMessage('После этого проверь Windows build'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    expect(
+      await controller.submitUserMessage(
+        'Нет, не весь проект, проверяй только Android build',
+      ),
+      WesiAiMessageSubmitResult.accepted,
+    );
+
+    await _waitUntil(() => api.prompts.length >= 2);
+    expect(
+        api.prompts[1], 'Нет, не весь проект, проверяй только Android build');
+    expect(api.prompts, isNot(contains('После этого проверь Windows build')));
+
+    api.first.complete(
+      const WesiAiReply(answer: 'устаревший ответ', requestId: 'old-request'),
+    );
+    await _waitUntil(() => !controller.processing);
+    expect(
+      controller.state.messages
+          .any((message) => message.text == 'устаревший ответ'),
+      isFalse,
+    );
+    expect(
+      controller.state.messages.any(
+        (message) => message.metadata['code'] == 'WAI_QUEUE_SUPERSEDED',
+      ),
+      isTrue,
+    );
+  });
+
+  test('text control stops active work and cancels queued follow-ups',
+      () async {
+    final api = _ControlledApi();
+    final controller = await _controller(api);
+
+    expect(
+      await controller.submitUserMessage('сделай аудит'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    await _waitUntil(() => api.prompts.length == 1);
+    expect(
+      await controller.submitUserMessage('После этого собери Windows'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+    expect(
+      await controller.submitUserMessage('стой'),
+      WesiAiMessageSubmitResult.accepted,
+    );
+
+    await _waitUntil(() => !controller.processing);
+    expect(api.prompts, <String>['сделай аудит']);
+    expect(
+      controller.state.messages.any(
+        (message) => message.metadata['code'] == 'WAI_CONTROL_APPLIED',
+      ),
+      isTrue,
+    );
+    expect(controller.queuedTurnCount, 0);
+
+    api.first.complete(
+      const WesiAiReply(answer: 'поздний ответ', requestId: 'late-request'),
+    );
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(
+      controller.state.messages
+          .any((message) => message.text == 'поздний ответ'),
+      isFalse,
+    );
+  });
 }

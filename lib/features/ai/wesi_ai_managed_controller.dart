@@ -7,6 +7,7 @@ import 'storage/wesi_ai_local_store.dart';
 import 'wesi_ai_api.dart';
 import 'wesi_ai_lobby_api.dart';
 import 'wesi_ai_lobby_controller.dart';
+import 'wesi_ai_turn_intent.dart';
 
 class _TransientRetryPayload {
   final String prompt;
@@ -20,6 +21,7 @@ class WesiAiQueuedTurn {
   final String text;
   final List<WesiAiAttachment> attachments;
   final DateTime queuedAt;
+  final WesiAiTurnIntent intent;
 
   const WesiAiQueuedTurn({
     required this.id,
@@ -27,7 +29,14 @@ class WesiAiQueuedTurn {
     required this.text,
     required this.attachments,
     required this.queuedAt,
+    required this.intent,
   });
+
+  String get intentLabel => switch (intent) {
+        WesiAiTurnIntent.control => 'Стоп',
+        WesiAiTurnIntent.steer => 'Корректировка',
+        WesiAiTurnIntent.deferred => 'Потом',
+      };
 
   String get preview {
     if (text.trim().isNotEmpty) return text.trim();
@@ -86,15 +95,36 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   Future<WesiAiMessageSubmitResult> submitUserMessage(
     String text, {
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
-  }) =>
-      _acceptTurn(text, attachments: attachments, startDrain: true);
+  }) {
+    final intent = WesiAiTurnIntentClassifier.classify(
+      text,
+      hasActiveWork: processing,
+    );
+    return _acceptTurn(
+      text,
+      attachments: attachments,
+      startDrain: true,
+      intent: intent,
+    );
+  }
+
+  Future<WesiAiMessageSubmitResult> stopActiveWork() {
+    final conversation = state.activeConversation;
+    if (conversation == null || !processing) {
+      return Future.value(WesiAiMessageSubmitResult.unavailable);
+    }
+    return _applyControl(conversation, 'Стой');
+  }
 
   Future<WesiAiMessageSubmitResult> _acceptTurn(
     String text, {
     required List<WesiAiAttachment> attachments,
     required bool startDrain,
+    required WesiAiTurnIntent intent,
   }) async {
-    if (_acceptingTurn) return WesiAiMessageSubmitResult.unavailable;
+    if (_acceptingTurn && intent != WesiAiTurnIntent.control) {
+      return WesiAiMessageSubmitResult.unavailable;
+    }
     final conversation = state.activeConversation;
     final clean = text.trim();
     if (conversation == null || (clean.isEmpty && attachments.isEmpty)) {
@@ -105,8 +135,24 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     } on FormatException {
       return WesiAiMessageSubmitResult.invalidAttachments;
     }
+    if (intent == WesiAiTurnIntent.control) {
+      return _applyControl(conversation, clean);
+    }
+    if (intent == WesiAiTurnIntent.steer) {
+      interruptActiveTurn();
+      if (WesiAiTurnIntentClassifier.invalidatesDeferred(clean)) {
+        await _supersedeQueuedTurns(
+          conversation.id,
+          includeSteer: false,
+          reason: 'correction',
+        );
+      }
+    }
     if (_queuedTurns.length >= maxQueuedTurns) {
-      return WesiAiMessageSubmitResult.queueFull;
+      if (intent != WesiAiTurnIntent.steer ||
+          !await _makeRoomForPriorityTurn(conversation.id)) {
+        return WesiAiMessageSubmitResult.queueFull;
+      }
     }
 
     _acceptingTurn = true;
@@ -118,10 +164,15 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       text: clean,
       attachments: List<WesiAiAttachment>.unmodifiable(attachments),
       queuedAt: queuedAt,
+      intent: intent,
     );
     // Reserve the slot before the await so concurrent submissions cannot all
     // pass the queue limit. UI only receives `accepted` after durable storage.
-    _queuedTurns.add(turn);
+    if (intent == WesiAiTurnIntent.steer) {
+      _queuedTurns.insert(0, turn);
+    } else {
+      _queuedTurns.add(turn);
+    }
     try {
       await store.savePendingQueueItem(
         _pendingFor(turn, WesiAiPendingQueueStatus.queued),
@@ -150,6 +201,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
         queuedAt: turn.queuedAt,
         processSessionId: _queueSessionId,
         status: status,
+        intent: turn.intent.name,
         attachments: turn.attachments
             .map((attachment) => attachment.toMetadataJson())
             .toList(growable: false),
@@ -168,10 +220,15 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
   }) async {
     final conversation = state.activeConversation;
+    final intent = WesiAiTurnIntentClassifier.classify(
+      text,
+      hasActiveWork: processing,
+    );
     final result = await _acceptTurn(
       text,
       attachments: attachments,
       startDrain: false,
+      intent: intent,
     );
     if (result == WesiAiMessageSubmitResult.accepted) {
       await _drainQueuedTurns();
@@ -187,6 +244,119 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
         text: 'Не удалось отправить сообщение: проверьте вложения.',
       );
     }
+  }
+
+  WesiAiTurnIntent _intentFromName(String raw) {
+    for (final value in WesiAiTurnIntent.values) {
+      if (value.name == raw) return value;
+    }
+    return WesiAiTurnIntent.deferred;
+  }
+
+  Future<WesiAiMessageSubmitResult> _applyControl(
+    WesiAiConversation conversation,
+    String text,
+  ) async {
+    interruptActiveTurn();
+    await _supersedeQueuedTurns(
+      conversation.id,
+      includeSteer: true,
+      reason: 'control',
+    );
+    final at = DateTime.now();
+    state = state.copyWith(
+      messages: <WesiAiMessage>[
+        ...state.messages,
+        WesiAiMessage(
+          id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
+          conversationId: conversation.id,
+          employeeId: store.employeeId,
+          author: WesiAiMessageAuthor.user,
+          text: text.trim().isEmpty ? 'Стой' : text.trim(),
+          createdAt: at,
+          metadata: const <String, dynamic>{
+            'turnIntent': 'control',
+            'turnState': 'applied',
+          },
+        ),
+        WesiAiMessage(
+          id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}_stop',
+          conversationId: conversation.id,
+          employeeId: store.employeeId,
+          author: WesiAiMessageAuthor.system,
+          kind: WesiAiMessageKind.status,
+          text:
+              'Текущая работа остановлена. Новые шаги старого плана не запускаются.',
+          createdAt: at.add(const Duration(microseconds: 1)),
+          metadata: const <String, dynamic>{
+            'code': 'WAI_CONTROL_APPLIED',
+            'turnIntent': 'control',
+            'turnState': 'cancelled',
+          },
+        ),
+      ],
+    );
+    await _save();
+    return WesiAiMessageSubmitResult.accepted;
+  }
+
+  Future<void> _supersedeQueuedTurns(
+    String conversationId, {
+    required bool includeSteer,
+    required String reason,
+  }) async {
+    final removed = _queuedTurns
+        .where((turn) =>
+            turn.conversationId == conversationId &&
+            (includeSteer || turn.intent == WesiAiTurnIntent.deferred))
+        .toList(growable: false);
+    if (removed.isEmpty) return;
+    final ids = removed.map((turn) => turn.id).toSet();
+    _queuedTurns.removeWhere((turn) => ids.contains(turn.id));
+    for (final turn in removed) {
+      try {
+        await store.removePendingQueueItem(turn.id);
+      } catch (_) {}
+    }
+    final at = DateTime.now();
+    state = state.copyWith(
+      messages: <WesiAiMessage>[
+        ...state.messages,
+        WesiAiMessage(
+          id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
+          conversationId: conversationId,
+          employeeId: store.employeeId,
+          author: WesiAiMessageAuthor.system,
+          kind: WesiAiMessageKind.status,
+          text:
+              'Неактуальные ожидающие сообщения сняты с выполнения: ${removed.length}.',
+          createdAt: at,
+          metadata: <String, dynamic>{
+            'code': 'WAI_QUEUE_SUPERSEDED',
+            'turnState': 'superseded',
+            'reason': reason,
+            'count': removed.length,
+          },
+        ),
+      ],
+    );
+    await _save();
+  }
+
+  Future<bool> _makeRoomForPriorityTurn(String conversationId) async {
+    for (var index = _queuedTurns.length - 1; index >= 0; index--) {
+      final turn = _queuedTurns[index];
+      if (turn.conversationId != conversationId ||
+          turn.intent != WesiAiTurnIntent.deferred) {
+        continue;
+      }
+      _queuedTurns.removeAt(index);
+      try {
+        await store.removePendingQueueItem(turn.id);
+      } catch (_) {}
+      return true;
+    }
+    return false;
   }
 
   Future<void> _sendNow(
@@ -398,6 +568,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
             text: clean,
             attachments: const <WesiAiAttachment>[],
             queuedAt: item.queuedAt,
+            intent: _intentFromName(item.intent),
           ),
         );
       } catch (_) {

@@ -58,13 +58,14 @@ class WesiAiLobbyChatController extends WesiAiChatController {
     sending = true;
     await _save();
     try {
-      final reply = await api.send(
+      final reply = await awaitInterruptible(api.send(
         conversation: updated,
         tier: state.tier,
         message: clean,
         history: history,
         memory: state.memory,
-      );
+      ));
+      if (reply == null) return;
       final turns = WesiAiLobbyCodec.decode(reply.answer);
       if (turns.isEmpty) {
         throw const WesiAiApiException(

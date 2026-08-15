@@ -14,6 +14,7 @@ class WesiAiPendingQueueItem {
   final DateTime queuedAt;
   final String processSessionId;
   final WesiAiPendingQueueStatus status;
+  final String intent;
   final List<Map<String, dynamic>> attachments;
 
   const WesiAiPendingQueueItem({
@@ -24,12 +25,14 @@ class WesiAiPendingQueueItem {
     required this.queuedAt,
     required this.processSessionId,
     required this.status,
+    this.intent = 'deferred',
     this.attachments = const <Map<String, dynamic>>[],
   });
 
   WesiAiPendingQueueItem copyWith({
     String? processSessionId,
     WesiAiPendingQueueStatus? status,
+    String? intent,
   }) =>
       WesiAiPendingQueueItem(
         id: id,
@@ -39,6 +42,7 @@ class WesiAiPendingQueueItem {
         queuedAt: queuedAt,
         processSessionId: processSessionId ?? this.processSessionId,
         status: status ?? this.status,
+        intent: intent ?? this.intent,
         attachments: attachments,
       );
 
@@ -51,6 +55,7 @@ class WesiAiPendingQueueItem {
         'queuedAt': queuedAt.toUtc().toIso8601String(),
         'processSessionId': processSessionId,
         'status': status.name,
+        'intent': intent,
         if (attachments.isNotEmpty) 'attachments': attachments,
       };
 
@@ -85,6 +90,11 @@ class WesiAiPendingQueueItem {
     }
     if (status == null) {
       throw const FormatException('Invalid Wesi AI pending queue status');
+    }
+
+    final intent = '${json['intent'] ?? 'deferred'}'.trim();
+    if (!const <String>{'control', 'steer', 'deferred'}.contains(intent)) {
+      throw const FormatException('Invalid Wesi AI pending queue intent');
     }
 
     final attachments = <Map<String, dynamic>>[];
@@ -126,6 +136,7 @@ class WesiAiPendingQueueItem {
       queuedAt: queuedAt.toLocal(),
       processSessionId: processSessionId,
       status: status,
+      intent: intent,
       attachments: List<Map<String, dynamic>>.unmodifiable(attachments),
     );
   }

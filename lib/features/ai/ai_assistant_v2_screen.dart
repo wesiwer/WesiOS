@@ -894,7 +894,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                             Text(
                               controller.queuedTurns
                                   .take(3)
-                                  .map((turn) => turn.preview)
+                                  .map((turn) =>
+                                      '${turn.intentLabel}: ${turn.preview}')
                                   .join(' · '),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -939,7 +940,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                       maxLines: 6,
                       decoration: InputDecoration(
                         hintText: controller.sending
-                            ? 'Дополните запрос — сообщение встанет в очередь'
+                            ? 'Можно написать «Стой», исправление или следующий запрос'
                             : 'Спроси Wesi AI о чём угодно',
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
@@ -962,6 +963,13 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                           icon: const Icon(Icons.photo_camera_outlined),
                         ),
                         const Spacer(),
+                        if (controller.sending)
+                          IconButton(
+                            tooltip: 'Остановить текущую работу',
+                            onPressed: () =>
+                                unawaited(controller.stopActiveWork()),
+                            icon: const Icon(Icons.stop_circle_outlined),
+                          ),
                         if (controller.sending ||
                             controller.queuedTurnCount > 0)
                           Padding(

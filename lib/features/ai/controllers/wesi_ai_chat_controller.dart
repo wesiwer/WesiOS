@@ -15,6 +15,7 @@ class WesiAiChatController extends ChangeNotifier {
   final Set<String> _mediaPolls = <String>{};
   final Set<String> _localMediaRuns = <String>{};
   bool _disposed = false;
+  Completer<void>? _activeTurnInterrupt;
 
   WesiAiLocalState state;
   bool loading = true;
@@ -145,7 +146,7 @@ class WesiAiChatController extends ChangeNotifier {
     await _persist();
 
     try {
-      final reply = await api.send(
+      final reply = await awaitInterruptible(api.send(
         conversation: updated,
         tier: state.tier,
         message: clean,
@@ -153,7 +154,8 @@ class WesiAiChatController extends ChangeNotifier {
         memory: state.memory,
         project: _projectFor(updated.projectId),
         attachments: attachments,
-      );
+      ));
+      if (reply == null) return;
       final at = DateTime.now();
       final author = switch (c.persona) {
         WesiAiPersona.zane => WesiAiMessageAuthor.zane,
@@ -412,6 +414,30 @@ class WesiAiChatController extends ChangeNotifier {
   String _titleFor(WesiAiConversation c, String text) {
     if (!c.title.startsWith('Новый ')) return c.title;
     return text.length <= 42 ? text : '${text.substring(0, 42)}…';
+  }
+
+  bool interruptActiveTurn() {
+    final signal = _activeTurnInterrupt;
+    if (signal == null || signal.isCompleted) return false;
+    signal.complete();
+    return true;
+  }
+
+  @protected
+  Future<T?> awaitInterruptible<T>(Future<T> future) async {
+    final signal = Completer<void>();
+    _activeTurnInterrupt = signal;
+    try {
+      final result = await Future.any<(bool interrupted, T? value)>([
+        future.then<(bool interrupted, T? value)>((value) => (false, value)),
+        signal.future.then<(bool interrupted, T? value)>((_) => (true, null)),
+      ]);
+      return result.$1 ? null : result.$2;
+    } finally {
+      if (identical(_activeTurnInterrupt, signal)) {
+        _activeTurnInterrupt = null;
+      }
+    }
   }
 
   @protected
