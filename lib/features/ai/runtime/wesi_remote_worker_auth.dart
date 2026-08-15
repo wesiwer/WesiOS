@@ -40,6 +40,19 @@ class WesiRemoteWorkerRequestSigner {
   WesiRemoteWorkerRequestSigner({Random? random})
       : _random = random ?? Random.secure();
 
+  /// The bootstrap/poll secret stays client-only after pairing. The server
+  /// persists this SHA-256 request key instead of the original secret and uses
+  /// the same derived key for HMAC request verification.
+  static String requestKeyForSecret(String secret) {
+    if (secret.length < 32 || secret.length > 256) {
+      throw const WesiRemoteWorkerProtocolException(
+        'WRW_BAD_CREDENTIAL_SECRET',
+        'Worker credential secret is invalid',
+      );
+    }
+    return sha256.convert(utf8.encode(secret)).toString();
+  }
+
   WesiRemoteWorkerSignedRequest sign({
     required WesiWorkerCredential credential,
     required String method,
@@ -67,7 +80,8 @@ class WesiRemoteWorkerRequestSigner {
       path: path,
       bodySha256: bodySha,
     );
-    final digest = Hmac(sha256, utf8.encode(credential.secret))
+    final requestKey = requestKeyForSecret(credential.secret);
+    final digest = Hmac(sha256, utf8.encode(requestKey))
         .convert(utf8.encode(canonical))
         .toString();
     return WesiRemoteWorkerSignedRequest(
@@ -112,7 +126,8 @@ class WesiRemoteWorkerRequestSigner {
       path: path,
       bodySha256: request.bodySha256,
     );
-    final expected = Hmac(sha256, utf8.encode(secret))
+    final requestKey = requestKeyForSecret(secret);
+    final expected = Hmac(sha256, utf8.encode(requestKey))
         .convert(utf8.encode(canonical))
         .toString();
     return _constantTimeEquals(expected, request.signature);
