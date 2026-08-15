@@ -145,7 +145,7 @@ class WesiAiPendingQueueItem {
 
 class WesiAiLocalStore {
   static const String boxName = 'wesios_ai_local_v1';
-  static const int schemaVersion = 3;
+  static const int schemaVersion = 4;
   final String employeeId;
   const WesiAiLocalStore(this.employeeId);
 

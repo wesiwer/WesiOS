@@ -80,6 +80,33 @@ class WesiAiChatController extends ChangeNotifier {
     await _persist();
   }
 
+  Future<void> setConversationBackupImportant(
+    String conversationId,
+    bool important,
+  ) async {
+    var changed = false;
+    final conversations = state.conversations.map((conversation) {
+      if (conversation.id != conversationId ||
+          conversation.employeeId != store.employeeId ||
+          conversation.importantForBackup == important) {
+        return conversation;
+      }
+      changed = true;
+      return conversation.copyWith(importantForBackup: important);
+    }).toList(growable: false);
+    if (!changed) return;
+    state = state.copyWith(conversations: conversations);
+    await _persist();
+  }
+
+  Future<void> applyRestoredState(WesiAiLocalState restored) async {
+    if (restored.employeeId != store.employeeId) {
+      throw StateError('Employee mismatch');
+    }
+    state = restored;
+    await _persist();
+  }
+
   WesiAiProject? _projectFor(String? projectId) {
     if (projectId == null) return null;
     for (final project in state.projects) {

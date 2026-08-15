@@ -95,10 +95,8 @@ class WesiAiBackupService {
       throw const FormatException('Нет чатов, отмеченных для важного backup');
     }
     final selectedIds = selected.map((item) => item.id).toSet();
-    final selectedProjectIds = selected
-        .map((item) => item.projectId)
-        .whereType<String>()
-        .toSet();
+    final selectedProjectIds =
+        selected.map((item) => item.projectId).whereType<String>().toSet();
     final projects = state.projects
         .where((project) => selectedProjectIds.contains(project.id))
         .toList(growable: false);
@@ -244,11 +242,13 @@ class WesiAiBackupService {
   static Future<WesiAiBackupImportResult> importPackage({
     required Uint8List package,
     required WesiAiLocalState current,
+    Directory? artifactRootOverride,
   }) async {
     final decoded = _decodePackage(package, current.employeeId);
     final artifactPaths = await _restoreArtifacts(
       decoded.artifactBytes,
       decoded.artifactRecords,
+      rootOverride: artifactRootOverride,
     );
 
     final projectsById = <String, WesiAiProject>{
@@ -270,9 +270,8 @@ class WesiAiBackupService {
         conversationsById[imported.id] = imported;
         continue;
       }
-      final newer = imported.updatedAt.isAfter(existing.updatedAt)
-          ? imported
-          : existing;
+      final newer =
+          imported.updatedAt.isAfter(existing.updatedAt) ? imported : existing;
       conversationsById[imported.id] = newer.copyWith(
         importantForBackup:
             existing.importantForBackup || imported.importantForBackup,
@@ -283,7 +282,8 @@ class WesiAiBackupService {
       for (final item in current.messages) item.id: item,
     };
     for (final imported in decoded.messages) {
-      final artifactId = '${imported.metadata['backupArtifactId'] ?? ''}'.trim();
+      final artifactId =
+          '${imported.metadata['backupArtifactId'] ?? ''}'.trim();
       var candidate = imported;
       if (artifactId.isNotEmpty && artifactPaths.containsKey(artifactId)) {
         final metadata = Map<String, dynamic>.from(imported.metadata)
@@ -316,7 +316,8 @@ class WesiAiBackupService {
     }
     final dedupMemory = <String, WesiAiMemoryEntry>{};
     for (final item in memoryById.values) {
-      final key = '${item.scope.name}|${item.projectId ?? ''}|${_normalize(item.text)}';
+      final key =
+          '${item.scope.name}|${item.projectId ?? ''}|${_normalize(item.text)}';
       final previous = dedupMemory[key];
       if (previous == null || item.updatedAt.isAfter(previous.updatedAt)) {
         dedupMemory[key] = item;
@@ -382,12 +383,14 @@ class WesiAiBackupService {
       final bytes = Uint8List.fromList(content);
       extractedBytes += bytes.lengthInBytes;
       if (extractedBytes > maxPackageBytes) {
-        throw const FormatException('Wesi AI package превышает лимит распаковки');
+        throw const FormatException(
+            'Wesi AI package превышает лимит распаковки');
       }
       files[name] = bytes;
     }
     final manifestBytes = files['manifest.json'];
-    if (manifestBytes == null || manifestBytes.lengthInBytes > 16 * 1024 * 1024) {
+    if (manifestBytes == null ||
+        manifestBytes.lengthInBytes > 16 * 1024 * 1024) {
       throw const FormatException('В Wesi AI package нет валидного manifest');
     }
     Map<String, dynamic> manifest;
@@ -401,7 +404,8 @@ class WesiAiBackupService {
     if (manifest['format'] != 'wesi-ai-backup' ||
         manifest['version'] != packageVersion ||
         '${manifest['employeeId'] ?? ''}' != expectedEmployeeId) {
-      throw const FormatException('Backup принадлежит другому сотруднику или версии');
+      throw const FormatException(
+          'Backup принадлежит другому сотруднику или версии');
     }
 
     final projects = <WesiAiProject>[];
@@ -465,7 +469,8 @@ class WesiAiBackupService {
       );
     }
     final conversationMemory = <String, WesiAiConversationMemoryState>{};
-    for (final raw in manifest['conversationMemory'] as List? ?? const <dynamic>[]) {
+    for (final raw
+        in manifest['conversationMemory'] as List? ?? const <dynamic>[]) {
       if (raw is! Map) continue;
       final item = WesiAiConversationMemoryState.fromJson(
         Map<String, dynamic>.from(raw),
@@ -485,7 +490,8 @@ class WesiAiBackupService {
       final messageId = '${record['messageId'] ?? ''}'.trim();
       final entryPath = '${record['entryPath'] ?? ''}'.replaceAll('\\', '/');
       final name = _safeBaseName('${record['name'] ?? ''}');
-      final mimeType = '${record['mimeType'] ?? 'application/octet-stream'}'.trim();
+      final mimeType =
+          '${record['mimeType'] ?? 'application/octet-stream'}'.trim();
       final declaredSize = record['byteSize'];
       if (!RegExp(r'^[A-Za-z0-9_-]{8,180}$').hasMatch(id) ||
           messageId.isEmpty ||
@@ -529,10 +535,11 @@ class WesiAiBackupService {
 
   static Future<Map<String, String>> _restoreArtifacts(
     Map<String, Uint8List> artifactBytes,
-    Map<String, Map<String, dynamic>> artifactRecords,
-  ) async {
+    Map<String, Map<String, dynamic>> artifactRecords, {
+    Directory? rootOverride,
+  }) async {
     if (artifactBytes.isEmpty) return const <String, String>{};
-    final root = await getApplicationDocumentsDirectory();
+    final root = rootOverride ?? await getApplicationDocumentsDirectory();
     final base = Directory(p.join(root.path, 'wesi_ai', 'imported_artifacts'));
     await base.create(recursive: true);
     final restored = <String, String>{};
@@ -570,14 +577,16 @@ class WesiAiBackupService {
       if (bytes.lengthInBytes != length) return null;
       final name = _safeBaseName(p.basename(localPath));
       final id = 'artifact_${artifactIndex}_${message.id.hashCode.abs()}';
-      final mimeType = '${message.metadata['mimeType'] ?? 'application/octet-stream'}';
+      final mimeType =
+          '${message.metadata['mimeType'] ?? 'application/octet-stream'}';
       return (
         bytes,
         <String, dynamic>{
           'id': id,
           'messageId': message.id,
           'name': name,
-          'mimeType': mimeType.length <= 160 ? mimeType : 'application/octet-stream',
+          'mimeType':
+              mimeType.length <= 160 ? mimeType : 'application/octet-stream',
           'byteSize': bytes.lengthInBytes,
           'entryPath': 'artifacts/$id/$name',
         },

@@ -23,7 +23,8 @@ class WesiAiBackupCrypto {
   ) {
     final normalized = passphrase.trim();
     if (normalized.length < 8 || normalized.length > 512) {
-      throw const FormatException('Пароль backup должен содержать минимум 8 символов');
+      throw const FormatException(
+          'Пароль backup должен содержать минимум 8 символов');
     }
     final salt = _randomBytes(_saltBytes);
     final key = _deriveKey(normalized, salt);

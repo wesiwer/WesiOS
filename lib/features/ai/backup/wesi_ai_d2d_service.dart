@@ -9,7 +9,14 @@ import '../storage/wesi_ai_local_store.dart';
 import 'wesi_ai_backup_crypto.dart';
 import 'wesi_ai_backup_service.dart';
 
-enum WesiAiD2DStatus { ready, transferring, completed, expired, stopped, failed }
+enum WesiAiD2DStatus {
+  ready,
+  transferring,
+  completed,
+  expired,
+  stopped,
+  failed
+}
 
 class WesiAiD2DDescriptor {
   final String host;
@@ -78,7 +85,8 @@ class WesiAiD2DDescriptor {
       }
       final now = DateTime.now().toUtc();
       final expiry = expiresAt.toUtc();
-      if (!expiry.isAfter(now) || expiry.difference(now) > const Duration(minutes: 10)) {
+      if (!expiry.isAfter(now) ||
+          expiry.difference(now) > const Duration(minutes: 10)) {
         throw const FormatException();
       }
       return WesiAiD2DDescriptor(
@@ -134,15 +142,22 @@ class WesiAiD2DService {
   const WesiAiD2DService._();
 
   static Future<WesiAiD2DTransferSession> startSender(
-    WesiAiLocalState state,
-  ) async {
+    WesiAiLocalState state, {
+    Duration ttl = sessionTtl,
+    InternetAddress? hostOverride,
+  }) async {
+    if (ttl <= Duration.zero || ttl > sessionTtl) {
+      throw const FormatException('Некорректный D2D TTL');
+    }
     final build = await WesiAiBackupService.buildImportantPackage(state);
     final key = WesiAiBackupCrypto.randomSessionKey();
-    final encrypted = WesiAiBackupCrypto.encryptTransfer(build.packageBytes, key);
-    final host = await _privateHost();
+    final encrypted =
+        WesiAiBackupCrypto.encryptTransfer(build.packageBytes, key);
+    final host = hostOverride ?? await _privateHost();
     final sessionId = _randomId();
-    final server = await HttpServer.bind(InternetAddress.anyIPv4, 0, shared: false);
-    final expiresAt = DateTime.now().toUtc().add(sessionTtl);
+    final server =
+        await HttpServer.bind(InternetAddress.anyIPv4, 0, shared: false);
+    final expiresAt = DateTime.now().toUtc().add(ttl);
     final descriptor = WesiAiD2DDescriptor(
       host: host.address,
       port: server.port,
@@ -153,7 +168,7 @@ class WesiAiD2DService {
     );
     final status = ValueNotifier<WesiAiD2DStatus>(WesiAiD2DStatus.ready);
     late final WesiAiD2DTransferSession session;
-    final expiryTimer = Timer(sessionTtl, () async {
+    final expiryTimer = Timer(ttl, () async {
       if (status.value == WesiAiD2DStatus.completed ||
           status.value == WesiAiD2DStatus.stopped) {
         return;
@@ -187,9 +202,11 @@ class WesiAiD2DService {
             await request.response.close();
             continue;
           }
-          final expectedAuth = WesiAiBackupCrypto.transferAuthToken(sessionId, key);
+          final expectedAuth =
+              WesiAiBackupCrypto.transferAuthToken(sessionId, key);
           final providedAuth = request.headers.value(_authHeader) ?? '';
-          if (!WesiAiBackupCrypto.constantTimeEquals(expectedAuth, providedAuth)) {
+          if (!WesiAiBackupCrypto.constantTimeEquals(
+              expectedAuth, providedAuth)) {
             request.response.statusCode = HttpStatus.unauthorized;
             await request.response.close();
             continue;
@@ -248,9 +265,11 @@ class WesiAiD2DService {
         ),
       );
       request.headers.set('cache-control', 'no-store');
-      final response = await request.close().timeout(const Duration(seconds: 12));
+      final response =
+          await request.close().timeout(const Duration(seconds: 12));
       if (response.statusCode != HttpStatus.ok) {
-        throw FormatException('D2D sender отклонил запрос (${response.statusCode})');
+        throw FormatException(
+            'D2D sender отклонил запрос (${response.statusCode})');
       }
       final declared = response.contentLength;
       if (declared > WesiAiBackupService.maxPackageBytes + 1024 * 1024) {
@@ -275,7 +294,8 @@ class WesiAiD2DService {
         current: current,
       );
     } on SocketException {
-      throw const FormatException('Не удалось подключиться к устройству в LAN/Wi‑Fi');
+      throw const FormatException(
+          'Не удалось подключиться к устройству в LAN/Wi‑Fi');
     } on TimeoutException {
       throw const FormatException('D2D соединение истекло по таймауту');
     } finally {
@@ -288,7 +308,8 @@ class WesiAiD2DService {
     if (address.isLoopback) return true;
     if (address.type == InternetAddressType.IPv4) {
       final parts = address.address.split('.').map(int.tryParse).toList();
-      if (parts.length != 4 || parts.any((value) => value == null)) return false;
+      if (parts.length != 4 || parts.any((value) => value == null))
+        return false;
       final a = parts[0]!;
       final b = parts[1]!;
       return a == 10 ||

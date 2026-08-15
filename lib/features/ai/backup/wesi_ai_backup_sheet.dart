@@ -100,7 +100,8 @@ class _WesiAiBackupSheetState extends State<WesiAiBackupSheet> {
                         label: const Text('Передать по LAN'),
                       ),
                       OutlinedButton.icon(
-                        onPressed: _busy ? null : () => _receiveTransfer(context),
+                        onPressed:
+                            _busy ? null : () => _receiveTransfer(context),
                         icon: const Icon(Icons.download_rounded),
                         label: const Text('Принять по LAN'),
                       ),
@@ -143,8 +144,8 @@ class _WesiAiBackupSheetState extends State<WesiAiBackupSheet> {
                               value: conversation.importantForBackup,
                               onChanged: _busy
                                   ? null
-                                  : (value) => controller
-                                      .setConversationBackupImportant(
+                                  : (value) =>
+                                      controller.setConversationBackupImportant(
                                         conversation.id,
                                         value,
                                       ),
@@ -356,7 +357,8 @@ class _WesiAiBackupSheetState extends State<WesiAiBackupSheet> {
               TextField(
                 controller: second,
                 obscureText: true,
-                decoration: const InputDecoration(labelText: 'Повторите пароль'),
+                decoration:
+                    const InputDecoration(labelText: 'Повторите пароль'),
               ),
             ],
           ],
