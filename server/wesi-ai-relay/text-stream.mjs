@@ -4,7 +4,7 @@ import {
   deleteGeminiFiles,
   deleteStagedUploads,
 } from './attachment-preprocessor.mjs';
-import {callGoogleText, parseGoogleRoute} from './google.mjs';
+import {callGoogleText, parseGoogleRoute, prepareWesiEnsemble} from './google.mjs';
 
 const PROVIDER_ENV = '/etc/wesi-ai-providers.env';
 
@@ -270,58 +270,35 @@ async function firstAvailableStream(candidates, input, googleKey, secrets, signa
   return last;
 }
 
-async function callUltraStream(input, googleKey, secrets, signal, onDelta) {
-  const toolTurn = String(input.system || '').includes('[WESI_AI_TOOL_PROTOCOL]');
-  const primaryCandidate = {provider: 'google', model: 'gemini-3.5-flash'};
-  const reviewCandidate = {provider: 'groq', model: 'openai/gpt-oss-120b'};
-
-  if (hasAttachments(input) || toolTurn || !googleKey || !secrets.GROQ_API_KEY) {
-    return firstAvailableStream([
-      primaryCandidate,
-      reviewCandidate,
-      {provider: 'mistral', model: secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest'},
-      {provider: 'openrouter', model: 'openrouter/free'},
-    ], input, googleKey, secrets, signal, onDelta);
+async function streamEnsemble(tier, input, googleKey, secrets, signal, onDelta) {
+  const prepared = await prepareWesiEnsemble(tier, input, googleKey, {secrets, signal});
+  if (!prepared.ok) {
+    return streamGoogle('gemini-3.5-flash', input, googleKey, signal, onDelta);
   }
-
-  const [primary, review] = await Promise.all([
-    callGoogleText(primaryCandidate.model, input, googleKey),
-    callOpenAiFull({
-      url: 'https://api.groq.com/openai/v1/chat/completions',
-      model: reviewCandidate.model,
-      apiKey: secrets.GROQ_API_KEY,
-      input,
-      signal,
-    }),
-  ]);
-  if (!primary.ok && !review.ok) {
-    return firstAvailableStream([
-      {provider: 'mistral', model: secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest'},
-      {provider: 'openrouter', model: 'openrouter/free'},
-    ], input, googleKey, secrets, signal, onDelta);
+  const final = await streamGoogle('gemini-3.5-flash', prepared.finalizerInput, googleKey, signal, onDelta);
+  if (final.ok) {
+    return {...final, provider: tier === 'ultra' ? 'wesi-maximum' : 'wesi-pro', model: 'ensemble'};
   }
-  if (!primary.ok) {
-    return streamCandidate(reviewCandidate, input, googleKey, secrets, signal, onDelta);
+  if (!final.emitted && prepared.fallback?.answer) {
+    onDelta(prepared.fallback.answer);
+    return {
+      ok: true,
+      answer: prepared.fallback.answer,
+      emitted: true,
+      provider: 'wesi-ensemble-fallback',
+      model: 'advisor',
+    };
   }
-  if (!review.ok) {
-    return streamGoogle(primaryCandidate.model, input, googleKey, signal, onDelta);
-  }
-
-  const synthesis = {
-    system: 'Ты финальный синтезатор Wesi AI Максимальный. Сформируй один точный ответ пользователю. Используй сильные стороны обоих черновиков, исправляй противоречия и не упоминай внутреннюю маршрутизацию или модели.',
-    history: [],
-    message: `Исходный запрос:\n${String(input.message || '')}\n\nЧерновик A:\n${primary.answer}\n\nЧерновик B:\n${review.answer}`,
-  };
-  return streamGoogle('gemini-3.5-flash', synthesis, googleKey, signal, onDelta);
+  return final;
 }
 
-export async function streamTextRoute(route, input, googleKey, signal, onDelta) {
+export async function streamTextRoute(route, input, googleKey, signal, onDelta, options = {}) {
   const direct = parseGoogleRoute(route);
   if (direct) return streamGoogle(direct.model, input, googleKey, signal, onDelta);
 
   const tier = parseWesiRoute(route);
   if (!tier) return {ok: false, status: 400, code: 'WAI_ROUTE_UNAVAILABLE', emitted: false};
-  const secrets = providerSecrets();
+  const secrets = options.secrets || providerSecrets();
 
   if (hasAttachments(input)) {
     const model = tier === 'fast' ? 'gemini-3.5-flash-lite' : 'gemini-3.5-flash';
@@ -336,13 +313,6 @@ export async function streamTextRoute(route, input, googleKey, signal, onDelta) 
       {provider: 'openrouter', model: 'openrouter/free'},
     ], input, googleKey, secrets, signal, onDelta);
   }
-  if (tier === 'pro') {
-    return firstAvailableStream([
-      {provider: 'groq', model: 'openai/gpt-oss-120b'},
-      {provider: 'google', model: 'gemini-3.5-flash'},
-      {provider: 'mistral', model: secrets.WESI_MISTRAL_PRO_MODEL || 'mistral-large-latest'},
-      {provider: 'openrouter', model: 'openrouter/free'},
-    ], input, googleKey, secrets, signal, onDelta);
-  }
-  return callUltraStream(input, googleKey, secrets, signal, onDelta);
+  if (tier === 'pro') return streamEnsemble('pro', input, googleKey, secrets, signal, onDelta);
+  return streamEnsemble('ultra', input, googleKey, secrets, signal, onDelta);
 }

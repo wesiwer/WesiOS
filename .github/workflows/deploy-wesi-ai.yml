@@ -98,6 +98,9 @@ jobs:
       - name: Build sealed Relay credentials
         env:
           GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GROQ_KEY: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           ZANE_VOICE: ${{ secrets.WESI_ZANE_TTS_VOICE }}
           NIRVANA_VOICE: ${{ secrets.WESI_NIRVANA_TTS_VOICE }}
         run: |
@@ -110,6 +113,9 @@ jobs:
           }
           if os.environ.get('ZANE_VOICE'): values['WESI_ZANE_TTS_VOICE_B64'] = os.environ['ZANE_VOICE']
           if os.environ.get('NIRVANA_VOICE'): values['WESI_NIRVANA_TTS_VOICE_B64'] = os.environ['NIRVANA_VOICE']
+          if os.environ.get('GROQ_KEY'): values['GROQ_API_KEY_B64'] = os.environ['GROQ_KEY']
+          if os.environ.get('MISTRAL_KEY'): values['MISTRAL_API_KEY_B64'] = os.environ['MISTRAL_KEY']
+          if os.environ.get('OPENROUTER_KEY'): values['OPENROUTER_API_KEY_B64'] = os.environ['OPENROUTER_KEY']
           with open('relay-secrets.b64', 'w', encoding='ascii') as f:
               for key, value in values.items(): f.write(key + '=' + base64.b64encode(value.encode()).decode() + '\n')
           PY

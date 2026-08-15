@@ -165,3 +165,16 @@ node --test server/wesi-ai-relay/*.test.mjs
 ```
 
 Также production PR gate выполняет `node --check`, Relay tests, Persona validation, Flutter analyze/test, Android и Windows builds.
+
+
+## Multi-AI orchestration
+
+Text tiers are intentionally different:
+
+- **Fast** is latency-first: one fast provider answers, with ordered fallback only.
+- **Pro** asks two independent non-Gemini advisors in parallel. If one seat is unavailable, OpenRouter may fill it. Gemini receives the original persona/tool context plus advisor notes and is the sole finalizer.
+- **Maximum** asks every configured non-Gemini advisor (Groq, Mistral, OpenRouter) in parallel, then Gemini performs the final synthesis.
+
+Advisor outputs are never treated as verified WesiOS actions. They are hidden analytical notes. Only the Gemini finalizer can emit the final `wesiTool` envelope, and Main Server remains the only component that can verify/execute that tool through the Action Broker. If Gemini is temporarily unavailable after advisor work, chat may return one advisor answer as an availability fallback, but no advisor result is ever treated as an executed tool result.
+
+Attachments remain Gemini-only until the non-Gemini adapters gain a verified multimodal transport; files are never silently dropped to make ensemble routing work.
