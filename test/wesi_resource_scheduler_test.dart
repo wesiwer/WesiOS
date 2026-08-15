@@ -196,6 +196,24 @@ void main() {
       expect(gpuPython.minFreeGpuVramMb, 4096);
     });
 
+    test('Local Runtime target platforms cannot be widened to Android', () {
+      expect(
+        () => WesiTrustedWorkloadRegistry.requirementsFor(
+          WesiLocalToolNames.pythonRun,
+          allowedPlatforms: const <WesiWorkerPlatform>{
+            WesiWorkerPlatform.android
+          },
+        ),
+        throwsA(
+          isA<WesiSchedulerPolicyException>().having(
+            (error) => error.code,
+            'code',
+            'WS_INVALID_REQUIREMENTS',
+          ),
+        ),
+      );
+    });
+
     test('model-style negative resource relaxation is rejected', () {
       expect(
         () => WesiTrustedWorkloadRegistry.requirementsFor(

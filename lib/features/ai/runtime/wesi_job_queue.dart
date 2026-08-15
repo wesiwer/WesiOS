@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'wesi_local_runtime_models.dart';
+import 'wesi_resource_scheduler.dart';
 import 'wesi_resource_scheduler_models.dart';
 import 'wesi_runtime_pack_models.dart';
 
@@ -133,8 +134,8 @@ class WesiDurableJobQueue {
 
   Future<void> restore() => _locked(() async {
         final raw = await journal.read();
-        _jobs.clear();
         if (raw == null || raw.trim().isEmpty) {
+          _jobs.clear();
           _initialized = true;
           return;
         }
@@ -165,6 +166,7 @@ class WesiDurableJobQueue {
             'Job journal contains an invalid job collection',
           );
         }
+        final restoredJobs = <String, WesiScheduledJob>{};
         for (final rawJob in rawJobs) {
           if (rawJob is! Map) {
             throw const WesiJobQueueException(
@@ -175,14 +177,17 @@ class WesiDurableJobQueue {
           final job = _jobFromJson(
             rawJob.map((key, value) => MapEntry('$key', value)),
           );
-          if (_jobs.containsKey(job.id)) {
+          if (restoredJobs.containsKey(job.id)) {
             throw const WesiJobQueueException(
               'WJQ_CORRUPT_JOURNAL',
               'Job journal contains duplicate job ids',
             );
           }
-          _jobs[job.id] = job;
+          restoredJobs[job.id] = job;
         }
+        _jobs
+          ..clear()
+          ..addAll(restoredJobs);
         _initialized = true;
       });
 
@@ -225,9 +230,7 @@ class WesiDurableJobQueue {
             ),
           ],
         );
-        _jobs[id] = job;
-        await _persist();
-        return job;
+        return _insert(job);
       });
 
   Future<WesiScheduledJob> markRunning(
@@ -606,10 +609,31 @@ class WesiDurableJobQueue {
         return _replace(next);
       });
 
-  Future<WesiScheduledJob> _replace(WesiScheduledJob job) async {
+  Future<WesiScheduledJob> _insert(WesiScheduledJob job) async {
     _jobs[job.id] = job;
-    await _persist();
-    return job;
+    try {
+      await _persist();
+      return job;
+    } catch (_) {
+      _jobs.remove(job.id);
+      rethrow;
+    }
+  }
+
+  Future<WesiScheduledJob> _replace(WesiScheduledJob job) async {
+    final previous = _jobs[job.id];
+    _jobs[job.id] = job;
+    try {
+      await _persist();
+      return job;
+    } catch (_) {
+      if (previous == null) {
+        _jobs.remove(job.id);
+      } else {
+        _jobs[job.id] = previous;
+      }
+      rethrow;
+    }
   }
 
   Future<void> _persist() async {
@@ -887,6 +911,44 @@ void _validateRequirements(WesiJobRequirements value) {
     throw const WesiJobQueueException(
       'WJQ_BAD_REQUIREMENTS',
       'Job requirements are invalid',
+    );
+  }
+
+  late final WesiTrustedWorkloadDescriptor trusted;
+  try {
+    trusted = WesiTrustedWorkloadRegistry.require(value.toolName);
+  } on WesiSchedulerPolicyException {
+    throw const WesiJobQueueException(
+      'WJQ_BAD_REQUIREMENTS',
+      'Persisted workload is not present in the trusted registry',
+    );
+  }
+
+  const desktop = <WesiWorkerPlatform>{
+    WesiWorkerPlatform.windows,
+    WesiWorkerPlatform.linux,
+    WesiWorkerPlatform.macos,
+  };
+  final weakened = value.level.index < trusted.level.index ||
+      !value.requiredCapabilities.containsAll(trusted.requiredCapabilities) ||
+      !value.requiredPacks.containsAll(trusted.requiredPacks) ||
+      !value.allowedPlatforms.every(desktop.contains) ||
+      value.minCpuCores < trusted.minCpuCores ||
+      value.maxCpuLoadPercent > trusted.maxCpuLoadPercent ||
+      value.minAvailableRamMb < trusted.minAvailableRamMb ||
+      value.minFreeGpuVramMb < trusted.minFreeGpuVramMb ||
+      value.minFreeDiskMb < trusted.minFreeDiskMb ||
+      (value.level.index >= WesiWorkloadLevel.l3.index &&
+          value.foregroundPolicy != WesiForegroundPolicy.foregroundRequired) ||
+      (trusted.foregroundPolicy == WesiForegroundPolicy.foregroundRequired &&
+          value.foregroundPolicy != WesiForegroundPolicy.foregroundRequired) ||
+      value.checkpointable != trusted.checkpointable ||
+      (value.remoteAllowed && !trusted.remoteAllowed) ||
+      (value.allowControlPlane && !trusted.allowControlPlane);
+  if (weakened) {
+    throw const WesiJobQueueException(
+      'WJQ_BAD_REQUIREMENTS',
+      'Persisted workload requirements weaken trusted scheduling policy',
     );
   }
 }

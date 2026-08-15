@@ -12,6 +12,20 @@ WesiJobRequirements _checkpointable() =>
 WesiJobRequirements _nonCheckpointable() =>
     WesiTrustedWorkloadRegistry.requirementsFor(WesiLocalToolNames.gitStatus);
 
+class _FailingJobJournal implements WesiJobJournal {
+  String? value;
+  bool failWrites = false;
+
+  @override
+  Future<String?> read() async => value;
+
+  @override
+  Future<void> write(String value) async {
+    if (failWrites) throw StateError('simulated disk failure');
+    this.value = value;
+  }
+}
+
 void main() {
   group('Durable job queue', () {
     test('must be restored before use', () async {
@@ -258,6 +272,79 @@ void main() {
           ),
         ),
       );
+    });
+
+    test('persisted requirements cannot downgrade the trusted workload policy',
+        () async {
+      final journal = WesiMemoryJobJournal();
+      final queue = WesiDurableJobQueue(journal: journal);
+      await queue.restore();
+      await queue.enqueue(
+        id: 'build',
+        requirements: WesiTrustedWorkloadRegistry.requirementsFor(
+          WesiLocalToolNames.flutterBuild,
+        ),
+      );
+      journal.value = journal.value!
+          .replaceFirst('"level":"l4"', '"level":"l1"')
+          .replaceFirst('"foregroundPolicy":"foregroundRequired"',
+              '"foregroundPolicy":"backgroundAllowed"');
+
+      final restored = WesiDurableJobQueue(journal: journal);
+      await expectLater(
+        restored.restore(),
+        throwsA(
+          isA<WesiJobQueueException>().having(
+            (error) => error.code,
+            'code',
+            'WJQ_BAD_REQUIREMENTS',
+          ),
+        ),
+      );
+    });
+
+    test('journal write failure rolls back in-memory mutation', () async {
+      final journal = _FailingJobJournal();
+      final queue = WesiDurableJobQueue(journal: journal);
+      await queue.restore();
+      await queue.enqueue(id: 'job', requirements: _nonCheckpointable());
+      journal.failWrites = true;
+
+      await expectLater(
+        queue.requestCancel('job'),
+        throwsA(isA<StateError>()),
+      );
+      expect(queue.get('job')!.state, WesiScheduledJobState.queued);
+
+      await expectLater(
+        queue.enqueue(id: 'new-job', requirements: _nonCheckpointable()),
+        throwsA(isA<StateError>()),
+      );
+      expect(queue.get('new-job'), isNull);
+    });
+
+    test('failed restore does not destroy the previous in-memory snapshot',
+        () async {
+      final journal = WesiMemoryJobJournal();
+      final queue = WesiDurableJobQueue(journal: journal);
+      await queue.restore();
+      await queue.enqueue(id: 'job', requirements: _nonCheckpointable());
+      journal.value = journal.value!.replaceFirst(
+        '"requiredPacks":["core"]',
+        '"requiredPacks":[]',
+      );
+
+      await expectLater(
+        queue.restore(),
+        throwsA(
+          isA<WesiJobQueueException>().having(
+            (error) => error.code,
+            'code',
+            'WJQ_BAD_REQUIREMENTS',
+          ),
+        ),
+      );
+      expect(queue.get('job')!.state, WesiScheduledJobState.queued);
     });
 
     test('oversized journal fails before JSON parsing', () async {

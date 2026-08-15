@@ -360,10 +360,10 @@ class WesiTrustedWorkloadRegistry {
     }
     final base = require(toolName);
     final platforms = allowedPlatforms ?? _desktop;
-    if (platforms.isEmpty) {
+    if (platforms.isEmpty || !platforms.every(_desktop.contains)) {
       throw const WesiSchedulerPolicyException(
         'WS_INVALID_REQUIREMENTS',
-        'At least one trusted target platform is required',
+        'Local Runtime workloads require a trusted desktop target platform',
       );
     }
 
