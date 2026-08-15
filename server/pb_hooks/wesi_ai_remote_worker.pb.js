@@ -332,13 +332,13 @@ routerAdd("POST", "/api/wesi/ai/workers/pairing/poll", (e) => {
   if (String(stored.credentialDeliveredAt || "")) {
     return e.json(409, {ok: false, code: "WRW_CREDENTIAL_ALREADY_DELIVERED"});
   }
-  const credential = findRecord(record.app(), record.getString("owner"), COLL_CREDENTIAL, String(stored.credentialId));
+  const credential = findRecord(e.app, record.getString("owner"), COLL_CREDENTIAL, String(stored.credentialId));
   if (!credential) return e.json(409, {ok: false, code: "WRW_PAIRING_STATE_INVALID"});
   const publicCredential = rw.publicCredentialPayload(payloadOf(credential));
   stored.credentialDeliveredAt = new Date().toISOString();
   record.set("payload", stored);
   record.set("stamp", new Date().toISOString());
-  record.app().save(record);
+  e.app.save(record);
   return e.json(200, {ok: true, ready: true, credential: publicCredential});
 });
 
