@@ -63,7 +63,9 @@ class WesiAiLobbyChatController extends WesiAiChatController {
         tier: state.tier,
         message: clean,
         history: history,
-        memory: state.memory,
+        memory: relevantMemoryFor(updated, clean),
+        conversationSummary: conversationMemoryFor(updated.id).rollingSummary,
+        taskState: conversationMemoryFor(updated.id).taskState,
       ));
       if (reply == null) return;
       final turns = WesiAiLobbyCodec.decode(reply.answer);
@@ -89,6 +91,7 @@ class WesiAiLobbyChatController extends WesiAiChatController {
         );
       }
       state = state.copyWith(messages: [...state.messages, ...messages]);
+      scheduleMemoryRefresh(updated, clean);
     } on WesiAiApiException catch (error) {
       final at = DateTime.now();
       state = state.copyWith(

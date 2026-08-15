@@ -99,8 +99,10 @@ class WesiAiMemorySheet extends StatelessWidget {
                                 ),
                                 trailing: IconButton(
                                   tooltip: 'Удалить из памяти',
-                                  onPressed: () => controller.deleteMemory(entry.id),
-                                  icon: const Icon(Icons.delete_outline_rounded),
+                                  onPressed: () =>
+                                      controller.deleteMemory(entry.id),
+                                  icon:
+                                      const Icon(Icons.delete_outline_rounded),
                                 ),
                               );
                             },

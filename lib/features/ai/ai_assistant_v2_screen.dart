@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../team/services/team_service.dart';
 import 'controllers/wesi_ai_chat_controller.dart';
 import 'models/wesi_ai_attachment.dart';
+import 'memory/wesi_ai_memory_sheet.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
 import 'wesi_ai_chat_ui.dart';
@@ -193,6 +194,16 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Память Wesi AI',
+            onPressed: () => showModalBottomSheet<void>(
+              context: context,
+              isScrollControlled: true,
+              showDragHandle: true,
+              builder: (_) => WesiAiMemorySheet(controller: controller),
+            ),
+            icon: const Icon(Icons.memory_outlined),
+          ),
           PopupMenuButton<WesiAiUiMode>(
             tooltip: 'Режим отображения ответа',
             initialValue: _uiMode,

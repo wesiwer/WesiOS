@@ -27,11 +27,28 @@ WesiAiMemoryEntry _entry({
 void main() {
   test('retrieval isolates persona and project memory', () {
     final entries = <WesiAiMemoryEntry>[
-      _entry(id: 'memory_shared_01', scope: WesiAiMemoryScope.shared, text: 'Пользователь предпочитает короткие технические отчёты'),
-      _entry(id: 'memory_zane_001', scope: WesiAiMemoryScope.zane, text: 'Для Flutter задач сначала запускать targeted tests'),
-      _entry(id: 'memory_nirvana1', scope: WesiAiMemoryScope.nirvana, text: 'Визуальный стиль проекта минималистичный'),
-      _entry(id: 'memory_project1', scope: WesiAiMemoryScope.project, text: 'Android build проекта использует текущую release подпись', projectId: 'project-a'),
-      _entry(id: 'memory_project2', scope: WesiAiMemoryScope.project, text: 'Другой проект использует старую подпись', projectId: 'project-b'),
+      _entry(
+          id: 'memory_shared_01',
+          scope: WesiAiMemoryScope.shared,
+          text: 'Пользователь предпочитает короткие технические отчёты'),
+      _entry(
+          id: 'memory_zane_001',
+          scope: WesiAiMemoryScope.zane,
+          text: 'Для Flutter задач сначала запускать targeted tests'),
+      _entry(
+          id: 'memory_nirvana1',
+          scope: WesiAiMemoryScope.nirvana,
+          text: 'Визуальный стиль проекта минималистичный'),
+      _entry(
+          id: 'memory_project1',
+          scope: WesiAiMemoryScope.project,
+          text: 'Android build проекта использует текущую release подпись',
+          projectId: 'project-a'),
+      _entry(
+          id: 'memory_project2',
+          scope: WesiAiMemoryScope.project,
+          text: 'Другой проект использует старую подпись',
+          projectId: 'project-b'),
     ];
 
     final result = WesiAiMemoryEngine.retrieve(
@@ -44,21 +61,33 @@ void main() {
       now: DateTime(2026, 8, 15),
     );
 
-    expect(result.zane, contains('Для Flutter задач сначала запускать targeted tests'));
+    expect(result.zane,
+        contains('Для Flutter задач сначала запускать targeted tests'));
     expect(result.nirvana, isEmpty);
-    expect(result.project, contains('Android build проекта использует текущую release подпись'));
-    expect(result.project, isNot(contains('Другой проект использует старую подпись')));
+    expect(result.project,
+        contains('Android build проекта использует текущую release подпись'));
+    expect(result.project,
+        isNot(contains('Другой проект использует старую подпись')));
   });
 
   test('automatic merge deduplicates and rejects secret-like memory', () {
     final existing = <WesiAiMemoryEntry>[
-      _entry(id: 'memory_existing1', scope: WesiAiMemoryScope.shared, text: 'Пользователь предпочитает тёмную тему'),
+      _entry(
+          id: 'memory_existing1',
+          scope: WesiAiMemoryScope.shared,
+          text: 'Пользователь предпочитает тёмную тему'),
     ];
     final merged = WesiAiMemoryEngine.mergeCandidates(
       existing: existing,
       candidates: const <WesiAiMemoryCandidate>[
-        WesiAiMemoryCandidate(scope: WesiAiMemoryScope.shared, text: 'Пользователь предпочитает тёмную тему', importance: 0.9),
-        WesiAiMemoryCandidate(scope: WesiAiMemoryScope.shared, text: 'API key: super-secret-value-123456', importance: 1),
+        WesiAiMemoryCandidate(
+            scope: WesiAiMemoryScope.shared,
+            text: 'Пользователь предпочитает тёмную тему',
+            importance: 0.9),
+        WesiAiMemoryCandidate(
+            scope: WesiAiMemoryScope.shared,
+            text: 'API key: super-secret-value-123456',
+            importance: 1),
       ],
       employeeId: 'employee-1',
       sourceConversationId: 'conversation-1',
@@ -73,10 +102,29 @@ void main() {
 
   test('processing threshold respects global and per-chat memory controls', () {
     const settings = WesiAiMemorySettings();
-    const chat = WesiAiConversationMemoryState(conversationId: 'conversation-1', summarizedMessageCount: 4);
-    expect(WesiAiMemoryEngine.shouldProcess(settings: settings, conversationMemory: chat, currentTextMessageCount: 14, latestUserText: 'продолжай'), isTrue);
-    expect(WesiAiMemoryEngine.shouldProcess(settings: const WesiAiMemorySettings(autoMemoryEnabled: false), conversationMemory: chat, currentTextMessageCount: 100, latestUserText: 'запомни это'), isFalse);
-    expect(WesiAiMemoryEngine.shouldProcess(settings: settings, conversationMemory: chat.copyWith(memoryEnabled: false), currentTextMessageCount: 100, latestUserText: 'запомни это'), isFalse);
+    const chat = WesiAiConversationMemoryState(
+        conversationId: 'conversation-1', summarizedMessageCount: 4);
+    expect(
+        WesiAiMemoryEngine.shouldProcess(
+            settings: settings,
+            conversationMemory: chat,
+            currentTextMessageCount: 14,
+            latestUserText: 'продолжай'),
+        isTrue);
+    expect(
+        WesiAiMemoryEngine.shouldProcess(
+            settings: const WesiAiMemorySettings(autoMemoryEnabled: false),
+            conversationMemory: chat,
+            currentTextMessageCount: 100,
+            latestUserText: 'запомни это'),
+        isFalse);
+    expect(
+        WesiAiMemoryEngine.shouldProcess(
+            settings: settings,
+            conversationMemory: chat.copyWith(memoryEnabled: false),
+            currentTextMessageCount: 100,
+            latestUserText: 'запомни это'),
+        isFalse);
   });
 
   test('legacy v2 snapshot migrates into structured entries', () {
@@ -104,9 +152,14 @@ void main() {
       },
     };
 
-    final state = WesiAiLocalState.fromJson(json, expectedEmployeeId: 'employee-1');
+    final state =
+        WesiAiLocalState.fromJson(json, expectedEmployeeId: 'employee-1');
     expect(state.memoryEntries.length, 2);
-    expect(state.memoryEntries.any((entry) => entry.scope == WesiAiMemoryScope.shared && entry.text == 'Любит краткие ответы'), isTrue);
+    expect(
+        state.memoryEntries.any((entry) =>
+            entry.scope == WesiAiMemoryScope.shared &&
+            entry.text == 'Любит краткие ответы'),
+        isTrue);
     expect(state.conversationMemory['conversation-1']?.memoryEnabled, isTrue);
   });
 }

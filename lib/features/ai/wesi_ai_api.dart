@@ -90,6 +90,27 @@ class WesiAiApi {
     return parts.join('\n');
   }
 
+  static String contextPackage(
+    WesiAiProject? project, {
+    required String conversationSummary,
+    required Map<String, dynamic> taskState,
+  }) {
+    final parts = <String>[];
+    final projectText = projectContext(project);
+    if (projectText.isNotEmpty) parts.add(projectText);
+    final cleanSummary = conversationSummary.trim();
+    if (cleanSummary.isNotEmpty) {
+      parts.add('[WESI_AI_ROLLING_SUMMARY]\n$cleanSummary');
+    }
+    if (taskState.isNotEmpty) {
+      final encoded = jsonEncode(taskState);
+      if (encoded.length <= 12000) {
+        parts.add('[WESI_AI_TASK_STATE]\n$encoded');
+      }
+    }
+    return parts.join('\n\n');
+  }
+
   Future<WesiAiReply> send({
     required WesiAiConversation conversation,
     required WesiAiTier tier,
@@ -97,6 +118,8 @@ class WesiAiApi {
     required List<WesiAiMessage> history,
     required WesiAiMemorySnapshot memory,
     WesiAiProject? project,
+    String conversationSummary = '',
+    Map<String, dynamic> taskState = const <String, dynamic>{},
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
     void Function(String delta)? onDelta,
     WesiAiRequestCancellation? cancellation,
@@ -117,7 +140,8 @@ class WesiAiApi {
         'tier': tier.name,
         'lobbyMode': conversation.lobbyMode.name,
         'message': message,
-        'summary': projectContext(project),
+        'summary': contextPackage(project,
+            conversationSummary: conversationSummary, taskState: taskState),
         'conversationId': conversation.id,
         if (conversation.projectId != null) 'projectId': conversation.projectId,
         'activeOrganizationId': OrganizationContext.currentOrganizationId,

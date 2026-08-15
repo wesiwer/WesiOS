@@ -114,6 +114,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   if (cleanMemory.shared.length) systemParts.push("[WESI_AI_SHARED_MEMORY]\n" + cleanMemory.shared.join("\n"));
   const personaMemory = persona === "zane" ? cleanMemory.zane : persona === "nirvana" ? cleanMemory.nirvana : cleanMemory.zane.concat(cleanMemory.nirvana);
   if (personaMemory.length) systemParts.push("[WESI_AI_PERSONA_MEMORY]\n" + personaMemory.join("\n"));
+  if (cleanMemory.project.length) systemParts.push("[WESI_AI_PROJECT_MEMORY]\n" + cleanMemory.project.join("\n"));
   if (persona === "lobby") systemParts.push("[WESI_AI_LOBBY_MODE]\n" + lobbyMode);
   if (cleanAttachments.length) {
     systemParts.push(

@@ -44,8 +44,7 @@ class WesiAiMemoryEntry {
         text: text ?? this.text,
         createdAt: createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
-        sourceConversationId:
-            sourceConversationId ?? this.sourceConversationId,
+        sourceConversationId: sourceConversationId ?? this.sourceConversationId,
         projectId: clearProjectId ? null : (projectId ?? this.projectId),
         manual: manual ?? this.manual,
         pinned: pinned ?? this.pinned,
@@ -84,12 +83,11 @@ class WesiAiMemoryEntry {
         break;
       }
     }
-    final sourceConversationId =
-        '${json['sourceConversationId'] ?? ''}'.trim();
+    final sourceConversationId = '${json['sourceConversationId'] ?? ''}'.trim();
     final projectId = '${json['projectId'] ?? ''}'.trim();
     final importanceRaw = json['importance'];
     final importance = importanceRaw is num
-        ? importanceRaw.toDouble().clamp(0.0, 1.0)
+        ? importanceRaw.toDouble().clamp(0.0, 1.0).toDouble()
         : 0.5;
 
     if (!RegExp(r'^[A-Za-z0-9_-]{8,180}$').hasMatch(id) ||
@@ -146,8 +144,8 @@ class WesiAiMemorySettings {
       WesiAiMemorySettings(
         autoMemoryEnabled: autoMemoryEnabled ?? this.autoMemoryEnabled,
         retrievalLimit:
-            (retrievalLimit ?? this.retrievalLimit).clamp(4, 24),
-        maxEntries: (maxEntries ?? this.maxEntries).clamp(40, 600),
+            (retrievalLimit ?? this.retrievalLimit).clamp(4, 24).toInt(),
+        maxEntries: (maxEntries ?? this.maxEntries).clamp(40, 600).toInt(),
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -159,10 +157,12 @@ class WesiAiMemorySettings {
   factory WesiAiMemorySettings.fromJson(Map<String, dynamic> json) =>
       WesiAiMemorySettings(
         autoMemoryEnabled: json['autoMemoryEnabled'] != false,
-        retrievalLimit:
-            ((json['retrievalLimit'] as num?)?.toInt() ?? 12).clamp(4, 24),
-        maxEntries:
-            ((json['maxEntries'] as num?)?.toInt() ?? 240).clamp(40, 600),
+        retrievalLimit: ((json['retrievalLimit'] as num?)?.toInt() ?? 12)
+            .clamp(4, 24)
+            .toInt(),
+        maxEntries: ((json['maxEntries'] as num?)?.toInt() ?? 240)
+            .clamp(40, 600)
+            .toInt(),
       );
 }
 

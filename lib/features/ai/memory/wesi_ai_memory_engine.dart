@@ -69,7 +69,9 @@ class WesiAiMemoryEngine {
   };
 
   static final List<RegExp> _secretPatterns = <RegExp>[
-    RegExp(r'\b(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|парол[ья]|токен)\b\s*[:=]\s*\S+', caseSensitive: false),
+    RegExp(
+        r'\b(?:api[_ -]?key|access[_ -]?token|refresh[_ -]?token|password|парол[ья]|токен)\b\s*[:=]\s*\S+',
+        caseSensitive: false),
     RegExp(r'\bBearer\s+[A-Za-z0-9._~+\-/]+=*', caseSensitive: false),
     RegExp(r'-----BEGIN [A-Z ]*PRIVATE KEY-----', caseSensitive: false),
     RegExp(r'\bgh[pousr]_[A-Za-z0-9]{20,}\b'),
@@ -112,9 +114,12 @@ class WesiAiMemoryEngine {
       if (entry.employeeId != employeeId) continue;
       final allowed = switch (entry.scope) {
         WesiAiMemoryScope.shared => true,
-        WesiAiMemoryScope.zane => persona == WesiAiPersona.zane || persona == WesiAiPersona.lobby,
-        WesiAiMemoryScope.nirvana => persona == WesiAiPersona.nirvana || persona == WesiAiPersona.lobby,
-        WesiAiMemoryScope.project => projectId != null && entry.projectId == projectId,
+        WesiAiMemoryScope.zane =>
+          persona == WesiAiPersona.zane || persona == WesiAiPersona.lobby,
+        WesiAiMemoryScope.nirvana =>
+          persona == WesiAiPersona.nirvana || persona == WesiAiPersona.lobby,
+        WesiAiMemoryScope.project =>
+          projectId != null && entry.projectId == projectId,
       };
       if (!allowed) continue;
 
@@ -122,9 +127,8 @@ class WesiAiMemoryEngine {
       final overlap = queryTokens.isEmpty
           ? 0
           : entryTokens.intersection(queryTokens).length;
-      final overlapRatio = queryTokens.isEmpty
-          ? 0.0
-          : overlap / max(1, queryTokens.length);
+      final overlapRatio =
+          queryTokens.isEmpty ? 0.0 : overlap / max(1, queryTokens.length);
       final ageDays = max(0, at.difference(entry.updatedAt).inDays);
       final recency = 1.0 / (1.0 + ageDays / 45.0);
       var score = overlapRatio * 8.0 + entry.importance * 2.0 + recency;
@@ -132,7 +136,10 @@ class WesiAiMemoryEngine {
       if (entry.pinned) score += 4.0;
       if (entry.scope == WesiAiMemoryScope.project) score += 0.7;
 
-      if (overlap == 0 && !entry.pinned && !entry.manual && queryTokens.isNotEmpty) {
+      if (overlap == 0 &&
+          !entry.pinned &&
+          !entry.manual &&
+          queryTokens.isNotEmpty) {
         continue;
       }
       scored.add((entry: entry, score: score));
@@ -184,7 +191,9 @@ class WesiAiMemoryEngine {
 
     for (final candidate in candidates.take(maxAutoCandidatesPerCycle)) {
       final text = candidate.text.trim();
-      if (text.isEmpty || text.length > maxMemoryTextLength || looksSensitive(text)) {
+      if (text.isEmpty ||
+          text.length > maxMemoryTextLength ||
+          looksSensitive(text)) {
         continue;
       }
       if (candidate.scope == WesiAiMemoryScope.project && projectId == null) {
@@ -240,8 +249,7 @@ class WesiAiMemoryEngine {
       return List<WesiAiMemoryEntry>.unmodifiable(next);
     }
 
-    final sorted = <WesiAiMemoryEntry>[...next]
-      ..sort((a, b) {
+    final sorted = <WesiAiMemoryEntry>[...next]..sort((a, b) {
         if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
         if (a.manual != b.manual) return a.manual ? -1 : 1;
         final importance = b.importance.compareTo(a.importance);
@@ -267,7 +275,8 @@ class WesiAiMemoryEngine {
       caseSensitive: false,
     ).hasMatch(latestUserText);
     if (explicit) return true;
-    return currentTextMessageCount - conversationMemory.summarizedMessageCount >=
+    return currentTextMessageCount -
+            conversationMemory.summarizedMessageCount >=
         10;
   }
 }

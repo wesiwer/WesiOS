@@ -163,15 +163,18 @@ class WesiAiMemoryApi {
     HttpClientRequest request,
     ({String token, String sessionId}) auth,
   ) {
-    request.headers.set(HttpHeaders.authorizationHeader, 'Bearer ${auth.token}');
+    request.headers
+        .set(HttpHeaders.authorizationHeader, 'Bearer ${auth.token}');
     request.headers.set('X-WesiOS-Session', auth.sessionId);
   }
 
   static String _messageFor(String code) => switch (code) {
-        'WAI_RELAY_NOT_CONFIGURED' || 'WAI_RELAY_UNAVAILABLE' =>
+        'WAI_RELAY_NOT_CONFIGURED' ||
+        'WAI_RELAY_UNAVAILABLE' =>
           'Сервис памяти Wesi AI временно недоступен',
         'WAI_MEMORY_BAD_RESPONSE' => 'Wesi AI не смог обновить память',
-        'WAI_MEMORY_TIMEOUT' => 'Обновление памяти Wesi AI заняло слишком много времени',
+        'WAI_MEMORY_TIMEOUT' =>
+          'Обновление памяти Wesi AI заняло слишком много времени',
         'NOT_SIGNED_IN' => 'Войдите в WesiOS, чтобы использовать Wesi AI',
         _ => 'Не удалось обновить память Wesi AI',
       };

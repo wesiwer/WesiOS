@@ -92,6 +92,7 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
   if (cleanMemory.shared.length) systemParts.push("[WESI_AI_SHARED_MEMORY]\n" + cleanMemory.shared.join("\n"));
   const personaMemory = persona === "zane" ? cleanMemory.zane : cleanMemory.nirvana;
   if (personaMemory.length) systemParts.push("[WESI_AI_PERSONA_MEMORY]\n" + personaMemory.join("\n"));
+  if (cleanMemory.project.length) systemParts.push("[WESI_AI_PROJECT_MEMORY]\n" + cleanMemory.project.join("\n"));
   if (cleanAttachments.length) {
     systemParts.push(
       "[WESI_AI_ATTACHMENTS]\n" +

@@ -4,6 +4,9 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 
 import '../media_engines/wesi_media_engine_runner.dart';
+import '../memory/wesi_ai_memory_api.dart';
+import '../memory/wesi_ai_memory_engine.dart';
+import '../memory/wesi_ai_memory_models.dart';
 import '../models/wesi_ai_attachment.dart';
 import '../models/wesi_ai_chat_models.dart';
 import '../storage/wesi_ai_local_store.dart';
@@ -14,6 +17,8 @@ class WesiAiChatController extends ChangeNotifier {
   final WesiAiApi api;
   final Set<String> _mediaPolls = <String>{};
   final Set<String> _localMediaRuns = <String>{};
+  final Set<String> _memoryRefreshes = <String>{};
+  final WesiAiMemoryApi memoryApi = const WesiAiMemoryApi();
   bool _disposed = false;
   Completer<void>? _activeTurnInterrupt;
   WesiAiRequestCancellation? _activeRequestCancellation;
@@ -197,8 +202,10 @@ class WesiAiChatController extends ChangeNotifier {
         tier: state.tier,
         message: clean,
         history: history,
-        memory: state.memory,
+        memory: relevantMemoryFor(updated, clean),
         project: _projectFor(updated.projectId),
+        conversationSummary: conversationMemoryFor(updated.id).rollingSummary,
+        taskState: conversationMemoryFor(updated.id).taskState,
         attachments: attachments,
         onDelta: onDelta,
         cancellation: cancellation,
@@ -234,6 +241,7 @@ class WesiAiChatController extends ChangeNotifier {
       );
       streamVisible = false;
       _startPendingMedia(assistant);
+      scheduleMemoryRefresh(updated, clean);
     } on WesiAiApiException catch (e) {
       removeTransientStream();
       if (e.code == 'WAI_CANCELLED') return;
@@ -260,6 +268,184 @@ class WesiAiChatController extends ChangeNotifier {
       sending = false;
       await _persist();
     }
+  }
+
+  @protected
+  WesiAiConversationMemoryState conversationMemoryFor(String conversationId) =>
+      state.conversationMemory[conversationId] ??
+      WesiAiConversationMemoryState(conversationId: conversationId);
+
+  @protected
+  WesiAiMemorySnapshot relevantMemoryFor(
+    WesiAiConversation conversation,
+    String query,
+  ) =>
+      WesiAiMemoryEngine.retrieve(
+        entries: state.memoryEntries,
+        employeeId: store.employeeId,
+        persona: conversation.persona,
+        projectId: conversation.projectId,
+        query: query,
+        settings: state.memorySettings,
+      ).toSnapshot();
+
+  @protected
+  void scheduleMemoryRefresh(
+    WesiAiConversation conversation,
+    String latestUserText,
+  ) {
+    if (!_memoryRefreshes.add(conversation.id)) return;
+    unawaited(_refreshMemory(conversation, latestUserText).whenComplete(() {
+      _memoryRefreshes.remove(conversation.id);
+    }));
+  }
+
+  Future<void> _refreshMemory(
+    WesiAiConversation conversation,
+    String latestUserText,
+  ) async {
+    try {
+      if (!state.conversations.any((item) => item.id == conversation.id))
+        return;
+      final messages = state.messagesFor(conversation.id);
+      final textMessages = messages
+          .where((message) => message.kind == WesiAiMessageKind.text)
+          .toList(growable: false);
+      final conversationMemory = conversationMemoryFor(conversation.id);
+      if (!WesiAiMemoryEngine.shouldProcess(
+        settings: state.memorySettings,
+        conversationMemory: conversationMemory,
+        currentTextMessageCount: textMessages.length,
+        latestUserText: latestUserText,
+      )) {
+        return;
+      }
+      final relevant = relevantMemoryFor(conversation, latestUserText);
+      final result = await memoryApi.process(
+        conversation: conversation,
+        recentMessages: textMessages,
+        previousSummary: conversationMemory.rollingSummary,
+        taskState: conversationMemory.taskState,
+        memory: relevant,
+        project: _projectFor(conversation.projectId),
+      );
+      if (!state.conversations.any((item) => item.id == conversation.id))
+        return;
+      final merged = WesiAiMemoryEngine.mergeCandidates(
+        existing: state.memoryEntries,
+        candidates: result.memories,
+        employeeId: store.employeeId,
+        sourceConversationId: conversation.id,
+        projectId: conversation.projectId,
+        settings: state.memorySettings,
+      );
+      final nextConversationMemory =
+          Map<String, WesiAiConversationMemoryState>.from(
+        state.conversationMemory,
+      );
+      nextConversationMemory[conversation.id] = conversationMemory.copyWith(
+        rollingSummary: result.summary,
+        taskState: result.taskState,
+        summarizedMessageCount: textMessages.length,
+      );
+      state = state.copyWith(
+        memoryEntries: merged,
+        conversationMemory: nextConversationMemory,
+      );
+      await _persist();
+    } catch (_) {
+      // Memory enrichment is best-effort and must never fail the chat turn.
+    }
+  }
+
+  Future<void> setAutoMemoryEnabled(bool enabled) async {
+    state = state.copyWith(
+      memorySettings: state.memorySettings.copyWith(autoMemoryEnabled: enabled),
+    );
+    await _persist();
+  }
+
+  Future<void> setActiveConversationMemoryEnabled(bool enabled) async {
+    final conversation = state.activeConversation;
+    if (conversation == null) return;
+    final map = Map<String, WesiAiConversationMemoryState>.from(
+      state.conversationMemory,
+    );
+    map[conversation.id] =
+        conversationMemoryFor(conversation.id).copyWith(memoryEnabled: enabled);
+    state = state.copyWith(conversationMemory: map);
+    await _persist();
+  }
+
+  Future<bool> addManualMemory(
+    WesiAiMemoryScope scope,
+    String text,
+  ) async {
+    final clean = text.trim();
+    if (clean.isEmpty ||
+        clean.length > WesiAiMemoryEngine.maxMemoryTextLength ||
+        WesiAiMemoryEngine.looksSensitive(clean)) {
+      return false;
+    }
+    final projectId = state.activeProjectId;
+    if (scope == WesiAiMemoryScope.project && projectId == null) return false;
+    final normalized = WesiAiMemoryEngine.normalizeForDedup(clean);
+    if (normalized.length < 4) return false;
+    final now = DateTime.now();
+    final entries = <WesiAiMemoryEntry>[...state.memoryEntries];
+    for (var index = 0; index < entries.length; index++) {
+      final old = entries[index];
+      if (old.scope != scope ||
+          (scope == WesiAiMemoryScope.project && old.projectId != projectId)) {
+        continue;
+      }
+      if (WesiAiMemoryEngine.normalizeForDedup(old.text) == normalized) {
+        entries[index] = old.copyWith(
+          text: clean,
+          updatedAt: now,
+          manual: true,
+          importance: 1,
+        );
+        state = state.copyWith(memoryEntries: entries);
+        await _persist();
+        return true;
+      }
+    }
+    entries.add(WesiAiMemoryEntry(
+      id: 'memory_manual_${now.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
+      employeeId: store.employeeId,
+      scope: scope,
+      text: clean,
+      createdAt: now,
+      updatedAt: now,
+      sourceConversationId: state.activeConversationId,
+      projectId: scope == WesiAiMemoryScope.project ? projectId : null,
+      manual: true,
+      importance: 1,
+    ));
+    state = state.copyWith(memoryEntries: entries);
+    await _persist();
+    return true;
+  }
+
+  Future<void> deleteMemory(String id) async {
+    final next = state.memoryEntries.where((entry) => entry.id != id).toList();
+    if (next.length == state.memoryEntries.length) return;
+    state = state.copyWith(memoryEntries: next);
+    await _persist();
+  }
+
+  Future<void> clearMemoryScope(WesiAiMemoryScope scope) async {
+    final activeProjectId = state.activeProjectId;
+    final next = state.memoryEntries.where((entry) {
+      if (entry.scope != scope) return true;
+      if (scope == WesiAiMemoryScope.project) {
+        return activeProjectId == null || entry.projectId != activeProjectId;
+      }
+      return false;
+    }).toList(growable: false);
+    state = state.copyWith(memoryEntries: next);
+    await _persist();
   }
 
   void _startPendingMedia(WesiAiMessage message) {
