@@ -132,6 +132,6 @@ class WesiAiLobbyChatController extends WesiAiChatController {
 
   Future<void> _save() async {
     await store.save(state);
-    notifyListeners();
+    notifyIfActive();
   }
 }
