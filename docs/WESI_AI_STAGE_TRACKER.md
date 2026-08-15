@@ -12,6 +12,8 @@
 - Stage 9 влит через PR #174, main `cfe172d123b25f8631cf510d520e1d6e389389d7`; полный PR check, Android debug APK и Windows release — green.
 - Stage 8 дополнительно усилен PR #172, main `1d92a484c017bf3cf6996e6b6171726f88a90928`.
 - После Stage 9 отдельно влит production-safe multi-provider AI routing/deploy hardening через PR #176, main `14ee3f835ca3057a137eca28bad689a9317167b2`; это не отдельный номерной этап.
+- После Stage 10 отдельно влит contextual chat/persona UX hardening через stable PR #181, main `95cdbb9c6a4f50b22636ea6eabaed093bbb1dec0`: тематические follow-up подсказки, интерактивный `question` block с 2–5 вариантами и `Свой ответ`, контекстные упоминания создателя/Wesi Inc./Wesi AI/WesiOS и transient/lazy new-chat lifecycle. Рабочий PR #180 закрыт как superseded.
+- Следующий visual/persona PR #182, main `fbc2fc2beca6581d090845d8e7542dd7c063b612`, сохранил и повторно прогнал эту механику поверх Markdown-таблиц, bounded `wesi-chart` и творческого исключения Нирваны; persona validation, analyze/full Flutter test, Android debug и Windows release — green.
 - Production deploy/release автоматически не запускать.
 - Тяжёлые L3/L4 задачи не переносить на основной VPS/Control Plane: при потере worker использовать checkpoint → `waitingForWorker` → resume либо fail-closed для небезопасного повтора.
 
@@ -36,10 +38,10 @@
 
 ## Обязательный порядок продолжения
 
-1. Не переделывать Stage 1–10 без воспроизводимого regression.
+1. Не переделывать Stage 1–10 и post-Stage-10 UX/persona baseline без воспроизводимого regression.
 2. Начинать Stage 11 на отдельной ветке от актуального `main`.
 3. Stage 11 сначала реализует production GitHub connector end-to-end; остальные провайдеры подключать через тот же SDK/Broker contract по фактическим credentials/OAuth возможностям.
 4. Каждый этап: focused tests → полный PR gate → Android debug → Windows release → merge → только затем `DONE`.
 5. Не запускать production deploy/release автоматически.
 6. Не использовать основной VPS как fallback для тяжёлых L3/L4 вычислений.
-7. Старые PR #149 и #175 — только historical reference; не мержить их как готовый stack.
+7. Старые PR #149, #175 и superseded #180 — только historical reference; не мержить их как готовый stack.

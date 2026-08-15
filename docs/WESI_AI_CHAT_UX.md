@@ -29,7 +29,7 @@ WesiOS не показывает скрытую chain-of-thought модели. �
 
 ## Contextual follow-ups and clarification
 
-Post-Stage-10 UX/persona hardening: PR #180.
+Post-Stage-10 UX/persona hardening: stable PR #181, main merge `95cdbb9c6a4f50b22636ea6eabaed093bbb1dec0`. Старый рабочий PR #180 закрыт как superseded и не должен использоваться как source of truth.
 
 - follow-up chips derive their topic from the latest user turn/current answer and must not be a fixed repeated list;
 - follow-ups are also intent-aware: debugging/errors, planning/implementation, comparison/choice, finance/calculation, creative work and explanatory questions receive different continuation actions rather than the same three generic templates;
@@ -42,10 +42,11 @@ Post-Stage-10 UX/persona hardening: PR #180.
 - opening another blank new chat abandons the previous blank draft instead of accumulating empty conversations;
 - queue/attachment context remains durable for conversations that have already been materialized by an accepted turn.
 
+Эта механика дополнительно прошла интеграционные gates уже поверх следующего visual/persona PR #182 (`817f23f8d7d1712c3373db33403f646c01d3bcba`, main merge `fbc2fc2beca6581d090845d8e7542dd7c063b612`): persona validation, analyze, полный Flutter test, Android debug APK и Windows release — green.
+
 ## Таблицы и графики в ответах
 
 - Markdown-таблицы рендерятся как отдельные горизонтально прокручиваемые таблицы с быстрым копированием TSV.
 - Для числовых визуализаций поддерживается fenced-блок `wesi-chart` с bounded JSON-spec и типами `bar`, `line`, `pie`, `scatter`.
 - Chart renderer не исполняет JS/HTML/Flutter-код; malformed или oversized spec fail-closed показывается как обычный code block.
 - Визуализация хранится прямо в тексте сообщения, поэтому сохраняется в истории, архиве и ветках без отдельного серверного состояния.
-
