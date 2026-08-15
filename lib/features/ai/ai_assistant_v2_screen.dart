@@ -1065,24 +1065,34 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   }
 
   Future<void> _send(WesiAiManagedChatController controller) async {
-    if (controller.processing &&
-        controller.queuedTurnCount >= WesiAiManagedChatController.maxQueuedTurns) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Очередь заполнена. Дождитесь обработки сообщения.'),
-        ),
-      );
-      return;
-    }
     if (_voice.listening) await _voice.stop();
     final text = _composer.text.trim();
     if (text.isEmpty && _attachments.isEmpty) return;
     final attachments = List<WesiAiAttachment>.from(_attachments);
+    final result = controller.submitUserMessage(
+      text,
+      attachments: attachments,
+    );
+    if (result != WesiAiMessageSubmitResult.accepted) {
+      if (!mounted) return;
+      final message = switch (result) {
+        WesiAiMessageSubmitResult.queueFull =>
+          'Очередь заполнена. Дождитесь обработки сообщения.',
+        WesiAiMessageSubmitResult.invalidAttachments =>
+          'Не удалось отправить сообщение: проверьте вложения.',
+        WesiAiMessageSubmitResult.unavailable =>
+          'Не удалось отправить сообщение в текущий чат.',
+        WesiAiMessageSubmitResult.accepted => '',
+      };
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(message)),
+      );
+      return;
+    }
     _composer.clear();
     _voicePrefix = '';
     _voice.clearTranscript();
     setState(() => _attachments.clear());
-    await controller.addUserMessage(text, attachments: attachments);
   }
 
   Future<void> _toggleVoice() async {
