@@ -1,11 +1,52 @@
 import 'dart:math';
 
+import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
 import 'wesi_ai_lobby_controller.dart';
 
+class _TransientRetryPayload {
+  final String prompt;
+  final List<WesiAiAttachment> attachments;
+  const _TransientRetryPayload(this.prompt, this.attachments);
+}
+
 class WesiAiManagedChatController extends WesiAiLobbyChatController {
+  final Map<String, _TransientRetryPayload> _attachmentRetries = <String, _TransientRetryPayload>{};
+
   WesiAiManagedChatController({required WesiAiLocalStore store}) : super(store: store);
+
+  @override
+  Future<void> addUserMessage(
+    String text, {
+    List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+  }) async {
+    final conversationId = state.activeConversationId;
+    final previousUserIds = conversationId == null
+        ? const <String>{}
+        : state
+            .messagesFor(conversationId)
+            .where((message) => message.author == WesiAiMessageAuthor.user)
+            .map((message) => message.id)
+            .toSet();
+    await super.addUserMessage(text, attachments: attachments);
+    if (attachments.isEmpty || conversationId == null) return;
+    WesiAiMessage? added;
+    for (final message in state.messagesFor(conversationId).reversed) {
+      if (message.author == WesiAiMessageAuthor.user && !previousUserIds.contains(message.id)) {
+        added = message;
+        break;
+      }
+    }
+    if (added == null) return;
+    _attachmentRetries[added.id] = _TransientRetryPayload(
+      text.trim(),
+      List<WesiAiAttachment>.unmodifiable(attachments),
+    );
+    while (_attachmentRetries.length > 8) {
+      _attachmentRetries.remove(_attachmentRetries.keys.first);
+    }
+  }
 
   @override
   Future<void> createConversation(WesiAiPersona persona) async {
@@ -141,7 +182,12 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       );
     }).toList(growable: false);
     if (!changed) return;
-    state = state.copyWith(conversations: conversations);
+    final movingActive = state.activeConversationId == conversationId;
+    state = state.copyWith(
+      conversations: conversations,
+      activeProjectId: movingActive ? projectId : null,
+      clearActiveProject: movingActive && projectId == null,
+    );
     await _save();
   }
 
@@ -232,6 +278,13 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     )) {
       return;
     }
+    final deletedMessageIds = state.messages
+        .where((message) => message.conversationId == id)
+        .map((message) => message.id)
+        .toSet();
+    for (final messageId in deletedMessageIds) {
+      _attachmentRetries.remove(messageId);
+    }
     final conversations = state.conversations.where((c) => c.id != id).toList();
     final messages = state.messages.where((m) => m.conversationId != id).toList();
     final next = conversations
@@ -275,14 +328,43 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       }
     }
     if (userIndex < 0) return;
-    final text = ordered[userIndex].text.trim();
-    if (text.isEmpty) return;
+    final user = ordered[userIndex];
+    final rawAttachments = user.metadata['attachments'];
+    final hadAttachments = rawAttachments is List && rawAttachments.isNotEmpty;
+    final retry = _attachmentRetries[user.id];
+    if (hadAttachments && retry == null) {
+      final at = DateTime.now();
+      state = state.copyWith(
+        messages: <WesiAiMessage>[
+          ...state.messages,
+          WesiAiMessage(
+            id: '${at.microsecondsSinceEpoch}_${Random().nextInt(1 << 20)}',
+            conversationId: conversation.id,
+            employeeId: store.employeeId,
+            author: WesiAiMessageAuthor.system,
+            kind: WesiAiMessageKind.error,
+            text: 'Для повторной отправки прикрепите исходный файл заново. WesiOS намеренно не хранит байты и локальные пути вложений в истории чата.',
+            createdAt: at,
+            metadata: const <String, dynamic>{'code': 'WAI_REATTACH_REQUIRED'},
+          ),
+        ],
+      );
+      await _save();
+      return;
+    }
+
+    final prompt = retry?.prompt ?? user.text.trim();
+    if (prompt.isEmpty && !hadAttachments) return;
     final removeIds = ordered.sublist(userIndex).map((m) => m.id).toSet();
+    _attachmentRetries.remove(user.id);
     state = state.copyWith(
       messages: state.messages.where((message) => !removeIds.contains(message.id)).toList(),
     );
     await _save();
-    await addUserMessage(text);
+    await addUserMessage(
+      prompt,
+      attachments: retry?.attachments ?? const <WesiAiAttachment>[],
+    );
   }
 
   List<WesiAiProject> get visibleProjects {
