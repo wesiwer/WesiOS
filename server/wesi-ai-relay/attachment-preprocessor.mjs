@@ -314,9 +314,10 @@ export async function prepareGeminiAttachments(raw, apiKey = '') {
       }
       parts.push({text: `\n[WESI_AI_ATTACHMENT_BINARY ${item.name}]\n${await genericBinarySummary(item)}`});
     }
-    return {parts, descriptors, providerFiles};
+    return {parts, descriptors, providerFiles, stagedUploadIds};
   } catch (error) {
     await deleteGeminiFiles(providerFiles, apiKey);
+    deleteStagedUploads(stagedUploadIds);
     throw error;
   }
 }
