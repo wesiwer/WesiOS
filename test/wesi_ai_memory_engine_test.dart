@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wesios/features/ai/memory/wesi_ai_memory_engine.dart';
 import 'package:wesios/features/ai/memory/wesi_ai_memory_models.dart';
+import 'package:wesios/features/ai/models/wesi_ai_attachment.dart';
 import 'package:wesios/features/ai/models/wesi_ai_chat_models.dart';
 import 'package:wesios/features/ai/storage/wesi_ai_local_store.dart';
 
