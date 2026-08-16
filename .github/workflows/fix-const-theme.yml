@@ -1,61 +1,59 @@
-name: Fix const + AppTheme
+name: Temporary Wesi AI stream route diagnostics
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix:
-    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
-    timeout-minutes: 15
+  diagnose-stream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
-
-      - name: Strip const from dynamic AppTheme constructors
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 1
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
         run: |
-          python3 << 'PY'
-          import re, pathlib
-
-          DYNAMIC = r'(?:textMuted|textPrimary|textSecondary|glassBorder|background|surface|surfaceLight|glassBackground|carbonDark|carbonMid|carbonLight|carbonHighlight|primary|accent|logoStroke|logoAccent)'
-
-          def fix(content: str) -> str:
-              lines = content.split('\n')
-              out = []
-              i = 0
-              while i < len(lines):
-                  line = lines[i]
-                  if re.search(r'\bconst\s+[A-Z]', line):
-                      window = '\n'.join(lines[i:i+12])
-                      if re.search(r'AppTheme\.' + DYNAMIC, window):
-                          line = re.sub(r'\bconst\s+', '', line, count=1)
-                  out.append(line)
-                  i += 1
-              return '\n'.join(out)
-
-          changed = []
-          for path in pathlib.Path('lib').rglob('*.dart'):
-              text = path.read_text(encoding='utf-8')
-              fixed = fix(text)
-              if fixed != text:
-                  path.write_text(fixed, encoding='utf-8')
-                  changed.append(str(path))
-                  print(f'fixed: {path}')
-
-          print(f'Total fixed files: {len(changed)}')
-          if not changed:
-              print('Nothing to fix')
-          PY
-
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --staged --quiet; then
-            echo "No changes"
-            exit 0
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
           fi
-          git commit -m "fix(theme): remove const from widgets using dynamic AppTheme colors"
-          git push
+          chmod 600 ~/.ssh/known_hosts
+      - name: Inspect stream runtime options
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "HOME=$HOME"
+          command -v node >/dev/null && node --version || echo NODE_MISSING
+          command -v nginx >/dev/null && echo NGINX_PRESENT=yes || echo NGINX_PRESENT=no
+          command -v crontab >/dev/null && echo CRONTAB_PRESENT=yes || echo CRONTAB_PRESENT=no
+          if systemctl --user show-environment >/dev/null 2>&1; then echo USER_SYSTEMD=yes; else echo USER_SYSTEMD=no; fi
+          if [ -w /opt ]; then echo OPT_WRITABLE=yes; else echo OPT_WRITABLE=no; fi
+          if [ -w /etc/nginx ]; then echo NGINX_ETC_WRITABLE=yes; else echo NGINX_ETC_WRITABLE=no; fi
+          if [ -d /etc/nginx ]; then
+            grep -RsnE '8792|wesi-ai-stream|/api/wesi/ai/chat/stream' /etc/nginx 2>/dev/null | sed -E 's#([A-Za-z0-9_-]{24,})#<redacted>#g' | head -80 || true
+          fi
+          if command -v ss >/dev/null; then ss -ltnp 2>/dev/null | grep ':8792 ' || echo PORT_8792_FREE=yes; fi
+          systemctl --user is-enabled wesi-ai-stream 2>/dev/null || true
+          systemctl --user is-active wesi-ai-stream 2>/dev/null || true
+          REMOTE
