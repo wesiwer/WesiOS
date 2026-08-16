@@ -1,5 +1,86 @@
 # WesiOS — текущий handoff
 
+## Wesi AI — что осталось после мобильного теста 2026-08-16
+
+**Рабочая ветка:** `fix/wesi-ai-tool-agent-handoff`  
+**PR:** #184 `fix(ai): harden tool and agent handoff`  
+**Текущий PR head на момент handoff:** `9131bdafafb6f09bc146553800182b7d6871d68d`  
+**Последний подтверждённый функциональный head:** `e087de2db695c5587c17eb76c421a55cfe3c299e`  
+**Важно:** PR остаётся открытым и НЕ слит в `main`.
+
+### Уже сделано — не повторять как незавершённое
+
+После пользовательского мобильного теста были доведены и проверены следующие пункты:
+
+- левый Wesi AI sidebar/drawer переделан на единую прокручиваемую поверхность; проекты, настройки и список чатов не должны больше быть заперты в отдельном маленьком scroll-окне;
+- камера переведена на отдельный fullscreen route; preview заполняет экран через `BoxFit.cover`, controls находятся поверх preview в `SafeArea`;
+- `WesiAiRichMessage` получил нормализацию распространённой математической разметки: степени/индексы, `sqrt`, `frac`, `times`, `cdot`, `pm`, сравнения, infinity и базовые греческие символы;
+- clarification UI больше не должен показывать пользователю сырые `org_*` как подписи вариантов;
+- `finance_summary` разделяет `currentBalance` и периодический `net`;
+- `currentBalance` считается из синхронизированных `accounts` + фактических `transactions`, с учётом opening balance активных счетов; recurring template rows и legacy auto-generated recurring-income duplicates не считаются фактическими деньгами;
+- finance context/results используют человеческие названия организаций; `wesi_ai_finance_policy.js` принимает как внутренний id, так и однозначное человеческое имя;
+- обновлённые `wesi_ai_finance_policy.js` и `wesi_ai_finance_tools.js` уже были hot-deployed на Main; PocketBase подхватил hooks без рестарта;
+- Flutter gate на функциональном head выполнен штатной версией Flutter 3.24.0: `flutter pub get`, `flutter analyze --no-fatal-infos`, полный `flutter test` — PASS;
+- server JS validation и production hot-deploy finance hooks — PASS.
+
+Не считать красный временный run `31939737565` продуктовой ошибкой: он использовал плавающий Flutter `stable` 3.47.0, где `flutter_localizations` требует `intl ^0.20.3`, тогда как текущий WesiOS закреплён на `intl ^0.19.0`. Штатный `.github/workflows/pr-check.yml` использует Flutter `3.24.0`; именно на нём функциональный head позже прошёл зелёный gate.
+
+### НЕ СДЕЛАНО / обязательно передать следующему ИИ
+
+1. **Не опубликован новый тестовый release с последними mobile/finance исправлениями.** `app-latest` был обновлён 2026-08-16 около 07:54 UTC, то есть до финального mobile/finance functional head. Следующему исполнителю нужно:
+   - проверить текущую версию/build в `pubspec.yaml` и `AppVersion`;
+   - повысить version/build, чтобы Android updater видел обновление и `versionCode` был выше установленного;
+   - запустить `Publish WesiOS Release` для точного актуального PR head;
+   - получить новый **подписанный Android release APK**, актуальный Windows ZIP и новый `app-manifest.json`;
+   - не заявлять, что Windows setup EXE новый, если workflow его отдельно не пересобрал;
+   - после публикации дать пользователю сборку для реального мобильного теста.
+
+2. **PR #184 не слит в `main`.** После пользовательского теста нового релиза:
+   - исправить найденные регрессии;
+   - повторить полный gate на точном финальном head;
+   - заново проверить mergeability непосредственно перед merge. На момент этого handoff GitHub API сообщает `mergeable=false`, хотя более ранний diagnostic merge-run проходил без конфликтов; старый diagnostic результат нельзя считать актуальным;
+   - мержить PR #184 только по явному разрешению владельца.
+
+3. **Force-kill-safe remote push не реализован.** Текущая answer-ready система покрывает работающий клиент: haptic/in-app banner/local notification/deep-link. Если WesiOS полностью убит до завершения AI-ответа, гарантированного server-originated push нет. Для полноценной реализации нужны:
+   - durable server-side AI turn/job, независимый от живого клиентского stream;
+   - регистрация/ротация device token на employee/session/device;
+   - `firebase_messaging` + Android/iOS platform setup;
+   - FCM/APNs sender на сервере;
+   - privacy-safe push payload с `conversationId`;
+   - terminated/background deep-link handling;
+   - iOS push entitlements/background modes;
+   - тесты и CI. Это сознательно отложено пользователем и не должно блокировать текущий PR.
+
+4. **Настоящий Persona Co-Agent / dynamic subagents не реализован в текущем runtime.** Наблюдаемые `agent` events текущей ветки относятся к lead persona/telemetry и не означают реальных динамических subagents. Следующий крупный продуктовый этап после стабилизации PR #184 — Stage 12/13:
+   - реальный Persona Co-Agent protocol/runtime;
+   - динамические subagents;
+   - безопасный handoff/context boundaries;
+   - capability/permission propagation;
+   - lifecycle/cancellation/error handling;
+   - observability без показа скрытой chain-of-thought;
+   - отдельный regression/CI gate.
+
+### Порядок продолжения
+
+1. Не переписывать заново уже зелёные mobile/finance fixes.
+2. Проверить текущий head PR #184 и его CI/status, потому что ветка может продвинуться после этого handoff.
+3. Сделать новый signed release из актуального head и отдать пользователю на тест.
+4. Исправить только то, что пользователь реально найдёт на устройстве.
+5. После зелёного повторного gate и явного разрешения — merge PR #184 в `main`.
+6. Force-kill remote push оставить отдельным будущим этапом.
+7. После стабилизации текущего PR переходить к Persona Co-Agent / dynamic subagents Stage 12/13.
+
+### Не откатывать
+
+- Не возвращать `net` как ответ на вопрос «сколько денег сейчас»; для этого предназначен `currentBalance`.
+- Не показывать пользователю внутренние `org_*` вместо названий организаций.
+- Не возвращать маленькое отдельное scroll-окно только для списка чатов в sidebar.
+- Не возвращать камеру в компактный modal dialog: пользователь запросил fullscreen camera UX.
+- Не удалять answer-ready haptic/banner/local notification/deep-link flow.
+- Не выдавать lead-agent telemetry за реализованный Persona Co-Agent.
+
+---
+
 ## Wesi AI Contextual Follow-ups / Clarification / Lazy Chat — 2026-08-16
 
 **Базовый main:** `de0032be2f52b73557aadb2afdaa3a03fa39c780`  
