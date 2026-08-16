@@ -1,0 +1,50 @@
+name: Stage13 Dynamic Subagents CI
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage13-dynamic-subagents
+  pull_request:
+    paths:
+      - 'server/wesi-ai-stream/**'
+      - 'server/pb_hooks/wesi_ai_stream.pb.js'
+      - '.github/workflows/stage13-dynamic-subagents-ci.yml'
+      - 'docs/WESI_AI_STAGE_TRACKER.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focused-stage13:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate JavaScript syntax
+        run: |
+          node --check server/wesi-ai-stream/dynamic_subagent.mjs
+          node --check server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs
+          node --check server/wesi-ai-stream/multi_agent_workspace.mjs
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --check server/pb_hooks/wesi_ai_stream.pb.js
+      - name: Run Stage13 focused tests
+        run: |
+          node --test server/wesi-ai-stream/dynamic_subagent.test.mjs
+          node --test server/wesi-ai-stream/multi_agent_workspace.test.mjs
+          node --test server/wesi-ai-stream/dynamic_subagent_orchestrator.test.mjs
+          node --test server/wesi-ai-stream/gateway.test.mjs
+          node --test server/wesi-ai-stream/persona_coagent.test.mjs
+          node --test server/wesi-ai-stream/persona_coagent_orchestrator.test.mjs
+      - name: Validate stream deployment shell
+        run: |
+          bash -n server/wesi-ai-stream/deploy-stream-gateway.sh
+          grep -q 'dynamic_subagent.mjs' server/wesi-ai-stream/deploy-stream-gateway.sh
+          grep -q 'dynamic_subagent_orchestrator.mjs' server/wesi-ai-stream/deploy-stream-gateway.sh
+          grep -q 'multi_agent_workspace.mjs' server/wesi-ai-stream/deploy-stream-gateway.sh
+      - name: Verify no recursive or destructive subagent policy regression
+        run: |
+          grep -q "canSpawnAgents: false" server/wesi-ai-stream/dynamic_subagent.mjs
+          grep -q "canDelegate: false" server/wesi-ai-stream/dynamic_subagent.mjs
+          grep -q "canPerformDestructiveActions: false" server/wesi-ai-stream/dynamic_subagent.mjs
+          grep -q 'meta.risk === registry.RISK_READ' server/pb_hooks/wesi_ai_stream.pb.js
