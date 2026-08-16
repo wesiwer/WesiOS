@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   stream-gateway:
@@ -45,36 +45,3 @@ jobs:
         run: flutter analyze --no-fatal-infos
       - name: Co-Agent Thinking timeline tests
         run: flutter test test/wesi_ai_coagent_activity_test.dart
-
-  diagnostic-ui-patch:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - name: Apply diagnostic UI patch
-        run: |
-          set -euo pipefail
-          if [ "$(git log -1 --pretty=%s)" != "ci: run diagnostics UI patch script" ]; then
-            echo DIAGNOSTIC_UI_PATCH_NOT_REQUESTED
-            exit 0
-          fi
-          python3 scripts/tmp_wesi_ai_diag_ui_patch.py
-      - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.24.0'
-          channel: stable
-      - name: Verify and publish UI coverage
-        run: |
-          set -euo pipefail
-          if [ "$(git log -1 --pretty=%s)" != "ci: run diagnostics UI patch script" ]; then exit 0; fi
-          flutter pub get
-          dart format lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart test/wesi_ai_diagnostics_contract_test.dart
-          flutter analyze --no-fatal-infos
-          flutter test test/wesi_ai_diagnostics_contract_test.dart test/wesi_ai_rich_message_test.dart test/wesi_ai_coagent_activity_test.dart
-          git config user.name wesi-ai-ci
-          git config user.email wesi-ai-ci@users.noreply.github.com
-          git add lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart test/wesi_ai_diagnostics_contract_test.dart
-          git commit -m 'feat(ai): expose auth and tool diagnostics in UI'
-          git push origin HEAD:agent/wesi-ai-stage12-final-20260816
