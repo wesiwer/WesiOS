@@ -1,0 +1,29 @@
+name: Temporary dispatch WesiOS 0.22.14 release
+
+on:
+  push:
+    branches:
+      - fix/wesi-ai-tool-agent-handoff
+    paths:
+      - .github/workflows/temp-dispatch-wesios-02214-release.yml
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch signed release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref fix/wesi-ai-tool-agent-handoff \
+            -f deploy_to_server=true \
+            -f notes='Wesi AI: полный аудит 58 инструментов, исправленный tool handoff/protocol, Thinking UX, mobile/sidebar/camera/math/finance fixes, tier-aware provider failover и проверенный Main→Relay→provider путь.'
+          echo 'SIGNED_RELEASE_DISPATCHED'
