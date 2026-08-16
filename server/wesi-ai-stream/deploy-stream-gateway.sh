@@ -10,7 +10,18 @@ SERVICE_USER="wesi-ai-stream"
 
 if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
 
-for required in server.mjs gateway.mjs persona_coagent.mjs persona_coagent_orchestrator.mjs package.json; do
+RUNTIME_FILES=(
+  server.mjs
+  gateway.mjs
+  persona_coagent.mjs
+  persona_coagent_orchestrator.mjs
+  dynamic_subagent.mjs
+  dynamic_subagent_orchestrator.mjs
+  multi_agent_workspace.mjs
+  package.json
+)
+
+for required in "${RUNTIME_FILES[@]}"; do
   [ -f "$SOURCE_DIR/$required" ] || { echo "Missing stream runtime file: $required" >&2; exit 2; }
 done
 [ -f "$SECRETS_FILE" ]
@@ -21,7 +32,7 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
 fi
 
 "${SUDO[@]}" install -d -o root -g "$SERVICE_USER" -m 0750 "$INSTALL_DIR"
-for file in server.mjs gateway.mjs persona_coagent.mjs persona_coagent_orchestrator.mjs package.json; do
+for file in "${RUNTIME_FILES[@]}"; do
   "${SUDO[@]}" install -o root -g "$SERVICE_USER" -m 0640 "$SOURCE_DIR/$file" "$INSTALL_DIR/$file"
 done
 
