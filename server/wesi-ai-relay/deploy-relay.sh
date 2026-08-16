@@ -32,6 +32,11 @@ load_b64_file() {
       GEMINI_API_KEY_3_B64) GEMINI_API_KEY_3="$decoded" ;;
       GEMINI_API_KEY_4_B64) GEMINI_API_KEY_4="$decoded" ;;
       GEMINI_API_KEY_5_B64) GEMINI_API_KEY_5="$decoded" ;;
+      GEMINI_API_PROJECT_B64) GEMINI_API_PROJECT="$decoded" ;;
+      GEMINI_API_PROJECT_2_B64) GEMINI_API_PROJECT_2="$decoded" ;;
+      GEMINI_API_PROJECT_3_B64) GEMINI_API_PROJECT_3="$decoded" ;;
+      GEMINI_API_PROJECT_4_B64) GEMINI_API_PROJECT_4="$decoded" ;;
+      GEMINI_API_PROJECT_5_B64) GEMINI_API_PROJECT_5="$decoded" ;;
       WESI_ZANE_TTS_VOICE_B64) WESI_ZANE_TTS_VOICE="$decoded" ;;
       WESI_NIRVANA_TTS_VOICE_B64) WESI_NIRVANA_TTS_VOICE="$decoded" ;;
       GROQ_API_KEY_B64) GROQ_API_KEY="$decoded" ;;
@@ -55,7 +60,7 @@ require_secrets() {
   if contains_newline "$WESI_MAIN_SHARED_SECRET"; then fail "Shared secret содержит перевод строки"; fi
   if contains_newline "$GEMINI_API_KEY"; then fail "Gemini key содержит перевод строки"; fi
   local optional
-  for optional in GEMINI_API_KEY_2 GEMINI_API_KEY_3 GEMINI_API_KEY_4 GEMINI_API_KEY_5 GROQ_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY; do
+  for optional in GEMINI_API_KEY_2 GEMINI_API_KEY_3 GEMINI_API_KEY_4 GEMINI_API_KEY_5 GEMINI_API_PROJECT GEMINI_API_PROJECT_2 GEMINI_API_PROJECT_3 GEMINI_API_PROJECT_4 GEMINI_API_PROJECT_5 GROQ_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY; do
     if [ -n "${!optional:-}" ] && contains_newline "${!optional}"; then fail "$optional содержит перевод строки"; fi
   done
   return 0
@@ -149,6 +154,11 @@ WESI_ENABLE_PAID_MEDIA=${WESI_ENABLE_PAID_MEDIA:-false}
 ENV
 
   : >"$PROVIDER_ENV_FILE"
+  [ -n "${GEMINI_API_PROJECT:-}" ] && printf "GEMINI_API_PROJECT=%s\n" "$GEMINI_API_PROJECT" >>"$PROVIDER_ENV_FILE"
+  [ -n "${GEMINI_API_PROJECT_2:-}" ] && printf "GEMINI_API_PROJECT_2=%s\n" "$GEMINI_API_PROJECT_2" >>"$PROVIDER_ENV_FILE"
+  [ -n "${GEMINI_API_PROJECT_3:-}" ] && printf "GEMINI_API_PROJECT_3=%s\n" "$GEMINI_API_PROJECT_3" >>"$PROVIDER_ENV_FILE"
+  [ -n "${GEMINI_API_PROJECT_4:-}" ] && printf "GEMINI_API_PROJECT_4=%s\n" "$GEMINI_API_PROJECT_4" >>"$PROVIDER_ENV_FILE"
+  [ -n "${GEMINI_API_PROJECT_5:-}" ] && printf "GEMINI_API_PROJECT_5=%s\n" "$GEMINI_API_PROJECT_5" >>"$PROVIDER_ENV_FILE"
   [ -n "${GEMINI_API_KEY_2:-}" ] && printf "GEMINI_API_KEY_2=%s\n" "$GEMINI_API_KEY_2" >>"$PROVIDER_ENV_FILE"
   [ -n "${GEMINI_API_KEY_3:-}" ] && printf "GEMINI_API_KEY_3=%s\n" "$GEMINI_API_KEY_3" >>"$PROVIDER_ENV_FILE"
   [ -n "${GEMINI_API_KEY_4:-}" ] && printf "GEMINI_API_KEY_4=%s\n" "$GEMINI_API_KEY_4" >>"$PROVIDER_ENV_FILE"

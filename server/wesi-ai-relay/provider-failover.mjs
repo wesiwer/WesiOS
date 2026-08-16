@@ -7,6 +7,8 @@ const TRANSIENT_BASE_MS = 15_000;
 const TRANSIENT_MAX_MS = 5 * 60 * 1000;
 const AUTH_BASE_MS = 15 * 60 * 1000;
 const AUTH_MAX_MS = 24 * 60 * 60 * 1000;
+const DAILY_QUOTA_BASE_MS = 60 * 60 * 1000;
+const DAILY_QUOTA_MAX_MS = 12 * 60 * 60 * 1000;
 
 export function normalizeWesiTier(value) {
   const tier = String(value || '').trim().toLowerCase();
@@ -27,8 +29,8 @@ function candidateId(candidate) {
   }
   const explicit = String(candidate?.id || '').trim();
   if (explicit) return explicit;
-  const slot = String(candidate?.credentialSlot || 'default').trim();
-  return `${provider}:${model}:${slot}`;
+  const scope = String(candidate?.quotaScope || candidate?.credentialSlot || 'default').trim();
+  return `${provider}:${model}:${scope}`;
 }
 
 export function assertCandidateAllowed(tier, candidate, {allowLower = false} = {}) {
@@ -47,19 +49,25 @@ export function assertCandidateAllowed(tier, candidate, {allowLower = false} = {
 
 export function geminiKeySlots(primaryKey, secrets = {}) {
   const raw = [
-    ['primary', primaryKey],
-    ['secondary-2', secrets.GEMINI_API_KEY_2],
-    ['secondary-3', secrets.GEMINI_API_KEY_3],
-    ['secondary-4', secrets.GEMINI_API_KEY_4],
-    ['secondary-5', secrets.GEMINI_API_KEY_5],
+    ['primary', primaryKey, secrets.GEMINI_API_PROJECT || secrets.GEMINI_PROJECT_ID],
+    ['secondary-2', secrets.GEMINI_API_KEY_2, secrets.GEMINI_API_PROJECT_2],
+    ['secondary-3', secrets.GEMINI_API_KEY_3, secrets.GEMINI_API_PROJECT_3],
+    ['secondary-4', secrets.GEMINI_API_KEY_4, secrets.GEMINI_API_PROJECT_4],
+    ['secondary-5', secrets.GEMINI_API_KEY_5, secrets.GEMINI_API_PROJECT_5],
   ];
   const seen = new Set();
   const result = [];
-  for (const [slot, value] of raw) {
+  for (const [slot, value, projectValue] of raw) {
     const key = String(value || '').trim();
     if (!key || seen.has(key)) continue;
     seen.add(key);
-    result.push({slot, key});
+    const project = String(projectValue || '').trim();
+    result.push({
+      slot,
+      key,
+      project,
+      quotaScope: project ? `project:${project}` : `slot:${slot}`,
+    });
   }
   return result;
 }
@@ -72,6 +80,7 @@ export function isRetryableProviderResult(result) {
   if (status === 429 || status >= 500) return true;
   return new Set([
     'WAI_PROVIDER_RATE_LIMIT',
+    'WAI_PROVIDER_DAILY_QUOTA',
     'WAI_PROVIDER_UNAVAILABLE',
     'WAI_PROVIDER_TIMEOUT',
     'WAI_PROVIDER_REJECTED',
@@ -86,7 +95,10 @@ function cooldownFor(result, failures) {
   const exponent = Math.max(0, Math.min(Number(failures || 1) - 1, 10));
   let base = TRANSIENT_BASE_MS;
   let max = TRANSIENT_MAX_MS;
-  if (status === 429 || code === 'WAI_PROVIDER_RATE_LIMIT') {
+  if (code === 'WAI_PROVIDER_DAILY_QUOTA') {
+    base = DAILY_QUOTA_BASE_MS;
+    max = DAILY_QUOTA_MAX_MS;
+  } else if (status === 429 || code === 'WAI_PROVIDER_RATE_LIMIT') {
     base = RATE_LIMIT_BASE_MS;
     max = RATE_LIMIT_MAX_MS;
   } else if (code === 'WAI_PROVIDER_AUTH_FAILED') {

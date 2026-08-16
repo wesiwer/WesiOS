@@ -207,3 +207,10 @@ Regression tests отдельно фиксируют:
 - invalid request не fan-out'ится;
 - streaming не переключается после частичного ответа;
 - пользовательская cancellation останавливает весь pool.
+
+
+## Hierarchical model pools and quota scopes
+
+Default stable text hierarchy is intentionally monotonic: `Fast = gemini-3.5-flash-lite`, `Pro = gemini-3.5-flash`, `Maximum = gemini-3.6-flash`. Failover never promotes a lower Wesi tier to a higher-tier candidate.
+
+Gemini quotas are project-scoped. Optional `GEMINI_API_PROJECT`, `GEMINI_API_PROJECT_2` ... `_5` labels group credentials that belong to the same Google project into one cooldown scope. A 429/quota event on one credential therefore skips other credentials explicitly marked as the same project while still allowing another configured project/provider capacity to serve the request. These slots are for legitimate independent capacity/failover, not for evading provider quotas.

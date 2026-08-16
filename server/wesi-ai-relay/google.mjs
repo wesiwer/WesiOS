@@ -32,12 +32,13 @@ function parseWesiRoute(route) {
 export function buildGoogleCandidates(model, tier, googleKey, secrets = {}, timeoutMs = 30000) {
   const normalized = normalizeWesiTier(tier);
   if (!normalized) return [];
-  return geminiKeySlots(googleKey, secrets).map(({slot, key}) => ({
+  return geminiKeySlots(googleKey, secrets).map(({slot, key, quotaScope}) => ({
     id: `google:${slot}:${model}`,
     provider: 'google',
     model,
     apiKey: key,
     credentialSlot: slot,
+    quotaScope,
     tier: normalized,
     timeoutMs,
   }));
@@ -84,7 +85,7 @@ export function buildFinalizerCandidates(tier, googleKey, secrets = {}) {
   const normalized = normalizeWesiTier(tier);
   if (normalized !== 'pro' && normalized !== 'ultra') return [];
   const googleModel = normalized === 'ultra'
-    ? secrets.WESI_GEMINI_ULTRA_MODEL || secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash'
+    ? secrets.WESI_GEMINI_ULTRA_MODEL || 'gemini-3.6-flash'
     : secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash';
   const mistralModel = normalized === 'ultra'
     ? secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest'
@@ -171,7 +172,7 @@ async function callOpenAiCompatible({url, model, apiKey, input, headers = {}, ti
   let data = {};
   try { data = await response.json(); } catch {}
   if (!response.ok) {
-    if (response.status === 429) return {ok: false, status: 429, code: 'WAI_PROVIDER_RATE_LIMIT'};
+    if (response.status === 429) return {ok: false, status: 429, code: google429Code(data), retryAfterMs: googleRetryAfterMs(response, data)};
     if (response.status === 401 || response.status === 403) {
       return {ok: false, status: 503, code: 'WAI_PROVIDER_AUTH_FAILED'};
     }
@@ -179,6 +180,26 @@ async function callOpenAiCompatible({url, model, apiKey, input, headers = {}, ti
   }
   const answer = String(data?.choices?.[0]?.message?.content || '').trim();
   return answer ? {ok: true, answer} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
+}
+
+function googleRetryAfterMs(response, data) {
+  const header = String(response?.headers?.get?.('retry-after') || '').trim();
+  if (/^\d+$/.test(header)) return Number(header) * 1000;
+  const details = Array.isArray(data?.error?.details) ? data.error.details : [];
+  for (const detail of details) {
+    const delay = String(detail?.retryDelay || '').trim();
+    const match = /^(\d+(?:\.\d+)?)s$/.exec(delay);
+    if (match) return Math.ceil(Number(match[1]) * 1000);
+  }
+  return 0;
+}
+
+function google429Code(data) {
+  let text = '';
+  try { text = JSON.stringify(data?.error || data || {}).toLowerCase(); } catch {}
+  return /(quota_exceeded|requests.?per.?day|per.?day|daily|rpd)/i.test(text)
+    ? 'WAI_PROVIDER_DAILY_QUOTA'
+    : 'WAI_PROVIDER_RATE_LIMIT';
 }
 
 export async function callGoogleText(model, input, apiKey, options = {}) {
@@ -452,7 +473,7 @@ export async function callTextRoute(route, input, googleKey, options = {}) {
       ? secrets.WESI_GEMINI_FAST_MODEL || 'gemini-3.5-flash-lite'
       : tier === 'pro'
         ? secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash'
-        : secrets.WESI_GEMINI_ULTRA_MODEL || secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash';
+        : secrets.WESI_GEMINI_ULTRA_MODEL || 'gemini-3.6-flash';
     const result = await firstAvailable(
       buildGoogleCandidates(model, tier, googleKey, secrets, 60000),
       input,

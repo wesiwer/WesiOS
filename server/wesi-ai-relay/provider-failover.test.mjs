@@ -54,7 +54,12 @@ test('Pro and Maximum finalizer pools stay inside their declared tier', () => {
   assert.ok(pro.every((item) => item.tier === 'pro'));
   assert.ok(maximum.every((item) => item.tier === 'ultra'));
   assert.ok(pro.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.5-flash'));
-  assert.ok(maximum.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.5-flash'));
+  assert.ok(maximum.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.6-flash'));
+  assert.notEqual(
+    pro.find((item) => item.provider === 'google')?.model,
+    maximum.find((item) => item.provider === 'google')?.model,
+    'Maximum must default to a stronger model than Pro',
+  );
 });
 
 test('Fast switches Gemini credentials on 429 without changing Flash Lite model', async () => {
@@ -207,4 +212,43 @@ test('user cancellation aborts the pool instead of trying another provider', asy
     (error) => error?.name === 'AbortError',
   );
   assert.equal(calls, 1);
+});
+
+
+test('Gemini slots can group keys by Google project quota scope', () => {
+  const slots = geminiKeySlots('key-a', {
+    GEMINI_API_PROJECT: 'project-a',
+    GEMINI_API_KEY_2: 'key-b',
+    GEMINI_API_PROJECT_2: 'project-a',
+    GEMINI_API_KEY_3: 'key-c',
+    GEMINI_API_PROJECT_3: 'project-b',
+  });
+  assert.deepEqual(slots.map((item) => item.quotaScope), [
+    'project:project-a',
+    'project:project-a',
+    'project:project-b',
+  ]);
+});
+
+test('429 on one key skips another key from the same Google project but tries another project', async () => {
+  resetProviderFailoverState();
+  const candidates = [
+    {id: 'g-a-1', provider: 'google', model: 'gemini-3.5-flash-lite', tier: 'fast', quotaScope: 'project:a'},
+    {id: 'g-a-2', provider: 'google', model: 'gemini-3.5-flash-lite', tier: 'fast', quotaScope: 'project:a'},
+    {id: 'g-b-1', provider: 'google', model: 'gemini-3.5-flash-lite', tier: 'fast', quotaScope: 'project:b'},
+  ];
+  const calls = [];
+  const result = await runProviderFailover({
+    tier: 'fast',
+    candidates,
+    invoke: async (candidate) => {
+      calls.push(candidate.id);
+      if (candidate.quotaScope === 'project:a') {
+        return {ok: false, status: 429, code: 'WAI_PROVIDER_DAILY_QUOTA'};
+      }
+      return {ok: true, answer: 'project-b-ok'};
+    },
+  });
+  assert.equal(result.ok, true);
+  assert.deepEqual(calls, ['g-a-1', 'g-b-1']);
 });
