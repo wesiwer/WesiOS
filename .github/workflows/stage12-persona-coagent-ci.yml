@@ -56,7 +56,8 @@ jobs:
       - name: Apply diagnostics only on trigger commit
         run: |
           set -euo pipefail
-          if [ "$(git log -1 --pretty=%s)" != "ci: trigger diagnostics patch" ]; then
+          subject="$(git log -1 --pretty=%s)"
+          if [ "$subject" != "ci: trigger diagnostics patch" ] && [ "$subject" != "ci: fix diagnostics escaping" ]; then
             echo DIAGNOSTIC_PATCH_NOT_REQUESTED
             exit 0
           fi
@@ -70,10 +71,20 @@ jobs:
           raw = text[start:end]
           lines = [line[10:] if line.startswith('          ') else line for line in raw.splitlines()]
           exec(compile('\n'.join(lines), 'diagnostics-v2', 'exec'), {})
+
+          p = Path('lib/features/ai/wesi_ai_api.dart')
+          source = p.read_text()
+          source = source.replace("].join('" + "\n" + "');", "].join('\\n');")
+          source = source.replace(
+              "String get displayMessage => '$message" + "\n\n" + "Технические детали" + "\n" + "$technicalDetails';",
+              "String get displayMessage => '$message\\n\\nТехнические детали\\n$technicalDetails';",
+          )
+          p.write_text(source)
           PY
       - name: Validate server diagnostics
         run: |
-          if [ "$(git log -1 --pretty=%s)" != "ci: trigger diagnostics patch" ]; then exit 0; fi
+          subject="$(git log -1 --pretty=%s)"
+          if [ "$subject" != "ci: trigger diagnostics patch" ] && [ "$subject" != "ci: fix diagnostics escaping" ]; then exit 0; fi
           node --check server/wesi-ai-stream/gateway.mjs
           node --check server/pb_hooks/wesi_ai_routes.pb.js
           cd server/wesi-ai-stream && npm test
@@ -84,7 +95,8 @@ jobs:
       - name: Validate Flutter diagnostics and publish
         run: |
           set -euo pipefail
-          if [ "$(git log -1 --pretty=%s)" != "ci: trigger diagnostics patch" ]; then exit 0; fi
+          subject="$(git log -1 --pretty=%s)"
+          if [ "$subject" != "ci: trigger diagnostics patch" ] && [ "$subject" != "ci: fix diagnostics escaping" ]; then exit 0; fi
           flutter pub get
           dart format lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart test/wesi_ai_diagnostics_contract_test.dart
           flutter analyze --no-fatal-infos
