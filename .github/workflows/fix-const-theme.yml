@@ -1,61 +1,157 @@
-name: Fix const + AppTheme
+name: Temporary Wesi AI UI patch runner
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
-  fix:
-    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
-    timeout-minutes: 15
+  patch-wesi-ai:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 0
 
-      - name: Strip const from dynamic AppTheme constructors
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Apply patch
+        shell: bash
         run: |
-          python3 << 'PY'
-          import re, pathlib
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
 
-          DYNAMIC = r'(?:textMuted|textPrimary|textSecondary|glassBorder|background|surface|surfaceLight|glassBackground|carbonDark|carbonMid|carbonLight|carbonHighlight|primary|accent|logoStroke|logoAccent)'
+          p = Path('lib/features/ai/ai_assistant_v2_screen.dart')
+          s = p.read_text(encoding='utf-8')
+          a = s.index("          IconButton(\n            tooltip: 'Коннекторы Wesi AI',")
+          b = s.index('          PopupMenuButton<WesiAiUiMode>(', a)
+          s = s[:a] + s[b:]
+          marker = "        ),\n        const Divider(height: 1),\n        Expanded(\n"
+          if s.count(marker) != 1:
+              raise SystemExit('sidebar marker mismatch')
+          s = s.replace(marker, "        ),\n        _sidebarUtilities(controller),\n        const Divider(height: 1),\n        Expanded(\n", 1)
+          sidebar = '''  Widget _sidebarUtilities(WesiAiManagedChatController controller) {
+            final theme = Theme.of(context);
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+                    child: Text(
+                      'Настройки Wesi AI',
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                  Card(
+                    margin: EdgeInsets.zero,
+                    clipBehavior: Clip.antiAlias,
+                    child: Column(
+                      children: [
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.hub_outlined),
+                          title: const Text('Коннекторы'),
+                          subtitle: const Text('Внешние сервисы и аккаунты'),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => showModalBottomSheet<void>(
+                            context: context,
+                            isScrollControlled: true,
+                            showDragHandle: true,
+                            builder: (_) => const WesiConnectorManagerSheet(),
+                          ),
+                        ),
+                        const Divider(height: 1, indent: 52),
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.memory_outlined),
+                          title: const Text('Память'),
+                          subtitle: const Text('Что Wesi AI помнит о работе'),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => showModalBottomSheet<void>(
+                            context: context,
+                            isScrollControlled: true,
+                            showDragHandle: true,
+                            builder: (_) => WesiAiMemorySheet(controller: controller),
+                          ),
+                        ),
+                        const Divider(height: 1, indent: 52),
+                        ListTile(
+                          dense: true,
+                          leading: const Icon(Icons.backup_outlined),
+                          title: const Text('Бэкап и перенос'),
+                          subtitle: const Text('Резервные копии и перенос чатов'),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => showModalBottomSheet<void>(
+                            context: context,
+                            isScrollControlled: true,
+                            showDragHandle: true,
+                            builder: (_) => WesiAiBackupSheet(controller: controller),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }
 
-          def fix(content: str) -> str:
-              lines = content.split('\n')
-              out = []
-              i = 0
-              while i < len(lines):
-                  line = lines[i]
-                  if re.search(r'\bconst\s+[A-Z]', line):
-                      window = '\n'.join(lines[i:i+12])
-                      if re.search(r'AppTheme\.' + DYNAMIC, window):
-                          line = re.sub(r'\bconst\s+', '', line, count=1)
-                  out.append(line)
-                  i += 1
-              return '\n'.join(out)
+          '''
+          s = s.replace('  Widget _chat(\n', sidebar + '  Widget _chat(\n', 1)
+          old = '                    expandWorkLog: _uiMode == WesiAiUiMode.thinking,\n'
+          if s.count(old) != 1:
+              raise SystemExit('worklog call marker mismatch')
+          s = s.replace(old, '                    showWorkLog: _uiMode == WesiAiUiMode.thinking,\n' + old, 1)
+          p.write_text(s, encoding='utf-8')
 
-          changed = []
-          for path in pathlib.Path('lib').rglob('*.dart'):
-              text = path.read_text(encoding='utf-8')
-              fixed = fix(text)
-              if fixed != text:
-                  path.write_text(fixed, encoding='utf-8')
-                  changed.append(str(path))
-                  print(f'fixed: {path}')
+          p = Path('lib/features/ai/widgets/wesi_ai_message_content.dart')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('  final bool animateText;\n  final bool expandWorkLog;\n', '  final bool animateText;\n  final bool showWorkLog;\n  final bool expandWorkLog;\n', 1)
+          s = s.replace('    this.animateText = true,\n    this.expandWorkLog = false,\n', '    this.animateText = true,\n    this.showWorkLog = false,\n    this.expandWorkLog = false,\n', 1)
+          s = s.replace("            streaming: message.metadata['transportStreaming'] == true,\n            expandWorkLog: expandWorkLog,\n", "            streaming: message.metadata['transportStreaming'] == true,\n            showWorkLog: showWorkLog,\n            expandWorkLog: expandWorkLog,\n", 1)
+          p.write_text(s, encoding='utf-8')
 
-          print(f'Total fixed files: {len(changed)}')
-          if not changed:
-              print('Nothing to fix')
+          p = Path('lib/features/ai/widgets/wesi_ai_rich_message.dart')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace('  final bool streaming;\n  final bool expandWorkLog;\n', '  final bool streaming;\n  final bool showWorkLog;\n  final bool expandWorkLog;\n', 1)
+          s = s.replace('    this.streaming = false,\n    this.expandWorkLog = false,\n', '    this.streaming = false,\n    this.showWorkLog = false,\n    this.expandWorkLog = false,\n', 1)
+          s = s.replace('    if (work.isNotEmpty || streaming) {\n', '    if (showWorkLog && (work.isNotEmpty || streaming)) {\n', 1)
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('docs/WESI_AI_CHAT_UX.md')
+          s = p.read_text(encoding='utf-8')
+          old = 'WesiOS не показывает скрытую chain-of-thought модели. Вместо неё UI показывает фактический work log: подготовку контекста, выбранный маршрут, инструментальные вызовы, агентов, проверки и статусы, которые реально пришли из streaming protocol. Пока ответ выполняется, блок раскрыт автоматически; после завершения его можно раскрыть вручную.'
+          new = 'WesiOS не показывает скрытую chain-of-thought модели. В режиме «Думающий» UI показывает фактический work log: подготовку контекста, выбранный маршрут, инструментальные вызовы, агентов, проверки и статусы, которые реально пришли из streaming protocol. Пока ответ выполняется, блок раскрыт автоматически; после завершения его можно раскрыть вручную. В режиме «Классический» плашка «Ход работы» не рендерится вообще.'
+          if old not in s:
+              raise SystemExit('docs marker mismatch')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
           PY
 
-      - name: Commit and push
+          dart format \
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            lib/features/ai/widgets/wesi_ai_message_content.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart
+          git diff --check
+
+      - name: Commit feature branch
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --staged --quiet; then
-            echo "No changes"
-            exit 0
-          fi
-          git commit -m "fix(theme): remove const from widgets using dynamic AppTheme colors"
-          git push
+          git add lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_message_content.dart lib/features/ai/widgets/wesi_ai_rich_message.dart docs/WESI_AI_CHAT_UX.md
+          git commit -m "fix(ai): move utilities into sidebar and gate work log"
+          git push origin HEAD:fix/wesi-ai-tool-agent-handoff
