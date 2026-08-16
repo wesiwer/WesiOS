@@ -1,0 +1,333 @@
+name: Temporary Wesi AI Diagnostics V2
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage12-final-20260816
+    paths:
+      - .github/workflows/tmp-wesi-ai-diagnostics-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-stage12-final-20260816
+          fetch-depth: 0
+      - name: Apply robust diagnostics patch
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def sub(path, pattern, replacement, flags=0, count=1, label='patch'):
+              p = Path(path)
+              text = p.read_text()
+              out, n = re.subn(pattern, replacement, text, count=count, flags=flags)
+              if n != count:
+                  raise SystemExit(f'{label}: expected {count}, got {n}')
+              p.write_text(out)
+
+          api = 'lib/features/ai/wesi_ai_api.dart'
+          sub(api, r'class WesiAiApiException implements Exception \{.*?\n\}\n\nclass WesiAiReply', '''class WesiAiApiException implements Exception {
+            final String code;
+            final String message;
+            final String requestId;
+            final String stage;
+            final String component;
+            final String operation;
+            final int? httpStatus;
+            final String lastSuccess;
+            final int? durationMs;
+            final String detail;
+
+            const WesiAiApiException(
+              this.code,
+              this.message, {
+              this.requestId = '',
+              this.stage = '',
+              this.component = '',
+              this.operation = '',
+              this.httpStatus,
+              this.lastSuccess = '',
+              this.durationMs,
+              this.detail = '',
+            });
+
+            factory WesiAiApiException.fromPayload(
+              String fallbackCode,
+              String fallbackMessage,
+              Map<String, dynamic> payload, {
+              int? httpStatus,
+              String stage = '',
+              String component = '',
+              String operation = '',
+              String lastSuccess = '',
+              int? durationMs,
+            }) {
+              final raw = payload['diagnostic'];
+              final diagnostic = raw is Map
+                  ? Map<String, dynamic>.from(raw)
+                  : const <String, dynamic>{};
+              int? intValue(Object? value) => value is num
+                  ? value.toInt()
+                  : int.tryParse('${value ?? ''}');
+              final resolvedCode = '${payload['code'] ?? fallbackCode}'.trim();
+              return WesiAiApiException(
+                resolvedCode.isEmpty ? fallbackCode : resolvedCode,
+                fallbackMessage,
+                requestId: '${diagnostic['requestId'] ?? payload['requestId'] ?? ''}'.trim(),
+                stage: '${diagnostic['stage'] ?? stage}'.trim(),
+                component: '${diagnostic['component'] ?? component}'.trim(),
+                operation: '${diagnostic['operation'] ?? operation}'.trim(),
+                httpStatus: intValue(diagnostic['httpStatus']) ?? httpStatus,
+                lastSuccess: '${diagnostic['lastSuccess'] ?? lastSuccess}'.trim(),
+                durationMs: intValue(diagnostic['durationMs']) ?? durationMs,
+                detail: '${diagnostic['detail'] ?? ''}'.trim(),
+              );
+            }
+
+            Map<String, dynamic> get diagnostic => <String, dynamic>{
+                  'code': code,
+                  if (requestId.isNotEmpty) 'requestId': requestId,
+                  if (stage.isNotEmpty) 'stage': stage,
+                  if (component.isNotEmpty) 'component': component,
+                  if (operation.isNotEmpty) 'operation': operation,
+                  if (httpStatus != null) 'httpStatus': httpStatus,
+                  if (lastSuccess.isNotEmpty) 'lastSuccess': lastSuccess,
+                  if (durationMs != null) 'durationMs': durationMs,
+                  if (detail.isNotEmpty) 'detail': detail,
+                };
+
+            String get technicalDetails => <String>[
+                  if (stage.isNotEmpty) 'Этап: $stage',
+                  if (component.isNotEmpty) 'Компонент: $component',
+                  if (operation.isNotEmpty) 'Операция: $operation',
+                  'Код: $code',
+                  if (httpStatus != null) 'HTTP: $httpStatus',
+                  if (lastSuccess.isNotEmpty) 'Последний успешный этап: $lastSuccess',
+                  if (requestId.isNotEmpty) 'Request ID: $requestId',
+                  if (durationMs != null) 'Длительность: ${durationMs} мс',
+                  if (detail.isNotEmpty) 'Детали: $detail',
+                ].join('\\n');
+
+            String get displayMessage => '$message\\n\\nТехнические детали\\n$technicalDetails';
+
+            @override
+            String toString() => displayMessage;
+          }
+
+          class WesiAiReply''', flags=re.S, label='exception-contract')
+
+          sub(api, r'''if \(response\.statusCode < 200 \|\| response\.statusCode >= 300\) \{\s*final code = '\$\{json\['code'\] \?\? 'WAI_REQUEST_FAILED'\}';\s*throw WesiAiApiException\(code, _messageFor\(code\)\);\s*\}''', '''if (response.statusCode < 200 || response.statusCode >= 300) {
+                final code = '${json['code'] ?? 'WAI_REQUEST_FAILED'}';
+                throw WesiAiApiException.fromPayload(
+                  code,
+                  _messageFor(code),
+                  json,
+                  httpStatus: response.statusCode,
+                  stage: 'MAIN',
+                  component: 'WesiOS Main',
+                  operation: 'chat',
+                  lastSuccess: 'CLIENT',
+                );
+              }''', flags=re.S, label='main-http-diagnostic')
+
+          sub(api, r'''\} on SocketException \{\s*// Streaming is an optimization\..*?\} on HttpException \{\s*\} on TimeoutException \{\}''', '''} on SocketException catch (error) {
+                  _emitStreamFallback(onActivity, 'STREAM_SOCKET', error.message);
+                } on HttpException catch (error) {
+                  _emitStreamFallback(onActivity, 'STREAM_HTTP', error.message);
+                } on TimeoutException catch (error) {
+                  _emitStreamFallback(onActivity, 'STREAM_TIMEOUT', '$error');
+                }''', flags=re.S, label='stream-fallback-diagnostic')
+
+          p = Path(api)
+          text = p.read_text()
+          marker = '  Future<WesiAiReply?> _sendStream({' 
+          if marker not in text:
+              raise SystemExit('sendStream marker missing')
+          helper = '''  static void _emitStreamFallback(
+            void Function(Map<String, dynamic> event)? onActivity,
+            String code,
+            String detail,
+          ) {
+            final cleanDetail = detail.trim();
+            onActivity?.call(<String, dynamic>{
+              'type': 'activity',
+              'kind': 'status',
+              'phase': 'fallback',
+              'label': 'Streaming недоступен — переключаюсь на WesiOS Main',
+              'detail': 'Этап: STREAM_GATEWAY · Компонент: Streaming edge · Код: $code${cleanDetail.isEmpty ? '' : ' · $cleanDetail'}',
+              'diagnostic': <String, dynamic>{
+                'stage': 'STREAM_GATEWAY',
+                'component': 'Streaming edge',
+                'operation': 'chat.stream',
+                'code': code,
+                'lastSuccess': 'CLIENT_AUTH',
+                if (cleanDetail.isNotEmpty) 'detail': cleanDetail,
+              },
+            });
+          }
+
+'''
+          p.write_text(text.replace(marker, helper + marker, 1))
+
+          sub(api, r'''final resolved = code\.isEmpty \? 'WAI_STREAM_FAILED' : code;\s*throw WesiAiApiException\(resolved, _messageFor\(resolved\)\);''', '''final resolved = code.isEmpty ? 'WAI_STREAM_FAILED' : code;
+              throw WesiAiApiException.fromPayload(
+                resolved,
+                _messageFor(resolved),
+                json,
+                httpStatus: response.statusCode,
+                stage: 'STREAM_GATEWAY',
+                component: 'Streaming edge',
+                operation: 'chat.stream',
+                lastSuccess: 'CLIENT_AUTH',
+              );''', label='stream-http-diagnostic')
+
+          sub(api, r'''case 'error':\s*final code = '\$\{event\['code'\] \?\? 'WAI_STREAM_FAILED'\}';\s*done\.completeError\(WesiAiApiException\(code, _messageFor\(code\)\)\);\s*break;''', '''case 'error':
+                      final code = '${event['code'] ?? 'WAI_STREAM_FAILED'}';
+                      done.completeError(WesiAiApiException.fromPayload(
+                        code,
+                        _messageFor(code),
+                        event,
+                        httpStatus: event['status'] is num ? (event['status'] as num).toInt() : null,
+                        stage: 'STREAM_GATEWAY',
+                        component: 'Streaming gateway',
+                        operation: 'chat.stream',
+                        lastSuccess: 'STREAM_CONNECTED',
+                      ));
+                      break;''', flags=re.S, label='stream-event-diagnostic')
+
+          sub(api, r'''\} on SocketException \{\s*throw const WesiAiApiException\('NETWORK', 'Нет связи с сервером WesiOS'\);\s*\} on HttpException \{\s*throw const WesiAiApiException\(\s*'NETWORK', 'Ошибка связи с сервером WesiOS'\);\s*\} on TimeoutException \{\s*throw const WesiAiApiException\(\s*'NETWORK', 'Wesi AI не успел обработать запрос'\);''', '''} on SocketException catch (error) {
+              throw WesiAiApiException('NETWORK_SOCKET', 'Нет связи с сервером WesiOS', stage: 'CLIENT_TRANSPORT', component: 'WesiAiApi', operation: 'chat', lastSuccess: 'REQUEST_PREPARED', detail: error.message);
+            } on HttpException catch (error) {
+              throw WesiAiApiException('NETWORK_HTTP', 'Ошибка связи с сервером WesiOS', stage: 'CLIENT_TRANSPORT', component: 'WesiAiApi', operation: 'chat', lastSuccess: 'REQUEST_PREPARED', detail: error.message);
+            } on TimeoutException catch (error) {
+              throw WesiAiApiException('NETWORK_TIMEOUT', 'Wesi AI не успел обработать запрос', stage: 'CLIENT_TRANSPORT', component: 'WesiAiApi', operation: 'chat', lastSuccess: 'REQUEST_SENT', detail: '$error');''', flags=re.S, label='client-network-diagnostic')
+
+          controller = 'lib/features/ai/controllers/wesi_ai_chat_controller.dart'
+          sub(controller, r'''text: e\.message,\s*createdAt: at,\s*metadata: <String, dynamic>\{'code': e\.code\},''', '''text: e.displayMessage,
+                    createdAt: at,
+                    metadata: <String, dynamic>{
+                      'code': e.code,
+                      'diagnostic': e.diagnostic,
+                      if (e.requestId.isNotEmpty) 'requestId': e.requestId,
+                    },''', flags=re.S, label='controller-error-diagnostic')
+
+          routes = 'server/pb_hooks/wesi_ai_routes.pb.js'
+          p = Path(routes)
+          text = p.read_text()
+          anchor = '  const attachmentsRaw = Array.isArray(body.attachments) ? body.attachments : [];\n'
+          if anchor not in text:
+              raise SystemExit('routes anchor missing')
+          diag = '''  const attachmentsRaw = Array.isArray(body.attachments) ? body.attachments : [];
+            const requestId = "wai_" + Date.now() + "_" + $security.randomString(12);
+            const startedAt = Date.now();
+            const diagnostic = function(stage, component, operation, code, status, lastSuccess, detail) {
+              return {requestId: requestId, stage: String(stage || "MAIN"), component: String(component || "WesiOS Main"), operation: String(operation || "chat"), code: String(code || "WAI_REQUEST_FAILED"), httpStatus: Number(status || 500), lastSuccess: String(lastSuccess || "CLIENT_AUTH"), durationMs: Math.max(0, Date.now() - startedAt), detail: String(detail || "").slice(0, 500)};
+            };
+'''
+          text = text.replace(anchor, diag, 1)
+          text = text.replace('  const requestId = "wai_" + Date.now() + "_" + $security.randomString(12);\n  const relayCall = function(system, phase) {', '  const relayCall = function(system, phase) {', 1)
+          p.write_text(text)
+
+          sub(routes, r'''if \(!personaBundle\.ready\) return e\.json\(503, \{ok: false, code: "WAI_PERSONA_ENGINE_NOT_READY"\}\);''', '''if (!personaBundle.ready) return e.json(503, {ok: false, code: "WAI_PERSONA_ENGINE_NOT_READY", requestId: requestId, diagnostic: diagnostic("MAIN", "PersonaRuntime", "persona.load", "WAI_PERSONA_ENGINE_NOT_READY", 503, "CLIENT_AUTH", persona)});''', label='persona-ready-diagnostic')
+          sub(routes, r'''if \(!cfg\.ready \|\| !route\) return e\.json\(503, \{ok: false, code: "WAI_RELAY_NOT_CONFIGURED"\}\);''', '''if (!cfg.ready || !route) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED", requestId: requestId, diagnostic: diagnostic("MAIN", "RelayConfig", "route.resolve", "WAI_RELAY_NOT_CONFIGURED", 503, "PERSONA_READY", tier)});''', label='relay-config-diagnostic')
+          sub(routes, r'''if \(!generated\.ok\) return e\.json\(generated\.status, \{ok: false, code: generated\.code, requestId: requestId\}\);''', '''if (!generated.ok) return e.json(generated.status, {ok: false, code: generated.code, requestId: requestId, diagnostic: diagnostic("PROVIDER", "Foreign Relay", "model.generate", generated.code, generated.status, "MAIN_CONTEXT_READY", "phase=" + String(turn + 1))});''', label='provider-loop-diagnostic')
+          sub(routes, r'''toolResults\.push\(\{tool: toolRequest\.name, verified: true, ok: executed\.ok === true, code: executed\.code \|\| null, message: executed\.message \|\| null, alternatives: executed\.alternatives \|\| null, result: executed\.result \|\| null, confirmation: executed\.confirmation \|\| null\}\);''', '''toolResults.push({tool: toolRequest.name, verified: true, ok: executed.ok === true, code: executed.code || null, message: executed.message || null, alternatives: executed.alternatives || null, result: executed.result || null, confirmation: executed.confirmation || null, diagnostic: executed.ok === true ? null : diagnostic("TOOL", toolRequest.name, "tool.execute", executed.code || "WAI_TOOL_FAILED", 500, "TOOL_DISPATCH", executed.message || "")});''', label='tool-result-diagnostic')
+          sub(routes, r'''if \(!finalGenerated\.ok\) return e\.json\(finalGenerated\.status, \{ok: false, code: finalGenerated\.code, requestId: requestId\}\);''', '''if (!finalGenerated.ok) return e.json(finalGenerated.status, {ok: false, code: finalGenerated.code, requestId: requestId, diagnostic: diagnostic("PROVIDER", "Foreign Relay", "model.generate.final", finalGenerated.code, finalGenerated.status, "TOOLS_COMPLETE", "final")});''', label='provider-final-diagnostic')
+
+          gateway = 'server/wesi-ai-stream/gateway.mjs'
+          p = Path(gateway)
+          text = p.read_text()
+          marker = 'function stripLeadingReasoningBlocks(value) {'
+          helper = '''export function diagnosticPayload({requestId = '', stage = 'STREAM_GATEWAY', component = 'Streaming gateway', operation = 'chat.stream', code = 'WAI_STREAM_FAILED', httpStatus = 502, lastSuccess = '', durationMs = 0, detail = ''} = {}) {
+            return {requestId: String(requestId || '').slice(0, 180), stage: String(stage || 'STREAM_GATEWAY').slice(0, 80), component: String(component || 'Streaming gateway').slice(0, 120), operation: String(operation || 'chat.stream').slice(0, 120), code: safeCode(code), httpStatus: Number(httpStatus || 502), lastSuccess: String(lastSuccess || '').slice(0, 120), durationMs: Math.max(0, Number(durationMs || 0) || 0), detail: String(detail || '').slice(0, 500)};
+          }
+
+'''
+          if marker not in text:
+              raise SystemExit('gateway helper anchor missing')
+          p.write_text(text.replace(marker, helper + marker, 1))
+
+          sub(gateway, r'''const error = new Error\(safeCode\(data\.code, response\.status === 401 \? 'WAI_STREAM_UNAUTHORIZED' : 'WAI_STREAM_MAIN_REJECTED'\)\);\s*error\.status = response\.status;\s*throw error;''', '''const error = new Error(safeCode(data.code, response.status === 401 ? 'WAI_STREAM_UNAUTHORIZED' : 'WAI_STREAM_MAIN_REJECTED'));
+              error.status = response.status;
+              error.diagnostic = data.diagnostic || diagnosticPayload({requestId: body?.requestId || '', stage: 'MAIN', component: 'WesiOS Main', operation: path, code: error.message, httpStatus: response.status, lastSuccess: 'STREAM_GATEWAY'});
+              throw error;''', flags=re.S, label='gateway-main-diagnostic')
+          sub(gateway, r'''const error = new Error\(safeCode\(data\.code, 'WAI_STREAM_RELAY_REJECTED'\)\);\s*error\.status = response\.status;\s*throw error;''', '''const error = new Error(safeCode(data.code, 'WAI_STREAM_RELAY_REJECTED'));
+              error.status = response.status;
+              error.diagnostic = data.diagnostic || diagnosticPayload({requestId, stage: 'RELAY', component: 'Foreign Relay', operation: 'provider.stream', code: error.message, httpStatus: response.status, lastSuccess: 'STREAM_GATEWAY'});
+              throw error;''', flags=re.S, label='gateway-relay-diagnostic')
+          sub(gateway, r'''const error = new Error\(safeCode\(event\.code, 'WAI_PROVIDER_UNAVAILABLE'\)\);\s*error\.status = Number\(event\.status \|\| 502\);\s*throw error;''', '''const error = new Error(safeCode(event.code, 'WAI_PROVIDER_UNAVAILABLE'));
+                error.status = Number(event.status || 502);
+                error.diagnostic = event.diagnostic || diagnosticPayload({requestId, stage: 'PROVIDER', component: String(event.provider || 'AI provider'), operation: 'model.stream', code: error.message, httpStatus: error.status, lastSuccess: 'RELAY_CONNECTED'});
+                throw error;''', flags=re.S, label='gateway-provider-diagnostic')
+          sub(gateway, r'''return async function handle\(req, res\) \{\s*if \(req\.method === 'GET' && req\.url === '/health'\)''', '''return async function handle(req, res) {
+              const requestStartedAt = Date.now();
+              let activeRequestId = '';
+              if (req.method === 'GET' && req.url === '/health')''', flags=re.S, label='gateway-request-trace')
+          sub(gateway, r'''const prepared = preparedResponse\.prepared;\s*if \(!prepared \|\| typeof prepared !== 'object'\) throw new Error\('WAI_STREAM_BAD_PREPARE'\);''', '''const prepared = preparedResponse.prepared;
+              if (!prepared || typeof prepared !== 'object') throw new Error('WAI_STREAM_BAD_PREPARE');
+              activeRequestId = String(prepared.requestId || '');''', flags=re.S, label='gateway-active-request')
+          sub(gateway, r'''code: toolResult\?\.code \|\| null,\s*\.\.\.\(hasDiffMetadata''', '''code: toolResult?.code || null,
+                  ...(toolResult?.ok === true ? {} : {diagnostic: toolResult?.diagnostic || diagnosticPayload({requestId: prepared.requestId, stage: 'TOOL', component: toolRequest.name, operation: 'tool.execute', code: toolResult?.code || 'WAI_TOOL_FAILED', httpStatus: 500, lastSuccess: 'TOOL_DISPATCH', detail: toolResult?.message || ''})}),
+                  ...(hasDiffMetadata''', flags=re.S, label='gateway-tool-diagnostic')
+          sub(gateway, r'''const code = safeCode\(error\?\.message, 'WAI_STREAM_FAILED'\);\s*const status = Number\(error\?\.status \|\| 502\);\s*if \(!res\.headersSent\)''', '''const code = safeCode(error?.message, 'WAI_STREAM_FAILED');
+              const status = Number(error?.status || 502);
+              const diagnostic = error?.diagnostic || diagnosticPayload({requestId: activeRequestId, stage: 'STREAM_GATEWAY', component: 'Streaming gateway', operation: 'chat.stream', code, httpStatus: status, lastSuccess: activeRequestId ? 'MAIN_PREPARE' : 'CLIENT_AUTH', durationMs: Date.now() - requestStartedAt, detail: error?.name || ''});
+              if (!res.headersSent)''', flags=re.S, label='gateway-catch-diagnostic')
+          p = Path(gateway)
+          text = p.read_text()
+          text = text.replace('res.end(JSON.stringify({ok: false, code}));', 'res.end(JSON.stringify({ok: false, code, requestId: activeRequestId, diagnostic}));', 1)
+          text = text.replace("writeNdjson(res, {type: 'error', code, status});", "writeNdjson(res, {type: 'error', code, status, requestId: activeRequestId, diagnostic});", 1)
+          p.write_text(text)
+
+          Path('test/wesi_ai_diagnostics_contract_test.dart').write_text(r'''import 'dart:io';
+          import 'package:flutter_test/flutter_test.dart';
+          import 'package:wesios/features/ai/wesi_ai_api.dart';
+
+          void main() {
+            test('diagnostic exception renders actionable technical details', () {
+              final error = WesiAiApiException.fromPayload('WAI_TOOL_FAILED', 'Инструмент не выполнил запрос', <String, dynamic>{'requestId': 'wai_test_123', 'diagnostic': <String, dynamic>{'stage': 'TOOL', 'component': 'finance_summary', 'operation': 'tool.execute', 'httpStatus': 500, 'lastSuccess': 'TOOL_DISPATCH', 'durationMs': 42, 'detail': 'read failed'}});
+              expect(error.displayMessage, contains('Этап: TOOL'));
+              expect(error.displayMessage, contains('Компонент: finance_summary'));
+              expect(error.displayMessage, contains('Request ID: wai_test_123'));
+            });
+            test('server and gateway expose diagnostic contract', () {
+              final gateway = File('server/wesi-ai-stream/gateway.mjs').readAsStringSync();
+              final routes = File('server/pb_hooks/wesi_ai_routes.pb.js').readAsStringSync();
+              expect(gateway, contains('diagnosticPayload'));
+              expect(gateway, contains("stage: 'PROVIDER'"));
+              expect(gateway, contains("stage: 'TOOL'"));
+              expect(routes, contains('diagnostic("PROVIDER"'));
+              expect(routes, contains('diagnostic("TOOL"'));
+            });
+          }
+''')
+          PY
+      - name: Validate server
+        run: |
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --check server/pb_hooks/wesi_ai_routes.pb.js
+          cd server/wesi-ai-stream && npm test
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+      - run: flutter pub get
+      - run: dart format lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart test/wesi_ai_diagnostics_contract_test.dart
+      - run: flutter analyze --no-fatal-infos
+      - run: flutter test test/wesi_ai_diagnostics_contract_test.dart test/wesi_ai_rich_message_test.dart test/wesi_ai_coagent_activity_test.dart
+      - name: Commit verified product code
+        run: |
+          git config user.name wesi-ai-ci
+          git config user.email wesi-ai-ci@users.noreply.github.com
+          git add lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart server/pb_hooks/wesi_ai_routes.pb.js server/wesi-ai-stream/gateway.mjs test/wesi_ai_diagnostics_contract_test.dart
+          git commit -m 'feat(ai): add end-to-end diagnostic error contract'
+          git push origin HEAD:agent/wesi-ai-stage12-final-20260816
