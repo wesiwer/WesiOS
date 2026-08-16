@@ -38,37 +38,34 @@ function enumValue(value, allowed, fallback) {
 }
 
 function normalizeOptions(workflow, input) {
+  let options = {};
   if (workflow === "imageGenerate" || workflow === "imageEdit" || workflow === "imageReference") {
-    return {
+    options = {
       aspectRatio: enumValue(input.aspectRatio, ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"], "1:1"),
       imageSize: enumValue(input.imageSize, ["0.5K", "1K", "2K", "4K"], "1K")
     };
-  }
-  if (workflow === "musicGenerate") {
+  } else if (workflow === "musicGenerate") {
     const mode = enumValue(input.mode, ["clip", "pro"], "clip");
-    return {mode: mode, format: mode === "pro" ? enumValue(String(input.format || "").toLowerCase(), ["mp3", "wav"], "mp3") : "mp3"};
-  }
-  if (workflow === "musicStems") {
-    return {format: enumValue(String(input.format || "").toLowerCase(), ["wav", "flac"], "wav")};
-  }
-  if (workflow === "videoGenerate" || workflow === "videoCompose") {
+    options = {mode: mode, format: mode === "pro" ? enumValue(String(input.format || "").toLowerCase(), ["mp3", "wav"], "mp3") : "mp3"};
+  } else if (workflow === "musicStems") {
+    options = {format: enumValue(String(input.format || "").toLowerCase(), ["wav", "flac"], "wav")};
+  } else if (workflow === "videoGenerate" || workflow === "videoCompose") {
     const resolution = enumValue(String(input.resolution || "").toLowerCase(), ["720p", "1080p", "4k"], "720p");
     let durationSeconds = enumValue(String(input.durationSeconds || ""), ["4", "6", "8"], "8");
     if ((resolution === "1080p" || resolution === "4k") && durationSeconds !== "8") durationSeconds = "8";
-    return {
+    options = {
       aspectRatio: enumValue(input.aspectRatio, ["16:9", "9:16"], "16:9"),
       resolution: resolution,
       durationSeconds: durationSeconds,
       quality: enumValue(input.quality, ["fast", "quality"], "quality")
     };
+  } else if (workflow === "videoVoice") {
+    options = {mix: enumValue(input.mix, ["replace", "duck", "overlay"], "duck")};
+  } else if (workflow === "videoSubtitles") {
+    options = {language: safeText(input.language || "auto", 24) || "auto"};
   }
-  if (workflow === "videoVoice") {
-    return {mix: enumValue(input.mix, ["replace", "duck", "overlay"], "duck")};
-  }
-  if (workflow === "videoSubtitles") {
-    return {language: safeText(input.language || "auto", 24) || "auto"};
-  }
-  return {};
+  options.workflow = String(workflow);
+  return options;
 }
 
 function normalize(workflow, input) {
