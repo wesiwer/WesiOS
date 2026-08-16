@@ -1,0 +1,66 @@
+name: Temporary diagnose Main streaming
+on:
+  push:
+    branches:
+      - agent/wesi-ai-finish-unfinished-20260816
+    paths:
+      - .github/workflows/temp-diagnose-main-streaming.yml
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - name: Prepare Main SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${MAIN_HOST:-}"
+          test -n "${MAIN_USER:-}"
+          test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/main_known_hosts
+      - name: Diagnose unprivileged deployment paths
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          bool() { if "$@" >/dev/null 2>&1; then echo yes; else echo no; fi; }
+          echo "uid=$(id -u)"
+          echo "user=$(id -un)"
+          echo "home=$HOME"
+          echo "node=$(command -v node || true)"
+          echo "node_version=$(node --version 2>/dev/null || true)"
+          echo "sudo_nopass=$(bool sudo -n true)"
+          echo "hook_dir_exists=$(bool test -d /opt/pocketbase/pb_hooks)"
+          echo "hook_dir_write=$(bool test -w /opt/pocketbase/pb_hooks)"
+          echo "stream_hook_write=$(bool test -w /opt/pocketbase/pb_hooks/wesi_ai_stream.pb.js)"
+          echo "relay_cfg_write=$(bool test -w /opt/pocketbase/pb_hooks/.wesi-ai-relay.json)"
+          echo "nginx_site_read=$(bool test -r /etc/nginx/sites-available/api.wesi-inc.ru)"
+          echo "nginx_site_write=$(bool test -w /etc/nginx/sites-available/api.wesi-inc.ru)"
+          echo "user_systemd=$(bool systemctl --user show-environment)"
+          echo "linger=$(loginctl show-user "$(id -un)" -p Linger --value 2>/dev/null || true)"
+          echo "home_write=$(bool test -w "$HOME")"
+          python3 - <<'PY'
+          import socket
+          s=socket.socket()
+          try:
+              s.bind(('127.0.0.1',8792))
+              print('bind_8792=yes')
+          except Exception as e:
+              print('bind_8792=no:'+type(e).__name__)
+          finally:
+              s.close()
+          PY
+          curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null && echo pocketbase_health=yes || echo pocketbase_health=no
+          REMOTE
