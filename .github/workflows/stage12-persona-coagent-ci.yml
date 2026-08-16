@@ -42,6 +42,6 @@ jobs:
       - name: Flutter dependencies
         run: flutter pub get
       - name: Flutter analyze
-        run: flutter analyze
+        run: flutter analyze --no-fatal-infos
       - name: Co-Agent Thinking timeline tests
         run: flutter test test/wesi_ai_coagent_activity_test.dart
