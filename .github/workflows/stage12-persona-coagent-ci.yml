@@ -23,5 +23,9 @@ jobs:
           node-version: '20'
       - name: Syntax check Co-Agent protocol
         run: node --check persona_coagent.mjs
+      - name: Syntax check Main Co-Agent policy
+        run: node --check ../pb_hooks/wesi_ai_coagent_policy.js
+      - name: Syntax check Main stream hook
+        run: node --check ../pb_hooks/wesi_ai_stream.pb.js
       - name: Wesi AI stream gateway tests
         run: npm test
