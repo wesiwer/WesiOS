@@ -320,6 +320,65 @@ function finalizerInput(tier, input, advisors) {
   };
 }
 
+function proAdvisorCandidates(secrets) {
+  const candidates = [
+    {
+      id: 'groq:pro:advisor',
+      provider: 'groq',
+      model: secrets.WESI_GROQ_PRO_MODEL || 'openai/gpt-oss-120b',
+      tier: 'pro',
+      timeoutMs: 28000,
+    },
+    {
+      id: 'mistral:pro:advisor',
+      provider: 'mistral',
+      model: secrets.WESI_MISTRAL_PRO_MODEL || 'mistral-large-latest',
+      tier: 'pro',
+      timeoutMs: 28000,
+    },
+  ];
+  const openRouterModel = String(secrets.WESI_OPENROUTER_PRO_MODEL || '').trim();
+  if (secrets.OPENROUTER_API_KEY && openRouterModel) {
+    candidates.push({
+      id: 'openrouter:pro:advisor',
+      provider: 'openrouter',
+      model: openRouterModel,
+      tier: 'pro',
+      timeoutMs: 24000,
+    });
+  }
+  return candidates;
+}
+
+function maximumAdvisorCandidates(secrets) {
+  const candidates = [
+    {
+      id: 'groq:ultra:advisor',
+      provider: 'groq',
+      model: secrets.WESI_GROQ_ULTRA_MODEL || 'openai/gpt-oss-120b',
+      tier: 'ultra',
+      timeoutMs: 32000,
+    },
+    {
+      id: 'mistral:ultra:advisor',
+      provider: 'mistral',
+      model: secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest',
+      tier: 'ultra',
+      timeoutMs: 32000,
+    },
+  ];
+  if (secrets.OPENROUTER_API_KEY) {
+    candidates.push({
+      id: 'openrouter:ultra:advisor',
+      provider: 'openrouter',
+      model: secrets.WESI_OPENROUTER_ULTRA_MODEL || 'openrouter/free',
+      tier: 'ultra',
+      timeoutMs: 32000,
+    });
+  }
+  return candidates;
+}
+
 export async function prepareWesiEnsemble(tier, input, googleKey, options = {}) {
   const normalized = String(tier || '').toLowerCase();
   if (normalized !== 'pro' && normalized !== 'ultra') {
@@ -328,66 +387,24 @@ export async function prepareWesiEnsemble(tier, input, googleKey, options = {}) 
   const secrets = options.secrets || providerSecrets();
   const signal = options.signal || null;
   const advisory = advisorInput(input, normalized);
-  const primary = normalized === 'pro'
-    ? [
-        {
-          id: 'groq:pro:advisor',
-          provider: 'groq',
-          model: secrets.WESI_GROQ_PRO_MODEL || 'openai/gpt-oss-120b',
-          tier: 'pro',
-          timeoutMs: 28000,
-        },
-        {
-          id: 'mistral:pro:advisor',
-          provider: 'mistral',
-          model: secrets.WESI_MISTRAL_PRO_MODEL || 'mistral-large-latest',
-          tier: 'pro',
-          timeoutMs: 28000,
-        },
-      ]
-    : [
-        {
-          id: 'groq:ultra:advisor',
-          provider: 'groq',
-          model: secrets.WESI_GROQ_ULTRA_MODEL || 'openai/gpt-oss-120b',
-          tier: 'ultra',
-          timeoutMs: 32000,
-        },
-        {
-          id: 'mistral:ultra:advisor',
-          provider: 'mistral',
-          model: secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest',
-          tier: 'ultra',
-          timeoutMs: 32000,
-        },
-      ];
+  let advisors = [];
 
-  if (normalized === 'ultra' && secrets.OPENROUTER_API_KEY) {
-    primary.push({
-      id: 'openrouter:ultra:advisor',
-      provider: 'openrouter',
-      model: secrets.WESI_OPENROUTER_ULTRA_MODEL || 'openrouter/free',
-      tier: 'ultra',
-      timeoutMs: 32000,
-    });
-  }
-
-  const results = await Promise.all(primary.map((candidate) =>
-    firstAvailable([candidate], advisory, googleKey, secrets, {signal})
-  ));
-  let advisors = results.filter((item) => item.ok);
-
-  const proOpenRouterModel = String(secrets.WESI_OPENROUTER_PRO_MODEL || '').trim();
-  if (normalized === 'pro' && advisors.length < 2 && secrets.OPENROUTER_API_KEY && proOpenRouterModel) {
-    const fallbackCandidate = {
-      id: 'openrouter:pro:advisor',
-      provider: 'openrouter',
-      model: proOpenRouterModel,
-      tier: 'pro',
-      timeoutMs: 24000,
-    };
-    const fallback = await firstAvailable([fallbackCandidate], advisory, googleKey, secrets, {signal});
-    if (fallback.ok) advisors = advisors.concat(fallback);
+  if (normalized === 'pro') {
+    const advisor = await firstAvailable(
+      proAdvisorCandidates(secrets),
+      advisory,
+      googleKey,
+      secrets,
+      {signal},
+    );
+    if (advisor.ok) advisors = [advisor];
+  } else {
+    const results = await Promise.all(
+      maximumAdvisorCandidates(secrets).map((candidate) =>
+        firstAvailable([candidate], advisory, googleKey, secrets, {signal})
+      ),
+    );
+    advisors = results.filter((item) => item.ok);
   }
 
   if (!advisors.length) return {ok: false, code: 'WAI_ENSEMBLE_ADVISORS_UNAVAILABLE'};
