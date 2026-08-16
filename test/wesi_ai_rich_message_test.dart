@@ -63,13 +63,16 @@ void main() => print('ok');
     expect(find.byTooltip('Копировать'), findsOneWidget);
   });
 
-  testWidgets('live work log is expanded before final answer', (tester) async {
+  testWidgets('thinking mode live work log is expanded before final answer',
+      (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(
         body: WesiAiRichMessage(
           messageId: 'm2',
           text: '',
           streaming: true,
+          showWorkLog: true,
+          expandWorkLog: true,
           activityRaw: [
             {
               'id': 'r1',
