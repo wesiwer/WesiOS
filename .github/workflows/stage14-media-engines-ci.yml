@@ -2,7 +2,8 @@ name: Stage14 Media Engines CI
 
 on:
   push:
-    branches: [agent/wesi-ai-stage14-media-engines]
+    branches:
+      - 'agent/wesi-ai-stage14-*'
   pull_request:
     paths:
       - 'lib/features/ai/media_engines/**'
@@ -23,11 +24,14 @@ jobs:
       - run: flutter pub get
       - name: Analyze Stage14 media layer
         run: flutter analyze lib/features/ai/media_engines test/features/ai/media_engines --no-fatal-infos
-      - name: Test Stage14 media workflow
-        run: flutter test test/features/ai/media_engines/wesi_media_workflow_test.dart
-      - name: Enforce no-Control-Plane L4 policy
+      - name: Test Stage14 media layer
+        run: flutter test test/features/ai/media_engines
+      - name: Enforce L4 and archive policy
         shell: bash
         run: |
           set -euo pipefail
           grep -q "WAI_MEDIA_REQUIRES_WORKER" lib/features/ai/media_engines/wesi_media_workflow.dart
           grep -q "maxInputBytes" lib/features/ai/media_engines/wesi_media_workflow.dart
+          grep -q "archive_symlink_forbidden" lib/features/ai/media_engines/wesi_media_archive_guard.dart
+          grep -q "archive_expansion_limit" lib/features/ai/media_engines/wesi_media_archive_guard.dart
+          grep -q "WesiMediaArchiveGuard.validateZip" lib/features/ai/media_engines/wesi_media_engine_service.dart
