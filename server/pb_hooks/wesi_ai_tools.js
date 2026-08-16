@@ -36,6 +36,22 @@ function adapterFor(e, ctx, name) {
   return null;
 }
 
+function mergeContextPart(result, part) {
+  if (!part || typeof part !== "object" || Array.isArray(part)) return result;
+  for (const key of Object.keys(part)) {
+    // activeOrganizationId is a trust-sensitive routing hint. The first
+    // adapter that resolves it (Tasks currently performs org/grant filtering)
+    // wins; later generic adapters must not replace it with the raw client id.
+    if (key === "activeOrganizationId" && Object.prototype.hasOwnProperty.call(result, key)) {
+      const current = String(result[key] || "").trim();
+      const next = String(part[key] || "").trim();
+      if (current || !next) continue;
+    }
+    result[key] = part[key];
+  }
+  return result;
+}
+
 module.exports = {
   definitions: function(e, ctx) {
     const registry = require(basePath() + "wesi_ai_capability_registry.js");
@@ -56,7 +72,10 @@ module.exports = {
     for (const adapter of adapters()) {
       if (typeof adapter.context !== "function") continue;
       const part = adapter.context(e, ctx, activeOrganizationId);
-      if (part && typeof part === "object") Object.assign(result, part);
+      mergeContextPart(result, part);
+    }
+    if (!Object.prototype.hasOwnProperty.call(result, "activeOrganizationId")) {
+      result.activeOrganizationId = String(activeOrganizationId || "");
     }
     return result;
   },
@@ -74,4 +93,8 @@ module.exports = {
     const broker = require(basePath() + "wesi_ai_action_broker.js");
     return broker.confirm(e, ctx, ticketId, adapterFor);
   },
+
+  // Pure helper exported for regression tests only; production routing uses
+  // the same implementation above.
+  _mergeContextPart: mergeContextPart,
 };
