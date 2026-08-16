@@ -134,6 +134,15 @@ function inventory(options = {}) {
   return {e, ctx, files, raw};
 }
 
+function assertStructuredResult(result, name) {
+  assert.ok(result && typeof result === 'object' && !Array.isArray(result), `${name}: executor must return structured object`);
+  assert.equal(typeof result.ok, 'boolean', `${name}: executor result must contain boolean ok`);
+  if (result.ok !== true) {
+    assert.equal(typeof result.code, 'string', `${name}: failed executor result must contain code`);
+    assert.equal(typeof result.message, 'string', `${name}: failed executor result must contain message`);
+  }
+}
+
 auditTest('all adapter definitions are registered, unique and schema-valid', () => {
   const {raw} = inventory({githubConnected: true});
   const seen = new Map();
@@ -205,12 +214,20 @@ auditTest('every read-only tool has a non-throwing executor smoke path', () => {
     assert.doesNotThrow(() => {
       result = adapter.execute(e, ctx, def.name, {}, '', {audit: true});
     }, `${file}/${def.name}: read executor throws on empty-data smoke invocation`);
-    assert.ok(result && typeof result === 'object' && !Array.isArray(result), `${def.name}: executor must return structured object`);
-    assert.equal(typeof result.ok, 'boolean', `${def.name}: executor result must contain boolean ok`);
-    if (result.ok !== true) {
-      assert.equal(typeof result.code, 'string', `${def.name}: failed executor result must contain code`);
-      assert.equal(typeof result.message, 'string', `${def.name}: failed executor result must contain message`);
-    }
+    assertStructuredResult(result, def.name);
+  }
+});
+
+auditTest('every mutating tool has a non-throwing invalid-input validation path', () => {
+  const {e, ctx, raw} = inventory({githubConnected: true});
+  for (const {file, adapter, def} of raw) {
+    const cap = registry.get(def.name);
+    if (!cap || cap.risk === 'READ') continue;
+    let result;
+    assert.doesNotThrow(() => {
+      result = adapter.execute(e, ctx, def.name, {}, '', {audit: true});
+    }, `${file}/${def.name}: mutating executor throws instead of rejecting empty input safely`);
+    assertStructuredResult(result, def.name);
   }
 });
 
