@@ -8,6 +8,8 @@ on:
     paths:
       - 'lib/features/ai/media_engines/**'
       - 'test/features/ai/media_engines/**'
+      - 'server/pb_hooks/wesi_ai_media_*.js'
+      - 'server/pb_hooks/wesi_ai_media_*_test.mjs'
       - '.github/workflows/stage14-media-engines-ci.yml'
 
 jobs:
@@ -16,6 +18,11 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Validate Stage14 server media contract
+        run: |
+          node --check server/pb_hooks/wesi_ai_media_contract.js
+          node --check server/pb_hooks/wesi_ai_media_tools.js
+          node --test server/pb_hooks/wesi_ai_media_contract_test.mjs
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
@@ -35,3 +42,4 @@ jobs:
           grep -q "archive_symlink_forbidden" lib/features/ai/media_engines/wesi_media_archive_guard.dart
           grep -q "archive_expansion_limit" lib/features/ai/media_engines/wesi_media_archive_guard.dart
           grep -q "WesiMediaArchiveGuard.validateZip" lib/features/ai/media_engines/wesi_media_engine_service.dart
+          grep -q "videoGenerate" server/pb_hooks/wesi_ai_media_contract.js
