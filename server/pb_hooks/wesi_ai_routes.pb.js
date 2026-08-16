@@ -213,7 +213,9 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
       const req = parsed && parsed.wesiTool && typeof parsed.wesiTool === "object" && !Array.isArray(parsed.wesiTool) ? parsed.wesiTool : null;
       if (!req) return null;
       const name = String(req.name || "").trim();
-      const args = req.arguments && typeof req.arguments === "object" && !Array.isArray(req.arguments) ? req.arguments : {};
+      const hasArguments = Object.prototype.hasOwnProperty.call(req, "arguments");
+      if (hasArguments && (!req.arguments || typeof req.arguments !== "object" || Array.isArray(req.arguments))) return null;
+      const args = hasArguments ? req.arguments : {};
       if (!name) return null;
       return {name: name, arguments: args};
     } catch (_) { return null; }
