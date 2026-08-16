@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
+import {createRequire} from 'node:module';
 import test from 'node:test';
 import {
   createGateway,
@@ -7,6 +8,9 @@ import {
   parseToolRequest,
   shouldRevealBufferedText,
 } from './gateway.mjs';
+
+const require = createRequire(import.meta.url);
+const capabilityRegistry = require('../pb_hooks/wesi_ai_capability_registry.js');
 
 const STREAM_SECRET = 's'.repeat(64);
 const RELAY_SECRET = 'r'.repeat(64);
@@ -75,6 +79,31 @@ test('tool parser tolerates provider wrappers but rejects examples', () => {
   assert.equal(parseToolRequest(`Например, формат вызова инструмента:\n${envelope}`), null);
   assert.equal(hasToolProtocolMarker(envelope), true);
   assert.equal(hasToolProtocolMarker('Обычный ответ без служебного вызова'), false);
+});
+
+test('tool parser round-trips every registered tool and rejects malformed arguments', () => {
+  const names = capabilityRegistry.registeredNames();
+  assert.ok(names.length >= 50, 'expected the complete Wesi AI capability registry');
+  for (const name of names) {
+    const args = {probe: true, nested: {tool: name}};
+    const envelope = JSON.stringify({wesiTool: {name, arguments: args}});
+    assert.deepEqual(
+      parseToolRequest(envelope),
+      {name, arguments: args},
+      `${name}: wesiTool parser changed the registered tool envelope`,
+    );
+  }
+
+  assert.equal(
+    parseToolRequest(JSON.stringify({wesiTool: {name: 'tasks_list', arguments: 'not-an-object'}})),
+    null,
+    'explicit non-object arguments must fail closed',
+  );
+  assert.equal(
+    parseToolRequest(JSON.stringify({wesiTool: {name: 'tasks_list', arguments: []}})),
+    null,
+    'array arguments must fail closed',
+  );
 });
 
 test('stream classifier withholds a partial tool envelope until it is classified', () => {
