@@ -1,4 +1,4 @@
-name: Temporary Wesi AI Main diagnostics
+name: Temporary Wesi AI tool-hook deploy
 
 on:
   push:
@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  deploy-hooks:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -17,6 +17,12 @@ jobs:
         with:
           ref: fix/wesi-ai-tool-agent-handoff
           fetch-depth: 1
+
+      - name: Validate hooks
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_ai_routes.pb.js
+          node --check server/pb_hooks/wesi_ai_tools.js
 
       - name: Prepare SSH
         env:
@@ -36,45 +42,59 @@ jobs:
           fi
           chmod 600 ~/.ssh/known_hosts
 
-      - name: Compare live Wesi AI runtime
+      - name: Hot-deploy exact tool hooks
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
           USER: ${{ secrets.WESI_SERVER_USER }}
         run: |
           set -euo pipefail
-          echo "LOCAL_ROUTES=$(sha256sum server/pb_hooks/wesi_ai_routes.pb.js | awk '{print $1}')"
-          echo "LOCAL_TOOLS=$(sha256sum server/pb_hooks/wesi_ai_tools.js | awk '{print $1}')"
-          echo "LOCAL_GATEWAY=$(sha256sum server/wesi-ai-stream/gateway.mjs | awk '{print $1}')"
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
-          $SSH "$USER@$HOST" 'bash -s' <<'REMOTE'
+          REMOTE="/tmp/wesi-ai-hooks-$GITHUB_RUN_ID"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes server/pb_hooks/wesi_ai_routes.pb.js "$USER@$HOST:$REMOTE/routes.pb.js"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes server/pb_hooks/wesi_ai_tools.js "$USER@$HOST:$REMOTE/tools.js"
+          $SSH "$USER@$HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
           set -euo pipefail
-          echo "REMOTE_ID=$(id -u):$(id -g):$(id -un)"
-          if sudo -n true >/dev/null 2>&1; then echo 'SUDO_NONINTERACTIVE=yes'; else echo 'SUDO_NONINTERACTIVE=no'; fi
-          for f in \
-            /opt/pocketbase/pb_hooks/wesi_ai_routes.pb.js \
-            /opt/pocketbase/pb_hooks/wesi_ai_tools.js \
-            /opt/wesi-ai-stream/gateway.mjs \
-            /opt/wesi-ai-stream/server.mjs \
-            /etc/wesi-ai-stream.env \
-            /etc/systemd/system/wesi-ai-stream.service; do
-            if [ -e "$f" ]; then
-              stat -c "FILE=%n MODE=%a OWNER=%U GROUP=%G" "$f"
-              if [ -w "$f" ]; then echo "WRITABLE=$f yes"; else echo "WRITABLE=$f no"; fi
-              case "$f" in
-                *.js|*.mjs) sha256sum "$f" | awk '{print "REMOTE_SHA=" $2 " " $1}' ;;
-              esac
+          install_hook() {
+            SOURCE="$1"
+            TARGET="$2"
+            test -s "$SOURCE"
+            if [ -w "$TARGET" ]; then
+              cat "$SOURCE" > "$TARGET"
+              chmod 0644 "$TARGET"
+            elif [ -w "$(dirname "$TARGET")" ]; then
+              install -m 0644 "$SOURCE" "$TARGET"
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+              sudo -n install -m 0644 "$SOURCE" "$TARGET"
             else
-              echo "MISSING=$f"
+              echo "Target is not writable: $TARGET" >&2
+              exit 30
             fi
-          done
-          for d in /opt/pocketbase/pb_hooks /opt/wesi-ai-stream; do
-            if [ -d "$d" ]; then
-              stat -c "DIR=%n MODE=%a OWNER=%U GROUP=%G" "$d"
-              if [ -w "$d" ]; then echo "DIR_WRITABLE=$d yes"; else echo "DIR_WRITABLE=$d no"; fi
+            cmp -s "$SOURCE" "$TARGET"
+          }
+          install_hook "$REMOTE/routes.pb.js" /opt/pocketbase/pb_hooks/wesi_ai_routes.pb.js
+          install_hook "$REMOTE/tools.js" /opt/pocketbase/pb_hooks/wesi_ai_tools.js
+          rm -rf "$REMOTE"
+          for attempt in $(seq 1 20); do
+            if curl -fsS --max-time 4 http://127.0.0.1:8090/api/health >/dev/null; then
+              break
             fi
+            sleep 1
           done
-          systemctl is-active pocketbase 2>/dev/null || true
-          systemctl is-active wesi-ai-stream 2>/dev/null || true
-          curl -fsS --max-time 4 http://127.0.0.1:8090/api/health >/dev/null && echo 'POCKETBASE_HEALTH=ok' || echo 'POCKETBASE_HEALTH=fail'
-          curl -fsS --max-time 4 http://127.0.0.1:8792/health || echo 'STREAM_HEALTH=fail'
+          curl -fsS --max-time 4 http://127.0.0.1:8090/api/health >/dev/null
           REMOTE
+
+      - name: Verify deployed SHA
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          LOCAL_ROUTES=$(sha256sum server/pb_hooks/wesi_ai_routes.pb.js | awk '{print $1}')
+          LOCAL_TOOLS=$(sha256sum server/pb_hooks/wesi_ai_tools.js | awk '{print $1}')
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          REMOTE_ROUTES=$($SSH "$USER@$HOST" "sha256sum /opt/pocketbase/pb_hooks/wesi_ai_routes.pb.js | awk '{print \$1}'")
+          REMOTE_TOOLS=$($SSH "$USER@$HOST" "sha256sum /opt/pocketbase/pb_hooks/wesi_ai_tools.js | awk '{print \$1}'")
+          test "$LOCAL_ROUTES" = "$REMOTE_ROUTES"
+          test "$LOCAL_TOOLS" = "$REMOTE_TOOLS"
+          echo WESI_AI_TOOL_HOOKS_ACTIVE
