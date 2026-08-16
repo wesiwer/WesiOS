@@ -1,0 +1,24 @@
+name: Temporary trigger WesiOS 0.22.13+88
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp-trigger-release-0.22.13-88.yml
+permissions:
+  actions: write
+  contents: read
+jobs:
+  trigger:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch signed test release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref fix/wesi-ai-tool-agent-handoff \
+            -f notes='Wesi AI: fullscreen camera, full sidebar scrolling, improved math symbols and corrected finance tools' \
+            -f deploy_to_server=false
