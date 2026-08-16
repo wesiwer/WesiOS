@@ -1,36 +1,61 @@
-name: Temporary apply Wesi AI quota workflow migration
+name: Fix const + AppTheme
 
 on:
-  push:
-    branches: [main]
-    paths: ['.github/workflows/fix-const-theme.yml']
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  apply:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  fix:
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/wesi-ai-tool-agent-handoff
-          fetch-depth: 0
-      - name: Apply and validate
+
+      - name: Strip const from dynamic AppTheme constructors
         run: |
-          set -euo pipefail
-          python3 scripts/sync_wesi_ai_quota_workflows.py
-          git diff --check
-          node --test server/wesi-ai-relay/provider-failover.test.mjs
-          bash -n server/wesi-ai-relay/deploy-relay.sh
-      - name: Commit feature branch
+          python3 << 'PY'
+          import re, pathlib
+
+          DYNAMIC = r'(?:textMuted|textPrimary|textSecondary|glassBorder|background|surface|surfaceLight|glassBackground|carbonDark|carbonMid|carbonLight|carbonHighlight|primary|accent|logoStroke|logoAccent)'
+
+          def fix(content: str) -> str:
+              lines = content.split('\n')
+              out = []
+              i = 0
+              while i < len(lines):
+                  line = lines[i]
+                  if re.search(r'\bconst\s+[A-Z]', line):
+                      window = '\n'.join(lines[i:i+12])
+                      if re.search(r'AppTheme\.' + DYNAMIC, window):
+                          line = re.sub(r'\bconst\s+', '', line, count=1)
+                  out.append(line)
+                  i += 1
+              return '\n'.join(out)
+
+          changed = []
+          for path in pathlib.Path('lib').rglob('*.dart'):
+              text = path.read_text(encoding='utf-8')
+              fixed = fix(text)
+              if fixed != text:
+                  path.write_text(fixed, encoding='utf-8')
+                  changed.append(str(path))
+                  print(f'fixed: {path}')
+
+          print(f'Total fixed files: {len(changed)}')
+          if not changed:
+              print('Nothing to fix')
+          PY
+
+      - name: Commit and push
         run: |
-          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add .github/workflows/configure-wesi-ai-router.yml .github/workflows/deploy-wesi-ai.yml
-          if ! git diff --cached --quiet; then
-            git commit -m "fix(ai): preserve Gemini project quota scopes in deploys"
-            git push origin HEAD:fix/wesi-ai-tool-agent-handoff
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes"
+            exit 0
           fi
+          git commit -m "fix(theme): remove const from widgets using dynamic AppTheme colors"
+          git push
