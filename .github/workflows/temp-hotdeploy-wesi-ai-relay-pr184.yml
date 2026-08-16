@@ -1,4 +1,4 @@
-name: Temporary live Wesi AI Relay provider smoke
+name: Temporary inspect Main streaming prerequisites
 
 on:
   push:
@@ -11,68 +11,34 @@ permissions:
   contents: read
 
 jobs:
-  smoke:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 8
     env:
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
     steps:
-      - name: Prepare Main SSH
+      - name: Prepare SSH
         env:
           KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
           KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "${MAIN_HOST:-}" && test -n "${MAIN_USER:-}" && test -n "${KEY:-}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/main_key
           chmod 600 ~/.ssh/main_key
           if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
-
-      - name: Execute real signed Fast request from Main to Relay
+      - name: Inspect prerequisites
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'python3 -' <<'PY'
-          import hashlib, hmac, json, time, urllib.request, urllib.error, secrets
-          cfg_path='/opt/pocketbase/pb_hooks/.wesi-ai-relay.json'
-          with open(cfg_path,encoding='utf-8') as f: cfg=json.load(f)
-          url=str(cfg.get('url','')).rstrip('/')
-          secret=str(cfg.get('sharedSecret',''))
-          route=str((cfg.get('routes') or {}).get('fast',''))
-          assert url.startswith('https://') and len(secret)>=32 and route
-          request_id='wai_release_smoke_'+str(int(time.time()))+'_'+secrets.token_hex(4)
-          payload={
-            'requestId': request_id,
-            'route': route,
-            'operation': 'chat',
-            'input': {
-              'system': 'You are a release health probe. Return a short plain-text confirmation only.',
-              'history': [],
-              'message': 'Reply exactly WESI_RELAY_SMOKE_OK',
-              'attachments': []
-            }
-          }
-          raw=json.dumps(payload,separators=(',',':'),ensure_ascii=False).encode()
-          ts=str(int(time.time()))
-          sig=hmac.new(secret.encode(), (request_id+'.'+ts+'.').encode()+raw, hashlib.sha256).hexdigest()
-          req=urllib.request.Request(url+'/v1/wesi-ai', data=raw, method='POST', headers={
-            'Content-Type':'application/json',
-            'X-Wesi-Request-Id':request_id,
-            'X-Wesi-Timestamp':ts,
-            'X-Wesi-Signature':sig,
-          })
-          try:
-            with urllib.request.urlopen(req,timeout=90) as r:
-              data=json.loads(r.read().decode('utf-8'))
-          except urllib.error.HTTPError as e:
-            body=e.read().decode('utf-8','replace')[:1200]
-            raise SystemExit('Relay/provider smoke HTTP '+str(e.code)+': '+body)
-          assert data.get('ok') is True, data
-          answer=str(data.get('answer','')).strip()
-          assert answer, data
-          print('MAIN_RELAY_PROVIDER_SMOKE_PASS')
-          print('answer_length='+str(len(answer)))
-          PY
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          echo "user=$(id -un) uid=$(id -u)"
+          if sudo -n true 2>/dev/null; then echo 'sudo_nopasswd=yes'; else echo 'sudo_nopasswd=no'; fi
+          if command -v node >/dev/null 2>&1; then echo "node=$(node --version) path=$(command -v node)"; else echo 'node=missing'; fi
+          if command -v nginx >/dev/null 2>&1; then echo "nginx=$(nginx -v 2>&1)"; else echo 'nginx=missing'; fi
+          if command -v curl >/dev/null 2>&1 && curl -fsS --max-time 2 http://127.0.0.1:8792/health >/dev/null 2>&1; then echo 'stream_gateway=already_live'; else echo 'stream_gateway=not_live'; fi
+          if systemctl is-active --quiet pocketbase 2>/dev/null; then echo 'pocketbase=active'; else echo 'pocketbase=unknown_or_inactive'; fi
+          REMOTE
