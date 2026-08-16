@@ -1,0 +1,24 @@
+name: Trigger WesiOS 0.22.12+87 release
+
+on:
+  push:
+    branches:
+      - ci/release-trigger-0.22.12-87
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch signed app release from feature branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref "fix/wesi-ai-tool-agent-handoff" \
+            -f notes="Wesi AI: sidebar utilities, thinking-only work log, hardened live tool hooks" \
+            -f deploy_to_server=false
