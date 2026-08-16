@@ -94,7 +94,7 @@ export function scopeCoagentContext(items, options = {}) {
       kind,
       label: cleanText(raw.label, 160),
       text: scopedText,
-      verified: raw.verified === true || kind !== 'verified_tool_result' ? raw.verified === true : false,
+      verified: raw.verified === true,
     });
     usedChars += scopedText.length;
   }
@@ -240,6 +240,24 @@ export function validatePersonaCoagentResult(raw, handoff) {
     artifacts: cleanStringList(raw.artifacts, 20, 500),
     reviewRound: clampInt(raw.reviewRound, 0, handoff.limits.maxReviewRounds, 0),
     finalOwner: 'lead',
+  };
+}
+
+export function validateLeadReview(raw, handoff) {
+  validatePersonaHandoff(handoff);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('WAI_COAGENT_REVIEW_INVALID');
+  assertNoHiddenFields(raw);
+  const decision = cleanText(raw.decision, 24).toLowerCase();
+  if (decision !== 'accept' && decision !== 'revise') throw new Error('WAI_COAGENT_REVIEW_INVALID');
+  const revisionRequest = cleanText(raw.revisionRequest, 2000);
+  if (decision === 'revise' && !revisionRequest) throw new Error('WAI_COAGENT_REVIEW_INVALID');
+  return {
+    protocol: PERSONA_COAGENT_PROTOCOL,
+    handoffId: handoff.handoffId,
+    reviewer: handoff.leadPersona,
+    decision,
+    revisionRequest: decision === 'revise' ? revisionRequest : '',
+    reviewRound: decision === 'revise' ? 1 : 0,
   };
 }
 
