@@ -1,0 +1,277 @@
+name: Patch Wesi AI sidebar and thinking UX once
+
+on:
+  push:
+    branches:
+      - ci/release-trigger-0.22.11-86
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 0
+
+      - name: Patch Wesi AI UI
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          screen_path = Path('lib/features/ai/ai_assistant_v2_screen.dart')
+          screen = screen_path.read_text(encoding='utf-8')
+
+          start_marker = "          IconButton(\n            tooltip: 'Коннекторы Wesi AI',"
+          end_marker = "          PopupMenuButton<WesiAiUiMode>("
+          start = screen.index(start_marker)
+          end = screen.index(end_marker, start)
+          screen = screen[:start] + screen[end:]
+
+          divider_marker = "        ),\n        const Divider(height: 1),\n        Expanded(\n"
+          if screen.count(divider_marker) != 1:
+              raise SystemExit(f'unexpected sidebar divider marker count: {screen.count(divider_marker)}')
+          screen = screen.replace(
+              divider_marker,
+              "        ),\n        _sidebarUtilities(controller),\n        const Divider(height: 1),\n        Expanded(\n",
+              1,
+          )
+
+          method_marker = "  Widget _chat(\n"
+          if method_marker not in screen:
+              raise SystemExit('chat method marker missing')
+          sidebar_method = r'''  Widget _sidebarUtilities(WesiAiManagedChatController controller) {
+    final theme = Theme.of(context);
+
+    Future<void> openConnectors() => showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (_) => const WesiConnectorManagerSheet(),
+        );
+
+    Future<void> openMemory() => showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (_) => WesiAiMemorySheet(controller: controller),
+        );
+
+    Future<void> openBackup() => showModalBottomSheet<void>(
+          context: context,
+          isScrollControlled: true,
+          showDragHandle: true,
+          builder: (_) => WesiAiBackupSheet(controller: controller),
+        );
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+            child: Text(
+              'Настройки Wesi AI',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Card(
+            margin: EdgeInsets.zero,
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.hub_outlined),
+                  title: const Text('Коннекторы'),
+                  subtitle: const Text('Внешние сервисы и аккаунты'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: openConnectors,
+                ),
+                const Divider(height: 1, indent: 52),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.memory_outlined),
+                  title: const Text('Память'),
+                  subtitle: const Text('Что Wesi AI помнит о работе'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: openMemory,
+                ),
+                const Divider(height: 1, indent: 52),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.backup_outlined),
+                  title: const Text('Бэкап и перенос'),
+                  subtitle: const Text('Резервные копии и перенос чатов'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: openBackup,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+'''
+          screen = screen.replace(method_marker, sidebar_method + method_marker, 1)
+
+          worklog_marker = "                    expandWorkLog: _uiMode == WesiAiUiMode.thinking,\n"
+          if screen.count(worklog_marker) != 1:
+              raise SystemExit('worklog call marker mismatch')
+          screen = screen.replace(
+              worklog_marker,
+              "                    showWorkLog: _uiMode == WesiAiUiMode.thinking,\n"
+              "                    expandWorkLog: _uiMode == WesiAiUiMode.thinking,\n",
+              1,
+          )
+          screen_path.write_text(screen, encoding='utf-8')
+
+          content_path = Path('lib/features/ai/widgets/wesi_ai_message_content.dart')
+          content = content_path.read_text(encoding='utf-8')
+          field_marker = "  final bool animateText;\n  final bool expandWorkLog;\n"
+          if content.count(field_marker) != 1:
+              raise SystemExit('message content field marker mismatch')
+          content = content.replace(
+              field_marker,
+              "  final bool animateText;\n  final bool showWorkLog;\n  final bool expandWorkLog;\n",
+              1,
+          )
+          ctor_marker = "    this.animateText = true,\n    this.expandWorkLog = false,\n"
+          if content.count(ctor_marker) != 1:
+              raise SystemExit('message content ctor marker mismatch')
+          content = content.replace(
+              ctor_marker,
+              "    this.animateText = true,\n    this.showWorkLog = false,\n    this.expandWorkLog = false,\n",
+              1,
+          )
+          pass_marker = "            streaming: message.metadata['transportStreaming'] == true,\n            expandWorkLog: expandWorkLog,\n"
+          if content.count(pass_marker) != 1:
+              raise SystemExit('message content pass marker mismatch')
+          content = content.replace(
+              pass_marker,
+              "            streaming: message.metadata['transportStreaming'] == true,\n"
+              "            showWorkLog: showWorkLog,\n"
+              "            expandWorkLog: expandWorkLog,\n",
+              1,
+          )
+          content_path.write_text(content, encoding='utf-8')
+
+          rich_path = Path('lib/features/ai/widgets/wesi_ai_rich_message.dart')
+          rich = rich_path.read_text(encoding='utf-8')
+          rich_field_marker = "  final bool streaming;\n  final bool expandWorkLog;\n"
+          if rich.count(rich_field_marker) != 1:
+              raise SystemExit('rich message field marker mismatch')
+          rich = rich.replace(
+              rich_field_marker,
+              "  final bool streaming;\n  final bool showWorkLog;\n  final bool expandWorkLog;\n",
+              1,
+          )
+          rich_ctor_marker = "    this.streaming = false,\n    this.expandWorkLog = false,\n"
+          if rich.count(rich_ctor_marker) != 1:
+              raise SystemExit('rich message ctor marker mismatch')
+          rich = rich.replace(
+              rich_ctor_marker,
+              "    this.streaming = false,\n    this.showWorkLog = false,\n    this.expandWorkLog = false,\n",
+              1,
+          )
+          visible_marker = "    if (work.isNotEmpty || streaming) {\n"
+          if rich.count(visible_marker) != 1:
+              raise SystemExit('rich worklog visibility marker mismatch')
+          rich = rich.replace(
+              visible_marker,
+              "    if (showWorkLog && (work.isNotEmpty || streaming)) {\n",
+              1,
+          )
+          rich_path.write_text(rich, encoding='utf-8')
+
+          docs_path = Path('docs/WESI_AI_CHAT_UX.md')
+          docs = docs_path.read_text(encoding='utf-8')
+          old = "WesiOS не показывает скрытую chain-of-thought модели. Вместо неё UI показывает фактический work log: подготовку контекста, выбранный маршрут, инструментальные вызовы, агентов, проверки и статусы, которые реально пришли из streaming protocol. Пока ответ выполняется, блок раскрыт автоматически; после завершения его можно раскрыть вручную."
+          new = "WesiOS не показывает скрытую chain-of-thought модели. В режиме «Думающий» UI показывает фактический work log: подготовку контекста, выбранный маршрут, инструментальные вызовы, агентов, проверки и статусы, которые реально пришли из streaming protocol. Пока ответ выполняется, блок раскрыт автоматически; после завершения его можно раскрыть вручную. В режиме «Классический» плашка «Ход работы» не рендерится вообще."
+          if old not in docs:
+              raise SystemExit('docs worklog paragraph missing')
+          docs_path.write_text(docs.replace(old, new, 1), encoding='utf-8')
+
+          test_path = Path('test/wesi_ai_thinking_mode_ui_test.dart')
+          test_path.write_text(r'''import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:wesios/features/ai/widgets/wesi_ai_rich_message.dart';
+
+void main() {
+  const activity = <Map<String, dynamic>>[
+    <String, dynamic>{
+      'id': 'reasoning_1',
+      'kind': 'reasoning',
+      'label': 'Проверяю данные',
+      'detail': 'Тестовый безопасный work log',
+      'status': 'done',
+    },
+  ];
+
+  Future<void> pumpMessage(
+    WidgetTester tester, {
+    required bool showWorkLog,
+  }) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WesiAiRichMessage(
+            messageId: 'message_1',
+            text: 'Готовый ответ',
+            activityRaw: activity,
+            showWorkLog: showWorkLog,
+            expandWorkLog: showWorkLog,
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+  }
+
+  testWidgets('classic mode does not render work log banner', (tester) async {
+    await pumpMessage(tester, showWorkLog: false);
+    expect(find.text('Ход работы'), findsNothing);
+    expect(find.text('Готовый ответ'), findsOneWidget);
+  });
+
+  testWidgets('thinking mode renders work log banner', (tester) async {
+    await pumpMessage(tester, showWorkLog: true);
+    expect(find.text('Ход работы'), findsOneWidget);
+    expect(find.text('Проверяю данные'), findsOneWidget);
+  });
+}
+''', encoding='utf-8')
+          PY
+
+          dart format \
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            lib/features/ai/widgets/wesi_ai_message_content.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            test/wesi_ai_thinking_mode_ui_test.dart
+
+      - name: Commit patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            lib/features/ai/widgets/wesi_ai_message_content.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            docs/WESI_AI_CHAT_UX.md \
+            test/wesi_ai_thinking_mode_ui_test.dart
+          git diff --cached --check
+          git commit -m "fix(ai): move utility controls into sidebar"
+          git push origin HEAD:fix/wesi-ai-tool-agent-handoff
