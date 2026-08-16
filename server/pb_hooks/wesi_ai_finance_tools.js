@@ -64,9 +64,16 @@ function accountState(e, ctx, policy, organizationId, transactions, nowMs) {
 
   const byId = {};
   for (const account of accounts) byId[account.id] = account;
+  const recurringIncomeIds = transactions
+    .filter((tx) => tx.recurring && tx.type === "income")
+    .map((tx) => tx.id);
+  const legacyAutoIncome = (tx) =>
+    !tx.recurring && tx.type === "income" &&
+    recurringIncomeIds.some((id) => tx.id.indexOf(id + "_") === 0);
+
   let unassignedBalance = 0;
   for (const tx of transactions) {
-    if (tx.timestamp > nowMs || tx.recurring) continue;
+    if (tx.timestamp > nowMs || tx.recurring || legacyAutoIncome(tx)) continue;
     const signed = tx.type === "income" ? tx.amount : -tx.amount;
     const account = tx.accountId ? byId[tx.accountId] : null;
     if (account) account.balance += signed;
@@ -84,7 +91,7 @@ function accountState(e, ctx, policy, organizationId, transactions, nowMs) {
     openingBalance: round(openingBalance),
     currentBalance: round(currentBalance),
     accountCount: accounts.length,
-    accounts: accounts.map((account) => ({id: account.id, name: account.name, balance: account.balance})),
+    accounts: accounts.map((account) => ({name: account.name, balance: account.balance})),
   };
 }
 
@@ -95,13 +102,13 @@ module.exports = {
     return [
       {
         name: "finance_summary",
-        description: "Получить реальные финансы организации из WesiOS: currentBalance — сколько денег сейчас на активных счетах; income/expense/net — фактический поток за выбранный период. Для вопросов «сколько сейчас денег» используй currentBalance, а не net.",
-        parameters: {type: "object", properties: {organizationId: {type: "string"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}}},
+        description: "Получить реальные финансы организации из WesiOS: currentBalance — сколько денег сейчас на активных счетах; income/expense/net — фактический поток за выбранный период. Для вопросов «сколько сейчас денег» используй currentBalance, а не net. Названия организаций для пользователя бери из financeOrganizations; внутренние org_* не показывай.",
+        parameters: {type: "object", properties: {organizationId: {type: "string", description: "Точное название из financeOrganizations или внутренний id, если он уже известен системе"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}}},
       },
       {
         name: "finance_transactions",
-        description: "Получить ограниченный список реальных разрешённых финансовых операций WesiOS за период.",
-        parameters: {type: "object", properties: {organizationId: {type: "string"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}, type: {type: "string", enum: ["income", "expense"]}, limit: {type: "integer", minimum: 1, maximum: 50}}},
+        description: "Получить ограниченный список реальных разрешённых финансовых операций WesiOS за период. Названия организаций для пользователя бери из financeOrganizations; внутренние org_* не показывай.",
+        parameters: {type: "object", properties: {organizationId: {type: "string", description: "Точное название из financeOrganizations или внутренний id, если он уже известен системе"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}, type: {type: "string", enum: ["income", "expense"]}, limit: {type: "integer", minimum: 1, maximum: 50}}},
       },
     ];
   },
@@ -112,7 +119,7 @@ module.exports = {
     const state = policy.access(e, ctx);
     const allowed = Object.keys(state.financeOrgIds)
       .filter((id) => state.financeOrgIds[id] === true && state.orgs[id])
-      .map((id) => ({id: id, name: state.orgs[id].name, baseCurrency: state.orgs[id].baseCurrency}));
+      .map((id) => ({name: state.orgs[id].name, baseCurrency: state.orgs[id].baseCurrency}));
     return {financeOrganizations: allowed};
   },
 
@@ -124,6 +131,7 @@ module.exports = {
     const requested = String(input.organizationId || activeOrganizationId || "").trim();
     const organizationId = policy.select(state, requested);
     if (!organizationId) return {ok: false, code: "FORBIDDEN", message: "Нет права просматривать финансы этой организации"};
+    const organizationName = state.orgs[organizationId] ? state.orgs[organizationId].name : "Организация";
 
     const now = new Date();
     const nowMs = now.getTime();
@@ -147,8 +155,8 @@ module.exports = {
       const type = String(input.type || "");
       const limit = Math.max(1, Math.min(50, Number(input.limit || 20)));
       const selected = filtered.filter((tx) => !type || tx.type === type).slice(0, limit)
-        .map(({timestamp, ...tx}) => tx);
-      return {ok: true, result: {organizationId: organizationId, from: from, to: to, transactions: selected}};
+        .map(({timestamp, accountId, ...tx}) => tx);
+      return {ok: true, result: {organizationName: organizationName, from: from, to: to, transactions: selected}};
     }
 
     if (name === "finance_summary") {
@@ -172,8 +180,7 @@ module.exports = {
       }
       const balances = accountState(e, ctx, policy, organizationId, allTransactions, nowMs);
       return {ok: true, result: {
-        organizationId: organizationId,
-        organizationName: state.orgs[organizationId] ? state.orgs[organizationId].name : organizationId,
+        organizationName: organizationName,
         reportingCurrency: state.orgs[organizationId] ? state.orgs[organizationId].baseCurrency : "RUB",
         asOf: now.toISOString(),
         currentBalance: balances.currentBalance,
