@@ -142,14 +142,15 @@ WesiRemoteWorkerAgent _agent(
       sessionId: 'unused-session',
     ),
   );
+  final credentialNow = DateTime.now().toUtc();
   return WesiRemoteWorkerAgent(
     transport: transport,
     credential: WesiWorkerCredential(
       credentialId: credentialId,
       workerId: workerId,
       secret: 'worker-secret-' * 4,
-      issuedAt: DateTime.utc(2026, 8, 15),
-      expiresAt: DateTime.utc(2026, 8, 16),
+      issuedAt: credentialNow.subtract(const Duration(minutes: 1)),
+      expiresAt: credentialNow.add(const Duration(hours: 1)),
     ),
     receipts: receipts,
     executionHandler: handler,
