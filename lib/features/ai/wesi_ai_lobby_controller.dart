@@ -76,11 +76,20 @@ class WesiAiLobbyChatController extends WesiAiChatController {
         throw const WesiAiApiException(
           'WAI_BAD_LOBBY_RESPONSE',
           'Lobby вернул некорректный ответ',
+          stage: 'LOBBY',
+          component: 'WesiAiLobbyCodec',
+          operation: 'decode',
+          lastSuccess: 'LOBBY_RESPONSE_RECEIVED',
         );
       }
       final messages = <WesiAiMessage>[];
       for (var i = 0; i < turns.length; i++) {
         final at = DateTime.now().add(Duration(microseconds: i));
+        final actorActivity = _activityForTurn(
+          turns[i],
+          reply.requestId,
+          at,
+        );
         messages.add(
           WesiAiMessage(
             id: _id(at),
@@ -92,7 +101,11 @@ class WesiAiLobbyChatController extends WesiAiChatController {
             metadata: <String, dynamic>{
               'requestId': reply.requestId,
               'lobby': true,
-              if (reply.activity.isNotEmpty) 'activity': reply.activity,
+              'lobbyPersona': turns[i].author.name,
+              'activity': <Map<String, dynamic>>[
+                ...reply.activity,
+                actorActivity,
+              ],
             },
           ),
         );
@@ -110,9 +123,13 @@ class WesiAiLobbyChatController extends WesiAiChatController {
             employeeId: store.employeeId,
             author: WesiAiMessageAuthor.system,
             kind: WesiAiMessageKind.error,
-            text: error.message,
+            text: error.displayMessage,
             createdAt: at,
-            metadata: {'code': error.code},
+            metadata: <String, dynamic>{
+              'code': error.code,
+              'diagnostic': error.diagnostic,
+              if (error.requestId.isNotEmpty) 'requestId': error.requestId,
+            },
           ),
         ],
       );
@@ -120,6 +137,34 @@ class WesiAiLobbyChatController extends WesiAiChatController {
       sending = false;
       await _save();
     }
+  }
+
+  static Map<String, dynamic> _activityForTurn(
+    WesiAiLobbyTurn turn,
+    String requestId,
+    DateTime at,
+  ) {
+    final persona = switch (turn.author) {
+      WesiAiMessageAuthor.zane => 'zane',
+      WesiAiMessageAuthor.nirvana => 'nirvana',
+      _ => 'unknown',
+    };
+    final label = switch (turn.author) {
+      WesiAiMessageAuthor.zane => 'Отвечает Зейн',
+      WesiAiMessageAuthor.nirvana => 'Отвечает Нирвана',
+      _ => 'Ответ Lobby',
+    };
+    return <String, dynamic>{
+      'kind': 'persona',
+      'sourceName': label.replaceFirst('Отвечает ', ''),
+      'persona': persona,
+      'actorRole': 'lobby_participant',
+      'label': label,
+      'detail': 'Ответ сформирован отдельным участником Lobby: $persona.',
+      'status': 'done',
+      'completedAt': at.toUtc().toIso8601String(),
+      if (requestId.isNotEmpty) 'requestId': requestId,
+    };
   }
 
   Future<void> setLobbyMode(WesiAiLobbyMode mode) async {

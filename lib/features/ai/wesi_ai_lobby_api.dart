@@ -48,9 +48,9 @@ class WesiAiLobbyApi extends WesiAiApi {
       );
     }
 
-    // The canonical /chat route already understands the Lobby persona and is
-    // the universal multimodal/staged-upload path. Use it whenever files are
-    // attached so no attachment can be silently dropped by the Lobby endpoint.
+    // The canonical /chat route is the universal multimodal/staged-upload path.
+    // WesiAiApi explicitly bypasses generic persona streaming for Lobby, so a
+    // Lobby attachment never reaches /stream/prepare with persona=lobby.
     if (attachments.isNotEmpty) {
       return super.send(
         conversation: conversation,
@@ -76,7 +76,12 @@ class WesiAiLobbyApi extends WesiAiApi {
         token.isEmpty ||
         sessionId == null) {
       throw const WesiAiApiException(
-          'NOT_SIGNED_IN', 'Войдите в WesiOS, чтобы использовать Wesi AI');
+        'NOT_SIGNED_IN',
+        'Войдите в WesiOS, чтобы использовать Wesi AI',
+        stage: 'AUTH',
+        component: 'WesiOS Session',
+        operation: '/api/wesi/ai/lobby',
+      );
     }
 
     final base = Uri.parse(SyncEndpoint.url);
@@ -98,6 +103,7 @@ class WesiAiLobbyApi extends WesiAiApi {
 
     try {
       final request = await _http.postUrl(uri);
+      cancellation?.bind(() => request.abort());
       request.headers.set(HttpHeaders.authorizationHeader, token);
       request.headers.set('X-WesiOS-Session', sessionId);
       request.headers.contentType = ContentType.json;
@@ -105,6 +111,7 @@ class WesiAiLobbyApi extends WesiAiApi {
       final response =
           await request.close().timeout(const Duration(seconds: 125));
       final raw = await utf8.decoder.bind(response).join();
+      cancellation?.unbind();
       Map<String, dynamic> json = const {};
       if (raw.isNotEmpty) {
         final decoded = jsonDecode(raw);
@@ -112,27 +119,79 @@ class WesiAiLobbyApi extends WesiAiApi {
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final code = '${json['code'] ?? 'WAI_REQUEST_FAILED'}';
-        throw WesiAiApiException(code, _messageFor(code));
+        throw WesiAiApiException.fromPayload(
+          code,
+          _messageFor(code),
+          json,
+          httpStatus: response.statusCode,
+          stage: response.statusCode == 401 || response.statusCode == 403
+              ? 'AUTH'
+              : 'LOBBY',
+          component: code == 'WAI_LOBBY_PERSONA_CONFLICT'
+              ? 'Persona isolation'
+              : 'WesiOS Lobby',
+          operation: '/api/wesi/ai/lobby',
+          lastSuccess: 'CLIENT_AUTH',
+        );
       }
       final answer = '${json['answer'] ?? ''}'.trim();
-      if (answer.isEmpty)
-        throw const WesiAiApiException(
-            'WAI_EMPTY_RESPONSE', 'Wesi AI вернул пустой ответ');
+      if (answer.isEmpty) {
+        throw WesiAiApiException.fromPayload(
+          'WAI_EMPTY_RESPONSE',
+          'Wesi AI вернул пустой ответ',
+          json,
+          stage: 'LOBBY',
+          component: 'WesiOS Lobby',
+          operation: '/api/wesi/ai/lobby',
+          lastSuccess: 'LOBBY_RESPONSE_RECEIVED',
+        );
+      }
       return WesiAiReply(
-          answer: answer, requestId: '${json['requestId'] ?? ''}');
+        answer: answer,
+        requestId: '${json['requestId'] ?? ''}',
+      );
     } on WesiAiApiException {
       rethrow;
-    } on SocketException {
-      throw const WesiAiApiException('NETWORK', 'Нет связи с сервером WesiOS');
-    } on HttpException {
-      throw const WesiAiApiException(
-          'NETWORK', 'Ошибка связи с сервером WesiOS');
-    } on TimeoutException {
-      throw const WesiAiApiException(
-          'NETWORK', 'Lobby не успел ответить вовремя');
-    } on FormatException {
-      throw const WesiAiApiException(
-          'NOT_WESIOS', 'Сервер WesiOS вернул некорректный ответ');
+    } on SocketException catch (error) {
+      throw WesiAiApiException(
+        'NETWORK_SOCKET',
+        'Нет связи с сервером WesiOS',
+        stage: 'CLIENT_TRANSPORT',
+        component: 'WesiAiLobbyApi',
+        operation: '/api/wesi/ai/lobby',
+        lastSuccess: 'CLIENT_AUTH',
+        detail: error.message,
+      );
+    } on HttpException catch (error) {
+      throw WesiAiApiException(
+        'NETWORK_HTTP',
+        'Ошибка связи с сервером WesiOS',
+        stage: 'CLIENT_TRANSPORT',
+        component: 'WesiAiLobbyApi',
+        operation: '/api/wesi/ai/lobby',
+        lastSuccess: 'CLIENT_AUTH',
+        detail: error.message,
+      );
+    } on TimeoutException catch (error) {
+      throw WesiAiApiException(
+        'NETWORK_TIMEOUT',
+        'Lobby не успел ответить вовремя',
+        stage: 'CLIENT_TRANSPORT',
+        component: 'WesiAiLobbyApi',
+        operation: '/api/wesi/ai/lobby',
+        lastSuccess: 'REQUEST_SENT',
+        detail: '$error',
+      );
+    } on FormatException catch (error) {
+      throw WesiAiApiException(
+        'NOT_WESIOS',
+        'Сервер WesiOS вернул некорректный ответ',
+        stage: 'LOBBY',
+        component: 'WesiAiLobbyApi',
+        operation: 'decode response',
+        lastSuccess: 'LOBBY_RESPONSE_RECEIVED',
+        detail: error.message,
+      );
     }
   }
 
@@ -143,6 +202,9 @@ class WesiAiLobbyApi extends WesiAiApi {
           'Профиль Wesi AI ещё не готов на сервере',
         'WAI_RELAY_UNAVAILABLE' => 'Сервис Wesi AI временно недоступен',
         'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
+        'WAI_LOBBY_PERSONA_CONFLICT' =>
+          'Lobby остановил ответ, потому что модель смешала личности Зейна и Нирваны',
+        'WAI_BAD_LOBBY_REQUEST' => 'Lobby отклонил некорректный запрос',
         'WAI_EMPTY_RESPONSE' => 'Wesi AI вернул пустой ответ',
         _ => 'Не удалось получить ответ Wesi AI',
       };
