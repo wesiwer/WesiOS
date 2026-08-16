@@ -19,10 +19,14 @@ export function tierRank(value) {
 }
 
 function candidateId(candidate) {
-  const explicit = String(candidate?.id || '').trim();
-  if (explicit) return explicit;
   const provider = String(candidate?.provider || 'provider').trim();
   const model = String(candidate?.model || 'model').trim();
+  const quotaScope = String(candidate?.quotaScope || '').trim();
+  if (provider === 'google' && quotaScope) {
+    return `${provider}:${model}:${quotaScope}`;
+  }
+  const explicit = String(candidate?.id || '').trim();
+  if (explicit) return explicit;
   const slot = String(candidate?.credentialSlot || 'default').trim();
   return `${provider}:${model}:${slot}`;
 }
