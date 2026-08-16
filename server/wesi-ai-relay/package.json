@@ -6,6 +6,7 @@
   "engines": {"node": ">=20"},
   "scripts": {
     "start": "node server.mjs",
-    "check": "node --check server.mjs"
+    "check": "node --check server.mjs",
+    "test": "node --test *.test.mjs"
   }
 }
