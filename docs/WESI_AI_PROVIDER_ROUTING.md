@@ -30,3 +30,7 @@ Gemini rate limits учитываются на уровне Google project. Дл
 - user cancellation останавливает весь pool.
 
 Несколько credentials/projects предназначены для легитимной независимой capacity и отказоустойчивости, а не для обхода ограничений конкретного provider.
+
+## Validation
+
+Регрессионный набор проверяет, что Fast не может получить Pro/Maximum candidate, Pro не может получить Maximum candidate, default Maximum сильнее default Pro, одинаковый Google project разделяет cooldown между своими credentials, а другой явно настроенный project остаётся доступным для failover. Targeted provider suite: 12/12 PASS.
