@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wesios/features/ai/runtime/wesi_ai_answer_attention.dart';
 
@@ -56,5 +57,26 @@ void main() {
       WesiAiAnswerAttention.conversationFromRoute('/tasks?conversation=x'),
       isNull,
     );
+  });
+
+  test('navigator observer distinguishes AI chat hidden under another route', () {
+    final observer = WesiAiAnswerAttention.navigatorObserver;
+    final ai = MaterialPageRoute<void>(
+      settings: const RouteSettings(name: '/ai'),
+      builder: (_) => const SizedBox.shrink(),
+    );
+    final tasks = MaterialPageRoute<void>(
+      settings: const RouteSettings(name: '/tasks'),
+      builder: (_) => const SizedBox.shrink(),
+    );
+
+    observer.didPush(ai, null);
+    expect(WesiAiAnswerAttention.chatVisible, isTrue);
+
+    observer.didPush(tasks, ai);
+    expect(WesiAiAnswerAttention.chatVisible, isFalse);
+
+    observer.didPop(tasks, ai);
+    expect(WesiAiAnswerAttention.chatVisible, isTrue);
   });
 }
