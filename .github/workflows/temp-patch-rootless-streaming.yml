@@ -16,7 +16,7 @@ jobs:
         with:
           ref: agent/wesi-ai-finish-unfinished-20260816
           fetch-depth: 0
-      - name: Patch Relay-hosted streaming topology
+      - name: Patch client and Relay nginx
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -52,26 +52,14 @@ jobs:
               if pos < 0: raise SystemExit('nginx anchor missing')
               n = n[:pos] + block + n[pos:]
           nginx.write_text(n)
-
-          wf = Path('.github/workflows/deploy-wesi-ai-streaming.yml')
-          w = wf.read_text()
-          w = w.replace("'WESI_POCKETBASE_URL_B64': 'http://127.0.0.1:8090',", "'WESI_POCKETBASE_URL_B64': 'https://api.wesi-inc.ru',")
-          # Replace the privileged Main gateway deployment with: Relay gateway + unprivileged Main hot deploy.
-          start = w.find('      - name: Deploy Main hooks and stream gateway\n')
-          end = w.find('      - name: Verify protected streaming route\n', start)
-          if start < 0 or end < 0: raise SystemExit('deploy workflow block missing')
-          replacement = '''      - name: Deploy stream gateway beside Foreign Relay\n        run: |\n          set -euo pipefail\n          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")\n          REMOTE="/tmp/wesi-ai-gateway-relay-$GITHUB_RUN_ID"\n          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"\n          scp "${SSH[@]}" -r server/wesi-ai-stream "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/"\n          scp "${SSH[@]}" stream-secrets.b64 "$RELAY_SSH_USER@$RELAY_SSH_HOST:$REMOTE/"\n          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'\n          set -euo pipefail\n          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi\n          "${SUDO[@]}" bash "$REMOTE/wesi-ai-stream/deploy-stream-gateway.sh" "$REMOTE/wesi-ai-stream" "$REMOTE/stream-secrets.b64"\n          curl -fsS --max-time 10 http://127.0.0.1:8792/health\n          REMOTE\n          ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'" || true\n\n      - name: Hot deploy Main hooks and relay config without sudo\n        run: |\n          set -euo pipefail\n          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")\n          REMOTE="/tmp/wesi-ai-stream-main-$GITHUB_RUN_ID"\n          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"\n          scp "${SSH[@]}" \\\n            server/pb_hooks/wesi_ai_*.js \\\n            server/pb_hooks/wesi_ai_*.pb.js \\\n            server/pb_hooks/.wesi-ai-personas.json \\\n            wesi-ai-relay.json \\\n            "$MAIN_USER@$MAIN_HOST:$REMOTE/"\n          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'\n          set -euo pipefail\n          HOOK_DIR=/opt/pocketbase/pb_hooks\n          test -d "$HOOK_DIR"\n          test -w "$HOOK_DIR"\n          install_hot() {\n            src="$1"; dst="$2"\n            if [ -e "$dst" ]; then test -w "$dst"; fi\n            cat "$src" > "$dst"\n          }\n          for src in "$REMOTE"/wesi_ai_*.js "$REMOTE"/wesi_ai_*.pb.js; do\n            [ -f "$src" ] || continue\n            install_hot "$src" "$HOOK_DIR/$(basename "$src")"\n            chmod 0644 "$HOOK_DIR/$(basename "$src")"\n          done\n          install_hot "$REMOTE/.wesi-ai-personas.json" "$HOOK_DIR/.wesi-ai-personas.json"\n          install_hot "$REMOTE/wesi-ai-relay.json" "$HOOK_DIR/.wesi-ai-relay.json"\n          chmod 0600 "$HOOK_DIR/.wesi-ai-personas.json" "$HOOK_DIR/.wesi-ai-relay.json"\n          for _ in $(seq 1 20); do\n            curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null && break\n            sleep 1\n          done\n          curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null\n          cmp -s "$REMOTE/wesi_ai_stream.pb.js" "$HOOK_DIR/wesi_ai_stream.pb.js"\n          cmp -s "$REMOTE/wesi-ai-relay.json" "$HOOK_DIR/.wesi-ai-relay.json"\n          REMOTE\n          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE'" || true\n\n'''
-          w = w[:start] + replacement + w[end:]
-          w = w.replace("-X POST https://api.wesi-inc.ru/api/wesi/ai/chat/stream", "-X POST https://$PUBLIC_HOST/api/wesi/ai/chat/stream")
-          wf.write_text(w)
           PY
-          dart format lib/features/ai/wesi_ai_api.dart || true
           git diff --check
-      - name: Commit patch
+      - name: Commit code patch
         run: |
           set -euo pipefail
           git config user.name wesiwer
           git config user.email 77644223+wesiwer@users.noreply.github.com
-          git add lib/features/ai/wesi_ai_api.dart server/wesi-ai-relay/nginx-relay.conf .github/workflows/deploy-wesi-ai-streaming.yml
-          git commit -m 'fix(ai): deploy streaming gateway on Relay without Main root'
+          git add lib/features/ai/wesi_ai_api.dart server/wesi-ai-relay/nginx-relay.conf
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'fix(ai): route streaming through Relay edge'
           git push origin HEAD:agent/wesi-ai-finish-unfinished-20260816
