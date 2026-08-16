@@ -1,61 +1,174 @@
-name: Fix const + AppTheme
+name: Temporary deploy tier-aware Wesi AI Relay
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-const-theme.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix:
-    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
-    timeout-minutes: 15
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      PUBLIC_HOST: ai.wesi-wf.su
+      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 1
 
-      - name: Strip const from dynamic AppTheme constructors
+      - name: Validate Relay bundle
         run: |
-          python3 << 'PY'
-          import re, pathlib
+          set -euo pipefail
+          for file in server/wesi-ai-relay/*.mjs; do node --check "$file"; done
+          node --test server/wesi-ai-relay/*.test.mjs
+          bash -n server/wesi-ai-relay/deploy-relay.sh
 
-          DYNAMIC = r'(?:textMuted|textPrimary|textSecondary|glassBorder|background|surface|surfaceLight|glassBackground|carbonDark|carbonMid|carbonLight|carbonHighlight|primary|accent|logoStroke|logoAccent)'
+      - name: Validate credentials and prepare SSH
+        env:
+          SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+          GEMINI: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${RELAY_USER:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_USER'; exit 1; }
+          [ -n "${SSH_KEY:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_KEY'; exit 1; }
+          [ -n "${SHARED:-}" ] || { echo '::error::Missing WESI_MAIN_SHARED_SECRET'; exit 1; }
+          [ ${#SHARED} -ge 32 ] || { echo '::error::Shared secret too short'; exit 1; }
+          [ -n "${GEMINI:-}" ] || { echo '::error::Missing GEMINI_API_KEY'; exit 1; }
+          if [ -z "${RELAY_HOST:-}" ]; then RELAY_HOST="$PUBLIC_HOST"; fi
+          echo "RELAY_HOST=$RELAY_HOST" >> "$GITHUB_ENV"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/relay_key
+          chmod 600 ~/.ssh/relay_key
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts
+          else
+            ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/relay_known_hosts
 
-          def fix(content: str) -> str:
-              lines = content.split('\n')
-              out = []
-              i = 0
-              while i < len(lines):
-                  line = lines[i]
-                  if re.search(r'\bconst\s+[A-Z]', line):
-                      window = '\n'.join(lines[i:i+12])
-                      if re.search(r'AppTheme\.' + DYNAMIC, window):
-                          line = re.sub(r'\bconst\s+', '', line, count=1)
-                  out.append(line)
-                  i += 1
-              return '\n'.join(out)
-
-          changed = []
-          for path in pathlib.Path('lib').rglob('*.dart'):
-              text = path.read_text(encoding='utf-8')
-              fixed = fix(text)
-              if fixed != text:
-                  path.write_text(fixed, encoding='utf-8')
-                  changed.append(str(path))
-                  print(f'fixed: {path}')
-
-          print(f'Total fixed files: {len(changed)}')
-          if not changed:
-              print('Nothing to fix')
+      - name: Preflight existing Relay HMAC
+        env:
+          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, hmac, json, os, time, urllib.error, urllib.request
+          rid='wai_preflight_'+str(time.time_ns())
+          payload={'requestId':rid,'route':'wesi/not-a-route','operation':'chat','input':{'system':'preflight','history':[],'message':'preflight'}}
+          raw=json.dumps(payload,separators=(',',':')).encode()
+          ts=str(int(time.time()))
+          sig=hmac.new(os.environ['SHARED'].encode(),rid.encode()+b'.'+ts.encode()+b'.'+raw,hashlib.sha256).hexdigest()
+          req=urllib.request.Request('https://'+os.environ['PUBLIC_HOST']+'/v1/wesi-ai',data=raw,method='POST',headers={'Content-Type':'application/json','X-Wesi-Request-Id':rid,'X-Wesi-Timestamp':ts,'X-Wesi-Signature':sig})
+          try:
+              urllib.request.urlopen(req,timeout=20)
+              raise SystemExit('unexpected successful invalid route')
+          except urllib.error.HTTPError as e:
+              body=json.loads(e.read().decode() or '{}')
+              assert e.code == 400 and body.get('code') == 'WAI_ROUTE_UNAVAILABLE', (e.code, body)
+          print('Existing Relay HMAC preflight: OK')
           PY
 
-      - name: Commit and push
+      - name: Build sealed Relay credential bundle
+        env:
+          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+          GEMINI: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_2: ${{ secrets.GEMINI_API_KEY_2 }}
+          GEMINI_3: ${{ secrets.GEMINI_API_KEY_3 }}
+          GEMINI_4: ${{ secrets.GEMINI_API_KEY_4 }}
+          GEMINI_5: ${{ secrets.GEMINI_API_KEY_5 }}
+          GROQ: ${{ secrets.GROQ_API_KEY }}
+          MISTRAL: ${{ secrets.MISTRAL_API_KEY }}
+          OPENROUTER: ${{ secrets.OPENROUTER_API_KEY }}
+          ZANE_VOICE: ${{ secrets.WESI_ZANE_TTS_VOICE }}
+          NIRVANA_VOICE: ${{ secrets.WESI_NIRVANA_TTS_VOICE }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --staged --quiet; then
-            echo "No changes"
-            exit 0
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, os
+          values={
+              'WESI_MAIN_SHARED_SECRET_B64': os.environ['SHARED'],
+              'GEMINI_API_KEY_B64': os.environ['GEMINI'],
+          }
+          for index in range(2,6):
+              value=os.environ.get(f'GEMINI_{index}','').strip()
+              if value: values[f'GEMINI_API_KEY_{index}_B64']=value
+          optional={
+              'GROQ_API_KEY_B64':os.environ.get('GROQ',''),
+              'MISTRAL_API_KEY_B64':os.environ.get('MISTRAL',''),
+              'OPENROUTER_API_KEY_B64':os.environ.get('OPENROUTER',''),
+              'WESI_ZANE_TTS_VOICE_B64':os.environ.get('ZANE_VOICE',''),
+              'WESI_NIRVANA_TTS_VOICE_B64':os.environ.get('NIRVANA_VOICE',''),
+          }
+          for key,value in optional.items():
+              value=value.strip()
+              if value: values[key]=value
+          with open('relay-secrets.b64','w',encoding='ascii') as f:
+              for key,value in values.items():
+                  f.write(key+'='+base64.b64encode(value.encode()).decode()+'\n')
+          print('Gemini slots configured:', 1 + sum(bool(os.environ.get(f'GEMINI_{i}','').strip()) for i in range(2,6)))
+          print('Non-Gemini providers configured:', sum(bool(os.environ.get(name,'').strip()) for name in ('GROQ','MISTRAL','OPENROUTER')))
+          PY
+          chmod 600 relay-secrets.b64
+
+      - name: Upload and install Relay
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          REMOTE="/tmp/wesi-ai-relay-failover-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" server/wesi-ai-relay/*.mjs server/wesi-ai-relay/package.json server/wesi-ai-relay/deploy-relay.sh relay-secrets.b64 "$RELAY_USER@$RELAY_HOST:$REMOTE/"
+          rm -f relay-secrets.b64
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          cd "$REMOTE"
+          "${SUDO[@]}" bash deploy-relay.sh --install-from-b64 "$REMOTE/relay-secrets.b64"
+          "${SUDO[@]}" systemctl is-active --quiet wesi-ai-relay
+          echo 'Configured provider slots:'
+          if [ -f /etc/wesi-ai-providers.env ]; then
+            "${SUDO[@]}" awk -F= '/^(GEMINI_API_KEY_[2-5]|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY)=/ {print $1}' /etc/wesi-ai-providers.env | sort -u
           fi
-          git commit -m "fix(theme): remove const from widgets using dynamic AppTheme colors"
-          git push
+          rm -rf "$REMOTE"
+          REMOTE
+
+      - name: Verify live tier routing
+        env:
+          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 "https://$PUBLIC_HOST/health" > health.json
+          python3 - <<'PY'
+          import hashlib, hmac, json, os, time, urllib.error, urllib.request
+          health=json.load(open('health.json',encoding='utf-8'))
+          assert health.get('ok') is True and health.get('ready') is True, health
+          assert health.get('routing') == ['fast','pro','ultra'], health
+          base='https://'+os.environ['PUBLIC_HOST']
+          secret=os.environ['SHARED'].encode()
+          def call(route):
+              rid='wai_live_'+route.split('/')[-1]+'_'+str(time.time_ns())
+              payload={'requestId':rid,'route':route,'operation':'chat','input':{'system':'Reply only OK.','history':[],'message':'OK'}}
+              raw=json.dumps(payload,separators=(',',':')).encode(); ts=str(int(time.time()))
+              sig=hmac.new(secret,rid.encode()+b'.'+ts.encode()+b'.'+raw,hashlib.sha256).hexdigest()
+              req=urllib.request.Request(base+'/v1/wesi-ai',data=raw,method='POST',headers={'Content-Type':'application/json','X-Wesi-Request-Id':rid,'X-Wesi-Timestamp':ts,'X-Wesi-Signature':sig})
+              try:
+                  with urllib.request.urlopen(req,timeout=150) as r: data=json.load(r)
+                  print(route, 'OK', data.get('provider'), data.get('model'))
+                  return data.get('ok') is True and bool(str(data.get('answer','')).strip())
+              except urllib.error.HTTPError as e:
+                  body=e.read().decode(errors='replace')[:500]
+                  print(route, 'HTTP', e.code, body)
+                  return False
+          assert call('wesi/fast'), 'Fast live smoke failed'
+          pro_ok=call('wesi/pro')
+          print('Pro live availability:', 'OK' if pro_ok else 'NO_CAPACITY')
+          PY
