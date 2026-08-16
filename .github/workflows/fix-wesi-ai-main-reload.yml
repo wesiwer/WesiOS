@@ -1,0 +1,50 @@
+name: Reload PocketBase Wesi AI hooks
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/fix-wesi-ai-main-reload.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  reload:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - name: Restart PocketBase and verify AI routes
+        env:
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known 2>/dev/null
+          ssh -i ~/.ssh/main_key -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/main_known "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo 'Testing command-specific sudo permission...'
+          if ! sudo -n systemctl restart pocketbase; then
+            echo 'POCKETBASE_RESTART_PERMISSION_DENIED'
+            exit 42
+          fi
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8090/api/health >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          systemctl is-active --quiet pocketbase
+          echo 'PocketBase restarted.'
+          for path in /api/wesi/ai/chat /api/wesi/ai/capabilities; do
+            code="$(curl -sS -o /tmp/wesi-body -w '%{http_code}' --max-time 8 "http://127.0.0.1:8090$path" || true)"
+            echo "$path -> $code"
+            head -c 220 /tmp/wesi-body 2>/dev/null | tr '\n' ' '; echo
+          done
+          code="$(curl -sS -o /tmp/wesi-chat-body -w '%{http_code}' --max-time 8 -X POST -H 'Content-Type: application/json' -d '{"persona":"zane","tier":"fast","message":"test"}' http://127.0.0.1:8090/api/wesi/ai/chat || true)"
+          echo "POST /api/wesi/ai/chat -> $code"
+          head -c 220 /tmp/wesi-chat-body 2>/dev/null | tr '\n' ' '; echo
+          [ "$code" = '401' ] || { echo 'AI chat route still not registered'; exit 3; }
+          REMOTE
