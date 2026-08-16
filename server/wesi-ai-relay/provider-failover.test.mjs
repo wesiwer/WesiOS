@@ -7,7 +7,7 @@ import {
   resetProviderFailoverState,
   runProviderFailover,
 } from './provider-failover.mjs';
-import {buildFastCandidates, buildFinalizerCandidates} from './google.mjs';
+import {buildFastCandidates, buildFinalizerCandidates, callTextRoute} from './google.mjs';
 
 test('Gemini key slots deduplicate credentials without exposing them as ids', () => {
   const slots = geminiKeySlots('key-a', {
@@ -55,6 +55,44 @@ test('Pro and Maximum finalizer pools stay inside their declared tier', () => {
   assert.ok(maximum.every((item) => item.tier === 'ultra'));
   assert.ok(pro.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.5-flash'));
   assert.ok(maximum.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.5-flash'));
+});
+
+test('Fast switches Gemini credentials on 429 without changing Flash Lite model', async () => {
+  resetProviderFailoverState();
+  const original = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const key = options.headers?.['x-goog-api-key'];
+    calls.push({url: String(url), key});
+    if (key === 'primary-key') {
+      return {ok: false, status: 429, async json() { return {error: {message: 'quota'}}; }};
+    }
+    if (key === 'secondary-key') {
+      return {
+        ok: true,
+        status: 200,
+        async json() {
+          return {candidates: [{content: {parts: [{text: 'FAST_SECONDARY_OK'}]}}]};
+        },
+      };
+    }
+    throw new Error(`unexpected key ${key}`);
+  };
+  try {
+    const result = await callTextRoute(
+      'wesi/fast',
+      {system: 'persona', history: [], message: 'hello'},
+      'primary-key',
+      {secrets: {GEMINI_API_KEY_2: 'secondary-key'}},
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.answer, 'FAST_SECONDARY_OK');
+    assert.equal(calls.length, 2);
+    assert.deepEqual(calls.map((item) => item.key), ['primary-key', 'secondary-key']);
+    assert.ok(calls.every((item) => item.url.includes('/gemini-3.5-flash-lite:generateContent')));
+  } finally {
+    globalThis.fetch = original;
+  }
 });
 
 test('429 moves to the next same-tier candidate and cools the exhausted one', async () => {
