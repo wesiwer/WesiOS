@@ -49,5 +49,6 @@ jobs:
           grep -q "WesiMediaLocalRequestSanitizer.sanitize" lib/features/ai/wesi_ai_api.dart
           grep -q "WesiMediaTurnExecutor.run" lib/features/ai/controllers/wesi_ai_chat_controller.dart
           grep -q "turnAttachments: attachments" lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          grep -q "_localMediaRequestIdentity" lib/features/ai/controllers/wesi_ai_chat_controller.dart
           grep -q "videoGenerate" server/pb_hooks/wesi_ai_media_contract.js
           grep -q "edit_image" server/pb_hooks/wesi_ai_capability_registry.js
