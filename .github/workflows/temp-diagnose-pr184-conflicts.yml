@@ -1,0 +1,35 @@
+name: Temporary diagnose PR184 conflicts
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp-diagnose-pr184-conflicts.yml
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 0
+      - name: Diagnose merge with main
+        run: |
+          set -u
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          set +e
+          git merge --no-commit --no-ff origin/main
+          code=$?
+          set -e
+          echo "MERGE_EXIT=$code"
+          echo '=== CONFLICTS ==='
+          git diff --name-only --diff-filter=U || true
+          echo '=== STATUS ==='
+          git status --short
+          if [ "$code" -ne 0 ]; then exit 1; fi
+          git merge --abort || true
