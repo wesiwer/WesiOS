@@ -27,13 +27,16 @@ jobs:
           flutter-version: '3.24.0'
           channel: stable
           cache: true
-      - name: Format and test focused changes
-        run: |
-          dart format lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart test/wesi_ai_tool_result_detail_test.dart
-          node --check server/wesi-ai-stream/gateway.mjs
-          node --test server/wesi-ai-stream/tool_handoff.test.mjs
-          flutter pub get
-          flutter test test/wesi_ai_tool_result_detail_test.dart
+      - name: Format Dart
+        run: dart format lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart test/wesi_ai_tool_result_detail_test.dart
+      - name: Check gateway syntax
+        run: node --check server/wesi-ai-stream/gateway.mjs
+      - name: Test gateway tool handoff
+        run: node --test server/wesi-ai-stream/tool_handoff.test.mjs
+      - name: Get Flutter dependencies
+        run: flutter pub get
+      - name: Test client tool result detail
+        run: flutter test test/wesi_ai_tool_result_detail_test.dart
       - name: Commit product fix and remove temporary patcher
         run: |
           git config user.name "github-actions[bot]"
