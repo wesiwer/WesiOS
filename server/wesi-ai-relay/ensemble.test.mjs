@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {callTextRoute} from './google.mjs';
+import {resetProviderFailoverState} from './provider-failover.mjs';
 
 function responseJson(data, status = 200) {
   return {ok: status >= 200 && status < 300, status, async json() { return data; }};
@@ -15,6 +16,7 @@ function openAiAnswer(text) {
 }
 
 test('Fast remains latency-first and does not fan out when Gemini succeeds', async () => {
+  resetProviderFailoverState();
   const original = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url) => {
@@ -34,7 +36,8 @@ test('Fast remains latency-first and does not fan out when Gemini succeeds', asy
   }
 });
 
-test('Pro consults independent advisors and Gemini alone produces the final answer', async () => {
+test('Pro uses one strong advisor seat then a separate finalizer', async () => {
+  resetProviderFailoverState();
   const original = globalThis.fetch;
   const calls = [];
   globalThis.fetch = async (url, options = {}) => {
@@ -43,19 +46,18 @@ test('Pro consults independent advisors and Gemini alone produces the final answ
     calls.push({target, body});
     if (target.includes('api.groq.com')) {
       assert.match(body.messages[0].content, /WESI_AI_ADVISOR_ROLE/);
-      return openAiAnswer('groq analysis');
+      return openAiAnswer('groq pro analysis');
     }
     if (target.includes('api.mistral.ai')) {
-      assert.match(body.messages[0].content, /WESI_AI_ADVISOR_ROLE/);
-      return openAiAnswer('mistral analysis');
+      throw new Error('Mistral must remain unused when primary Pro advisor succeeds');
     }
     if (target.includes('generativelanguage.googleapis.com')) {
       const system = body.systemInstruction.parts[0].text;
       assert.match(system, /WESI_AI_TOOL_PROTOCOL/);
       assert.match(system, /WESI_AI_ENSEMBLE_FINALIZER/);
       const finalMessage = body.contents.at(-1).parts[0].text;
-      assert.match(finalMessage, /groq analysis/);
-      assert.match(finalMessage, /mistral analysis/);
+      assert.match(finalMessage, /groq pro analysis/);
+      assert.doesNotMatch(finalMessage, /mistral analysis/);
       return googleAnswer('PRO_FINAL');
     }
     throw new Error(`unexpected provider ${target}`);
@@ -70,13 +72,53 @@ test('Pro consults independent advisors and Gemini alone produces the final answ
     assert.equal(result.answer, 'PRO_FINAL');
     assert.equal(result.provider, 'wesi-pro');
     assert.equal(calls.filter((c) => c.target.includes('generativelanguage')).length, 1);
-    assert.equal(calls.length, 3);
+    assert.equal(calls.length, 2);
   } finally {
     globalThis.fetch = original;
   }
 });
 
-test('Maximum consults all configured non-Gemini providers before Gemini synthesis', async () => {
+test('Pro advisor seat fails over within Pro before finalization', async () => {
+  resetProviderFailoverState();
+  const original = globalThis.fetch;
+  const seen = [];
+  globalThis.fetch = async (url, options = {}) => {
+    const target = String(url);
+    const body = JSON.parse(String(options.body || '{}'));
+    if (target.includes('api.groq.com')) {
+      seen.push('groq-rate-limit');
+      return responseJson({error: 'rate'}, 429);
+    }
+    if (target.includes('api.mistral.ai')) {
+      seen.push('mistral-advisor');
+      assert.match(body.messages[0].content, /WESI_AI_ADVISOR_ROLE/);
+      return openAiAnswer('mistral pro analysis');
+    }
+    if (target.includes('generativelanguage.googleapis.com')) {
+      seen.push('gemini-final');
+      const finalMessage = body.contents.at(-1).parts[0].text;
+      assert.match(finalMessage, /mistral pro analysis/);
+      return googleAnswer('PRO_FALLBACK_FINAL');
+    }
+    throw new Error(`unexpected provider ${target}`);
+  };
+  try {
+    const result = await callTextRoute(
+      'wesi/pro',
+      {system: 'persona', history: [], message: 'analyze'},
+      'g-key',
+      {secrets: {GROQ_API_KEY: 'g', MISTRAL_API_KEY: 'm'}},
+    );
+    assert.equal(result.ok, true);
+    assert.equal(result.answer, 'PRO_FALLBACK_FINAL');
+    assert.deepEqual(seen, ['groq-rate-limit', 'mistral-advisor', 'gemini-final']);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('Maximum consults all configured advisors before final synthesis', async () => {
+  resetProviderFailoverState();
   const original = globalThis.fetch;
   const seen = [];
   globalThis.fetch = async (url, options = {}) => {
