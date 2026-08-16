@@ -1,0 +1,102 @@
+name: Temporary Deploy Wesi AI Diagnostics
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage12-final-20260816
+    paths:
+      - .github/workflows/tmp-deploy-wesi-ai-diagnostics.yml
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+      PUBLIC_HOST: wesi-ai-178-236-247-194.nip.io
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate diagnostic runtime
+        run: |
+          set -euo pipefail
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --check server/pb_hooks/wesi_ai_routes.pb.js
+          grep -q 'diagnosticPayload' server/wesi-ai-stream/gateway.mjs
+          grep -q 'diagnostic("TOOL"' server/pb_hooks/wesi_ai_routes.pb.js
+          grep -q 'diagnostic("PROVIDER"' server/pb_hooks/wesi_ai_routes.pb.js
+      - name: Prepare SSH
+        env:
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          RELAY_KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$RELAY_KEY" > ~/.ssh/relay_key
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/relay_key ~/.ssh/main_key
+          if [ -n "${RELAY_KNOWN:-}" ]; then printf '%s\n' "$RELAY_KNOWN" > ~/.ssh/relay_known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null; fi
+          if [ -n "${MAIN_KNOWN:-}" ]; then printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/*known_hosts
+      - name: Deploy Main diagnostic hooks
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          REMOTE="/tmp/wesi-ai-diag-main-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" server/pb_hooks/wesi_ai_routes.pb.js server/pb_hooks/wesi_ai_tools.js server/pb_hooks/wesi_ai_finance_tools.js "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          test -d "$HOOK_DIR" && test -w "$HOOK_DIR"
+          for file in wesi_ai_routes.pb.js wesi_ai_tools.js wesi_ai_finance_tools.js; do
+            test -f "$REMOTE/$file"
+            dst="$HOOK_DIR/$file"
+            [ ! -e "$dst" ] || test -w "$dst"
+            cat "$REMOTE/$file" > "$dst"
+            chmod 0644 "$dst"
+            cmp -s "$REMOTE/$file" "$dst"
+          done
+          curl -fsS --max-time 10 http://127.0.0.1:8090/api/health >/dev/null
+          rm -rf "$REMOTE"
+          echo MAIN_DIAGNOSTICS_DEPLOYED
+          REMOTE
+      - name: Deploy gateway diagnostics
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          REMOTE="/tmp/wesi-ai-diag-relay-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" server/wesi-ai-stream/gateway.mjs "$RELAY_USER@$RELAY_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          "${SUDO[@]}" install -o root -g wesi-ai-stream -m 0640 "$REMOTE/gateway.mjs" /opt/wesi-ai-stream/gateway.mjs
+          "${SUDO[@]}" systemctl restart wesi-ai-stream
+          for _ in $(seq 1 20); do
+            health="$(curl -fsS --max-time 3 http://127.0.0.1:8792/health 2>/dev/null || true)"
+            if printf '%s' "$health" | grep -q '"ready":true' && printf '%s' "$health" | grep -q '"streaming":true'; then
+              echo "$health"
+              rm -rf "$REMOTE"
+              exit 0
+            fi
+            sleep 1
+          done
+          "${SUDO[@]}" systemctl status wesi-ai-stream --no-pager -l || true
+          exit 1
+          REMOTE
+      - name: Verify production edge
+        run: |
+          set -euo pipefail
+          health="$(curl -fsS --max-time 15 "https://$PUBLIC_HOST/health")"
+          printf '%s' "$health" | grep -q '"streaming":true'
+          code="$(curl -sS -o /tmp/diag.out -w '%{http_code}' --max-time 15 -X POST "https://$PUBLIC_HOST/api/wesi/ai/chat/stream" -H 'Content-Type: application/json' -d '{}' || true)"
+          [ "$code" = 401 ] || [ "$code" = 403 ]
+          echo WESI_AI_DIAGNOSTICS_PRODUCTION_READY
