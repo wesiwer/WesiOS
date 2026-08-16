@@ -142,7 +142,7 @@ test('gateway forwards true deltas and final done event without provider metadat
   });
 });
 
-test('real Co-Agent turn stays buffered, uses same tier route, and Lead owns final answer', async () => {
+test('Co-Agent and Lead review stay buffered on same tier while Lead owns final answer', async () => {
   let relayCalls = 0;
   const relayPayloads = [];
   const rawCoagent = JSON.stringify({
@@ -170,6 +170,14 @@ test('real Co-Agent turn stays buffered, uses same tier route, and Lead owns fin
           {type: 'done', answer: rawCoagent, provider: 'coagent-provider-must-not-leak'},
         ]);
       }
+      if (relayCalls === 2) {
+        assert.equal(payload.input.system.includes('WESI_AI_PERSONA_COAGENT_REVIEW'), true);
+        const review = '{"decision":"accept"}';
+        return ndjson([
+          {type: 'delta', text: review},
+          {type: 'done', answer: review, provider: 'review-provider-must-not-leak'},
+        ]);
+      }
       assert.equal(payload.input.system.includes('WESI_AI_VERIFIED_COAGENT_RESULT'), true);
       assert.equal(payload.input.system.includes('UX review complete'), true);
       return ndjson([
@@ -192,13 +200,20 @@ test('real Co-Agent turn stays buffered, uses same tier route, and Lead owns fin
       body: JSON.stringify({persona: 'zane', tier: 'pro', message: 'Сделай приложение с хорошим UX.'}),
     });
     const events = await readEvents(response);
-    assert.equal(relayCalls, 2);
+    assert.equal(relayCalls, 3);
     assert.equal(relayPayloads.every((payload) => payload.route === 'wesi/pro'), true);
     const coagentPhases = events.filter((event) => event.type === 'agent' && event.role === 'coagent').map((event) => event.phase);
-    assert.deepEqual(coagentPhases, ['handoff', 'start', 'result']);
+    assert.deepEqual(coagentPhases, ['handoff', 'start', 'result', 'review']);
+    const timeline = events.filter((event) => event.type === 'activity').map((event) => event.label);
+    assert.equal(timeline.includes('Зейн → Нирвана'), true);
+    assert.equal(timeline.includes('Нирвана · Co-Agent проверка'), true);
+    assert.equal(timeline.includes('Нирвана → Зейн'), true);
+    assert.equal(timeline.includes('Зейн · проверка Co-Agent результата'), true);
+    assert.equal(timeline.includes('Зейн · результат принят'), true);
     const userText = events.filter((event) => event.type === 'delta').map((event) => event.text).join('');
     assert.equal(userText, 'Финал Зейна.');
     assert.equal(userText.includes('UX review complete'), false);
+    assert.equal(userText.includes('decision'), false);
     assert.equal(events.at(-1).type, 'done');
     assert.equal(events.at(-1).answer, 'Финал Зейна.');
     assert.equal(JSON.stringify(events).includes('provider-must-not-leak'), false);
