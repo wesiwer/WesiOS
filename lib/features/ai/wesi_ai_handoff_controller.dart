@@ -62,6 +62,11 @@ class WesiAiHandoffController extends WesiAiManagedChatController {
         preview: preview,
         completedAt: answer.createdAt,
       ),
+      // «Пользователь смотрит этот ответ» истинно только когда этот же
+      // контроллер ещё жив и /ai действительно верхний route. Если старый
+      // turn завершился после пересоздания AI-экрана, показываем плашку:
+      // по нажатию новый экран загрузит уже сохранённый ответ из store.
+      chatVisible: !isDisposed && WesiAiAnswerAttention.chatVisible,
     ));
   }
 
