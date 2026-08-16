@@ -162,7 +162,14 @@ export async function runProviderFailover({
     try {
       result = await invoke(candidate);
     } catch (error) {
-      result = {ok: false, status: 502, code: 'WAI_PROVIDER_UNAVAILABLE'};
+      if (error?.name === 'AbortError') throw error;
+      result = {
+        ok: false,
+        status: 502,
+        code: error?.name === 'TimeoutError'
+          ? 'WAI_PROVIDER_TIMEOUT'
+          : 'WAI_PROVIDER_UNAVAILABLE',
+      };
     }
     noteResult(candidate, result, Number(now()));
 
