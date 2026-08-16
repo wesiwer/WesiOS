@@ -1,13 +1,27 @@
 const RISK_READ = "READ";
 
 const TECHNICAL_SIGNALS = [
-  /\b(architecture|backend|api|database|db|sql|code|coding|flutter|dart|bug|debug|server|security|build|gradle|cmake|devops|ci|cd|test|tests|algorithm|integration|automation|performance|latency|cache|network|protocol|release)\b/i,
-  /(архитектур|бэкенд|бекенд|апи|баз[аы] данных|код|программир|флаттер|ошибк|баг|дебаг|сервер|безопасн|сборк|градл|тест|алгоритм|интеграц|автоматизац|производительн|релиз|депло|данн|расч[её]т)/i,
+  /\b(architecture|backend|api|database|db|sql)\b/i,
+  /\b(code|coding|flutter|dart|bug|debug|server)\b/i,
+  /\b(security|build|gradle|cmake|devops|ci|cd|test|tests)\b/i,
+  /\b(algorithm|integration|automation|performance|latency|cache|network|protocol|release)\b/i,
+  /(архитектур|бэкенд|бекенд|апи|баз[аы] данных|данн|расч[её]т)/i,
+  /(код|программир|флаттер|ошибк|баг|дебаг|сервер)/i,
+  /(безопасн|сборк|градл|тест|релиз|депло)/i,
+  /(алгоритм|интеграц|автоматизац|производительн)/i,
 ];
 
 const CREATIVE_SIGNALS = [
-  /\b(ux|ui|design|interface|visual|layout|typography|color|motion|animation|graphic|image|video|media|presentation|storytelling|cover|creative|branding|brand)\b/i,
-  /(дизайн|интерфейс|визуал|композиц|типограф|цвет|анимац|график|изображен|видео|медиа|презентац|сторител|обложк|креатив|бренд|юзабилит|пользовательск.*опыт)/i,
+  /\b(ux|usability|user experience)\b/i,
+  /\b(ui|interface|layout)\b/i,
+  /\b(design|visual|typography|color)\b/i,
+  /\b(motion|animation|graphic|image)\b/i,
+  /\b(video|media|presentation|storytelling|cover|creative|branding|brand)\b/i,
+  /(юзабилит|пользовательск.*опыт)/i,
+  /(интерфейс|композиц)/i,
+  /(дизайн|визуал|типограф|цвет)/i,
+  /(анимац|график|изображен)/i,
+  /(видео|медиа|презентац|сторител|обложк|креатив|бренд)/i,
 ];
 
 const BROAD_PRODUCT_SIGNALS = [
