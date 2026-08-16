@@ -69,9 +69,11 @@ function parseToolEnvelope(value) {
       : null;
     if (!tool) return null;
     const name = String(tool.name || '').trim();
-    const args = tool.arguments && typeof tool.arguments === 'object' && !Array.isArray(tool.arguments)
-      ? tool.arguments
-      : {};
+    const hasArguments = Object.prototype.hasOwnProperty.call(tool, 'arguments');
+    if (hasArguments && (!tool.arguments || typeof tool.arguments !== 'object' || Array.isArray(tool.arguments))) {
+      return null;
+    }
+    const args = hasArguments ? tool.arguments : {};
     return name ? {name, arguments: args} : null;
   } catch {
     return null;
