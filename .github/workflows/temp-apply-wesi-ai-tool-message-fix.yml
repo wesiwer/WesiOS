@@ -22,6 +22,18 @@ jobs:
           fetch-depth: 0
       - name: Apply patch
         run: python3 tools/temp_patch_wesi_ai_tool_messages.py
+      - name: Make gateway fixture match real Relay streaming
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server/wesi-ai-stream/tool_handoff.test.mjs')
+          s = p.read_text(encoding='utf-8')
+          old = "if (relayCalls === 1) return ndjson([{type: 'done', answer: envelope}]);"
+          new = "if (relayCalls === 1) return ndjson([{type: 'delta', text: envelope}, {type: 'done', answer: envelope}]);"
+          if old not in s:
+              raise SystemExit('stream fixture anchor missing')
+          p.write_text(s.replace(old, new, 1), encoding='utf-8')
+          PY
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
