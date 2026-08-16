@@ -27,7 +27,25 @@ jobs:
             node --check "$file"
           done
       - name: Audit complete Wesi AI tool registry
-        run: node --test server/pb_hooks/wesi_ai_tools_contract.test.js
+        id: tool_audit
+        shell: bash
+        run: |
+          set +e
+          node --test server/pb_hooks/wesi_ai_tools_contract.test.js > tool-audit.log 2>&1
+          code=$?
+          set -e
+          cat tool-audit.log
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+      - name: Upload Wesi AI tool audit failure report
+        if: ${{ steps.tool_audit.outputs.code != '0' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wesi-ai-tool-audit-failure
+          path: tool-audit.log
+          retention-days: 2
+      - name: Enforce Wesi AI tool audit
+        shell: bash
+        run: test "${{ steps.tool_audit.outputs.code }}" = "0"
       - name: Validate Wesi AI deployment shell
         shell: bash
         run: |
