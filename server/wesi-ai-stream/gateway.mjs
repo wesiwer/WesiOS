@@ -1,4 +1,5 @@
 import crypto from 'node:crypto';
+import {runPersonaCoagent} from './persona_coagent_orchestrator.mjs';
 
 export const MAX_STREAM_BODY_BYTES = 28 * 1024 * 1024;
 export const MAX_TOOL_TURNS = 4;
@@ -442,11 +443,98 @@ export function createGateway(options = {}) {
         detail: 'История, память, проект и доступные инструменты проверены.',
       });
 
+      let leadPrepared = prepared;
+      if (prepared.coagent?.enabled === true) {
+        try {
+          const collaboration = await runPersonaCoagent({
+            prepared,
+            signal: abort.signal,
+            emit: (event) => writeNdjson(res, event),
+            invokeModel: async ({handoff, phase, input}) => {
+              let buffered = '';
+              const finalEvent = await relayStream({
+                relayUrl,
+                relaySecret,
+                payload: {
+                  requestId: `${prepared.requestId}_coagent_${handoff.coagentPersona}_${phase}`,
+                  route: prepared.route,
+                  operation: 'chat.stream',
+                  input,
+                },
+                signal: abort.signal,
+                fetchImpl,
+                onDelta: (text) => { buffered += text; },
+              });
+              return buffered || String(finalEvent?.answer || '');
+            },
+            invokeTool: async ({handoff, name, arguments: args}) => {
+              const toolResponse = await postPocketBase({
+                pocketBaseUrl,
+                path: '/api/wesi/ai/stream/tool',
+                body: {
+                  name,
+                  arguments: args,
+                  activeOrganizationId: prepared.activeOrganizationId,
+                  requestId: prepared.requestId,
+                  conversationId: prepared.conversationId,
+                  persona: handoff.coagentPersona,
+                  actorRole: 'coagent',
+                  leadPersona: handoff.leadPersona,
+                  handoffId: handoff.handoffId,
+                },
+                request: req,
+                streamSecret,
+                signal: abort.signal,
+                fetchImpl,
+              });
+              return toolResponse.toolResult;
+            },
+          });
+          if (collaboration.ok === true) {
+            leadPrepared = {
+              ...prepared,
+              systemParts: [
+                ...prepared.systemParts,
+                `[WESI_AI_VERIFIED_COAGENT_RESULT]\n${JSON.stringify({
+                  protocol: collaboration.result.protocol,
+                  handoffId: collaboration.result.handoffId,
+                  persona: collaboration.result.persona,
+                  summary: collaboration.result.summary,
+                  findings: collaboration.result.findings,
+                  risks: collaboration.result.risks,
+                  recommendation: collaboration.result.recommendation,
+                  artifacts: collaboration.result.artifacts,
+                  finalOwner: collaboration.result.finalOwner,
+                })}`,
+              ],
+            };
+            writeNdjson(res, {
+              type: 'activity',
+              kind: 'reasoning',
+              phase: 'result',
+              label: 'Co-Agent review готов',
+              detail: 'Проверенный результат второй Persona Agent передан Lead для интеграции.',
+            });
+          }
+        } catch (coagentError) {
+          if (abort.signal.aborted) throw coagentError;
+          writeNdjson(res, {
+            type: 'agent',
+            phase: 'fallback',
+            role: 'coagent',
+            name: String(prepared.coagent?.coagentPersona || ''),
+            lead: prepared.persona,
+            label: 'Co-Agent недоступен',
+            detail: 'Lead продолжает выполнение самостоятельно.',
+          });
+        }
+      }
+
       const toolResults = [];
       const seenCalls = new Set();
       for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
         const streamed = await streamOneTurn({
-          prepared,
+          prepared: leadPrepared,
           toolResults,
           phase: String(turn + 1),
           finalOnly: false,
@@ -524,6 +612,8 @@ export function createGateway(options = {}) {
               requestId: prepared.requestId,
               conversationId: prepared.conversationId,
               persona: prepared.persona,
+              actorRole: 'lead',
+              leadPersona: prepared.persona,
             },
             request: req,
             streamSecret,
@@ -547,7 +637,7 @@ export function createGateway(options = {}) {
       }
 
       const finalStream = await streamOneTurn({
-        prepared,
+        prepared: leadPrepared,
         toolResults,
         phase: 'final',
         finalOnly: true,
