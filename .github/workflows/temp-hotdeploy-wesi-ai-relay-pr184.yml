@@ -1,4 +1,4 @@
-name: Temporary switch Main to valid Wesi AI Relay TLS host
+name: Temporary live Wesi AI Relay provider smoke
 
 on:
   push:
@@ -11,13 +11,12 @@ permissions:
   contents: read
 
 jobs:
-  switch:
+  smoke:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
-      RELAY_PUBLIC_HOST: wesi-ai-178-236-247-194.nip.io
     steps:
       - name: Prepare Main SSH
         env:
@@ -32,53 +31,48 @@ jobs:
           if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Verify valid Relay HTTPS from Main
+      - name: Execute real signed Fast request from Main to Relay
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "curl -fsS --max-time 20 https://$RELAY_PUBLIC_HOST/health" > /tmp/health.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open('/tmp/health.json',encoding='utf-8'))
-          assert d.get('ok') is True and d.get('ready') is True, d
-          assert d.get('routing') == ['fast','pro','ultra'], d
-          assert d.get('streaming') is True, d
-          print('MAIN_TO_VALID_RELAY_TLS_PASS')
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'python3 -' <<'PY'
+          import hashlib, hmac, json, time, urllib.request, urllib.error, secrets
+          cfg_path='/opt/pocketbase/pb_hooks/.wesi-ai-relay.json'
+          with open(cfg_path,encoding='utf-8') as f: cfg=json.load(f)
+          url=str(cfg.get('url','')).rstrip('/')
+          secret=str(cfg.get('sharedSecret',''))
+          route=str((cfg.get('routes') or {}).get('fast',''))
+          assert url.startswith('https://') and len(secret)>=32 and route
+          request_id='wai_release_smoke_'+str(int(time.time()))+'_'+secrets.token_hex(4)
+          payload={
+            'requestId': request_id,
+            'route': route,
+            'operation': 'chat',
+            'input': {
+              'system': 'You are a release health probe. Return a short plain-text confirmation only.',
+              'history': [],
+              'message': 'Reply exactly WESI_RELAY_SMOKE_OK',
+              'attachments': []
+            }
+          }
+          raw=json.dumps(payload,separators=(',',':'),ensure_ascii=False).encode()
+          ts=str(int(time.time()))
+          sig=hmac.new(secret.encode(), (request_id+'.'+ts+'.').encode()+raw, hashlib.sha256).hexdigest()
+          req=urllib.request.Request(url+'/v1/wesi-ai', data=raw, method='POST', headers={
+            'Content-Type':'application/json',
+            'X-Wesi-Request-Id':request_id,
+            'X-Wesi-Timestamp':ts,
+            'X-Wesi-Signature':sig,
+          })
+          try:
+            with urllib.request.urlopen(req,timeout=90) as r:
+              data=json.loads(r.read().decode('utf-8'))
+          except urllib.error.HTTPError as e:
+            body=e.read().decode('utf-8','replace')[:1200]
+            raise SystemExit('Relay/provider smoke HTTP '+str(e.code)+': '+body)
+          assert data.get('ok') is True, data
+          answer=str(data.get('answer','')).strip()
+          assert answer, data
+          print('MAIN_RELAY_PROVIDER_SMOKE_PASS')
+          print('answer_length='+str(len(answer)))
           PY
-
-      - name: Switch only Main Relay URL and preserve secrets/routes
-        run: |
-          set -euo pipefail
-          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "RELAY_PUBLIC_HOST='$RELAY_PUBLIC_HOST' bash -s" <<'REMOTE'
-          set -euo pipefail
-          CFG=/opt/pocketbase/pb_hooks/.wesi-ai-relay.json
-          test -s "$CFG"
-          test -w "$CFG"
-          stamp="$(date +%Y%m%d%H%M%S)"
-          cp "$CFG" "$CFG.bak-tls-host-$stamp"
-          python3 - <<'PY'
-          import json, os
-          p='/opt/pocketbase/pb_hooks/.wesi-ai-relay.json'
-          with open(p,encoding='utf-8') as f: data=json.load(f)
-          assert isinstance(data.get('sharedSecret'),str) and len(data['sharedSecret']) >= 32
-          assert isinstance(data.get('routes'),dict)
-          before={k:data['routes'].get(k) for k in ('fast','pro','maximum')}
-          data['url']='https://' + os.environ['RELAY_PUBLIC_HOST']
-          with open(p,'w',encoding='utf-8') as f: json.dump(data,f,ensure_ascii=False,separators=(',',':'))
-          with open(p,encoding='utf-8') as f: check=json.load(f)
-          assert check['url']=='https://' + os.environ['RELAY_PUBLIC_HOST']
-          assert {k:check['routes'].get(k) for k in ('fast','pro','maximum')} == before
-          assert check['sharedSecret']==data['sharedSecret']
-          print('MAIN_RELAY_CONFIG_URL_SWITCHED_WITH_SECRETS_PRESERVED')
-          PY
-          chmod 0600 "$CFG"
-          curl -fsS --max-time 20 "https://$RELAY_PUBLIC_HOST/health" >/tmp/wesi-ai-relay-health.json
-          python3 - <<'PY'
-          import json
-          d=json.load(open('/tmp/wesi-ai-relay-health.json',encoding='utf-8'))
-          assert d.get('ok') is True and d.get('ready') is True, d
-          print('MAIN_RELAY_CONFIG_TARGET_HEALTH_PASS')
-          PY
-          echo "backup=$CFG.bak-tls-host-$stamp"
-          REMOTE
