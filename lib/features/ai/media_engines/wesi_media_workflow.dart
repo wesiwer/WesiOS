@@ -13,6 +13,7 @@ enum WesiMediaWorkflowKind {
   imageReference,
   musicGenerate,
   musicStems,
+  videoGenerate,
   videoCompose,
   videoVoice,
   videoSfx,
@@ -78,21 +79,38 @@ class WesiMediaWorkflow {
       Platform.isWindows || Platform.isLinux || Platform.isMacOS;
 
   static WesiMediaWorkflowRequest? fromLocalRequest(
-    Map<String, dynamic> raw,
-  ) {
+    Map<String, dynamic> raw, {
+    List<String> trustedInputPaths = const <String>[],
+  }) {
     final mediaType = '${raw['mediaType'] ?? ''}'.trim().toLowerCase();
     final prompt = '${raw['prompt'] ?? ''}'.trim();
     final options = raw['options'] is Map
         ? Map<String, dynamic>.from(raw['options'] as Map)
         : <String, dynamic>{};
-    final operation = '${raw['operation'] ?? options['operation'] ?? options['workflow'] ?? ''}'
-        .trim()
-        .toLowerCase();
+    final workflow =
+        '${raw['workflow'] ?? options['workflow'] ?? ''}'.trim();
+    final operation =
+        '${raw['operation'] ?? options['operation'] ?? ''}'.trim().toLowerCase();
 
-    final kind = switch (mediaType) {
+    WesiMediaWorkflowKind? kind = switch (workflow) {
+      'imageGenerate' => WesiMediaWorkflowKind.imageGenerate,
+      'imageEdit' => WesiMediaWorkflowKind.imageEdit,
+      'imageReference' => WesiMediaWorkflowKind.imageReference,
+      'musicGenerate' => WesiMediaWorkflowKind.musicGenerate,
+      'musicStems' => WesiMediaWorkflowKind.musicStems,
+      'videoGenerate' => WesiMediaWorkflowKind.videoGenerate,
+      'videoCompose' => WesiMediaWorkflowKind.videoCompose,
+      'videoVoice' => WesiMediaWorkflowKind.videoVoice,
+      'videoSfx' => WesiMediaWorkflowKind.videoSfx,
+      'videoSubtitles' => WesiMediaWorkflowKind.videoSubtitles,
+      _ => null,
+    };
+
+    kind ??= switch (mediaType) {
       'image' => switch (operation) {
           'edit' || 'imageedit' => WesiMediaWorkflowKind.imageEdit,
-          'reference' || 'imagereference' => WesiMediaWorkflowKind.imageReference,
+          'reference' || 'imagereference' =>
+            WesiMediaWorkflowKind.imageReference,
           _ => WesiMediaWorkflowKind.imageGenerate,
         },
       'music' || 'audio' => switch (operation) {
@@ -100,23 +118,26 @@ class WesiMediaWorkflow {
           _ => WesiMediaWorkflowKind.musicGenerate,
         },
       'video' => switch (operation) {
+          'compose' || 'videocompose' => WesiMediaWorkflowKind.videoCompose,
           'voice' || 'videovoice' => WesiMediaWorkflowKind.videoVoice,
           'sfx' || 'videosfx' => WesiMediaWorkflowKind.videoSfx,
-          'subtitles' || 'videosubtitles' => WesiMediaWorkflowKind.videoSubtitles,
-          _ => WesiMediaWorkflowKind.videoCompose,
+          'subtitles' || 'videosubtitles' =>
+            WesiMediaWorkflowKind.videoSubtitles,
+          _ => WesiMediaWorkflowKind.videoGenerate,
         },
       _ => null,
     };
     if (kind == null || prompt.isEmpty) return null;
 
-    final rawInputs = raw['inputPaths'] ?? options['inputs'];
-    final inputPaths = rawInputs is List
-        ? rawInputs
-            .whereType<String>()
-            .map((item) => item.trim())
-            .where((item) => item.isNotEmpty)
-            .toList(growable: false)
-        : const <String>[];
+    // Filesystem paths returned by a model/server response are never trusted.
+    // Input-based workflows receive paths only from the local attachment
+    // stager, which owns and verifies those files before engine execution.
+    final inputPaths = trustedInputPaths
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+    options.remove('inputs');
+    options.remove('inputPaths');
 
     return WesiMediaWorkflowRequest(
       kind: kind,
@@ -127,9 +148,13 @@ class WesiMediaWorkflow {
   }
 
   static Future<WesiMediaWorkflowResult> runLocalRequest(
-    Map<String, dynamic> raw,
-  ) async {
-    final request = fromLocalRequest(raw);
+    Map<String, dynamic> raw, {
+    List<String> trustedInputPaths = const <String>[],
+  }) async {
+    final request = fromLocalRequest(
+      raw,
+      trustedInputPaths: trustedInputPaths,
+    );
     if (request == null) {
       return const WesiMediaWorkflowResult(
         ok: false,
@@ -151,11 +176,17 @@ class WesiMediaWorkflow {
     }
     final prompt = request.prompt.trim();
     if (prompt.isEmpty || prompt.length > maxPromptChars) {
-      return const WesiMediaWorkflowResult(ok: false, code: 'WAI_MEDIA_REQUEST_INVALID');
+      return const WesiMediaWorkflowResult(
+        ok: false,
+        code: 'WAI_MEDIA_REQUEST_INVALID',
+      );
     }
     if (request.inputPaths.length > maxInputs ||
         (request.requiresInput && request.inputPaths.isEmpty)) {
-      return const WesiMediaWorkflowResult(ok: false, code: 'WAI_MEDIA_INPUT_INVALID');
+      return const WesiMediaWorkflowResult(
+        ok: false,
+        code: 'WAI_MEDIA_INPUT_INVALID',
+      );
     }
 
     final verifiedInputs = <String>[];
@@ -163,16 +194,25 @@ class WesiMediaWorkflow {
     for (final rawPath in request.inputPaths) {
       final file = File(rawPath);
       if (!file.isAbsolute || !await file.exists()) {
-        return const WesiMediaWorkflowResult(ok: false, code: 'WAI_MEDIA_INPUT_INVALID');
+        return const WesiMediaWorkflowResult(
+          ok: false,
+          code: 'WAI_MEDIA_INPUT_INVALID',
+        );
       }
       final resolved = await file.resolveSymbolicLinks();
       final resolvedFile = File(resolved);
       if (!await resolvedFile.exists()) {
-        return const WesiMediaWorkflowResult(ok: false, code: 'WAI_MEDIA_INPUT_INVALID');
+        return const WesiMediaWorkflowResult(
+          ok: false,
+          code: 'WAI_MEDIA_INPUT_INVALID',
+        );
       }
       totalBytes += await resolvedFile.length();
       if (totalBytes > maxInputBytes) {
-        return const WesiMediaWorkflowResult(ok: false, code: 'WAI_MEDIA_INPUT_TOO_LARGE');
+        return const WesiMediaWorkflowResult(
+          ok: false,
+          code: 'WAI_MEDIA_INPUT_TOO_LARGE',
+        );
       }
       verifiedInputs.add(resolved);
     }
@@ -191,7 +231,10 @@ class WesiMediaWorkflow {
     }
     final artifact = File(result.outputPath!);
     if (!await artifact.exists() || await artifact.length() <= 0) {
-      return const WesiMediaWorkflowResult(ok: false, code: 'WAI_MEDIA_ARTIFACT_INVALID');
+      return const WesiMediaWorkflowResult(
+        ok: false,
+        code: 'WAI_MEDIA_ARTIFACT_INVALID',
+      );
     }
     return WesiMediaWorkflowResult(
       ok: true,

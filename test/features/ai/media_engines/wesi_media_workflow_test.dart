@@ -38,18 +38,22 @@ void main() {
     expect(result.code, 'WAI_MEDIA_REQUEST_INVALID');
   });
 
-  test('normalizes server image edit request', () {
-    final request = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
-      'mediaType': 'image',
-      'prompt': 'remove background',
-      'options': <String, dynamic>{
-        'operation': 'edit',
-        'inputs': <String>['/tmp/input.png'],
+  test('server filesystem paths are ignored unless locally trusted', () {
+    final request = WesiMediaWorkflow.fromLocalRequest(
+      <String, dynamic>{
+        'mediaType': 'image',
+        'prompt': 'remove background',
+        'options': <String, dynamic>{
+          'operation': 'edit',
+          'inputs': <String>['/untrusted/model/path.png'],
+        },
       },
-    });
+      trustedInputPaths: const <String>['/trusted/staged/input.png'],
+    );
     expect(request, isNotNull);
     expect(request!.kind, WesiMediaWorkflowKind.imageEdit);
-    expect(request.inputPaths, <String>['/tmp/input.png']);
+    expect(request.inputPaths, const <String>['/trusted/staged/input.png']);
+    expect(request.options.containsKey('inputs'), isFalse);
   });
 
   test('normalizes stems and subtitle workflows', () {
@@ -65,6 +69,23 @@ void main() {
     });
     expect(stems?.kind, WesiMediaWorkflowKind.musicStems);
     expect(subtitles?.kind, WesiMediaWorkflowKind.videoSubtitles);
+  });
+
+  test('video generation is distinct from video composition', () {
+    final generated = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
+      'mediaType': 'video',
+      'prompt': 'a cinematic launch scene',
+      'options': <String, dynamic>{'workflow': 'videoGenerate'},
+    });
+    final composed = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
+      'mediaType': 'video',
+      'prompt': 'compose these clips',
+      'options': <String, dynamic>{'workflow': 'videoCompose'},
+    });
+    expect(generated?.kind, WesiMediaWorkflowKind.videoGenerate);
+    expect(generated?.requiresInput, isFalse);
+    expect(composed?.kind, WesiMediaWorkflowKind.videoCompose);
+    expect(composed?.requiresInput, isTrue);
   });
 
   test('rejects unsupported server media type', () {
