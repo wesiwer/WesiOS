@@ -215,6 +215,15 @@ class WesiAiApi {
     WesiAiAttachment.validateBatch(attachments);
     final auth = _auth();
     final base = Uri.parse(SyncEndpoint.url);
+    var activeOrganizationId = OrganizationContext.currentOrganizationId;
+    try {
+      activeOrganizationId =
+          (await OrganizationContext.currentOrganization()).id;
+    } catch (_) {
+      // The server still enforces organization access. Keep Wesi AI usable
+      // during incomplete local bootstrap, but always prefer the initialized
+      // organization selected by the user when it is available.
+    }
 
     try {
       final transportAttachments = await _prepareTransportAttachments(
@@ -233,7 +242,7 @@ class WesiAiApi {
         if (taskState.isNotEmpty) 'taskState': taskState,
         'conversationId': conversation.id,
         if (conversation.projectId != null) 'projectId': conversation.projectId,
-        'activeOrganizationId': OrganizationContext.currentOrganizationId,
+        'activeOrganizationId': activeOrganizationId,
         'memory': memory.toJson(),
         'messages': transportHistory(history),
         if (transportAttachments.isNotEmpty)

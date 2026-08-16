@@ -1,3 +1,3 @@
-triggered_at=2026-08-14T20:48:00Z
-purpose=full-wesi-ai-production-deploy
-attempt=8
+triggered_at=2026-08-16T22:46:00Z
+purpose=wesi-ai-finance-scope-and-active-org-fix
+attempt=9

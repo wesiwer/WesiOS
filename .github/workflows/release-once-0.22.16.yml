@@ -1,0 +1,27 @@
+name: Release WesiOS 0.22.16 Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-once-0.22.16.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch signed public WesiOS release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Wesi AI: исправлены формулы без лишних $, выбор активной организации и finance_summary без ложных нулей' \
+            -f deploy_to_server=true
+          echo 'WESIOS_RELEASE_0_22_16_DISPATCHED'
