@@ -91,13 +91,15 @@ class WesiOSApp extends StatelessWidget {
                               if (isDesktop)
                                 OverlayEntry(
                                     builder: (_) => const EngineDownloadOverlay()),
-                              OverlayEntry(builder: (_) => const ShieldOverlay()),
-                              OverlayEntry(builder: (_) => const UpdateErrorHost()),
+                              // Answer-ready UI is intentionally below Shield:
+                              // no AI preview may appear over a locked WesiOS.
                               OverlayEntry(
                                 builder: (_) => WesiAiAnswerReadyHost(
                                   navigatorKey: wesiNavigatorKey,
                                 ),
                               ),
+                              OverlayEntry(builder: (_) => const ShieldOverlay()),
+                              OverlayEntry(builder: (_) => const UpdateErrorHost()),
                               if (isDesktop)
                                 OverlayEntry(
                                   builder: (_) => const Positioned(
