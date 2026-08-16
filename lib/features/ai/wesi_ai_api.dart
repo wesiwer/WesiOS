@@ -59,6 +59,10 @@ class WesiAiRequestCancellation {
 
 class WesiAiApi {
   static const int maxTransportHistoryMessages = 80;
+  static const String streamBaseUrl = String.fromEnvironment(
+    'WESI_AI_STREAM_BASE_URL',
+    defaultValue: 'https://wesi-ai-178-236-247-194.nip.io',
+  );
 
   static final HttpClient _http = HttpClient()
     ..connectionTimeout = const Duration(seconds: 12)
@@ -156,15 +160,22 @@ class WesiAiApi {
       };
 
       if (conversation.persona != WesiAiPersona.lobby) {
-        final streamed = await _sendStream(
-          base: base,
-          auth: auth,
-          body: body,
-          onDelta: onDelta,
-          onActivity: onActivity,
-          cancellation: cancellation,
-        );
-        if (streamed != null) return streamed;
+        try {
+          final streamed = await _sendStream(
+            base: base,
+            auth: auth,
+            body: body,
+            onDelta: onDelta,
+            onActivity: onActivity,
+            cancellation: cancellation,
+          );
+          if (streamed != null) return streamed;
+        } on SocketException {
+          // Streaming is an optimization. If its dedicated edge is unavailable,
+          // continue through the ordinary authenticated Main chat endpoint.
+        } on HttpException {
+        } on TimeoutException {
+        }
       }
 
       final request = await _http.postUrl(uri);
@@ -208,7 +219,11 @@ class WesiAiApi {
       throw const WesiAiApiException(
           'WAI_CANCELLED', 'Запрос Wesi AI остановлен');
     }
-    final uri = base.replace(path: '/api/wesi/ai/chat/stream');
+    final configuredStreamBase = streamBaseUrl.trim();
+    final streamBase = configuredStreamBase.isEmpty
+        ? base
+        : Uri.parse(configuredStreamBase);
+    final uri = streamBase.replace(path: '/api/wesi/ai/chat/stream');
     final request = await _http.postUrl(uri);
     _applyAuth(request, auth);
     request.headers.contentType = ContentType.json;
