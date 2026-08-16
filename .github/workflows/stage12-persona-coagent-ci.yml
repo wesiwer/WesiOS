@@ -1,0 +1,47 @@
+name: Stage 12 Persona Co-Agent CI
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage12-final-20260816
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stream-gateway:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: server/wesi-ai-stream
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Syntax check Co-Agent protocol
+        run: node --check persona_coagent.mjs
+      - name: Syntax check Main Co-Agent policy
+        run: node --check ../pb_hooks/wesi_ai_coagent_policy.js
+      - name: Syntax check Main stream hook
+        run: node --check ../pb_hooks/wesi_ai_stream.pb.js
+      - name: Wesi AI stream gateway tests
+        run: npm test
+
+  flutter-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+      - name: Flutter dependencies
+        run: flutter pub get
+      - name: Flutter analyze
+        run: flutter analyze --no-fatal-infos
+      - name: Co-Agent Thinking timeline tests
+        run: flutter test test/wesi_ai_coagent_activity_test.dart
