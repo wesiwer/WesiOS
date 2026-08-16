@@ -29,6 +29,18 @@ void main() => print('ok');
     expect(plain, isNot(contains('**')));
   });
 
+  test('display markdown normalizes inline latex without touching currency',
+      () {
+    const source =
+        r'Счёт: $3 + 4 = 7$. Итог: $10 + 4 = \mathbf{14}$. Цена: $100';
+    final display = WesiAiRichParser.displayMarkdown(source);
+    expect(display, contains('3 + 4 = 7'));
+    expect(display, contains('10 + 4 = 14'));
+    expect(display, contains(r'$100'));
+    expect(display, isNot(contains(r'$3 + 4 = 7$')));
+    expect(display, isNot(contains(r'\mathbf')));
+  });
+
   test('activity model preserves per tool diff and source', () {
     final event = WesiAiActivityEvent.fromJson({
       'id': 'tool-1',

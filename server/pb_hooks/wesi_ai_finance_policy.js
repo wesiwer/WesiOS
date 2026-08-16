@@ -16,13 +16,16 @@ function hasModule(ctx) {
 }
 
 function access(e, ctx) {
+  // PocketBase requires a positive maxRecords value. Never collapse the
+  // organization/grant scope to an empty set merely because a zero-limit
+  // backend read failed.
   let orgRows = [];
   let grantRows = [];
   try {
-    orgRows = e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll='organizations' && deleted=false", "id", 0, 0, {owner: ctx.ownerId});
+    orgRows = e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll='organizations' && deleted=false", "id", 1000, 0, {owner: ctx.ownerId});
   } catch (_) {}
   try {
-    grantRows = e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll='organization_grants' && deleted=false", "id", 0, 0, {owner: ctx.ownerId});
+    grantRows = e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll='organization_grants' && deleted=false", "id", 1000, 0, {owner: ctx.ownerId});
   } catch (_) {}
 
   const orgs = {};

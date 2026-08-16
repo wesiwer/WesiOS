@@ -124,10 +124,45 @@ class WesiAiRichParser {
     return blocks;
   }
 
-  static String displayMarkdown(String markdown) => markdown.replaceAllMapped(
-        RegExp(r'^\s{0,3}#{1,6}\s+(.+)$', multiLine: true),
-        (match) => '**${match.group(1)?.trim() ?? ''}**',
+  static String displayMarkdown(String markdown) {
+    var normalized = markdown
+        .replaceAllMapped(
+          RegExp(r'\$\$([\s\S]*?)\$\$'),
+          (match) => _displayInlineMath(match.group(1) ?? ''),
+        )
+        .replaceAllMapped(
+          RegExp(r'(?<!\$)\$([^$\n]+)\$(?!\$)'),
+          (match) => _displayInlineMath(match.group(1) ?? ''),
+        );
+    return normalized.replaceAllMapped(
+      RegExp(r'^\s{0,3}#{1,6}\s+(.+)$', multiLine: true),
+      (match) => '**${match.group(1)?.trim() ?? ''}**',
+    );
+  }
+
+  static String _displayInlineMath(String source) {
+    var value = source.trim();
+    for (var i = 0; i < 4; i++) {
+      final next = value.replaceAllMapped(
+        RegExp(r'\\(?:mathbf|mathrm|text|operatorname)\{([^{}]*)\}'),
+        (match) => match.group(1) ?? '',
       );
+      if (next == value) break;
+      value = next;
+    }
+    return value
+        .replaceAll(r'\times', '×')
+        .replaceAll(r'\cdot', '·')
+        .replaceAll(r'\div', '÷')
+        .replaceAll(r'\pm', '±')
+        .replaceAll(r'\le', '≤')
+        .replaceAll(r'\ge', '≥')
+        .replaceAll(r'\neq', '≠')
+        .replaceAll(r'\,', ' ')
+        .replaceAll(r'\ ', ' ')
+        .replaceAll(RegExp(r'\s{2,}'), ' ')
+        .trim();
+  }
 
   static bool hasClarification(String markdown) {
     for (final block in parse(markdown)) {
@@ -140,7 +175,7 @@ class WesiAiRichParser {
   }
 
   static String plainText(String markdown) {
-    return markdown
+    return displayMarkdown(markdown)
         .replaceAll(RegExp(r'```[^\n]*\n?'), '')
         .replaceAll('```', '')
         .replaceAll(RegExp(r'^>\s?', multiLine: true), '')
