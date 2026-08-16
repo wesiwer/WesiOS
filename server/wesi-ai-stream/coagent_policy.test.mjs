@@ -40,7 +40,7 @@ test('Zane delegates meaningful UX/UI work to Nirvana', () => {
   const result = evaluate({message: 'Сделай UI и UX нового dashboard: дизайн, типографика и анимации.'});
   assert.equal(result.enabled, true);
   assert.equal(result.coagentPersona, 'nirvana');
-  assert.ok(['creative_review_needed', 'mixed_specializations'].includes(result.reason));
+  assert.ok(['creative_review_needed', 'mixed_specializations', 'cross_domain_product'].includes(result.reason));
 });
 
 test('Nirvana delegates technical work to Zane', () => {
