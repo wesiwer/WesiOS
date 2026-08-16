@@ -93,9 +93,11 @@ jobs:
           scp "${SSH[@]}" providers.b64 "$RELAY_USER@$RELAY_HOST:/tmp/wesi-ai-providers.b64"
           ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
           test -f /tmp/wesi-ai-providers.b64
+          tmp=/tmp/wesi-ai-providers.env.new
           umask 077
-          : > /etc/wesi-ai-providers.env
+          : > "$tmp"
           while IFS= read -r line; do
             [ -n "$line" ] || continue
             key="${line%%=*}"
@@ -107,13 +109,15 @@ jobs:
             esac
             decoded="$(printf '%s' "$value" | base64 -d)"
             [ -n "$decoded" ] || continue
-            printf '%s=%s\n' "$key" "$decoded" >> /etc/wesi-ai-providers.env
+            printf '%s=%s\n' "$key" "$decoded" >> "$tmp"
           done < /tmp/wesi-ai-providers.b64
           rm -f /tmp/wesi-ai-providers.b64
-          if id -u wesi-relay >/dev/null 2>&1; then chown root:wesi-relay /etc/wesi-ai-providers.env; else chown root:root /etc/wesi-ai-providers.env; fi
-          chmod 640 /etc/wesi-ai-providers.env
-          systemctl restart wesi-ai-relay
-          systemctl is-active --quiet wesi-ai-relay
+          group=root
+          if getent group wesi-relay >/dev/null 2>&1; then group=wesi-relay; fi
+          "${SUDO[@]}" install -o root -g "$group" -m 0640 "$tmp" /etc/wesi-ai-providers.env
+          rm -f "$tmp"
+          "${SUDO[@]}" systemctl restart wesi-ai-relay
+          "${SUDO[@]}" systemctl is-active --quiet wesi-ai-relay
           REMOTE
           rm -f providers.b64
 
