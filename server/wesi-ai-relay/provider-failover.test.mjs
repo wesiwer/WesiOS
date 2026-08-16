@@ -7,6 +7,7 @@ import {
   resetProviderFailoverState,
   runProviderFailover,
 } from './provider-failover.mjs';
+import {buildFastCandidates, buildFinalizerCandidates} from './google.mjs';
 
 test('Gemini key slots deduplicate credentials without exposing them as ids', () => {
   const slots = geminiKeySlots('key-a', {
@@ -28,6 +29,32 @@ test('Fast cannot route through Pro or Maximum candidates', () => {
 test('Pro cannot route through Maximum candidates', () => {
   assert.equal(assertCandidateAllowed('pro', {tier: 'pro'}), true);
   assert.throws(() => assertCandidateAllowed('pro', {tier: 'ultra'}), /WAI_PROVIDER_TIER_VIOLATION/);
+});
+
+test('actual Fast pool contains only Fast candidates and never dynamic openrouter/free', () => {
+  const candidates = buildFastCandidates('g-primary', {
+    GEMINI_API_KEY_2: 'g-second',
+    GROQ_API_KEY: 'groq',
+    MISTRAL_API_KEY: 'mistral',
+    OPENROUTER_API_KEY: 'openrouter',
+  });
+  assert.ok(candidates.length >= 4);
+  assert.ok(candidates.every((item) => item.tier === 'fast'));
+  assert.equal(candidates.some((item) => item.model === 'openrouter/free'), false);
+  assert.equal(candidates.filter((item) => item.provider === 'google').length, 2);
+  assert.ok(candidates.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.5-flash-lite'));
+});
+
+test('Pro and Maximum finalizer pools stay inside their declared tier', () => {
+  const secrets = {GEMINI_API_KEY_2: 'g-second'};
+  const pro = buildFinalizerCandidates('pro', 'g-primary', secrets);
+  const maximum = buildFinalizerCandidates('ultra', 'g-primary', secrets);
+  assert.ok(pro.length >= 4);
+  assert.ok(maximum.length >= 4);
+  assert.ok(pro.every((item) => item.tier === 'pro'));
+  assert.ok(maximum.every((item) => item.tier === 'ultra'));
+  assert.ok(pro.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.5-flash'));
+  assert.ok(maximum.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.5-flash'));
 });
 
 test('429 moves to the next same-tier candidate and cools the exhausted one', async () => {
@@ -118,5 +145,28 @@ test('partial streaming result never switches provider after bytes were emitted'
     },
   });
   assert.equal(result.ok, false);
+  assert.equal(calls, 1);
+});
+
+test('user cancellation aborts the pool instead of trying another provider', async () => {
+  resetProviderFailoverState();
+  const candidates = [
+    {id: 'a', provider: 'google', model: 'm1', tier: 'fast'},
+    {id: 'b', provider: 'mistral', model: 'm2', tier: 'fast'},
+  ];
+  let calls = 0;
+  await assert.rejects(
+    runProviderFailover({
+      tier: 'fast',
+      candidates,
+      invoke: async () => {
+        calls += 1;
+        const error = new Error('cancelled');
+        error.name = 'AbortError';
+        throw error;
+      },
+    }),
+    (error) => error?.name === 'AbortError',
+  );
   assert.equal(calls, 1);
 });
