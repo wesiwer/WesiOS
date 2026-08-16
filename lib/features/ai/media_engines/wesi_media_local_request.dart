@@ -39,6 +39,16 @@ class WesiMediaLocalRequestSanitizer {
     'videoSubtitles': (1, 1),
   };
 
+  static const Set<String> _forbiddenPathOptionKeys = <String>{
+    'input',
+    'inputs',
+    'inputPath',
+    'inputPaths',
+    'path',
+    'paths',
+    'outputPath',
+  };
+
   const WesiMediaLocalRequestSanitizer._();
 
   static Map<String, dynamic>? sanitize(Map<String, dynamic> raw) {
@@ -56,13 +66,15 @@ class WesiMediaLocalRequestSanitizer {
       for (final entry in rawOptions.entries.take(16)) {
         final key = '${entry.key}'.trim();
         if (!RegExp(r'^[A-Za-z][A-Za-z0-9]{0,39}$').hasMatch(key)) continue;
+        if (_forbiddenPathOptionKeys.contains(key)) continue;
         final value = entry.value;
         if (value is String && value.length <= 80) options[key] = value;
         if (value is num || value is bool) options[key] = value;
       }
     }
 
-    final explicitWorkflow = '${raw['workflow'] ?? options['workflow'] ?? ''}'.trim();
+    final explicitWorkflow =
+        '${raw['workflow'] ?? options['workflow'] ?? ''}'.trim();
     final workflow = explicitWorkflow.isNotEmpty
         ? explicitWorkflow
         : switch (mediaType) {
@@ -82,7 +94,8 @@ class WesiMediaLocalRequestSanitizer {
     if (indexes.length < bounds.$1 || indexes.length > bounds.$2) return null;
 
     final rawTitle = '${raw['title'] ?? ''}'.trim();
-    final title = rawTitle.length <= 240 ? rawTitle : rawTitle.substring(0, 240);
+    final title =
+        rawTitle.length <= 240 ? rawTitle : rawTitle.substring(0, 240);
     options['workflow'] = workflow;
 
     return <String, dynamic>{
