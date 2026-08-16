@@ -37,9 +37,11 @@ class WesiMediaWorkflowRequest {
   String get mediaType => switch (kind) {
         WesiMediaWorkflowKind.imageGenerate ||
         WesiMediaWorkflowKind.imageEdit ||
-        WesiMediaWorkflowKind.imageReference => 'image',
+        WesiMediaWorkflowKind.imageReference =>
+          'image',
         WesiMediaWorkflowKind.musicGenerate ||
-        WesiMediaWorkflowKind.musicStems => 'music',
+        WesiMediaWorkflowKind.musicStems =>
+          'music',
         _ => 'video',
       };
 
@@ -50,7 +52,8 @@ class WesiMediaWorkflowRequest {
         WesiMediaWorkflowKind.videoCompose ||
         WesiMediaWorkflowKind.videoVoice ||
         WesiMediaWorkflowKind.videoSfx ||
-        WesiMediaWorkflowKind.videoSubtitles => true,
+        WesiMediaWorkflowKind.videoSubtitles =>
+          true,
         _ => false,
       };
 }
@@ -92,10 +95,10 @@ class WesiMediaWorkflow {
     final options = raw['options'] is Map
         ? Map<String, dynamic>.from(raw['options'] as Map)
         : <String, dynamic>{};
-    final workflow =
-        '${raw['workflow'] ?? options['workflow'] ?? ''}'.trim();
-    final operation =
-        '${raw['operation'] ?? options['operation'] ?? ''}'.trim().toLowerCase();
+    final workflow = '${raw['workflow'] ?? options['workflow'] ?? ''}'.trim();
+    final operation = '${raw['operation'] ?? options['operation'] ?? ''}'
+        .trim()
+        .toLowerCase();
 
     WesiMediaWorkflowKind? kind = switch (workflow) {
       'imageGenerate' => WesiMediaWorkflowKind.imageGenerate,
@@ -114,7 +117,8 @@ class WesiMediaWorkflow {
     kind ??= switch (mediaType) {
       'image' => switch (operation) {
           'edit' || 'imageedit' => WesiMediaWorkflowKind.imageEdit,
-          'reference' || 'imagereference' =>
+          'reference' ||
+          'imagereference' =>
             WesiMediaWorkflowKind.imageReference,
           _ => WesiMediaWorkflowKind.imageGenerate,
         },
@@ -126,7 +130,8 @@ class WesiMediaWorkflow {
           'compose' || 'videocompose' => WesiMediaWorkflowKind.videoCompose,
           'voice' || 'videovoice' => WesiMediaWorkflowKind.videoVoice,
           'sfx' || 'videosfx' => WesiMediaWorkflowKind.videoSfx,
-          'subtitles' || 'videosubtitles' =>
+          'subtitles' ||
+          'videosubtitles' =>
             WesiMediaWorkflowKind.videoSubtitles,
           _ => WesiMediaWorkflowKind.videoGenerate,
         },

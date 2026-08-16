@@ -25,7 +25,8 @@ void main() {
   });
 
   test('rejects traversal, absolute and drive-qualified paths', () async {
-    final root = await Directory.systemTemp.createTemp('wesi_engine_guard_bad_');
+    final root =
+        await Directory.systemTemp.createTemp('wesi_engine_guard_bad_');
     try {
       expect(
         await WesiMediaEnginePathGuard.resolveOutput(root, '../secret.bin'),
@@ -44,9 +45,11 @@ void main() {
     }
   });
 
-  test('rejects an in-root symlink that resolves outside engine root', () async {
+  test('rejects an in-root symlink that resolves outside engine root',
+      () async {
     if (Platform.isWindows) return;
-    final parent = await Directory.systemTemp.createTemp('wesi_engine_symlink_');
+    final parent =
+        await Directory.systemTemp.createTemp('wesi_engine_symlink_');
     final root = Directory('${parent.path}${Platform.pathSeparator}engine');
     final outside = File('${parent.path}${Platform.pathSeparator}outside.bin');
     try {

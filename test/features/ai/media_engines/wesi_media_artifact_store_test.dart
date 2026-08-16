@@ -9,7 +9,8 @@ void main() {
     final temp = await Directory.systemTemp.createTemp('wesi_artifact_store_');
     final sourceDir = Directory('${temp.path}${Platform.pathSeparator}engine');
     final storeDir = Directory('${temp.path}${Platform.pathSeparator}store');
-    final source = File('${sourceDir.path}${Platform.pathSeparator}raw-output.png');
+    final source =
+        File('${sourceDir.path}${Platform.pathSeparator}raw-output.png');
     const bytes = <int>[1, 3, 3, 7, 9, 11];
     try {
       await sourceDir.create(recursive: true);

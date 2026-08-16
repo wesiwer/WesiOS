@@ -21,8 +21,8 @@ class WesiMediaEnginePathGuard {
       return null;
     }
     final segments = relative.split('/');
-    if (segments.any((segment) =>
-        segment.isEmpty || segment == '.' || segment == '..')) {
+    if (segments.any(
+        (segment) => segment.isEmpty || segment == '.' || segment == '..')) {
       return null;
     }
 

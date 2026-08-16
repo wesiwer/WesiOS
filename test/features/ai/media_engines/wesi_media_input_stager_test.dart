@@ -51,7 +51,8 @@ void main() {
   });
 
   test('stager copies selected memory attachment into owned temp', () async {
-    final root = await Directory.systemTemp.createTemp('wesi_media_stage_test_');
+    final root =
+        await Directory.systemTemp.createTemp('wesi_media_stage_test_');
     try {
       final first = WesiAiAttachment.fromBytes(
         name: 'first.png',
@@ -83,7 +84,8 @@ void main() {
   });
 
   test('path-backed source is copied instead of passed to engine', () async {
-    final root = await Directory.systemTemp.createTemp('wesi_media_stage_path_');
+    final root =
+        await Directory.systemTemp.createTemp('wesi_media_stage_path_');
     final source = File('${root.path}${Platform.pathSeparator}source.mp4');
     await source.writeAsBytes(<int>[8, 9, 10, 11], flush: true);
     try {
@@ -105,14 +107,16 @@ void main() {
         rootDirectory: root,
       );
       expect(staged.paths.single, isNot(source.absolute.path));
-      expect(await File(staged.paths.single).readAsBytes(), <int>[8, 9, 10, 11]);
+      expect(
+          await File(staged.paths.single).readAsBytes(), <int>[8, 9, 10, 11]);
       await staged.cleanup();
     } finally {
       if (await root.exists()) await root.delete(recursive: true);
     }
   });
 
-  test('persisted input workflow fails when turn attachments are gone', () async {
+  test('persisted input workflow fails when turn attachments are gone',
+      () async {
     final result = await WesiMediaTurnExecutor.run(
       <String, dynamic>{
         'mediaType': 'image',

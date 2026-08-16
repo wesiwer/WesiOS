@@ -6,8 +6,10 @@ void main() {
     expect(
       () => WesiMediaArchiveGuard.validateEntries(
         const [
-          WesiMediaArchiveEntry(name: 'runtime/launcher.bat', size: 1024, isSymbolicLink: false),
-          WesiMediaArchiveEntry(name: 'models/model.bin', size: 4096, isSymbolicLink: false),
+          WesiMediaArchiveEntry(
+              name: 'runtime/launcher.bat', size: 1024, isSymbolicLink: false),
+          WesiMediaArchiveEntry(
+              name: 'models/model.bin', size: 4096, isSymbolicLink: false),
         ],
         compressedSizeBytes: 1024,
       ),
@@ -18,7 +20,10 @@ void main() {
   test('rejects path traversal', () {
     expect(
       () => WesiMediaArchiveGuard.validateEntries(
-        const [WesiMediaArchiveEntry(name: '../escape.bin', size: 1, isSymbolicLink: false)],
+        const [
+          WesiMediaArchiveEntry(
+              name: '../escape.bin', size: 1, isSymbolicLink: false)
+        ],
         compressedSizeBytes: 1,
       ),
       throwsA(isA<FormatException>()),
@@ -28,7 +33,10 @@ void main() {
   test('rejects absolute Windows path', () {
     expect(
       () => WesiMediaArchiveGuard.validateEntries(
-        const [WesiMediaArchiveEntry(name: r'C:\\escape.bin', size: 1, isSymbolicLink: false)],
+        const [
+          WesiMediaArchiveEntry(
+              name: r'C:\\escape.bin', size: 1, isSymbolicLink: false)
+        ],
         compressedSizeBytes: 1,
       ),
       throwsA(isA<FormatException>()),
@@ -38,7 +46,10 @@ void main() {
   test('rejects symbolic links', () {
     expect(
       () => WesiMediaArchiveGuard.validateEntries(
-        const [WesiMediaArchiveEntry(name: 'runtime/link', size: 0, isSymbolicLink: true)],
+        const [
+          WesiMediaArchiveEntry(
+              name: 'runtime/link', size: 0, isSymbolicLink: true)
+        ],
         compressedSizeBytes: 1,
       ),
       throwsA(isA<FormatException>()),
@@ -48,7 +59,10 @@ void main() {
   test('rejects expansion bomb metadata', () {
     expect(
       () => WesiMediaArchiveGuard.validateEntries(
-        const [WesiMediaArchiveEntry(name: 'models/huge.bin', size: 129000, isSymbolicLink: false)],
+        const [
+          WesiMediaArchiveEntry(
+              name: 'models/huge.bin', size: 129000, isSymbolicLink: false)
+        ],
         compressedSizeBytes: 1000,
       ),
       throwsA(isA<FormatException>()),

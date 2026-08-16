@@ -131,7 +131,8 @@ class WesiMediaInputStager {
         } finally {
           await sink.close();
         }
-        if (!await target.exists() || await target.length() != attachment.byteSize) {
+        if (!await target.exists() ||
+            await target.length() != attachment.byteSize) {
           throw const WesiMediaStagingException(
             'WAI_MEDIA_INPUT_CHANGED',
           );

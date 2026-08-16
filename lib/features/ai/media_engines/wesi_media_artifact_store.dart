@@ -110,8 +110,7 @@ class WesiMediaArtifactStore {
       );
       await typeRoot.create(recursive: true);
 
-      final opaque =
-          '${DateTime.now().microsecondsSinceEpoch}_'
+      final opaque = '${DateTime.now().microsecondsSinceEpoch}_'
           '${_random.nextInt(0x7fffffff).toRadixString(16)}';
       final finalFile = File(
         '${typeRoot.path}${Platform.pathSeparator}$opaque.$extension',
