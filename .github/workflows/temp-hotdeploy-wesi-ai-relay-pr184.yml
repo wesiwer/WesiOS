@@ -1,4 +1,4 @@
-name: Temporary inspect Wesi AI Relay TLS
+name: Temporary switch Main to valid Wesi AI Relay TLS host
 
 on:
   push:
@@ -11,47 +11,74 @@ permissions:
   contents: read
 
 jobs:
-  inspect:
+  switch:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
-      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+      RELAY_PUBLIC_HOST: wesi-ai-178-236-247-194.nip.io
     steps:
-      - name: Prepare Relay SSH
+      - name: Prepare Main SSH
         env:
-          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "${RELAY_HOST:-}" && test -n "${RELAY_USER:-}" && test -n "${KEY:-}"
+          test -n "${MAIN_HOST:-}" && test -n "${MAIN_USER:-}" && test -n "${KEY:-}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/relay_key
-          chmod 600 ~/.ssh/relay_key
-          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null; fi
-          chmod 600 ~/.ssh/relay_known_hosts
+          printf '%s\n' "$KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Inspect public TLS names and nginx vhosts
+      - name: Verify valid Relay HTTPS from Main
         run: |
           set -euo pipefail
-          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" 'bash -s' <<'REMOTE'
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "curl -fsS --max-time 20 https://$RELAY_PUBLIC_HOST/health" > /tmp/health.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/health.json',encoding='utf-8'))
+          assert d.get('ok') is True and d.get('ready') is True, d
+          assert d.get('routing') == ['fast','pro','ultra'], d
+          assert d.get('streaming') is True, d
+          print('MAIN_TO_VALID_RELAY_TLS_PASS')
+          PY
+
+      - name: Switch only Main Relay URL and preserve secrets/routes
+        run: |
           set -euo pipefail
-          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
-          echo '--- NGINX PUBLIC SERVER NAMES ---'
-          "${SUDO[@]}" nginx -T 2>/dev/null | sed -n -E 's/^[[:space:]]*server_name[[:space:]]+([^;]+);.*/server_name \1/p' | sort -u
-          echo '--- CERTIFICATE SANS ---'
-          found=0
-          for cert in /etc/letsencrypt/live/*/fullchain.pem; do
-            [ -f "$cert" ] || continue
-            found=1
-            name="$(basename "$(dirname "$cert")")"
-            echo "certificate $name"
-            "${SUDO[@]}" openssl x509 -in "$cert" -noout -subject -ext subjectAltName 2>/dev/null | sed -E 's/DNS:/DNS:/g'
-          done
-          if [ "$found" -eq 0 ]; then
-            echo 'no-letsencrypt-certificates'
-          fi
-          echo '--- LOCAL RELAY ---'
-          curl -fsS --max-time 5 http://127.0.0.1:8787/health
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "RELAY_PUBLIC_HOST='$RELAY_PUBLIC_HOST' bash -s" <<'REMOTE'
+          set -euo pipefail
+          CFG=/opt/pocketbase/pb_hooks/.wesi-ai-relay.json
+          test -s "$CFG"
+          test -w "$CFG"
+          stamp="$(date +%Y%m%d%H%M%S)"
+          cp "$CFG" "$CFG.bak-tls-host-$stamp"
+          python3 - <<'PY'
+          import json, os
+          p='/opt/pocketbase/pb_hooks/.wesi-ai-relay.json'
+          with open(p,encoding='utf-8') as f: data=json.load(f)
+          assert isinstance(data.get('sharedSecret'),str) and len(data['sharedSecret']) >= 32
+          assert isinstance(data.get('routes'),dict)
+          before={k:data['routes'].get(k) for k in ('fast','pro','maximum')}
+          data['url']='https://' + os.environ['RELAY_PUBLIC_HOST']
+          with open(p,'w',encoding='utf-8') as f: json.dump(data,f,ensure_ascii=False,separators=(',',':'))
+          with open(p,encoding='utf-8') as f: check=json.load(f)
+          assert check['url']=='https://' + os.environ['RELAY_PUBLIC_HOST']
+          assert {k:check['routes'].get(k) for k in ('fast','pro','maximum')} == before
+          assert check['sharedSecret']==data['sharedSecret']
+          print('MAIN_RELAY_CONFIG_URL_SWITCHED_WITH_SECRETS_PRESERVED')
+          PY
+          chmod 0600 "$CFG"
+          curl -fsS --max-time 20 "https://$RELAY_PUBLIC_HOST/health" >/tmp/wesi-ai-relay-health.json
+          python3 - <<'PY'
+          import json
+          d=json.load(open('/tmp/wesi-ai-relay-health.json',encoding='utf-8'))
+          assert d.get('ok') is True and d.get('ready') is True, d
+          print('MAIN_RELAY_CONFIG_TARGET_HEALTH_PASS')
+          PY
+          echo "backup=$CFG.bak-tls-host-$stamp"
           REMOTE
