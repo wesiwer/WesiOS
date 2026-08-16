@@ -16,7 +16,6 @@ jobs:
     env:
       RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
       RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
-      PUBLIC_HOST: ai.wesi-wf.su
 
     steps:
       - name: Validate required secrets
@@ -118,17 +117,24 @@ jobs:
           REMOTE
           rm -f providers.b64
 
-      - name: Verify Relay health
+      - name: Verify Relay locally
         run: |
           set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          slots="$(grep -Ec '^GEMINI_API_KEY_[2-5]=' /etc/wesi-ai-providers.env || true)"
+          [ "$slots" -eq 4 ] || { echo "Expected 4 installed additional Gemini slots, got $slots" >&2; exit 4; }
           for attempt in 1 2 3 4 5 6; do
-            if curl -fsS --max-time 10 "https://$PUBLIC_HOST/health" > health.json; then break; fi
-            sleep 5
+            if curl -fsS --max-time 5 http://127.0.0.1:8787/health > /tmp/wesi-ai-health.json; then break; fi
+            sleep 2
           done
           python3 - <<'PY'
           import json
-          data=json.load(open('health.json',encoding='utf-8'))
+          data=json.load(open('/tmp/wesi-ai-health.json',encoding='utf-8'))
           assert data.get('ok') is True and data.get('ready') is True, data
           assert data.get('routing') == ['fast','pro','ultra'], data
-          print('Relay health PASS; Fast / Pro / Ultra routing ready.')
+          print('Relay local health PASS; 5 Gemini keys configured including primary; Fast / Pro / Ultra ready.')
           PY
+          rm -f /tmp/wesi-ai-health.json
+          REMOTE
