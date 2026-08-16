@@ -62,10 +62,6 @@ class WesiAiHandoffController extends WesiAiManagedChatController {
         preview: preview,
         completedAt: answer.createdAt,
       ),
-      // Экран вызывает dispose при уходе из /ai, но выполняющийся Future
-      // продолжает жить и сохраняет ответ. Это позволяет корректно отличить
-      // «я смотрю чат» от «я ушёл в другой модуль WesiOS».
-      chatVisible: !isDisposed,
     ));
   }
 
