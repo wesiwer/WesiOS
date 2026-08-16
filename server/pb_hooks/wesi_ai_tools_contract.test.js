@@ -31,6 +31,20 @@ function adapterFiles() {
     .map((match) => match[1]);
 }
 
+function withConnectedGithub(fn) {
+  const vault = require(path.join(HOOKS, 'wesi_ai_connector_vault.js'));
+  const originalReady = vault.ready;
+  const originalList = vault.listCredentials;
+  vault.ready = () => true;
+  vault.listCredentials = () => [{credentialId: 'audit-github', status: 'active', provider: 'github', scopes: []}];
+  try {
+    return fn();
+  } finally {
+    vault.ready = originalReady;
+    vault.listCredentials = originalList;
+  }
+}
+
 function mockRecord(payload = {}, rid = 'mock') {
   return {
     get(name) { return name === 'payload' ? payload : undefined; },
@@ -90,7 +104,8 @@ function validateSchema(schema, where) {
   }
 }
 
-function inventory() {
+function inventory(options = {}) {
+  const githubConnected = options.githubConnected !== false;
   const e = mockEvent();
   const ctx = ownerContext();
   const files = adapterFiles();
@@ -102,18 +117,25 @@ function inventory() {
     const adapter = require(path.join(HOOKS, file));
     assert.equal(typeof adapter.definitions, 'function', `${file}: missing definitions()`);
     assert.equal(typeof adapter.execute, 'function', `${file}: missing execute()`);
-    const defs = adapter.definitions(e, ctx);
+    const defs = file === 'wesi_ai_github_connector.js' && githubConnected
+      ? withConnectedGithub(() => adapter.definitions(e, ctx))
+      : adapter.definitions(e, ctx);
     assert.ok(Array.isArray(defs), `${file}: definitions() must return an array`);
     for (const def of defs) raw.push({file, adapter, def});
     if (typeof adapter.context === 'function') {
-      assert.doesNotThrow(() => adapter.context(e, ctx, ''), `${file}: context() throws for owner smoke context`);
+      const runContext = () => adapter.context(e, ctx, '');
+      if (file === 'wesi_ai_github_connector.js' && githubConnected) {
+        assert.doesNotThrow(() => withConnectedGithub(runContext), `${file}: context() throws for connected owner smoke context`);
+      } else {
+        assert.doesNotThrow(runContext, `${file}: context() throws for owner smoke context`);
+      }
     }
   }
   return {e, ctx, files, raw};
 }
 
 auditTest('all adapter definitions are registered, unique and schema-valid', () => {
-  const {raw} = inventory();
+  const {raw} = inventory({githubConnected: true});
   const seen = new Map();
   for (const {file, def} of raw) {
     assert.ok(def && typeof def === 'object' && !Array.isArray(def), `${file}: invalid tool definition`);
@@ -134,9 +156,9 @@ auditTest('all adapter definitions are registered, unique and schema-valid', () 
   assert.deepEqual(registered, defined, 'Capability registry and adapter definitions are out of sync');
 });
 
-auditTest('central registry does not silently drop any owner-visible tool', () => {
-  const {e, ctx, raw} = inventory();
-  const central = require(toolsPath).definitions(e, ctx);
+auditTest('central registry does not silently drop any connected owner-visible tool', () => {
+  const {e, ctx, raw} = inventory({githubConnected: true});
+  const central = withConnectedGithub(() => require(toolsPath).definitions(e, ctx));
   assert.ok(Array.isArray(central));
   const names = central.map((item) => item.name).sort();
   const rawNames = raw.map((item) => item.def.name).sort();
@@ -144,6 +166,11 @@ auditTest('central registry does not silently drop any owner-visible tool', () =
   for (const item of central) {
     assert.ok(item.wesiCapability, `${item.name}: missing decorated wesiCapability`);
   }
+});
+
+auditTest('GitHub tools are hidden cleanly when no GitHub credential is connected', () => {
+  const {raw} = inventory({githubConnected: false});
+  assert.equal(raw.some(({def}) => String(def.name || '').startsWith('github_')), false);
 });
 
 auditTest('risk metadata and confirmation rules are coherent for every tool', () => {
@@ -170,7 +197,7 @@ auditTest('risk metadata and confirmation rules are coherent for every tool', ()
 });
 
 auditTest('every read-only tool has a non-throwing executor smoke path', () => {
-  const {e, ctx, raw} = inventory();
+  const {e, ctx, raw} = inventory({githubConnected: true});
   for (const {file, adapter, def} of raw) {
     const cap = registry.get(def.name);
     if (!cap || cap.risk !== 'READ') continue;
@@ -192,7 +219,7 @@ auditTest('central context aggregation remains safe with empty data', () => {
   const ctx = ownerContext();
   const central = require(toolsPath);
   let result;
-  assert.doesNotThrow(() => { result = central.context(e, ctx, ''); });
+  assert.doesNotThrow(() => { result = withConnectedGithub(() => central.context(e, ctx, '')); });
   assert.ok(result && typeof result === 'object' && !Array.isArray(result));
   assert.ok(Object.prototype.hasOwnProperty.call(result, 'activeOrganizationId'));
 });
