@@ -6,7 +6,7 @@ on:
       public_host:
         description: 'Foreign Relay DNS hostname'
         required: true
-        default: 'ai.wesi-wf.su'
+        default: 'wesi-ai-178-236-247-194.nip.io'
         type: string
 
 permissions:
