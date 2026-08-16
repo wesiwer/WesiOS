@@ -1,4 +1,4 @@
-name: Temporary deploy quota-aware Wesi AI router
+name: Temporary sync Wesi AI quota workflows
 
 on:
   push:
@@ -7,96 +7,154 @@ on:
       - '.github/workflows/fix-const-theme.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  deploy:
+  sync-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     env:
       RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
       RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
     steps:
       - uses: actions/checkout@v4
         with:
           ref: fix/wesi-ai-tool-agent-handoff
-          fetch-depth: 1
-      - name: Validate Router runtime
+          fetch-depth: 0
+
+      - name: Add Gemini project labels to deploy workflows
         run: |
           set -euo pipefail
-          node --check server/wesi-ai-relay/google.mjs
-          node --check server/wesi-ai-relay/provider-failover.mjs
-          node --test server/wesi-ai-relay/provider-failover.test.mjs
-      - name: Prepare Relay SSH
-        env:
-          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-          test -n "${RELAY_HOST:-}" && test -n "${RELAY_USER:-}" && test -n "${KEY:-}"
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/relay_key
-          chmod 600 ~/.ssh/relay_key
-          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
-          chmod 600 ~/.ssh/known_hosts
-      - name: Deploy with readiness wait and rollback
-        run: |
-          set -euo pipefail
-          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
-          REMOTE="/tmp/wesi-router-$GITHUB_RUN_ID"
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
-          scp "${SSH[@]}" server/wesi-ai-relay/google.mjs server/wesi-ai-relay/provider-failover.mjs "$RELAY_USER@$RELAY_HOST:$REMOTE/"
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
-          set -euo pipefail
-          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
-          APP=/opt/wesi-ai-relay
-          test -f "$APP/google.mjs" && test -f "$APP/provider-failover.mjs"
-          # confirm rollback state is healthy before replacing anything
-          for i in $(seq 1 20); do
-            if curl -fsS --max-time 2 http://127.0.0.1:8787/health >/tmp/pre-health.json 2>/dev/null; then break; fi
-            sleep 1
-          done
-          grep -q '"ready":true' /tmp/pre-health.json
-          BACKUP="/tmp/wesi-router-backup-$(date +%s)"
-          mkdir -p "$BACKUP"
-          cp "$APP/google.mjs" "$APP/provider-failover.mjs" "$BACKUP/"
-          rollback() {
-            echo 'Router deploy failed; restoring previous runtime' >&2
-            "${SUDO[@]}" install -o root -g root -m 0644 "$BACKUP/google.mjs" "$APP/google.mjs" || true
-            "${SUDO[@]}" install -o root -g root -m 0644 "$BACKUP/provider-failover.mjs" "$APP/provider-failover.mjs" || true
-            "${SUDO[@]}" systemctl restart wesi-ai-relay || true
-          }
-          trap rollback ERR
-          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/google.mjs" "$APP/google.mjs"
-          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/provider-failover.mjs" "$APP/provider-failover.mjs"
-          "${SUDO[@]}" systemctl restart wesi-ai-relay
-          healthy=0
-          for i in $(seq 1 30); do
-            if "${SUDO[@]}" systemctl is-active --quiet wesi-ai-relay && curl -fsS --max-time 2 http://127.0.0.1:8787/health >/tmp/post-health.json 2>/dev/null && grep -q '"ready":true' /tmp/post-health.json; then
-              healthy=1
-              break
-            fi
-            sleep 1
-          done
-          if [ "$healthy" -ne 1 ]; then
-            "${SUDO[@]}" systemctl status wesi-ai-relay --no-pager -l || true
-            "${SUDO[@]}" journalctl -u wesi-ai-relay -n 80 --no-pager || true
-            false
-          fi
-          trap - ERR
-          rm -rf "$REMOTE" "$BACKUP"
-          REMOTE_SCRIPT
-      - name: Verify public health
-        run: |
-          set -euo pipefail
-          for i in $(seq 1 20); do
-            if curl -fsS --max-time 3 https://ai.wesi-wf.su/health > health.json 2>/dev/null; then break; fi
-            sleep 1
-          done
-          python3 - <<'PY'
-          import json
-          data=json.load(open('health.json',encoding='utf-8'))
-          assert data.get('ok') is True and data.get('ready') is True, data
-          assert data.get('routing') == ['fast','pro','ultra'], data
-          print('Wesi AI Router live: fast/pro/ultra')
+          python3 <<'PY'
+          from pathlib import Path
+
+          def expr(secret):
+              return '$' + '{{ secrets.' + secret + ' }}'
+
+          def insert_env_after(text, marker, pairs):
+              lines = text.splitlines()
+              if any(pairs[0][0] + ':' in line for line in lines):
+                  return text
+              for i, line in enumerate(lines):
+                  if line.lstrip().startswith(marker + ':'):
+                      indent = line[:len(line) - len(line.lstrip())]
+                      additions = [f"{indent}{name}: {expr(secret)}" for name, secret in pairs]
+                      lines[i+1:i+1] = additions
+                      return '\n'.join(lines) + ('\n' if text.endswith('\n') else '')
+              raise RuntimeError(f'marker not found: {marker}')
+
+          project_env = [
+              ('GEMINI_API_PROJECT', 'GEMINI_API_PROJECT'),
+              ('GEMINI_API_PROJECT_2', 'GEMINI_API_PROJECT_2'),
+              ('GEMINI_API_PROJECT_3', 'GEMINI_API_PROJECT_3'),
+              ('GEMINI_API_PROJECT_4', 'GEMINI_API_PROJECT_4'),
+              ('GEMINI_API_PROJECT_5', 'GEMINI_API_PROJECT_5'),
+          ]
+
+          p = Path('.github/workflows/configure-wesi-ai-router.yml')
+          text = p.read_text(encoding='utf-8')
+          text = insert_env_after(text, 'GEMINI_API_KEY_5', project_env)
+          key_line = "              'GEMINI_API_KEY_2','GEMINI_API_KEY_3','GEMINI_API_KEY_4','GEMINI_API_KEY_5',"
+          project_line = "              'GEMINI_API_PROJECT','GEMINI_API_PROJECT_2','GEMINI_API_PROJECT_3','GEMINI_API_PROJECT_4','GEMINI_API_PROJECT_5',"
+          if project_line not in text:
+              if key_line not in text: raise RuntimeError('configure provider names marker missing')
+              text = text.replace(key_line, key_line + '\n' + project_line, 1)
+          old_allow = 'GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;;'
+          new_allow = 'GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5|GEMINI_API_PROJECT|GEMINI_API_PROJECT_2|GEMINI_API_PROJECT_3|GEMINI_API_PROJECT_4|GEMINI_API_PROJECT_5|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;;'
+          text = text.replace(old_allow, new_allow)
+          p.write_text(text, encoding='utf-8')
+
+          p = Path('.github/workflows/deploy-wesi-ai.yml')
+          text = p.read_text(encoding='utf-8')
+          sealed_projects = [
+              ('GEMINI_PROJECT', 'GEMINI_API_PROJECT'),
+              ('GEMINI_PROJECT_2', 'GEMINI_API_PROJECT_2'),
+              ('GEMINI_PROJECT_3', 'GEMINI_API_PROJECT_3'),
+              ('GEMINI_PROJECT_4', 'GEMINI_API_PROJECT_4'),
+              ('GEMINI_PROJECT_5', 'GEMINI_API_PROJECT_5'),
+          ]
+          text = insert_env_after(text, 'GEMINI_KEY_5', sealed_projects)
+          text = insert_env_after(text, 'GEMINI_API_KEY_5', project_env)
+          loop = """          for index in range(2, 6):\n              value = os.environ.get(f'GEMINI_KEY_{index}', '').strip()\n              if value:\n                  values[f'GEMINI_API_KEY_{index}_B64'] = value\n"""
+          loop_with_projects = """          primary_project = os.environ.get('GEMINI_PROJECT', '').strip()\n          if primary_project:\n              values['GEMINI_API_PROJECT_B64'] = primary_project\n          for index in range(2, 6):\n              value = os.environ.get(f'GEMINI_KEY_{index}', '').strip()\n              if value:\n                  values[f'GEMINI_API_KEY_{index}_B64'] = value\n              project = os.environ.get(f'GEMINI_PROJECT_{index}', '').strip()\n              if project:\n                  values[f'GEMINI_API_PROJECT_{index}_B64'] = project\n"""
+          if "values['GEMINI_API_PROJECT_B64']" not in text:
+              if loop not in text: raise RuntimeError('deploy key loop marker missing')
+              text = text.replace(loop, loop_with_projects, 1)
+          if project_line not in text:
+              if key_line not in text: raise RuntimeError('deploy provider names marker missing')
+              text = text.replace(key_line, key_line + '\n' + project_line, 1)
+          text = text.replace(old_allow, new_allow)
+          p.write_text(text, encoding='utf-8')
           PY
+          grep -q 'GEMINI_API_PROJECT_5' .github/workflows/configure-wesi-ai-router.yml
+          grep -q 'GEMINI_PROJECT_5' .github/workflows/deploy-wesi-ai.yml
+          grep -q "GEMINI_API_PROJECT_5_B64" .github/workflows/deploy-wesi-ai.yml
+          bash -n server/wesi-ai-relay/deploy-relay.sh
+          node --test server/wesi-ai-relay/provider-failover.test.mjs
+          git diff --check
+
+      - name: Commit workflow support
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add .github/workflows/configure-wesi-ai-router.yml .github/workflows/deploy-wesi-ai.yml
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(ai): preserve Gemini project quota scopes in deploys"
+            git push origin HEAD:fix/wesi-ai-tool-agent-handoff
+          fi
+
+      - name: Prepare diagnostic SSH
+        env:
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          RELAY_KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+          MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$RELAY_KEY" > ~/.ssh/relay_key
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/relay_key ~/.ssh/main_key
+          if [ -n "${RELAY_KNOWN:-}" ]; then printf '%s\n' "$RELAY_KNOWN" > ~/.ssh/relay_known; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known 2>/dev/null; fi
+          if [ -n "${MAIN_KNOWN:-}" ]; then printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known 2>/dev/null; fi
+          chmod 600 ~/.ssh/relay_known ~/.ssh/main_known
+
+      - name: Verify Relay locally and through TLS
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known")
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          curl -fsS --max-time 5 http://127.0.0.1:8787/health >/tmp/local-health.json
+          grep -q '"ready":true' /tmp/local-health.json
+          if curl -fsS --max-time 10 https://ai.wesi-wf.su/health >/tmp/public-health.json 2>/dev/null; then
+            grep -q '"ready":true' /tmp/public-health.json
+            echo RELAY_PUBLIC_TLS=ok
+          else
+            echo RELAY_PUBLIC_TLS=unreachable
+          fi
+          if curl -fsS --max-time 10 --resolve ai.wesi-wf.su:443:127.0.0.1 https://ai.wesi-wf.su/health >/tmp/local-tls.json 2>/dev/null; then
+            grep -q '"ready":true' /tmp/local-tls.json
+            echo RELAY_LOCAL_TLS=ok
+          else
+            echo RELAY_LOCAL_TLS=unreachable
+          fi
+          REMOTE
+
+      - name: Verify Main can reach Relay
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known")
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          if curl -fsS --max-time 15 https://ai.wesi-wf.su/health >/tmp/wesi-relay-from-main.json 2>/dev/null; then
+            grep -q '"ready":true' /tmp/wesi-relay-from-main.json
+            echo MAIN_TO_RELAY=ok
+          else
+            echo MAIN_TO_RELAY=unreachable
+            exit 1
+          fi
+          REMOTE
