@@ -1,217 +1,61 @@
-name: Temporary deploy Wesi AI Relay over SSH
+name: Fix const + AppTheme
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/fix-const-theme.yml'
+  workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
-      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
-
+  fix:
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/wesi-ai-tool-agent-handoff
-          fetch-depth: 1
 
-      - name: Validate exact Relay bundle
+      - name: Strip const from dynamic AppTheme constructors
         run: |
-          set -euo pipefail
-          for file in server/wesi-ai-relay/*.mjs; do node --check "$file"; done
-          node --test server/wesi-ai-relay/*.test.mjs
-          bash -n server/wesi-ai-relay/deploy-relay.sh
+          python3 << 'PY'
+          import re, pathlib
 
-      - name: Prepare SSH
-        env:
-          SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
-        run: |
-          set -euo pipefail
-          [ -n "${RELAY_HOST:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_HOST'; exit 1; }
-          [ -n "${RELAY_USER:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_USER'; exit 1; }
-          [ -n "${SSH_KEY:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_KEY'; exit 1; }
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$SSH_KEY" > ~/.ssh/relay_key
-          chmod 600 ~/.ssh/relay_key
-          if [ -n "${KNOWN:-}" ]; then
-            printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts
-          else
-            ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null
-          fi
-          chmod 600 ~/.ssh/relay_known_hosts
+          DYNAMIC = r'(?:textMuted|textPrimary|textSecondary|glassBorder|background|surface|surfaceLight|glassBackground|carbonDark|carbonMid|carbonLight|carbonHighlight|primary|accent|logoStroke|logoAccent)'
 
-      - name: Build optional secondary Gemini bundle
-        env:
-          GEMINI_2: ${{ secrets.GEMINI_API_KEY_2 }}
-          GEMINI_3: ${{ secrets.GEMINI_API_KEY_3 }}
-          GEMINI_4: ${{ secrets.GEMINI_API_KEY_4 }}
-          GEMINI_5: ${{ secrets.GEMINI_API_KEY_5 }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import base64, os
-          count = 0
-          with open('secondary-gemini.b64', 'w', encoding='ascii') as f:
-              for index in range(2, 6):
-                  value = os.environ.get(f'GEMINI_{index}', '').strip()
-                  if not value:
-                      continue
-                  count += 1
-                  f.write(f'GEMINI_API_KEY_{index}=' + base64.b64encode(value.encode()).decode() + '\n')
-          print('Secondary Gemini secrets available in GitHub:', count)
-          PY
-          chmod 600 secondary-gemini.b64
+          def fix(content: str) -> str:
+              lines = content.split('\n')
+              out = []
+              i = 0
+              while i < len(lines):
+                  line = lines[i]
+                  if re.search(r'\bconst\s+[A-Z]', line):
+                      window = '\n'.join(lines[i:i+12])
+                      if re.search(r'AppTheme\.' + DYNAMIC, window):
+                          line = re.sub(r'\bconst\s+', '', line, count=1)
+                  out.append(line)
+                  i += 1
+              return '\n'.join(out)
 
-      - name: Deploy runtime with rollback
-        run: |
-          set -euo pipefail
-          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
-          REMOTE="/tmp/wesi-ai-tier-router-$GITHUB_RUN_ID"
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
-          scp "${SSH[@]}" \
-            server/wesi-ai-relay/google.mjs \
-            server/wesi-ai-relay/text-stream.mjs \
-            server/wesi-ai-relay/provider-failover.mjs \
-            secondary-gemini.b64 \
-            "$RELAY_USER@$RELAY_HOST:$REMOTE/"
-          rm -f secondary-gemini.b64
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
-          set -euo pipefail
-          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
-          APP=/opt/wesi-ai-relay
-          SERVICE=wesi-ai-relay
-          BACKUP="$REMOTE/backup"
-          mkdir -p "$BACKUP"
+          changed = []
+          for path in pathlib.Path('lib').rglob('*.dart'):
+              text = path.read_text(encoding='utf-8')
+              fixed = fix(text)
+              if fixed != text:
+                  path.write_text(fixed, encoding='utf-8')
+                  changed.append(str(path))
+                  print(f'fixed: {path}')
 
-          echo '=== Relay preflight ==='
-          "${SUDO[@]}" systemctl is-active --quiet "$SERVICE"
-          curl -fsS --max-time 10 http://127.0.0.1:8787/health > "$REMOTE/health-before.json"
-          python3 - "$REMOTE/health-before.json" <<'PY'
-          import json, sys
-          data=json.load(open(sys.argv[1], encoding='utf-8'))
-          assert data.get('ok') is True and data.get('ready') is True, data
-          print('Relay before deploy: healthy')
+          print(f'Total fixed files: {len(changed)}')
+          if not changed:
+              print('Nothing to fix')
           PY
 
-          for file in google.mjs text-stream.mjs provider-failover.mjs; do
-            if "${SUDO[@]}" test -f "$APP/$file"; then
-              "${SUDO[@]}" cp -a "$APP/$file" "$BACKUP/$file"
-            else
-              touch "$BACKUP/.missing-$file"
-            fi
-          done
-          if "${SUDO[@]}" test -f /etc/wesi-ai-providers.env; then
-            "${SUDO[@]}" cp -a /etc/wesi-ai-providers.env "$BACKUP/wesi-ai-providers.env"
-          else
-            touch "$BACKUP/.missing-providers"
+      - name: Commit and push
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes"
+            exit 0
           fi
-
-          rollback() {
-            echo '::warning::Relay deploy failed, rolling back runtime'
-            for file in google.mjs text-stream.mjs provider-failover.mjs; do
-              if [ -f "$BACKUP/$file" ]; then
-                "${SUDO[@]}" cp -a "$BACKUP/$file" "$APP/$file"
-              elif [ -f "$BACKUP/.missing-$file" ]; then
-                "${SUDO[@]}" rm -f "$APP/$file"
-              fi
-            done
-            if [ -f "$BACKUP/wesi-ai-providers.env" ]; then
-              "${SUDO[@]}" cp -a "$BACKUP/wesi-ai-providers.env" /etc/wesi-ai-providers.env
-            elif [ -f "$BACKUP/.missing-providers" ]; then
-              "${SUDO[@]}" rm -f /etc/wesi-ai-providers.env
-            fi
-            "${SUDO[@]}" systemctl restart "$SERVICE" || true
-          }
-          trap 'code=$?; if [ "$code" -ne 0 ]; then rollback; fi; exit "$code"' EXIT
-
-          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/google.mjs" "$APP/google.mjs"
-          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/text-stream.mjs" "$APP/text-stream.mjs"
-          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/provider-failover.mjs" "$APP/provider-failover.mjs"
-
-          if [ -s "$REMOTE/secondary-gemini.b64" ]; then
-            PROVIDERS_NEW="$REMOTE/providers.new"
-            if "${SUDO[@]}" test -f /etc/wesi-ai-providers.env; then
-              "${SUDO[@]}" cat /etc/wesi-ai-providers.env > "$PROVIDERS_NEW"
-            else
-              : > "$PROVIDERS_NEW"
-            fi
-            while IFS= read -r line; do
-              [ -n "$line" ] || continue
-              key="${line%%=*}"
-              encoded="${line#*=}"
-              case "$key" in GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5) ;; *) exit 2;; esac
-              value="$(printf '%s' "$encoded" | base64 -d)"
-              [ -n "$value" ] || continue
-              sed -i "/^${key}=/d" "$PROVIDERS_NEW"
-              printf '%s=%s\n' "$key" "$value" >> "$PROVIDERS_NEW"
-            done < "$REMOTE/secondary-gemini.b64"
-            group=root
-            if getent group wesi-relay >/dev/null 2>&1; then group=wesi-relay; fi
-            "${SUDO[@]}" install -o root -g "$group" -m 0640 "$PROVIDERS_NEW" /etc/wesi-ai-providers.env
-            rm -f "$PROVIDERS_NEW"
-          fi
-
-          "${SUDO[@]}" systemctl restart "$SERVICE"
-          for _ in $(seq 1 20); do
-            if "${SUDO[@]}" systemctl is-active --quiet "$SERVICE" && curl -fsS --max-time 5 http://127.0.0.1:8787/health > "$REMOTE/health-after.json"; then
-              break
-            fi
-            sleep 1
-          done
-          "${SUDO[@]}" systemctl is-active --quiet "$SERVICE"
-          python3 - "$REMOTE/health-after.json" <<'PY'
-          import json, sys
-          data=json.load(open(sys.argv[1], encoding='utf-8'))
-          assert data.get('ok') is True and data.get('ready') is True, data
-          assert data.get('routing') == ['fast','pro','ultra'], data
-          print('Relay after deploy: healthy, tier routing ready')
-          PY
-
-          echo '=== Active provider credential names (values hidden) ==='
-          if "${SUDO[@]}" test -f /etc/wesi-ai-providers.env; then
-            "${SUDO[@]}" awk -F= '/^(GEMINI_API_KEY_[2-5]|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY)=/ {print $1}' /etc/wesi-ai-providers.env | sort -u
-          fi
-
-          echo '=== Live local tier smoke (secret never leaves Relay) ==='
-          "${SUDO[@]}" node --input-type=module - <<'NODE'
-          import fs from 'node:fs';
-          import crypto from 'node:crypto';
-          const env = {};
-          for (const line of fs.readFileSync('/etc/wesi-ai-relay.env', 'utf8').split(/\r?\n/)) {
-            const index = line.indexOf('=');
-            if (index > 0) env[line.slice(0, index)] = line.slice(index + 1);
-          }
-          const secret = String(env.WESI_MAIN_SHARED_SECRET || '');
-          if (secret.length < 32) throw new Error('Relay shared secret is unavailable');
-          async function smoke(route) {
-            const rid = `wai_local_${route.split('/').at(-1)}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-            const payload = {requestId: rid, route, operation: 'chat', input: {system: 'Reply only OK.', history: [], message: 'OK'}};
-            const raw = JSON.stringify(payload);
-            const ts = String(Math.floor(Date.now() / 1000));
-            const sig = crypto.createHmac('sha256', secret).update(`${rid}.${ts}.${raw}`).digest('hex');
-            const response = await fetch('http://127.0.0.1:8787/v1/wesi-ai', {
-              method: 'POST',
-              headers: {'content-type':'application/json','x-wesi-request-id':rid,'x-wesi-timestamp':ts,'x-wesi-signature':sig},
-              body: raw,
-            });
-            let data = {};
-            try { data = await response.json(); } catch {}
-            console.log(JSON.stringify({route, http: response.status, ok: data.ok === true, code: data.code || null, provider: data.provider || null, model: data.model || null, answerBytes: Buffer.byteLength(String(data.answer || ''))}));
-          }
-          await smoke('wesi/fast');
-          await smoke('wesi/pro');
-          NODE
-
-          trap - EXIT
-          rm -rf "$REMOTE"
-          echo 'Relay runtime deployment complete.'
-          REMOTE_SCRIPT
+          git commit -m "fix(theme): remove const from widgets using dynamic AppTheme colors"
+          git push
