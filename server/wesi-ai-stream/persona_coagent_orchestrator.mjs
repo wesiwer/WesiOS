@@ -1,6 +1,7 @@
 import {
   createPersonaHandoff,
   validatePersonaCoagentResult,
+  validateLeadReview,
   buildCoagentEvent,
 } from './persona_coagent.mjs';
 
@@ -47,10 +48,30 @@ export function parseCoagentToolRequest(value) {
   return name ? {name, arguments: args} : null;
 }
 
-function resultInstruction() {
+export function parseLeadReviewResponse(value, handoff) {
+  const parsed = parseObject(value);
+  if (!parsed || parsed.wesiTool) throw new Error('WAI_COAGENT_REVIEW_INVALID');
+  return validateLeadReview(parsed, handoff);
+}
+
+function personaLabel(value) {
+  return String(value || '').trim().toLowerCase() === 'nirvana' ? 'Нирвана' : 'Зейн';
+}
+
+function timelineEvent(label, detail = '') {
+  return {
+    type: 'activity',
+    kind: 'reasoning',
+    phase: 'done',
+    label,
+    detail,
+  };
+}
+
+function resultInstruction(reviewRound) {
   return '[WESI_AI_COAGENT_OUTPUT]\n' +
     'Верни ТОЛЬКО JSON без markdown и без скрытых рассуждений: ' +
-    '{"summary":"...","findings":["..."],"risks":["..."],"recommendation":"...","artifacts":["..."]}. ' +
+    `{"summary":"...","findings":["..."],"risks":["..."],"recommendation":"...","artifacts":["..."],"reviewRound":${reviewRound}}. ` +
     'Не отвечай пользователю напрямую. Не добавляй analysis/reasoning/chain_of_thought поля.';
 }
 
@@ -63,19 +84,19 @@ function toolInstruction(toolDefinitions) {
     JSON.stringify(toolDefinitions);
 }
 
-function modelInput(handoff, policy, toolResults, finalOnly) {
+function modelInput(handoff, policy, toolResults, finalOnly, reviewRound) {
   const systemParts = [
     String(policy.systemPrompt || '').trim(),
     '[WESI_AI_PERSONA_COAGENT_HANDOFF]\n' + JSON.stringify(handoff),
-    resultInstruction(),
+    resultInstruction(reviewRound),
   ].filter(Boolean);
   const toolPart = toolInstruction(policy.toolDefinitions);
-  if (toolPart && !finalOnly) systemParts.push(toolPart);
+  if (toolPart && !finalOnly && reviewRound === 0) systemParts.push(toolPart);
   if (toolResults.length) {
     systemParts.push('[WESI_AI_VERIFIED_COAGENT_TOOL_RESULTS]\n' + JSON.stringify(toolResults));
   }
-  if (finalOnly) {
-    systemParts.push('[WESI_AI_COAGENT_FINAL_ONLY]\nЛимит инструментов исчерпан. Не вызывай инструменты. Верни только structured result JSON.');
+  if (finalOnly || reviewRound > 0) {
+    systemParts.push('[WESI_AI_COAGENT_FINAL_ONLY]\nНе вызывай инструменты. Верни только structured result JSON.');
   }
   return {
     system: systemParts.join('\n\n'),
@@ -102,30 +123,56 @@ export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit
   if (typeof invokeModel !== 'function' || typeof invokeTool !== 'function') throw new Error('WAI_COAGENT_RUNTIME_INVALID');
   if (signal?.aborted) throw new Error('WAI_COAGENT_CANCELLED');
 
+  const reviewRound = Math.max(0, Math.min(1, Number(policy.reviewRound || 0) || 0));
+  const revisionContext = reviewRound > 0
+    ? [{
+        kind: 'project_context',
+        label: 'Проверенная правка от Lead Persona',
+        text: JSON.stringify({
+          previousResult: policy.previousResult || null,
+          revisionRequest: String(policy.revisionRequest || '').slice(0, 2000),
+        }),
+      }]
+    : [];
   const handoff = createPersonaHandoff({
     parentRequestId: prepared.requestId,
-    handoffId: `${prepared.requestId}:persona:${policy.coagentPersona}`,
+    handoffId: String(policy.handoffId || '').trim() || `${prepared.requestId}:persona:${policy.coagentPersona}${reviewRound ? ':review:1' : ''}`,
     leadPersona: policy.leadPersona || prepared.persona,
     coagentPersona: policy.coagentPersona,
     task: policy.task,
-    context: policy.context,
+    context: [...revisionContext, ...(Array.isArray(policy.context) ? policy.context : [])],
     requestedCapabilities: policy.requestedCapabilities,
     grantedCapabilities: policy.grantedCapabilities,
     allowlistedCapabilities: policy.allowlistedCapabilities,
     sideEffectCapabilities: policy.sideEffectCapabilities,
     maxReviewRounds: policy.maxReviewRounds,
-    maxToolTurns: policy.maxToolTurns,
+    maxToolTurns: reviewRound > 0 ? 0 : policy.maxToolTurns,
   });
 
   const send = typeof emit === 'function' ? emit : () => {};
-  send(buildCoagentEvent(handoff, 'handoff', {
-    label: `Передано ${handoff.coagentPersona}`,
-    detail: policy.reason || 'cross_specialty_review',
+  const leadLabel = personaLabel(handoff.leadPersona);
+  const coagentLabel = personaLabel(handoff.coagentPersona);
+  const initialPhase = reviewRound > 0 ? 'revision' : 'handoff';
+  send(buildCoagentEvent(handoff, initialPhase, {
+    label: reviewRound > 0 ? `${coagentLabel}: уточнение` : `Передано ${coagentLabel}`,
+    detail: reviewRound > 0 ? 'Один ограниченный revision round.' : (policy.reason || 'cross_specialty_review'),
   }));
+  send(timelineEvent(
+    reviewRound > 0 ? `${leadLabel} → ${coagentLabel} · уточнение` : `${leadLabel} → ${coagentLabel}`,
+    reviewRound > 0
+      ? 'Lead запросил одну ограниченную правку результата.'
+      : 'Передан только ограниченный контекст задачи и разрешённые возможности.',
+  ));
   send(buildCoagentEvent(handoff, 'start', {
-    label: `${handoff.coagentPersona}: проверка`,
-    detail: 'Co-Agent получил ограниченный контекст и read-only инструменты.',
+    label: `${coagentLabel}: проверка`,
+    detail: reviewRound > 0
+      ? 'Co-Agent уточняет результат без инструментов.'
+      : 'Co-Agent получил ограниченный контекст и read-only инструменты.',
   }));
+  send(timelineEvent(
+    `${coagentLabel} · Co-Agent проверка`,
+    reviewRound > 0 ? 'Уточнение результата без новых действий.' : 'Независимая проверка своей специализации.',
+  ));
 
   const toolResults = [];
   const seenCalls = new Set();
@@ -134,11 +181,11 @@ export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit
 
   for (let turn = 0; turn <= handoff.limits.maxToolTurns; turn += 1) {
     if (signal?.aborted) throw new Error('WAI_COAGENT_CANCELLED');
-    const finalOnly = turn >= handoff.limits.maxToolTurns;
+    const finalOnly = reviewRound > 0 || turn >= handoff.limits.maxToolTurns;
     raw = await invokeModel({
       handoff,
-      phase: finalOnly ? 'final' : `tool-${turn + 1}`,
-      input: modelInput(handoff, policy, toolResults, finalOnly),
+      phase: reviewRound > 0 ? 'revision' : (finalOnly ? 'final' : `tool-${turn + 1}`),
+      input: modelInput(handoff, policy, toolResults, finalOnly, reviewRound),
     });
 
     const toolRequest = parseCoagentToolRequest(raw);
@@ -191,10 +238,15 @@ export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit
   if (parseCoagentToolRequest(raw)) throw new Error('WAI_COAGENT_TOOL_PROTOCOL_INVALID');
   const parsed = parseObject(raw);
   if (!parsed || parsed.wesiTool) throw new Error('WAI_COAGENT_RESULT_INVALID');
-  const result = validatePersonaCoagentResult(parsed, handoff);
+  const validated = validatePersonaCoagentResult(parsed, handoff);
+  const result = {...validated, reviewRound};
   send(buildCoagentEvent(handoff, 'result', {
-    label: `${handoff.coagentPersona}: готово`,
+    label: `${coagentLabel}: готово`,
     detail: 'Проверка завершена, структурированный результат передан Lead Persona.',
   }));
+  send(timelineEvent(
+    reviewRound > 0 ? `${coagentLabel} → ${leadLabel} · исправлено` : `${coagentLabel} → ${leadLabel}`,
+    'Структурированный результат передан Lead Persona для проверки и интеграции.',
+  ));
   return {ok: true, handoff, result, toolResults};
 }
