@@ -62,7 +62,25 @@ jobs:
           grep -q 'configure-relay-https.sh' .github/workflows/deploy-wesi-ai.yml
           grep -q 'GEMINI_API_KEY' .github/workflows/deploy-wesi-ai.yml
       - name: Test Wesi AI Relay
-        run: node --test server/wesi-ai-relay/*.test.mjs
+        id: relay_test
+        shell: bash
+        run: |
+          set +e
+          node --test server/wesi-ai-relay/*.test.mjs > relay-test.log 2>&1
+          code=$?
+          set -e
+          cat relay-test.log
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+      - name: Upload Wesi AI Relay failure report
+        if: ${{ steps.relay_test.outputs.code != '0' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: wesi-ai-relay-test-failure
+          path: relay-test.log
+          retention-days: 2
+      - name: Enforce Wesi AI Relay tests
+        shell: bash
+        run: test "${{ steps.relay_test.outputs.code }}" = "0"
       - name: Test Wesi AI Main streaming gateway
         run: node --test server/wesi-ai-stream/*.test.mjs
       - name: Validate Wesi AI persona bundle
