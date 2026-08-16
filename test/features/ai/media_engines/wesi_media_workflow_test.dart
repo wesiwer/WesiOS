@@ -37,4 +37,43 @@ void main() {
     expect(result.ok, isFalse);
     expect(result.code, 'WAI_MEDIA_REQUEST_INVALID');
   });
+
+  test('normalizes server image edit request', () {
+    final request = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
+      'mediaType': 'image',
+      'prompt': 'remove background',
+      'options': <String, dynamic>{
+        'operation': 'edit',
+        'inputs': <String>['/tmp/input.png'],
+      },
+    });
+    expect(request, isNotNull);
+    expect(request!.kind, WesiMediaWorkflowKind.imageEdit);
+    expect(request.inputPaths, <String>['/tmp/input.png']);
+  });
+
+  test('normalizes stems and subtitle workflows', () {
+    final stems = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
+      'mediaType': 'music',
+      'prompt': 'split this track',
+      'operation': 'stems',
+    });
+    final subtitles = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
+      'mediaType': 'video',
+      'prompt': 'add subtitles',
+      'options': <String, dynamic>{'operation': 'subtitles'},
+    });
+    expect(stems?.kind, WesiMediaWorkflowKind.musicStems);
+    expect(subtitles?.kind, WesiMediaWorkflowKind.videoSubtitles);
+  });
+
+  test('rejects unsupported server media type', () {
+    expect(
+      WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
+        'mediaType': 'binary',
+        'prompt': 'do something',
+      }),
+      isNull,
+    );
+  });
 }
