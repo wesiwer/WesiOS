@@ -39,7 +39,7 @@ jobs:
           chmod 600 ~/.ssh/relay_key
           if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/known_hosts
-      - name: Deploy with rollback
+      - name: Deploy with readiness wait and rollback
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
@@ -51,10 +51,17 @@ jobs:
           if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
           APP=/opt/wesi-ai-relay
           test -f "$APP/google.mjs" && test -f "$APP/provider-failover.mjs"
+          # confirm rollback state is healthy before replacing anything
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8787/health >/tmp/pre-health.json 2>/dev/null; then break; fi
+            sleep 1
+          done
+          grep -q '"ready":true' /tmp/pre-health.json
           BACKUP="/tmp/wesi-router-backup-$(date +%s)"
           mkdir -p "$BACKUP"
           cp "$APP/google.mjs" "$APP/provider-failover.mjs" "$BACKUP/"
           rollback() {
+            echo 'Router deploy failed; restoring previous runtime' >&2
             "${SUDO[@]}" install -o root -g root -m 0644 "$BACKUP/google.mjs" "$APP/google.mjs" || true
             "${SUDO[@]}" install -o root -g root -m 0644 "$BACKUP/provider-failover.mjs" "$APP/provider-failover.mjs" || true
             "${SUDO[@]}" systemctl restart wesi-ai-relay || true
@@ -63,15 +70,29 @@ jobs:
           "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/google.mjs" "$APP/google.mjs"
           "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/provider-failover.mjs" "$APP/provider-failover.mjs"
           "${SUDO[@]}" systemctl restart wesi-ai-relay
-          "${SUDO[@]}" systemctl is-active --quiet wesi-ai-relay
-          curl -fsS --max-time 10 http://127.0.0.1:8787/health | grep -q '"ready":true'
+          healthy=0
+          for i in $(seq 1 30); do
+            if "${SUDO[@]}" systemctl is-active --quiet wesi-ai-relay && curl -fsS --max-time 2 http://127.0.0.1:8787/health >/tmp/post-health.json 2>/dev/null && grep -q '"ready":true' /tmp/post-health.json; then
+              healthy=1
+              break
+            fi
+            sleep 1
+          done
+          if [ "$healthy" -ne 1 ]; then
+            "${SUDO[@]}" systemctl status wesi-ai-relay --no-pager -l || true
+            "${SUDO[@]}" journalctl -u wesi-ai-relay -n 80 --no-pager || true
+            false
+          fi
           trap - ERR
           rm -rf "$REMOTE" "$BACKUP"
           REMOTE_SCRIPT
       - name: Verify public health
         run: |
           set -euo pipefail
-          curl -fsS --max-time 20 https://ai.wesi-wf.su/health > health.json
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 3 https://ai.wesi-wf.su/health > health.json 2>/dev/null; then break; fi
+            sleep 1
+          done
           python3 - <<'PY'
           import json
           data=json.load(open('health.json',encoding='utf-8'))
