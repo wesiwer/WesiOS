@@ -35,7 +35,7 @@ WesiOS не показывает скрытую chain-of-thought модели. �
 
 ## Contextual follow-ups and clarification
 
-Post-Stage-10 UX/persona hardening: PR #180.
+Post-Stage-10 UX/persona hardening: stable PR #181, main merge `95cdbb9c6a4f50b22636ea6eabaed093bbb1dec0`. Старый рабочий PR #180 закрыт как superseded и не должен использоваться как source of truth.
 
 - follow-up chips derive their topic from the latest user turn/current answer and must not be a fixed repeated list;
 - follow-ups are also intent-aware: debugging/errors, planning/implementation, comparison/choice, finance/calculation, creative work and explanatory questions receive different continuation actions rather than the same three generic templates;
