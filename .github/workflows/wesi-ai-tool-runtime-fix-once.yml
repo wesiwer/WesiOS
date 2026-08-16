@@ -26,8 +26,9 @@ jobs:
       - name: Apply deterministic runtime patch
         run: |
           set -euo pipefail
-          python -m py_compile scripts/wesi_ai_tool_runtime_fix.py
+          python -m py_compile scripts/wesi_ai_tool_runtime_fix.py scripts/wesi_ai_tool_runtime_test_expectation_fix.py
           python scripts/wesi_ai_tool_runtime_fix.py
+          python scripts/wesi_ai_tool_runtime_test_expectation_fix.py
 
       - name: Validate Wesi AI server runtime
         run: |
