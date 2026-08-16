@@ -148,6 +148,42 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
     }
   }
 
+  const subagentReadDefinitions = toolDefinitions.filter(function(item) {
+    return String(item && item.wesiCapability && item.wesiCapability.risk || "").toUpperCase() === "READ";
+  });
+  const subagentReadNames = subagentReadDefinitions.map(function(item) { return String(item && item.name || "").trim(); }).filter(Boolean);
+  const subagentDestructiveNames = toolDefinitions.filter(function(item) {
+    return String(item && item.wesiCapability && item.wesiCapability.risk || "").toUpperCase() !== "READ";
+  }).map(function(item) { return String(item && item.name || "").trim(); }).filter(Boolean);
+  const subagentContext = [{kind: "user_request", label: "Текущий запрос", text: (message || "Проанализируй приложенные файлы.").slice(0, 6000)}];
+  if (projectContext) subagentContext.push({kind: "project_context", label: "Контекст проекта", text: projectContext.slice(0, 4000)});
+  if (cleanHistory.length) {
+    const excerpt = cleanHistory.slice(-4).map(function(item) { return String(item.author || "message") + ": " + String(item.text || "").slice(0, 1200); }).join("\n").slice(0, 4000);
+    if (excerpt) subagentContext.push({kind: "conversation_excerpt", label: "Последний контекст диалога", text: excerpt});
+  }
+  if (cleanAttachments.length) {
+    const attachmentSummary = cleanAttachments.map(function(item) { return [item.name, item.mimeType, String(item.byteSize) + " bytes"].join(" | "); }).join("\n").slice(0, 1800);
+    if (attachmentSummary) subagentContext.push({kind: "attachment_summary", label: "Вложения", text: attachmentSummary});
+  }
+  const subagentPolicy = {
+    enabled: tier === "pro" || tier === "maximum",
+    reason: tier === "fast" ? "fast_tier_single_agent" : "bounded_dynamic_planner",
+    context: subagentContext,
+    requestedCapabilities: subagentReadNames,
+    grantedCapabilities: subagentReadNames,
+    allowlistedCapabilities: subagentReadNames,
+    destructiveCapabilities: subagentDestructiveNames,
+    allowedToolNames: subagentReadNames,
+    toolDefinitions: subagentReadDefinitions,
+    maxAgents: tier === "maximum" ? 3 : (tier === "pro" ? 2 : 0),
+    maxToolTurns: subagentReadNames.length ? 2 : 0,
+    maxTotalToolTurns: tier === "maximum" ? 6 : (tier === "pro" ? 4 : 0),
+    maxOutputChars: 9000,
+    maxWorkspaceEdits: 6,
+    deadlineMs: 45000,
+    workspaceFiles: []
+  };
+
   return {
     status: 200,
     prepared: {
@@ -163,7 +199,8 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
       activeOrganizationId: String(runtimeContext.activeOrganizationId || activeOrganizationId || ""),
       conversationId: conversationId,
       toolNames: toolDefinitions.map(function(item) { return String(item.name || ""); }).filter(Boolean),
-      coagent: coagentPolicy
+      coagent: coagentPolicy,
+      subagents: subagentPolicy
     }
   };
 }
@@ -201,16 +238,21 @@ routerAdd("POST", "/api/wesi/ai/stream/tool", (e) => {
   const definitionAllowed = available.some(function(item) {
     return String(item.name || "") === name;
   });
-  let allowed = definitionAllowed && (actorRole === "lead" || actorRole === "coagent");
+  let allowed = definitionAllowed && (actorRole === "lead" || actorRole === "coagent" || actorRole === "subagent");
   if (allowed && actorRole === "coagent") {
     const meta = registry.get(name);
     const validPersonas = ["zane", "nirvana"].indexOf(persona) >= 0 && ["zane", "nirvana"].indexOf(leadPersona) >= 0 && persona !== leadPersona;
     allowed = Boolean(meta) && meta.risk === registry.RISK_READ && validPersonas && handoffId.length > 0;
   }
+  if (allowed && actorRole === "subagent") {
+    const meta = registry.get(name);
+    const validLead = ["zane", "nirvana"].indexOf(leadPersona) >= 0;
+    allowed = Boolean(meta) && meta.risk === registry.RISK_READ && validLead && handoffId.length > 0;
+  }
   if (!allowed) {
     return e.json(200, {
       ok: true,
-      toolResult: {tool: name, verified: true, ok: false, code: "FORBIDDEN", message: actorRole === "coagent" ? "Co-Agent может использовать только разрешённые read-only инструменты" : "Инструмент недоступен текущему сотруднику"}
+      toolResult: {tool: name, verified: true, ok: false, code: "FORBIDDEN", message: actorRole === "coagent" ? "Co-Agent может использовать только разрешённые read-only инструменты" : (actorRole === "subagent" ? "Dynamic Sub-Agent может использовать только scoped read-only инструменты" : "Инструмент недоступен текущему сотруднику")}
     });
   }
   const executed = tools.execute(e, ctx, name, args, activeOrganizationId, {
