@@ -1,0 +1,57 @@
+name: Wesi AI Lobby Persona + Stream CI
+
+on:
+  push:
+    branches:
+      - 'fix/wesi-ai-lobby-persona-stream-*'
+  pull_request:
+    paths:
+      - 'server/pb_hooks/wesi_ai_lobby*.js'
+      - 'server/pb_hooks/wesi_ai_stream.pb.js'
+      - 'server/pb_hooks/wesi_ai_stream_contract_test.mjs'
+      - 'lib/features/ai/wesi_ai_lobby_*.dart'
+      - '.github/workflows/wesi-ai-lobby-persona-stream-ci.yml'
+
+jobs:
+  focused-lobby-stream:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate Lobby and stream JavaScript
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_ai_lobby_core.js
+          node --check server/pb_hooks/wesi_ai_lobby_router.js
+          node --check server/pb_hooks/wesi_ai_lobby_turn.js
+          node --check server/pb_hooks/wesi_ai_stream.pb.js
+          node --test server/pb_hooks/wesi_ai_lobby_router_test.mjs
+          node --test server/pb_hooks/wesi_ai_lobby_turn_test.mjs
+          node --test server/pb_hooks/wesi_ai_stream_contract_test.mjs
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - run: flutter pub get
+
+      - name: Analyze Lobby client
+        run: >-
+          flutter analyze
+          lib/features/ai/wesi_ai_lobby_api.dart
+          lib/features/ai/wesi_ai_lobby_codec.dart
+          lib/features/ai/wesi_ai_lobby_controller.dart
+          --no-fatal-infos
+
+      - name: Enforce actor attribution and diagnostics
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q "lobbyPersona" lib/features/ai/wesi_ai_lobby_controller.dart
+          grep -q "actorRole.*lobby_participant" lib/features/ai/wesi_ai_lobby_controller.dart
+          grep -q "error.displayMessage" lib/features/ai/wesi_ai_lobby_controller.dart
+          grep -q "WAI_LOBBY_PERSONA_CONFLICT" lib/features/ai/wesi_ai_lobby_api.dart
