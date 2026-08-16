@@ -929,6 +929,19 @@ class WesiAiChatController extends ChangeNotifier {
     await _persist();
   }
 
+  String _localMediaRequestIdentity(Map<String, dynamic> request) {
+    final rawIndexes = request['attachmentIndexes'];
+    final indexes =
+        rawIndexes is List ? rawIndexes.map((item) => '$item').join(',') : '';
+    return <String>[
+      '${request['mediaType'] ?? ''}',
+      '${request['workflow'] ?? ''}',
+      '${request['prompt'] ?? ''}',
+      '${request['title'] ?? ''}',
+      indexes,
+    ].join('|');
+  }
+
   void _startPendingMedia(
     WesiAiMessage message, {
     List<WesiAiAttachment> turnAttachments = const <WesiAiAttachment>[],
@@ -946,12 +959,13 @@ class WesiAiChatController extends ChangeNotifier {
 
       final localRequest = data['localRequest'];
       if (localRequest is Map) {
+        final requestMap = Map<String, dynamic>.from(localRequest);
         final key =
-            '${message.id}|local|${data['mediaType']}|${data['prompt']}';
+            '${message.id}|local|${_localMediaRequestIdentity(requestMap)}';
         if (_localMediaRuns.add(key)) {
           unawaited(_runLocalMedia(
             message,
-            Map<String, dynamic>.from(localRequest),
+            requestMap,
             key,
             turnAttachments: turnAttachments,
           ));
@@ -1027,6 +1041,7 @@ class WesiAiChatController extends ChangeNotifier {
     Map<String, dynamic> request,
     bool ok,
   ) async {
+    final targetIdentity = _localMediaRequestIdentity(request);
     var changed = false;
     final messages = state.messages.map((message) {
       if (message.id != messageId) return message;
@@ -1041,9 +1056,10 @@ class WesiAiChatController extends ChangeNotifier {
             final data = Map<String, dynamic>.from(dataRaw);
             final localRaw = data['localRequest'];
             if (localRaw is Map &&
-                '${localRaw['mediaType'] ?? ''}' ==
-                    '${request['mediaType'] ?? ''}' &&
-                '${localRaw['prompt'] ?? ''}' == '${request['prompt'] ?? ''}') {
+                _localMediaRequestIdentity(
+                      Map<String, dynamic>.from(localRaw),
+                    ) ==
+                    targetIdentity) {
               data.remove('localRequest');
               data['status'] = ok ? 'ready' : 'failed';
               block['data'] = data;
