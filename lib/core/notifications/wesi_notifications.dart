@@ -84,6 +84,12 @@ class WesiNotifications {
   static final ValueNotifier<WesiNotification?> last =
       ValueNotifier<WesiNotification?>(null);
 
+  /// Deep-link из нажатого системного уведомления.
+  ///
+  /// Здесь хранится и cold-launch payload: backend может получить его ещё до
+  /// первого Flutter frame, а app-level host заберёт после появления Navigator.
+  static final ValueNotifier<String?> routeRequest = ValueNotifier<String?>(null);
+
   static NotificationBackend? _backend;
   static bool _ready = false;
 
@@ -109,6 +115,7 @@ class WesiNotifications {
   static bool get isSupported {
     if (kIsWeb) return false;
     return Platform.isAndroid ||
+        Platform.isIOS ||
         Platform.isWindows ||
         Platform.isMacOS ||
         Platform.isLinux;
@@ -167,6 +174,21 @@ class WesiNotifications {
 
   static bool wasSeen(String id) => _seen.contains(id);
 
+  // ─────────────────────────────────────────────────────────── маршруты
+
+  static void _requestRoute(String? route) {
+    final clean = (route ?? '').trim();
+    if (clean.isEmpty) return;
+    routeRequest.value = clean;
+  }
+
+  /// Забрать deep-link ровно один раз.
+  static String? takeRouteRequest() {
+    final route = routeRequest.value;
+    routeRequest.value = null;
+    return route;
+  }
+
   // ─────────────────────────────────────────────────────────── показ
 
   static Future<void> init() async {
@@ -184,7 +206,7 @@ class WesiNotifications {
 
   static NotificationBackend? _pickBackend() {
     if (kIsWeb) return null;
-    if (Platform.isAndroid) return _MobileBackend();
+    if (Platform.isAndroid || Platform.isIOS) return _MobileBackend();
     if (Platform.isWindows || Platform.isMacOS || Platform.isLinux) {
       return _DesktopBackend();
     }
@@ -225,15 +247,16 @@ class WesiNotifications {
     _ready = false;
     _seenCache = <String>{};
     last.value = null;
+    routeRequest.value = null;
   }
 }
 
-/// Android: канал уведомлений и разрешение, которое с 13-й версии спрашивают.
+/// Android/iOS: системный notification center и разрешения платформы.
 class _MobileBackend implements NotificationBackend {
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
-  static const AndroidNotificationDetails _details =
+  static const AndroidNotificationDetails _androidDetails =
       AndroidNotificationDetails(
     'wesios_main',
     'WesiOS',
@@ -242,19 +265,49 @@ class _MobileBackend implements NotificationBackend {
     priority: Priority.defaultPriority,
   );
 
+  static const DarwinNotificationDetails _iosDetails =
+      DarwinNotificationDetails(
+    presentAlert: true,
+    presentBadge: true,
+    presentSound: true,
+  );
+
   @override
   Future<void> init() async {
     await _plugin.initialize(
       const InitializationSettings(
         android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        iOS: DarwinInitializationSettings(
+          requestAlertPermission: true,
+          requestBadgePermission: true,
+          requestSoundPermission: true,
+        ),
       ),
+      onDidReceiveNotificationResponse: (response) {
+        WesiNotifications._requestRoute(response.payload);
+      },
     );
-    // С Android 13 разрешение спрашивают явно. Отказ — не ошибка:
-    // уведомлений просто не будет, а приложение работает как работало.
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+
+    if (Platform.isAndroid) {
+      // С Android 13 разрешение спрашивают явно. Отказ — не ошибка:
+      // уведомлений просто не будет, а приложение работает как работало.
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+    } else if (Platform.isIOS) {
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+    }
+
+    // initialize() не вызывает callback, если приложение было запущено
+    // нажатием на notification. Этот payload забирается отдельно.
+    final launch = await _plugin.getNotificationAppLaunchDetails();
+    if (launch?.didNotificationLaunchApp == true) {
+      WesiNotifications._requestRoute(launch?.notificationResponse?.payload);
+    }
   }
 
   @override
@@ -262,7 +315,10 @@ class _MobileBackend implements NotificationBackend {
         notification.id.hashCode,
         notification.title,
         notification.body,
-        const NotificationDetails(android: _details),
+        const NotificationDetails(
+          android: _androidDetails,
+          iOS: _iosDetails,
+        ),
         payload: notification.route,
       );
 }
@@ -286,6 +342,9 @@ class _DesktopBackend implements NotificationBackend {
       title: notification.title,
       body: notification.body,
     );
+    toast.onClick = () {
+      WesiNotifications._requestRoute(notification.route);
+    };
     await toast.show();
   }
 }
