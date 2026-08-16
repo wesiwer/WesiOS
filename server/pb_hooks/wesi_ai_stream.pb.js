@@ -119,6 +119,35 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
     );
   }
 
+  const coagentPolicyRuntime = require(`${__hooks}/wesi_ai_coagent_policy.js`);
+  const coagentPolicy = coagentPolicyRuntime.evaluate({
+    leadPersona: persona,
+    tier: tier,
+    lobbyMode: lobbyMode,
+    message: message || "Проанализируй приложенные файлы.",
+    projectContext: projectContext,
+    history: cleanHistory,
+    memory: cleanMemory,
+    attachments: cleanAttachments,
+    toolDefinitions: toolDefinitions
+  });
+  if (coagentPolicy.enabled) {
+    const coagentBundle = personaRuntime.load(coagentPolicy.coagentPersona);
+    if (!coagentBundle.ready) {
+      coagentPolicy.enabled = false;
+      coagentPolicy.reason = "coagent_engine_not_ready";
+      coagentPolicy.task = "";
+      coagentPolicy.context = [];
+      coagentPolicy.allowedToolNames = [];
+      coagentPolicy.maxToolTurns = 0;
+    } else {
+      coagentPolicy.systemPrompt = coagentBundle.prompt;
+      coagentPolicy.toolDefinitions = toolDefinitions.filter(function(item) {
+        return String(item && item.wesiCapability && item.wesiCapability.risk || "").toUpperCase() === "READ";
+      });
+    }
+  }
+
   return {
     status: 200,
     prepared: {
@@ -133,7 +162,8 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
       attachments: cleanAttachments,
       activeOrganizationId: String(runtimeContext.activeOrganizationId || activeOrganizationId || ""),
       conversationId: conversationId,
-      toolNames: toolDefinitions.map(function(item) { return String(item.name || ""); }).filter(Boolean)
+      toolNames: toolDefinitions.map(function(item) { return String(item.name || ""); }).filter(Boolean),
+      coagent: coagentPolicy
     }
   };
 }
@@ -153,6 +183,7 @@ routerAdd("POST", "/api/wesi/ai/stream/prepare", (e) => {
 routerAdd("POST", "/api/wesi/ai/stream/tool", (e) => {
   const ai = require(`${__hooks}/wesi_ai_lib.js`);
   const tools = require(`${__hooks}/wesi_ai_tools.js`);
+  const registry = require(`${__hooks}/wesi_ai_capability_registry.js`);
   const ctx = ai.resolveIdentity(e);
   ai.requireAiModule(ctx);
   streamSecret(e, ai);
@@ -162,18 +193,33 @@ routerAdd("POST", "/api/wesi/ai/stream/tool", (e) => {
   const activeOrganizationId = String(body.activeOrganizationId || "").trim();
   const requestId = String(body.requestId || "").trim().slice(0, 180);
   const conversationId = String(body.conversationId || "").trim().slice(0, 180);
-  const persona = String(body.persona || "").trim().slice(0, 40);
-  const allowed = tools.definitions(e, ctx).some(function(item) {
+  const persona = String(body.persona || "").trim().toLowerCase().slice(0, 40);
+  const actorRole = String(body.actorRole || "lead").trim().toLowerCase();
+  const leadPersona = String(body.leadPersona || persona || "").trim().toLowerCase().slice(0, 40);
+  const handoffId = String(body.handoffId || "").trim().slice(0, 180);
+  const available = tools.definitions(e, ctx);
+  const definitionAllowed = available.some(function(item) {
     return String(item.name || "") === name;
   });
+  let allowed = definitionAllowed && (actorRole === "lead" || actorRole === "coagent");
+  if (allowed && actorRole === "coagent") {
+    const meta = registry.get(name);
+    const validPersonas = ["zane", "nirvana"].indexOf(persona) >= 0 && ["zane", "nirvana"].indexOf(leadPersona) >= 0 && persona !== leadPersona;
+    allowed = Boolean(meta) && meta.risk === registry.RISK_READ && validPersonas && handoffId.length > 0;
+  }
   if (!allowed) {
     return e.json(200, {
       ok: true,
-      toolResult: {tool: name, verified: true, ok: false, code: "FORBIDDEN", message: "Инструмент недоступен текущему сотруднику"}
+      toolResult: {tool: name, verified: true, ok: false, code: "FORBIDDEN", message: actorRole === "coagent" ? "Co-Agent может использовать только разрешённые read-only инструменты" : "Инструмент недоступен текущему сотруднику"}
     });
   }
   const executed = tools.execute(e, ctx, name, args, activeOrganizationId, {
-    requestId: requestId, conversationId: conversationId, persona: persona
+    requestId: requestId,
+    conversationId: conversationId,
+    persona: persona,
+    actorRole: actorRole,
+    leadPersona: leadPersona,
+    handoffId: handoffId
   });
   return e.json(200, {
     ok: true,

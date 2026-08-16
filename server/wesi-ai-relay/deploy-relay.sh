@@ -28,6 +28,10 @@ load_b64_file() {
     case "$key" in
       WESI_MAIN_SHARED_SECRET_B64) WESI_MAIN_SHARED_SECRET="$decoded" ;;
       GEMINI_API_KEY_B64) GEMINI_API_KEY="$decoded" ;;
+      GEMINI_API_KEY_2_B64) GEMINI_API_KEY_2="$decoded" ;;
+      GEMINI_API_KEY_3_B64) GEMINI_API_KEY_3="$decoded" ;;
+      GEMINI_API_KEY_4_B64) GEMINI_API_KEY_4="$decoded" ;;
+      GEMINI_API_KEY_5_B64) GEMINI_API_KEY_5="$decoded" ;;
       WESI_ZANE_TTS_VOICE_B64) WESI_ZANE_TTS_VOICE="$decoded" ;;
       WESI_NIRVANA_TTS_VOICE_B64) WESI_NIRVANA_TTS_VOICE="$decoded" ;;
       GROQ_API_KEY_B64) GROQ_API_KEY="$decoded" ;;
@@ -38,6 +42,8 @@ load_b64_file() {
   done < "$file"
   rm -f "$file"
   export WESI_MAIN_SHARED_SECRET GEMINI_API_KEY
+  export GEMINI_API_KEY_2="${GEMINI_API_KEY_2:-}" GEMINI_API_KEY_3="${GEMINI_API_KEY_3:-}"
+  export GEMINI_API_KEY_4="${GEMINI_API_KEY_4:-}" GEMINI_API_KEY_5="${GEMINI_API_KEY_5:-}"
   export WESI_ZANE_TTS_VOICE="${WESI_ZANE_TTS_VOICE:-Charon}"
   export WESI_NIRVANA_TTS_VOICE="${WESI_NIRVANA_TTS_VOICE:-Sulafat}"
 }
@@ -51,7 +57,7 @@ require_secrets() {
   if contains_newline "$WESI_MAIN_SHARED_SECRET"; then fail "Shared secret содержит перевод строки"; fi
   if contains_newline "$GEMINI_API_KEY"; then fail "Gemini key содержит перевод строки"; fi
   local optional
-  for optional in GROQ_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY; do
+  for optional in GEMINI_API_KEY_2 GEMINI_API_KEY_3 GEMINI_API_KEY_4 GEMINI_API_KEY_5 GROQ_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY; do
     if [ -n "${!optional:-}" ] && contains_newline "${!optional}"; then fail "$optional содержит перевод строки"; fi
   done
   return 0
@@ -145,6 +151,10 @@ WESI_ENABLE_PAID_MEDIA=${WESI_ENABLE_PAID_MEDIA:-false}
 ENV
 
   : >"$PROVIDER_ENV_FILE"
+  [ -n "${GEMINI_API_KEY_2:-}" ] && printf "GEMINI_API_KEY_2=%s\n" "$GEMINI_API_KEY_2" >>"$PROVIDER_ENV_FILE"
+  [ -n "${GEMINI_API_KEY_3:-}" ] && printf "GEMINI_API_KEY_3=%s\n" "$GEMINI_API_KEY_3" >>"$PROVIDER_ENV_FILE"
+  [ -n "${GEMINI_API_KEY_4:-}" ] && printf "GEMINI_API_KEY_4=%s\n" "$GEMINI_API_KEY_4" >>"$PROVIDER_ENV_FILE"
+  [ -n "${GEMINI_API_KEY_5:-}" ] && printf "GEMINI_API_KEY_5=%s\n" "$GEMINI_API_KEY_5" >>"$PROVIDER_ENV_FILE"
   [ -n "${GROQ_API_KEY:-}" ] && printf "GROQ_API_KEY=%s\n" "$GROQ_API_KEY" >>"$PROVIDER_ENV_FILE"
   [ -n "${MISTRAL_API_KEY:-}" ] && printf "MISTRAL_API_KEY=%s\n" "$MISTRAL_API_KEY" >>"$PROVIDER_ENV_FILE"
   [ -n "${OPENROUTER_API_KEY:-}" ] && printf "OPENROUTER_API_KEY=%s\n" "$OPENROUTER_API_KEY" >>"$PROVIDER_ENV_FILE"
@@ -166,6 +176,7 @@ User=wesi-relay
 Group=wesi-relay
 WorkingDirectory=$APP_DIR
 EnvironmentFile=$ENV_FILE
+EnvironmentFile=-$PROVIDER_ENV_FILE
 ExecStart=$node_bin $APP_DIR/server.mjs
 Restart=always
 RestartSec=3
