@@ -1,4 +1,5 @@
 name: Temporary deploy rootless Wesi AI streaming
+# rerun after installer hardening
 on:
   push:
     branches:
