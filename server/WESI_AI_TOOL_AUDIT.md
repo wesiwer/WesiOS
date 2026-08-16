@@ -21,10 +21,14 @@
   - каждый WRITE/DESTRUCTIVE tool fail-closed на пустом вызове;
   - пустой/неполный mutating call не может выполнить save/delete.
 - Relay tests проверяют provider/model routing и финансовую семантику.
-- Main streaming tests проверяют tool protocol/handoff, скрытие служебного JSON и verified result flow.
+- Main streaming tests проверяют tool protocol/handoff, скрытие служебного JSON и verified result flow:
+  - parser динамически прогоняет каждое имя из текущего Capability Registry, поэтому новые tools автоматически попадают в handoff regression coverage;
+  - явные `arguments`, которые не являются JSON-object, fail-closed и не превращаются в пустой вызов;
+  - malformed reserved envelope не доходит до executor и возвращается модели как verified `INVALID_TOOL_CALL`;
+  - streaming и non-streaming Main routes обязаны проверить актуальный allowlist до `tools.execute`.
 - Flutter tests проверяют клиентский разбор verified tool results.
 
-Тесты намеренно находятся вне `server/pb_hooks`, чтобы production-glob `wesi_ai_*.js` никогда не копировал test harness в runtime PocketBase.
+Тесты центрального registry/mutating safety намеренно находятся вне `server/pb_hooks`, чтобы production-glob `wesi_ai_*.js` никогда не копировал test harness в runtime PocketBase.
 
 ## Найденные и исправленные дефекты
 
@@ -32,6 +36,7 @@
 2. Старый Relay regression ошибочно считал recurring financial template фактическим расходом. Тест приведён к текущей семантике: фактический `currentBalance/net` отделён от `recurringExpense`.
 3. Live/final tool activity теряла безопасное человеческое `message` и оставляла только технический `code`. Gateway и Flutter client теперь сохраняют `code + message`, а final verified result не затирает detail.
 4. Audit-тесты были первоначально размещены под `server/pb_hooks` и совпадали с production deploy-glob. Они перенесены в `server/wesi-ai-tests`, чтобы runtime bundle содержал только исполняемые hooks.
+5. Tool parser принимал явное malformed `arguments` (строка, массив и т.п.) и молча превращал его в `{}`. Для read-tools с необязательными аргументами это могло превратить некорректный protocol envelope в валидный default-вызов. Streaming gateway и обычный `/api/wesi/ai/chat` теперь принимают отсутствующий `arguments` как `{}`, но при явно переданном значении требуют обычный JSON-object; иначе вызов считается `INVALID_TOOL_CALL` и не исполняется.
 
 ## Что сознательно не делается в CI
 
