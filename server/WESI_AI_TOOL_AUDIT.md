@@ -8,7 +8,7 @@
 
 Постоянные CI-gates:
 
-- `server/pb_hooks/wesi_ai_tools_contract.test.js`
+- `server/wesi-ai-tests/tools_contract.test.js`
   - каждый adapter имеет `definitions()` и `execute()`;
   - tool names уникальны и валидны;
   - JSON-описания аргументов структурно валидны;
@@ -17,18 +17,21 @@
   - GitHub tools корректно скрываются без подключённого credential и полностью проверяются при эмуляции подключённого credential;
   - READ executors проходят safe smoke-path;
   - risk/confirmation metadata согласованы.
-- `server/pb_hooks/wesi_ai_mutating_safety.test.js`
+- `server/wesi-ai-tests/mutating_safety.test.js`
   - каждый WRITE/DESTRUCTIVE tool fail-closed на пустом вызове;
   - пустой/неполный mutating call не может выполнить save/delete.
 - Relay tests проверяют provider/model routing и финансовую семантику.
 - Main streaming tests проверяют tool protocol/handoff, скрытие служебного JSON и verified result flow.
 - Flutter tests проверяют клиентский разбор verified tool results.
 
+Тесты намеренно находятся вне `server/pb_hooks`, чтобы production-glob `wesi_ai_*.js` никогда не копировал test harness в runtime PocketBase.
+
 ## Найденные и исправленные дефекты
 
 1. `calendar_create` генерировал id до проверки обязательных `title/startAt`. Теперь malformed call отклоняется до любых побочных действий.
 2. Старый Relay regression ошибочно считал recurring financial template фактическим расходом. Тест приведён к текущей семантике: фактический `currentBalance/net` отделён от `recurringExpense`.
 3. Live/final tool activity теряла безопасное человеческое `message` и оставляла только технический `code`. Gateway и Flutter client теперь сохраняют `code + message`, а final verified result не затирает detail.
+4. Audit-тесты были первоначально размещены под `server/pb_hooks` и совпадали с production deploy-glob. Они перенесены в `server/wesi-ai-tests`, чтобы runtime bundle содержал только исполняемые hooks.
 
 ## Что сознательно не делается в CI
 
