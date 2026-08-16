@@ -50,13 +50,37 @@ function identityViolation(personaName, answer) {
   return "";
 }
 
-function buildSystem(personaName, profile, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, repairReason) {
+function handoffInstruction(personaName, turnContext) {
+  if (!turnContext || turnContext.handoff !== true) return "";
+  const identity = personaIdentity(personaName);
+  const targetName = turnContext.target === "zane" ? "Зейн" : "Нирвана";
+  if (turnContext.role === "caller") {
+    return [
+      "[WESI_AI_LOBBY_HANDOFF_CALLER]",
+      "Пользователь попросил позвать другого участника.",
+      "Твоя единственная задача в этой реплике: коротко передать слово участнику " + targetName + ".",
+      "Не отвечай за него, не продолжай его будущую реплику и не разыгрывай диалог. Одна короткая реплика от лица " + identity.self + "."
+    ].join("\n");
+  }
+  if (turnContext.role === "target") {
+    return [
+      "[WESI_AI_LOBBY_HANDOFF_TARGET]",
+      "Тебя только что позвал другой участник Lobby по просьбе пользователя.",
+      "Теперь ответь пользователю самостоятельно от лица " + identity.self + ". Не повторяй вызов и не изображай другого участника."
+    ].join("\n");
+  }
+  return "";
+}
+
+function buildSystem(personaName, profile, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, repairReason, turnContext) {
   const identity = personaIdentity(personaName);
   const parts = [
     profile.prompt,
     identity.boundary,
     "[WESI_AI_LOBBY]\nТы участник общего Lobby. Отвечай только своей репликой и только как " + identity.self + ". Реплики другого участника формирует отдельный вызов."
   ];
+  const handoff = handoffInstruction(personaName, turnContext);
+  if (handoff) parts.push(handoff);
   if (repairReason) {
     parts.push(
       "[WESI_AI_LOBBY_REPAIR]\nПредыдущий черновик отклонён сервером из-за смешения личностей (" + repairReason + "). Сгенерируй ответ заново строго от лица " + identity.self + ". Не обсуждай сам факт проверки."
@@ -72,9 +96,9 @@ function buildSystem(personaName, profile, sharedMemory, personaMemory, projectM
   return parts.join("\n\n");
 }
 
-function invoke(ai, cfg, route, requestId, personaName, profile, message, history, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, repairReason) {
+function invoke(ai, cfg, route, requestId, personaName, profile, message, history, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, repairReason, turnContext) {
   const payload = {requestId, route, operation: "lobby", input: {
-    system: buildSystem(personaName, profile, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, repairReason),
+    system: buildSystem(personaName, profile, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, repairReason, turnContext),
     history: history.concat(priorTurns),
     message
   }};
@@ -82,14 +106,14 @@ function invoke(ai, cfg, route, requestId, personaName, profile, message, histor
 }
 
 module.exports = {
-  run: function(ai, cfg, route, requestId, personaName, profile, message, history, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson) {
-    let result = invoke(ai, cfg, route, requestId, personaName, profile, message, history, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, "");
+  run: function(ai, cfg, route, requestId, personaName, profile, message, history, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, turnContext) {
+    let result = invoke(ai, cfg, route, requestId, personaName, profile, message, history, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, "", turnContext);
     if (!result.ok) return result;
 
     const violation = identityViolation(personaName, result.answer);
     if (!violation) return result;
 
-    const repaired = invoke(ai, cfg, route, requestId + "_repair", personaName, profile, message, history, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, violation);
+    const repaired = invoke(ai, cfg, route, requestId + "_repair", personaName, profile, message, history, sharedMemory, personaMemory, projectMemory, priorTurns, summary, projectContext, taskStateJson, violation, turnContext);
     if (!repaired.ok) return repaired;
     const secondViolation = identityViolation(personaName, repaired.answer);
     if (!secondViolation) return repaired;
@@ -103,6 +127,7 @@ module.exports = {
   },
   _test: {
     identityViolation,
-    personaIdentity
+    personaIdentity,
+    handoffInstruction
   }
 };
