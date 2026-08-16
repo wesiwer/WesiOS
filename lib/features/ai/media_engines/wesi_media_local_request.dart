@@ -25,7 +25,8 @@ class WesiMediaLocalRequestSanitizer {
     'videoSubtitles': 'video',
   };
 
-  static const Map<String, (int, int)> _inputBounds = <String, (int, int)>{
+  static const Map<String, (int, int)> _inputBounds =
+      <String, (int, int)>{
     'imageGenerate': (0, 0),
     'imageEdit': (1, 1),
     'imageReference': (1, 1),
