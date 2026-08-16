@@ -54,6 +54,32 @@ function prepared() {
   };
 }
 
+function preparedWithCoagent() {
+  return {
+    ...prepared(),
+    tier: 'pro',
+    route: 'wesi/pro',
+    message: 'Сделай приложение с хорошим UX.',
+    coagent: {
+      enabled: true,
+      reason: 'cross_domain_product',
+      leadPersona: 'zane',
+      coagentPersona: 'nirvana',
+      task: 'Проверь UX/UI и верни структурированный результат.',
+      context: [{kind: 'user_request', text: 'Сделай приложение с хорошим UX.'}],
+      requestedCapabilities: ['tasks_list'],
+      grantedCapabilities: ['tasks_list'],
+      allowlistedCapabilities: ['tasks_list'],
+      sideEffectCapabilities: [],
+      allowedToolNames: ['tasks_list'],
+      maxReviewRounds: 1,
+      maxToolTurns: 0,
+      systemPrompt: 'Ты Нирвана, Creative / Experience Persona Agent Wesi AI. '.repeat(5),
+      toolDefinitions: [{name: 'tasks_list', wesiCapability: {risk: 'READ'}}],
+    },
+  };
+}
+
 async function readEvents(response) {
   const text = await response.text();
   return text.trim().split('\n').filter(Boolean).map((line) => JSON.parse(line));
@@ -113,6 +139,84 @@ test('gateway forwards true deltas and final done event without provider metadat
     assert.deepEqual(events.map((event) => event.type), ['meta', 'agent', 'activity', 'delta', 'delta', 'agent', 'done']);
     assert.equal(events.filter((event) => event.type === 'delta').map((event) => event.text).join(''), 'Привет');
     assert.equal(JSON.stringify(events).includes('provider'), false);
+  });
+});
+
+test('Co-Agent and Lead review stay buffered on same tier while Lead owns final answer', async () => {
+  let relayCalls = 0;
+  const relayPayloads = [];
+  const rawCoagent = JSON.stringify({
+    summary: 'UX review complete',
+    findings: ['Упростить первый экран'],
+    risks: ['Слишком много действий'],
+    recommendation: 'Сократить первый экран',
+    artifacts: [],
+  });
+  const fetchImpl = async (url, options) => {
+    const value = String(url);
+    if (value.endsWith('/api/wesi/ai/stream/prepare')) {
+      return jsonResponse({ok: true, prepared: preparedWithCoagent()});
+    }
+    if (value.endsWith('/v1/wesi-ai-stream')) {
+      relayCalls += 1;
+      const payload = JSON.parse(options.body);
+      relayPayloads.push(payload);
+      assert.equal(payload.route, 'wesi/pro');
+      if (relayCalls === 1) {
+        assert.equal(payload.input.system.includes('WESI_AI_PERSONA_COAGENT_HANDOFF'), true);
+        return ndjson([
+          {type: 'delta', text: rawCoagent.slice(0, 30)},
+          {type: 'delta', text: rawCoagent.slice(30)},
+          {type: 'done', answer: rawCoagent, provider: 'coagent-provider-must-not-leak'},
+        ]);
+      }
+      if (relayCalls === 2) {
+        assert.equal(payload.input.system.includes('WESI_AI_PERSONA_COAGENT_REVIEW'), true);
+        const review = '{"decision":"accept"}';
+        return ndjson([
+          {type: 'delta', text: review},
+          {type: 'done', answer: review, provider: 'review-provider-must-not-leak'},
+        ]);
+      }
+      assert.equal(payload.input.system.includes('WESI_AI_VERIFIED_COAGENT_RESULT'), true);
+      assert.equal(payload.input.system.includes('UX review complete'), true);
+      return ndjson([
+        {type: 'delta', text: 'Финал '},
+        {type: 'delta', text: 'Зейна.'},
+        {type: 'done', answer: 'Финал Зейна.', provider: 'lead-provider-must-not-leak'},
+      ]);
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+
+  await withGateway(fetchImpl, async (base) => {
+    const response = await fetch(`${base}/api/wesi/ai/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer user-token',
+        'x-wesios-session': 'session_123456789012345678901234',
+      },
+      body: JSON.stringify({persona: 'zane', tier: 'pro', message: 'Сделай приложение с хорошим UX.'}),
+    });
+    const events = await readEvents(response);
+    assert.equal(relayCalls, 3);
+    assert.equal(relayPayloads.every((payload) => payload.route === 'wesi/pro'), true);
+    const coagentPhases = events.filter((event) => event.type === 'agent' && event.role === 'coagent').map((event) => event.phase);
+    assert.deepEqual(coagentPhases, ['handoff', 'start', 'result', 'review']);
+    const timeline = events.filter((event) => event.type === 'activity').map((event) => event.label);
+    assert.equal(timeline.includes('Зейн → Нирвана'), true);
+    assert.equal(timeline.includes('Нирвана · Co-Agent проверка'), true);
+    assert.equal(timeline.includes('Нирвана → Зейн'), true);
+    assert.equal(timeline.includes('Зейн · проверка Co-Agent результата'), true);
+    assert.equal(timeline.includes('Зейн · результат принят'), true);
+    const userText = events.filter((event) => event.type === 'delta').map((event) => event.text).join('');
+    assert.equal(userText, 'Финал Зейна.');
+    assert.equal(userText.includes('UX review complete'), false);
+    assert.equal(userText.includes('decision'), false);
+    assert.equal(events.at(-1).type, 'done');
+    assert.equal(events.at(-1).answer, 'Финал Зейна.');
+    assert.equal(JSON.stringify(events).includes('provider-must-not-leak'), false);
   });
 });
 
@@ -179,4 +283,28 @@ test('tool JSON is never leaked and verified tool result precedes final stream',
     assert.equal(events.at(-1).type, 'done');
     assert.equal(events.at(-1).toolResults[0].verified, true);
   });
+});
+
+test('gateway health exposes ready state', async () => {
+  const handler = createGateway({
+    pocketBaseUrl: 'https://main.example.test',
+    relayUrl: 'https://relay.example.test',
+    streamSecret: 's'.repeat(40),
+    relaySecret: 'r'.repeat(40),
+    fetchImpl: async () => { throw new Error('not used'); },
+  });
+  const req = {method: 'GET', url: '/health'};
+  let status = 0; let body = '';
+  const res = {
+    destroyed: false, writableEnded: false,
+    writeHead(code) { status = code; },
+    end(value='') { body += value; this.writableEnded = true; },
+    write(value) { body += value; return true; },
+    on() {},
+  };
+  await handler(req, res);
+  assert.equal(status, 200);
+  const json = JSON.parse(body);
+  assert.equal(json.ready, true);
+  assert.equal(json.streaming, true);
 });

@@ -52,12 +52,21 @@ module.exports = {
   },
 
   context: function(e, ctx, activeOrganizationId) {
-    const result = {};
+    // Keep the organization selected by the authenticated WesiOS client in
+    // the shared runtime context. The ordinary Main/fallback route later uses
+    // this exact value for tool execution; without it the model could choose a
+    // different accessible organization on its own.
+    const result = {
+      activeOrganizationId: String(activeOrganizationId || "").trim(),
+    };
     for (const adapter of adapters()) {
       if (typeof adapter.context !== "function") continue;
       const part = adapter.context(e, ctx, activeOrganizationId);
       if (part && typeof part === "object") Object.assign(result, part);
     }
+    // Adapter context is descriptive only and must never override the trusted
+    // active organization supplied by WesiOS.
+    result.activeOrganizationId = String(activeOrganizationId || "").trim();
     return result;
   },
 

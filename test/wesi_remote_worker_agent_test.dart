@@ -149,7 +149,7 @@ WesiRemoteWorkerAgent _agent(
       workerId: workerId,
       secret: 'worker-secret-' * 4,
       issuedAt: DateTime.utc(2026, 8, 15),
-      expiresAt: DateTime.utc(2026, 8, 16),
+      expiresAt: DateTime.utc(2030, 1, 1),
     ),
     receipts: receipts,
     executionHandler: handler,

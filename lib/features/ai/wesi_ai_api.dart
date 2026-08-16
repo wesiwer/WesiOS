@@ -12,9 +12,89 @@ import 'models/wesi_ai_content_blocks.dart';
 class WesiAiApiException implements Exception {
   final String code;
   final String message;
-  const WesiAiApiException(this.code, this.message);
+  final String requestId;
+  final String stage;
+  final String component;
+  final String operation;
+  final int? httpStatus;
+  final String lastSuccess;
+  final int? durationMs;
+  final String detail;
+
+  const WesiAiApiException(
+    this.code,
+    this.message, {
+    this.requestId = '',
+    this.stage = '',
+    this.component = '',
+    this.operation = '',
+    this.httpStatus,
+    this.lastSuccess = '',
+    this.durationMs,
+    this.detail = '',
+  });
+
+  factory WesiAiApiException.fromPayload(
+    String fallbackCode,
+    String fallbackMessage,
+    Map<String, dynamic> payload, {
+    int? httpStatus,
+    String stage = '',
+    String component = '',
+    String operation = '',
+    String lastSuccess = '',
+    int? durationMs,
+  }) {
+    final raw = payload['diagnostic'];
+    final diagnostic =
+        raw is Map ? Map<String, dynamic>.from(raw) : const <String, dynamic>{};
+    int? intValue(Object? value) =>
+        value is num ? value.toInt() : int.tryParse('${value ?? ''}');
+    final resolvedCode = '${payload['code'] ?? fallbackCode}'.trim();
+    return WesiAiApiException(
+      resolvedCode.isEmpty ? fallbackCode : resolvedCode,
+      fallbackMessage,
+      requestId:
+          '${diagnostic['requestId'] ?? payload['requestId'] ?? ''}'.trim(),
+      stage: '${diagnostic['stage'] ?? stage}'.trim(),
+      component: '${diagnostic['component'] ?? component}'.trim(),
+      operation: '${diagnostic['operation'] ?? operation}'.trim(),
+      httpStatus: intValue(diagnostic['httpStatus']) ?? httpStatus,
+      lastSuccess: '${diagnostic['lastSuccess'] ?? lastSuccess}'.trim(),
+      durationMs: intValue(diagnostic['durationMs']) ?? durationMs,
+      detail: '${diagnostic['detail'] ?? ''}'.trim(),
+    );
+  }
+
+  Map<String, dynamic> get diagnostic => <String, dynamic>{
+        'code': code,
+        if (requestId.isNotEmpty) 'requestId': requestId,
+        if (stage.isNotEmpty) 'stage': stage,
+        if (component.isNotEmpty) 'component': component,
+        if (operation.isNotEmpty) 'operation': operation,
+        if (httpStatus != null) 'httpStatus': httpStatus,
+        if (lastSuccess.isNotEmpty) 'lastSuccess': lastSuccess,
+        if (durationMs != null) 'durationMs': durationMs,
+        if (detail.isNotEmpty) 'detail': detail,
+      };
+
+  String get technicalDetails => <String>[
+        if (stage.isNotEmpty) 'Этап: $stage',
+        if (component.isNotEmpty) 'Компонент: $component',
+        if (operation.isNotEmpty) 'Операция: $operation',
+        'Код: $code',
+        if (httpStatus != null) 'HTTP: $httpStatus',
+        if (lastSuccess.isNotEmpty) 'Последний успешный этап: $lastSuccess',
+        if (requestId.isNotEmpty) 'Request ID: $requestId',
+        if (durationMs != null) 'Длительность: ${durationMs} мс',
+        if (detail.isNotEmpty) 'Детали: $detail',
+      ].join('\n');
+
+  String get displayMessage =>
+      '$message\n\nТехнические детали\n$technicalDetails';
+
   @override
-  String toString() => message;
+  String toString() => displayMessage;
 }
 
 class WesiAiReply {
@@ -59,6 +139,10 @@ class WesiAiRequestCancellation {
 
 class WesiAiApi {
   static const int maxTransportHistoryMessages = 80;
+  static const String streamBaseUrl = String.fromEnvironment(
+    'WESI_AI_STREAM_BASE_URL',
+    defaultValue: 'https://wesi-ai-178-236-247-194.nip.io',
+  );
 
   static final HttpClient _http = HttpClient()
     ..connectionTimeout = const Duration(seconds: 12)
@@ -156,15 +240,23 @@ class WesiAiApi {
       };
 
       if (conversation.persona != WesiAiPersona.lobby) {
-        final streamed = await _sendStream(
-          base: base,
-          auth: auth,
-          body: body,
-          onDelta: onDelta,
-          onActivity: onActivity,
-          cancellation: cancellation,
-        );
-        if (streamed != null) return streamed;
+        try {
+          final streamed = await _sendStream(
+            base: base,
+            auth: auth,
+            body: body,
+            onDelta: onDelta,
+            onActivity: onActivity,
+            cancellation: cancellation,
+          );
+          if (streamed != null) return streamed;
+        } on SocketException catch (error) {
+          _emitStreamFallback(onActivity, 'STREAM_SOCKET', error.message);
+        } on HttpException catch (error) {
+          _emitStreamFallback(onActivity, 'STREAM_HTTP', error.message);
+        } on TimeoutException catch (error) {
+          _emitStreamFallback(onActivity, 'STREAM_TIMEOUT', '$error');
+        }
       }
 
       final request = await _http.postUrl(uri);
@@ -178,22 +270,73 @@ class WesiAiApi {
       cancellation?.unbind();
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final code = '${json['code'] ?? 'WAI_REQUEST_FAILED'}';
-        throw WesiAiApiException(code, _messageFor(code));
+        throw WesiAiApiException.fromPayload(
+          code,
+          _messageFor(code),
+          json,
+          httpStatus: response.statusCode,
+          stage: response.statusCode == 401 || response.statusCode == 403
+              ? 'AUTH'
+              : 'MAIN',
+          component: response.statusCode == 401 || response.statusCode == 403
+              ? 'WesiOS Auth'
+              : 'WesiOS Main',
+          operation: 'chat',
+          lastSuccess: 'CLIENT',
+        );
       }
       return _replyFromPayload(json);
     } on WesiAiApiException {
       rethrow;
-    } on SocketException {
-      throw const WesiAiApiException('NETWORK', 'Нет связи с сервером WesiOS');
-    } on HttpException {
-      throw const WesiAiApiException(
-          'NETWORK', 'Ошибка связи с сервером WesiOS');
-    } on TimeoutException {
-      throw const WesiAiApiException(
-          'NETWORK', 'Wesi AI не успел обработать запрос');
+    } on SocketException catch (error) {
+      throw WesiAiApiException('NETWORK_SOCKET', 'Нет связи с сервером WesiOS',
+          stage: 'CLIENT_TRANSPORT',
+          component: 'WesiAiApi',
+          operation: 'chat',
+          lastSuccess: 'REQUEST_PREPARED',
+          detail: error.message);
+    } on HttpException catch (error) {
+      throw WesiAiApiException('NETWORK_HTTP', 'Ошибка связи с сервером WesiOS',
+          stage: 'CLIENT_TRANSPORT',
+          component: 'WesiAiApi',
+          operation: 'chat',
+          lastSuccess: 'REQUEST_PREPARED',
+          detail: error.message);
+    } on TimeoutException catch (error) {
+      throw WesiAiApiException(
+          'NETWORK_TIMEOUT', 'Wesi AI не успел обработать запрос',
+          stage: 'CLIENT_TRANSPORT',
+          component: 'WesiAiApi',
+          operation: 'chat',
+          lastSuccess: 'REQUEST_SENT',
+          detail: '$error');
     } on FormatException catch (e) {
       throw WesiAiApiException('WAI_ATTACHMENT_INVALID', e.message);
     }
+  }
+
+  static void _emitStreamFallback(
+    void Function(Map<String, dynamic> event)? onActivity,
+    String code,
+    String detail,
+  ) {
+    final cleanDetail = detail.trim();
+    onActivity?.call(<String, dynamic>{
+      'type': 'activity',
+      'kind': 'status',
+      'phase': 'fallback',
+      'label': 'Streaming недоступен — переключаюсь на WesiOS Main',
+      'detail':
+          'Этап: STREAM_GATEWAY · Компонент: Streaming edge · Код: $code${cleanDetail.isEmpty ? '' : ' · $cleanDetail'}',
+      'diagnostic': <String, dynamic>{
+        'stage': 'STREAM_GATEWAY',
+        'component': 'Streaming edge',
+        'operation': 'chat.stream',
+        'code': code,
+        'lastSuccess': 'CLIENT_AUTH',
+        if (cleanDetail.isNotEmpty) 'detail': cleanDetail,
+      },
+    });
   }
 
   Future<WesiAiReply?> _sendStream({
@@ -208,7 +351,10 @@ class WesiAiApi {
       throw const WesiAiApiException(
           'WAI_CANCELLED', 'Запрос Wesi AI остановлен');
     }
-    final uri = base.replace(path: '/api/wesi/ai/chat/stream');
+    final configuredStreamBase = streamBaseUrl.trim();
+    final streamBase =
+        configuredStreamBase.isEmpty ? base : Uri.parse(configuredStreamBase);
+    final uri = streamBase.replace(path: '/api/wesi/ai/chat/stream');
     final request = await _http.postUrl(uri);
     _applyAuth(request, auth);
     request.headers.contentType = ContentType.json;
@@ -225,7 +371,22 @@ class WesiAiApi {
         return null;
       }
       final resolved = code.isEmpty ? 'WAI_STREAM_FAILED' : code;
-      throw WesiAiApiException(resolved, _messageFor(resolved));
+      throw WesiAiApiException.fromPayload(
+        resolved,
+        _messageFor(resolved),
+        json,
+        httpStatus: response.statusCode,
+        stage: response.statusCode == 401 || response.statusCode == 403
+            ? 'AUTH'
+            : 'STREAM_GATEWAY',
+        component: response.statusCode == 401 || response.statusCode == 403
+            ? 'Streaming Auth'
+            : 'Streaming edge',
+        operation: 'chat.stream',
+        lastSuccess: response.statusCode == 401 || response.statusCode == 403
+            ? 'CLIENT'
+            : 'CLIENT_AUTH',
+      );
     }
 
     final done = Completer<Map<String, dynamic>>();
@@ -249,7 +410,18 @@ class WesiAiApi {
               break;
             case 'error':
               final code = '${event['code'] ?? 'WAI_STREAM_FAILED'}';
-              done.completeError(WesiAiApiException(code, _messageFor(code)));
+              done.completeError(WesiAiApiException.fromPayload(
+                code,
+                _messageFor(code),
+                event,
+                httpStatus: event['status'] is num
+                    ? (event['status'] as num).toInt()
+                    : null,
+                stage: 'STREAM_GATEWAY',
+                component: 'Streaming gateway',
+                operation: 'chat.stream',
+                lastSuccess: 'STREAM_CONNECTED',
+              ));
               break;
             case 'meta':
             case 'tool':
@@ -344,17 +516,34 @@ class WesiAiApi {
       final files = filesRaw is List
           ? filesRaw.take(40).map((value) => '$value').toList(growable: false)
           : const <String>[];
+      final hasDiffMetadata = payload.containsKey('additions') ||
+          payload.containsKey('deletions') ||
+          map.containsKey('additions') ||
+          map.containsKey('deletions') ||
+          files.isNotEmpty;
+      final transactionCount = payload['transactionCount'];
+      final organizationName = '${payload['organizationName'] ?? ''}'.trim();
+      final organizationId = '${payload['organizationId'] ?? ''}'.trim();
+      final code = '${map['code'] ?? ''}'.trim();
+      final detailParts = <String>[
+        if (transactionCount is num) '${transactionCount.toInt()} операций',
+        if (organizationName.isNotEmpty) organizationName,
+        if (organizationName.isEmpty && organizationId.isNotEmpty)
+          organizationId,
+        if (code.isNotEmpty) code,
+      ];
       result.add(<String, dynamic>{
         'id': 'tool_result_$index',
         'kind': 'tool',
         'sourceName': tool,
         'label': tool.isEmpty ? 'Инструмент' : 'Инструмент · $tool',
         'status': 'result',
-        'additions': count(payload['additions'] ?? map['additions']),
-        'deletions': count(payload['deletions'] ?? map['deletions']),
+        if (hasDiffMetadata)
+          'additions': count(payload['additions'] ?? map['additions']),
+        if (hasDiffMetadata)
+          'deletions': count(payload['deletions'] ?? map['deletions']),
         if (files.isNotEmpty) 'files': files,
-        if ('${map['code'] ?? ''}'.trim().isNotEmpty)
-          'detail': '${map['code']}',
+        if (detailParts.isNotEmpty) 'detail': detailParts.join(' · '),
       });
     }
     return result;

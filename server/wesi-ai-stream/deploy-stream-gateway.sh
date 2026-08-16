@@ -10,9 +10,9 @@ SERVICE_USER="wesi-ai-stream"
 
 if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
 
-[ -f "$SOURCE_DIR/server.mjs" ]
-[ -f "$SOURCE_DIR/gateway.mjs" ]
-[ -f "$SOURCE_DIR/package.json" ]
+for required in server.mjs gateway.mjs persona_coagent.mjs persona_coagent_orchestrator.mjs package.json; do
+  [ -f "$SOURCE_DIR/$required" ] || { echo "Missing stream runtime file: $required" >&2; exit 2; }
+done
 [ -f "$SECRETS_FILE" ]
 command -v node >/dev/null 2>&1
 
@@ -21,7 +21,7 @@ if ! id "$SERVICE_USER" >/dev/null 2>&1; then
 fi
 
 "${SUDO[@]}" install -d -o root -g "$SERVICE_USER" -m 0750 "$INSTALL_DIR"
-for file in server.mjs gateway.mjs package.json; do
+for file in server.mjs gateway.mjs persona_coagent.mjs persona_coagent_orchestrator.mjs package.json; do
   "${SUDO[@]}" install -o root -g "$SERVICE_USER" -m 0640 "$SOURCE_DIR/$file" "$INSTALL_DIR/$file"
 done
 
@@ -51,15 +51,15 @@ done < "$SECRETS_FILE"
 grep -q '^WESI_STREAM_SECRET=.' "$TMP_ENV"
 grep -q '^WESI_MAIN_SHARED_SECRET=.' "$TMP_ENV"
 grep -Eq '^WESI_RELAY_URL=https://' "$TMP_ENV"
-grep -Eq '^WESI_POCKETBASE_URL=http://127\.0\.0\.1:' "$TMP_ENV"
+grep -Eq '^WESI_POCKETBASE_URL=https?://' "$TMP_ENV"
 
 "${SUDO[@]}" install -o root -g "$SERVICE_USER" -m 0640 "$TMP_ENV" "$ENV_FILE"
 
 TMP_SERVICE="$(mktemp)"
 cat > "$TMP_SERVICE" <<'EOF'
 [Unit]
-Description=Wesi AI Main Streaming Gateway
-After=network-online.target pocketbase.service
+Description=Wesi AI Streaming Gateway
+After=network-online.target
 Wants=network-online.target
 
 [Service]

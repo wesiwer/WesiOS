@@ -16,6 +16,7 @@ import 'wesi_ai_rich_message.dart';
 class WesiAiMessageContent extends StatelessWidget {
   final WesiAiMessage message;
   final bool animateText;
+  final bool showWorkLog;
   final bool expandWorkLog;
   final WesiAiQuickReply? onQuickReply;
 
@@ -23,6 +24,7 @@ class WesiAiMessageContent extends StatelessWidget {
     super.key,
     required this.message,
     this.animateText = true,
+    this.showWorkLog = false,
     this.expandWorkLog = false,
     this.onQuickReply,
   });
@@ -47,6 +49,7 @@ class WesiAiMessageContent extends StatelessWidget {
             text: message.text,
             activityRaw: message.metadata['activity'],
             streaming: message.metadata['transportStreaming'] == true,
+            showWorkLog: showWorkLog,
             expandWorkLog: expandWorkLog,
             workDurationMs:
                 int.tryParse('${message.metadata['workDurationMs'] ?? 0}') ?? 0,
@@ -68,14 +71,15 @@ class _BlockView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => switch (block.type) {
-        WesiAiContentBlockType.knowledge => _KnowledgeBlock(data: block.data),
-        WesiAiContentBlockType.table => _TableBlock(data: block.data),
-        WesiAiContentBlockType.chart => _ChartBlock(data: block.data),
-        WesiAiContentBlockType.diagram => _DiagramBlock(data: block.data),
-        WesiAiContentBlockType.media => _MediaBlock(data: block.data),
-        WesiAiContentBlockType.confirmation =>
-          _ActionConfirmationBlock(data: block.data),
-      };
+    WesiAiContentBlockType.knowledge => _KnowledgeBlock(data: block.data),
+    WesiAiContentBlockType.table => _TableBlock(data: block.data),
+    WesiAiContentBlockType.chart => _ChartBlock(data: block.data),
+    WesiAiContentBlockType.diagram => _DiagramBlock(data: block.data),
+    WesiAiContentBlockType.media => _MediaBlock(data: block.data),
+    WesiAiContentBlockType.confirmation => _ActionConfirmationBlock(
+      data: block.data,
+    ),
+  };
 }
 
 class _ActionConfirmationBlock extends StatefulWidget {
@@ -114,7 +118,8 @@ class _ActionConfirmationBlockState extends State<_ActionConfirmationBlock> {
       _message = result.ok
           ? 'Действие выполнено.'
           : (result.message ?? 'Не удалось выполнить действие.');
-      _terminal = result.ok ||
+      _terminal =
+          result.ok ||
           (result.code != null &&
               result.code != 'NETWORK' &&
               result.code != 'WAI_CONFIRMATION_BAD_RESPONSE');
@@ -144,14 +149,17 @@ class _ActionConfirmationBlockState extends State<_ActionConfirmationBlock> {
           children: [
             Row(
               children: [
-                Icon(Icons.warning_amber_rounded,
-                    color: theme.colorScheme.error),
+                Icon(
+                  Icons.warning_amber_rounded,
+                  color: theme.colorScheme.error,
+                ),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text(
                     'Требуется подтверждение действия',
-                    style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w700),
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],
@@ -189,8 +197,8 @@ class _ActionConfirmationBlockState extends State<_ActionConfirmationBlock> {
                 _success
                     ? 'Выполнено'
                     : expired
-                        ? 'Подтверждение истекло'
-                        : 'Подтвердить действие',
+                    ? 'Подтверждение истекло'
+                    : 'Подтвердить действие',
               ),
             ),
           ],
@@ -213,14 +221,16 @@ class _KnowledgeBlock extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-              content: Text('Статья больше не найдена в Базе знаний')),
+            content: Text('Статья больше не найдена в Базе знаний'),
+          ),
         );
       }
       return;
     }
 
     final permissions = TeamService.currentPermissions;
-    final allowed = permissions.knowledgeAll ||
+    final allowed =
+        permissions.knowledgeAll ||
         permissions.allowsArticle(article.id) ||
         (article.parentId != null &&
             permissions.allowsArticle(article.parentId!));
@@ -299,6 +309,8 @@ class _TableBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    final tableFontSize = compact ? 12.0 : 13.0;
     final columns = List<String>.from(data['columns'] as List? ?? const []);
     final rows = (data['rows'] as List? ?? const [])
         .whereType<List>()
@@ -308,30 +320,39 @@ class _TableBlock extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(compact ? 9 : 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (title.isNotEmpty) ...[
               Text(
                 title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontSize: compact ? 13.5 : null,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 8),
             ],
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowHeight: 40,
-                dataRowMinHeight: 36,
-                dataRowMaxHeight: 80,
+                headingRowHeight: compact ? 35 : 40,
+                dataRowMinHeight: compact ? 31 : 36,
+                dataRowMaxHeight: compact ? 56 : 72,
+                horizontalMargin: compact ? 9 : 12,
+                columnSpacing: compact ? 16 : 20,
+                dividerThickness: 0.6,
                 columns: [
                   for (final column in columns)
                     DataColumn(
                       label: Text(
                         column,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: tableFontSize,
+                          fontWeight: FontWeight.w700,
+                          height: 1.2,
+                        ),
                       ),
                     ),
                 ],
@@ -342,8 +363,16 @@ class _TableBlock extends StatelessWidget {
                         for (var i = 0; i < columns.length; i++)
                           DataCell(
                             ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 260),
-                              child: Text(i < row.length ? row[i] : ''),
+                              constraints: BoxConstraints(
+                                maxWidth: compact ? 200 : 260,
+                              ),
+                              child: Text(
+                                i < row.length ? row[i] : '',
+                                style: TextStyle(
+                                  fontSize: tableFontSize,
+                                  height: 1.22,
+                                ),
+                              ),
                             ),
                           ),
                       ],
@@ -383,8 +412,9 @@ class _ChartBlock extends StatelessWidget {
             if (title.isNotEmpty) ...[
               Text(
                 title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 10),
             ],
@@ -450,8 +480,10 @@ class _AiChartPainter extends CustomPainter {
 
   List<double> _values(Map<String, dynamic> item) =>
       (item['values'] as List? ?? const [])
-          .map((value) =>
-              value is num ? value.toDouble() : double.tryParse('$value'))
+          .map(
+            (value) =>
+                value is num ? value.toDouble() : double.tryParse('$value'),
+          )
           .whereType<double>()
           .where((value) => value.isFinite)
           .toList(growable: false);
@@ -480,8 +512,12 @@ class _AiChartPainter extends CustomPainter {
     const top = 10.0;
     const right = 10.0;
     const bottom = 34.0;
-    final rect =
-        Rect.fromLTRB(left, top, size.width - right, size.height - bottom);
+    final rect = Rect.fromLTRB(
+      left,
+      top,
+      size.width - right,
+      size.height - bottom,
+    );
     if (rect.width <= 0 || rect.height <= 0) return;
 
     final all = <double>[];
@@ -503,11 +539,17 @@ class _AiChartPainter extends CustomPainter {
       canvas.drawLine(Offset(rect.left, y), Offset(rect.right, y), gridPaint);
       final value = maxValue - (maxValue - minValue) * i / 4;
       _label(
-          canvas, _compact(value), Offset(0, y - 7), left - 6, TextAlign.right);
+        canvas,
+        _compact(value),
+        Offset(0, y - 7),
+        left - 6,
+        TextAlign.right,
+      );
     }
 
-    final maxPoints =
-        series.map(_values).fold<int>(0, (a, b) => math.max(a, b.length));
+    final maxPoints = series
+        .map(_values)
+        .fold<int>(0, (a, b) => math.max(a, b.length));
     if (maxPoints == 0) return;
     double xAt(int index) => maxPoints <= 1
         ? rect.center.dx
@@ -517,8 +559,10 @@ class _AiChartPainter extends CustomPainter {
 
     if (bars) {
       final groupWidth = rect.width / math.max(maxPoints, 1);
-      final barWidth =
-          math.max(2.0, groupWidth * 0.72 / math.max(series.length, 1));
+      final barWidth = math.max(
+        2.0,
+        groupWidth * 0.72 / math.max(series.length, 1),
+      );
       for (var s = 0; s < series.length; s++) {
         final values = _values(series[s]);
         final paint = Paint()..color = _chartColor(colorScheme, s);
@@ -529,8 +573,12 @@ class _AiChartPainter extends CustomPainter {
           final valueY = yAt(values[i]);
           canvas.drawRRect(
             RRect.fromRectAndRadius(
-              Rect.fromLTRB(x, math.min(zeroY, valueY), x + barWidth,
-                  math.max(zeroY, valueY)),
+              Rect.fromLTRB(
+                x,
+                math.min(zeroY, valueY),
+                x + barWidth,
+                math.max(zeroY, valueY),
+              ),
               const Radius.circular(3),
             ),
             paint,
@@ -598,8 +646,13 @@ class _AiChartPainter extends CustomPainter {
       );
       start += sweep;
     }
-    _label(canvas, '100%', Offset(center.dx - 28, center.dy - 9), 56,
-        TextAlign.center);
+    _label(
+      canvas,
+      '100%',
+      Offset(center.dx - 28, center.dy - 9),
+      56,
+      TextAlign.center,
+    );
   }
 
   void _label(
@@ -682,16 +735,19 @@ class _DiagramBlock extends StatelessWidget {
             if (title.isNotEmpty) ...[
               Text(
                 title,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const SizedBox(height: 10),
             ],
             for (var i = 0; i < nodes.length; i++) ...[
               Container(
                 width: double.infinity,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
                   color: theme.colorScheme.primaryContainer.withOpacity(0.35),
                   borderRadius: BorderRadius.circular(10),
@@ -708,12 +764,17 @@ class _DiagramBlock extends StatelessWidget {
                 Center(
                   child: Column(
                     children: [
-                      Icon(Icons.arrow_downward,
-                          size: 18, color: theme.colorScheme.primary),
+                      Icon(
+                        Icons.arrow_downward,
+                        size: 18,
+                        color: theme.colorScheme.primary,
+                      ),
                       ...edges
-                          .where((edge) =>
-                              '${edge['from']}' == '${nodes[i]['id']}' &&
-                              nodeById.containsKey('${edge['to']}'))
+                          .where(
+                            (edge) =>
+                                '${edge['from']}' == '${nodes[i]['id']}' &&
+                                nodeById.containsKey('${edge['to']}'),
+                          )
                           .take(2)
                           .map(
                             (edge) => '${edge['label'] ?? ''}'.trim().isEmpty
@@ -758,9 +819,9 @@ class _MediaBlock extends StatelessWidget {
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
           title: Text(title.isEmpty ? 'Генерация $type' : title),
-          subtitle: Text(status == 'failed'
-              ? 'Генерация не завершилась'
-              : 'Генерируется…'),
+          subtitle: Text(
+            status == 'failed' ? 'Генерация не завершилась' : 'Генерируется…',
+          ),
         ),
       );
     }
@@ -769,8 +830,7 @@ class _MediaBlock extends StatelessWidget {
       'image' => _ImageMedia(url: url, title: title),
       'video' => _VideoMedia(url: url, title: title),
       'audio' ||
-      'music' =>
-        _AudioMedia(url: url, title: title, music: type == 'music'),
+      'music' => _AudioMedia(url: url, title: title, music: type == 'music'),
       _ => const SizedBox.shrink(),
     };
   }
@@ -784,28 +844,30 @@ class _ImageMedia extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-        clipBehavior: Clip.antiAlias,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Image.network(
-              url,
-              width: double.infinity,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => const SizedBox(
-                height: 140,
-                child: Center(child: Icon(Icons.broken_image_outlined)),
-              ),
-            ),
-            if (title.isNotEmpty)
-              Padding(
-                padding: const EdgeInsets.all(10),
-                child: Text(title,
-                    style: const TextStyle(fontWeight: FontWeight.w600)),
-              ),
-          ],
+    clipBehavior: Clip.antiAlias,
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Image.network(
+          url,
+          width: double.infinity,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => const SizedBox(
+            height: 140,
+            child: Center(child: Icon(Icons.broken_image_outlined)),
+          ),
         ),
-      );
+        if (title.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Text(
+              title,
+              style: const TextStyle(fontWeight: FontWeight.w600),
+            ),
+          ),
+      ],
+    ),
+  );
 }
 
 class _AudioMedia extends StatefulWidget {
@@ -853,17 +915,19 @@ class _AudioMediaState extends State<_AudioMedia> {
 
   @override
   Widget build(BuildContext context) => Card(
-        child: ListTile(
-          leading: Icon(widget.music ? Icons.music_note : Icons.graphic_eq),
-          title: Text(widget.title.isEmpty
-              ? (widget.music ? 'Музыка Wesi AI' : 'Аудио Wesi AI')
-              : widget.title),
-          trailing: IconButton.filledTonal(
-            onPressed: _toggle,
-            icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-          ),
-        ),
-      );
+    child: ListTile(
+      leading: Icon(widget.music ? Icons.music_note : Icons.graphic_eq),
+      title: Text(
+        widget.title.isEmpty
+            ? (widget.music ? 'Музыка Wesi AI' : 'Аудио Wesi AI')
+            : widget.title,
+      ),
+      trailing: IconButton.filledTonal(
+        onPressed: _toggle,
+        icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+      ),
+    ),
+  );
 }
 
 class _VideoMedia extends StatefulWidget {
@@ -888,8 +952,9 @@ class _VideoMediaState extends State<_VideoMedia> {
 
   Future<void> _load() async {
     try {
-      final controller =
-          VideoPlayerController.networkUrl(Uri.parse(widget.url));
+      final controller = VideoPlayerController.networkUrl(
+        Uri.parse(widget.url),
+      );
       await controller.initialize();
       if (!mounted) {
         controller.dispose();
@@ -952,9 +1017,9 @@ class _VideoMediaState extends State<_VideoMedia> {
                           : controller.play();
                     });
                   },
-                  icon: Icon(controller.value.isPlaying
-                      ? Icons.pause
-                      : Icons.play_arrow),
+                  icon: Icon(
+                    controller.value.isPlaying ? Icons.pause : Icons.play_arrow,
+                  ),
                 ),
               ],
             ),
@@ -962,8 +1027,10 @@ class _VideoMediaState extends State<_VideoMedia> {
           if (widget.title.isNotEmpty)
             Padding(
               padding: const EdgeInsets.all(10),
-              child: Text(widget.title,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
+              child: Text(
+                widget.title,
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
             ),
         ],
       ),

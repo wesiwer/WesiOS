@@ -405,6 +405,40 @@ class WesiAiChatController extends ChangeNotifier {
       return count < 0 ? 0 : count;
     }
 
+    String streamedToolDetail(Map<String, dynamic> raw) {
+      final parts = <String>[];
+      final rawDiagnostic = raw['diagnostic'];
+      if (rawDiagnostic is Map) {
+        final diagnostic = Map<String, dynamic>.from(rawDiagnostic);
+        final stage = '${diagnostic['stage'] ?? ''}'.trim();
+        final component = '${diagnostic['component'] ?? ''}'.trim();
+        final operation = '${diagnostic['operation'] ?? ''}'.trim();
+        final diagnosticCode = '${diagnostic['code'] ?? ''}'.trim();
+        final lastSuccess = '${diagnostic['lastSuccess'] ?? ''}'.trim();
+        final requestId = '${diagnostic['requestId'] ?? ''}'.trim();
+        if (stage.isNotEmpty) parts.add('Этап: $stage');
+        if (component.isNotEmpty) parts.add('Компонент: $component');
+        if (operation.isNotEmpty) parts.add('Операция: $operation');
+        if (diagnosticCode.isNotEmpty) parts.add('Код: $diagnosticCode');
+        if (lastSuccess.isNotEmpty) parts.add('После: $lastSuccess');
+        if (requestId.isNotEmpty) parts.add('Request ID: $requestId');
+      }
+      final transactionCount = raw['transactionCount'];
+      if (transactionCount is num) {
+        parts.add('${transactionCount.toInt()} операций');
+      }
+      final organizationName = '${raw['organizationName'] ?? ''}'.trim();
+      final organizationId = '${raw['organizationId'] ?? ''}'.trim();
+      if (organizationName.isNotEmpty) {
+        parts.add(organizationName);
+      } else if (organizationId.isNotEmpty) {
+        parts.add(organizationId);
+      }
+      final code = '${raw['code'] ?? ''}'.trim();
+      if (code.isNotEmpty) parts.add(code);
+      return parts.join(' · ');
+    }
+
     void onActivity(Map<String, dynamic> raw) {
       final type = '${raw['type'] ?? 'activity'}'.toLowerCase();
       final phase = '${raw['phase'] ?? ''}'.toLowerCase();
@@ -435,8 +469,8 @@ class WesiAiChatController extends ChangeNotifier {
             if (files.isNotEmpty)
               current['files'] =
                   files.take(40).map((item) => '$item').toList(growable: false);
-            final code = '${raw['code'] ?? ''}'.trim();
-            if (code.isNotEmpty) current['detail'] = code;
+            final detail = streamedToolDetail(raw);
+            if (detail.isNotEmpty) current['detail'] = detail;
             activity[index] = current;
           } else {
             activity.add(activityEntry(
@@ -445,6 +479,7 @@ class WesiAiChatController extends ChangeNotifier {
                   name.isEmpty ? 'Инструмент завершён' : 'Инструмент · $name',
               sourceName: name,
               status: 'result',
+              detail: streamedToolDetail(raw),
               additions: additions,
               deletions: deletions,
               files: files,
@@ -496,11 +531,31 @@ class WesiAiChatController extends ChangeNotifier {
           status: 'done',
         ));
       } else if (type == 'activity') {
+        var detail = '${raw['detail'] ?? raw['message'] ?? ''}'.trim();
+        final rawDiagnostic = raw['diagnostic'];
+        if (rawDiagnostic is Map) {
+          final diagnostic = Map<String, dynamic>.from(rawDiagnostic);
+          final diagnosticParts = <String>[
+            if ('${diagnostic['stage'] ?? ''}'.trim().isNotEmpty)
+              'Этап: ${diagnostic['stage']}',
+            if ('${diagnostic['component'] ?? ''}'.trim().isNotEmpty)
+              'Компонент: ${diagnostic['component']}',
+            if ('${diagnostic['code'] ?? ''}'.trim().isNotEmpty)
+              'Код: ${diagnostic['code']}',
+            if ('${diagnostic['requestId'] ?? ''}'.trim().isNotEmpty)
+              'Request ID: ${diagnostic['requestId']}',
+          ];
+          final diagnosticText = diagnosticParts.join(' · ');
+          if (diagnosticText.isNotEmpty && !detail.contains(diagnosticText)) {
+            detail =
+                detail.isEmpty ? diagnosticText : '$detail\n$diagnosticText';
+          }
+        }
         activity.add(activityEntry(
           kind: '${raw['kind'] ?? 'reasoning'}',
           label: '${raw['label'] ?? 'Ход работы'}'.trim(),
           sourceName: name,
-          detail: '${raw['detail'] ?? raw['message'] ?? ''}'.trim(),
+          detail: detail,
           status: phase.isEmpty ? '${raw['status'] ?? ''}' : phase,
           additions: additions,
           deletions: deletions,
@@ -648,9 +703,13 @@ class WesiAiChatController extends ChangeNotifier {
             employeeId: store.employeeId,
             author: WesiAiMessageAuthor.system,
             kind: WesiAiMessageKind.error,
-            text: e.message,
+            text: e.displayMessage,
             createdAt: at,
-            metadata: <String, dynamic>{'code': e.code},
+            metadata: <String, dynamic>{
+              'code': e.code,
+              'diagnostic': e.diagnostic,
+              if (e.requestId.isNotEmpty) 'requestId': e.requestId,
+            },
           ),
         ],
       );
