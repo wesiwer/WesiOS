@@ -70,9 +70,13 @@ function parseToolEnvelope(value) {
     if (!tool) return null;
     const name = String(tool.name || '').trim();
     const hasArguments = Object.prototype.hasOwnProperty.call(tool, 'arguments');
-    if (hasArguments && (!tool.arguments || typeof tool.arguments !== 'object' || Array.isArray(tool.arguments))) {
-      return null;
-    }
+    // Explicit model-provided arguments must be a plain object. Never coerce
+    // malformed strings/arrays/null into {}, because that turns an invalid
+    // reserved tool envelope into a different valid call.
+    const malformedArguments = hasArguments && (
+      !tool.arguments || typeof tool.arguments !== 'object' || Array.isArray(tool.arguments)
+    );
+    if (malformedArguments) return null;
     const args = hasArguments ? tool.arguments : {};
     return name ? {name, arguments: args} : null;
   } catch {
