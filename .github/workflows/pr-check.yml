@@ -26,6 +26,8 @@ jobs:
             [ -f "$file" ] || continue
             node --check "$file"
           done
+      - name: Audit complete Wesi AI tool registry
+        run: node --test server/pb_hooks/wesi_ai_tools_contract.test.js
       - name: Validate Wesi AI deployment shell
         shell: bash
         run: |
