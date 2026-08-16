@@ -8,14 +8,17 @@ const here = dirname(fileURLToPath(import.meta.url));
 const source = readFileSync(join(here, 'wesi_ai_stream.pb.js'), 'utf8');
 
 test('stream prepare accepts the current smart Lobby mode sent by ordinary Zane/Nirvana chats', () => {
-  assert.match(
-    source,
-    /lobbyMode\s*!==\s*"smart"\s*&&\s*lobbyMode\s*!==\s*"both"/,
+  assert.ok(
+    source.includes('["both", "smart"].indexOf(lobbyMode) < 0'),
+    'stream prepare must allow both current client lobbyMode values',
   );
 });
 
 test('generic persona streaming stays scoped to concrete personas, not Lobby', () => {
-  assert.match(source, /persona\s*!==\s*"zane"\s*&&\s*persona\s*!==\s*"nirvana"/);
+  assert.ok(
+    source.includes('["zane", "nirvana"].indexOf(persona) < 0'),
+    'generic stream prepare must remain scoped to concrete personas',
+  );
 });
 
 test('stream prepare keeps active organization in runtime context', () => {
