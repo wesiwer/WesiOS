@@ -7,9 +7,12 @@ on:
   pull_request:
     paths:
       - 'lib/features/ai/media_engines/**'
+      - 'lib/features/ai/controllers/wesi_ai_chat_controller.dart'
+      - 'lib/features/ai/wesi_ai_api.dart'
       - 'test/features/ai/media_engines/**'
       - 'server/pb_hooks/wesi_ai_media_*.js'
       - 'server/pb_hooks/wesi_ai_media_*_test.mjs'
+      - 'server/pb_hooks/wesi_ai_capability_registry.js'
       - '.github/workflows/stage14-media-engines-ci.yml'
 
 jobs:
@@ -22,6 +25,7 @@ jobs:
         run: |
           node --check server/pb_hooks/wesi_ai_media_contract.js
           node --check server/pb_hooks/wesi_ai_media_tools.js
+          node --check server/pb_hooks/wesi_ai_capability_registry.js
           node --test server/pb_hooks/wesi_ai_media_contract_test.mjs
       - uses: subosito/flutter-action@v2
         with:
@@ -30,10 +34,10 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Analyze Stage14 media layer
-        run: flutter analyze lib/features/ai/media_engines test/features/ai/media_engines --no-fatal-infos
+        run: flutter analyze lib/features/ai/media_engines lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/wesi_ai_api.dart test/features/ai/media_engines --no-fatal-infos
       - name: Test Stage14 media layer
         run: flutter test test/features/ai/media_engines
-      - name: Enforce L4 and archive policy
+      - name: Enforce L4, staging and archive policy
         shell: bash
         run: |
           set -euo pipefail
@@ -42,4 +46,9 @@ jobs:
           grep -q "archive_symlink_forbidden" lib/features/ai/media_engines/wesi_media_archive_guard.dart
           grep -q "archive_expansion_limit" lib/features/ai/media_engines/wesi_media_archive_guard.dart
           grep -q "WesiMediaArchiveGuard.validateZip" lib/features/ai/media_engines/wesi_media_engine_service.dart
+          grep -q "WesiMediaLocalRequestSanitizer.sanitize" lib/features/ai/wesi_ai_api.dart
+          grep -q "WesiMediaTurnExecutor.run" lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          grep -q "turnAttachments: attachments" lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          grep -q "_localMediaRequestIdentity" lib/features/ai/controllers/wesi_ai_chat_controller.dart
           grep -q "videoGenerate" server/pb_hooks/wesi_ai_media_contract.js
+          grep -q "edit_image" server/pb_hooks/wesi_ai_capability_registry.js

@@ -3,7 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
-import '../media_engines/wesi_media_workflow.dart';
+import '../media_engines/wesi_media_input_stager.dart';
 import '../memory/wesi_ai_memory_api.dart';
 import '../memory/wesi_ai_memory_engine.dart';
 import '../memory/wesi_ai_memory_models.dart';
@@ -688,7 +688,7 @@ class WesiAiChatController extends ChangeNotifier {
         messages: <WesiAiMessage>[...withoutPartial, assistant],
       );
       streamVisible = false;
-      _startPendingMedia(assistant);
+      _startPendingMedia(assistant, turnAttachments: attachments);
       scheduleMemoryRefresh(updated, clean);
     } on WesiAiApiException catch (e) {
       removeTransientStream();
@@ -929,7 +929,23 @@ class WesiAiChatController extends ChangeNotifier {
     await _persist();
   }
 
-  void _startPendingMedia(WesiAiMessage message) {
+  String _localMediaRequestIdentity(Map<String, dynamic> request) {
+    final rawIndexes = request['attachmentIndexes'];
+    final indexes =
+        rawIndexes is List ? rawIndexes.map((item) => '$item').join(',') : '';
+    return <String>[
+      '${request['mediaType'] ?? ''}',
+      '${request['workflow'] ?? ''}',
+      '${request['prompt'] ?? ''}',
+      '${request['title'] ?? ''}',
+      indexes,
+    ].join('|');
+  }
+
+  void _startPendingMedia(
+    WesiAiMessage message, {
+    List<WesiAiAttachment> turnAttachments = const <WesiAiAttachment>[],
+  }) {
     final rawBlocks = message.metadata['blocks'];
     if (rawBlocks is! List) return;
     for (final raw in rawBlocks) {
@@ -943,13 +959,15 @@ class WesiAiChatController extends ChangeNotifier {
 
       final localRequest = data['localRequest'];
       if (localRequest is Map) {
+        final requestMap = Map<String, dynamic>.from(localRequest);
         final key =
-            '${message.id}|local|${data['mediaType']}|${data['prompt']}';
+            '${message.id}|local|${_localMediaRequestIdentity(requestMap)}';
         if (_localMediaRuns.add(key)) {
           unawaited(_runLocalMedia(
             message,
-            Map<String, dynamic>.from(localRequest),
+            requestMap,
             key,
+            turnAttachments: turnAttachments,
           ));
         }
         continue;
@@ -969,10 +987,14 @@ class WesiAiChatController extends ChangeNotifier {
   Future<void> _runLocalMedia(
     WesiAiMessage source,
     Map<String, dynamic> request,
-    String key,
-  ) async {
+    String key, {
+    List<WesiAiAttachment> turnAttachments = const <WesiAiAttachment>[],
+  }) async {
     try {
-      final result = await WesiMediaWorkflow.runLocalRequest(request);
+      final result = await WesiMediaTurnExecutor.run(
+        request,
+        turnAttachments,
+      );
       if (_disposed) return;
       await _markLocalRequestFinished(source.id, request, result.ok);
       final at = DateTime.now();
@@ -1019,6 +1041,7 @@ class WesiAiChatController extends ChangeNotifier {
     Map<String, dynamic> request,
     bool ok,
   ) async {
+    final targetIdentity = _localMediaRequestIdentity(request);
     var changed = false;
     final messages = state.messages.map((message) {
       if (message.id != messageId) return message;
@@ -1033,9 +1056,10 @@ class WesiAiChatController extends ChangeNotifier {
             final data = Map<String, dynamic>.from(dataRaw);
             final localRaw = data['localRequest'];
             if (localRaw is Map &&
-                '${localRaw['mediaType'] ?? ''}' ==
-                    '${request['mediaType'] ?? ''}' &&
-                '${localRaw['prompt'] ?? ''}' == '${request['prompt'] ?? ''}') {
+                _localMediaRequestIdentity(
+                      Map<String, dynamic>.from(localRaw),
+                    ) ==
+                    targetIdentity) {
               data.remove('localRequest');
               data['status'] = ok ? 'ready' : 'failed';
               block['data'] = data;

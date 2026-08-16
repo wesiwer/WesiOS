@@ -4,6 +4,21 @@ import {createRequire} from 'node:module';
 
 const require = createRequire(import.meta.url);
 const media = require('./wesi_ai_media_contract.js');
+const tools = require('./wesi_ai_media_tools.js');
+const registry = require('./wesi_ai_capability_registry.js');
+
+const expectedTools = [
+  'generate_image',
+  'edit_image',
+  'reference_image',
+  'generate_music',
+  'separate_music_stems',
+  'generate_video',
+  'compose_video',
+  'add_video_voice',
+  'add_video_sfx',
+  'add_video_subtitles',
+];
 
 test('generation workflows are explicit and input-free', () => {
   for (const [workflow, expectedType] of [
@@ -52,6 +67,40 @@ test('voice workflow requires exactly video and voice attachment indexes', () =>
   const missing = media.normalize('videoVoice', {videoAttachmentIndex: 0});
   assert.equal(missing.ok, false);
   assert.equal(missing.code, 'WAI_MEDIA_INPUT_REQUIRED');
+});
+
+test('all Stage14 media tools are exposed and registered as media WRITE', () => {
+  const definitions = tools.definitions();
+  const names = definitions.map((item) => item.name);
+  for (const name of expectedTools) {
+    assert.equal(names.includes(name), true, `${name} definition missing`);
+    const meta = registry.get(name);
+    assert.ok(meta, `${name} capability missing`);
+    assert.equal(meta.module, 'media');
+    assert.equal(meta.action, 'generate');
+    assert.equal(meta.risk, 'WRITE');
+    assert.equal(meta.confirmationRequired, false);
+  }
+});
+
+test('input tools emit only normalized workflow and attachment indexes', () => {
+  const edit = tools.execute(null, {}, 'edit_image', {
+    prompt: 'remove background',
+    attachmentIndex: 0,
+    inputPath: '/etc/passwd',
+  });
+  assert.equal(edit.ok, true);
+  assert.equal(edit.result.localMediaRequest.workflow, 'imageEdit');
+  assert.deepEqual(edit.result.localMediaRequest.attachmentIndexes, [0]);
+  assert.equal('inputPath' in edit.result.localMediaRequest, false);
+
+  const voice = tools.execute(null, {}, 'add_video_voice', {
+    videoAttachmentIndex: 0,
+    voiceAttachmentIndex: 1,
+  });
+  assert.equal(voice.ok, true);
+  assert.equal(voice.result.localMediaRequest.workflow, 'videoVoice');
+  assert.deepEqual(voice.result.localMediaRequest.attachmentIndexes, [0, 1]);
 });
 
 test('unknown workflows fail closed', () => {
