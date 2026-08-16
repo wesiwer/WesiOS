@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import {createRequire} from 'node:module';
 import path from 'node:path';
 import test from 'node:test';
 import {fileURLToPath} from 'node:url';
 
+const require = createRequire(import.meta.url);
 const here = path.dirname(fileURLToPath(import.meta.url));
 const hooks = path.resolve(here, '../pb_hooks');
 
@@ -110,4 +112,19 @@ test('destructive capabilities remain confirmation-gated by the central registry
     [...registered.entries()].filter(([, risk]) => risk === 'DESTRUCTIVE').map(([name]) => name),
   );
   assert.deepEqual([...actual].sort(), [...expected].sort());
+});
+
+test('tool context keeps the first resolved active organization', () => {
+  const tools = require('../pb_hooks/wesi_ai_tools.js');
+  const result = {};
+  tools._mergeContextPart(result, {activeOrganizationId: 'org_allowed', taskContext: true});
+  tools._mergeContextPart(result, {activeOrganizationId: 'org_raw_client', workspaceContext: true});
+  assert.equal(result.activeOrganizationId, 'org_allowed');
+  assert.equal(result.taskContext, true);
+  assert.equal(result.workspaceContext, true);
+
+  const initiallyEmpty = {};
+  tools._mergeContextPart(initiallyEmpty, {activeOrganizationId: ''});
+  tools._mergeContextPart(initiallyEmpty, {activeOrganizationId: 'org_resolved_later'});
+  assert.equal(initiallyEmpty.activeOrganizationId, 'org_resolved_later');
 });
