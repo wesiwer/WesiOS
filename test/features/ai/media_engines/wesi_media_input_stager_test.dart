@@ -25,8 +25,8 @@ void main() {
     expect(request!['attachmentIndexes'], <int>[1]);
     expect(request.containsKey('inputPaths'), isFalse);
     final options = request['options'] as Map<String, dynamic>;
-    expect(options.containsKey('inputs'), isTrue);
-    expect(options['inputs'], '/tmp/model-path');
+    expect(options.containsKey('inputs'), isFalse);
+    expect(options['imageSize'], '1K');
   });
 
   test('sanitizer rejects duplicate and out-of-range indexes', () {
