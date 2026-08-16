@@ -29,3 +29,19 @@ jobs:
         run: node --check ../pb_hooks/wesi_ai_stream.pb.js
       - name: Wesi AI stream gateway tests
         run: npm test
+
+  flutter-client:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+      - name: Flutter dependencies
+        run: flutter pub get
+      - name: Flutter analyze
+        run: flutter analyze
+      - name: Co-Agent Thinking timeline tests
+        run: flutter test test/wesi_ai_coagent_activity_test.dart
