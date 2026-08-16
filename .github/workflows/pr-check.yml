@@ -31,7 +31,10 @@ jobs:
         shell: bash
         run: |
           set +e
-          node --test server/pb_hooks/wesi_ai_tools_contract.test.js > tool-audit.log 2>&1
+          node --test \
+            server/pb_hooks/wesi_ai_tools_contract.test.js \
+            server/pb_hooks/wesi_ai_mutating_safety.test.js \
+            > tool-audit.log 2>&1
           code=$?
           set -e
           cat tool-audit.log
