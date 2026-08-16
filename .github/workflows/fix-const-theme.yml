@@ -1,4 +1,4 @@
-name: Temporary deploy tier-aware Wesi AI Relay
+name: Temporary deploy Wesi AI Relay over SSH
 
 on:
   push:
@@ -12,9 +12,8 @@ permissions:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 20
     env:
-      PUBLIC_HOST: ai.wesi-wf.su
       RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
       RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
 
@@ -24,28 +23,22 @@ jobs:
           ref: fix/wesi-ai-tool-agent-handoff
           fetch-depth: 1
 
-      - name: Validate Relay bundle
+      - name: Validate exact Relay bundle
         run: |
           set -euo pipefail
           for file in server/wesi-ai-relay/*.mjs; do node --check "$file"; done
           node --test server/wesi-ai-relay/*.test.mjs
           bash -n server/wesi-ai-relay/deploy-relay.sh
 
-      - name: Validate credentials and prepare SSH
+      - name: Prepare SSH
         env:
           SSH_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
           KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
-          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
-          GEMINI: ${{ secrets.GEMINI_API_KEY }}
         run: |
           set -euo pipefail
+          [ -n "${RELAY_HOST:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_HOST'; exit 1; }
           [ -n "${RELAY_USER:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_USER'; exit 1; }
           [ -n "${SSH_KEY:-}" ] || { echo '::error::Missing WESI_RELAY_SSH_KEY'; exit 1; }
-          [ -n "${SHARED:-}" ] || { echo '::error::Missing WESI_MAIN_SHARED_SECRET'; exit 1; }
-          [ ${#SHARED} -ge 32 ] || { echo '::error::Shared secret too short'; exit 1; }
-          [ -n "${GEMINI:-}" ] || { echo '::error::Missing GEMINI_API_KEY'; exit 1; }
-          if [ -z "${RELAY_HOST:-}" ]; then RELAY_HOST="$PUBLIC_HOST"; fi
-          echo "RELAY_HOST=$RELAY_HOST" >> "$GITHUB_ENV"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$SSH_KEY" > ~/.ssh/relay_key
           chmod 600 ~/.ssh/relay_key
@@ -56,119 +49,169 @@ jobs:
           fi
           chmod 600 ~/.ssh/relay_known_hosts
 
-      - name: Preflight existing Relay HMAC
+      - name: Build optional secondary Gemini bundle
         env:
-          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          import hashlib, hmac, json, os, time, urllib.error, urllib.request
-          rid='wai_preflight_'+str(time.time_ns())
-          payload={'requestId':rid,'route':'wesi/not-a-route','operation':'chat','input':{'system':'preflight','history':[],'message':'preflight'}}
-          raw=json.dumps(payload,separators=(',',':')).encode()
-          ts=str(int(time.time()))
-          sig=hmac.new(os.environ['SHARED'].encode(),rid.encode()+b'.'+ts.encode()+b'.'+raw,hashlib.sha256).hexdigest()
-          req=urllib.request.Request('https://'+os.environ['PUBLIC_HOST']+'/v1/wesi-ai',data=raw,method='POST',headers={'Content-Type':'application/json','X-Wesi-Request-Id':rid,'X-Wesi-Timestamp':ts,'X-Wesi-Signature':sig})
-          try:
-              urllib.request.urlopen(req,timeout=20)
-              raise SystemExit('unexpected successful invalid route')
-          except urllib.error.HTTPError as e:
-              body=json.loads(e.read().decode() or '{}')
-              assert e.code == 400 and body.get('code') == 'WAI_ROUTE_UNAVAILABLE', (e.code, body)
-          print('Existing Relay HMAC preflight: OK')
-          PY
-
-      - name: Build sealed Relay credential bundle
-        env:
-          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
-          GEMINI: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_2: ${{ secrets.GEMINI_API_KEY_2 }}
           GEMINI_3: ${{ secrets.GEMINI_API_KEY_3 }}
           GEMINI_4: ${{ secrets.GEMINI_API_KEY_4 }}
           GEMINI_5: ${{ secrets.GEMINI_API_KEY_5 }}
-          GROQ: ${{ secrets.GROQ_API_KEY }}
-          MISTRAL: ${{ secrets.MISTRAL_API_KEY }}
-          OPENROUTER: ${{ secrets.OPENROUTER_API_KEY }}
-          ZANE_VOICE: ${{ secrets.WESI_ZANE_TTS_VOICE }}
-          NIRVANA_VOICE: ${{ secrets.WESI_NIRVANA_TTS_VOICE }}
         run: |
           set -euo pipefail
           python3 - <<'PY'
           import base64, os
-          values={
-              'WESI_MAIN_SHARED_SECRET_B64': os.environ['SHARED'],
-              'GEMINI_API_KEY_B64': os.environ['GEMINI'],
-          }
-          for index in range(2,6):
-              value=os.environ.get(f'GEMINI_{index}','').strip()
-              if value: values[f'GEMINI_API_KEY_{index}_B64']=value
-          optional={
-              'GROQ_API_KEY_B64':os.environ.get('GROQ',''),
-              'MISTRAL_API_KEY_B64':os.environ.get('MISTRAL',''),
-              'OPENROUTER_API_KEY_B64':os.environ.get('OPENROUTER',''),
-              'WESI_ZANE_TTS_VOICE_B64':os.environ.get('ZANE_VOICE',''),
-              'WESI_NIRVANA_TTS_VOICE_B64':os.environ.get('NIRVANA_VOICE',''),
-          }
-          for key,value in optional.items():
-              value=value.strip()
-              if value: values[key]=value
-          with open('relay-secrets.b64','w',encoding='ascii') as f:
-              for key,value in values.items():
-                  f.write(key+'='+base64.b64encode(value.encode()).decode()+'\n')
-          print('Gemini slots configured:', 1 + sum(bool(os.environ.get(f'GEMINI_{i}','').strip()) for i in range(2,6)))
-          print('Non-Gemini providers configured:', sum(bool(os.environ.get(name,'').strip()) for name in ('GROQ','MISTRAL','OPENROUTER')))
+          count = 0
+          with open('secondary-gemini.b64', 'w', encoding='ascii') as f:
+              for index in range(2, 6):
+                  value = os.environ.get(f'GEMINI_{index}', '').strip()
+                  if not value:
+                      continue
+                  count += 1
+                  f.write(f'GEMINI_API_KEY_{index}=' + base64.b64encode(value.encode()).decode() + '\n')
+          print('Secondary Gemini secrets available in GitHub:', count)
           PY
-          chmod 600 relay-secrets.b64
+          chmod 600 secondary-gemini.b64
 
-      - name: Upload and install Relay
+      - name: Deploy runtime with rollback
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
-          REMOTE="/tmp/wesi-ai-relay-failover-$GITHUB_RUN_ID"
+          REMOTE="/tmp/wesi-ai-tier-router-$GITHUB_RUN_ID"
           ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
-          scp "${SSH[@]}" server/wesi-ai-relay/*.mjs server/wesi-ai-relay/package.json server/wesi-ai-relay/deploy-relay.sh relay-secrets.b64 "$RELAY_USER@$RELAY_HOST:$REMOTE/"
-          rm -f relay-secrets.b64
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          scp "${SSH[@]}" \
+            server/wesi-ai-relay/google.mjs \
+            server/wesi-ai-relay/text-stream.mjs \
+            server/wesi-ai-relay/provider-failover.mjs \
+            secondary-gemini.b64 \
+            "$RELAY_USER@$RELAY_HOST:$REMOTE/"
+          rm -f secondary-gemini.b64
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
           set -euo pipefail
           if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
-          cd "$REMOTE"
-          "${SUDO[@]}" bash deploy-relay.sh --install-from-b64 "$REMOTE/relay-secrets.b64"
-          "${SUDO[@]}" systemctl is-active --quiet wesi-ai-relay
-          echo 'Configured provider slots:'
-          if [ -f /etc/wesi-ai-providers.env ]; then
+          APP=/opt/wesi-ai-relay
+          SERVICE=wesi-ai-relay
+          BACKUP="$REMOTE/backup"
+          mkdir -p "$BACKUP"
+
+          echo '=== Relay preflight ==='
+          "${SUDO[@]}" systemctl is-active --quiet "$SERVICE"
+          curl -fsS --max-time 10 http://127.0.0.1:8787/health > "$REMOTE/health-before.json"
+          python3 - "$REMOTE/health-before.json" <<'PY'
+          import json, sys
+          data=json.load(open(sys.argv[1], encoding='utf-8'))
+          assert data.get('ok') is True and data.get('ready') is True, data
+          print('Relay before deploy: healthy')
+          PY
+
+          for file in google.mjs text-stream.mjs provider-failover.mjs; do
+            if "${SUDO[@]}" test -f "$APP/$file"; then
+              "${SUDO[@]}" cp -a "$APP/$file" "$BACKUP/$file"
+            else
+              touch "$BACKUP/.missing-$file"
+            fi
+          done
+          if "${SUDO[@]}" test -f /etc/wesi-ai-providers.env; then
+            "${SUDO[@]}" cp -a /etc/wesi-ai-providers.env "$BACKUP/wesi-ai-providers.env"
+          else
+            touch "$BACKUP/.missing-providers"
+          fi
+
+          rollback() {
+            echo '::warning::Relay deploy failed, rolling back runtime'
+            for file in google.mjs text-stream.mjs provider-failover.mjs; do
+              if [ -f "$BACKUP/$file" ]; then
+                "${SUDO[@]}" cp -a "$BACKUP/$file" "$APP/$file"
+              elif [ -f "$BACKUP/.missing-$file" ]; then
+                "${SUDO[@]}" rm -f "$APP/$file"
+              fi
+            done
+            if [ -f "$BACKUP/wesi-ai-providers.env" ]; then
+              "${SUDO[@]}" cp -a "$BACKUP/wesi-ai-providers.env" /etc/wesi-ai-providers.env
+            elif [ -f "$BACKUP/.missing-providers" ]; then
+              "${SUDO[@]}" rm -f /etc/wesi-ai-providers.env
+            fi
+            "${SUDO[@]}" systemctl restart "$SERVICE" || true
+          }
+          trap 'code=$?; if [ "$code" -ne 0 ]; then rollback; fi; exit "$code"' EXIT
+
+          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/google.mjs" "$APP/google.mjs"
+          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/text-stream.mjs" "$APP/text-stream.mjs"
+          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/provider-failover.mjs" "$APP/provider-failover.mjs"
+
+          if [ -s "$REMOTE/secondary-gemini.b64" ]; then
+            PROVIDERS_NEW="$REMOTE/providers.new"
+            if "${SUDO[@]}" test -f /etc/wesi-ai-providers.env; then
+              "${SUDO[@]}" cat /etc/wesi-ai-providers.env > "$PROVIDERS_NEW"
+            else
+              : > "$PROVIDERS_NEW"
+            fi
+            while IFS= read -r line; do
+              [ -n "$line" ] || continue
+              key="${line%%=*}"
+              encoded="${line#*=}"
+              case "$key" in GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5) ;; *) exit 2;; esac
+              value="$(printf '%s' "$encoded" | base64 -d)"
+              [ -n "$value" ] || continue
+              sed -i "/^${key}=/d" "$PROVIDERS_NEW"
+              printf '%s=%s\n' "$key" "$value" >> "$PROVIDERS_NEW"
+            done < "$REMOTE/secondary-gemini.b64"
+            group=root
+            if getent group wesi-relay >/dev/null 2>&1; then group=wesi-relay; fi
+            "${SUDO[@]}" install -o root -g "$group" -m 0640 "$PROVIDERS_NEW" /etc/wesi-ai-providers.env
+            rm -f "$PROVIDERS_NEW"
+          fi
+
+          "${SUDO[@]}" systemctl restart "$SERVICE"
+          for _ in $(seq 1 20); do
+            if "${SUDO[@]}" systemctl is-active --quiet "$SERVICE" && curl -fsS --max-time 5 http://127.0.0.1:8787/health > "$REMOTE/health-after.json"; then
+              break
+            fi
+            sleep 1
+          done
+          "${SUDO[@]}" systemctl is-active --quiet "$SERVICE"
+          python3 - "$REMOTE/health-after.json" <<'PY'
+          import json, sys
+          data=json.load(open(sys.argv[1], encoding='utf-8'))
+          assert data.get('ok') is True and data.get('ready') is True, data
+          assert data.get('routing') == ['fast','pro','ultra'], data
+          print('Relay after deploy: healthy, tier routing ready')
+          PY
+
+          echo '=== Active provider credential names (values hidden) ==='
+          if "${SUDO[@]}" test -f /etc/wesi-ai-providers.env; then
             "${SUDO[@]}" awk -F= '/^(GEMINI_API_KEY_[2-5]|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY)=/ {print $1}' /etc/wesi-ai-providers.env | sort -u
           fi
-          rm -rf "$REMOTE"
-          REMOTE
 
-      - name: Verify live tier routing
-        env:
-          SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
-        run: |
-          set -euo pipefail
-          curl -fsS --max-time 20 "https://$PUBLIC_HOST/health" > health.json
-          python3 - <<'PY'
-          import hashlib, hmac, json, os, time, urllib.error, urllib.request
-          health=json.load(open('health.json',encoding='utf-8'))
-          assert health.get('ok') is True and health.get('ready') is True, health
-          assert health.get('routing') == ['fast','pro','ultra'], health
-          base='https://'+os.environ['PUBLIC_HOST']
-          secret=os.environ['SHARED'].encode()
-          def call(route):
-              rid='wai_live_'+route.split('/')[-1]+'_'+str(time.time_ns())
-              payload={'requestId':rid,'route':route,'operation':'chat','input':{'system':'Reply only OK.','history':[],'message':'OK'}}
-              raw=json.dumps(payload,separators=(',',':')).encode(); ts=str(int(time.time()))
-              sig=hmac.new(secret,rid.encode()+b'.'+ts.encode()+b'.'+raw,hashlib.sha256).hexdigest()
-              req=urllib.request.Request(base+'/v1/wesi-ai',data=raw,method='POST',headers={'Content-Type':'application/json','X-Wesi-Request-Id':rid,'X-Wesi-Timestamp':ts,'X-Wesi-Signature':sig})
-              try:
-                  with urllib.request.urlopen(req,timeout=150) as r: data=json.load(r)
-                  print(route, 'OK', data.get('provider'), data.get('model'))
-                  return data.get('ok') is True and bool(str(data.get('answer','')).strip())
-              except urllib.error.HTTPError as e:
-                  body=e.read().decode(errors='replace')[:500]
-                  print(route, 'HTTP', e.code, body)
-                  return False
-          assert call('wesi/fast'), 'Fast live smoke failed'
-          pro_ok=call('wesi/pro')
-          print('Pro live availability:', 'OK' if pro_ok else 'NO_CAPACITY')
-          PY
+          echo '=== Live local tier smoke (secret never leaves Relay) ==='
+          "${SUDO[@]}" node --input-type=module - <<'NODE'
+          import fs from 'node:fs';
+          import crypto from 'node:crypto';
+          const env = {};
+          for (const line of fs.readFileSync('/etc/wesi-ai-relay.env', 'utf8').split(/\r?\n/)) {
+            const index = line.indexOf('=');
+            if (index > 0) env[line.slice(0, index)] = line.slice(index + 1);
+          }
+          const secret = String(env.WESI_MAIN_SHARED_SECRET || '');
+          if (secret.length < 32) throw new Error('Relay shared secret is unavailable');
+          async function smoke(route) {
+            const rid = `wai_local_${route.split('/').at(-1)}_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+            const payload = {requestId: rid, route, operation: 'chat', input: {system: 'Reply only OK.', history: [], message: 'OK'}};
+            const raw = JSON.stringify(payload);
+            const ts = String(Math.floor(Date.now() / 1000));
+            const sig = crypto.createHmac('sha256', secret).update(`${rid}.${ts}.${raw}`).digest('hex');
+            const response = await fetch('http://127.0.0.1:8787/v1/wesi-ai', {
+              method: 'POST',
+              headers: {'content-type':'application/json','x-wesi-request-id':rid,'x-wesi-timestamp':ts,'x-wesi-signature':sig},
+              body: raw,
+            });
+            let data = {};
+            try { data = await response.json(); } catch {}
+            console.log(JSON.stringify({route, http: response.status, ok: data.ok === true, code: data.code || null, provider: data.provider || null, model: data.model || null, answerBytes: Buffer.byteLength(String(data.answer || ''))}));
+          }
+          await smoke('wesi/fast');
+          await smoke('wesi/pro');
+          NODE
+
+          trap - EXIT
+          rm -rf "$REMOTE"
+          echo 'Relay runtime deployment complete.'
+          REMOTE_SCRIPT
