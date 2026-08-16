@@ -114,6 +114,26 @@ test('destructive capabilities remain confirmation-gated by the central registry
   assert.deepEqual([...actual].sort(), [...expected].sort());
 });
 
+test('streaming and non-streaming Main routes re-check the current tool allowlist before execute', () => {
+  const streamSource = read('wesi_ai_stream.pb.js');
+  const chatSource = read('wesi_ai_routes.pb.js');
+
+  const streamAllow = streamSource.indexOf('const allowed = tools.definitions(e, ctx).some(function(item)');
+  const streamDeny = streamSource.indexOf('if (!allowed)', streamAllow);
+  const streamExecute = streamSource.indexOf('const executed = tools.execute(e, ctx, name, args', streamAllow);
+  assert.ok(streamAllow >= 0, 'stream/tool must recompute tools.definitions for the current identity');
+  assert.ok(streamDeny > streamAllow, 'stream/tool must reject names outside the fresh allowlist');
+  assert.ok(streamExecute > streamDeny, 'stream/tool must reject before tools.execute');
+  assert.match(streamSource, /toolNames:\s*toolDefinitions\.map\(/, 'stream/prepare must expose only prepared tool names');
+
+  const chatAllow = chatSource.indexOf('const allowedTool = toolDefinitions.some((item)');
+  const chatDeny = chatSource.indexOf('if (!allowedTool)', chatAllow);
+  const chatExecute = chatSource.indexOf('const executed = tools.execute(e, ctx, toolRequest.name', chatAllow);
+  assert.ok(chatAllow >= 0, 'non-stream chat must compare requests with its prepared tool definitions');
+  assert.ok(chatDeny > chatAllow, 'non-stream chat must reject names outside its allowlist');
+  assert.ok(chatExecute > chatDeny, 'non-stream chat must reject before tools.execute');
+});
+
 test('tool context keeps the first resolved active organization', () => {
   const tools = require('../pb_hooks/wesi_ai_tools.js');
   const result = {};
