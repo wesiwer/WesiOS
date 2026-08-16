@@ -1,0 +1,120 @@
+name: Temporary hot-deploy Wesi AI PR184 runtime
+
+on:
+  push:
+    branches:
+      - fix/wesi-ai-tool-agent-handoff
+    paths:
+      - .github/workflows/temp-hotdeploy-wesi-ai-pr184-runtime.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: temp-wesi-ai-pr184-runtime-hotdeploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 1
+
+      - name: Validate exact runtime slice
+        run: |
+          set -euo pipefail
+          files=(
+            server/pb_hooks/wesi_ai_routes.pb.js
+            server/pb_hooks/wesi_ai_tools.js
+            server/pb_hooks/wesi_ai_finance_policy.js
+            server/pb_hooks/wesi_ai_finance_tools.js
+            server/pb_hooks/wesi_ai_calendar_write_tools.js
+          )
+          for file in "${files[@]}"; do
+            test -s "$file"
+            node --check "$file"
+          done
+          node --test server/wesi-ai-tests/tools_contract.test.js server/wesi-ai-tests/mutating_safety.test.js
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${MAIN_HOST:-}"
+          test -n "${MAIN_USER:-}"
+          test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_main
+          chmod 600 ~/.ssh/id_main
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Hot deploy audited runtime hooks with rollback copies
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/id_main" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          REMOTE_DIR="/tmp/wesi-ai-pr184-runtime-${GITHUB_RUN_ID}"
+          files=(
+            wesi_ai_routes.pb.js
+            wesi_ai_tools.js
+            wesi_ai_finance_policy.js
+            wesi_ai_finance_tools.js
+            wesi_ai_calendar_write_tools.js
+          )
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE_DIR' && mkdir -p '$REMOTE_DIR'"
+          for name in "${files[@]}"; do
+            scp "${SSH[@]}" "server/pb_hooks/$name" "$MAIN_USER@$MAIN_HOST:$REMOTE_DIR/$name"
+          done
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE_DIR='$REMOTE_DIR' bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          files=(
+            wesi_ai_routes.pb.js
+            wesi_ai_tools.js
+            wesi_ai_finance_policy.js
+            wesi_ai_finance_tools.js
+            wesi_ai_calendar_write_tools.js
+          )
+          stamp="$(date +%Y%m%d%H%M%S)"
+          for name in "${files[@]}"; do
+            src="$REMOTE_DIR/$name"
+            target="$HOOK_DIR/$name"
+            test -s "$src"
+            test -f "$target"
+            test -w "$target"
+            backup="${target}.bak-pr184-${stamp}"
+            cp "$target" "$backup"
+            cat "$src" > "$target"
+            chmod 0644 "$target"
+            cmp -s "$src" "$target"
+            echo "$name sha256=$(sha256sum "$target" | awk '{print $1}') backup=$backup"
+          done
+          rm -rf "$REMOTE_DIR"
+          curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null
+          REMOTE_SCRIPT
+
+      - name: Verify protected routes remain loaded
+        run: |
+          set -euo pipefail
+          for path in /api/wesi/ai/capabilities /api/wesi/ai/connectors; do
+            code="$(curl -sS -o /tmp/wesi-ai.out -w '%{http_code}' --max-time 15 "https://api.wesi-inc.ru$path" || true)"
+            if [ "$code" != "401" ] && [ "$code" != "403" ]; then
+              echo "::error::$path returned HTTP $code"
+              cat /tmp/wesi-ai.out 2>/dev/null || true
+              exit 1
+            fi
+          done
+          echo 'MAIN_PR184_RUNTIME_HOTDEPLOY_PASS'
