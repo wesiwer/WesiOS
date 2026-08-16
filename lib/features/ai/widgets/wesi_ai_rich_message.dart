@@ -124,6 +124,11 @@ class WesiAiRichParser {
     return blocks;
   }
 
+  static String displayMarkdown(String markdown) => markdown.replaceAllMapped(
+        RegExp(r'^\s{0,3}#{1,6}\s+(.+)$', multiLine: true),
+        (match) => '**${match.group(1)?.trim() ?? ''}**',
+      );
+
   static bool hasClarification(String markdown) {
     for (final block in parse(markdown)) {
       if (block.kind == WesiAiRichBlockKind.clarification &&
@@ -452,7 +457,10 @@ class WesiAiFormattedText extends StatelessWidget {
     final base =
         theme.textTheme.bodyMedium?.copyWith(height: 1.48) ??
         const TextStyle(height: 1.48);
-    return SelectableText.rich(TextSpan(children: _inline(text, base)));
+    final displayText = WesiAiRichParser.displayMarkdown(text);
+    return SelectableText.rich(
+      TextSpan(children: _inline(displayText, base)),
+    );
   }
 
   List<InlineSpan> _inline(String source, TextStyle base) {
@@ -533,7 +541,11 @@ class WesiAiCodeBlock extends StatelessWidget {
           padding: const EdgeInsets.all(18),
           child: SelectableText(
             code,
-            style: const TextStyle(fontFamily: 'monospace', height: 1.45),
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 13,
+              height: 1.36,
+            ),
           ),
         ),
       ),
@@ -543,6 +555,7 @@ class WesiAiCodeBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -555,7 +568,12 @@ class WesiAiCodeBlock extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 7, 7),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 11 : 14,
+              compact ? 5 : 8,
+              compact ? 4 : 7,
+              compact ? 4 : 7,
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -585,12 +603,13 @@ class WesiAiCodeBlock extends StatelessWidget {
           Divider(height: 1, color: theme.dividerColor),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.all(14),
+            padding: EdgeInsets.all(compact ? 10 : 13),
             child: SelectableText(
               code,
-              style: theme.textTheme.bodyMedium?.copyWith(
+              style: (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
                 fontFamily: 'monospace',
-                height: 1.45,
+                fontSize: compact ? 12.25 : 13.25,
+                height: 1.36,
               ),
             ),
           ),

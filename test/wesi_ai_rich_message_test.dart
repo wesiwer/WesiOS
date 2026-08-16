@@ -29,6 +29,47 @@ void main() => print('ok');
     expect(plain, isNot(contains('**')));
   });
 
+  test('display markdown removes raw heading markers', () {
+    const source = '### 🔥 Итог: Когда что использовать?';
+    final display = WesiAiRichParser.displayMarkdown(source);
+    expect(display, '**🔥 Итог: Когда что использовать?**');
+    expect(display, isNot(contains('###')));
+  });
+
+  testWidgets('mobile code and markdown table use compact density',
+      (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: WesiAiRichMessage(
+          messageId: 'compact',
+          text: '''```dart
+print(1);
+```
+
+| A | B |
+| --- | --- |
+| 1 | 2 |''',
+        ),
+      ),
+    ));
+
+    final code = tester.widget<SelectableText>(
+      find.widgetWithText(SelectableText, 'print(1);'),
+    );
+    expect(code.style?.fontSize, 12.25);
+
+    final table = tester.widget<DataTable>(find.byType(DataTable));
+    expect(table.headingRowHeight, 36);
+    expect(table.dataRowMinHeight, 32);
+    expect(table.horizontalMargin, 9);
+    expect(table.columnSpacing, 16);
+  });
+
   test('activity model preserves per tool diff and source', () {
     final event = WesiAiActivityEvent.fromJson({
       'id': 'tool-1',

@@ -83,6 +83,8 @@ class WesiAiTableBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    final tableFontSize = compact ? 12.0 : 13.0;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -95,12 +97,23 @@ class WesiAiTableBlock extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 7, 6, 6),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 10 : 14,
+              compact ? 4 : 7,
+              compact ? 3 : 6,
+              compact ? 3 : 6,
+            ),
             child: Row(
               children: [
-                const Expanded(
-                    child: Text('Таблица',
-                        style: TextStyle(fontWeight: FontWeight.w700))),
+                Expanded(
+                  child: Text(
+                    'Таблица',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      fontSize: compact ? 13 : 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
                 IconButton(
                   tooltip: 'Копировать таблицу',
                   visualDensity: VisualDensity.compact,
@@ -117,21 +130,37 @@ class WesiAiTableBlock extends StatelessWidget {
               columns: [
                 for (final header in table.headers)
                   DataColumn(
-                      label: Text(header,
-                          style: const TextStyle(fontWeight: FontWeight.w700))),
+                    label: Text(
+                      header,
+                      style: TextStyle(
+                        fontSize: tableFontSize,
+                        fontWeight: FontWeight.w700,
+                        height: 1.2,
+                      ),
+                    ),
+                  ),
               ],
               rows: [
                 for (final row in table.rows)
                   DataRow(cells: [
                     for (var i = 0; i < table.headers.length; i++)
-                      DataCell(SelectableText(i < row.length ? row[i] : '')),
+                      DataCell(
+                        SelectableText(
+                          i < row.length ? row[i] : '',
+                          style: TextStyle(
+                            fontSize: tableFontSize,
+                            height: 1.22,
+                          ),
+                        ),
+                      ),
                   ]),
               ],
-              headingRowHeight: 44,
-              dataRowMinHeight: 42,
-              dataRowMaxHeight: 72,
-              horizontalMargin: 14,
-              columnSpacing: 24,
+              headingRowHeight: compact ? 36 : 40,
+              dataRowMinHeight: compact ? 32 : 36,
+              dataRowMaxHeight: compact ? 56 : 64,
+              horizontalMargin: compact ? 9 : 12,
+              columnSpacing: compact ? 16 : 20,
+              dividerThickness: 0.6,
             ),
           ),
         ],

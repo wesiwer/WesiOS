@@ -309,6 +309,8 @@ class _TableBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
+    final tableFontSize = compact ? 12.0 : 13.0;
     final columns = List<String>.from(data['columns'] as List? ?? const []);
     final rows = (data['rows'] as List? ?? const [])
         .whereType<List>()
@@ -318,7 +320,7 @@ class _TableBlock extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: EdgeInsets.all(compact ? 9 : 12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -326,6 +328,7 @@ class _TableBlock extends StatelessWidget {
               Text(
                 title,
                 style: theme.textTheme.titleSmall?.copyWith(
+                  fontSize: compact ? 13.5 : null,
                   fontWeight: FontWeight.w700,
                 ),
               ),
@@ -334,15 +337,22 @@ class _TableBlock extends StatelessWidget {
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: DataTable(
-                headingRowHeight: 40,
-                dataRowMinHeight: 36,
-                dataRowMaxHeight: 80,
+                headingRowHeight: compact ? 35 : 40,
+                dataRowMinHeight: compact ? 31 : 36,
+                dataRowMaxHeight: compact ? 56 : 72,
+                horizontalMargin: compact ? 9 : 12,
+                columnSpacing: compact ? 16 : 20,
+                dividerThickness: 0.6,
                 columns: [
                   for (final column in columns)
                     DataColumn(
                       label: Text(
                         column,
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          fontSize: tableFontSize,
+                          fontWeight: FontWeight.w700,
+                          height: 1.2,
+                        ),
                       ),
                     ),
                 ],
@@ -353,8 +363,16 @@ class _TableBlock extends StatelessWidget {
                         for (var i = 0; i < columns.length; i++)
                           DataCell(
                             ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 260),
-                              child: Text(i < row.length ? row[i] : ''),
+                              constraints: BoxConstraints(
+                                maxWidth: compact ? 200 : 260,
+                              ),
+                              child: Text(
+                                i < row.length ? row[i] : '',
+                                style: TextStyle(
+                                  fontSize: tableFontSize,
+                                  height: 1.22,
+                                ),
+                              ),
                             ),
                           ),
                       ],
