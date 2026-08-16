@@ -540,6 +540,7 @@ export function createGateway(options = {}) {
           name: toolRequest.name,
           ok: toolResult?.ok === true,
           code: toolResult?.code || null,
+          message: toolResult?.message ? String(toolResult.message).slice(0, 1200) : null,
           additions: diff.additions,
           deletions: diff.deletions,
           files: diff.files,

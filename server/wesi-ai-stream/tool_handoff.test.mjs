@@ -147,6 +147,49 @@ test('wrapped tool JSON is executed but never streamed to the user', async () =>
   });
 });
 
+test('tool result activity carries safe executor message', async () => {
+  let relayCalls = 0;
+  const envelope = '{"wesiTool":{"name":"tasks_list","arguments":{"limit":2}}}';
+  const fetchImpl = async (url) => {
+    const value = String(url);
+    if (value.endsWith('/api/wesi/ai/stream/prepare')) {
+      return jsonResponse({ok: true, prepared: prepared()});
+    }
+    if (value.endsWith('/api/wesi/ai/stream/tool')) {
+      return jsonResponse({
+        ok: true,
+        toolResult: {
+          tool: 'tasks_list', verified: true, ok: false,
+          code: 'VALIDATION_ERROR', message: 'Некорректный фильтр задач',
+        },
+      });
+    }
+    if (value.endsWith('/v1/wesi-ai-stream')) {
+      relayCalls += 1;
+      if (relayCalls === 1) return ndjson([{type: 'delta', text: envelope}, {type: 'done', answer: envelope}]);
+      return ndjson([{type: 'done', answer: 'Инструмент отклонил некорректный фильтр.'}]);
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+
+  await withGateway(fetchImpl, async (base) => {
+    const response = await fetch(`${base}/api/wesi/ai/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer user-token',
+        'x-wesios-session': 'session_123456789012345678901234',
+      },
+      body: JSON.stringify({persona: 'zane', message: 'покажи задачи'}),
+    });
+    assert.equal(response.status, 200);
+    const events = await readEvents(response);
+    const result = events.find((event) => event.type === 'tool' && event.phase === 'result');
+    assert.equal(result?.code, 'VALIDATION_ERROR');
+    assert.equal(result?.message, 'Некорректный фильтр задач');
+  });
+});
+
 test('malformed reserved tool envelope is hidden and repaired on the next model turn', async () => {
   let relayCalls = 0;
   let toolCalls = 0;
