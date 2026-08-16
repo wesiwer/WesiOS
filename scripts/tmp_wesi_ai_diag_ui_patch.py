@@ -107,6 +107,6 @@ addition = """expect(error.displayMessage, contains('Request ID: wai_test_123'))
     final apiSource = File('lib/features/ai/wesi_ai_api.dart').readAsStringSync();
     expect(apiSource, contains("? 'AUTH'"));
     final controllerSource = File('lib/features/ai/controllers/wesi_ai_chat_controller.dart').readAsStringSync();
-    expect(controllerSource, contains("parts.add('Этап: $stage')"));
-    expect(controllerSource, contains("parts.add('Request ID: $requestId')"));"""
+    expect(controllerSource, contains("parts.add('Этап: \\$stage')"));
+    expect(controllerSource, contains("parts.add('Request ID: \\$requestId')"));"""
 test.write_text(text.replace(marker, addition, 1))
