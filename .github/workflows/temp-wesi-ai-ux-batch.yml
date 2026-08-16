@@ -1,0 +1,91 @@
+name: Temporary Wesi AI mobile UX batch
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/temp-wesi-ai-ux-batch.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Apply UX fixes
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          screen = Path('lib/features/ai/ai_assistant_v2_screen.dart')
+          s = screen.read_text()
+          a = s.index('  Widget _sidebar(WesiAiManagedChatController controller) {')
+          b = s.index('  Widget _sidebarUtilities(', a)
+          r = s[a:b]
+          r = r.replace('    return Column(\n      children: [', '    return ListView(\n      padding: EdgeInsets.zero,\n      children: [', 1)
+          r = r.replace('constraints: const BoxConstraints(maxHeight: 220),', 'constraints: const BoxConstraints(),', 1)
+          r = r.replace('''          child: ListView(\n            shrinkWrap: true,''', '''          child: ListView(\n            shrinkWrap: true,\n            physics: const NeverScrollableScrollPhysics(),''', 1)
+          old = '''        Expanded(\n          child: ListView(\n            padding: const EdgeInsets.symmetric(vertical: 6),'''
+          new = '''        ListView(\n          shrinkWrap: true,\n          physics: const NeverScrollableScrollPhysics(),\n          padding: const EdgeInsets.symmetric(vertical: 6),'''
+          if old not in r: raise SystemExit('conversation list anchor missing')
+          r = r.replace(old, new, 1)
+          tail_old = '''            ],\n          ),\n        ),\n      ],\n    );\n  }\n\n'''
+          tail_new = '''            ],\n          ),\n      ],\n    );\n  }\n\n'''
+          if tail_old not in r: raise SystemExit('sidebar tail anchor missing')
+          r = r.replace(tail_old, tail_new, 1)
+          s = s[:a] + r + s[b:]
+
+          pattern = re.compile(r'''      final attachment = await showDialog<WesiAiAttachment>\(.*?      \);\n      if \(attachment == null''', re.S)
+          replacement = '''      final attachment = await Navigator.of(context).push<WesiAiAttachment>(\n        MaterialPageRoute<WesiAiAttachment>(\n          fullscreenDialog: true,\n          builder: (_) => const WesiAiCameraCaptureScreen(),\n        ),\n      );\n      if (attachment == null'''
+          s, n = pattern.subn(replacement, s, count=1)
+          if n != 1: raise SystemExit('camera route anchor missing')
+          screen.write_text(s)
+
+          camera = Path('lib/features/ai/widgets/wesi_ai_camera_capture.dart')
+          c = camera.read_text()
+          old = '''            if (controller != null && controller.value.isInitialized)\n              Center(\n                child: AspectRatio(\n                  aspectRatio: controller.value.aspectRatio,\n                  child: CameraPreview(controller),\n                ),\n              )'''
+          new = '''            if (controller != null && controller.value.isInitialized)\n              LayoutBuilder(\n                builder: (context, constraints) {\n                  final preview = controller.value.previewSize;\n                  final previewWidth = preview?.height ?? constraints.maxWidth;\n                  final previewHeight = preview?.width ?? constraints.maxHeight;\n                  return ClipRect(\n                    child: SizedBox.expand(\n                      child: FittedBox(\n                        fit: BoxFit.cover,\n                        child: SizedBox(\n                          width: previewWidth,\n                          height: previewHeight,\n                          child: CameraPreview(controller),\n                        ),\n                      ),\n                    ),\n                  );\n                },\n              )'''
+          if old not in c: raise SystemExit('camera preview anchor missing')
+          camera.write_text(c.replace(old, new, 1))
+
+          rich = Path('lib/features/ai/widgets/wesi_ai_rich_message.dart')
+          q = rich.read_text()
+          old = '''  static String displayMarkdown(String markdown) => markdown.replaceAllMapped(\n        RegExp(r'^\\s{0,3}#{1,6}\\s+(.+)$', multiLine: true),\n        (match) => '**${match.group(1)?.trim() ?? ''}**',\n      );'''
+          new = r'''  static String displayMarkdown(String markdown) {\n    var value = markdown.replaceAllMapped(\n      RegExp(r'^\\s{0,3}#{1,6}\\s+(.+)$', multiLine: true),\n      (match) => '**${match.group(1)?.trim() ?? ''}**',\n    );\n    const commands = <String, String>{\n      r'\\times': '×', r'\\cdot': '·', r'\\pm': '±', r'\\leq': '≤',\n      r'\\le': '≤', r'\\geq': '≥', r'\\ge': '≥', r'\\neq': '≠',\n      r'\\approx': '≈', r'\\infty': '∞', r'\\pi': 'π', r'\\alpha': 'α',\n      r'\\beta': 'β', r'\\gamma': 'γ', r'\\delta': 'δ', r'\\theta': 'θ',\n    };\n    for (final entry in commands.entries) { value = value.replaceAll(entry.key, entry.value); }\n    value = value.replaceAllMapped(\n      RegExp(r'\\\\sqrt\\{([^{}]+)\\}'),\n      (m) => '√(${m.group(1) ?? ''})',\n    );\n    value = value.replaceAllMapped(\n      RegExp(r'\\\\frac\\{([^{}]+)\\}\\{([^{}]+)\\}'),\n      (m) => '(${m.group(1) ?? ''})⁄(${m.group(2) ?? ''})',\n    );\n    value = _script(value, superscript: true);\n    value = _script(value, superscript: false);\n    return value\n        .replaceAll(RegExp(r'(?<!\\\\)\\$(.+?)(?<!\\\\)\\$'), r'$1')\n        .replaceAll(RegExp(r'\\\\\\((.*?)\\\\\\)'), r'$1')\n        .replaceAll(RegExp(r'\\\\\\[(.*?)\\\\\\]'), r'$1');\n  }\n\n  static String _script(String value, {required bool superscript}) {\n    const sup = <String, String>{'0':'⁰','1':'¹','2':'²','3':'³','4':'⁴','5':'⁵','6':'⁶','7':'⁷','8':'⁸','9':'⁹','+':'⁺','-':'⁻','=':'⁼','(':'⁽',')':'⁾','n':'ⁿ','i':'ⁱ'};\n    const sub = <String, String>{'0':'₀','1':'₁','2':'₂','3':'₃','4':'₄','5':'₅','6':'₆','7':'₇','8':'₈','9':'₉','+':'₊','-':'₋','=':'₌','(':'₍',')':'₎','a':'ₐ','e':'ₑ','i':'ᵢ','o':'ₒ','r':'ᵣ','u':'ᵤ','v':'ᵥ','x':'ₓ'};\n    final map = superscript ? sup : sub;\n    final marker = superscript ? '^' : '_';\n    return value.replaceAllMapped(\n      RegExp('${RegExp.escape(marker)}(?:\\{([^{}]+)\\}|([0-9+\\-=()nieaoruvx]+))'),\n      (match) {\n        final raw = match.group(1) ?? match.group(2) ?? '';\n        if (raw.isEmpty || raw.split('').any((c) => !map.containsKey(c))) return match.group(0) ?? '';\n        return raw.split('').map((c) => map[c]!).join();\n      },\n    );\n  }'''.replace('\\n','\n')
+          if old not in q: raise SystemExit('markdown anchor missing')
+          q = q.replace(old, new, 1)
+          chip_old = '''                  label: Text(option),\n                  onPressed: onAnswer == null ? null : () => onAnswer!(option),'''
+          chip_new = '''                  label: Text(_visibleOption(option)),\n                  onPressed: onAnswer == null ? null : () => onAnswer!(option),'''
+          if chip_old not in q: raise SystemExit('option chip anchor missing')
+          q = q.replace(chip_old, chip_new, 1)
+          method_anchor = '''  Future<void> _customAnswer(BuildContext context) async {'''
+          method = '''  String _visibleOption(String option) {\n    final value = option.trim();\n    if (value == 'org_wesi_inc') return 'Wesi Inc';\n    if (value == 'org_wesi_beats') return 'Wesi Beats';\n    if (value.startsWith('org_')) {\n      final raw = value.substring(4);\n      if (RegExp(r'^\\d+$').hasMatch(raw)) {\n        final suffix = raw.length <= 4 ? raw : raw.substring(raw.length - 4);\n        return 'Организация ••••$suffix';\n      }\n      return raw.split('_').where((p) => p.isNotEmpty).map((p) => p[0].toUpperCase() + p.substring(1)).join(' ');\n    }\n    return value;\n  }\n\n'''
+          if method_anchor not in q: raise SystemExit('clarification method anchor missing')
+          q = q.replace(method_anchor, method + method_anchor, 1)
+          rich.write_text(q)
+          PY
+          dart format lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_camera_capture.dart lib/features/ai/widgets/wesi_ai_rich_message.dart
+          git diff --check
+      - name: Validate
+        run: |
+          flutter pub get
+          flutter analyze
+          flutter test test/wesi_ai_rich_message_test.dart || flutter test
+      - name: Commit feature branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_camera_capture.dart lib/features/ai/widgets/wesi_ai_rich_message.dart
+          git diff --cached --quiet && exit 0
+          git commit -m "fix(ai): polish mobile sidebar camera and math rendering"
+          git push origin HEAD:fix/wesi-ai-tool-agent-handoff
