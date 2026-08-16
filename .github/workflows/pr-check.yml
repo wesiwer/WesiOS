@@ -32,8 +32,8 @@ jobs:
         run: |
           set +e
           node --test \
-            server/pb_hooks/wesi_ai_tools_contract.test.js \
-            server/pb_hooks/wesi_ai_mutating_safety.test.js \
+            server/wesi-ai-tests/tools_contract.test.js \
+            server/wesi-ai-tests/mutating_safety.test.js \
             > tool-audit.log 2>&1
           code=$?
           set -e
