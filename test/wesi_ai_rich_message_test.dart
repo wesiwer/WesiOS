@@ -70,6 +70,8 @@ void main() => print('ok');
           messageId: 'm2',
           text: '',
           streaming: true,
+          showWorkLog: true,
+          expandWorkLog: true,
           activityRaw: [
             {
               'id': 'r1',
