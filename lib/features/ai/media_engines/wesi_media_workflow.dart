@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'wesi_media_artifact_store.dart';
 import 'wesi_media_engine_runner.dart';
 
 /// Stage 14 media workflow contract.
@@ -59,12 +60,16 @@ class WesiMediaWorkflowResult {
   final String code;
   final String? outputPath;
   final String? mimeType;
+  final int? byteSize;
+  final String? sha256Hex;
 
   const WesiMediaWorkflowResult({
     required this.ok,
     required this.code,
     this.outputPath,
     this.mimeType,
+    this.byteSize,
+    this.sha256Hex,
   });
 }
 
@@ -229,18 +234,22 @@ class WesiMediaWorkflow {
     if (!result.ok || result.outputPath == null) {
       return WesiMediaWorkflowResult(ok: false, code: result.code);
     }
-    final artifact = File(result.outputPath!);
-    if (!await artifact.exists() || await artifact.length() <= 0) {
-      return const WesiMediaWorkflowResult(
-        ok: false,
-        code: 'WAI_MEDIA_ARTIFACT_INVALID',
-      );
+
+    final promoted = await WesiMediaArtifactStore.promote(
+      sourcePath: result.outputPath!,
+      mediaType: request.mediaType,
+      mimeType: result.mimeType ?? '',
+    );
+    if (!promoted.ok || promoted.path == null) {
+      return WesiMediaWorkflowResult(ok: false, code: promoted.code);
     }
     return WesiMediaWorkflowResult(
       ok: true,
       code: 'OK',
-      outputPath: artifact.path,
-      mimeType: result.mimeType,
+      outputPath: promoted.path,
+      mimeType: promoted.mimeType,
+      byteSize: promoted.byteSize,
+      sha256Hex: promoted.sha256Hex,
     );
   }
 }
