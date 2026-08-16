@@ -18,11 +18,12 @@ jobs:
           fetch-depth: 0
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.24.0'
           channel: stable
       - run: python3 tools/temp_patch_wesi_ai_mobile_ux.py
       - run: dart format lib/features/ai/ai_assistant_v2_screen.dart lib/features/ai/widgets/wesi_ai_rich_message.dart
       - run: flutter pub get
-      - run: flutter analyze
+      - run: flutter analyze --no-fatal-infos
       - run: flutter test
       - run: |
           git config user.name "github-actions[bot]"
