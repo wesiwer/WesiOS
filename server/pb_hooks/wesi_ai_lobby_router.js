@@ -90,6 +90,7 @@ function deterministicRoute(message, history) {
 }
 
 module.exports = {
+  handoff: handoffSequence,
   choose: function(ai, cfg, route, requestId, message, history) {
     const deterministic = deterministicRoute(message, history);
     if (deterministic) return deterministic;
