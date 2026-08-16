@@ -9,6 +9,19 @@ const registryPath = path.join(HOOKS, 'wesi_ai_capability_registry.js');
 const registry = require(registryPath);
 const riskPolicy = require(path.join(HOOKS, 'wesi_ai_risk_policy.js'));
 
+function auditTest(name, fn) {
+  test(name, () => {
+    try {
+      return fn();
+    } catch (error) {
+      const message = String(error && error.message || error || 'Unknown Wesi AI tool audit failure')
+        .replace(/%/g, '%25').replace(/\r/g, '%0D').replace(/\n/g, '%0A');
+      console.error(`::error title=Wesi AI tool audit::${message}`);
+      throw error;
+    }
+  });
+}
+
 function adapterFiles() {
   const source = fs.readFileSync(toolsPath, 'utf8');
   const block = source.match(/function adapters\(\)\s*\{[\s\S]*?return\s*\[([\s\S]*?)\];\s*\}/);
@@ -98,7 +111,7 @@ function inventory() {
   return {e, ctx, files, raw};
 }
 
-test('all adapter definitions are registered, unique and schema-valid', () => {
+auditTest('all adapter definitions are registered, unique and schema-valid', () => {
   const {raw} = inventory();
   const seen = new Map();
   for (const {file, def} of raw) {
@@ -120,7 +133,7 @@ test('all adapter definitions are registered, unique and schema-valid', () => {
   assert.deepEqual(registered, defined, 'Capability registry and adapter definitions are out of sync');
 });
 
-test('central registry does not silently drop any owner-visible tool', () => {
+auditTest('central registry does not silently drop any owner-visible tool', () => {
   const {e, ctx, raw} = inventory();
   const central = require(toolsPath).definitions(e, ctx);
   assert.ok(Array.isArray(central));
@@ -132,7 +145,7 @@ test('central registry does not silently drop any owner-visible tool', () => {
   }
 });
 
-test('risk metadata and confirmation rules are coherent for every tool', () => {
+auditTest('risk metadata and confirmation rules are coherent for every tool', () => {
   for (const name of registry.registeredNames()) {
     const cap = registry.get(name);
     assert.ok(cap, `${name}: missing capability`);
@@ -155,7 +168,7 @@ test('risk metadata and confirmation rules are coherent for every tool', () => {
   }
 });
 
-test('every read-only tool has a non-throwing executor smoke path', () => {
+auditTest('every read-only tool has a non-throwing executor smoke path', () => {
   const {e, ctx, raw} = inventory();
   for (const {file, adapter, def} of raw) {
     const cap = registry.get(def.name);
@@ -173,7 +186,7 @@ test('every read-only tool has a non-throwing executor smoke path', () => {
   }
 });
 
-test('central context aggregation remains safe with empty data', () => {
+auditTest('central context aggregation remains safe with empty data', () => {
   const e = mockEvent();
   const ctx = ownerContext();
   const central = require(toolsPath);
@@ -183,7 +196,7 @@ test('central context aggregation remains safe with empty data', () => {
   assert.ok(Object.prototype.hasOwnProperty.call(result, 'activeOrganizationId'));
 });
 
-test('test harness record remains PocketBase-like', () => {
+auditTest('test harness record remains PocketBase-like', () => {
   const row = mockRecord({id: 'x'}, 'rid-x');
   assert.deepEqual(row.get('payload'), {id: 'x'});
   assert.equal(row.getString('rid'), 'rid-x');
