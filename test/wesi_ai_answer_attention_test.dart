@@ -38,6 +38,7 @@ void main() {
 
   test('AI notification deep-link keeps exact conversation id', () {
     final event = WesiAiAnswerReady(
+      employeeId: 'employee_7',
       conversationId: 'conversation_42',
       conversationTitle: 'Проверка',
       personaLabel: 'Зейн',
