@@ -5,7 +5,7 @@ import re
 def sub_once(path: str, pattern: str, replacement: str, label: str) -> None:
     p = Path(path)
     text = p.read_text()
-    out, n = re.subn(pattern, replacement, text, count=1, flags=re.S)
+    out, n = re.subn(pattern, lambda _match: replacement, text, count=1, flags=re.S)
     if n != 1:
         raise SystemExit(f"{label}: expected 1 replacement, got {n}")
     p.write_text(out)
