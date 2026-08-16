@@ -103,6 +103,7 @@ class WesiMediaArtifactStore {
       }
 
       final sourceDigest = await sha256.bind(resolvedSource.openRead()).first;
+      final sourceHex = sourceDigest.toString();
       final root = rootDirectory ?? await _defaultRoot();
       final typeRoot = Directory(
         '${root.path}${Platform.pathSeparator}$normalizedType',
@@ -122,14 +123,16 @@ class WesiMediaArtifactStore {
         await resolvedSource.openRead().pipe(sink);
         sink = null;
         final copiedBytes = await partFile.length();
-        if (copiedBytes != sourceBytes || copiedBytes <= 0 || copiedBytes > maxBytes) {
+        if (copiedBytes != sourceBytes ||
+            copiedBytes <= 0 ||
+            copiedBytes > maxBytes) {
           return const WesiMediaArtifactResult(
             ok: false,
             code: 'WAI_MEDIA_ARTIFACT_CHANGED',
           );
         }
         final copiedDigest = await sha256.bind(partFile.openRead()).first;
-        if (copiedDigest != sourceDigest) {
+        if (copiedDigest.toString() != sourceHex) {
           return const WesiMediaArtifactResult(
             ok: false,
             code: 'WAI_MEDIA_ARTIFACT_CHANGED',
@@ -142,7 +145,7 @@ class WesiMediaArtifactStore {
           path: finalFile.absolute.path,
           mimeType: normalizedMime,
           byteSize: sourceBytes,
-          sha256Hex: sourceDigest.toString(),
+          sha256Hex: sourceHex,
         );
       } finally {
         try {
