@@ -1,13 +1,17 @@
 name: Temporary Run Wesi AI Diagnostics
+
 on:
   push:
     branches:
       - agent/wesi-ai-stage12-final-20260816
+    paths:
+      - .github/workflows/tmp-run-wesi-ai-diagnostics.yml
+
 permissions:
   contents: write
+
 jobs:
   patch:
-    if: github.event.head_commit.message == 'ci: run Wesi AI diagnostic patch'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
