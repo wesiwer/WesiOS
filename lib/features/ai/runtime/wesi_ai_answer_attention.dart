@@ -16,6 +16,7 @@ enum WesiAiAnswerDelivery {
 
 class WesiAiAnswerReady {
   const WesiAiAnswerReady({
+    required this.employeeId,
     required this.conversationId,
     required this.conversationTitle,
     required this.personaLabel,
@@ -23,6 +24,7 @@ class WesiAiAnswerReady {
     required this.completedAt,
   });
 
+  final String employeeId;
   final String conversationId;
   final String conversationTitle;
   final String personaLabel;
@@ -71,10 +73,20 @@ class WesiAiAnswerAttention {
   static bool get _foreground =>
       WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
 
+  static bool belongsToCurrentEmployee(WesiAiAnswerReady event) {
+    final current = TeamService.current;
+    return current != null && current.id == event.employeeId;
+  }
+
   static Future<void> complete(
     WesiAiAnswerReady event, {
     bool? chatVisible,
   }) async {
+    // Старый turn может завершиться уже после sign-out или после входа другого
+    // сотрудника на этом же устройстве. Его текст/название диалога нельзя
+    // показывать новой сессии ни banner-ом, ни системным notification.
+    if (!belongsToCurrentEmployee(event)) return;
+
     final foreground = _foreground;
     final delivery = deliveryFor(
       foreground: foreground,
