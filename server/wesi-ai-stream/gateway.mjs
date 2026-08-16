@@ -1,5 +1,6 @@
 import crypto from 'node:crypto';
 import {runPersonaCoagent} from './persona_coagent_orchestrator.mjs';
+import {runDynamicSubagents} from './dynamic_subagent_orchestrator.mjs';
 
 export const MAX_STREAM_BODY_BYTES = 28 * 1024 * 1024;
 export const MAX_TOOL_TURNS = 4;
@@ -535,6 +536,106 @@ export function createGateway(options = {}) {
             name: String(prepared.coagent?.coagentPersona || ''),
             lead: prepared.persona,
             label: 'Co-Agent недоступен',
+            detail: 'Lead продолжает выполнение самостоятельно.',
+          });
+        }
+      }
+
+      if (leadPrepared.subagents?.enabled === true) {
+        try {
+          const dynamic = await runDynamicSubagents({
+            prepared: leadPrepared,
+            signal: abort.signal,
+            emit: (event) => writeNdjson(res, event),
+            invokeModel: async ({spec, actor, phase, input}) => {
+              let buffered = '';
+              const identity = spec?.agentId || actor || 'planner';
+              const safeIdentity = String(identity).replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 120);
+              const finalEvent = await relayStream({
+                relayUrl,
+                relaySecret,
+                payload: {
+                  requestId: `${prepared.requestId}_subagent_${safeIdentity}_${phase}`,
+                  route: prepared.route,
+                  operation: 'chat.stream',
+                  input,
+                },
+                signal: abort.signal,
+                fetchImpl,
+                onDelta: (text) => { buffered += text; },
+              });
+              return buffered || String(finalEvent?.answer || '');
+            },
+            invokeTool: async ({spec, name, arguments: args}) => {
+              const toolResponse = await postPocketBase({
+                pocketBaseUrl,
+                path: '/api/wesi/ai/stream/tool',
+                body: {
+                  name,
+                  arguments: args,
+                  activeOrganizationId: prepared.activeOrganizationId,
+                  requestId: prepared.requestId,
+                  conversationId: prepared.conversationId,
+                  persona: prepared.persona,
+                  actorRole: 'subagent',
+                  leadPersona: prepared.persona,
+                  handoffId: spec.agentId,
+                },
+                request: req,
+                streamSecret,
+                signal: abort.signal,
+                fetchImpl,
+              });
+              return toolResponse.toolResult;
+            },
+          });
+          const accepted = Array.isArray(dynamic.results)
+            ? dynamic.results.filter((item) => item?.ok === true).map((item) => ({
+                agentId: item.result.agentId,
+                role: item.result.role,
+                summary: item.result.summary,
+                findings: item.result.findings,
+                risks: item.result.risks,
+                recommendation: item.result.recommendation,
+                workspace: {
+                  applied: item.workspaceResult?.applied || [],
+                  conflicts: item.workspaceResult?.conflicts || [],
+                  rejected: item.workspaceResult?.rejected || [],
+                },
+                finalOwner: item.result.finalOwner,
+              }))
+            : [];
+          if (dynamic.ok === true && accepted.length) {
+            leadPrepared = {
+              ...leadPrepared,
+              systemParts: [
+                ...leadPrepared.systemParts,
+                `[WESI_AI_VERIFIED_DYNAMIC_SUBAGENT_RESULTS]\n${JSON.stringify({
+                  protocol: 'wesi.dynamic-subagent.v1',
+                  results: accepted,
+                  workspace: dynamic.workspace || null,
+                  remainingToolTurns: dynamic.remainingToolTurns,
+                  finalOwner: 'lead',
+                })}`,
+              ],
+            };
+            writeNdjson(res, {
+              type: 'activity',
+              kind: 'reasoning',
+              phase: 'result',
+              label: 'Dynamic specialists готовы',
+              detail: `${accepted.length} временных специалистов завершили ограниченную проверку; результаты переданы Lead.`,
+            });
+          }
+        } catch (subagentError) {
+          if (abort.signal.aborted) throw subagentError;
+          writeNdjson(res, {
+            type: 'agent',
+            phase: 'fallback',
+            role: 'subagent',
+            name: 'Dynamic specialists',
+            lead: prepared.persona,
+            label: 'Dynamic specialists недоступны',
             detail: 'Lead продолжает выполнение самостоятельно.',
           });
         }
