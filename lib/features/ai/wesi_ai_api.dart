@@ -275,8 +275,12 @@ class WesiAiApi {
           _messageFor(code),
           json,
           httpStatus: response.statusCode,
-          stage: 'MAIN',
-          component: 'WesiOS Main',
+          stage: response.statusCode == 401 || response.statusCode == 403
+              ? 'AUTH'
+              : 'MAIN',
+          component: response.statusCode == 401 || response.statusCode == 403
+              ? 'WesiOS Auth'
+              : 'WesiOS Main',
           operation: 'chat',
           lastSuccess: 'CLIENT',
         );
@@ -372,10 +376,16 @@ class WesiAiApi {
         _messageFor(resolved),
         json,
         httpStatus: response.statusCode,
-        stage: 'STREAM_GATEWAY',
-        component: 'Streaming edge',
+        stage: response.statusCode == 401 || response.statusCode == 403
+            ? 'AUTH'
+            : 'STREAM_GATEWAY',
+        component: response.statusCode == 401 || response.statusCode == 403
+            ? 'Streaming Auth'
+            : 'Streaming edge',
         operation: 'chat.stream',
-        lastSuccess: 'CLIENT_AUTH',
+        lastSuccess: response.statusCode == 401 || response.statusCode == 403
+            ? 'CLIENT'
+            : 'CLIENT_AUTH',
       );
     }
 

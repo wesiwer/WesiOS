@@ -20,6 +20,14 @@ void main() {
     expect(error.displayMessage, contains('Этап: TOOL'));
     expect(error.displayMessage, contains('Компонент: finance_summary'));
     expect(error.displayMessage, contains('Request ID: wai_test_123'));
+    final apiSource =
+        File('lib/features/ai/wesi_ai_api.dart').readAsStringSync();
+    expect(apiSource, contains("? 'AUTH'"));
+    final controllerSource =
+        File('lib/features/ai/controllers/wesi_ai_chat_controller.dart')
+            .readAsStringSync();
+    expect(controllerSource, contains("parts.add('Этап: \$stage')"));
+    expect(controllerSource, contains("parts.add('Request ID: \$requestId')"));
   });
   test('server and gateway expose diagnostic contract', () {
     final gateway =

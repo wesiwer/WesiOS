@@ -407,6 +407,22 @@ class WesiAiChatController extends ChangeNotifier {
 
     String streamedToolDetail(Map<String, dynamic> raw) {
       final parts = <String>[];
+      final rawDiagnostic = raw['diagnostic'];
+      if (rawDiagnostic is Map) {
+        final diagnostic = Map<String, dynamic>.from(rawDiagnostic);
+        final stage = '${diagnostic['stage'] ?? ''}'.trim();
+        final component = '${diagnostic['component'] ?? ''}'.trim();
+        final operation = '${diagnostic['operation'] ?? ''}'.trim();
+        final diagnosticCode = '${diagnostic['code'] ?? ''}'.trim();
+        final lastSuccess = '${diagnostic['lastSuccess'] ?? ''}'.trim();
+        final requestId = '${diagnostic['requestId'] ?? ''}'.trim();
+        if (stage.isNotEmpty) parts.add('Этап: $stage');
+        if (component.isNotEmpty) parts.add('Компонент: $component');
+        if (operation.isNotEmpty) parts.add('Операция: $operation');
+        if (diagnosticCode.isNotEmpty) parts.add('Код: $diagnosticCode');
+        if (lastSuccess.isNotEmpty) parts.add('После: $lastSuccess');
+        if (requestId.isNotEmpty) parts.add('Request ID: $requestId');
+      }
       final transactionCount = raw['transactionCount'];
       if (transactionCount is num) {
         parts.add('${transactionCount.toInt()} операций');
@@ -515,11 +531,31 @@ class WesiAiChatController extends ChangeNotifier {
           status: 'done',
         ));
       } else if (type == 'activity') {
+        var detail = '${raw['detail'] ?? raw['message'] ?? ''}'.trim();
+        final rawDiagnostic = raw['diagnostic'];
+        if (rawDiagnostic is Map) {
+          final diagnostic = Map<String, dynamic>.from(rawDiagnostic);
+          final diagnosticParts = <String>[
+            if ('${diagnostic['stage'] ?? ''}'.trim().isNotEmpty)
+              'Этап: ${diagnostic['stage']}',
+            if ('${diagnostic['component'] ?? ''}'.trim().isNotEmpty)
+              'Компонент: ${diagnostic['component']}',
+            if ('${diagnostic['code'] ?? ''}'.trim().isNotEmpty)
+              'Код: ${diagnostic['code']}',
+            if ('${diagnostic['requestId'] ?? ''}'.trim().isNotEmpty)
+              'Request ID: ${diagnostic['requestId']}',
+          ];
+          final diagnosticText = diagnosticParts.join(' · ');
+          if (diagnosticText.isNotEmpty && !detail.contains(diagnosticText)) {
+            detail =
+                detail.isEmpty ? diagnosticText : '$detail\n$diagnosticText';
+          }
+        }
         activity.add(activityEntry(
           kind: '${raw['kind'] ?? 'reasoning'}',
           label: '${raw['label'] ?? 'Ход работы'}'.trim(),
           sourceName: name,
-          detail: '${raw['detail'] ?? raw['message'] ?? ''}'.trim(),
+          detail: detail,
           status: phase.isEmpty ? '${raw['status'] ?? ''}' : phase,
           additions: additions,
           deletions: deletions,
