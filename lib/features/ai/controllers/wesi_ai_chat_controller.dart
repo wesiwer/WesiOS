@@ -3,7 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
-import '../media_engines/wesi_media_workflow.dart';
+import '../media_engines/wesi_media_input_stager.dart';
 import '../memory/wesi_ai_memory_api.dart';
 import '../memory/wesi_ai_memory_engine.dart';
 import '../memory/wesi_ai_memory_models.dart';
@@ -688,7 +688,7 @@ class WesiAiChatController extends ChangeNotifier {
         messages: <WesiAiMessage>[...withoutPartial, assistant],
       );
       streamVisible = false;
-      _startPendingMedia(assistant);
+      _startPendingMedia(assistant, turnAttachments: attachments);
       scheduleMemoryRefresh(updated, clean);
     } on WesiAiApiException catch (e) {
       removeTransientStream();
@@ -929,7 +929,10 @@ class WesiAiChatController extends ChangeNotifier {
     await _persist();
   }
 
-  void _startPendingMedia(WesiAiMessage message) {
+  void _startPendingMedia(
+    WesiAiMessage message, {
+    List<WesiAiAttachment> turnAttachments = const <WesiAiAttachment>[],
+  }) {
     final rawBlocks = message.metadata['blocks'];
     if (rawBlocks is! List) return;
     for (final raw in rawBlocks) {
@@ -950,6 +953,7 @@ class WesiAiChatController extends ChangeNotifier {
             message,
             Map<String, dynamic>.from(localRequest),
             key,
+            turnAttachments: turnAttachments,
           ));
         }
         continue;
@@ -969,10 +973,14 @@ class WesiAiChatController extends ChangeNotifier {
   Future<void> _runLocalMedia(
     WesiAiMessage source,
     Map<String, dynamic> request,
-    String key,
-  ) async {
+    String key, {
+    List<WesiAiAttachment> turnAttachments = const <WesiAiAttachment>[],
+  }) async {
     try {
-      final result = await WesiMediaWorkflow.runLocalRequest(request);
+      final result = await WesiMediaTurnExecutor.run(
+        request,
+        turnAttachments,
+      );
       if (_disposed) return;
       await _markLocalRequestFinished(source.id, request, result.ok);
       final at = DateTime.now();

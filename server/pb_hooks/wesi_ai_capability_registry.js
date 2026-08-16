@@ -53,8 +53,15 @@ const CAPABILITIES = {
   render_chart: {module: "presentation", action: "render", risk: RISK_READ, entityType: "presentation"},
   render_diagram: {module: "presentation", action: "render", risk: RISK_READ, entityType: "presentation"},
   generate_image: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
+  edit_image: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
+  reference_image: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
   generate_music: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
+  separate_music_stems: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
   generate_video: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
+  compose_video: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
+  add_video_voice: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
+  add_video_sfx: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
+  add_video_subtitles: {module: "media", action: "generate", risk: RISK_WRITE, entityType: "media"},
 
 
   github_repositories_list: {module: "connectors", action: "github_repositories_list", risk: RISK_READ, entityType: "github_repository"},

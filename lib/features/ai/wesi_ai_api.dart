@@ -5,6 +5,7 @@ import 'dart:math' as math;
 
 import '../../core/sync/sync_endpoint.dart';
 import '../organizations/services/organization_context.dart';
+import 'media_engines/wesi_media_local_request.dart';
 import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'models/wesi_ai_content_blocks.dart';
@@ -730,32 +731,8 @@ class WesiAiApi {
   }
 
   static Map<String, dynamic>? _sanitizeLocalMediaRequest(
-      Map<String, dynamic> raw) {
-    final type = '${raw['mediaType'] ?? ''}'.trim().toLowerCase();
-    if (!const {'image', 'music', 'video'}.contains(type)) return null;
-    final prompt = '${raw['prompt'] ?? ''}'.trim();
-    if (prompt.isEmpty || prompt.length > 12000) return null;
-    final titleRaw = '${raw['title'] ?? ''}'.trim();
-    final title =
-        titleRaw.length <= 240 ? titleRaw : titleRaw.substring(0, 240);
-    final optionsRaw = raw['options'];
-    final options = <String, dynamic>{};
-    if (optionsRaw is Map) {
-      for (final entry in optionsRaw.entries.take(12)) {
-        final key = '${entry.key}'.trim();
-        final value = entry.value;
-        if (!RegExp(r'^[A-Za-z][A-Za-z0-9]{0,39}$').hasMatch(key)) continue;
-        if (value is String && value.length <= 80) options[key] = value;
-        if (value is num || value is bool) options[key] = value;
-      }
-    }
-    return <String, dynamic>{
-      'mediaType': type,
-      'title': title,
-      'prompt': prompt,
-      'options': options,
-    };
-  }
+          Map<String, dynamic> raw) =>
+      WesiMediaLocalRequestSanitizer.sanitize(raw);
 
   Future<WesiAiContentBlock?> mediaJob(String rawStatusUrl) async {
     final base = Uri.parse(SyncEndpoint.url);
