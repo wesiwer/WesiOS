@@ -132,6 +132,14 @@ test('streaming and non-streaming Main routes re-check the current tool allowlis
   assert.ok(chatAllow >= 0, 'non-stream chat must compare requests with its prepared tool definitions');
   assert.ok(chatDeny > chatAllow, 'non-stream chat must reject names outside its allowlist');
   assert.ok(chatExecute > chatDeny, 'non-stream chat must reject before tools.execute');
+  assert.ok(
+    chatSource.includes('const hasArguments = Object.prototype.hasOwnProperty.call(req, "arguments");'),
+    'non-stream parser must distinguish missing arguments from explicit malformed arguments',
+  );
+  assert.ok(
+    chatSource.includes('if (hasArguments && (!req.arguments || typeof req.arguments !== "object" || Array.isArray(req.arguments))) return null;'),
+    'non-stream parser must reject explicit non-object arguments',
+  );
 });
 
 test('tool context keeps the first resolved active organization', () => {
