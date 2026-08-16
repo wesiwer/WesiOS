@@ -1,0 +1,44 @@
+name: Temporary patch Relay installer
+on:
+  push:
+    branches:
+      - agent/wesi-ai-finish-unfinished-20260816
+    paths:
+      - .github/workflows/temp-patch-relay-installer.yml
+permissions:
+  contents: write
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-finish-unfinished-20260816
+          fetch-depth: 0
+      - name: Patch multi-Gemini installer contract
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('server/wesi-ai-relay/deploy-relay.sh')
+          s=p.read_text()
+          s=s.replace('''      GEMINI_API_KEY_B64) GEMINI_API_KEY="$decoded" ;;\n''','''      GEMINI_API_KEY_B64) GEMINI_API_KEY="$decoded" ;;\n      GEMINI_API_KEY_2_B64) GEMINI_API_KEY_2="$decoded" ;;\n      GEMINI_API_KEY_3_B64) GEMINI_API_KEY_3="$decoded" ;;\n      GEMINI_API_KEY_4_B64) GEMINI_API_KEY_4="$decoded" ;;\n      GEMINI_API_KEY_5_B64) GEMINI_API_KEY_5="$decoded" ;;\n''')
+          s=s.replace('''  export WESI_MAIN_SHARED_SECRET GEMINI_API_KEY\n''','''  export WESI_MAIN_SHARED_SECRET GEMINI_API_KEY\n  export GEMINI_API_KEY_2="${GEMINI_API_KEY_2:-}" GEMINI_API_KEY_3="${GEMINI_API_KEY_3:-}"\n  export GEMINI_API_KEY_4="${GEMINI_API_KEY_4:-}" GEMINI_API_KEY_5="${GEMINI_API_KEY_5:-}"\n''')
+          s=s.replace('''  local optional\n  for optional in GROQ_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY; do\n''','''  local optional\n  for optional in GEMINI_API_KEY_2 GEMINI_API_KEY_3 GEMINI_API_KEY_4 GEMINI_API_KEY_5 GROQ_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY; do\n''')
+          s=s.replace('''  : >"$PROVIDER_ENV_FILE"\n  [ -n "${GROQ_API_KEY:-}" ] && printf "GROQ_API_KEY=%s\\n" "$GROQ_API_KEY" >>"$PROVIDER_ENV_FILE"\n''','''  : >"$PROVIDER_ENV_FILE"\n  [ -n "${GEMINI_API_KEY_2:-}" ] && printf "GEMINI_API_KEY_2=%s\\n" "$GEMINI_API_KEY_2" >>"$PROVIDER_ENV_FILE"\n  [ -n "${GEMINI_API_KEY_3:-}" ] && printf "GEMINI_API_KEY_3=%s\\n" "$GEMINI_API_KEY_3" >>"$PROVIDER_ENV_FILE"\n  [ -n "${GEMINI_API_KEY_4:-}" ] && printf "GEMINI_API_KEY_4=%s\\n" "$GEMINI_API_KEY_4" >>"$PROVIDER_ENV_FILE"\n  [ -n "${GEMINI_API_KEY_5:-}" ] && printf "GEMINI_API_KEY_5=%s\\n" "$GEMINI_API_KEY_5" >>"$PROVIDER_ENV_FILE"\n  [ -n "${GROQ_API_KEY:-}" ] && printf "GROQ_API_KEY=%s\\n" "$GROQ_API_KEY" >>"$PROVIDER_ENV_FILE"\n''')
+          s=s.replace('''EnvironmentFile=$ENV_FILE\nExecStart=$node_bin''','''EnvironmentFile=$ENV_FILE\nEnvironmentFile=-$PROVIDER_ENV_FILE\nExecStart=$node_bin''')
+          required=['GEMINI_API_KEY_2_B64','GEMINI_API_KEY_5_B64','EnvironmentFile=-$PROVIDER_ENV_FILE','GEMINI_API_KEY_2=%s']
+          for x in required:
+              if x not in s: raise SystemExit('patch missing '+x)
+          p.write_text(s)
+          PY
+          bash -n server/wesi-ai-relay/deploy-relay.sh
+          git diff --check
+      - name: Commit installer fix
+        run: |
+          set -euo pipefail
+          git config user.name wesiwer
+          git config user.email 77644223+wesiwer@users.noreply.github.com
+          git add server/wesi-ai-relay/deploy-relay.sh
+          git commit -m 'fix(ai): install all configured Gemini credential slots'
+          git push origin HEAD:agent/wesi-ai-finish-unfinished-20260816
