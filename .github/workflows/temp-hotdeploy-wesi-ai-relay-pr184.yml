@@ -1,4 +1,4 @@
-name: Temporary repair Main to Wesi AI Relay DNS
+name: Temporary inspect Wesi AI Relay TLS
 
 on:
   push:
@@ -11,85 +11,47 @@ permissions:
   contents: read
 
 jobs:
-  repair:
+  inspect:
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 10
     env:
       RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
-      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
-      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
     steps:
-      - name: Resolve Relay SSH endpoint without exposing secrets
-        run: |
-          set -euo pipefail
-          test -n "${RELAY_HOST:-}"
-          python3 - <<'PY'
-          import ipaddress, os, socket
-          host=os.environ['RELAY_HOST'].strip()
-          try:
-              ip=str(ipaddress.ip_address(host))
-          except ValueError:
-              infos=socket.getaddrinfo(host, None, socket.AF_INET, socket.SOCK_STREAM)
-              if not infos: raise SystemExit('Relay SSH host did not resolve')
-              ip=infos[0][4][0]
-          with open(os.environ['GITHUB_ENV'],'a',encoding='utf-8') as f:
-              f.write('RELAY_IP='+ip+'\n')
-          print('Relay endpoint resolved to IPv4; value kept out of normal diagnostics.')
-          PY
-
-      - name: Prepare Main SSH
+      - name: Prepare Relay SSH
         env:
-          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "${MAIN_HOST:-}" && test -n "${MAIN_USER:-}" && test -n "${KEY:-}"
+          test -n "${RELAY_HOST:-}" && test -n "${RELAY_USER:-}" && test -n "${KEY:-}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/main_key
-          chmod 600 ~/.ssh/main_key
-          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
-          chmod 600 ~/.ssh/main_known_hosts
+          printf '%s\n' "$KEY" > ~/.ssh/relay_key
+          chmod 600 ~/.ssh/relay_key
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/relay_known_hosts
 
-      - name: Prove Main to Relay network and TLS with explicit resolve
+      - name: Inspect public TLS names and nginx vhosts
         run: |
           set -euo pipefail
-          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "curl -fsS --max-time 20 --resolve ai.wesi-wf.su:443:$RELAY_IP https://ai.wesi-wf.su/health" > /tmp/main-relay-health.json
-          python3 - <<'PY'
-          import json
-          data=json.load(open('/tmp/main-relay-health.json',encoding='utf-8'))
-          assert data.get('ok') is True and data.get('ready') is True, data
-          assert data.get('routing') == ['fast','pro','ultra'], data
-          assert data.get('streaming') is True, data
-          print('MAIN_TO_RELAY_NETWORK_TLS_PASS')
-          PY
-
-      - name: Install managed resolver fallback on Main
-        run: |
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "RELAY_IP='$RELAY_IP' bash -s" <<'REMOTE'
-          set -euo pipefail
-          if getent hosts ai.wesi-wf.su >/dev/null 2>&1; then
-            echo 'MAIN_PUBLIC_DNS_ALREADY_RESOLVES'
-          else
-            sudo -n true
-            stamp="$(date +%Y%m%d%H%M%S)"
-            sudo -n cp /etc/hosts "/etc/hosts.bak-wesi-ai-$stamp"
-            tmp="$(mktemp)"
-            awk '!/#[[:space:]]*Wesi AI Relay managed[[:space:]]*$/' /etc/hosts > "$tmp"
-            printf '%s %s # Wesi AI Relay managed\n' "$RELAY_IP" 'ai.wesi-wf.su' >> "$tmp"
-            sudo -n install -o root -g root -m 0644 "$tmp" /etc/hosts
-            rm -f "$tmp"
-            echo "MAIN_RELAY_HOSTS_FALLBACK_INSTALLED backup=/etc/hosts.bak-wesi-ai-$stamp"
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          echo '--- NGINX PUBLIC SERVER NAMES ---'
+          "${SUDO[@]}" nginx -T 2>/dev/null | sed -n -E 's/^[[:space:]]*server_name[[:space:]]+([^;]+);.*/server_name \1/p' | sort -u
+          echo '--- CERTIFICATE SANS ---'
+          found=0
+          for cert in /etc/letsencrypt/live/*/fullchain.pem; do
+            [ -f "$cert" ] || continue
+            found=1
+            name="$(basename "$(dirname "$cert")")"
+            echo "certificate $name"
+            "${SUDO[@]}" openssl x509 -in "$cert" -noout -subject -ext subjectAltName 2>/dev/null | sed -E 's/DNS:/DNS:/g'
+          done
+          if [ "$found" -eq 0 ]; then
+            echo 'no-letsencrypt-certificates'
           fi
-          getent hosts ai.wesi-wf.su >/dev/null
-          curl -fsS --max-time 20 https://ai.wesi-wf.su/health > /tmp/wesi-ai-relay-health.json
-          python3 - <<'PY'
-          import json
-          data=json.load(open('/tmp/wesi-ai-relay-health.json',encoding='utf-8'))
-          assert data.get('ok') is True and data.get('ready') is True, data
-          assert data.get('routing') == ['fast','pro','ultra'], data
-          print('MAIN_TO_RELAY_NORMAL_RESOLUTION_PASS')
-          PY
+          echo '--- LOCAL RELAY ---'
+          curl -fsS --max-time 5 http://127.0.0.1:8787/health
           REMOTE
