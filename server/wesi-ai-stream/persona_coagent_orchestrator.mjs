@@ -194,7 +194,7 @@ export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit
   const result = validatePersonaCoagentResult(parsed, handoff);
   send(buildCoagentEvent(handoff, 'result', {
     label: `${handoff.coagentPersona}: готово`,
-    detail: result.recommendation || result.summary,
+    detail: 'Проверка завершена, структурированный результат передан Lead Persona.',
   }));
   return {ok: true, handoff, result, toolResults};
 }
