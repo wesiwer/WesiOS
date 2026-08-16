@@ -106,6 +106,24 @@ function modelInput(handoff, policy, toolResults, finalOnly, reviewRound) {
   };
 }
 
+function leadReviewInput(prepared, collaboration) {
+  const leadLabel = personaLabel(collaboration.handoff.leadPersona);
+  return {
+    system: [
+      ...(Array.isArray(prepared.systemParts) ? prepared.systemParts : []),
+      '[WESI_AI_PERSONA_COAGENT_REVIEW]\n' + JSON.stringify(collaboration.result),
+      '[WESI_AI_PERSONA_COAGENT_REVIEW_POLICY]\n' +
+        `Ты ${leadLabel}, Lead Persona. Проверь только полезность, корректность и непротиворечивость структурированного результата Co-Agent для текущего пользовательского запроса. ` +
+        'Не вызывай инструменты и не отвечай пользователю. Верни ТОЛЬКО JSON без markdown: ' +
+        '{"decision":"accept"} либо {"decision":"revise","revisionRequest":"краткая конкретная правка"}. ' +
+        'Не добавляй analysis/reasoning/chain_of_thought.',
+    ].join('\n\n'),
+    history: [],
+    message: String(prepared.message || '').slice(0, 12000),
+    attachments: [],
+  };
+}
+
 function safeToolResult(name, raw) {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
     return {tool: name, verified: true, ok: false, code: 'COAGENT_TOOL_BAD_RESULT', message: 'Некорректный результат инструмента'};
@@ -117,13 +135,7 @@ function safeToolResult(name, raw) {
   };
 }
 
-export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit, signal}) {
-  const policy = prepared?.coagent;
-  if (!policy || policy.enabled !== true) return {ok: false, skipped: true, reason: policy?.reason || 'disabled'};
-  if (typeof invokeModel !== 'function' || typeof invokeTool !== 'function') throw new Error('WAI_COAGENT_RUNTIME_INVALID');
-  if (signal?.aborted) throw new Error('WAI_COAGENT_CANCELLED');
-
-  const reviewRound = Math.max(0, Math.min(1, Number(policy.reviewRound || 0) || 0));
+async function runAttempt({prepared, policy, invokeModel, invokeTool, emit, signal, reviewRound}) {
   const revisionContext = reviewRound > 0
     ? [{
         kind: 'project_context',
@@ -184,6 +196,7 @@ export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit
     const finalOnly = reviewRound > 0 || turn >= handoff.limits.maxToolTurns;
     raw = await invokeModel({
       handoff,
+      actor: 'coagent',
       phase: reviewRound > 0 ? 'revision' : (finalOnly ? 'final' : `tool-${turn + 1}`),
       input: modelInput(handoff, policy, toolResults, finalOnly, reviewRound),
     });
@@ -249,4 +262,76 @@ export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit
     'Структурированный результат передан Lead Persona для проверки и интеграции.',
   ));
   return {ok: true, handoff, result, toolResults};
+}
+
+export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit, signal}) {
+  const policy = prepared?.coagent;
+  if (!policy || policy.enabled !== true) return {ok: false, skipped: true, reason: policy?.reason || 'disabled'};
+  if (typeof invokeModel !== 'function' || typeof invokeTool !== 'function') throw new Error('WAI_COAGENT_RUNTIME_INVALID');
+  if (signal?.aborted) throw new Error('WAI_COAGENT_CANCELLED');
+
+  const send = typeof emit === 'function' ? emit : () => {};
+  const initial = await runAttempt({
+    prepared,
+    policy,
+    invokeModel,
+    invokeTool,
+    emit: send,
+    signal,
+    reviewRound: 0,
+  });
+
+  if (initial.handoff.limits.maxReviewRounds < 1) return initial;
+  if (signal?.aborted) throw new Error('WAI_COAGENT_CANCELLED');
+
+  const leadLabel = personaLabel(initial.handoff.leadPersona);
+  send(buildCoagentEvent(initial.handoff, 'review', {
+    label: `${leadLabel}: проверка результата`,
+    detail: 'Lead проверяет структурированный результат Co-Agent.',
+  }));
+  send(timelineEvent(
+    `${leadLabel} · проверка Co-Agent результата`,
+    'Проверка полезности, корректности и непротиворечивости перед интеграцией.',
+  ));
+  const rawReview = await invokeModel({
+    handoff: initial.handoff,
+    actor: 'lead',
+    phase: 'lead-review',
+    input: leadReviewInput(prepared, initial),
+  });
+  const review = parseLeadReviewResponse(rawReview, initial.handoff);
+  if (review.decision === 'accept') {
+    send(timelineEvent(
+      `${leadLabel} · результат принят`,
+      'Дополнительная правка Co-Agent не требуется.',
+    ));
+    return {...initial, review};
+  }
+
+  const revisedPolicy = {
+    ...policy,
+    reviewRound: 1,
+    maxToolTurns: 0,
+    allowedToolNames: [],
+    toolDefinitions: [],
+    previousResult: initial.result,
+    revisionRequest: review.revisionRequest,
+    task: `${policy.task}\n\n[WESI_AI_LEAD_REVISION_REQUEST]\n${review.revisionRequest}`,
+    handoffId: `${prepared.requestId}:persona:${policy.coagentPersona}:review:1`,
+  };
+  const revised = await runAttempt({
+    prepared,
+    policy: revisedPolicy,
+    invokeModel,
+    invokeTool,
+    emit: send,
+    signal,
+    reviewRound: 1,
+  });
+  return {
+    ...revised,
+    review,
+    previousResult: initial.result,
+    toolResults: initial.toolResults,
+  };
 }
