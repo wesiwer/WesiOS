@@ -3,7 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
-import '../media_engines/wesi_media_engine_runner.dart';
+import '../media_engines/wesi_media_workflow.dart';
 import '../memory/wesi_ai_memory_api.dart';
 import '../memory/wesi_ai_memory_engine.dart';
 import '../memory/wesi_ai_memory_models.dart';
@@ -972,7 +972,7 @@ class WesiAiChatController extends ChangeNotifier {
     String key,
   ) async {
     try {
-      final result = await WesiMediaEngineRunner.run(request);
+      final result = await WesiMediaWorkflow.runLocalRequest(request);
       if (_disposed) return;
       await _markLocalRequestFinished(source.id, request, result.ok);
       final at = DateTime.now();
