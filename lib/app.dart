@@ -14,6 +14,8 @@ import 'core/sync/sync_endpoint.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/update_error_dialog.dart';
 import 'core/widgets/window_controls.dart';
+import 'features/ai/runtime/wesi_ai_answer_attention.dart';
+import 'features/ai/widgets/wesi_ai_answer_ready_host.dart';
 import 'features/audio/widgets/audio_mini_player.dart';
 import 'features/calculator/calculator_screen.dart';
 import 'features/splash/splash_screen.dart';
@@ -45,6 +47,9 @@ class WesiOSApp extends StatelessWidget {
         final theme = AppTheme.themeData;
         return MaterialApp(
           navigatorKey: wesiNavigatorKey,
+          navigatorObservers: <NavigatorObserver>[
+            WesiAiAnswerAttention.navigatorObserver,
+          ],
           title: 'WesiOS',
           debugShowCheckedModeBanner: false,
           theme: theme,
@@ -86,6 +91,13 @@ class WesiOSApp extends StatelessWidget {
                               if (isDesktop)
                                 OverlayEntry(
                                     builder: (_) => const EngineDownloadOverlay()),
+                              // Answer-ready UI is intentionally below Shield:
+                              // no AI preview may appear over a locked WesiOS.
+                              OverlayEntry(
+                                builder: (_) => WesiAiAnswerReadyHost(
+                                  navigatorKey: wesiNavigatorKey,
+                                ),
+                              ),
                               OverlayEntry(builder: (_) => const ShieldOverlay()),
                               OverlayEntry(builder: (_) => const UpdateErrorHost()),
                               if (isDesktop)

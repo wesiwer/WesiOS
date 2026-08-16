@@ -66,9 +66,16 @@ function access(e, ctx) {
 }
 
 function select(accessState, requested) {
-  const requestedId = String(requested || "").trim();
-  if (requestedId) {
-    return accessState.financeOrgIds[requestedId] === true && accessState.orgs[requestedId] ? requestedId : "";
+  const raw = String(requested || "").trim();
+  if (raw) {
+    if (accessState.financeOrgIds[raw] === true && accessState.orgs[raw]) return raw;
+    const folded = raw.toLocaleLowerCase();
+    const byName = Object.keys(accessState.orgs).filter((id) =>
+      accessState.financeOrgIds[id] === true &&
+      String(accessState.orgs[id].name || "").trim().toLocaleLowerCase() === folded
+    );
+    if (byName.length === 1) return byName[0];
+    return "";
   }
   if (accessState.financeOrgIds[ROOT_ORG] === true && accessState.orgs[ROOT_ORG]) return ROOT_ORG;
   const ids = Object.keys(accessState.financeOrgIds).filter((id) => accessState.financeOrgIds[id] === true && accessState.orgs[id]);

@@ -165,8 +165,23 @@ class WesiAiApi {
           cancellation: cancellation,
         );
         if (streamed != null) return streamed;
+        onActivity?.call(<String, dynamic>{
+          'type': 'activity',
+          'kind': 'status',
+          'label': 'Переключаюсь на основной маршрут Wesi AI',
+          'detail':
+              'Streaming transport недоступен; продолжаю через защищённый WesiOS Main.',
+          'phase': 'done',
+        });
       }
 
+      onActivity?.call(<String, dynamic>{
+        'type': 'activity',
+        'kind': 'status',
+        'label': 'Ожидаю проверенный ответ',
+        'detail': 'Запрос отправлен в WesiOS Main.',
+        'phase': 'start',
+      });
       final request = await _http.postUrl(uri);
       cancellation?.bind(() => request.abort());
       _applyAuth(request, auth);
@@ -180,6 +195,12 @@ class WesiAiApi {
         final code = '${json['code'] ?? 'WAI_REQUEST_FAILED'}';
         throw WesiAiApiException(code, _messageFor(code));
       }
+      onActivity?.call(<String, dynamic>{
+        'type': 'activity',
+        'kind': 'status',
+        'label': 'Ответ проверен сервером',
+        'phase': 'done',
+      });
       return _replyFromPayload(json);
     } on WesiAiApiException {
       rethrow;
@@ -318,11 +339,19 @@ class WesiAiApi {
       requestId: '${json['requestId'] ?? ''}',
       blocks:
           blocks.take(WesiAiContentParser.maxBlocks).toList(growable: false),
-      activity: _activityFromToolResults(json['toolResults']),
+      activity: toolActivityFromResults(json['toolResults']),
     );
   }
 
-  static List<Map<String, dynamic>> _activityFromToolResults(dynamic raw) {
+  static String toolResultDetail(Map<dynamic, dynamic> raw) {
+    final code = '${raw['code'] ?? ''}'.trim();
+    final message = '${raw['message'] ?? ''}'.trim();
+    if (code.isEmpty) return message;
+    if (message.isEmpty || message == code) return code;
+    return '$code · $message';
+  }
+
+  static List<Map<String, dynamic>> toolActivityFromResults(dynamic raw) {
     if (raw is! List) return const <Map<String, dynamic>>[];
     final result = <Map<String, dynamic>>[];
     for (var index = 0; index < raw.length && index < 80; index++) {
@@ -340,6 +369,7 @@ class WesiAiApi {
       }
 
       final tool = '${map['tool'] ?? map['name'] ?? ''}'.trim();
+      final detail = toolResultDetail(map);
       final filesRaw = payload['files'] ?? map['files'];
       final files = filesRaw is List
           ? filesRaw.take(40).map((value) => '$value').toList(growable: false)
@@ -353,8 +383,7 @@ class WesiAiApi {
         'additions': count(payload['additions'] ?? map['additions']),
         'deletions': count(payload['deletions'] ?? map['deletions']),
         if (files.isNotEmpty) 'files': files,
-        if ('${map['code'] ?? ''}'.trim().isNotEmpty)
-          'detail': '${map['code']}',
+        if (detail.isNotEmpty) 'detail': detail,
       });
     }
     return result;

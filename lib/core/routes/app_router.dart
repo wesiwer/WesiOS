@@ -104,10 +104,13 @@ class AppRouter {
           child: KnowledgeBaseScreen(),
         ));
       case '/ai':
-        return _slideUpRoute(_AccessGate(
-          module: TeamModules.ai,
-          child: const AiAssistantV2Screen(),
-        ));
+        return _slideUpRoute(
+          _AccessGate(
+            module: TeamModules.ai,
+            child: const AiAssistantV2Screen(),
+          ),
+          settings: settings,
+        );
       case '/shield':
         return _slideUpRoute(_AccessGate(
           module: TeamModules.shield,
@@ -184,8 +187,12 @@ class AppRouter {
     );
   }
 
-  static PageRouteBuilder _slideUpRoute(Widget page) {
+  static PageRouteBuilder _slideUpRoute(
+    Widget page, {
+    RouteSettings? settings,
+  }) {
     return PageRouteBuilder(
+      settings: settings,
       opaque: false,
       pageBuilder: (_, __, ___) => page,
       transitionsBuilder: (_, animation, __, child) {

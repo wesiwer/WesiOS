@@ -1,20 +1,18 @@
 # Wesi AI Relay
 
-Зарубежный посредник между основным сервером WesiOS и Google AI API.
+Зарубежный посредник между основным сервером WesiOS и AI providers.
 
 ```text
-WesiOS → api.wesi-inc.ru → Foreign Relay → Google AI → Relay → api.wesi-inc.ru → WesiOS
+WesiOS → api.wesi-inc.ru → Foreign Relay → AI provider → Relay → api.wesi-inc.ru → WesiOS
 ```
 
-Provider credentials живут **только на Foreign Relay**. Flutter-клиент и основной сервер не получают `GEMINI_API_KEY`.
+Provider credentials живут **только на Foreign Relay**. Flutter-клиент и основной сервер не получают `GEMINI_API_KEY` и другие provider keys.
 
-## Текущий статус
+## Архитектурная роль
 
-Код Relay, Main hooks, anti-replay, натуральный TTS, image/music/video adapters, WesiOS media storage и end-to-end deployment workflow подготовлены.
+Main Server оперирует только логическими маршрутами `wesi/fast`, `wesi/pro`, `wesi/ultra`. Конкретный provider, model и credential slot выбираются на Foreign Relay. Поэтому клиент не может сам повысить уровень модели или подменить provider/model selector.
 
-**Сам Foreign Relay ещё не развёрнут**, потому что в доступных WesiOS/GitHub данных нет зарубежного VPS и отдельного `GEMINI_API_KEY`.
-
-## Что нужно предоставить один раз
+## Что нужно для production
 
 Минимальный внешний набор:
 
@@ -23,22 +21,37 @@ Provider credentials живут **только на Foreign Relay**. Flutter-к�
    - SSH;
    - пользователем с passwordless `sudo` для deployment-команд;
    - открытыми TCP 22, 80 и 443;
-2. DNS hostname, например `ai-relay.example.com`, который уже указывает на этот VPS;
-3. `GEMINI_API_KEY` с доступом к нужным Google AI моделям.
+2. DNS hostname, например `ai.wesi-wf.su`;
+3. основной `GEMINI_API_KEY` с доступом к нужным Google AI моделям.
 
 Firebase Android API key из `android/app/google-services.json` **не является заменой Gemini key**.
 
-Отдельный Vertex key для музыки не требуется: текущий Relay использует Lyria 3 через Gemini API.
-
-## Что добавить в GitHub Secrets
+## GitHub Secrets
 
 Обязательно:
 
 | Secret | Назначение |
 |---|---|
-| `WESI_RELAY_SSH_USER` | SSH-пользователь зарубежного VPS с `sudo` |
-| `WESI_RELAY_SSH_KEY` | приватный SSH-ключ этого пользователя |
-| `GEMINI_API_KEY` | provider credential, устанавливается только на Relay |
+| `WESI_RELAY_SSH_USER` | SSH-пользователь Foreign Relay с `sudo` |
+| `WESI_RELAY_SSH_KEY` | приватный SSH-ключ Relay |
+| `GEMINI_API_KEY` | основной Gemini credential; хранится только на Relay |
+
+Дополнительная Gemini capacity / failover:
+
+| Secret | Назначение |
+|---|---|
+| `GEMINI_API_KEY_2` | резервный Gemini credential slot |
+| `GEMINI_API_KEY_3` | резервный Gemini credential slot |
+| `GEMINI_API_KEY_4` | резервный Gemini credential slot |
+| `GEMINI_API_KEY_5` | резервный Gemini credential slot |
+
+Одинаковые значения автоматически дедуплицируются. Credential slot **не определяет качество модели**: все Gemini slots в конкретном запросе вызывают только модель, назначенную текущему tier. Сам код поддерживает до пяти slots сразу; фактический объём Gemini capacity увеличивается только после добавления соответствующих Secrets и зависит от квот проектов/аккаунтов, к которым относятся эти credentials.
+
+Дополнительные providers:
+
+- `GROQ_API_KEY`;
+- `MISTRAL_API_KEY`;
+- `OPENROUTER_API_KEY`.
 
 Уже существующие Main Server secrets workflow использует автоматически:
 
@@ -47,67 +60,92 @@ Firebase Android API key из `android/app/google-services.json` **не явля
 - `WESI_SERVER_SSH_KEY`;
 - `WESI_SERVER_KNOWN_HOSTS` — если задан.
 
-Необязательно:
+Остальные необязательные параметры:
 
 | Secret | Назначение |
 |---|---|
-| `WESI_RELAY_SSH_HOST` | отдельный SSH host; если не задан, используется DNS hostname из workflow input |
+| `WESI_RELAY_SSH_HOST` | отдельный SSH host; если не задан, используется DNS hostname |
 | `WESI_RELAY_SSH_KNOWN_HOSTS` | pinned SSH host key Relay |
-| `WESI_MAIN_SHARED_SECRET` | постоянный HMAC secret; если не задан, первый deployment генерирует сильный secret и ставит его на Relay и Main |
+| `WESI_MAIN_SHARED_SECRET` | постоянный HMAC secret Main ↔ Relay |
 | `WESI_ZANE_TTS_VOICE` | override натурального голоса Зейна |
 | `WESI_NIRVANA_TTS_VOICE` | override натурального голоса Нирваны |
 
 Дефолты голосов: Зейн — `Charon`, Нирвана — `Sulafat`.
 
-Для первого запуска `WESI_MAIN_SHARED_SECRET` можно не задавать. Для будущих повторных production-deploy рекомендуется сохранить постоянное случайное значение длиной не менее 32 символов в GitHub Secret: так даже оборванный redeploy не сможет временно оставить Main и Relay на разных HMAC secret.
+## Tier-aware routing
 
-## Единственный production запуск
+Модельный tier и API credential — две разные сущности. Наличие пяти ключей не даёт Fast права использовать модель из Pro/Maximum.
 
-После появления VPS, DNS и Secrets запустить GitHub Actions workflow:
+### Fast
 
-`Deploy Wesi AI End-to-End`
+Цель: минимальная задержка и дешёвая ёмкость.
 
-Единственный input — DNS hostname Foreign Relay, например:
+Порядок:
 
-`ai-relay.example.com`
+1. `gemini-3.5-flash-lite` через основной Gemini slot;
+2. та же `gemini-3.5-flash-lite` через `GEMINI_API_KEY_2…5`;
+3. fast-модель Groq;
+4. fast-модель Mistral;
+5. OpenRouter только если для Fast явно задан конкретный model override.
 
-Workflow сам:
+Динамический `openrouter/free` в Fast не используется: выбранная им модель заранее не гарантирована, поэтому он мог бы нарушить правило `Fast < Pro < Maximum`.
 
-1. валидирует конфигурацию;
-2. собирает Persona Bundle;
-3. проверяет JS/shell и запускает весь Relay test suite;
-4. создаёт единый HMAC secret, если постоянный не задан;
-5. передаёт Relay credentials в закрытом временном bundle, не помещая API key в SSH command line;
-6. ставит Relay как hardened systemd service;
-7. устанавливает nginx и получает Let's Encrypt certificate;
-8. проверяет HTTPS `/health`;
-9. проверяет, что unsigned `/v1/wesi-ai` и `/v1/wesi-ai-artifact` возвращают 401;
-10. делает живой Relay → Gemini text roundtrip;
-11. повторяет тот же подписанный запрос и проверяет `WAI_RELAY_REPLAY_DETECTED`;
-12. делает живой Gemini natural TTS roundtrip;
-13. собирает `.wesi-ai-relay.json` для Main Server;
-14. выкладывает все актуальные `wesi_ai_*` hooks и Persona Bundle на `api.wesi-inc.ru`;
-15. устанавливает private configs с mode 600 и владельцем PocketBase;
-16. перезапускает PocketBase;
-17. проверяет Main → Relay HTTPS;
-18. проверяет, что защищённые Wesi AI routes реально загрузились.
+### Pro
 
-Ручного копирования shared secret между двумя серверами после этого нет.
+Цель: сильнее Fast, но заметно дешевле Maximum.
 
-## Provider operations
+Pro использует **один сильный advisor-seat**. Внутри этого места разрешён ordered failover только между Pro-кандидатами: Groq Pro → Mistral Pro → необязательный явно назначенный Pro OpenRouter model. Когда первый доступный advisor подготовил анализ, отдельный **Pro-only finalizer pool** формирует окончательный ответ:
 
-Один `GEMINI_API_KEY` используется Relay для:
+1. Pro Gemini model через primary и secondary Gemini slots;
+2. Pro Mistral finalizer;
+3. Pro Groq finalizer;
+4. необязательный явно назначенный Pro OpenRouter model.
 
-- text routing:
-  - `google/gemini-3.5-flash-lite` — fast;
-  - `google/gemini-3.6-flash` — pro;
-  - `google/gemini-3.6-flash` — maximum;
-- natural speech: `gemini-3.1-flash-tts-preview`;
-- images: `gemini-3.1-flash-image`;
-- video: Veo 3.1 / Veo 3.1 Fast;
-- music: Lyria 3 Clip / Lyria 3 Pro.
+Таким образом Pro — это как минимум отдельная стадия анализа + отдельная стадия финализации, но он не расходует несколько advisors параллельно как Maximum.
 
-Модельные имена являются внутренней инфраструктурой. Пользователь WesiOS видит уровни Wesi AI, а не provider/model selector.
+### Maximum
+
+Цель: самый широкий доступный анализ.
+
+Maximum запускает несколько независимых `ultra` advisors **параллельно**: Groq Maximum, Mistral Maximum и, при наличии ключа, дополнительный OpenRouter advisor. Затем все успешные заметки передаются в отдельный Maximum-only finalizer pool.
+
+Это делает Maximum архитектурно шире Pro даже когда Gemini-модель финализатора совпадает по семейству: Pro использует один advisor-seat, а Maximum сопоставляет несколько независимых анализов. Fast-кандидаты в Maximum не используются.
+
+Если весь Maximum finalizer pool недоступен, Relay возвращает честную ошибку вместо того, чтобы незаметно выдать одиночный слабый advisor answer как «Maximum».
+
+## Automatic failover и cooldown
+
+Для каждого сочетания `provider + model + credential slot` Relay ведёт отдельное in-memory health state.
+
+- `429 / rate limit` — слот временно уходит в exponential cooldown; базово 60 секунд, максимум 6 часов;
+- transient `5xx / unavailable / timeout` — базовый cooldown 15 секунд, максимум 5 минут;
+- provider auth failure — более длинный cooldown;
+- успешный запрос сбрасывает failure state;
+- после окончания cooldown primary slot автоматически снова получает первый приоритет;
+- `400`-класс ошибок запроса/вложения не размножается по всем providers;
+- streaming может переключиться на другой provider только **до** выдачи первой части ответа. После emitted bytes failover запрещён, чтобы два provider-ответа не склеились в один текст.
+
+Несколько credentials предназначены для легитимной отказоустойчивости и доступной provider capacity. Router не должен использоваться для обхода ограничений или условий конкретного провайдера.
+
+## Attachments
+
+Вложения остаются Gemini-only, пока non-Gemini adapters не получат проверенный multimodal transport. При этом attachment request также умеет перебирать Gemini credential slots, **не меняя tier-модель**:
+
+- Fast → Fast Gemini model;
+- Pro → Pro Gemini model;
+- Maximum → Maximum Gemini model.
+
+Файлы никогда не отбрасываются молча ради fallback на text-only provider.
+
+## Обновление provider credentials без client release
+
+После добавления/изменения GitHub Secrets можно запустить:
+
+`Configure Wesi AI Router`
+
+Workflow сформирует закрытый provider bundle, обновит `/etc/wesi-ai-providers.env` на Relay и перезапустит только Relay. Flutter APK и Main Server не получают сами credentials.
+
+Полный `Deploy Wesi AI End-to-End` также сохраняет `GEMINI_API_KEY_2…5`, поэтому обычный redeploy больше не стирает failover pool.
 
 ## Защита Main ↔ Relay
 
@@ -128,53 +166,51 @@ Relay:
 
 Одинаковый контракт покрыт Relay tests и production deployment smoke-test.
 
-## Передача тяжёлых media artifacts
+## Media
+
+Основной Gemini credential по-прежнему используется для provider operations, которые пока не переведены на text tier pool: natural speech и разрешённые cloud media operations. Бесплатные локальные Wesi Media Engines остаются отдельным контуром.
 
 Image/music/video bytes не передаются клиенту как provider base64 и provider URL не сохраняется в истории.
 
-Путь:
-
 ```text
-Google → Relay → short-lived one-time Relay artifact
-       → signed Main fetch
-       → WesiOS-controlled storage
-       → WesiOS media URL
-       → client
+Provider → Relay → short-lived one-time Relay artifact
+         → signed Main fetch
+         → WesiOS-controlled storage
+         → WesiOS media URL
+         → client
 ```
 
-Relay artifact:
-
-- криптографический opaque id;
-- ограниченный TTL;
-- bounded memory;
-- выдаётся только по отдельному подписанному Main request;
-- уничтожается при первом успешном получении.
-
-Для Veo Relay сам скачивает provider result с `GEMINI_API_KEY`. Каждый HTTP redirect обрабатывается вручную и повторно проверяется по Google API host allowlist **до** передачи API key следующему адресу. Затем проверяются MIME и максимальный размер, и Main получает только Wesi artifact handoff.
+Relay artifact имеет opaque id, ограниченный TTL и bounded storage, выдаётся только по подписанному Main request и уничтожается после успешного получения.
 
 ## Natural voice fallback
 
-Клиент сначала пытается получить натуральный голос через Main → Relay → Gemini. Если Relay/провайдер недоступен, разговор автоматически продолжает работать через системный Android/Windows TTS.
+Клиент сначала пытается получить натуральный голос через Main → Relay → provider. Если Relay/провайдер недоступен, разговор автоматически продолжает работать через системный Android/Windows TTS.
 
-Gemini TTS возвращает raw PCM 24 kHz mono 16-bit. Relay заворачивает PCM в настоящий RIFF/WAV перед отправкой Main/client. Android bridge завершает `speak()` только после фактического `onDone` озвучки, поэтому hands-free session не открывает микрофон, пока динамик ещё говорит.
-
-## Локальная проверка
+## Проверка
 
 ```bash
+node --check server/wesi-ai-relay/*.mjs
 node --test server/wesi-ai-relay/*.test.mjs
+bash -n server/wesi-ai-relay/deploy-relay.sh
 ```
 
-Также production PR gate выполняет `node --check`, Relay tests, Persona validation, Flutter analyze/test, Android и Windows builds.
+Regression tests отдельно фиксируют:
+
+- Fast не принимает Pro/Maximum candidates;
+- Pro не принимает Maximum candidates;
+- реальные Fast pools не содержат higher-tier candidates;
+- Pro/Maximum finalizer pools остаются внутри своего tier;
+- Pro использует один advisor-seat и только при его отказе переключается на следующий Pro advisor;
+- Maximum собирает несколько доступных advisors параллельно;
+- primary Gemini `429` переключает Fast на secondary Gemini credential, но URL модели остаётся `gemini-3.5-flash-lite`;
+- cooling primary slot пропускается и автоматически возвращается после cooldown;
+- invalid request не fan-out'ится;
+- streaming не переключается после частичного ответа;
+- пользовательская cancellation останавливает весь pool.
 
 
-## Multi-AI orchestration
+## Hierarchical model pools and quota scopes
 
-Text tiers are intentionally different:
+Default stable text hierarchy is intentionally monotonic: `Fast = gemini-3.5-flash-lite`, `Pro = gemini-3.5-flash`, `Maximum = gemini-3.6-flash`. Failover never promotes a lower Wesi tier to a higher-tier candidate.
 
-- **Fast** is latency-first: one fast provider answers, with ordered fallback only.
-- **Pro** asks two independent non-Gemini advisors in parallel. If one seat is unavailable, OpenRouter may fill it. Gemini receives the original persona/tool context plus advisor notes and is the sole finalizer.
-- **Maximum** asks every configured non-Gemini advisor (Groq, Mistral, OpenRouter) in parallel, then Gemini performs the final synthesis.
-
-Advisor outputs are never treated as verified WesiOS actions. They are hidden analytical notes. Only the Gemini finalizer can emit the final `wesiTool` envelope, and Main Server remains the only component that can verify/execute that tool through the Action Broker. If Gemini is temporarily unavailable after advisor work, chat may return one advisor answer as an availability fallback, but no advisor result is ever treated as an executed tool result.
-
-Attachments remain Gemini-only until the non-Gemini adapters gain a verified multimodal transport; files are never silently dropped to make ensemble routing work.
+Gemini quotas are project-scoped. Optional `GEMINI_API_PROJECT`, `GEMINI_API_PROJECT_2` ... `_5` labels group credentials that belong to the same Google project into one cooldown scope. A 429/quota event on one credential therefore skips other credentials explicitly marked as the same project while still allowing another configured project/provider capacity to serve the request. These slots are for legitimate independent capacity/failover, not for evading provider quotas.

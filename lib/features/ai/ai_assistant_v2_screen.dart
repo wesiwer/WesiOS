@@ -106,9 +106,10 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
       return;
     }
     if (_voice.transcript.isNotEmpty || _voice.listening) {
-      final next = <String>[_voicePrefix.trim(), _voice.transcript.trim()]
-          .where((part) => part.isNotEmpty)
-          .join(' ');
+      final next = <String>[
+        _voicePrefix.trim(),
+        _voice.transcript.trim(),
+      ].where((part) => part.isNotEmpty).join(' ');
       if (_composer.text != next) {
         _composer.value = TextEditingValue(
           text: next,
@@ -198,36 +199,6 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
           ],
         ),
         actions: [
-          IconButton(
-            tooltip: 'Коннекторы Wesi AI',
-            onPressed: () => showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              showDragHandle: true,
-              builder: (_) => const WesiConnectorManagerSheet(),
-            ),
-            icon: const Icon(Icons.hub_outlined),
-          ),
-          IconButton(
-            tooltip: 'Backup и перенос Wesi AI',
-            onPressed: () => showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              showDragHandle: true,
-              builder: (_) => WesiAiBackupSheet(controller: controller),
-            ),
-            icon: const Icon(Icons.backup_outlined),
-          ),
-          IconButton(
-            tooltip: 'Память Wesi AI',
-            onPressed: () => showModalBottomSheet<void>(
-              context: context,
-              isScrollControlled: true,
-              showDragHandle: true,
-              builder: (_) => WesiAiMemorySheet(controller: controller),
-            ),
-            icon: const Icon(Icons.memory_outlined),
-          ),
           PopupMenuButton<WesiAiUiMode>(
             tooltip: 'Режим отображения ответа',
             initialValue: _uiMode,
@@ -286,7 +257,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     final activeProject = controller.state.activeProject;
     final enabled = !controller.processing;
 
-    return Column(
+    return ListView(
+      padding: EdgeInsets.zero,
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 12, 8),
@@ -342,9 +314,10 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
           ),
         ),
         ConstrainedBox(
-          constraints: const BoxConstraints(maxHeight: 220),
+          constraints: const BoxConstraints(),
           child: ListView(
             shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
             children: [
               ListTile(
                 dense: true,
@@ -466,61 +439,133 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
             ],
           ),
         ),
+        _sidebarUtilities(controller),
         const Divider(height: 1),
-        Expanded(
-          child: ListView(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            children: [
-              if (visible.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('В этом проекте пока нет чатов.'),
-                ),
-              for (final item in visible)
-                _ConversationTile(
-                  item: item,
-                  selected: item.id == controller.state.activeConversationId,
-                  enabled: enabled,
-                  personaName: _personaName(item.persona),
-                  onTap: () => controller.selectConversation(item.id),
-                  onAction: (action) =>
-                      _conversationAction(controller, item, action),
-                ),
-              if (archived.isNotEmpty)
-                ExpansionTile(
-                  title: Text('Архив (${archived.length})'),
-                  children: [
-                    for (final item in archived)
-                      ListTile(
-                        dense: true,
-                        title: Text(
-                          item.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(_personaName(item.persona)),
-                        trailing: PopupMenuButton<String>(
-                          enabled: enabled,
-                          onSelected: (action) =>
-                              _archivedAction(controller, item, action),
-                          itemBuilder: (_) => const [
-                            PopupMenuItem(
-                              value: 'restore',
-                              child: Text('Восстановить'),
-                            ),
-                            PopupMenuItem(
-                              value: 'delete',
-                              child: Text('Удалить'),
-                            ),
-                          ],
-                        ),
+        ListView(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          children: [
+            if (visible.isEmpty)
+              const Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('В этом проекте пока нет чатов.'),
+              ),
+            for (final item in visible)
+              _ConversationTile(
+                item: item,
+                selected: item.id == controller.state.activeConversationId,
+                enabled: enabled,
+                personaName: _personaName(item.persona),
+                onTap: () => controller.selectConversation(item.id),
+                onAction: (action) =>
+                    _conversationAction(controller, item, action),
+              ),
+            if (archived.isNotEmpty)
+              ExpansionTile(
+                title: Text('Архив (${archived.length})'),
+                children: [
+                  for (final item in archived)
+                    ListTile(
+                      dense: true,
+                      title: Text(
+                        item.title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
                       ),
-                  ],
-                ),
-            ],
-          ),
+                      subtitle: Text(_personaName(item.persona)),
+                      trailing: PopupMenuButton<String>(
+                        enabled: enabled,
+                        onSelected: (action) =>
+                            _archivedAction(controller, item, action),
+                        itemBuilder: (_) => const [
+                          PopupMenuItem(
+                            value: 'restore',
+                            child: Text('Восстановить'),
+                          ),
+                          PopupMenuItem(
+                            value: 'delete',
+                            child: Text('Удалить'),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+          ],
         ),
       ],
+    );
+  }
+
+  Widget _sidebarUtilities(WesiAiManagedChatController controller) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(8, 0, 8, 6),
+            child: Text(
+              'Настройки Wesi AI',
+              style: theme.textTheme.labelMedium?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          Card(
+            margin: EdgeInsets.zero,
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              children: [
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.hub_outlined),
+                  title: const Text('Коннекторы'),
+                  subtitle: const Text('Внешние сервисы и аккаунты'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (_) => const WesiConnectorManagerSheet(),
+                  ),
+                ),
+                const Divider(height: 1, indent: 52),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.memory_outlined),
+                  title: const Text('Память'),
+                  subtitle: const Text('Что Wesi AI помнит о работе'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (_) => WesiAiMemorySheet(controller: controller),
+                  ),
+                ),
+                const Divider(height: 1, indent: 52),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.backup_outlined),
+                  title: const Text('Бэкап и перенос'),
+                  subtitle: const Text('Резервные копии и перенос чатов'),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    showDragHandle: true,
+                    builder: (_) => WesiAiBackupSheet(controller: controller),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -559,8 +604,11 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                   controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(18, 16, 18, 24),
                   itemCount: messages.length,
-                  itemBuilder: (context, index) => _messageTile(controller,
-                      messages[index], index == messages.length - 1),
+                  itemBuilder: (context, index) => _messageTile(
+                    controller,
+                    messages[index],
+                    index == messages.length - 1,
+                  ),
                 ),
         ),
         if (hasLastError && !controller.processing)
@@ -714,8 +762,9 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
               avatar: const Icon(Icons.account_tree_outlined, size: 16),
               label: const Text('Ветка'),
               onPressed: enabled
-                  ? () => controller
-                      .selectConversation(active.branchedFromConversationId!)
+                  ? () => controller.selectConversation(
+                        active.branchedFromConversationId!,
+                      )
                   : null,
             ),
           ],
@@ -855,6 +904,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                     key: ValueKey(message.id),
                     message: message,
                     animateText: latest && assistant,
+                    showWorkLog: _uiMode == WesiAiUiMode.thinking,
                     expandWorkLog: _uiMode == WesiAiUiMode.thinking,
                     onQuickReply: (answer) =>
                         _sendQuickReply(controller, answer),
@@ -926,8 +976,9 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
               label: Text(suggestion),
               onPressed: () {
                 _composer.text = suggestion;
-                _composer.selection =
-                    TextSelection.collapsed(offset: suggestion.length);
+                _composer.selection = TextSelection.collapsed(
+                  offset: suggestion.length,
+                );
               },
             ),
         ],
@@ -975,8 +1026,10 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                             Text(
                               controller.queuedTurns
                                   .take(3)
-                                  .map((turn) =>
-                                      '${turn.intentLabel}: ${turn.preview}')
+                                  .map(
+                                    (turn) =>
+                                        '${turn.intentLabel}: ${turn.preview}',
+                                  )
                                   .join(' · '),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
@@ -1009,8 +1062,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 onDeleted: () => setState(
-                                  () => _attachments.removeAt(index),
-                                ),
+                                    () => _attachments.removeAt(index)),
                               ),
                           ],
                         ),
@@ -1071,7 +1123,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                                   ? null
                                   : _toggleVoice,
                           icon: Icon(
-                              _voice.listening ? Icons.stop : Icons.mic_none),
+                            _voice.listening ? Icons.stop : Icons.mic_none,
+                          ),
                         ),
                         IconButton(
                           tooltip: _session?.active == true
@@ -1124,9 +1177,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
       });
     } on FormatException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
       }
     } catch (_) {
       if (mounted) {
@@ -1139,25 +1191,11 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
   Future<void> _capturePhoto() async {
     try {
-      final attachment = await showDialog<WesiAiAttachment>(
-        context: context,
-        barrierColor: Colors.black87,
-        builder: (dialogContext) {
-          final size = MediaQuery.sizeOf(dialogContext);
-          final width = size.width < 620 ? size.width - 24 : 560.0;
-          final height = (size.height * 0.78).clamp(420.0, 720.0).toDouble();
-          return Dialog(
-            insetPadding: const EdgeInsets.all(12),
-            clipBehavior: Clip.antiAlias,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-            child: SizedBox(
-              width: width,
-              height: height,
-              child: const WesiAiCameraCaptureScreen(),
-            ),
-          );
-        },
+      final attachment = await Navigator.of(context).push<WesiAiAttachment>(
+        MaterialPageRoute<WesiAiAttachment>(
+          fullscreenDialog: true,
+          builder: (_) => const WesiAiCameraCaptureScreen(),
+        ),
       );
       if (attachment == null || !mounted) return;
       final next = <WesiAiAttachment>[..._attachments, attachment];
@@ -1169,9 +1207,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
       });
     } on FormatException catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(e.message)),
-        );
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
       }
     }
   }
@@ -1211,9 +1248,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
           'Не удалось отправить сообщение в текущий чат.',
         WesiAiMessageSubmitResult.accepted => '',
       };
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(message)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
       return;
     }
     if (_composer.text == composerSnapshot) {
@@ -1260,9 +1296,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     await session.start();
     if (!mounted) return;
     if (!session.active && session.error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(session.error!)),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(session.error!)));
     }
     setState(() {});
   }
@@ -1400,8 +1435,11 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     if (action == 'pin') {
       await controller.toggleProjectPinned(project.id);
     } else if (action == 'rename') {
-      final value =
-          await _textDialog('Переименовать проект', project.title, 120);
+      final value = await _textDialog(
+        'Переименовать проект',
+        project.title,
+        120,
+      );
       if (value != null) await controller.renameProject(project.id, value);
     } else if (action == 'context') {
       await _editProjectContext(controller, project);
@@ -1496,8 +1534,11 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     if (action == 'pin') {
       await controller.togglePinned(conversation.id);
     } else if (action == 'rename') {
-      final value =
-          await _textDialog('Переименовать чат', conversation.title, 120);
+      final value = await _textDialog(
+        'Переименовать чат',
+        conversation.title,
+        120,
+      );
       if (value != null) {
         await controller.renameConversation(conversation.id, value);
       }
@@ -1690,11 +1731,7 @@ class _ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) => ListTile(
         selected: selected,
         leading: item.pinned ? const Icon(Icons.push_pin, size: 18) : null,
-        title: Text(
-          item.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
         subtitle: Text(personaName),
         onTap: enabled ? onTap : null,
         trailing: PopupMenuButton<String>(
@@ -1705,18 +1742,10 @@ class _ConversationTile extends StatelessWidget {
               value: 'pin',
               child: Text(item.pinned ? 'Открепить' : 'Закрепить'),
             ),
+            const PopupMenuItem(value: 'rename', child: Text('Переименовать')),
             const PopupMenuItem(
-              value: 'rename',
-              child: Text('Переименовать'),
-            ),
-            const PopupMenuItem(
-              value: 'move',
-              child: Text('Переместить в проект'),
-            ),
-            const PopupMenuItem(
-              value: 'archive',
-              child: Text('В архив'),
-            ),
+                value: 'move', child: Text('Переместить в проект')),
+            const PopupMenuItem(value: 'archive', child: Text('В архив')),
             const PopupMenuItem(value: 'delete', child: Text('Удалить')),
           ],
         ),

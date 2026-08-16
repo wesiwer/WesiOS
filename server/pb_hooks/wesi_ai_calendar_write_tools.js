@@ -113,10 +113,13 @@ module.exports = {
     const now = new Date().toISOString();
 
     if (name === "calendar_create") {
-      const id = "wai_calendar_" + Date.now() + "_" + $security.randomString(8);
-      const value = {id: id};
+      // Validate all user-controlled fields before generating ids or touching
+      // PocketBase. This keeps malformed/model-hallucinated calls fail-closed.
+      const value = {};
       const applied = applyFields(value, input, true);
       if (!applied.ok) return {ok: false, code: "VALIDATION_ERROR", message: applied.message};
+      const id = "wai_calendar_" + Date.now() + "_" + $security.randomString(8);
+      value.id = id;
       const collection = e.app.findCollectionByNameOrId("wesios_records");
       const record = new Record(collection);
       record.set("owner", ctx.ownerId); record.set("org", "wesi-inc"); record.set("coll", "calendar_events");

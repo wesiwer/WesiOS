@@ -415,6 +415,7 @@ class WesiAiChatController extends ChangeNotifier {
       final files = raw['files'] is List
           ? List<dynamic>.from(raw['files'] as List)
           : const <dynamic>[];
+      final toolDetail = type == 'tool' ? WesiAiApi.toolResultDetail(raw) : '';
       if (type == 'tool') {
         if (phase == 'start') {
           activity.add(activityEntry(
@@ -435,8 +436,7 @@ class WesiAiChatController extends ChangeNotifier {
             if (files.isNotEmpty)
               current['files'] =
                   files.take(40).map((item) => '$item').toList(growable: false);
-            final code = '${raw['code'] ?? ''}'.trim();
-            if (code.isNotEmpty) current['detail'] = code;
+            if (toolDetail.isNotEmpty) current['detail'] = toolDetail;
             activity[index] = current;
           } else {
             activity.add(activityEntry(
@@ -445,6 +445,7 @@ class WesiAiChatController extends ChangeNotifier {
                   name.isEmpty ? 'Инструмент завершён' : 'Инструмент · $name',
               sourceName: name,
               status: 'result',
+              detail: toolDetail,
               additions: additions,
               deletions: deletions,
               files: files,
@@ -576,6 +577,8 @@ class WesiAiChatController extends ChangeNotifier {
               next['deletions'] = safeCount(finalEvent['deletions']);
               if (finalEvent['files'] is List)
                 next['files'] = List<dynamic>.from(finalEvent['files'] as List);
+              final finalDetail = '${finalEvent['detail'] ?? ''}'.trim();
+              if (finalDetail.isNotEmpty) next['detail'] = finalDetail;
               next['status'] = 'result';
               next['completedAt'] ??= DateTime.now().toUtc().toIso8601String();
               activity[index] = next;

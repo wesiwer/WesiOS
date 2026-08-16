@@ -13,7 +13,7 @@ enum WesiAiRichBlockKind {
   draft,
   clarification,
   table,
-  chart
+  chart,
 }
 
 class WesiAiRichBlock {
@@ -64,21 +64,20 @@ class WesiAiRichParser {
           'email',
           'draft',
           'quote',
-          'letter'
+          'letter',
         }.contains(lower);
         final kind = lower == 'question'
             ? WesiAiRichBlockKind.clarification
-            : const <String>{'chart', 'wesi-chart', 'wesi_chart'}
-                    .contains(lower)
+            : const <String>{
+                'chart',
+                'wesi-chart',
+                'wesi_chart',
+              }.contains(lower)
                 ? WesiAiRichBlockKind.chart
                 : draft
                     ? WesiAiRichBlockKind.draft
                     : WesiAiRichBlockKind.code;
-        blocks.add(WesiAiRichBlock(
-          kind,
-          body.join('\n'),
-          language: language,
-        ));
+        blocks.add(WesiAiRichBlock(kind, body.join('\n'), language: language));
         continue;
       }
       if (line.contains('|') && index + 1 < lines.length) {
@@ -91,10 +90,12 @@ class WesiAiRichParser {
         final parsedTable = WesiAiTableData.tryParseMarkdown(tableLines);
         if (parsedTable != null) {
           flushText();
-          blocks.add(WesiAiRichBlock(
-            WesiAiRichBlockKind.table,
-            tableLines.take(2 + parsedTable.rows.length).join('\n'),
-          ));
+          blocks.add(
+            WesiAiRichBlock(
+              WesiAiRichBlockKind.table,
+              tableLines.take(2 + parsedTable.rows.length).join('\n'),
+            ),
+          );
           index += 2 + parsedTable.rows.length;
           continue;
         }
@@ -108,8 +109,12 @@ class WesiAiRichParser {
           quote.add(raw.startsWith(' ') ? raw.substring(1) : raw);
           index++;
         }
-        blocks.add(WesiAiRichBlock(
-            WesiAiRichBlockKind.quote, quote.join('\n').trimRight()));
+        blocks.add(
+          WesiAiRichBlock(
+            WesiAiRichBlockKind.quote,
+            quote.join('\n').trimRight(),
+          ),
+        );
         continue;
       }
       text.add(line);
@@ -117,6 +122,104 @@ class WesiAiRichParser {
     }
     flushText();
     return blocks;
+  }
+
+  static String displayMarkdown(String markdown) {
+    var value = markdown.replaceAllMapped(
+      RegExp(r'^\s{0,3}#{1,6}\s+(.+)$', multiLine: true),
+      (match) => '**${match.group(1)?.trim() ?? ''}**',
+    );
+    const commands = <String, String>{
+      r'\times': '×',
+      r'\cdot': '·',
+      r'\pm': '±',
+      r'\leq': '≤',
+      r'\geq': '≥',
+      r'\neq': '≠',
+      r'\approx': '≈',
+      r'\infty': '∞',
+      r'\pi': 'π',
+      r'\alpha': 'α',
+      r'\beta': 'β',
+      r'\gamma': 'γ',
+    };
+    for (final entry in commands.entries) {
+      value = value.replaceAll(entry.key, entry.value);
+    }
+    value = value.replaceAllMapped(
+      RegExp(r'\\sqrt\{([^{}]+)\}'),
+      (m) => '√(${m.group(1) ?? ''})',
+    );
+    value = value.replaceAllMapped(
+      RegExp(r'\\frac\{([^{}]+)\}\{([^{}]+)\}'),
+      (m) => '(${m.group(1) ?? ''})⁄(${m.group(2) ?? ''})',
+    );
+    value = _script(value, true);
+    value = _script(value, false);
+    return value
+        .replaceAll(RegExp(r'(?<!\\)\$(.+?)(?<!\\)\$'), r'$1')
+        .replaceAll(RegExp(r'\\\((.*?)\\\)'), r'$1')
+        .replaceAll(RegExp(r'\\\[(.*?)\\\]'), r'$1');
+  }
+
+  static String _script(String value, bool superscript) {
+    const sup = <String, String>{
+      '0': '⁰',
+      '1': '¹',
+      '2': '²',
+      '3': '³',
+      '4': '⁴',
+      '5': '⁵',
+      '6': '⁶',
+      '7': '⁷',
+      '8': '⁸',
+      '9': '⁹',
+      '+': '⁺',
+      '-': '⁻',
+      '=': '⁼',
+      '(': '⁽',
+      ')': '⁾',
+      'n': 'ⁿ',
+      'i': 'ⁱ',
+    };
+    const sub = <String, String>{
+      '0': '₀',
+      '1': '₁',
+      '2': '₂',
+      '3': '₃',
+      '4': '₄',
+      '5': '₅',
+      '6': '₆',
+      '7': '₇',
+      '8': '₈',
+      '9': '₉',
+      '+': '₊',
+      '-': '₋',
+      '=': '₌',
+      '(': '₍',
+      ')': '₎',
+      'a': 'ₐ',
+      'e': 'ₑ',
+      'i': 'ᵢ',
+      'o': 'ₒ',
+      'r': 'ᵣ',
+      'u': 'ᵤ',
+      'v': 'ᵥ',
+      'x': 'ₓ',
+    };
+    final map = superscript ? sup : sub;
+    final marker = superscript ? '^' : '_';
+    return value.replaceAllMapped(
+      RegExp(
+          '${RegExp.escape(marker)}(?:\\{([^{}]+)\\}|([0-9+\\-=()nieaoruvx]+))'),
+      (match) {
+        final raw = match.group(1) ?? match.group(2) ?? '';
+        if (raw.isEmpty || raw.split('').any((c) => !map.containsKey(c))) {
+          return match.group(0) ?? '';
+        }
+        return raw.split('').map((c) => map[c]!).join();
+      },
+    );
   }
 
   static bool hasClarification(String markdown) {
@@ -135,9 +238,13 @@ class WesiAiRichParser {
         .replaceAll('```', '')
         .replaceAll(RegExp(r'^>\s?', multiLine: true), '')
         .replaceAllMapped(
-            RegExp(r'\*\*(.+?)\*\*', dotAll: true), (m) => m.group(1) ?? '')
+          RegExp(r'\*\*(.+?)\*\*', dotAll: true),
+          (m) => m.group(1) ?? '',
+        )
         .replaceAllMapped(
-            RegExp(r'(?<!\*)\*([^*\n]+)\*(?!\*)'), (m) => m.group(1) ?? '')
+          RegExp(r'(?<!\*)\*([^*\n]+)\*(?!\*)'),
+          (m) => m.group(1) ?? '',
+        )
         .replaceAllMapped(RegExp(r'`([^`\n]+)`'), (m) => m.group(1) ?? '')
         .trim();
   }
@@ -187,6 +294,7 @@ class WesiAiRichMessage extends StatelessWidget {
   final String text;
   final dynamic activityRaw;
   final bool streaming;
+  final bool showWorkLog;
   final bool expandWorkLog;
   final int workDurationMs;
   final WesiAiQuickReply? onQuickReply;
@@ -197,6 +305,7 @@ class WesiAiRichMessage extends StatelessWidget {
     required this.text,
     this.activityRaw,
     this.streaming = false,
+    this.showWorkLog = false,
     this.expandWorkLog = false,
     this.workDurationMs = 0,
     this.onQuickReply,
@@ -206,25 +315,31 @@ class WesiAiRichMessage extends StatelessWidget {
   Widget build(BuildContext context) {
     final activities = WesiAiActivityEvent.listFrom(activityRaw);
     final work = activities
-        .where((event) =>
-            event.kind != WesiAiActivityKind.tool &&
-            event.kind != WesiAiActivityKind.agent)
+        .where(
+          (event) =>
+              event.kind != WesiAiActivityKind.tool &&
+              event.kind != WesiAiActivityKind.agent,
+        )
         .toList(growable: false);
     final inline = activities
-        .where((event) =>
-            event.kind == WesiAiActivityKind.tool ||
-            event.kind == WesiAiActivityKind.agent)
+        .where(
+          (event) =>
+              event.kind == WesiAiActivityKind.tool ||
+              event.kind == WesiAiActivityKind.agent,
+        )
         .toList(growable: false);
 
     final children = <Widget>[];
-    if (work.isNotEmpty || streaming) {
-      children.add(WesiAiWorkLog(
-        key: ValueKey('work_$messageId'),
-        events: work,
-        streaming: streaming,
-        initiallyExpanded: expandWorkLog,
-        durationMs: workDurationMs,
-      ));
+    if (showWorkLog && (work.isNotEmpty || streaming)) {
+      children.add(
+        WesiAiWorkLog(
+          key: ValueKey('work_$messageId'),
+          events: work,
+          streaming: streaming,
+          initiallyExpanded: expandWorkLog,
+          durationMs: workDurationMs,
+        ),
+      );
       if (text.isNotEmpty || inline.isNotEmpty)
         children.add(const SizedBox(height: 8));
     }
@@ -237,13 +352,16 @@ class WesiAiRichMessage extends StatelessWidget {
         final rawOffset = event.textOffset.clamp(0, text.length).toInt();
         final offset = rawOffset < cursor ? cursor : rawOffset;
         if (offset > cursor) {
-          children
-              .addAll(_renderBlocks(context, text.substring(cursor, offset)));
+          children.addAll(
+            _renderBlocks(context, text.substring(cursor, offset)),
+          );
         }
-        children.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 5),
-          child: WesiAiActivityRow(event: event),
-        ));
+        children.add(
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: WesiAiActivityRow(event: event),
+          ),
+        );
         cursor = offset;
       }
       if (cursor < text.length) {
@@ -265,15 +383,20 @@ class WesiAiRichMessage extends StatelessWidget {
       final block = blocks[index];
       switch (block.kind) {
         case WesiAiRichBlockKind.code:
-          widgets
-              .add(WesiAiCodeBlock(code: block.text, language: block.language));
+          widgets.add(
+            WesiAiCodeBlock(code: block.text, language: block.language),
+          );
           break;
         case WesiAiRichBlockKind.quote:
           widgets.add(WesiAiQuoteBlock(text: block.text));
           break;
         case WesiAiRichBlockKind.draft:
-          widgets.add(WesiAiQuoteBlock(
-              text: block.text, label: _draftLabel(block.language)));
+          widgets.add(
+            WesiAiQuoteBlock(
+              text: block.text,
+              label: _draftLabel(block.language),
+            ),
+          );
           break;
         case WesiAiRichBlockKind.text:
           widgets.add(WesiAiFormattedText(text: block.text));
@@ -282,17 +405,21 @@ class WesiAiRichMessage extends StatelessWidget {
           final question = WesiAiClarification.tryParse(block.text);
           if (question == null) {
             widgets.add(
-                WesiAiCodeBlock(code: block.text, language: block.language));
+              WesiAiCodeBlock(code: block.text, language: block.language),
+            );
           } else {
-            widgets.add(WesiAiClarificationBlock(
-              question: question,
-              onAnswer: onQuickReply,
-            ));
+            widgets.add(
+              WesiAiClarificationBlock(
+                question: question,
+                onAnswer: onQuickReply,
+              ),
+            );
           }
           break;
         case WesiAiRichBlockKind.table:
-          final table =
-              WesiAiTableData.tryParseMarkdown(block.text.split('\n'));
+          final table = WesiAiTableData.tryParseMarkdown(
+            block.text.split('\n'),
+          );
           if (table == null) {
             widgets.add(WesiAiFormattedText(text: block.text));
           } else {
@@ -303,7 +430,8 @@ class WesiAiRichMessage extends StatelessWidget {
           final chart = WesiAiChartSpec.tryParse(block.text);
           if (chart == null) {
             widgets.add(
-                WesiAiCodeBlock(code: block.text, language: block.language));
+              WesiAiCodeBlock(code: block.text, language: block.language),
+            );
           } else {
             widgets.add(WesiAiChartBlock(spec: chart));
           }
@@ -331,6 +459,25 @@ class WesiAiClarificationBlock extends StatelessWidget {
     required this.question,
     this.onAnswer,
   });
+
+  String _visibleOption(String option) {
+    final value = option.trim();
+    if (value == 'org_wesi_inc') return 'Wesi Inc';
+    if (value == 'org_wesi_beats') return 'Wesi Beats';
+    if (value.startsWith('org_')) {
+      final raw = value.substring(4);
+      if (RegExp(r'^\d+$').hasMatch(raw)) {
+        final suffix = raw.length <= 4 ? raw : raw.substring(raw.length - 4);
+        return 'Организация ••••$suffix';
+      }
+      return raw
+          .split('_')
+          .where((part) => part.isNotEmpty)
+          .map((part) => part[0].toUpperCase() + part.substring(1))
+          .join(' ');
+    }
+    return value;
+  }
 
   Future<void> _customAnswer(BuildContext context) async {
     final controller = TextEditingController();
@@ -381,8 +528,9 @@ class WesiAiClarificationBlock extends StatelessWidget {
         children: [
           Text(
             question.prompt,
-            style: theme.textTheme.bodyMedium
-                ?.copyWith(fontWeight: FontWeight.w700),
+            style: theme.textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
           const SizedBox(height: 10),
           Wrap(
@@ -391,7 +539,7 @@ class WesiAiClarificationBlock extends StatelessWidget {
             children: [
               for (final option in question.options)
                 ActionChip(
-                  label: Text(option),
+                  label: Text(_visibleOption(option)),
                   onPressed: onAnswer == null ? null : () => onAnswer!(option),
                 ),
               if (question.allowOther)
@@ -419,38 +567,49 @@ class WesiAiFormattedText extends StatelessWidget {
     final theme = Theme.of(context);
     final base = theme.textTheme.bodyMedium?.copyWith(height: 1.48) ??
         const TextStyle(height: 1.48);
-    return SelectableText.rich(TextSpan(children: _inline(text, base)));
+    final displayText = WesiAiRichParser.displayMarkdown(text);
+    return SelectableText.rich(
+      TextSpan(children: _inline(displayText, base)),
+    );
   }
 
   List<InlineSpan> _inline(String source, TextStyle base) {
     final spans = <InlineSpan>[];
-    final pattern =
-        RegExp(r'(\*\*[^*\n]+\*\*|`[^`\n]+`|(?<!\*)\*[^*\n]+\*(?!\*))');
+    final pattern = RegExp(
+      r'(\*\*[^*\n]+\*\*|`[^`\n]+`|(?<!\*)\*[^*\n]+\*(?!\*))',
+    );
     var cursor = 0;
     for (final match in pattern.allMatches(source)) {
       if (match.start > cursor) {
         spans.add(
-            TextSpan(text: source.substring(cursor, match.start), style: base));
+          TextSpan(text: source.substring(cursor, match.start), style: base),
+        );
       }
       final token = match.group(0) ?? '';
       if (token.startsWith('**')) {
-        spans.add(TextSpan(
-          text: token.substring(2, token.length - 2),
-          style: base.copyWith(fontWeight: FontWeight.w700),
-        ));
-      } else if (token.startsWith('`')) {
-        spans.add(TextSpan(
-          text: token.substring(1, token.length - 1),
-          style: base.copyWith(
-            fontFamily: 'monospace',
-            backgroundColor: Colors.grey.withOpacity(0.12),
+        spans.add(
+          TextSpan(
+            text: token.substring(2, token.length - 2),
+            style: base.copyWith(fontWeight: FontWeight.w700),
           ),
-        ));
+        );
+      } else if (token.startsWith('`')) {
+        spans.add(
+          TextSpan(
+            text: token.substring(1, token.length - 1),
+            style: base.copyWith(
+              fontFamily: 'monospace',
+              backgroundColor: Colors.grey.withOpacity(0.12),
+            ),
+          ),
+        );
       } else {
-        spans.add(TextSpan(
-          text: token.substring(1, token.length - 1),
-          style: base.copyWith(fontStyle: FontStyle.italic),
-        ));
+        spans.add(
+          TextSpan(
+            text: token.substring(1, token.length - 1),
+            style: base.copyWith(fontStyle: FontStyle.italic),
+          ),
+        );
       }
       cursor = match.end;
     }
@@ -492,7 +651,11 @@ class WesiAiCodeBlock extends StatelessWidget {
               padding: const EdgeInsets.all(18),
               child: SelectableText(
                 code,
-                style: const TextStyle(fontFamily: 'monospace', height: 1.45),
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  height: 1.36,
+                ),
               ),
             ),
           ),
@@ -502,6 +665,7 @@ class WesiAiCodeBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final compact = MediaQuery.sizeOf(context).width < 600;
     return Container(
       width: double.infinity,
       decoration: BoxDecoration(
@@ -514,7 +678,12 @@ class WesiAiCodeBlock extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(14, 8, 7, 7),
+            padding: EdgeInsets.fromLTRB(
+              compact ? 11 : 14,
+              compact ? 5 : 8,
+              compact ? 4 : 7,
+              compact ? 4 : 7,
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -544,12 +713,13 @@ class WesiAiCodeBlock extends StatelessWidget {
           Divider(height: 1, color: theme.dividerColor),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.all(14),
+            padding: EdgeInsets.all(compact ? 10 : 13),
             child: SelectableText(
               code,
-              style: theme.textTheme.bodyMedium?.copyWith(
+              style: (theme.textTheme.bodyMedium ?? const TextStyle()).copyWith(
                 fontFamily: 'monospace',
-                height: 1.45,
+                fontSize: compact ? 12.25 : 13.25,
+                height: 1.36,
               ),
             ),
           ),
@@ -664,8 +834,8 @@ class _WesiAiWorkLogState extends State<WesiAiWorkLog> {
     return Container(
       decoration: BoxDecoration(
         border: Border(
-            left:
-                BorderSide(color: theme.colorScheme.outlineVariant, width: 2)),
+          left: BorderSide(color: theme.colorScheme.outlineVariant, width: 2),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.only(left: 10),
@@ -695,8 +865,10 @@ class _WesiAiWorkLogState extends State<WesiAiWorkLog> {
                       ),
                     ),
                     const SizedBox(width: 4),
-                    Icon(_expanded ? Icons.expand_less : Icons.expand_more,
-                        size: 20),
+                    Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      size: 20,
+                    ),
                   ],
                 ),
               ),
@@ -733,8 +905,11 @@ class WesiAiActivityRow extends StatefulWidget {
   final WesiAiActivityEvent event;
   final bool compact;
 
-  const WesiAiActivityRow(
-      {super.key, required this.event, this.compact = false});
+  const WesiAiActivityRow({
+    super.key,
+    required this.event,
+    this.compact = false,
+  });
 
   @override
   State<WesiAiActivityRow> createState() => _WesiAiActivityRowState();
@@ -767,7 +942,9 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
       onTap: hasDetails ? () => setState(() => _expanded = !_expanded) : null,
       child: Padding(
         padding: EdgeInsets.symmetric(
-            horizontal: widget.compact ? 0 : 8, vertical: 5),
+          horizontal: widget.compact ? 0 : 8,
+          vertical: 5,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -780,21 +957,32 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
                     event.label,
                     maxLines: widget.compact ? 2 : 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(fontWeight: FontWeight.w600),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                 ),
-                Text('+${event.additions}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                        color: positive, fontWeight: FontWeight.w700)),
+                Text(
+                  '+${event.additions}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: positive,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(width: 5),
-                Text('-${event.deletions}',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                        color: negative, fontWeight: FontWeight.w700)),
+                Text(
+                  '-${event.deletions}',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: negative,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
                 if (hasDetails) ...[
                   const SizedBox(width: 3),
-                  Icon(_expanded ? Icons.expand_less : Icons.chevron_right,
-                      size: 18),
+                  Icon(
+                    _expanded ? Icons.expand_less : Icons.chevron_right,
+                    size: 18,
+                  ),
                 ],
               ],
             ),
@@ -811,9 +999,12 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       for (final file in event.files.take(12))
-                        Text(file,
-                            style: theme.textTheme.labelSmall
-                                ?.copyWith(fontFamily: 'monospace')),
+                        Text(
+                          file,
+                          style: theme.textTheme.labelSmall?.copyWith(
+                            fontFamily: 'monospace',
+                          ),
+                        ),
                     ],
                   ),
                 ),

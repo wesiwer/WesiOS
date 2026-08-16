@@ -2,39 +2,132 @@ import crypto from 'node:crypto';
 
 export const MAX_STREAM_BODY_BYTES = 28 * 1024 * 1024;
 export const MAX_TOOL_TURNS = 4;
+export const MAX_TOOL_CLASSIFICATION_BYTES = 4096;
 
 function safeCode(value, fallback = 'WAI_STREAM_FAILED') {
   const code = String(value || '').trim();
   return /^WAI_[A-Z0-9_]{3,80}$/.test(code) ? code : fallback;
 }
 
-export function parseToolRequest(answer) {
-  let text = String(answer || '').trim();
-  if (text.startsWith('```json') && text.lastIndexOf('```') > 6) {
-    text = text.slice(7, text.lastIndexOf('```')).trim();
-  } else if (text.startsWith('```') && text.lastIndexOf('```') > 3) {
-    text = text.slice(3, text.lastIndexOf('```')).trim();
+function stripLeadingReasoningBlocks(value) {
+  let text = String(value || '').trim();
+  for (let turn = 0; turn < 3; turn += 1) {
+    const match = text.match(/^<(think|analysis|reasoning)>/i);
+    if (!match) break;
+    const closing = `</${match[1]}>`;
+    const end = text.toLowerCase().indexOf(closing.toLowerCase(), match[0].length);
+    if (end < 0) break;
+    text = text.slice(end + closing.length).trim();
   }
+  return text;
+}
+
+function stripOuterCodeFence(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
+  return match ? match[1].trim() : text;
+}
+
+function jsonObjectAt(text, start) {
+  if (start < 0 || text[start] !== '{') return null;
+  let depth = 0;
+  let quoted = false;
+  let escaped = false;
+  for (let index = start; index < text.length; index += 1) {
+    const char = text[index];
+    if (quoted) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        quoted = false;
+      }
+      continue;
+    }
+    if (char === '"') {
+      quoted = true;
+      continue;
+    }
+    if (char === '{') depth += 1;
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return {json: text.slice(start, index + 1), end: index + 1};
+      }
+      if (depth < 0) return null;
+    }
+  }
+  return null;
+}
+
+function parseToolEnvelope(value) {
   try {
-    const parsed = JSON.parse(text);
-    const tool = parsed && typeof parsed.wesiTool === 'object' ? parsed.wesiTool : null;
+    const parsed = JSON.parse(value);
+    const tool = parsed && typeof parsed.wesiTool === 'object' && !Array.isArray(parsed.wesiTool)
+      ? parsed.wesiTool
+      : null;
     if (!tool) return null;
     const name = String(tool.name || '').trim();
-    const args = tool.arguments && typeof tool.arguments === 'object' && !Array.isArray(tool.arguments)
-      ? tool.arguments
-      : {};
+    const hasArguments = Object.prototype.hasOwnProperty.call(tool, 'arguments');
+    // Explicit model-provided arguments must be a plain object. Never coerce
+    // malformed strings/arrays/null into {}, because that turns an invalid
+    // reserved tool envelope into a different valid call.
+    const malformedArguments = hasArguments && (
+      !tool.arguments || typeof tool.arguments !== 'object' || Array.isArray(tool.arguments)
+    );
+    if (malformedArguments) return null;
+    const args = hasArguments ? tool.arguments : {};
     return name ? {name, arguments: args} : null;
   } catch {
     return null;
   }
 }
 
+function safeToolChatter(value) {
+  const text = String(value || '')
+    .replace(/```(?:json)?/gi, '')
+    .trim();
+  if (!text) return true;
+  if (text.length > 240) return false;
+  if (/(?:пример|например|формат|образец|example|format|sample)/i.test(text)) return false;
+  return /(?:инструмент|вызов|использ|запущ|провер|получ|найд|посмотр|tool|call|invoke|use|run|check|fetch|look)/i.test(text);
+}
+
+export function hasToolProtocolMarker(answer) {
+  return /(?:["']?wesiTool["']?\s*:)/.test(String(answer || ''));
+}
+
+export function parseToolRequest(answer) {
+  let text = stripLeadingReasoningBlocks(answer);
+  text = stripOuterCodeFence(text);
+
+  const direct = parseToolEnvelope(text);
+  if (direct) return direct;
+
+  const start = text.indexOf('{');
+  if (start < 0) return null;
+  const candidate = jsonObjectAt(text, start);
+  if (!candidate) return null;
+  const prefix = text.slice(0, start);
+  const suffix = text.slice(candidate.end);
+  if (!safeToolChatter(prefix) || !safeToolChatter(suffix)) return null;
+  return parseToolEnvelope(candidate.json);
+}
+
 export function shouldRevealBufferedText(buffer) {
-  const trimmed = String(buffer || '').trimStart();
+  let trimmed = String(buffer || '').trimStart();
   if (!trimmed) return false;
-  if (!trimmed.startsWith('{') && !trimmed.startsWith('```')) return true;
-  if (trimmed.includes('"wesiTool"') || trimmed.includes("'wesiTool'")) return false;
-  return trimmed.length >= 512;
+  if (hasToolProtocolMarker(trimmed)) return false;
+  if (trimmed.startsWith('```')) {
+    const brace = trimmed.indexOf('{');
+    if (brace < 0) return trimmed.length >= MAX_TOOL_CLASSIFICATION_BYTES;
+    trimmed = trimmed.slice(brace);
+  }
+  if (!trimmed.startsWith('{')) return true;
+  const candidate = jsonObjectAt(trimmed, 0);
+  if (candidate) return parseToolRequest(trimmed) === null;
+  return trimmed.length >= MAX_TOOL_CLASSIFICATION_BYTES;
 }
 
 export function signRelayRequest(requestId, timestamp, raw, secret) {
@@ -245,17 +338,26 @@ function relayPayload(prepared, toolResults, phase, finalOnly = false) {
 async function streamOneTurn({prepared, toolResults, phase, finalOnly, relayUrl, relaySecret, signal, fetchImpl, res}) {
   let full = '';
   let buffer = '';
-  let revealed = false;
+  let emitted = false;
   const onDelta = (text) => {
     full += text;
-    if (finalOnly || revealed) {
-      writeNdjson(res, {type: 'delta', text});
+    buffer += text;
+
+    const brace = buffer.indexOf('{');
+    if (brace < 0) {
+      if (buffer) {
+        emitted = writeNdjson(res, {type: 'delta', text: buffer}) || emitted;
+        buffer = '';
+      }
       return;
     }
-    buffer += text;
+    if (brace > 0) {
+      const prefix = buffer.slice(0, brace);
+      if (prefix) emitted = writeNdjson(res, {type: 'delta', text: prefix}) || emitted;
+      buffer = buffer.slice(brace);
+    }
     if (shouldRevealBufferedText(buffer)) {
-      revealed = true;
-      writeNdjson(res, {type: 'delta', text: buffer});
+      emitted = writeNdjson(res, {type: 'delta', text: buffer}) || emitted;
       buffer = '';
     }
   };
@@ -267,7 +369,13 @@ async function streamOneTurn({prepared, toolResults, phase, finalOnly, relayUrl,
     fetchImpl,
     onDelta,
   });
-  return {full, buffer, revealed};
+  return {
+    full,
+    buffer,
+    emitted,
+    toolRequest: parseToolRequest(full),
+    invalidToolProtocol: hasToolProtocolMarker(full) && !parseToolRequest(full),
+  };
 }
 
 export function createGateway(options = {}) {
@@ -354,9 +462,29 @@ export function createGateway(options = {}) {
           fetchImpl,
           res,
         });
-        const toolRequest = streamed.revealed ? null : parseToolRequest(streamed.full);
+        const toolRequest = streamed.toolRequest;
         if (!toolRequest) {
-          if (!streamed.revealed && streamed.buffer) {
+          if (streamed.invalidToolProtocol) {
+            toolResults.push({
+              tool: 'wesi_tool_protocol',
+              verified: true,
+              ok: false,
+              code: 'INVALID_TOOL_CALL',
+              message: 'Служебный вызов инструмента не прошёл проверку формата и не был выполнен',
+            });
+            writeNdjson(res, {
+              type: 'tool',
+              phase: 'result',
+              name: 'wesi_tool_protocol',
+              ok: false,
+              code: 'INVALID_TOOL_CALL',
+              additions: 0,
+              deletions: 0,
+              files: [],
+            });
+            continue;
+          }
+          if (streamed.buffer) {
             writeNdjson(res, {type: 'delta', text: streamed.buffer});
           }
           const totalDiff = aggregateDiffStats(toolResults);
@@ -418,6 +546,7 @@ export function createGateway(options = {}) {
           name: toolRequest.name,
           ok: toolResult?.ok === true,
           code: toolResult?.code || null,
+          message: toolResult?.message ? String(toolResult.message).slice(0, 1200) : null,
           additions: diff.additions,
           deletions: diff.deletions,
           files: diff.files,
@@ -435,6 +564,14 @@ export function createGateway(options = {}) {
         fetchImpl,
         res,
       });
+      if (finalStream.toolRequest || finalStream.invalidToolProtocol) {
+        const error = new Error('WAI_TOOL_PROTOCOL_INVALID');
+        error.status = 502;
+        throw error;
+      }
+      if (finalStream.buffer) {
+        writeNdjson(res, {type: 'delta', text: finalStream.buffer});
+      }
       const totalDiff = aggregateDiffStats(toolResults);
       writeNdjson(res, {
         type: 'agent',
