@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import {prepareGeminiAttachments, deleteGeminiFiles, deleteStagedUploads} from './attachment-preprocessor.mjs';
+import {geminiKeySlots, normalizeWesiTier, runProviderFailover} from './provider-failover.mjs';
 
 const PROVIDER_ENV = '/etc/wesi-ai-providers.env';
 
@@ -26,6 +27,109 @@ export function parseGoogleRoute(route) {
 function parseWesiRoute(route) {
   const match = /^wesi\/(fast|pro|ultra)$/.exec(String(route || '').trim().toLowerCase());
   return match ? match[1] : null;
+}
+
+export function buildGoogleCandidates(model, tier, googleKey, secrets = {}, timeoutMs = 30000) {
+  const normalized = normalizeWesiTier(tier);
+  if (!normalized) return [];
+  return geminiKeySlots(googleKey, secrets).map(({slot, key}) => ({
+    id: `google:${slot}:${model}`,
+    provider: 'google',
+    model,
+    apiKey: key,
+    credentialSlot: slot,
+    tier: normalized,
+    timeoutMs,
+  }));
+}
+
+export function buildFastCandidates(googleKey, secrets = {}) {
+  const candidates = [
+    ...buildGoogleCandidates(
+      secrets.WESI_GEMINI_FAST_MODEL || 'gemini-3.5-flash-lite',
+      'fast',
+      googleKey,
+      secrets,
+      22000,
+    ),
+    {
+      id: 'groq:fast',
+      provider: 'groq',
+      model: secrets.WESI_GROQ_FAST_MODEL || 'llama-3.1-8b-instant',
+      tier: 'fast',
+      timeoutMs: 18000,
+    },
+    {
+      id: 'mistral:fast',
+      provider: 'mistral',
+      model: secrets.WESI_MISTRAL_FAST_MODEL || 'mistral-small-latest',
+      tier: 'fast',
+      timeoutMs: 18000,
+    },
+  ];
+  const openRouterModel = String(secrets.WESI_OPENROUTER_FAST_MODEL || '').trim();
+  if (openRouterModel) {
+    candidates.push({
+      id: 'openrouter:fast',
+      provider: 'openrouter',
+      model: openRouterModel,
+      tier: 'fast',
+      timeoutMs: 18000,
+    });
+  }
+  return candidates;
+}
+
+export function buildFinalizerCandidates(tier, googleKey, secrets = {}) {
+  const normalized = normalizeWesiTier(tier);
+  if (normalized !== 'pro' && normalized !== 'ultra') return [];
+  const googleModel = normalized === 'ultra'
+    ? secrets.WESI_GEMINI_ULTRA_MODEL || secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash'
+    : secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash';
+  const mistralModel = normalized === 'ultra'
+    ? secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest'
+    : secrets.WESI_MISTRAL_PRO_MODEL || 'mistral-large-latest';
+  const groqModel = normalized === 'ultra'
+    ? secrets.WESI_GROQ_ULTRA_MODEL || 'openai/gpt-oss-120b'
+    : secrets.WESI_GROQ_PRO_MODEL || 'openai/gpt-oss-120b';
+  const candidates = [
+    ...buildGoogleCandidates(
+      googleModel,
+      normalized,
+      googleKey,
+      secrets,
+      normalized === 'ultra' ? 58000 : 52000,
+    ),
+    {
+      id: `mistral:${normalized}:final`,
+      provider: 'mistral',
+      model: mistralModel,
+      tier: normalized,
+      timeoutMs: 52000,
+    },
+    {
+      id: `groq:${normalized}:final`,
+      provider: 'groq',
+      model: groqModel,
+      tier: normalized,
+      timeoutMs: 52000,
+    },
+  ];
+  const openRouterModel = String(
+    normalized === 'ultra'
+      ? secrets.WESI_OPENROUTER_ULTRA_MODEL || ''
+      : secrets.WESI_OPENROUTER_PRO_MODEL || '',
+  ).trim();
+  if (openRouterModel) {
+    candidates.push({
+      id: `openrouter:${normalized}:final`,
+      provider: 'openrouter',
+      model: openRouterModel,
+      tier: normalized,
+      timeoutMs: 52000,
+    });
+  }
+  return candidates;
 }
 
 function hasAttachments(input) {
@@ -67,11 +171,11 @@ async function callOpenAiCompatible({url, model, apiKey, input, headers = {}, ti
   let data = {};
   try { data = await response.json(); } catch {}
   if (!response.ok) {
-    return {
-      ok: false,
-      status: response.status === 429 ? 429 : 502,
-      code: response.status === 429 ? 'WAI_PROVIDER_RATE_LIMIT' : 'WAI_PROVIDER_REJECTED',
-    };
+    if (response.status === 429) return {ok: false, status: 429, code: 'WAI_PROVIDER_RATE_LIMIT'};
+    if (response.status === 401 || response.status === 403) {
+      return {ok: false, status: 503, code: 'WAI_PROVIDER_AUTH_FAILED'};
+    }
+    return {ok: false, status: 502, code: 'WAI_PROVIDER_REJECTED'};
   }
   const answer = String(data?.choices?.[0]?.message?.content || '').trim();
   return answer ? {ok: true, answer} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
@@ -110,14 +214,20 @@ export async function callGoogleText(model, input, apiKey, options = {}) {
     let data = {};
     try { data = await response.json(); } catch {}
     if (!response.ok) {
+      if (response.status === 429) return {ok: false, status: 429, code: 'WAI_PROVIDER_RATE_LIMIT'};
+      if (response.status === 401 || response.status === 403) {
+        return {ok: false, status: 503, code: 'WAI_PROVIDER_AUTH_FAILED'};
+      }
       return {
         ok: false,
-        status: response.status === 429 ? 429 : response.status === 400 ? 400 : 502,
-        code: response.status === 429 ? 'WAI_PROVIDER_RATE_LIMIT' : response.status === 400 ? 'WAI_ATTACHMENT_PROVIDER_REJECTED' : 'WAI_PROVIDER_REJECTED',
+        status: response.status === 400 ? 400 : 502,
+        code: response.status === 400 ? 'WAI_ATTACHMENT_PROVIDER_REJECTED' : 'WAI_PROVIDER_REJECTED',
       };
     }
     const parts = data?.candidates?.[0]?.content?.parts;
-    const answer = Array.isArray(parts) ? parts.map((p) => typeof p?.text === 'string' ? p.text : '').join('').trim() : '';
+    const answer = Array.isArray(parts)
+      ? parts.map((part) => typeof part?.text === 'string' ? part.text : '').join('').trim()
+      : '';
     return answer ? {ok: true, answer} : {ok: false, status: 502, code: 'WAI_PROVIDER_EMPTY_RESPONSE'};
   } finally {
     await deleteGeminiFiles(prepared.providerFiles, apiKey);
@@ -129,7 +239,7 @@ async function callCandidate(candidate, input, googleKey, secrets, options = {})
   const timeoutMs = candidate.timeoutMs || options.timeoutMs || 30000;
   const signal = options.signal || null;
   if (candidate.provider === 'google') {
-    return callGoogleText(candidate.model, input, googleKey, {timeoutMs, signal});
+    return callGoogleText(candidate.model, input, candidate.apiKey || googleKey, {timeoutMs, signal});
   }
   if (hasAttachments(input)) return {ok: false, status: 400, code: 'WAI_PROVIDER_NOT_MULTIMODAL'};
   if (candidate.provider === 'groq') {
@@ -176,13 +286,13 @@ async function safeCandidate(candidate, input, googleKey, secrets, options = {})
 }
 
 async function firstAvailable(candidates, input, googleKey, secrets, options = {}) {
-  let last = {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
-  for (const candidate of candidates) {
-    const result = await safeCandidate(candidate, input, googleKey, secrets, options);
-    if (result.ok) return {...result, provider: candidate.provider, model: candidate.model};
-    last = result;
-  }
-  return last;
+  const tier = normalizeWesiTier(candidates?.[0]?.tier);
+  if (!tier) return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
+  return runProviderFailover({
+    tier,
+    candidates,
+    invoke: (candidate) => safeCandidate(candidate, input, googleKey, secrets, options),
+  });
 }
 
 function clipAdvisor(text, limit) {
@@ -220,26 +330,64 @@ export async function prepareWesiEnsemble(tier, input, googleKey, options = {}) 
   const advisory = advisorInput(input, normalized);
   const primary = normalized === 'pro'
     ? [
-        {provider: 'groq', model: 'openai/gpt-oss-120b', timeoutMs: 28000},
-        {provider: 'mistral', model: secrets.WESI_MISTRAL_PRO_MODEL || 'mistral-large-latest', timeoutMs: 28000},
+        {
+          id: 'groq:pro:advisor',
+          provider: 'groq',
+          model: secrets.WESI_GROQ_PRO_MODEL || 'openai/gpt-oss-120b',
+          tier: 'pro',
+          timeoutMs: 28000,
+        },
+        {
+          id: 'mistral:pro:advisor',
+          provider: 'mistral',
+          model: secrets.WESI_MISTRAL_PRO_MODEL || 'mistral-large-latest',
+          tier: 'pro',
+          timeoutMs: 28000,
+        },
       ]
     : [
-        {provider: 'groq', model: 'openai/gpt-oss-120b', timeoutMs: 32000},
-        {provider: 'mistral', model: secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest', timeoutMs: 32000},
-        {provider: 'openrouter', model: 'openrouter/free', timeoutMs: 32000},
+        {
+          id: 'groq:ultra:advisor',
+          provider: 'groq',
+          model: secrets.WESI_GROQ_ULTRA_MODEL || 'openai/gpt-oss-120b',
+          tier: 'ultra',
+          timeoutMs: 32000,
+        },
+        {
+          id: 'mistral:ultra:advisor',
+          provider: 'mistral',
+          model: secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest',
+          tier: 'ultra',
+          timeoutMs: 32000,
+        },
       ];
-  const results = await Promise.all(primary.map(async (candidate) => {
-    const result = await safeCandidate(candidate, advisory, googleKey, secrets, {signal});
-    return result.ok ? {...result, provider: candidate.provider, model: candidate.model} : result;
-  }));
+
+  if (normalized === 'ultra' && secrets.OPENROUTER_API_KEY) {
+    primary.push({
+      id: 'openrouter:ultra:advisor',
+      provider: 'openrouter',
+      model: secrets.WESI_OPENROUTER_ULTRA_MODEL || 'openrouter/free',
+      tier: 'ultra',
+      timeoutMs: 32000,
+    });
+  }
+
+  const results = await Promise.all(primary.map((candidate) =>
+    firstAvailable([candidate], advisory, googleKey, secrets, {signal})
+  ));
   let advisors = results.filter((item) => item.ok);
 
-  // Pro prefers two strong independent opinions; OpenRouter fills a missing
-  // seat but does not add latency when both primary advisors are healthy.
-  if (normalized === 'pro' && advisors.length < 2 && secrets.OPENROUTER_API_KEY) {
-    const fallbackCandidate = {provider: 'openrouter', model: 'openrouter/free', timeoutMs: 24000};
-    const fallback = await safeCandidate(fallbackCandidate, advisory, googleKey, secrets, {signal});
-    if (fallback.ok) advisors = advisors.concat({...fallback, provider: fallbackCandidate.provider, model: fallbackCandidate.model});
+  const proOpenRouterModel = String(secrets.WESI_OPENROUTER_PRO_MODEL || '').trim();
+  if (normalized === 'pro' && advisors.length < 2 && secrets.OPENROUTER_API_KEY && proOpenRouterModel) {
+    const fallbackCandidate = {
+      id: 'openrouter:pro:advisor',
+      provider: 'openrouter',
+      model: proOpenRouterModel,
+      tier: 'pro',
+      timeoutMs: 24000,
+    };
+    const fallback = await firstAvailable([fallbackCandidate], advisory, googleKey, secrets, {signal});
+    if (fallback.ok) advisors = advisors.concat(fallback);
   }
 
   if (!advisors.length) return {ok: false, code: 'WAI_ENSEMBLE_ADVISORS_UNAVAILABLE'};
@@ -247,31 +395,31 @@ export async function prepareWesiEnsemble(tier, input, googleKey, options = {}) 
     ok: true,
     advisorCount: advisors.length,
     finalizerInput: finalizerInput(normalized, input, advisors),
-    fallback: advisors[0],
   };
 }
 
 async function callEnsemble(tier, input, googleKey, secrets, options = {}) {
-  const prepared = await prepareWesiEnsemble(tier, input, googleKey, {secrets, signal: options.signal || null});
-  if (!prepared.ok) {
-    return callGoogleText('gemini-3.5-flash', input, googleKey, {timeoutMs: 55000, signal: options.signal || null});
-  }
-  let final;
-  try {
-    final = await callGoogleText('gemini-3.5-flash', prepared.finalizerInput, googleKey, {
-      timeoutMs: tier === 'ultra' ? 58000 : 52000,
-      signal: options.signal || null,
-    });
-  } catch (error) {
-    if (options.signal?.aborted) throw error;
-    final = {ok: false, status: 502, code: 'WAI_FINALIZER_UNAVAILABLE'};
-  }
+  const prepared = await prepareWesiEnsemble(tier, input, googleKey, {
+    secrets,
+    signal: options.signal || null,
+  });
+  const candidates = buildFinalizerCandidates(tier, googleKey, secrets);
+  const finalInput = prepared.ok ? prepared.finalizerInput : input;
+  const final = await firstAvailable(
+    candidates,
+    finalInput,
+    googleKey,
+    secrets,
+    {signal: options.signal || null},
+  );
   if (final.ok) {
-    return {...final, provider: tier === 'ultra' ? 'wesi-maximum' : 'wesi-pro', model: 'ensemble'};
+    return {
+      ...final,
+      provider: tier === 'ultra' ? 'wesi-maximum' : 'wesi-pro',
+      model: 'ensemble',
+    };
   }
-  // Availability fallback only: advisor notes are never treated as verified
-  // tool results. This keeps chat usable during a temporary Gemini outage.
-  return {...prepared.fallback, provider: 'wesi-ensemble-fallback', model: 'advisor'};
+  return final;
 }
 
 export async function callTextRoute(route, input, googleKey, options = {}) {
@@ -283,18 +431,29 @@ export async function callTextRoute(route, input, googleKey, options = {}) {
   const secrets = options.secrets || providerSecrets();
 
   if (hasAttachments(input)) {
-    const model = tier === 'fast' ? 'gemini-3.5-flash-lite' : 'gemini-3.5-flash';
-    const result = await callGoogleText(model, input, googleKey, {timeoutMs: 60000, signal: options.signal || null});
+    const model = tier === 'fast'
+      ? secrets.WESI_GEMINI_FAST_MODEL || 'gemini-3.5-flash-lite'
+      : tier === 'pro'
+        ? secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash'
+        : secrets.WESI_GEMINI_ULTRA_MODEL || secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash';
+    const result = await firstAvailable(
+      buildGoogleCandidates(model, tier, googleKey, secrets, 60000),
+      input,
+      googleKey,
+      secrets,
+      {signal: options.signal || null},
+    );
     return result.ok ? {...result, provider: 'google', model} : result;
   }
 
   if (tier === 'fast') {
-    return firstAvailable([
-      {provider: 'google', model: 'gemini-3.5-flash-lite', timeoutMs: 22000},
-      {provider: 'groq', model: 'llama-3.1-8b-instant', timeoutMs: 18000},
-      {provider: 'mistral', model: secrets.WESI_MISTRAL_FAST_MODEL || 'mistral-small-latest', timeoutMs: 18000},
-      {provider: 'openrouter', model: 'openrouter/free', timeoutMs: 18000},
-    ], input, googleKey, secrets, {signal: options.signal || null});
+    return firstAvailable(
+      buildFastCandidates(googleKey, secrets),
+      input,
+      googleKey,
+      secrets,
+      {signal: options.signal || null},
+    );
   }
   if (tier === 'pro') return callEnsemble('pro', input, googleKey, secrets, options);
   return callEnsemble('ultra', input, googleKey, secrets, options);
