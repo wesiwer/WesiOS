@@ -1,0 +1,62 @@
+name: Verify Wesi AI after PocketBase restart
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-wesi-ai-after-restart.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts
+          else
+            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/main_known_hosts
+
+      - name: Verify loaded routes on Main
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== pocketbase ==='
+          systemctl is-active pocketbase
+          ps -eo pid,lstart,comm | grep '[p]ocketbase' || true
+
+          check() {
+            method="$1"; path="$2"
+            code="$(curl -sS -o /tmp/wesi-route-body -w '%{http_code}' --max-time 15 -X "$method" "http://127.0.0.1:8090$path" || true)"
+            echo "$method $path -> HTTP $code"
+            head -c 300 /tmp/wesi-route-body 2>/dev/null || true
+            echo
+            case "$code" in
+              401|403) ;;
+              *) echo "route verification failed: $path ($code)" >&2; exit 1 ;;
+            esac
+          }
+
+          check POST /api/wesi/ai/chat
+          check POST /api/wesi/ai/stream/prepare
+          check GET /api/wesi/ai/capabilities
+          echo 'WESI_AI_ROUTES_OK'
+          REMOTE
