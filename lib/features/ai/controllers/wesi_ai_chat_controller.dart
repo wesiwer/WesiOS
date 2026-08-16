@@ -405,6 +405,24 @@ class WesiAiChatController extends ChangeNotifier {
       return count < 0 ? 0 : count;
     }
 
+    String streamedToolDetail(Map<String, dynamic> raw) {
+      final parts = <String>[];
+      final transactionCount = raw['transactionCount'];
+      if (transactionCount is num) {
+        parts.add('${transactionCount.toInt()} операций');
+      }
+      final organizationName = '${raw['organizationName'] ?? ''}'.trim();
+      final organizationId = '${raw['organizationId'] ?? ''}'.trim();
+      if (organizationName.isNotEmpty) {
+        parts.add(organizationName);
+      } else if (organizationId.isNotEmpty) {
+        parts.add(organizationId);
+      }
+      final code = '${raw['code'] ?? ''}'.trim();
+      if (code.isNotEmpty) parts.add(code);
+      return parts.join(' · ');
+    }
+
     void onActivity(Map<String, dynamic> raw) {
       final type = '${raw['type'] ?? 'activity'}'.toLowerCase();
       final phase = '${raw['phase'] ?? ''}'.toLowerCase();
@@ -435,8 +453,8 @@ class WesiAiChatController extends ChangeNotifier {
             if (files.isNotEmpty)
               current['files'] =
                   files.take(40).map((item) => '$item').toList(growable: false);
-            final code = '${raw['code'] ?? ''}'.trim();
-            if (code.isNotEmpty) current['detail'] = code;
+            final detail = streamedToolDetail(raw);
+            if (detail.isNotEmpty) current['detail'] = detail;
             activity[index] = current;
           } else {
             activity.add(activityEntry(
@@ -445,6 +463,7 @@ class WesiAiChatController extends ChangeNotifier {
                   name.isEmpty ? 'Инструмент завершён' : 'Инструмент · $name',
               sourceName: name,
               status: 'result',
+              detail: streamedToolDetail(raw),
               additions: additions,
               deletions: deletions,
               files: files,

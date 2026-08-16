@@ -63,6 +63,32 @@ void main() => print('ok');
     expect(find.byTooltip('Копировать'), findsOneWidget);
   });
 
+  testWidgets('read-only tool does not render fake +0 -0 diff counters',
+      (tester) async {
+    await tester.pumpWidget(const MaterialApp(
+      home: Scaffold(
+        body: WesiAiRichMessage(
+          messageId: 'finance-tool',
+          text: '',
+          activityRaw: [
+            {
+              'id': 'finance-result',
+              'kind': 'tool',
+              'sourceName': 'finance_summary',
+              'label': 'Инструмент · finance_summary',
+              'status': 'result',
+              'detail': '40 операций · Wesi Inc',
+            }
+          ],
+        ),
+      ),
+    ));
+    expect(find.text('Инструмент · finance_summary'), findsOneWidget);
+    expect(find.text('40 операций · Wesi Inc'), findsOneWidget);
+    expect(find.text('+0'), findsNothing);
+    expect(find.text('-0'), findsNothing);
+  });
+
   testWidgets('live work log is expanded before final answer', (tester) async {
     await tester.pumpWidget(MaterialApp(
       home: Scaffold(

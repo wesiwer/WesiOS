@@ -284,3 +284,27 @@ test('tool JSON is never leaked and verified tool result precedes final stream',
     assert.equal(events.at(-1).toolResults[0].verified, true);
   });
 });
+
+test('gateway health exposes ready state', async () => {
+  const handler = createGateway({
+    pocketBaseUrl: 'https://main.example.test',
+    relayUrl: 'https://relay.example.test',
+    streamSecret: 's'.repeat(40),
+    relaySecret: 'r'.repeat(40),
+    fetchImpl: async () => { throw new Error('not used'); },
+  });
+  const req = {method: 'GET', url: '/health'};
+  let status = 0; let body = '';
+  const res = {
+    destroyed: false, writableEnded: false,
+    writeHead(code) { status = code; },
+    end(value='') { body += value; this.writableEnded = true; },
+    write(value) { body += value; return true; },
+    on() {},
+  };
+  await handler(req, res);
+  assert.equal(status, 200);
+  const json = JSON.parse(body);
+  assert.equal(json.ready, true);
+  assert.equal(json.streaming, true);
+});

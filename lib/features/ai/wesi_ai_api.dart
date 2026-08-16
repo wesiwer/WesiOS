@@ -174,8 +174,7 @@ class WesiAiApi {
           // Streaming is an optimization. If its dedicated edge is unavailable,
           // continue through the ordinary authenticated Main chat endpoint.
         } on HttpException {
-        } on TimeoutException {
-        }
+        } on TimeoutException {}
       }
 
       final request = await _http.postUrl(uri);
@@ -220,9 +219,8 @@ class WesiAiApi {
           'WAI_CANCELLED', 'Запрос Wesi AI остановлен');
     }
     final configuredStreamBase = streamBaseUrl.trim();
-    final streamBase = configuredStreamBase.isEmpty
-        ? base
-        : Uri.parse(configuredStreamBase);
+    final streamBase =
+        configuredStreamBase.isEmpty ? base : Uri.parse(configuredStreamBase);
     final uri = streamBase.replace(path: '/api/wesi/ai/chat/stream');
     final request = await _http.postUrl(uri);
     _applyAuth(request, auth);
@@ -359,17 +357,34 @@ class WesiAiApi {
       final files = filesRaw is List
           ? filesRaw.take(40).map((value) => '$value').toList(growable: false)
           : const <String>[];
+      final hasDiffMetadata = payload.containsKey('additions') ||
+          payload.containsKey('deletions') ||
+          map.containsKey('additions') ||
+          map.containsKey('deletions') ||
+          files.isNotEmpty;
+      final transactionCount = payload['transactionCount'];
+      final organizationName = '${payload['organizationName'] ?? ''}'.trim();
+      final organizationId = '${payload['organizationId'] ?? ''}'.trim();
+      final code = '${map['code'] ?? ''}'.trim();
+      final detailParts = <String>[
+        if (transactionCount is num) '${transactionCount.toInt()} операций',
+        if (organizationName.isNotEmpty) organizationName,
+        if (organizationName.isEmpty && organizationId.isNotEmpty)
+          organizationId,
+        if (code.isNotEmpty) code,
+      ];
       result.add(<String, dynamic>{
         'id': 'tool_result_$index',
         'kind': 'tool',
         'sourceName': tool,
         'label': tool.isEmpty ? 'Инструмент' : 'Инструмент · $tool',
         'status': 'result',
-        'additions': count(payload['additions'] ?? map['additions']),
-        'deletions': count(payload['deletions'] ?? map['deletions']),
+        if (hasDiffMetadata)
+          'additions': count(payload['additions'] ?? map['additions']),
+        if (hasDiffMetadata)
+          'deletions': count(payload['deletions'] ?? map['deletions']),
         if (files.isNotEmpty) 'files': files,
-        if ('${map['code'] ?? ''}'.trim().isNotEmpty)
-          'detail': '${map['code']}',
+        if (detailParts.isNotEmpty) 'detail': detailParts.join(' · '),
       });
     }
     return result;

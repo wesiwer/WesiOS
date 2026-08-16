@@ -38,7 +38,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
   String _voicePrefix = '';
   WesiAiVoiceSession? _session;
-  WesiAiUiMode _uiMode = WesiAiUiMode.classic;
+  WesiAiUiMode _uiMode = WesiAiUiMode.thinking;
   DateTime? _sendingSince;
   Timer? _sendingTicker;
   bool _creatingInitial = false;
@@ -177,78 +177,78 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   }
 
   PreferredSizeWidget _appBar(WesiAiHandoffController controller) => AppBar(
-    titleSpacing: 14,
-    title: Row(
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.asset(
-            'assets/images/app_icon.png',
-            width: 30,
-            height: 30,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Text(
-            controller.state.activeProject?.title ?? 'Wesi AI',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ],
-    ),
-    actions: [
-      PopupMenuButton<WesiAiUiMode>(
-        tooltip: 'Режим отображения ответа',
-        initialValue: _uiMode,
-        onSelected: (mode) => setState(() => _uiMode = mode),
-        itemBuilder: (_) => const [
-          PopupMenuItem(
-            value: WesiAiUiMode.classic,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.chat_bubble_outline_rounded),
-              title: Text('Классический'),
+        titleSpacing: 14,
+        title: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.asset(
+                'assets/images/app_icon.png',
+                width: 30,
+                height: 30,
+              ),
             ),
-          ),
-          PopupMenuItem(
-            value: WesiAiUiMode.thinking,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.psychology_alt_outlined),
-              title: Text('Думающий'),
-              subtitle: Text('Ход работы раскрыт по умолчанию'),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                controller.state.activeProject?.title ?? 'Wesi AI',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
-          ),
-        ],
-        icon: Icon(
-          _uiMode == WesiAiUiMode.thinking
-              ? Icons.psychology_alt_outlined
-              : Icons.chat_bubble_outline_rounded,
+          ],
         ),
-      ),
-      DropdownButtonHideUnderline(
-        child: DropdownButton<WesiAiTier>(
-          value: controller.state.tier,
-          onChanged: controller.processing
-              ? null
-              : (value) {
-                  if (value != null) controller.setTier(value);
-                },
-          items: WesiAiTier.values
-              .map(
-                (tier) => DropdownMenuItem<WesiAiTier>(
-                  value: tier,
-                  child: Text(WesiAiChatUi.tierLabel(tier)),
+        actions: [
+          PopupMenuButton<WesiAiUiMode>(
+            tooltip: 'Режим отображения ответа',
+            initialValue: _uiMode,
+            onSelected: (mode) => setState(() => _uiMode = mode),
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: WesiAiUiMode.classic,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.chat_bubble_outline_rounded),
+                  title: Text('Классический'),
                 ),
-              )
-              .toList(growable: false),
-        ),
-      ),
-      const SizedBox(width: 12),
-    ],
-  );
+              ),
+              PopupMenuItem(
+                value: WesiAiUiMode.thinking,
+                child: ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.psychology_alt_outlined),
+                  title: Text('Думающий'),
+                  subtitle: Text('Ход работы раскрыт по умолчанию'),
+                ),
+              ),
+            ],
+            icon: Icon(
+              _uiMode == WesiAiUiMode.thinking
+                  ? Icons.psychology_alt_outlined
+                  : Icons.chat_bubble_outline_rounded,
+            ),
+          ),
+          DropdownButtonHideUnderline(
+            child: DropdownButton<WesiAiTier>(
+              value: controller.state.tier,
+              onChanged: controller.processing
+                  ? null
+                  : (value) {
+                      if (value != null) controller.setTier(value);
+                    },
+              items: WesiAiTier.values
+                  .map(
+                    (tier) => DropdownMenuItem<WesiAiTier>(
+                      value: tier,
+                      child: Text(WesiAiChatUi.tierLabel(tier)),
+                    ),
+                  )
+                  .toList(growable: false),
+            ),
+          ),
+          const SizedBox(width: 12),
+        ],
+      );
 
   Widget _sidebar(WesiAiManagedChatController controller) {
     final projects = controller.visibleProjects;
@@ -587,11 +587,9 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
     final hasLastError =
         messages.isNotEmpty && messages.last.kind == WesiAiMessageKind.error;
-    final lastErrorCode = hasLastError
-        ? '${messages.last.metadata['code'] ?? ''}'
-        : '';
-    final canRegenerateLastResponse =
-        hasLastError &&
+    final lastErrorCode =
+        hasLastError ? '${messages.last.metadata['code'] ?? ''}' : '';
+    final canRegenerateLastResponse = hasLastError &&
         lastErrorCode != 'WAI_REATTACH_REQUIRED' &&
         lastErrorCode != 'WAI_QUEUE_PERSISTENCE_FAILED';
     return Column(
@@ -687,9 +685,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
 
   Widget _sendingStatus() {
     final since = _sendingSince;
-    final elapsed = since == null
-        ? Duration.zero
-        : DateTime.now().difference(since);
+    final elapsed =
+        since == null ? Duration.zero : DateTime.now().difference(since);
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 4, 18, 7),
       child: Row(
@@ -764,8 +761,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
               label: const Text('Ветка'),
               onPressed: enabled
                   ? () => controller.selectConversation(
-                      active.branchedFromConversationId!,
-                    )
+                        active.branchedFromConversationId!,
+                      )
                   : null,
             ),
           ],
@@ -811,11 +808,9 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   ) {
     final theme = Theme.of(context);
     final mine = message.author == WesiAiMessageAuthor.user;
-    final assistant =
-        message.author == WesiAiMessageAuthor.zane ||
+    final assistant = message.author == WesiAiMessageAuthor.zane ||
         message.author == WesiAiMessageAuthor.nirvana;
-    final toolLike =
-        message.author == WesiAiMessageAuthor.tool ||
+    final toolLike = message.author == WesiAiMessageAuthor.tool ||
         message.kind == WesiAiMessageKind.action ||
         message.kind == WesiAiMessageKind.status;
     final error = message.kind == WesiAiMessageKind.error;
@@ -853,9 +848,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
         constraints: const BoxConstraints(maxWidth: 780),
         margin: const EdgeInsets.only(bottom: 18),
         child: Column(
-          crossAxisAlignment: mine
-              ? CrossAxisAlignment.end
-              : CrossAxisAlignment.start,
+          crossAxisAlignment:
+              mine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             if (assistant)
               Padding(
@@ -876,8 +870,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                 color: error
                     ? theme.colorScheme.errorContainer
                     : mine
-                    ? theme.colorScheme.surfaceContainerHighest
-                    : Colors.transparent,
+                        ? theme.colorScheme.surfaceContainerHighest
+                        : Colors.transparent,
                 borderRadius: BorderRadius.circular(22),
               ),
               child: Column(
@@ -887,22 +881,20 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
-                      children: attachmentMaps
-                          .map((raw) {
-                            final map = Map<String, dynamic>.from(raw);
-                            final mime = '${map['mimeType'] ?? ''}';
-                            return Chip(
-                              avatar: Icon(
-                                mime.startsWith('image/')
-                                    ? Icons.image_outlined
-                                    : Icons.attach_file,
-                                size: 16,
-                              ),
-                              label: Text('${map['name'] ?? 'Файл'}'),
-                              visualDensity: VisualDensity.compact,
-                            );
-                          })
-                          .toList(growable: false),
+                      children: attachmentMaps.map((raw) {
+                        final map = Map<String, dynamic>.from(raw);
+                        final mime = '${map['mimeType'] ?? ''}';
+                        return Chip(
+                          avatar: Icon(
+                            mime.startsWith('image/')
+                                ? Icons.image_outlined
+                                : Icons.attach_file,
+                            size: 16,
+                          ),
+                          label: Text('${map['name'] ?? 'Файл'}'),
+                          visualDensity: VisualDensity.compact,
+                        );
+                      }).toList(growable: false),
                     ),
                     const SizedBox(height: 8),
                   ],
@@ -993,170 +985,174 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   }
 
   Widget _composerBar(WesiAiManagedChatController controller) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 5, 12, 12),
-    child: Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 920),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerLow,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Theme.of(context).dividerColor),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (controller.queuedTurnCount > 0)
-                  Container(
-                    margin: const EdgeInsets.fromLTRB(4, 2, 4, 7),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.secondaryContainer,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'В очереди: ${controller.queuedTurnCount}',
-                          style: const TextStyle(fontWeight: FontWeight.w700),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          controller.queuedTurns
-                              .take(3)
-                              .map(
-                                (turn) =>
-                                    '${turn.intentLabel}: ${turn.preview}',
-                              )
-                              .join(' · '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall,
-                        ),
-                      ],
-                    ),
-                  ),
-                if (_attachments.isNotEmpty)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 0, 4, 7),
-                    child: Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        for (
-                          var index = 0;
-                          index < _attachments.length;
-                          index++
-                        )
-                          InputChip(
-                            avatar: Icon(
-                              _attachments[index].mimeType.startsWith('image/')
-                                  ? Icons.image_outlined
-                                  : Icons.attach_file,
-                              size: 16,
-                            ),
-                            label: Text(
-                              '${_attachments[index].name} · ${_formatBytes(_attachments[index].byteSize)}',
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            onDeleted: () =>
-                                setState(() => _attachments.removeAt(index)),
-                          ),
-                      ],
-                    ),
-                  ),
-                TextField(
-                  controller: _composer,
-                  minLines: 1,
-                  maxLines: 6,
-                  decoration: InputDecoration(
-                    hintText: controller.sending
-                        ? 'Можно написать «Стой», исправление или следующий запрос'
-                        : 'Спроси Wesi AI о чём угодно',
-                    border: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 8,
-                    ),
-                  ),
-                  onSubmitted: (_) => _send(controller),
-                ),
-                Row(
+        padding: const EdgeInsets.fromLTRB(12, 5, 12, 12),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 920),
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Theme.of(context).dividerColor),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(10, 8, 8, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    IconButton(
-                      tooltip: 'Прикрепить файл',
-                      onPressed: _pickAttachments,
-                      icon: const Icon(Icons.add_rounded),
-                    ),
-                    IconButton(
-                      tooltip: 'Камера',
-                      onPressed: _capturePhoto,
-                      icon: const Icon(Icons.photo_camera_outlined),
-                    ),
-                    const Spacer(),
-                    if (controller.sending)
-                      IconButton(
-                        tooltip: 'Остановить текущую работу',
-                        onPressed: () => unawaited(controller.stopActiveWork()),
-                        icon: const Icon(Icons.stop_circle_outlined),
-                      ),
-                    if (controller.sending || controller.queuedTurnCount > 0)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 6),
-                        child: Text(
-                          controller.sending
-                              ? 'Ответ обрабатывается'
-                              : 'Обрабатываю очередь',
-                          style: Theme.of(context).textTheme.labelSmall,
+                    if (controller.queuedTurnCount > 0)
+                      Container(
+                        margin: const EdgeInsets.fromLTRB(4, 2, 4, 7),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color:
+                              Theme.of(context).colorScheme.secondaryContainer,
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'В очереди: ${controller.queuedTurnCount}',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              controller.queuedTurns
+                                  .take(3)
+                                  .map(
+                                    (turn) =>
+                                        '${turn.intentLabel}: ${turn.preview}',
+                                  )
+                                  .join(' · '),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                              style: Theme.of(context).textTheme.bodySmall,
+                            ),
+                          ],
                         ),
                       ),
-                    IconButton(
-                      tooltip: _voice.listening
-                          ? 'Остановить диктовку'
-                          : 'Голосовой ввод',
-                      onPressed:
-                          controller.processing || _session?.active == true
-                          ? null
-                          : _toggleVoice,
-                      icon: Icon(
-                        _voice.listening ? Icons.stop : Icons.mic_none,
+                    if (_attachments.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 0, 4, 7),
+                        child: Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: [
+                            for (var index = 0;
+                                index < _attachments.length;
+                                index++)
+                              InputChip(
+                                avatar: Icon(
+                                  _attachments[index]
+                                          .mimeType
+                                          .startsWith('image/')
+                                      ? Icons.image_outlined
+                                      : Icons.attach_file,
+                                  size: 16,
+                                ),
+                                label: Text(
+                                  '${_attachments[index].name} · ${_formatBytes(_attachments[index].byteSize)}',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                onDeleted: () => setState(
+                                    () => _attachments.removeAt(index)),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      tooltip: _session?.active == true
-                          ? 'Завершить голосовой разговор'
-                          : 'Голосовой разговор',
-                      onPressed: controller.processing
-                          ? null
-                          : () => _toggleConversation(controller),
-                      icon: Icon(
-                        _session?.active == true
-                            ? Icons.headset_off
-                            : Icons.headset_mic_outlined,
+                    TextField(
+                      controller: _composer,
+                      minLines: 1,
+                      maxLines: 6,
+                      decoration: InputDecoration(
+                        hintText: controller.sending
+                            ? 'Можно написать «Стой», исправление или следующий запрос'
+                            : 'Спроси Wesi AI о чём угодно',
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 8,
+                        ),
                       ),
+                      onSubmitted: (_) => _send(controller),
                     ),
-                    IconButton.filled(
-                      tooltip: controller.sending
-                          ? 'Добавить сообщение в очередь'
-                          : 'Отправить',
-                      onPressed: () => _send(controller),
-                      icon: const Icon(Icons.arrow_upward_rounded),
+                    Row(
+                      children: [
+                        IconButton(
+                          tooltip: 'Прикрепить файл',
+                          onPressed: _pickAttachments,
+                          icon: const Icon(Icons.add_rounded),
+                        ),
+                        IconButton(
+                          tooltip: 'Камера',
+                          onPressed: _capturePhoto,
+                          icon: const Icon(Icons.photo_camera_outlined),
+                        ),
+                        const Spacer(),
+                        if (controller.sending)
+                          IconButton(
+                            tooltip: 'Остановить текущую работу',
+                            onPressed: () =>
+                                unawaited(controller.stopActiveWork()),
+                            icon: const Icon(Icons.stop_circle_outlined),
+                          ),
+                        if (controller.sending ||
+                            controller.queuedTurnCount > 0)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: Text(
+                              controller.sending
+                                  ? 'Ответ обрабатывается'
+                                  : 'Обрабатываю очередь',
+                              style: Theme.of(context).textTheme.labelSmall,
+                            ),
+                          ),
+                        IconButton(
+                          tooltip: _voice.listening
+                              ? 'Остановить диктовку'
+                              : 'Голосовой ввод',
+                          onPressed:
+                              controller.processing || _session?.active == true
+                                  ? null
+                                  : _toggleVoice,
+                          icon: Icon(
+                            _voice.listening ? Icons.stop : Icons.mic_none,
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: _session?.active == true
+                              ? 'Завершить голосовой разговор'
+                              : 'Голосовой разговор',
+                          onPressed: controller.processing
+                              ? null
+                              : () => _toggleConversation(controller),
+                          icon: Icon(
+                            _session?.active == true
+                                ? Icons.headset_off
+                                : Icons.headset_mic_outlined,
+                          ),
+                        ),
+                        IconButton.filled(
+                          tooltip: controller.sending
+                              ? 'Добавить сообщение в очередь'
+                              : 'Отправить',
+                          onPressed: () => _send(controller),
+                          icon: const Icon(Icons.arrow_upward_rounded),
+                        ),
+                      ],
                     ),
                   ],
                 ),
-              ],
+              ),
             ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 
   Future<void> _pickAttachments() async {
     try {
@@ -1259,7 +1255,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
           'Очередь заполнена. Дождитесь обработки сообщения.',
         WesiAiMessageSubmitResult.invalidAttachments =>
           'Не удалось отправить сообщение: проверьте вложения.',
-        WesiAiMessageSubmitResult.persistenceFailed => 'Не удалось надёжно сохранить сообщение. Текст оставлен в поле ввода.',
+        WesiAiMessageSubmitResult.persistenceFailed =>
+          'Не удалось надёжно сохранить сообщение. Текст оставлен в поле ввода.',
         WesiAiMessageSubmitResult.unavailable =>
           'Не удалось отправить сообщение в текущий чат.',
         WesiAiMessageSubmitResult.accepted => '',
@@ -1324,10 +1321,8 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   ) async {
     final conversationId = controller.state.activeConversation?.id;
     if (conversationId == null) return const [];
-    final before = controller.state
-        .messagesFor(conversationId)
-        .map((m) => m.id)
-        .toSet();
+    final before =
+        controller.state.messagesFor(conversationId).map((m) => m.id).toSet();
     await controller.addUserMessage(text);
     return spokenRepliesFrom(
       messages: controller.state.messagesFor(conversationId),
@@ -1365,29 +1360,30 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   }
 
   Widget _voiceStatus() => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
-    child: Row(
-      children: [
-        const SizedBox.square(
-          dimension: 12,
-          child: CircularProgressIndicator(strokeWidth: 2),
+        padding: const EdgeInsets.fromLTRB(12, 6, 12, 0),
+        child: Row(
+          children: [
+            const SizedBox.square(
+              dimension: 12,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                _voice.transcript.isEmpty
+                    ? 'Слушаю… говорите'
+                    : _voice.transcript,
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            _voice.transcript.isEmpty ? 'Слушаю… говорите' : _voice.transcript,
-          ),
-        ),
-      ],
-    ),
-  );
+      );
 
   Future<void> _createProject(WesiAiManagedChatController controller) async {
     final title = TextEditingController();
     final description = TextEditingController();
     final instructions = TextEditingController();
-    final result =
-        await showDialog<bool>(
+    final result = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: const Text('Новый проект Wesi AI'),
@@ -1461,8 +1457,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     } else if (action == 'context') {
       await _editProjectContext(controller, project);
     } else if (action == 'delete') {
-      final confirmed =
-          await showDialog<bool>(
+      final confirmed = await showDialog<bool>(
             context: context,
             builder: (dialogContext) => AlertDialog(
               title: const Text('Удалить проект?'),
@@ -1492,8 +1487,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   ) async {
     final description = TextEditingController(text: project.description);
     final instructions = TextEditingController(text: project.instructions);
-    final saved =
-        await showDialog<bool>(
+    final saved = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text(project.title),
@@ -1623,8 +1617,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     final target = source.persona == WesiAiPersona.zane
         ? WesiAiPersona.nirvana
         : WesiAiPersona.zane;
-    final accepted =
-        await showDialog<bool>(
+    final accepted = await showDialog<bool>(
           context: context,
           builder: (dialogContext) => AlertDialog(
             title: Text('Передать задачу: ${_personaName(target)}?'),
@@ -1710,24 +1703,24 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
   }
 
   String _personaName(WesiAiPersona persona) => switch (persona) {
-    WesiAiPersona.zane => 'Зейн',
-    WesiAiPersona.nirvana => 'Нирвана',
-    WesiAiPersona.lobby => 'Лобби',
-  };
+        WesiAiPersona.zane => 'Зейн',
+        WesiAiPersona.nirvana => 'Нирвана',
+        WesiAiPersona.lobby => 'Лобби',
+      };
 
   IconData _personaIcon(WesiAiPersona persona) => switch (persona) {
-    WesiAiPersona.zane => Icons.bolt_rounded,
-    WesiAiPersona.nirvana => Icons.spa_outlined,
-    WesiAiPersona.lobby => Icons.groups_2_outlined,
-  };
+        WesiAiPersona.zane => Icons.bolt_rounded,
+        WesiAiPersona.nirvana => Icons.spa_outlined,
+        WesiAiPersona.lobby => Icons.groups_2_outlined,
+      };
 
   String _authorName(WesiAiMessageAuthor author) => switch (author) {
-    WesiAiMessageAuthor.user => 'Вы',
-    WesiAiMessageAuthor.zane => 'Зейн',
-    WesiAiMessageAuthor.nirvana => 'Нирвана',
-    WesiAiMessageAuthor.system => 'Wesi AI',
-    WesiAiMessageAuthor.tool => 'WesiOS',
-  };
+        WesiAiMessageAuthor.user => 'Вы',
+        WesiAiMessageAuthor.zane => 'Зейн',
+        WesiAiMessageAuthor.nirvana => 'Нирвана',
+        WesiAiMessageAuthor.system => 'Wesi AI',
+        WesiAiMessageAuthor.tool => 'WesiOS',
+      };
 }
 
 class _ConversationTile extends StatelessWidget {
@@ -1749,24 +1742,25 @@ class _ConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => ListTile(
-    selected: selected,
-    leading: item.pinned ? const Icon(Icons.push_pin, size: 18) : null,
-    title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-    subtitle: Text(personaName),
-    onTap: enabled ? onTap : null,
-    trailing: PopupMenuButton<String>(
-      enabled: enabled,
-      onSelected: onAction,
-      itemBuilder: (_) => [
-        PopupMenuItem(
-          value: 'pin',
-          child: Text(item.pinned ? 'Открепить' : 'Закрепить'),
+        selected: selected,
+        leading: item.pinned ? const Icon(Icons.push_pin, size: 18) : null,
+        title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(personaName),
+        onTap: enabled ? onTap : null,
+        trailing: PopupMenuButton<String>(
+          enabled: enabled,
+          onSelected: onAction,
+          itemBuilder: (_) => [
+            PopupMenuItem(
+              value: 'pin',
+              child: Text(item.pinned ? 'Открепить' : 'Закрепить'),
+            ),
+            const PopupMenuItem(value: 'rename', child: Text('Переименовать')),
+            const PopupMenuItem(
+                value: 'move', child: Text('Переместить в проект')),
+            const PopupMenuItem(value: 'archive', child: Text('В архив')),
+            const PopupMenuItem(value: 'delete', child: Text('Удалить')),
+          ],
         ),
-        const PopupMenuItem(value: 'rename', child: Text('Переименовать')),
-        const PopupMenuItem(value: 'move', child: Text('Переместить в проект')),
-        const PopupMenuItem(value: 'archive', child: Text('В архив')),
-        const PopupMenuItem(value: 'delete', child: Text('Удалить')),
-      ],
-    ),
-  );
+      );
 }

@@ -387,7 +387,7 @@ export function createGateway(options = {}) {
   return async function handle(req, res) {
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'});
-      res.end(JSON.stringify({ok: true, service: 'wesi-ai-stream-gateway', streaming: true}));
+      res.end(JSON.stringify({ok: true, ready: true, service: 'wesi-ai-stream-gateway', streaming: true}));
       return;
     }
     if (req.method !== 'POST' || req.url !== '/api/wesi/ai/chat/stream') {
@@ -575,9 +575,9 @@ export function createGateway(options = {}) {
             phase: 'result',
             name: prepared.persona,
             role: 'lead',
-            additions: totalDiff.additions,
-            deletions: totalDiff.deletions,
-            files: totalDiff.files,
+            ...(totalDiff.additions || totalDiff.deletions || totalDiff.files.length
+              ? {additions: totalDiff.additions, deletions: totalDiff.deletions, files: totalDiff.files}
+              : {}),
           });
           writeNdjson(res, {
             type: 'done',
@@ -624,15 +624,21 @@ export function createGateway(options = {}) {
         }
         toolResults.push(toolResult);
         const diff = diffStatsFromToolResult(toolResult);
+        const toolPayload = toolResult && typeof toolResult.result === 'object' && !Array.isArray(toolResult.result)
+          ? toolResult.result
+          : {};
+        const hasDiffMetadata = Object.prototype.hasOwnProperty.call(toolPayload, 'additions') ||
+          Object.prototype.hasOwnProperty.call(toolPayload, 'deletions') || diff.files.length > 0;
         writeNdjson(res, {
           type: 'tool',
           phase: 'result',
           name: toolRequest.name,
           ok: toolResult?.ok === true,
           code: toolResult?.code || null,
-          additions: diff.additions,
-          deletions: diff.deletions,
-          files: diff.files,
+          ...(hasDiffMetadata ? {additions: diff.additions, deletions: diff.deletions, files: diff.files} : {}),
+          ...(Number.isFinite(Number(toolPayload.transactionCount)) ? {transactionCount: Number(toolPayload.transactionCount)} : {}),
+          ...(toolPayload.organizationId ? {organizationId: String(toolPayload.organizationId)} : {}),
+          ...(toolPayload.organizationName ? {organizationName: String(toolPayload.organizationName)} : {}),
         });
       }
 
@@ -661,9 +667,9 @@ export function createGateway(options = {}) {
         phase: 'result',
         name: prepared.persona,
         role: 'lead',
-        additions: totalDiff.additions,
-        deletions: totalDiff.deletions,
-        files: totalDiff.files,
+        ...(totalDiff.additions || totalDiff.deletions || totalDiff.files.length
+          ? {additions: totalDiff.additions, deletions: totalDiff.deletions, files: totalDiff.files}
+          : {}),
       });
       writeNdjson(res, {
         type: 'done',

@@ -73,10 +73,10 @@ class WesiAiRichParser {
                 'wesi-chart',
                 'wesi_chart',
               }.contains(lower)
-            ? WesiAiRichBlockKind.chart
-            : draft
-            ? WesiAiRichBlockKind.draft
-            : WesiAiRichBlockKind.code;
+                ? WesiAiRichBlockKind.chart
+                : draft
+                    ? WesiAiRichBlockKind.draft
+                    : WesiAiRichBlockKind.code;
         blocks.add(WesiAiRichBlock(kind, body.join('\n'), language: language));
         continue;
       }
@@ -103,8 +103,8 @@ class WesiAiRichParser {
       if (line.trimLeft().startsWith('>')) {
         flushText();
         final quote = <String>[];
-        while (index < lines.length &&
-            lines[index].trimLeft().startsWith('>')) {
+        while (
+            index < lines.length && lines[index].trimLeft().startsWith('>')) {
           final raw = lines[index].trimLeft().substring(1);
           quote.add(raw.startsWith(' ') ? raw.substring(1) : raw);
           index++;
@@ -349,12 +349,12 @@ class WesiAiRichMessage extends StatelessWidget {
   }
 
   String _draftLabel(String language) => switch (language.toLowerCase()) {
-    'email' => 'Готовое письмо',
-    'message' => 'Готовое сообщение',
-    'letter' => 'Готовый текст',
-    'draft' => 'Черновик',
-    _ => 'Текст для копирования',
-  };
+        'email' => 'Готовое письмо',
+        'message' => 'Готовое сообщение',
+        'letter' => 'Готовый текст',
+        'draft' => 'Черновик',
+        _ => 'Текст для копирования',
+      };
 }
 
 class WesiAiClarificationBlock extends StatelessWidget {
@@ -434,9 +434,8 @@ class WesiAiClarificationBlock extends StatelessWidget {
                 ActionChip(
                   avatar: const Icon(Icons.edit_outlined, size: 16),
                   label: const Text('Свой ответ'),
-                  onPressed: onAnswer == null
-                      ? null
-                      : () => _customAnswer(context),
+                  onPressed:
+                      onAnswer == null ? null : () => _customAnswer(context),
                 ),
             ],
           ),
@@ -454,8 +453,7 @@ class WesiAiFormattedText extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final base =
-        theme.textTheme.bodyMedium?.copyWith(height: 1.48) ??
+    final base = theme.textTheme.bodyMedium?.copyWith(height: 1.48) ??
         const TextStyle(height: 1.48);
     final displayText = WesiAiRichParser.displayMarkdown(text);
     return SelectableText.rich(
@@ -523,34 +521,34 @@ class WesiAiCodeBlock extends StatelessWidget {
   }
 
   Future<void> _expand(BuildContext context) => showDialog<void>(
-    context: context,
-    builder: (dialogContext) => Dialog.fullscreen(
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(language.isEmpty ? 'Код' : language),
-          actions: [
-            IconButton(
-              tooltip: 'Копировать',
-              onPressed: () => _copy(dialogContext),
-              icon: const Icon(Icons.copy_all_outlined),
+        context: context,
+        builder: (dialogContext) => Dialog.fullscreen(
+          child: Scaffold(
+            appBar: AppBar(
+              title: Text(language.isEmpty ? 'Код' : language),
+              actions: [
+                IconButton(
+                  tooltip: 'Копировать',
+                  onPressed: () => _copy(dialogContext),
+                  icon: const Icon(Icons.copy_all_outlined),
+                ),
+                const SizedBox(width: 8),
+              ],
             ),
-            const SizedBox(width: 8),
-          ],
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(18),
-          child: SelectableText(
-            code,
-            style: const TextStyle(
-              fontFamily: 'monospace',
-              fontSize: 13,
-              height: 1.36,
+            body: SingleChildScrollView(
+              padding: const EdgeInsets.all(18),
+              child: SelectableText(
+                code,
+                style: const TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  height: 1.36,
+                ),
+              ),
             ),
           ),
         ),
-      ),
-    ),
-  );
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -714,14 +712,13 @@ class _WesiAiWorkLogState extends State<WesiAiWorkLog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final seconds = widget.durationMs <= 0
-        ? null
-        : (widget.durationMs / 1000).ceil();
+    final seconds =
+        widget.durationMs <= 0 ? null : (widget.durationMs / 1000).ceil();
     final title = widget.streaming
         ? 'Ход работы…'
         : seconds == null
-        ? 'Ход работы'
-        : 'Ход работы · ${seconds}с';
+            ? 'Ход работы'
+            : 'Ход работы · ${seconds}с';
     return Container(
       decoration: BoxDecoration(
         border: Border(
@@ -813,7 +810,12 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final event = widget.event;
-    final hasDetails = event.detail.isNotEmpty || event.files.isNotEmpty;
+    final inlineReadDetail = event.kind == WesiAiActivityKind.tool &&
+        event.detail.isNotEmpty &&
+        !event.hasDiff &&
+        event.files.isEmpty;
+    final hasDetails = (!inlineReadDetail && event.detail.isNotEmpty) ||
+        event.files.isNotEmpty;
     final icon = switch (event.kind) {
       WesiAiActivityKind.tool => Icons.build_outlined,
       WesiAiActivityKind.agent => Icons.account_tree_outlined,
@@ -853,21 +855,23 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
                     ),
                   ),
                 ),
-                Text(
-                  '+${event.additions}',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: positive,
-                    fontWeight: FontWeight.w700,
+                if (event.hasDiff) ...[
+                  Text(
+                    '+${event.additions}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: positive,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 5),
-                Text(
-                  '-${event.deletions}',
-                  style: theme.textTheme.labelSmall?.copyWith(
-                    color: negative,
-                    fontWeight: FontWeight.w700,
+                  const SizedBox(width: 5),
+                  Text(
+                    '-${event.deletions}',
+                    style: theme.textTheme.labelSmall?.copyWith(
+                      color: negative,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                ),
+                ],
                 if (hasDetails) ...[
                   const SizedBox(width: 3),
                   Icon(
@@ -877,6 +881,16 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
                 ],
               ],
             ),
+            if (inlineReadDetail)
+              Padding(
+                padding: const EdgeInsets.only(left: 24, top: 5),
+                child: Text(
+                  event.detail,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
             if (_expanded) ...[
               if (event.detail.isNotEmpty)
                 Padding(
