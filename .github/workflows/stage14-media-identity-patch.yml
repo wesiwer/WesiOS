@@ -1,0 +1,43 @@
+name: Stage14 Media Identity Patch
+
+on:
+  push:
+    branches:
+      - 'agent/wesi-ai-stage14-media-attachment-staging'
+    paths:
+      - '.github/scripts/stage14_media_identity_patch.py'
+      - '.github/workflows/stage14-media-identity-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-clean:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/wesi-ai-stage14-media-attachment-staging
+          fetch-depth: 0
+      - name: Apply identity patch
+        run: python3 .github/scripts/stage14_media_identity_patch.py
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Format and verify
+        run: |
+          dart format lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          flutter analyze lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/media_engines --no-fatal-infos
+          flutter test test/features/ai/media_engines
+      - name: Commit product patch and remove one-shot files
+        run: |
+          rm -f .github/scripts/stage14_media_identity_patch.py .github/workflows/stage14-media-identity-patch.yml
+          git config user.name 'wesi-ai-stage14-bot'
+          git config user.email 'wesi-ai-stage14-bot@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix(ai): isolate local media request identities'
+          git push origin HEAD:agent/wesi-ai-stage14-media-attachment-staging
