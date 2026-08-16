@@ -25,6 +25,7 @@ function event({permissions = ['view'], includeSubtree = false} = {}) {
   const grants = [row({employeeId: 'emp-1', organizationId: 'music', permissions, includeSubtree})];
   const transactions = [
     row({id: 'a', title: 'Продажа', organizationId: 'music', amount: 100000, type: 'income', date: '2026-08-02T12:00:00Z', category: 'Продажи'}),
+    // A recurring row is a schedule/template, not money that has already moved.
     row({id: 'b', title: 'Реклама', organizationId: 'music', amount: 25000, type: 'expense', date: '2026-08-03T12:00:00Z', category: 'Маркетинг', isRecurring: true}),
     row({id: 'c', title: 'Чужая операция', organizationId: 'org_wesi_inc', amount: 999999, type: 'income', date: '2026-08-03T12:00:00Z'}),
     row({id: 'd', title: 'Label расход', organizationId: 'label', amount: 10000, type: 'expense', date: '2026-08-04T12:00:00Z'}),
@@ -49,15 +50,18 @@ test('finance tools require view_finance even when finance module is visible', (
   assert.equal(result.code, 'FORBIDDEN');
 });
 
-test('finance summary is calculated on Main from only authorized organization rows', () => {
+test('finance summary separates actual cash flow from recurring templates', () => {
   const result = finance.execute(event({permissions: ['view', 'view_finance']}), ctx, 'finance_summary', {organizationId: 'music', from: '2026-08-01', to: '2026-08-31'}, 'music');
   assert.equal(result.ok, true);
+  assert.equal(result.result.organizationName, 'Wesi Music');
   assert.equal(result.result.income, 100000);
-  assert.equal(result.result.expense, 25000);
-  assert.equal(result.result.net, 75000);
+  assert.equal(result.result.expense, 0);
+  assert.equal(result.result.net, 100000);
+  assert.equal(result.result.currentBalance, 100000);
   assert.equal(result.result.recurringExpense, 25000);
-  assert.equal(result.result.transactionCount, 2);
-  assert.equal(result.result.topExpenseCategories[0].category, 'Маркетинг');
+  assert.equal(result.result.transactionCount, 1);
+  assert.deepEqual(result.result.topExpenseCategories, []);
+  assert.equal(result.result.topIncomeCategories[0].category, 'Продажи');
 });
 
 test('view_finance subtree grant permits child organization but not parent', () => {
