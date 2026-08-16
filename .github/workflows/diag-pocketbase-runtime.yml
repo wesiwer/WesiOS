@@ -1,0 +1,37 @@
+name: Inspect PocketBase runtime
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diag-pocketbase-runtime.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - name: Inspect process
+        env:
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known 2>/dev/null
+          ssh -i ~/.ssh/main_key -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/main_known "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          pid="$(pgrep -xo pocketbase)"
+          echo "ssh_user=$(id -un)"
+          ps -p "$pid" -o pid=,user=,group=,lstart=,etime=,cmd=
+          systemctl show pocketbase -p User -p Group -p Restart -p ActiveEnterTimestamp --no-pager 2>/dev/null || true
+          stat -c 'routes_mtime=%y owner=%U group=%G mode=%a' /opt/pocketbase/pb_hooks/wesi_ai_routes.pb.js
+          echo 'can_signal:'
+          if kill -0 "$pid" 2>/dev/null; then echo yes; else echo no; fi
+          REMOTE
