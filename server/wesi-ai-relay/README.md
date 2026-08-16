@@ -86,30 +86,32 @@ Firebase Android API key из `android/app/google-services.json` **не явля
 2. та же `gemini-3.5-flash-lite` через `GEMINI_API_KEY_2…5`;
 3. fast-модель Groq;
 4. fast-модель Mistral;
-5. OpenRouter только если для Fast явно задан конкретный allowlisted model override.
+5. OpenRouter только если для Fast явно задан конкретный model override.
 
 Динамический `openrouter/free` в Fast не используется: выбранная им модель заранее не гарантирована, поэтому он мог бы нарушить правило `Fast < Pro < Maximum`.
 
 ### Pro
 
-Цель: более качественный анализ и проверка ответа.
+Цель: сильнее Fast, но заметно дешевле Maximum.
 
-Pro собирает независимые Pro-advisor notes, затем использует **только Pro finalizer pool**:
+Pro использует **один сильный advisor-seat**. Внутри этого места разрешён ordered failover только между Pro-кандидатами: Groq Pro → Mistral Pro → необязательный явно назначенный Pro OpenRouter model. Когда первый доступный advisor подготовил анализ, отдельный **Pro-only finalizer pool** формирует окончательный ответ:
 
 1. Pro Gemini model через primary и secondary Gemini slots;
 2. Pro Mistral finalizer;
 3. Pro Groq finalizer;
 4. необязательный явно назначенный Pro OpenRouter model.
 
-Fast-кандидаты в этот pool не входят; Maximum-кандидаты также не могут случайно попасть в Pro благодаря runtime tier assertion.
+Таким образом Pro — это как минимум отдельная стадия анализа + отдельная стадия финализации, но он не расходует несколько advisors параллельно как Maximum.
 
 ### Maximum
 
 Цель: самый широкий доступный анализ.
 
-Maximum использует собственный `ultra` advisor/finalizer pool. Он может привлекать больше независимых advisor providers, чем Pro, затем выполняет финальную синтезацию в Maximum-only pool. Fast-кандидаты не используются.
+Maximum запускает несколько независимых `ultra` advisors **параллельно**: Groq Maximum, Mistral Maximum и, при наличии ключа, дополнительный OpenRouter advisor. Затем все успешные заметки передаются в отдельный Maximum-only finalizer pool.
 
-Если весь Maximum pool недоступен, Relay возвращает честную ошибку вместо того, чтобы незаметно выдать одиночный слабый advisor answer как «Maximum».
+Это делает Maximum архитектурно шире Pro даже когда Gemini-модель финализатора совпадает по семейству: Pro использует один advisor-seat, а Maximum сопоставляет несколько независимых анализов. Fast-кандидаты в Maximum не используются.
+
+Если весь Maximum finalizer pool недоступен, Relay возвращает честную ошибку вместо того, чтобы незаметно выдать одиночный слабый advisor answer как «Maximum».
 
 ## Automatic failover и cooldown
 
@@ -198,6 +200,8 @@ Regression tests отдельно фиксируют:
 - Pro не принимает Maximum candidates;
 - реальные Fast pools не содержат higher-tier candidates;
 - Pro/Maximum finalizer pools остаются внутри своего tier;
+- Pro использует один advisor-seat и только при его отказе переключается на следующий Pro advisor;
+- Maximum собирает несколько доступных advisors параллельно;
 - primary Gemini `429` переключает Fast на secondary Gemini credential, но URL модели остаётся `gemini-3.5-flash-lite`;
 - cooling primary slot пропускается и автоматически возвращается после cooldown;
 - invalid request не fan-out'ится;
