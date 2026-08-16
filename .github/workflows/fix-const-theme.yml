@@ -1,61 +1,80 @@
-name: Fix const + AppTheme
+name: Temporary Wesi AI Main diagnostics
 
 on:
-  workflow_dispatch:
+  push:
+    branches:
+      - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  fix:
-    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
-    timeout-minutes: 15
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 1
 
-      - name: Strip const from dynamic AppTheme constructors
+      - name: Prepare SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
         run: |
-          python3 << 'PY'
-          import re, pathlib
-
-          DYNAMIC = r'(?:textMuted|textPrimary|textSecondary|glassBorder|background|surface|surfaceLight|glassBackground|carbonDark|carbonMid|carbonLight|carbonHighlight|primary|accent|logoStroke|logoAccent)'
-
-          def fix(content: str) -> str:
-              lines = content.split('\n')
-              out = []
-              i = 0
-              while i < len(lines):
-                  line = lines[i]
-                  if re.search(r'\bconst\s+[A-Z]', line):
-                      window = '\n'.join(lines[i:i+12])
-                      if re.search(r'AppTheme\.' + DYNAMIC, window):
-                          line = re.sub(r'\bconst\s+', '', line, count=1)
-                  out.append(line)
-                  i += 1
-              return '\n'.join(out)
-
-          changed = []
-          for path in pathlib.Path('lib').rglob('*.dart'):
-              text = path.read_text(encoding='utf-8')
-              fixed = fix(text)
-              if fixed != text:
-                  path.write_text(fixed, encoding='utf-8')
-                  changed.append(str(path))
-                  print(f'fixed: {path}')
-
-          print(f'Total fixed files: {len(changed)}')
-          if not changed:
-              print('Nothing to fix')
-          PY
-
-      - name: Commit and push
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --staged --quiet; then
-            echo "No changes"
-            exit 0
+          set -euo pipefail
+          test -n "${HOST:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
           fi
-          git commit -m "fix(theme): remove const from widgets using dynamic AppTheme colors"
-          git push
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Compare live Wesi AI runtime
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          echo "LOCAL_ROUTES=$(sha256sum server/pb_hooks/wesi_ai_routes.pb.js | awk '{print $1}')"
+          echo "LOCAL_TOOLS=$(sha256sum server/pb_hooks/wesi_ai_tools.js | awk '{print $1}')"
+          echo "LOCAL_GATEWAY=$(sha256sum server/wesi-ai-stream/gateway.mjs | awk '{print $1}')"
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          $SSH "$USER@$HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo "REMOTE_ID=$(id -u):$(id -g):$(id -un)"
+          if sudo -n true >/dev/null 2>&1; then echo 'SUDO_NONINTERACTIVE=yes'; else echo 'SUDO_NONINTERACTIVE=no'; fi
+          for f in \
+            /opt/pocketbase/pb_hooks/wesi_ai_routes.pb.js \
+            /opt/pocketbase/pb_hooks/wesi_ai_tools.js \
+            /opt/wesi-ai-stream/gateway.mjs \
+            /opt/wesi-ai-stream/server.mjs \
+            /etc/wesi-ai-stream.env \
+            /etc/systemd/system/wesi-ai-stream.service; do
+            if [ -e "$f" ]; then
+              stat -c "FILE=%n MODE=%a OWNER=%U GROUP=%G" "$f"
+              if [ -w "$f" ]; then echo "WRITABLE=$f yes"; else echo "WRITABLE=$f no"; fi
+              case "$f" in
+                *.js|*.mjs) sha256sum "$f" | awk '{print "REMOTE_SHA=" $2 " " $1}' ;;
+              esac
+            else
+              echo "MISSING=$f"
+            fi
+          done
+          for d in /opt/pocketbase/pb_hooks /opt/wesi-ai-stream; do
+            if [ -d "$d" ]; then
+              stat -c "DIR=%n MODE=%a OWNER=%U GROUP=%G" "$d"
+              if [ -w "$d" ]; then echo "DIR_WRITABLE=$d yes"; else echo "DIR_WRITABLE=$d no"; fi
+            fi
+          done
+          systemctl is-active pocketbase 2>/dev/null || true
+          systemctl is-active wesi-ai-stream 2>/dev/null || true
+          curl -fsS --max-time 4 http://127.0.0.1:8090/api/health >/dev/null && echo 'POCKETBASE_HEALTH=ok' || echo 'POCKETBASE_HEALTH=fail'
+          curl -fsS --max-time 4 http://127.0.0.1:8792/health || echo 'STREAM_HEALTH=fail'
+          REMOTE
