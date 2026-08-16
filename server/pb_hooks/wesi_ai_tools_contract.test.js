@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const HOOKS = __dirname;
+global.__hooks = HOOKS;
 const toolsPath = path.join(HOOKS, 'wesi_ai_tools.js');
 const registryPath = path.join(HOOKS, 'wesi_ai_capability_registry.js');
 const registry = require(registryPath);
