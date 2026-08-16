@@ -1,95 +1,61 @@
-name: Temporary Wesi AI hierarchical provider routing patch
+name: Fix const + AppTheme
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/fix-const-theme.yml'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  patch:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  fix:
+    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: fix/wesi-ai-tool-agent-handoff
-          fetch-depth: 0
-      - name: Patch provider routing
+
+      - name: Strip const from dynamic AppTheme constructors
         run: |
-          set -euo pipefail
-          python3 <<'PY'
-          from pathlib import Path
+          python3 << 'PY'
+          import re, pathlib
 
-          # provider-failover: quota scopes + daily quota cooldown
-          p = Path('server/wesi-ai-relay/provider-failover.mjs')
-          text = p.read_text(encoding='utf-8')
-          text = text.replace("const AUTH_MAX_MS = 24 * 60 * 60 * 1000;", "const AUTH_MAX_MS = 24 * 60 * 60 * 1000;\nconst DAILY_QUOTA_BASE_MS = 60 * 60 * 1000;\nconst DAILY_QUOTA_MAX_MS = 12 * 60 * 60 * 1000;")
-          text = text.replace("  const slot = String(candidate?.credentialSlot || 'default').trim();\n  return `${provider}:${model}:${slot}`;", "  const scope = String(candidate?.quotaScope || candidate?.credentialSlot || 'default').trim();\n  return `${provider}:${model}:${scope}`;")
-          old = """  const raw = [\n    ['primary', primaryKey],\n    ['secondary-2', secrets.GEMINI_API_KEY_2],\n    ['secondary-3', secrets.GEMINI_API_KEY_3],\n    ['secondary-4', secrets.GEMINI_API_KEY_4],\n    ['secondary-5', secrets.GEMINI_API_KEY_5],\n  ];\n  const seen = new Set();\n  const result = [];\n  for (const [slot, value] of raw) {\n    const key = String(value || '').trim();\n    if (!key || seen.has(key)) continue;\n    seen.add(key);\n    result.push({slot, key});\n  }\n"""
-          new = """  const raw = [\n    ['primary', primaryKey, secrets.GEMINI_API_PROJECT || secrets.GEMINI_PROJECT_ID],\n    ['secondary-2', secrets.GEMINI_API_KEY_2, secrets.GEMINI_API_PROJECT_2],\n    ['secondary-3', secrets.GEMINI_API_KEY_3, secrets.GEMINI_API_PROJECT_3],\n    ['secondary-4', secrets.GEMINI_API_KEY_4, secrets.GEMINI_API_PROJECT_4],\n    ['secondary-5', secrets.GEMINI_API_KEY_5, secrets.GEMINI_API_PROJECT_5],\n  ];\n  const seen = new Set();\n  const result = [];\n  for (const [slot, value, projectValue] of raw) {\n    const key = String(value || '').trim();\n    if (!key || seen.has(key)) continue;\n    seen.add(key);\n    const project = String(projectValue || '').trim();\n    result.push({\n      slot,\n      key,\n      project,\n      quotaScope: project ? `project:${project}` : `slot:${slot}`,\n    });\n  }\n"""
-          if old not in text: raise SystemExit('geminiKeySlots anchor missing')
-          text = text.replace(old, new, 1)
-          text = text.replace("    'WAI_PROVIDER_RATE_LIMIT',", "    'WAI_PROVIDER_RATE_LIMIT',\n    'WAI_PROVIDER_DAILY_QUOTA',")
-          old = """  if (status === 429 || code === 'WAI_PROVIDER_RATE_LIMIT') {\n    base = RATE_LIMIT_BASE_MS;\n    max = RATE_LIMIT_MAX_MS;\n  } else if (code === 'WAI_PROVIDER_AUTH_FAILED') {\n"""
-          new = """  if (code === 'WAI_PROVIDER_DAILY_QUOTA') {\n    base = DAILY_QUOTA_BASE_MS;\n    max = DAILY_QUOTA_MAX_MS;\n  } else if (status === 429 || code === 'WAI_PROVIDER_RATE_LIMIT') {\n    base = RATE_LIMIT_BASE_MS;\n    max = RATE_LIMIT_MAX_MS;\n  } else if (code === 'WAI_PROVIDER_AUTH_FAILED') {\n"""
-          if old not in text: raise SystemExit('cooldown anchor missing')
-          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          DYNAMIC = r'(?:textMuted|textPrimary|textSecondary|glassBorder|background|surface|surfaceLight|glassBackground|carbonDark|carbonMid|carbonLight|carbonHighlight|primary|accent|logoStroke|logoAccent)'
 
-          # google.mjs: strict stable hierarchy + quota error classification/scope
-          p = Path('server/wesi-ai-relay/google.mjs')
-          text = p.read_text(encoding='utf-8')
-          text = text.replace("  return geminiKeySlots(googleKey, secrets).map(({slot, key}) => ({", "  return geminiKeySlots(googleKey, secrets).map(({slot, key, quotaScope}) => ({")
-          text = text.replace("    credentialSlot: slot,\n    tier: normalized,", "    credentialSlot: slot,\n    quotaScope,\n    tier: normalized,")
-          text = text.replace("? secrets.WESI_GEMINI_ULTRA_MODEL || secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash'", "? secrets.WESI_GEMINI_ULTRA_MODEL || 'gemini-3.6-flash'")
-          text = text.replace(": secrets.WESI_GEMINI_ULTRA_MODEL || secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash';", ": secrets.WESI_GEMINI_ULTRA_MODEL || 'gemini-3.6-flash';")
-          marker = """export async function callGoogleText(model, input, apiKey, options = {}) {\n"""
-          helper = """function googleRetryAfterMs(response, data) {\n  const header = String(response?.headers?.get?.('retry-after') || '').trim();\n  if (/^\\d+$/.test(header)) return Number(header) * 1000;\n  const details = Array.isArray(data?.error?.details) ? data.error.details : [];\n  for (const detail of details) {\n    const delay = String(detail?.retryDelay || '').trim();\n    const match = /^(\\d+(?:\\.\\d+)?)s$/.exec(delay);\n    if (match) return Math.ceil(Number(match[1]) * 1000);\n  }\n  return 0;\n}\n\nfunction google429Code(data) {\n  let text = '';\n  try { text = JSON.stringify(data?.error || data || {}).toLowerCase(); } catch {}\n  return /(quota_exceeded|requests.?per.?day|per.?day|daily|rpd)/i.test(text)\n    ? 'WAI_PROVIDER_DAILY_QUOTA'\n    : 'WAI_PROVIDER_RATE_LIMIT';\n}\n\n"""
-          if marker not in text: raise SystemExit('callGoogleText marker missing')
-          text = text.replace(marker, helper + marker, 1)
-          old429 = "if (response.status === 429) return {ok: false, status: 429, code: 'WAI_PROVIDER_RATE_LIMIT'};"
-          new429 = "if (response.status === 429) return {ok: false, status: 429, code: google429Code(data), retryAfterMs: googleRetryAfterMs(response, data)};"
-          if old429 not in text: raise SystemExit('google 429 anchor missing')
-          text = text.replace(old429, new429, 1)
-          p.write_text(text, encoding='utf-8')
+          def fix(content: str) -> str:
+              lines = content.split('\n')
+              out = []
+              i = 0
+              while i < len(lines):
+                  line = lines[i]
+                  if re.search(r'\bconst\s+[A-Z]', line):
+                      window = '\n'.join(lines[i:i+12])
+                      if re.search(r'AppTheme\.' + DYNAMIC, window):
+                          line = re.sub(r'\bconst\s+', '', line, count=1)
+                  out.append(line)
+                  i += 1
+              return '\n'.join(out)
 
-          # deploy-relay: optional project grouping metadata
-          p = Path('server/wesi-ai-relay/deploy-relay.sh')
-          text = p.read_text(encoding='utf-8')
-          text = text.replace("      GEMINI_API_KEY_5_B64) GEMINI_API_KEY_5=\"$decoded\" ;;", "      GEMINI_API_KEY_5_B64) GEMINI_API_KEY_5=\"$decoded\" ;;\n      GEMINI_API_PROJECT_B64) GEMINI_API_PROJECT=\"$decoded\" ;;\n      GEMINI_API_PROJECT_2_B64) GEMINI_API_PROJECT_2=\"$decoded\" ;;\n      GEMINI_API_PROJECT_3_B64) GEMINI_API_PROJECT_3=\"$decoded\" ;;\n      GEMINI_API_PROJECT_4_B64) GEMINI_API_PROJECT_4=\"$decoded\" ;;\n      GEMINI_API_PROJECT_5_B64) GEMINI_API_PROJECT_5=\"$decoded\" ;;")
-          text = text.replace("for optional in GEMINI_API_KEY_2 GEMINI_API_KEY_3 GEMINI_API_KEY_4 GEMINI_API_KEY_5 GROQ_API_KEY", "for optional in GEMINI_API_KEY_2 GEMINI_API_KEY_3 GEMINI_API_KEY_4 GEMINI_API_KEY_5 GEMINI_API_PROJECT GEMINI_API_PROJECT_2 GEMINI_API_PROJECT_3 GEMINI_API_PROJECT_4 GEMINI_API_PROJECT_5 GROQ_API_KEY")
-          anchor = """  : >\"$PROVIDER_ENV_FILE\"\n"""
-          addition = """  : >\"$PROVIDER_ENV_FILE\"\n  [ -n \"${GEMINI_API_PROJECT:-}\" ] && printf \"GEMINI_API_PROJECT=%s\\n\" \"$GEMINI_API_PROJECT\" >>\"$PROVIDER_ENV_FILE\"\n  [ -n \"${GEMINI_API_PROJECT_2:-}\" ] && printf \"GEMINI_API_PROJECT_2=%s\\n\" \"$GEMINI_API_PROJECT_2\" >>\"$PROVIDER_ENV_FILE\"\n  [ -n \"${GEMINI_API_PROJECT_3:-}\" ] && printf \"GEMINI_API_PROJECT_3=%s\\n\" \"$GEMINI_API_PROJECT_3\" >>\"$PROVIDER_ENV_FILE\"\n  [ -n \"${GEMINI_API_PROJECT_4:-}\" ] && printf \"GEMINI_API_PROJECT_4=%s\\n\" \"$GEMINI_API_PROJECT_4\" >>\"$PROVIDER_ENV_FILE\"\n  [ -n \"${GEMINI_API_PROJECT_5:-}\" ] && printf \"GEMINI_API_PROJECT_5=%s\\n\" \"$GEMINI_API_PROJECT_5\" >>\"$PROVIDER_ENV_FILE\"\n"""
-          if anchor not in text: raise SystemExit('provider env anchor missing')
-          p.write_text(text.replace(anchor, addition, 1), encoding='utf-8')
+          changed = []
+          for path in pathlib.Path('lib').rglob('*.dart'):
+              text = path.read_text(encoding='utf-8')
+              fixed = fix(text)
+              if fixed != text:
+                  path.write_text(fixed, encoding='utf-8')
+                  changed.append(str(path))
+                  print(f'fixed: {path}')
 
-          # tests: hierarchy + shared-project cooldown + different-project failover
-          p = Path('server/wesi-ai-relay/provider-failover.test.mjs')
-          text = p.read_text(encoding='utf-8')
-          text = text.replace("assert.ok(maximum.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.5-flash'));", "assert.ok(maximum.filter((item) => item.provider === 'google').every((item) => item.model === 'gemini-3.6-flash'));\n  assert.notEqual(\n    pro.find((item) => item.provider === 'google')?.model,\n    maximum.find((item) => item.provider === 'google')?.model,\n    'Maximum must default to a stronger model than Pro',\n  );")
-          text += """\n\ntest('Gemini slots can group keys by Google project quota scope', () => {\n  const slots = geminiKeySlots('key-a', {\n    GEMINI_API_PROJECT: 'project-a',\n    GEMINI_API_KEY_2: 'key-b',\n    GEMINI_API_PROJECT_2: 'project-a',\n    GEMINI_API_KEY_3: 'key-c',\n    GEMINI_API_PROJECT_3: 'project-b',\n  });\n  assert.deepEqual(slots.map((item) => item.quotaScope), [\n    'project:project-a',\n    'project:project-a',\n    'project:project-b',\n  ]);\n});\n\ntest('429 on one key skips another key from the same Google project but tries another project', async () => {\n  resetProviderFailoverState();\n  const candidates = [\n    {id: 'g-a-1', provider: 'google', model: 'gemini-3.5-flash-lite', tier: 'fast', quotaScope: 'project:a'},\n    {id: 'g-a-2', provider: 'google', model: 'gemini-3.5-flash-lite', tier: 'fast', quotaScope: 'project:a'},\n    {id: 'g-b-1', provider: 'google', model: 'gemini-3.5-flash-lite', tier: 'fast', quotaScope: 'project:b'},\n  ];\n  const calls = [];\n  const result = await runProviderFailover({\n    tier: 'fast',\n    candidates,\n    invoke: async (candidate) => {\n      calls.push(candidate.id);\n      if (candidate.quotaScope === 'project:a') {\n        return {ok: false, status: 429, code: 'WAI_PROVIDER_DAILY_QUOTA'};\n      }\n      return {ok: true, answer: 'project-b-ok'};\n    },\n  });\n  assert.equal(result.ok, true);\n  assert.deepEqual(calls, ['g-a-1', 'g-b-1']);\n});\n"""
-          p.write_text(text, encoding='utf-8')
-
-          # README note
-          p = Path('server/wesi-ai-relay/README.md')
-          text = p.read_text(encoding='utf-8')
-          text += """\n\n## Hierarchical model pools and quota scopes\n\nDefault stable text hierarchy is intentionally monotonic: `Fast = gemini-3.5-flash-lite`, `Pro = gemini-3.5-flash`, `Maximum = gemini-3.6-flash`. Failover never promotes a lower Wesi tier to a higher-tier candidate.\n\nGemini quotas are project-scoped. Optional `GEMINI_API_PROJECT`, `GEMINI_API_PROJECT_2` ... `_5` labels group credentials that belong to the same Google project into one cooldown scope. A 429/quota event on one credential therefore skips other credentials explicitly marked as the same project while still allowing another configured project/provider capacity to serve the request. These slots are for legitimate independent capacity/failover, not for evading provider quotas.\n"""
-          p.write_text(text, encoding='utf-8')
+          print(f'Total fixed files: {len(changed)}')
+          if not changed:
+              print('Nothing to fix')
           PY
-          node --check server/wesi-ai-relay/provider-failover.mjs
-          node --check server/wesi-ai-relay/google.mjs
-          bash -n server/wesi-ai-relay/deploy-relay.sh
-          node --test server/wesi-ai-relay/provider-failover.test.mjs
-          git diff --check
-      - name: Commit feature branch
+
+      - name: Commit and push
         run: |
-          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server/wesi-ai-relay/provider-failover.mjs server/wesi-ai-relay/google.mjs server/wesi-ai-relay/deploy-relay.sh server/wesi-ai-relay/provider-failover.test.mjs server/wesi-ai-relay/README.md
-          git diff --cached --quiet && exit 0
-          git commit -m "feat(ai): add hierarchical quota-aware provider routing"
-          git push origin HEAD:fix/wesi-ai-tool-agent-handoff
+          git add -A
+          if git diff --staged --quiet; then
+            echo "No changes"
+            exit 0
+          fi
+          git commit -m "fix(theme): remove const from widgets using dynamic AppTheme colors"
+          git push
