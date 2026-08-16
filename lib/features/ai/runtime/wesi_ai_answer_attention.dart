@@ -75,14 +75,16 @@ class WesiAiAnswerAttention {
     WesiAiAnswerReady event, {
     bool? chatVisible,
   }) async {
+    final foreground = _foreground;
     final delivery = deliveryFor(
-      foreground: _foreground,
+      foreground: foreground,
       chatVisible: chatVisible ?? _chatRouteCurrent,
     );
 
-    // Один узнаваемый сигнал ровно в момент перехода thinking -> ready.
-    // На телефоне это haptic, на desktop — короткий notify sound.
-    WesiFeedback.notify();
+    // В foreground даём один узнаваемый Wesi haptic/sound ровно на
+    // thinking -> ready. В background сигнал отдаёт сама ОС вместе с
+    // системным notification, иначе некоторые устройства вибрируют дважды.
+    if (foreground) WesiFeedback.notify();
 
     final test = sink;
     if (test != null) {
