@@ -14,6 +14,7 @@ import 'core/sync/sync_endpoint.dart';
 import 'core/theme/app_theme.dart';
 import 'core/widgets/update_error_dialog.dart';
 import 'core/widgets/window_controls.dart';
+import 'features/ai/widgets/wesi_ai_answer_ready_host.dart';
 import 'features/audio/widgets/audio_mini_player.dart';
 import 'features/calculator/calculator_screen.dart';
 import 'features/splash/splash_screen.dart';
@@ -88,6 +89,11 @@ class WesiOSApp extends StatelessWidget {
                                     builder: (_) => const EngineDownloadOverlay()),
                               OverlayEntry(builder: (_) => const ShieldOverlay()),
                               OverlayEntry(builder: (_) => const UpdateErrorHost()),
+                              OverlayEntry(
+                                builder: (_) => WesiAiAnswerReadyHost(
+                                  navigatorKey: wesiNavigatorKey,
+                                ),
+                              ),
                               if (isDesktop)
                                 OverlayEntry(
                                   builder: (_) => const Positioned(
