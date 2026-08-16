@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../core/feedback/wesi_feedback.dart';
 import '../../../core/notifications/wesi_notifications.dart';
+import '../../team/services/team_service.dart';
 import '../runtime/wesi_ai_answer_attention.dart';
 
 /// Глобальная плашка «ответ готов» и точка обработки notification deep-links.
@@ -28,13 +29,22 @@ class _WesiAiAnswerReadyHostState extends State<WesiAiAnswerReadyHost> {
   void initState() {
     super.initState();
     WesiNotifications.routeRequest.addListener(_notificationRouteChanged);
+    TeamService.revision.addListener(_employeeSessionChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) => _drainNotificationRoute());
   }
 
   @override
   void dispose() {
     WesiNotifications.routeRequest.removeListener(_notificationRouteChanged);
+    TeamService.revision.removeListener(_employeeSessionChanged);
     super.dispose();
+  }
+
+  void _employeeSessionChanged() {
+    final event = WesiAiAnswerAttention.banner.value;
+    if (event != null && !WesiAiAnswerAttention.belongsToCurrentEmployee(event)) {
+      WesiAiAnswerAttention.dismiss(event);
+    }
   }
 
   void _notificationRouteChanged() {
@@ -81,6 +91,10 @@ class _WesiAiAnswerReadyHostState extends State<WesiAiAnswerReadyHost> {
     return ValueListenableBuilder<WesiAiAnswerReady?>(
       valueListenable: WesiAiAnswerAttention.banner,
       builder: (context, event, _) {
+        final visibleEvent = event != null &&
+                WesiAiAnswerAttention.belongsToCurrentEmployee(event)
+            ? event
+            : null;
         return Positioned(
           top: 10,
           left: 12,
@@ -104,23 +118,23 @@ class _WesiAiAnswerReadyHostState extends State<WesiAiAnswerReadyHost> {
                     child: ScaleTransition(scale: scale, child: child),
                   );
                 },
-                child: event == null
+                child: visibleEvent == null
                     ? const SizedBox.shrink(key: ValueKey<String>('ai-ready-empty'))
                     : ConstrainedBox(
                         key: ValueKey<String>(
-                          'ai-ready-${event.conversationId}-${event.completedAt.microsecondsSinceEpoch}',
+                          'ai-ready-${visibleEvent.conversationId}-${visibleEvent.completedAt.microsecondsSinceEpoch}',
                         ),
                         constraints: const BoxConstraints(maxWidth: 560),
                         child: _AnswerReadyCard(
-                          event: event,
+                          event: visibleEvent,
                           onOpen: () {
                             WesiFeedback.tap();
-                            WesiAiAnswerAttention.dismiss(event);
-                            unawaited(_openRoute(event.route));
+                            WesiAiAnswerAttention.dismiss(visibleEvent);
+                            unawaited(_openRoute(visibleEvent.route));
                           },
                           onDismiss: () {
                             WesiFeedback.tap();
-                            WesiAiAnswerAttention.dismiss(event);
+                            WesiAiAnswerAttention.dismiss(visibleEvent);
                           },
                         ),
                       ),
