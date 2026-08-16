@@ -165,8 +165,23 @@ class WesiAiApi {
           cancellation: cancellation,
         );
         if (streamed != null) return streamed;
+        onActivity?.call(<String, dynamic>{
+          'type': 'activity',
+          'kind': 'status',
+          'label': 'Переключаюсь на основной маршрут Wesi AI',
+          'detail':
+              'Streaming transport недоступен; продолжаю через защищённый WesiOS Main.',
+          'phase': 'done',
+        });
       }
 
+      onActivity?.call(<String, dynamic>{
+        'type': 'activity',
+        'kind': 'status',
+        'label': 'Ожидаю проверенный ответ',
+        'detail': 'Запрос отправлен в WesiOS Main.',
+        'phase': 'start',
+      });
       final request = await _http.postUrl(uri);
       cancellation?.bind(() => request.abort());
       _applyAuth(request, auth);
@@ -180,6 +195,12 @@ class WesiAiApi {
         final code = '${json['code'] ?? 'WAI_REQUEST_FAILED'}';
         throw WesiAiApiException(code, _messageFor(code));
       }
+      onActivity?.call(<String, dynamic>{
+        'type': 'activity',
+        'kind': 'status',
+        'label': 'Ответ проверен сервером',
+        'phase': 'done',
+      });
       return _replyFromPayload(json);
     } on WesiAiApiException {
       rethrow;
