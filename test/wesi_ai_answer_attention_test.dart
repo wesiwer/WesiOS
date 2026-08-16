@@ -37,7 +37,7 @@ void main() {
   });
 
   test('AI notification deep-link keeps exact conversation id', () {
-    const event = WesiAiAnswerReady(
+    final event = WesiAiAnswerReady(
       conversationId: 'conversation_42',
       conversationTitle: 'Проверка',
       personaLabel: 'Зейн',
