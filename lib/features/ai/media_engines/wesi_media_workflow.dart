@@ -74,6 +74,71 @@ class WesiMediaWorkflow {
 
   const WesiMediaWorkflow._();
 
+  static bool get currentDeviceCanRunL4 =>
+      Platform.isWindows || Platform.isLinux || Platform.isMacOS;
+
+  static WesiMediaWorkflowRequest? fromLocalRequest(
+    Map<String, dynamic> raw,
+  ) {
+    final mediaType = '${raw['mediaType'] ?? ''}'.trim().toLowerCase();
+    final prompt = '${raw['prompt'] ?? ''}'.trim();
+    final options = raw['options'] is Map
+        ? Map<String, dynamic>.from(raw['options'] as Map)
+        : <String, dynamic>{};
+    final operation = '${raw['operation'] ?? options['operation'] ?? options['workflow'] ?? ''}'
+        .trim()
+        .toLowerCase();
+
+    final kind = switch (mediaType) {
+      'image' => switch (operation) {
+          'edit' || 'imageedit' => WesiMediaWorkflowKind.imageEdit,
+          'reference' || 'imagereference' => WesiMediaWorkflowKind.imageReference,
+          _ => WesiMediaWorkflowKind.imageGenerate,
+        },
+      'music' || 'audio' => switch (operation) {
+          'stems' || 'musicstems' => WesiMediaWorkflowKind.musicStems,
+          _ => WesiMediaWorkflowKind.musicGenerate,
+        },
+      'video' => switch (operation) {
+          'voice' || 'videovoice' => WesiMediaWorkflowKind.videoVoice,
+          'sfx' || 'videosfx' => WesiMediaWorkflowKind.videoSfx,
+          'subtitles' || 'videosubtitles' => WesiMediaWorkflowKind.videoSubtitles,
+          _ => WesiMediaWorkflowKind.videoCompose,
+        },
+      _ => null,
+    };
+    if (kind == null || prompt.isEmpty) return null;
+
+    final rawInputs = raw['inputPaths'] ?? options['inputs'];
+    final inputPaths = rawInputs is List
+        ? rawInputs
+            .whereType<String>()
+            .map((item) => item.trim())
+            .where((item) => item.isNotEmpty)
+            .toList(growable: false)
+        : const <String>[];
+
+    return WesiMediaWorkflowRequest(
+      kind: kind,
+      prompt: prompt,
+      inputPaths: inputPaths,
+      options: options,
+    );
+  }
+
+  static Future<WesiMediaWorkflowResult> runLocalRequest(
+    Map<String, dynamic> raw,
+  ) async {
+    final request = fromLocalRequest(raw);
+    if (request == null) {
+      return const WesiMediaWorkflowResult(
+        ok: false,
+        code: 'WAI_MEDIA_REQUEST_INVALID',
+      );
+    }
+    return run(request, isWorker: currentDeviceCanRunL4);
+  }
+
   static Future<WesiMediaWorkflowResult> run(
     WesiMediaWorkflowRequest request, {
     required bool isWorker,
