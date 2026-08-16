@@ -1,61 +1,623 @@
-name: Fix const + AppTheme
+name: Temporary tier-aware Wesi AI failover patch
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-const-theme.yml'
 
 permissions:
   contents: write
 
 jobs:
-  fix:
-    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+  patch:
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 0
 
-      - name: Strip const from dynamic AppTheme constructors
+      - name: Patch Relay routing and deployment
         run: |
-          python3 << 'PY'
-          import re, pathlib
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
 
-          DYNAMIC = r'(?:textMuted|textPrimary|textSecondary|glassBorder|background|surface|surfaceLight|glassBackground|carbonDark|carbonMid|carbonLight|carbonHighlight|primary|accent|logoStroke|logoAccent)'
+          def must_replace(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f'anchor not found: {label}')
+              return text.replace(old, new, 1)
 
-          def fix(content: str) -> str:
-              lines = content.split('\n')
-              out = []
-              i = 0
-              while i < len(lines):
-                  line = lines[i]
-                  if re.search(r'\bconst\s+[A-Z]', line):
-                      window = '\n'.join(lines[i:i+12])
-                      if re.search(r'AppTheme\.' + DYNAMIC, window):
-                          line = re.sub(r'\bconst\s+', '', line, count=1)
-                  out.append(line)
-                  i += 1
-              return '\n'.join(out)
+          # google.mjs ---------------------------------------------------------
+          p = Path('server/wesi-ai-relay/google.mjs')
+          text = p.read_text(encoding='utf-8')
+          text = must_replace(
+              text,
+              "import {prepareGeminiAttachments, deleteGeminiFiles, deleteStagedUploads} from './attachment-preprocessor.mjs';\n",
+              "import {prepareGeminiAttachments, deleteGeminiFiles, deleteStagedUploads} from './attachment-preprocessor.mjs';\nimport {geminiKeySlots, normalizeWesiTier, runProviderFailover} from './provider-failover.mjs';\n",
+              'google import',
+          )
+          anchor = """function hasAttachments(input) {
+            return Array.isArray(input?.attachments) && input.attachments.length > 0;
+          }
+          """
+          insert = """export function buildGoogleCandidates(model, tier, googleKey, secrets = {}, timeoutMs = 30000) {
+            const normalized = normalizeWesiTier(tier);
+            if (!normalized) return [];
+            return geminiKeySlots(googleKey, secrets).map(({slot, key}) => ({
+              id: `google:${slot}:${model}`,
+              provider: 'google',
+              model,
+              apiKey: key,
+              credentialSlot: slot,
+              tier: normalized,
+              timeoutMs,
+            }));
+          }
 
-          changed = []
-          for path in pathlib.Path('lib').rglob('*.dart'):
-              text = path.read_text(encoding='utf-8')
-              fixed = fix(text)
-              if fixed != text:
-                  path.write_text(fixed, encoding='utf-8')
-                  changed.append(str(path))
-                  print(f'fixed: {path}')
+          export function buildFastCandidates(googleKey, secrets = {}) {
+            const candidates = [
+              ...buildGoogleCandidates(
+                secrets.WESI_GEMINI_FAST_MODEL || 'gemini-3.5-flash-lite',
+                'fast',
+                googleKey,
+                secrets,
+                22000,
+              ),
+              {
+                id: 'groq:fast',
+                provider: 'groq',
+                model: secrets.WESI_GROQ_FAST_MODEL || 'llama-3.1-8b-instant',
+                tier: 'fast',
+                timeoutMs: 18000,
+              },
+              {
+                id: 'mistral:fast',
+                provider: 'mistral',
+                model: secrets.WESI_MISTRAL_FAST_MODEL || 'mistral-small-latest',
+                tier: 'fast',
+                timeoutMs: 18000,
+              },
+            ];
+            const openRouterModel = String(secrets.WESI_OPENROUTER_FAST_MODEL || '').trim();
+            if (openRouterModel) {
+              candidates.push({
+                id: 'openrouter:fast',
+                provider: 'openrouter',
+                model: openRouterModel,
+                tier: 'fast',
+                timeoutMs: 18000,
+              });
+            }
+            return candidates;
+          }
 
-          print(f'Total fixed files: {len(changed)}')
-          if not changed:
-              print('Nothing to fix')
+          export function buildFinalizerCandidates(tier, googleKey, secrets = {}) {
+            const normalized = normalizeWesiTier(tier);
+            if (normalized !== 'pro' && normalized !== 'ultra') return [];
+            const googleModel = normalized === 'ultra'
+              ? secrets.WESI_GEMINI_ULTRA_MODEL || secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash'
+              : secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash';
+            const mistralModel = normalized === 'ultra'
+              ? secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest'
+              : secrets.WESI_MISTRAL_PRO_MODEL || 'mistral-large-latest';
+            const groqModel = normalized === 'ultra'
+              ? secrets.WESI_GROQ_ULTRA_MODEL || 'openai/gpt-oss-120b'
+              : secrets.WESI_GROQ_PRO_MODEL || 'openai/gpt-oss-120b';
+            const candidates = [
+              ...buildGoogleCandidates(googleModel, normalized, googleKey, secrets, normalized === 'ultra' ? 58000 : 52000),
+              {id: `mistral:${normalized}:final`, provider: 'mistral', model: mistralModel, tier: normalized, timeoutMs: 52000},
+              {id: `groq:${normalized}:final`, provider: 'groq', model: groqModel, tier: normalized, timeoutMs: 52000},
+            ];
+            const openRouterModel = String(
+              normalized === 'ultra' ? secrets.WESI_OPENROUTER_ULTRA_MODEL || '' : secrets.WESI_OPENROUTER_PRO_MODEL || '',
+            ).trim();
+            if (openRouterModel) {
+              candidates.push({
+                id: `openrouter:${normalized}:final`,
+                provider: 'openrouter',
+                model: openRouterModel,
+                tier: normalized,
+                timeoutMs: 52000,
+              });
+            }
+            return candidates;
+          }
+
+          function hasAttachments(input) {
+            return Array.isArray(input?.attachments) && input.attachments.length > 0;
+          }
+          """
+          text = must_replace(text, anchor, insert, 'google candidate builders')
+          text = must_replace(
+              text,
+              "return callGoogleText(candidate.model, input, googleKey, {timeoutMs, signal});",
+              "return callGoogleText(candidate.model, input, candidate.apiKey || googleKey, {timeoutMs, signal});",
+              'google candidate key',
+          )
+          old_first = """async function firstAvailable(candidates, input, googleKey, secrets, options = {}) {
+            let last = {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
+            for (const candidate of candidates) {
+              const result = await safeCandidate(candidate, input, googleKey, secrets, options);
+              if (result.ok) return {...result, provider: candidate.provider, model: candidate.model};
+              last = result;
+            }
+            return last;
+          }
+          """
+          new_first = """async function firstAvailable(candidates, input, googleKey, secrets, options = {}) {
+            const tier = normalizeWesiTier(candidates?.[0]?.tier);
+            if (!tier) return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED'};
+            return runProviderFailover({
+              tier,
+              candidates,
+              invoke: (candidate) => safeCandidate(candidate, input, googleKey, secrets, options),
+            });
+          }
+          """
+          text = must_replace(text, old_first, new_first, 'firstAvailable')
+
+          old_primary = """  const primary = normalized === 'pro'
+            ? [
+                {provider: 'groq', model: 'openai/gpt-oss-120b', timeoutMs: 28000},
+                {provider: 'mistral', model: secrets.WESI_MISTRAL_PRO_MODEL || 'mistral-large-latest', timeoutMs: 28000},
+              ]
+            : [
+                {provider: 'groq', model: 'openai/gpt-oss-120b', timeoutMs: 32000},
+                {provider: 'mistral', model: secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest', timeoutMs: 32000},
+                {provider: 'openrouter', model: 'openrouter/free', timeoutMs: 32000},
+              ];
+          const results = await Promise.all(primary.map(async (candidate) => {
+            const result = await safeCandidate(candidate, advisory, googleKey, secrets, {signal});
+            return result.ok ? {...result, provider: candidate.provider, model: candidate.model} : result;
+          }));
+          let advisors = results.filter((item) => item.ok);
+
+          // Pro prefers two strong independent opinions; OpenRouter fills a missing
+          // seat but does not add latency when both primary advisors are healthy.
+          if (normalized === 'pro' && advisors.length < 2 && secrets.OPENROUTER_API_KEY) {
+            const fallbackCandidate = {provider: 'openrouter', model: 'openrouter/free', timeoutMs: 24000};
+            const fallback = await safeCandidate(fallbackCandidate, advisory, googleKey, secrets, {signal});
+            if (fallback.ok) advisors = advisors.concat({...fallback, provider: fallbackCandidate.provider, model: fallbackCandidate.model});
+          }
+          """
+          new_primary = """  const primary = normalized === 'pro'
+            ? [
+                {
+                  id: 'groq:pro:advisor', provider: 'groq',
+                  model: secrets.WESI_GROQ_PRO_MODEL || 'openai/gpt-oss-120b',
+                  tier: 'pro', timeoutMs: 28000,
+                },
+                {
+                  id: 'mistral:pro:advisor', provider: 'mistral',
+                  model: secrets.WESI_MISTRAL_PRO_MODEL || 'mistral-large-latest',
+                  tier: 'pro', timeoutMs: 28000,
+                },
+              ]
+            : [
+                {
+                  id: 'groq:ultra:advisor', provider: 'groq',
+                  model: secrets.WESI_GROQ_ULTRA_MODEL || 'openai/gpt-oss-120b',
+                  tier: 'ultra', timeoutMs: 32000,
+                },
+                {
+                  id: 'mistral:ultra:advisor', provider: 'mistral',
+                  model: secrets.WESI_MISTRAL_ULTRA_MODEL || 'mistral-large-latest',
+                  tier: 'ultra', timeoutMs: 32000,
+                },
+              ];
+          const ultraOpenRouterModel = String(secrets.WESI_OPENROUTER_ULTRA_MODEL || '').trim();
+          if (normalized === 'ultra' && ultraOpenRouterModel) {
+            primary.push({
+              id: 'openrouter:ultra:advisor', provider: 'openrouter',
+              model: ultraOpenRouterModel, tier: 'ultra', timeoutMs: 32000,
+            });
+          }
+          const results = await Promise.all(primary.map((candidate) =>
+            firstAvailable([candidate], advisory, googleKey, secrets, {signal})
+          ));
+          let advisors = results.filter((item) => item.ok);
+
+          // Pro may fill a missing advisor seat only with an explicitly assigned
+          // Pro OpenRouter model. Dynamic `openrouter/free` is intentionally not
+          // used because it can violate the Fast < Pro < Maximum quality contract.
+          const proOpenRouterModel = String(secrets.WESI_OPENROUTER_PRO_MODEL || '').trim();
+          if (normalized === 'pro' && advisors.length < 2 && secrets.OPENROUTER_API_KEY && proOpenRouterModel) {
+            const fallbackCandidate = {
+              id: 'openrouter:pro:advisor', provider: 'openrouter',
+              model: proOpenRouterModel, tier: 'pro', timeoutMs: 24000,
+            };
+            const fallback = await firstAvailable([fallbackCandidate], advisory, googleKey, secrets, {signal});
+            if (fallback.ok) advisors = advisors.concat(fallback);
+          }
+          """
+          text = must_replace(text, old_primary, new_primary, 'ensemble advisors')
+
+          start = text.index("async function callEnsemble(tier, input, googleKey, secrets, options = {}) {")
+          end = text.index("\nexport async function callTextRoute", start)
+          if start < 0 or end < 0:
+              raise SystemExit('callEnsemble block not found')
+          new_ensemble = """async function callEnsemble(tier, input, googleKey, secrets, options = {}) {
+            const prepared = await prepareWesiEnsemble(tier, input, googleKey, {secrets, signal: options.signal || null});
+            const candidates = buildFinalizerCandidates(tier, googleKey, secrets);
+            if (!prepared.ok) {
+              return firstAvailable(candidates, input, googleKey, secrets, {signal: options.signal || null});
+            }
+            const final = await firstAvailable(
+              candidates,
+              prepared.finalizerInput,
+              googleKey,
+              secrets,
+              {signal: options.signal || null},
+            );
+            if (final.ok) {
+              return {...final, provider: tier === 'ultra' ? 'wesi-maximum' : 'wesi-pro', model: 'ensemble'};
+            }
+            // Do not silently degrade Pro/Maximum to a single advisor. If every
+            // same-tier finalizer is unavailable the request fails honestly.
+            return final;
+          }
+          """
+          text = text[:start] + new_ensemble + text[end:]
+
+          start = text.index("export async function callTextRoute(route, input, googleKey, options = {}) {")
+          if start < 0:
+              raise SystemExit('callTextRoute block not found')
+          new_route = """export async function callTextRoute(route, input, googleKey, options = {}) {
+            const direct = parseGoogleRoute(route);
+            if (direct) return callGoogleText(direct.model, input, googleKey, options);
+
+            const tier = parseWesiRoute(route);
+            if (!tier) return {ok: false, status: 400, code: 'WAI_ROUTE_UNAVAILABLE'};
+            const secrets = options.secrets || providerSecrets();
+
+            if (hasAttachments(input)) {
+              const model = tier === 'fast'
+                ? secrets.WESI_GEMINI_FAST_MODEL || 'gemini-3.5-flash-lite'
+                : tier === 'pro'
+                  ? secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash'
+                  : secrets.WESI_GEMINI_ULTRA_MODEL || secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash';
+              const result = await firstAvailable(
+                buildGoogleCandidates(model, tier, googleKey, secrets, 60000),
+                input,
+                googleKey,
+                secrets,
+                {signal: options.signal || null},
+              );
+              return result.ok ? {...result, provider: 'google', model} : result;
+            }
+
+            if (tier === 'fast') {
+              return firstAvailable(
+                buildFastCandidates(googleKey, secrets),
+                input,
+                googleKey,
+                secrets,
+                {signal: options.signal || null},
+              );
+            }
+            if (tier === 'pro') return callEnsemble('pro', input, googleKey, secrets, options);
+            return callEnsemble('ultra', input, googleKey, secrets, options);
+          }
+          """
+          text = text[:start] + new_route
+          p.write_text(text, encoding='utf-8')
+
+          # text-stream.mjs ----------------------------------------------------
+          p = Path('server/wesi-ai-relay/text-stream.mjs')
+          text = p.read_text(encoding='utf-8')
+          old_import = "import {callGoogleText, parseGoogleRoute, prepareWesiEnsemble} from './google.mjs';\n"
+          new_import = """import {
+            buildFastCandidates,
+            buildFinalizerCandidates,
+            buildGoogleCandidates,
+            parseGoogleRoute,
+            prepareWesiEnsemble,
+          } from './google.mjs';
+          import {normalizeWesiTier, runProviderFailover} from './provider-failover.mjs';
+          """
+          text = must_replace(text, old_import, new_import, 'stream imports')
+          text = must_replace(
+              text,
+              "return streamGoogle(candidate.model, input, googleKey, signal, onDelta);",
+              "return streamGoogle(candidate.model, input, candidate.apiKey || googleKey, signal, onDelta);",
+              'stream candidate key',
+          )
+          old_stream_first = """async function firstAvailableStream(candidates, input, googleKey, secrets, signal, onDelta) {
+            let last = {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED', emitted: false};
+            for (const candidate of candidates) {
+              const result = await streamCandidate(candidate, input, googleKey, secrets, signal, onDelta);
+              if (result.ok) return {...result, provider: candidate.provider, model: candidate.model};
+              if (result.emitted) return result;
+              last = result;
+            }
+            return last;
+          }
+          """
+          new_stream_first = """async function firstAvailableStream(candidates, input, googleKey, secrets, signal, onDelta) {
+            const tier = normalizeWesiTier(candidates?.[0]?.tier);
+            if (!tier) return {ok: false, status: 503, code: 'WAI_PROVIDER_NOT_CONFIGURED', emitted: false};
+            return runProviderFailover({
+              tier,
+              candidates,
+              invoke: (candidate) => streamCandidate(candidate, input, googleKey, secrets, signal, onDelta),
+            });
+          }
+          """
+          text = must_replace(text, old_stream_first, new_stream_first, 'stream firstAvailable')
+
+          start = text.index("async function streamEnsemble(tier, input, googleKey, secrets, signal, onDelta) {")
+          end = text.index("\nexport async function streamTextRoute", start)
+          if start < 0 or end < 0:
+              raise SystemExit('streamEnsemble block not found')
+          new_stream_ensemble = """async function streamEnsemble(tier, input, googleKey, secrets, signal, onDelta) {
+            const prepared = await prepareWesiEnsemble(tier, input, googleKey, {secrets, signal});
+            const candidates = buildFinalizerCandidates(tier, googleKey, secrets);
+            const finalInput = prepared.ok ? prepared.finalizerInput : input;
+            const final = await firstAvailableStream(candidates, finalInput, googleKey, secrets, signal, onDelta);
+            if (final.ok) {
+              return {...final, provider: tier === 'ultra' ? 'wesi-maximum' : 'wesi-pro', model: 'ensemble'};
+            }
+            return final;
+          }
+          """
+          text = text[:start] + new_stream_ensemble + text[end:]
+
+          start = text.index("export async function streamTextRoute(route, input, googleKey, signal, onDelta, options = {}) {")
+          if start < 0:
+              raise SystemExit('streamTextRoute block not found')
+          new_stream_route = """export async function streamTextRoute(route, input, googleKey, signal, onDelta, options = {}) {
+            const direct = parseGoogleRoute(route);
+            if (direct) return streamGoogle(direct.model, input, googleKey, signal, onDelta);
+
+            const tier = parseWesiRoute(route);
+            if (!tier) return {ok: false, status: 400, code: 'WAI_ROUTE_UNAVAILABLE', emitted: false};
+            const secrets = options.secrets || providerSecrets();
+
+            if (hasAttachments(input)) {
+              const model = tier === 'fast'
+                ? secrets.WESI_GEMINI_FAST_MODEL || 'gemini-3.5-flash-lite'
+                : tier === 'pro'
+                  ? secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash'
+                  : secrets.WESI_GEMINI_ULTRA_MODEL || secrets.WESI_GEMINI_PRO_MODEL || 'gemini-3.5-flash';
+              const result = await firstAvailableStream(
+                buildGoogleCandidates(model, tier, googleKey, secrets, 60000),
+                input,
+                googleKey,
+                secrets,
+                signal,
+                onDelta,
+              );
+              return result.ok ? {...result, provider: 'google', model} : result;
+            }
+            if (tier === 'fast') {
+              return firstAvailableStream(
+                buildFastCandidates(googleKey, secrets),
+                input,
+                googleKey,
+                secrets,
+                signal,
+                onDelta,
+              );
+            }
+            if (tier === 'pro') return streamEnsemble('pro', input, googleKey, secrets, signal, onDelta);
+            return streamEnsemble('ultra', input, googleKey, secrets, signal, onDelta);
+          }
+          """
+          text = text[:start] + new_stream_route
+          p.write_text(text, encoding='utf-8')
+
+          # deploy-relay.sh ----------------------------------------------------
+          p = Path('server/wesi-ai-relay/deploy-relay.sh')
+          text = p.read_text(encoding='utf-8')
+          text = must_replace(
+              text,
+              "      GEMINI_API_KEY_B64) GEMINI_API_KEY=\"$decoded\" ;;\n",
+              """      GEMINI_API_KEY_B64) GEMINI_API_KEY="$decoded" ;;
+                    GEMINI_API_KEY_2_B64) GEMINI_API_KEY_2="$decoded" ;;
+                    GEMINI_API_KEY_3_B64) GEMINI_API_KEY_3="$decoded" ;;
+                    GEMINI_API_KEY_4_B64) GEMINI_API_KEY_4="$decoded" ;;
+                    GEMINI_API_KEY_5_B64) GEMINI_API_KEY_5="$decoded" ;;
+              """,
+              'deploy key decode',
+          )
+          text = must_replace(
+              text,
+              "  for optional in GROQ_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY; do\n",
+              "  for optional in GEMINI_API_KEY_2 GEMINI_API_KEY_3 GEMINI_API_KEY_4 GEMINI_API_KEY_5 GROQ_API_KEY MISTRAL_API_KEY OPENROUTER_API_KEY; do\n",
+              'deploy newline validation',
+          )
+          text = must_replace(
+              text,
+              "for file in server.mjs auth.mjs google.mjs text-stream.mjs attachment-preprocessor.mjs staged-upload.mjs google-media.mjs google-artifact.mjs media-cache.mjs package.json; do",
+              "for file in server.mjs auth.mjs google.mjs provider-failover.mjs text-stream.mjs attachment-preprocessor.mjs staged-upload.mjs google-media.mjs google-artifact.mjs media-cache.mjs package.json; do",
+              'deploy source list',
+          )
+          text = must_replace(
+              text,
+              "  : >\"$PROVIDER_ENV_FILE\"\n  [ -n \"${GROQ_API_KEY:-}\" ] && printf \"GROQ_API_KEY=%s\\n\" \"$GROQ_API_KEY\" >>\"$PROVIDER_ENV_FILE\"\n",
+              """  : >"$PROVIDER_ENV_FILE"
+                [ -n "${GEMINI_API_KEY_2:-}" ] && printf "GEMINI_API_KEY_2=%s\n" "$GEMINI_API_KEY_2" >>"$PROVIDER_ENV_FILE"
+                [ -n "${GEMINI_API_KEY_3:-}" ] && printf "GEMINI_API_KEY_3=%s\n" "$GEMINI_API_KEY_3" >>"$PROVIDER_ENV_FILE"
+                [ -n "${GEMINI_API_KEY_4:-}" ] && printf "GEMINI_API_KEY_4=%s\n" "$GEMINI_API_KEY_4" >>"$PROVIDER_ENV_FILE"
+                [ -n "${GEMINI_API_KEY_5:-}" ] && printf "GEMINI_API_KEY_5=%s\n" "$GEMINI_API_KEY_5" >>"$PROVIDER_ENV_FILE"
+                [ -n "${GROQ_API_KEY:-}" ] && printf "GROQ_API_KEY=%s\n" "$GROQ_API_KEY" >>"$PROVIDER_ENV_FILE"
+              """,
+              'deploy provider env',
+          )
+          p.write_text(text, encoding='utf-8')
+
+          # configure-wesi-ai-router.yml --------------------------------------
+          p = Path('.github/workflows/configure-wesi-ai-router.yml')
+          text = p.read_text(encoding='utf-8')
+          text = must_replace(
+              text,
+              "          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}\n",
+              """          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+                    GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+                    GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+                    GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
+                    GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+              """,
+              'router extra env',
+          )
+          text = must_replace(
+              text,
+              "          names = ['GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY']\n",
+              "          names = ['GEMINI_API_KEY_2','GEMINI_API_KEY_3','GEMINI_API_KEY_4','GEMINI_API_KEY_5','GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY']\n",
+              'router provider names',
+          )
+          text = must_replace(
+              text,
+              "            case \"$key\" in GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;; *) echo \"bad provider key\" >&2; exit 2;; esac\n",
+              "            case \"$key\" in GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;; *) echo \"bad provider key\" >&2; exit 2;; esac\n",
+              'router provider allowlist',
+          )
+          p.write_text(text, encoding='utf-8')
+
+          # deploy-wesi-ai.yml -------------------------------------------------
+          p = Path('.github/workflows/deploy-wesi-ai.yml')
+          text = p.read_text(encoding='utf-8')
+          text = must_replace(
+              text,
+              "          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}\n          GROQ_KEY: ${{ secrets.GROQ_API_KEY }}\n",
+              """          GEMINI_KEY: ${{ secrets.GEMINI_API_KEY }}
+                    GEMINI_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+                    GEMINI_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+                    GEMINI_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+                    GEMINI_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
+                    GROQ_KEY: ${{ secrets.GROQ_API_KEY }}
+              """,
+              'deploy workflow sealed env',
+          )
+          text = must_replace(
+              text,
+              "          if os.environ.get('ZANE_VOICE'): values['WESI_ZANE_TTS_VOICE_B64'] = os.environ['ZANE_VOICE']\n",
+              """          for index in range(2, 6):
+                        value = os.environ.get(f'GEMINI_KEY_{index}', '').strip()
+                        if value: values[f'GEMINI_API_KEY_{index}_B64'] = value
+                    if os.environ.get('ZANE_VOICE'): values['WESI_ZANE_TTS_VOICE_B64'] = os.environ['ZANE_VOICE']
+              """,
+              'deploy workflow sealed values',
+          )
+          # The later provider refresh must preserve the secondary Gemini keys.
+          marker = "      - name: Install free provider secrets on Relay\n"
+          idx = text.find(marker)
+          if idx < 0:
+              raise SystemExit('provider refresh step not found')
+          tail = text[idx:]
+          tail = must_replace(
+              tail,
+              "          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}\n",
+              """          GEMINI_API_KEY_2: ${{ secrets.GEMINI_API_KEY_2 }}
+                    GEMINI_API_KEY_3: ${{ secrets.GEMINI_API_KEY_3 }}
+                    GEMINI_API_KEY_4: ${{ secrets.GEMINI_API_KEY_4 }}
+                    GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}
+                    GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+              """,
+              'provider refresh env',
+          )
+          tail = must_replace(
+              tail,
+              "              for name in ('GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY'):\n",
+              "              for name in ('GEMINI_API_KEY_2','GEMINI_API_KEY_3','GEMINI_API_KEY_4','GEMINI_API_KEY_5','GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY'):\n",
+              'provider refresh names',
+          )
+          tail = must_replace(
+              tail,
+              "            case \"$key\" in GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;; *) echo 'bad provider key' >&2; exit 2;; esac\n",
+              "            case \"$key\" in GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;; *) echo 'bad provider key' >&2; exit 2;; esac\n",
+              'provider refresh allowlist',
+          )
+          text = text[:idx] + tail
+          p.write_text(text, encoding='utf-8')
+
+          # ensemble regression test: OpenRouter must be assigned explicitly.
+          p = Path('server/wesi-ai-relay/ensemble.test.mjs')
+          text = p.read_text(encoding='utf-8')
+          text = must_replace(
+              text,
+              "      secrets: {GROQ_API_KEY: 'g', MISTRAL_API_KEY: 'm', OPENROUTER_API_KEY: 'o'},\n    });\n    assert.equal(result.answer, 'MAX_FINAL');",
+              "      secrets: {GROQ_API_KEY: 'g', MISTRAL_API_KEY: 'm', OPENROUTER_API_KEY: 'o', WESI_OPENROUTER_ULTRA_MODEL: 'test-ultra-model'},\n    });\n    assert.equal(result.answer, 'MAX_FINAL');",
+              'ensemble explicit openrouter',
+          )
+          p.write_text(text, encoding='utf-8')
+
+          # Extend failover tests against the actual tier pools.
+          p = Path('server/wesi-ai-relay/provider-failover.test.mjs')
+          text = p.read_text(encoding='utf-8')
+          text = must_replace(
+              text,
+              "} from './provider-failover.mjs';\n",
+              "} from './provider-failover.mjs';\nimport {buildFastCandidates, buildFinalizerCandidates} from './google.mjs';\n",
+              'failover test import',
+          )
+          text += """
+
+          test('actual Fast pool contains only Fast candidates and never dynamic openrouter/free', () => {
+            const candidates = buildFastCandidates('g-primary', {
+              GEMINI_API_KEY_2: 'g-second',
+              GROQ_API_KEY: 'groq',
+              MISTRAL_API_KEY: 'mistral',
+              OPENROUTER_API_KEY: 'openrouter',
+            });
+            assert.ok(candidates.length >= 4);
+            assert.ok(candidates.every((item) => item.tier === 'fast'));
+            assert.equal(candidates.some((item) => item.model === 'openrouter/free'), false);
+          });
+
+          test('Pro and Maximum finalizer pools stay in their declared tier', () => {
+            const pro = buildFinalizerCandidates('pro', 'g-primary', {GEMINI_API_KEY_2: 'g-second'});
+            const maximum = buildFinalizerCandidates('ultra', 'g-primary', {GEMINI_API_KEY_2: 'g-second'});
+            assert.ok(pro.length >= 4);
+            assert.ok(maximum.length >= 4);
+            assert.ok(pro.every((item) => item.tier === 'pro'));
+            assert.ok(maximum.every((item) => item.tier === 'ultra'));
+          });
+          """
+          p.write_text(text, encoding='utf-8')
+
+          # README -------------------------------------------------------------
+          p = Path('server/wesi-ai-relay/README.md')
+          text = p.read_text(encoding='utf-8')
+          text = must_replace(
+              text,
+              "| `GEMINI_API_KEY` | provider credential, устанавливается только на Relay |\n",
+              """| `GEMINI_API_KEY` | основной Gemini credential, устанавливается только на Relay |
+              | `GEMINI_API_KEY_2` … `GEMINI_API_KEY_5` | необязательные резервные Gemini credentials для same-tier failover; одинаковые ключи дедуплицируются |
+              """,
+              'README key table',
+          )
+          text += """
+
+          ## Tier-aware provider failover
+
+          Text routing treats a model tier and an API credential as separate dimensions. Multiple Gemini credentials increase availability of the model already assigned to a tier; they never authorize a lower tier to use a higher-tier model.
+
+          - **Fast**: Gemini Flash Lite credential pool → fast Groq → fast Mistral → optional explicitly configured Fast OpenRouter model. Dynamic `openrouter/free` is not used in Fast because its selected model is not predictable enough to enforce the quality hierarchy.
+          - **Pro**: independent Pro advisors plus a Pro-only finalizer pool. The finalizer tries the configured Gemini Flash credential slots first, then same-tier Mistral/Groq and an optional explicitly assigned Pro OpenRouter model.
+          - **Maximum**: wider Maximum advisor set plus a Maximum-only finalizer pool. It does not fall back to Fast. If every same-tier finalizer is unavailable, the request fails rather than silently presenting a lower-tier single-advisor answer as Maximum.
+
+          `429` and transient provider failures put only the affected provider/model/credential slot into an in-memory exponential cooldown. The next request skips cooling slots. When a cooldown expires the normal priority order automatically makes the primary slot eligible again. Invalid `400`-class requests are not fanned out to other providers.
+
+          Secondary Gemini credentials are configured through GitHub Secrets `GEMINI_API_KEY_2` … `GEMINI_API_KEY_5` and can be refreshed with `Configure Wesi AI Router` without exposing them to Flutter or Main Server. Credentials should represent legitimate provider capacity; the router is for resilience and capacity management, not for bypassing provider restrictions.
+          """
+          p.write_text(text, encoding='utf-8')
           PY
 
-      - name: Commit and push
+          git diff --check
+          for file in server/wesi-ai-relay/*.mjs; do node --check "$file"; done
+          node --test server/wesi-ai-relay/*.test.mjs
+          bash -n server/wesi-ai-relay/deploy-relay.sh
+
+      - name: Commit feature branch
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --staged --quiet; then
-            echo "No changes"
-            exit 0
-          fi
-          git commit -m "fix(theme): remove const from widgets using dynamic AppTheme colors"
-          git push
+          git add server/wesi-ai-relay .github/workflows/configure-wesi-ai-router.yml .github/workflows/deploy-wesi-ai.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "feat(ai): add tier-aware provider failover"
+          git push origin HEAD:fix/wesi-ai-tool-agent-handoff
