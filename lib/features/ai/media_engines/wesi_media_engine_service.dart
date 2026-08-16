@@ -9,6 +9,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../../core/services/update_endpoint.dart';
+import 'wesi_media_archive_guard.dart';
 
 enum WesiMediaEngineKind { image, music, video }
 
@@ -270,6 +271,10 @@ class WesiMediaEngineService {
       if (digest.toString().toLowerCase() != release.sha256Hex) {
         throw const FormatException('sha256_mismatch');
       }
+      await WesiMediaArchiveGuard.validateZip(
+        temp.path,
+        compressedSizeBytes: received,
+      );
 
       _set(kind, WesiMediaInstallProgress(
         stage: WesiMediaInstallStage.extracting,
