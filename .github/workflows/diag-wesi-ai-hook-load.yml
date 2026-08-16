@@ -1,0 +1,57 @@
+name: Validate live Wesi AI hooks
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diag-wesi-ai-hook-load.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - name: Start isolated PocketBase with live hooks
+        env:
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known 2>/dev/null
+          ssh -i ~/.ssh/main_key -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/main_known "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -u
+          tmp="/tmp/wesi-pb-hook-diag-$$"
+          mkdir -p "$tmp/data" "$tmp/migrations"
+          log="$tmp/pocketbase.log"
+          /opt/pocketbase/pocketbase serve --http=127.0.0.1:18090 --dir="$tmp/data" --hooksDir=/opt/pocketbase/pb_hooks --migrationsDir="$tmp/migrations" >"$log" 2>&1 &
+          pid=$!
+          cleanup(){ kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true; rm -rf "$tmp"; }
+          trap cleanup EXIT
+          ready=0
+          for i in $(seq 1 15); do
+            if curl -fsS --max-time 1 http://127.0.0.1:18090/api/health >/dev/null 2>&1; then ready=1; break; fi
+            if ! kill -0 "$pid" 2>/dev/null; then break; fi
+            sleep 1
+          done
+          echo "isolated_ready=$ready"
+          echo '=== startup log ==='
+          tail -n 160 "$log" || true
+          if [ "$ready" = 1 ]; then
+            for path in /api/wesi/ai/capabilities /api/wesi/ai/chat /api/wesi/ai/stream/prepare; do
+              if [ "$path" = '/api/wesi/ai/chat' ]; then
+                code="$(curl -sS -o /tmp/wesi-diag-body -w '%{http_code}' -X POST -H 'Content-Type: application/json' -d '{"persona":"zane","tier":"fast","message":"test"}' "http://127.0.0.1:18090$path" || true)"
+              else
+                code="$(curl -sS -o /tmp/wesi-diag-body -w '%{http_code}' "http://127.0.0.1:18090$path" || true)"
+              fi
+              echo "$path -> $code"
+              head -c 220 /tmp/wesi-diag-body 2>/dev/null | tr '\n' ' '; echo
+            done
+          fi
+          REMOTE
