@@ -8,8 +8,8 @@
 
 - **Этапы 1–10/16: DONE.**
 - **Stage 11/16:** GitHub connector production foundation слит через PR #178 (`0f817169913281d5efa4f5ac9b328f8af753e0dd`), но полный multi-provider Connectors stage остаётся расширяемым milestone и не объявляется завершённым целиком.
-- **Stage 12/16:** реализация Persona Lead/Co-Agent завершена в `agent/wesi-ai-finish-unfinished-20260816`, exact-head focused CI зелёный; production Main hooks и отдельный streaming gateway уже развернуты. До `DONE` нужны PR merge и обязательные full gates.
-- **Следующий новый функциональный этап после закрытия Stage 12: 13/16 — Dynamic subagents.**
+- **Stage 12/16: DONE.** Persona Lead/Co-Agent runtime слит через PR #185 в `main` (`9763c6bd9a4b06280cc950b8adae3ffed8181dcf`). Exact-head full repository gate run **31959830105 — SUCCESS**; Android debug + Windows release run **31959830075 — SUCCESS**.
+- **Следующий функциональный этап: 13/16 — Dynamic subagents.**
 - Stage 10 влит через PR #177, main `93d021aea914969a02f5951db5f78096d8732c11`; полный PR check, Android debug APK и Windows release — green.
 - Stage 9 влит через PR #174, main `cfe172d123b25f8631cf510d520e1d6e389389d7`; полный PR check, Android debug APK и Windows release — green.
 - Stage 8 дополнительно усилен PR #172, main `1d92a484c017bf3cf6996e6b6171726f88a90928`.
@@ -21,6 +21,7 @@
 - В production sealed configuration подтверждены **5 Gemini credential slots** (`GEMINI_API_KEY` + `_2…_5`); Relay installer теперь сохраняет их в provider environment и systemd загружает этот env.
 - Штатный `.github/workflows/deploy-wesi-ai-streaming.yml` переведён на проверенную rootless-Main / Relay-sidecar схему; временные диагностические workflows удалены.
 - Тяжёлые L3/L4 задачи не переносить на основной VPS/Control Plane: при потере worker использовать checkpoint → `waitingForWorker` → resume либо fail-closed для небезопасного повтора.
+- Release version monotonicity remediation: после merge Stage 12 обнаружено, что ветка несла `0.22.11+86`, тогда как `0.22.14+89` уже публиковалась. Итоговый Stage-12 client release исправляется на **0.22.15+90** перед публикацией.
 
 | Этап | Статус | Содержание |
 |---|---|---|
@@ -35,27 +36,29 @@
 | 9/16 | **DONE** | Bounded objective self-debug loop, mandatory verification, bounded repair/re-test, Local Capability validation, fail-closed artifact validation, SHA-256 re-check and validated delivery. PR #174, main `cfe172d123b25f8631cf510d520e1d6e389389d7`. Full PR check + Android debug + Windows release green. |
 | 10/16 | **DONE** | Remote Worker: QR/device pairing, one-time credential delivery, HMAC/replay-safe transport, bounded Control Plane mailbox/heartbeat, durable leases/execution payloads/receipts, Stage-8 scheduler integration, reconnect/pause/resume/cancel, same-worker affinity, ACK-gated lease renewal and fail-closed unsafe worker-loss handling. PR #177, main `93d021aea914969a02f5951db5f78096d8732c11`. Full PR check + Android debug + Windows release green. |
 | 11/16 | **MILESTONE** | Secure Connectors foundation: production GitHub connector, server-side encrypted vault, OAuth token isolation, READ/WRITE/DESTRUCTIVE Capability Broker policy and Connector Manager. Foundation merged via PR #178; remaining providers use the same broker contract as credentials/integrations become available. |
-| 12/16 | **READY FOR FULL GATES** | Real Persona Lead/Co-Agent runtime: typed bounded handoff, complementary Zane/Nirvana review, one revision round, Lead final ownership, read-only scoped tools, no recursion/destructive delegation, safe observable Thinking timeline. Production Main hooks + Relay-hosted streaming gateway are live; focused server/analyze/UI tests green. Await PR/full Android+Windows gates and merge before `DONE`. |
-| 13/16 | **NEXT AFTER STAGE 12 MERGE** | Dynamic subagents + scoped tools/context/budgets + conflict-safe multi-agent workspace. |
+| 12/16 | **DONE** | Real Persona Lead/Co-Agent runtime: typed bounded handoff, complementary Zane/Nirvana review, one revision round, Lead final ownership, read-only scoped tools, no recursion/destructive delegation, safe observable Thinking timeline. PR #185, main `9763c6bd9a4b06280cc950b8adae3ffed8181dcf`; full repository, Android debug and Windows release gates green. |
+| 13/16 | **NEXT** | Dynamic subagents + scoped tools/context/budgets + conflict-safe multi-agent workspace. |
 | 14/16 | TODO | Full Media Engines/workflows: image edit/reference, music stems, video composition/FFmpeg/voice/SFX/subtitles. |
 | 15/16 | TODO | Proactive AI, Budget/Quota, prompt-injection/security/permission-revoke hardening. |
 | 16/16 | TODO | Final autonomous E2E acceptance, production activation and release gates. |
 
 ## Stage 12 acceptance evidence
 
-- Persona Co-Agent protocol/orchestrator/policy and Main stream integration: implemented on current finish branch.
+- Persona Co-Agent protocol/orchestrator/policy and Main stream integration merged through PR #185.
 - Co-Agent tool scope: READ-only intersection; WRITE/DESTRUCTIVE and recursive delegation fail closed.
 - Final response ownership: Lead Persona only; Co-Agent raw reasoning is never exposed.
 - Thinking UI: observable status/work timeline only; Classic hides the work log completely.
 - Exact focused CI run **31949953306 — SUCCESS**: stream-gateway syntax/tests, `flutter analyze --no-fatal-infos`, Co-Agent Thinking timeline tests.
+- Exact-head full repository gate **31959830105 — SUCCESS**: server validations, `flutter analyze`, full `flutter test`.
+- Exact-head platform build run **31959830075 — SUCCESS**: Android debug APK and Windows release both green.
 - Production streaming deployment run **31949953310 — SUCCESS**: Relay + gateway healthy, Main hooks exact-copy verified, external unauthenticated protection smoke 401/401.
-- Client has a dedicated `WESI_AI_STREAM_BASE_URL` edge with safe network fallback to authenticated Main chat. A client release is still required before already-installed builds use this new edge automatically.
+- Client has a dedicated `WESI_AI_STREAM_BASE_URL` edge with safe network fallback to authenticated Main chat. The Stage-12 client release is published only after version monotonicity is restored to `0.22.15+90`.
 
 ## Обязательный порядок продолжения
 
 1. Не переделывать Stage 1–10 и post-Stage-10 UX/persona baseline без воспроизводимого regression.
-2. Закрыть Stage 12 через focused tests → полный PR gate → Android debug → Windows release → merge; только после этого поставить `DONE`.
-3. Затем начинать Stage 13 на отдельной ветке от нового актуального `main`.
+2. Stage 12 закрыт; не переоткрывать без воспроизводимого regression.
+3. Stage 13 вести на отдельной ветке от актуального `main` после release-version remediation.
 4. Dynamic subagents обязаны наследовать Stage-5 Capability Broker, Stage-8 durable scheduling и Stage-12 bounded/safe handoff semantics; никаких скрытых бесконтрольных recursive agents.
 5. Каждый этап: focused tests → полный PR gate → Android debug → Windows release → merge → только затем `DONE`.
 6. Не использовать основной VPS как fallback для тяжёлых L3/L4 вычислений.
