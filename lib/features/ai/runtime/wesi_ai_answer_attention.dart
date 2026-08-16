@@ -47,6 +47,14 @@ class WesiAiAnswerAttention {
   static final ValueNotifier<WesiAiAnswerReady?> banner =
       ValueNotifier<WesiAiAnswerReady?>(null);
 
+  static bool _chatRouteCurrent = false;
+
+  /// Observer подключается к корневому Navigator. В отличие от dispose
+  /// контроллера он видит и случай, когда /ai остаётся живым под другим route.
+  static final NavigatorObserver navigatorObserver = _WesiAiNavigatorObserver();
+
+  static bool get chatVisible => _chatRouteCurrent;
+
   @visibleForTesting
   static void Function(WesiAiAnswerReady event, WesiAiAnswerDelivery delivery)?
       sink;
@@ -65,11 +73,11 @@ class WesiAiAnswerAttention {
 
   static Future<void> complete(
     WesiAiAnswerReady event, {
-    required bool chatVisible,
+    bool? chatVisible,
   }) async {
     final delivery = deliveryFor(
       foreground: _foreground,
-      chatVisible: chatVisible,
+      chatVisible: chatVisible ?? _chatRouteCurrent,
     );
 
     // Один узнаваемый сигнал ровно в момент перехода thinking -> ready.
@@ -92,9 +100,7 @@ class WesiAiAnswerAttention {
         await WesiNotifications.show(WesiNotification(
           id: 'wesi-ai:${event.conversationId}:${event.completedAt.microsecondsSinceEpoch}',
           title: 'Wesi AI · ${event.personaLabel}',
-          body: event.preview.isEmpty
-              ? 'Ответ готов. Нажмите, чтобы открыть диалог.'
-              : event.preview,
+          body: 'Ответ готов в «${event.conversationTitle}». Нажмите, чтобы открыть диалог.',
           kind: NotifyKind.message,
           route: event.route,
         ));
@@ -132,9 +138,36 @@ class WesiAiAnswerAttention {
     }
   }
 
+  static void _routeChanged(Route<dynamic>? route) {
+    _chatRouteCurrent = route?.settings.name == '/ai';
+  }
+
   @visibleForTesting
   static void reset() {
     banner.value = null;
     sink = null;
+    _chatRouteCurrent = false;
+  }
+}
+
+class _WesiAiNavigatorObserver extends NavigatorObserver {
+  @override
+  void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    WesiAiAnswerAttention._routeChanged(route);
+  }
+
+  @override
+  void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    WesiAiAnswerAttention._routeChanged(previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    WesiAiAnswerAttention._routeChanged(newRoute);
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    WesiAiAnswerAttention._routeChanged(previousRoute);
   }
 }
