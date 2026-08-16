@@ -56,6 +56,7 @@ class WesiAiHandoffController extends WesiAiManagedChatController {
 
     unawaited(WesiAiAnswerAttention.complete(
       WesiAiAnswerReady(
+        employeeId: store.employeeId,
         conversationId: currentConversation.id,
         conversationTitle: currentConversation.title,
         personaLabel: personaLabel,
