@@ -6,7 +6,7 @@ on:
       public_host:
         description: 'Foreign Relay DNS hostname, e.g. ai-relay.example.com'
         required: true
-        default: 'ai.wesi-wf.su'
+        default: 'wesi-ai-178-236-247-194.nip.io'
         type: string
   push:
     branches: [main]
@@ -25,8 +25,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     env:
-      PUBLIC_HOST: ${{ inputs.public_host || 'ai.wesi-wf.su' }}
-      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || inputs.public_host || 'ai.wesi-wf.su' }}
+      PUBLIC_HOST: ${{ inputs.public_host || 'wesi-ai-178-236-247-194.nip.io' }}
+      RELAY_SSH_HOST: ${{ secrets.WESI_RELAY_SSH_HOST || inputs.public_host || 'wesi-ai-178-236-247-194.nip.io' }}
       RELAY_SSH_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
