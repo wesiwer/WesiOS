@@ -1,0 +1,41 @@
+name: Diagnose Wesi AI HTTP access
+
+on:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/diag-wesi-ai-access.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  access:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - name: Inspect recent Wesi AI requests
+        env:
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known 2>/dev/null
+          ssh -i ~/.ssh/main_key -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/main_known "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          echo '=== nginx access Wesi AI last 90m ==='
+          "${SUDO[@]}" sh -c "grep -E '/api/wesi/ai/(chat|chat/stream|capabilities)' /var/log/nginx/access.log 2>/dev/null | tail -n 120" || true
+          echo '=== nginx error Wesi AI last 90m ==='
+          "${SUDO[@]}" sh -c "grep -Ei 'wesi|8792|upstream|connect.*failed' /var/log/nginx/error.log 2>/dev/null | tail -n 120" || true
+          echo '=== local unauthenticated status ==='
+          for path in /api/wesi/ai/chat/stream /api/wesi/ai/chat /api/wesi/ai/capabilities; do
+            code="$(curl -sS -o /tmp/wesi-http-body -w '%{http_code}' --max-time 8 "http://127.0.0.1:8090$path" || true)"
+            printf '%s -> %s body=' "$path" "$code"
+            head -c 180 /tmp/wesi-http-body 2>/dev/null | tr '\n' ' '; echo
+          done
+          REMOTE
