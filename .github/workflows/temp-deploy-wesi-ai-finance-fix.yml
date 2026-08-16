@@ -1,0 +1,111 @@
+name: Temporary deploy Wesi AI finance fix
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/temp-deploy-wesi-ai-finance-fix.yml
+permissions:
+  contents: read
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+      - name: Validate finance hooks
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_ai_finance_policy.js
+          node --check server/pb_hooks/wesi_ai_finance_tools.js
+      - name: Prepare Main SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [ -n "${MAIN_HOST:-}" ] || { echo '::error::WESI_SERVER_HOST missing'; exit 1; }
+          [ -n "${MAIN_USER:-}" ] || { echo '::error::WESI_SERVER_USER missing'; exit 1; }
+          [ -n "${KEY:-}" ] || { echo '::error::WESI_SERVER_SSH_KEY missing'; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts
+          else
+            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/main_known_hosts
+      - name: Deploy finance hooks with rollback
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          REMOTE="/tmp/wesi-ai-finance-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" \
+            server/pb_hooks/wesi_ai_finance_policy.js \
+            server/pb_hooks/wesi_ai_finance_tools.js \
+            "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          test -d "$HOOK_DIR"
+          test -s "$REMOTE/wesi_ai_finance_policy.js"
+          test -s "$REMOTE/wesi_ai_finance_tools.js"
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          PB_USER=$(ps -eo user=,comm= | awk '$2 ~ /^pocketbase$/ {print $1; exit}')
+          [ -n "${PB_USER:-}" ] || PB_USER=$(stat -c '%U' "$HOOK_DIR")
+          PB_GROUP=$(id -gn "$PB_USER" 2>/dev/null || stat -c '%G' "$HOOK_DIR")
+          BACKUP="$HOOK_DIR/.wesi-backups/finance-$RANDOM-$(date +%s)"
+          "${SUDO[@]}" mkdir -p "$BACKUP"
+          for name in wesi_ai_finance_policy.js wesi_ai_finance_tools.js; do
+            if [ -f "$HOOK_DIR/$name" ]; then
+              "${SUDO[@]}" cp -a "$HOOK_DIR/$name" "$BACKUP/$name"
+            fi
+          done
+          rollback() {
+            echo 'Finance hook deployment failed; rolling back' >&2
+            for name in wesi_ai_finance_policy.js wesi_ai_finance_tools.js; do
+              if [ -f "$BACKUP/$name" ]; then
+                "${SUDO[@]}" cp -a "$BACKUP/$name" "$HOOK_DIR/$name"
+              fi
+            done
+            "${SUDO[@]}" systemctl restart pocketbase || true
+          }
+          trap rollback ERR
+          for name in wesi_ai_finance_policy.js wesi_ai_finance_tools.js; do
+            "${SUDO[@]}" install -o "$PB_USER" -g "$PB_GROUP" -m 0644 "$REMOTE/$name" "$HOOK_DIR/$name"
+          done
+          "${SUDO[@]}" systemctl restart pocketbase
+          for _ in $(seq 1 30); do
+            if "${SUDO[@]}" systemctl is-active --quiet pocketbase; then break; fi
+            sleep 1
+          done
+          "${SUDO[@]}" systemctl is-active --quiet pocketbase
+          for name in wesi_ai_finance_policy.js wesi_ai_finance_tools.js; do
+            cmp -s "$REMOTE/$name" "$HOOK_DIR/$name"
+          done
+          trap - ERR
+          rm -rf "$REMOTE"
+          echo "Finance hooks installed; backup: $BACKUP"
+          REMOTE_SCRIPT
+      - name: Verify protected Wesi AI endpoint
+        run: |
+          set -euo pipefail
+          code='000'
+          for _ in $(seq 1 10); do
+            code="$(curl -sS -o /tmp/wesi-finance-check.out -w '%{http_code}' --max-time 20 https://api.wesi-inc.ru/api/wesi/ai/capabilities || true)"
+            [ "$code" != '000' ] && break
+            sleep 1
+          done
+          if [ "$code" != '401' ] && [ "$code" != '403' ]; then
+            echo "::error::Wesi AI protected endpoint unhealthy (HTTP $code)"
+            cat /tmp/wesi-finance-check.out 2>/dev/null || true
+            exit 1
+          fi
+          echo "Main Wesi AI finance hooks are live; protected endpoint HTTP $code"
