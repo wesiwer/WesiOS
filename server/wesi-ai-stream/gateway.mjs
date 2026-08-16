@@ -10,6 +10,10 @@ function safeCode(value, fallback = 'WAI_STREAM_FAILED') {
   return /^WAI_[A-Z0-9_]{3,80}$/.test(code) ? code : fallback;
 }
 
+export function diagnosticPayload({requestId = '', stage = 'STREAM_GATEWAY', component = 'Streaming gateway', operation = 'chat.stream', code = 'WAI_STREAM_FAILED', httpStatus = 502, lastSuccess = '', durationMs = 0, detail = ''} = {}) {
+  return {requestId: String(requestId || '').slice(0, 180), stage: String(stage || 'STREAM_GATEWAY').slice(0, 80), component: String(component || 'Streaming gateway').slice(0, 120), operation: String(operation || 'chat.stream').slice(0, 120), code: safeCode(code), httpStatus: Number(httpStatus || 502), lastSuccess: String(lastSuccess || '').slice(0, 120), durationMs: Math.max(0, Number(durationMs || 0) || 0), detail: String(detail || '').slice(0, 500)};
+}
+
 function stripLeadingReasoningBlocks(value) {
   let text = String(value || '').trim();
   for (let turn = 0; turn < 3; turn += 1) {
@@ -186,6 +190,7 @@ async function postPocketBase({pocketBaseUrl, path, body, request, streamSecret,
   if (!response.ok || data.ok !== true) {
     const error = new Error(safeCode(data.code, response.status === 401 ? 'WAI_STREAM_UNAUTHORIZED' : 'WAI_STREAM_MAIN_REJECTED'));
     error.status = response.status;
+    error.diagnostic = data.diagnostic || diagnosticPayload({requestId: body?.requestId || '', stage: 'MAIN', component: 'WesiOS Main', operation: path, code: error.message, httpStatus: response.status, lastSuccess: 'STREAM_GATEWAY'});
     throw error;
   }
   return data;
@@ -247,6 +252,7 @@ async function relayStream({relayUrl, relaySecret, payload, signal, fetchImpl, o
     try { data = await response.json(); } catch {}
     const error = new Error(safeCode(data.code, 'WAI_STREAM_RELAY_REJECTED'));
     error.status = response.status;
+    error.diagnostic = data.diagnostic || diagnosticPayload({requestId, stage: 'RELAY', component: 'Foreign Relay', operation: 'provider.stream', code: error.message, httpStatus: response.status, lastSuccess: 'STREAM_GATEWAY'});
     throw error;
   }
   let finalEvent = null;
@@ -264,6 +270,7 @@ async function relayStream({relayUrl, relaySecret, payload, signal, fetchImpl, o
     if (type === 'error') {
       const error = new Error(safeCode(event.code, 'WAI_PROVIDER_UNAVAILABLE'));
       error.status = Number(event.status || 502);
+      error.diagnostic = event.diagnostic || diagnosticPayload({requestId, stage: 'PROVIDER', component: String(event.provider || 'AI provider'), operation: 'model.stream', code: error.message, httpStatus: error.status, lastSuccess: 'RELAY_CONNECTED'});
       throw error;
     }
   }
@@ -385,6 +392,8 @@ export function createGateway(options = {}) {
   }
 
   return async function handle(req, res) {
+    const requestStartedAt = Date.now();
+    let activeRequestId = '';
     if (req.method === 'GET' && req.url === '/health') {
       res.writeHead(200, {'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store'});
       res.end(JSON.stringify({ok: true, ready: true, service: 'wesi-ai-stream-gateway', streaming: true}));
@@ -414,7 +423,8 @@ export function createGateway(options = {}) {
         fetchImpl,
       });
       const prepared = preparedResponse.prepared;
-      if (!prepared || typeof prepared !== 'object') throw new Error('WAI_STREAM_BAD_PREPARE');
+    if (!prepared || typeof prepared !== 'object') throw new Error('WAI_STREAM_BAD_PREPARE');
+    activeRequestId = String(prepared.requestId || '');
 
       res.writeHead(200, {
         'content-type': 'application/x-ndjson; charset=utf-8',
@@ -635,7 +645,8 @@ export function createGateway(options = {}) {
           name: toolRequest.name,
           ok: toolResult?.ok === true,
           code: toolResult?.code || null,
-          ...(hasDiffMetadata ? {additions: diff.additions, deletions: diff.deletions, files: diff.files} : {}),
+        ...(toolResult?.ok === true ? {} : {diagnostic: toolResult?.diagnostic || diagnosticPayload({requestId: prepared.requestId, stage: 'TOOL', component: toolRequest.name, operation: 'tool.execute', code: toolResult?.code || 'WAI_TOOL_FAILED', httpStatus: 500, lastSuccess: 'TOOL_DISPATCH', detail: toolResult?.message || ''})}),
+        ...(hasDiffMetadata ? {additions: diff.additions, deletions: diff.deletions, files: diff.files} : {}),
           ...(Number.isFinite(Number(toolPayload.transactionCount)) ? {transactionCount: Number(toolPayload.transactionCount)} : {}),
           ...(toolPayload.organizationId ? {organizationId: String(toolPayload.organizationId)} : {}),
           ...(toolPayload.organizationName ? {organizationName: String(toolPayload.organizationName)} : {}),
@@ -681,15 +692,16 @@ export function createGateway(options = {}) {
     } catch (error) {
       if (abort.signal.aborted || res.destroyed) return;
       const code = safeCode(error?.message, 'WAI_STREAM_FAILED');
-      const status = Number(error?.status || 502);
-      if (!res.headersSent) {
+    const status = Number(error?.status || 502);
+    const diagnostic = error?.diagnostic || diagnosticPayload({requestId: activeRequestId, stage: 'STREAM_GATEWAY', component: 'Streaming gateway', operation: 'chat.stream', code, httpStatus: status, lastSuccess: activeRequestId ? 'MAIN_PREPARE' : 'CLIENT_AUTH', durationMs: Date.now() - requestStartedAt, detail: error?.name || ''});
+    if (!res.headersSent) {
         res.writeHead(status >= 400 && status < 600 ? status : 502, {
           'content-type': 'application/json; charset=utf-8',
           'cache-control': 'no-store',
         });
-        res.end(JSON.stringify({ok: false, code}));
+        res.end(JSON.stringify({ok: false, code, requestId: activeRequestId, diagnostic}));
       } else {
-        writeNdjson(res, {type: 'error', code, status});
+        writeNdjson(res, {type: 'error', code, status, requestId: activeRequestId, diagnostic});
         res.end();
       }
     }

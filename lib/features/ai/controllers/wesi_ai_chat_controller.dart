@@ -667,9 +667,13 @@ class WesiAiChatController extends ChangeNotifier {
             employeeId: store.employeeId,
             author: WesiAiMessageAuthor.system,
             kind: WesiAiMessageKind.error,
-            text: e.message,
+            text: e.displayMessage,
             createdAt: at,
-            metadata: <String, dynamic>{'code': e.code},
+            metadata: <String, dynamic>{
+              'code': e.code,
+              'diagnostic': e.diagnostic,
+              if (e.requestId.isNotEmpty) 'requestId': e.requestId,
+            },
           ),
         ],
       );

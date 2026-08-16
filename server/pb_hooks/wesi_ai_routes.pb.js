@@ -59,6 +59,11 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const history = Array.isArray(body.messages) ? body.messages : [];
   const memory = body.memory && typeof body.memory === "object" ? body.memory : {};
   const attachmentsRaw = Array.isArray(body.attachments) ? body.attachments : [];
+  const requestId = "wai_" + Date.now() + "_" + $security.randomString(12);
+  const startedAt = Date.now();
+  const diagnostic = function(stage, component, operation, code, status, lastSuccess, detail) {
+    return {requestId: requestId, stage: String(stage || "MAIN"), component: String(component || "WesiOS Main"), operation: String(operation || "chat"), code: String(code || "WAI_REQUEST_FAILED"), httpStatus: Number(status || 500), lastSuccess: String(lastSuccess || "CLIENT_AUTH"), durationMs: Math.max(0, Date.now() - startedAt), detail: String(detail || "").slice(0, 500)};
+  };
 
   if (["zane", "nirvana", "lobby"].indexOf(persona) < 0) throw new BadRequestError("Некорректный режим Wesi AI");
   if (["fast", "pro", "maximum"].indexOf(tier) < 0) throw new BadRequestError("Некорректный уровень Wesi AI");
@@ -96,10 +101,10 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   }
 
   const personaBundle = personaRuntime.load(persona);
-  if (!personaBundle.ready) return e.json(503, {ok: false, code: "WAI_PERSONA_ENGINE_NOT_READY"});
+  if (!personaBundle.ready) return e.json(503, {ok: false, code: "WAI_PERSONA_ENGINE_NOT_READY", requestId: requestId, diagnostic: diagnostic("MAIN", "PersonaRuntime", "persona.load", "WAI_PERSONA_ENGINE_NOT_READY", 503, "CLIENT_AUTH", persona)});
   const cfg = ai.readRelayConfig();
   const route = cfg.routes[tier] || "";
-  if (!cfg.ready || !route) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED"});
+  if (!cfg.ready || !route) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED", requestId: requestId, diagnostic: diagnostic("MAIN", "RelayConfig", "route.resolve", "WAI_RELAY_NOT_CONFIGURED", 503, "PERSONA_READY", tier)});
 
   const cleanHistory = [];
   for (const item of history) {
@@ -146,7 +151,6 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     );
   }
 
-  const requestId = "wai_" + Date.now() + "_" + $security.randomString(12);
   const relayCall = function(system, phase) {
     const relayRequestId = requestId + "_" + phase;
     const payload = {
@@ -183,7 +187,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   for (let turn = 0; turn < 4; turn++) {
     const currentSystem = systemParts.concat(toolResults.length ? ["[WESI_AI_VERIFIED_TOOL_RESULTS]\n" + JSON.stringify(toolResults)] : []).join("\n\n");
     const generated = relayCall(currentSystem, String(turn + 1));
-    if (!generated.ok) return e.json(generated.status, {ok: false, code: generated.code, requestId: requestId});
+    if (!generated.ok) return e.json(generated.status, {ok: false, code: generated.code, requestId: requestId, diagnostic: diagnostic("PROVIDER", "Foreign Relay", "model.generate", generated.code, generated.status, "MAIN_CONTEXT_READY", "phase=" + String(turn + 1))});
     const toolRequest = toolDefinitions.length ? parseToolRequest(generated.answer) : null;
     if (!toolRequest) {
       return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, answer: generated.answer, toolResults: toolResults});
@@ -203,7 +207,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     const executed = tools.execute(e, ctx, toolRequest.name, toolRequest.arguments, runtimeContext.activeOrganizationId, {
       persona: persona, conversationId: conversationId, requestId: requestId
     });
-    toolResults.push({tool: toolRequest.name, verified: true, ok: executed.ok === true, code: executed.code || null, message: executed.message || null, alternatives: executed.alternatives || null, result: executed.result || null, confirmation: executed.confirmation || null});
+    toolResults.push({tool: toolRequest.name, verified: true, ok: executed.ok === true, code: executed.code || null, message: executed.message || null, alternatives: executed.alternatives || null, result: executed.result || null, confirmation: executed.confirmation || null, diagnostic: executed.ok === true ? null : diagnostic("TOOL", toolRequest.name, "tool.execute", executed.code || "WAI_TOOL_FAILED", 500, "TOOL_DISPATCH", executed.message || "")});
   }
 
   const finalSystem = systemParts.concat([
@@ -211,7 +215,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     "[WESI_AI_FINAL_RESPONSE]\nЛимит инструментов исчерпан. Не вызывай инструменты снова. Дай пользователю итоговый ответ только по verified results и явно сообщи о неуспешных действиях."
   ]).join("\n\n");
   const finalGenerated = relayCall(finalSystem, "final");
-  if (!finalGenerated.ok) return e.json(finalGenerated.status, {ok: false, code: finalGenerated.code, requestId: requestId});
+  if (!finalGenerated.ok) return e.json(finalGenerated.status, {ok: false, code: finalGenerated.code, requestId: requestId, diagnostic: diagnostic("PROVIDER", "Foreign Relay", "model.generate.final", finalGenerated.code, finalGenerated.status, "TOOLS_COMPLETE", "final")});
   return e.json(200, {ok: true, requestId: requestId, persona: persona, tier: tier, answer: finalGenerated.answer, toolResults: toolResults});
 }, $apis.requireAuth("users"));
 
