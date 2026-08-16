@@ -149,76 +149,98 @@ class _WesiAiCameraCaptureScreenState extends State<WesiAiCameraCaptureScreen>
     final controller = _controller;
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            if (controller != null && controller.value.isInitialized)
-              Center(
-                child: AspectRatio(
-                  aspectRatio: controller.value.aspectRatio,
-                  child: CameraPreview(controller),
-                ),
-              )
-            else if (_loading)
-              const Center(child: CircularProgressIndicator())
-            else
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    _error ?? 'Камера недоступна',
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.white),
-                  ),
-                ),
-              ),
-            Positioned(
-              top: 12,
-              left: 12,
-              child: IconButton.filled(
-                style: IconButton.styleFrom(backgroundColor: Colors.black54),
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close, color: Colors.white),
-              ),
-            ),
-            if (_cameras.length > 1)
-              Positioned(
-                top: 12,
-                right: 12,
-                child: IconButton.filled(
-                  style: IconButton.styleFrom(backgroundColor: Colors.black54),
-                  onPressed: _loading || _capturing ? null : _switchCamera,
-                  icon: const Icon(Icons.cameraswitch_outlined, color: Colors.white),
-                ),
-              ),
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: 28,
-              child: Center(
-                child: GestureDetector(
-                  onTap: controller != null && !_loading && !_capturing ? _takePicture : null,
-                  child: Container(
-                    width: 78,
-                    height: 78,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 5),
-                      color: _capturing ? Colors.white38 : Colors.white24,
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (controller != null && controller.value.isInitialized)
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final preview = controller.value.previewSize;
+                return ClipRect(
+                  child: SizedBox.expand(
+                    child: FittedBox(
+                      fit: BoxFit.cover,
+                      child: SizedBox(
+                        width: preview?.height ?? constraints.maxWidth,
+                        height: preview?.width ?? constraints.maxHeight,
+                        child: CameraPreview(controller),
+                      ),
                     ),
-                    child: _capturing
-                        ? const Padding(
-                            padding: EdgeInsets.all(22),
-                            child: CircularProgressIndicator(color: Colors.white, strokeWidth: 3),
-                          )
-                        : null,
                   ),
+                );
+              },
+            )
+          else if (_loading)
+            const Center(child: CircularProgressIndicator())
+          else
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Text(
+                  _error ?? 'Камера недоступна',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(color: Colors.white),
                 ),
               ),
             ),
-          ],
-        ),
+          SafeArea(
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Positioned(
+                  top: 12,
+                  left: 12,
+                  child: IconButton.filled(
+                    style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close, color: Colors.white),
+                  ),
+                ),
+                if (_cameras.length > 1)
+                  Positioned(
+                    top: 12,
+                    right: 12,
+                    child: IconButton.filled(
+                      style: IconButton.styleFrom(backgroundColor: Colors.black54),
+                      onPressed: _loading || _capturing ? null : _switchCamera,
+                      icon: const Icon(Icons.cameraswitch_outlined, color: Colors.white),
+                    ),
+                  ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 30,
+                  child: Center(
+                    child: GestureDetector(
+                      onTap: controller != null && !_loading && !_capturing ? _takePicture : null,
+                      child: Container(
+                        width: 82,
+                        height: 82,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 5),
+                          color: _capturing ? Colors.white38 : Colors.white24,
+                          boxShadow: const [
+                            BoxShadow(color: Colors.black45, blurRadius: 18),
+                          ],
+                        ),
+                        child: _capturing
+                            ? const Padding(
+                                padding: EdgeInsets.all(23),
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                  strokeWidth: 3,
+                                ),
+                              )
+                            : null,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
