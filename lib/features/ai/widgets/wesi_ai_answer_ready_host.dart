@@ -151,7 +151,7 @@ class _AnswerReadyCard extends StatelessWidget {
     return Material(
       elevation: 16,
       color: colors.surface,
-      shadowColor: Colors.black.withValues(alpha: 0.28),
+      shadowColor: Colors.black.withOpacity(0.28),
       borderRadius: BorderRadius.circular(20),
       clipBehavior: Clip.antiAlias,
       child: InkWell(
