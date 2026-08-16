@@ -1,61 +1,145 @@
-name: Fix const + AppTheme
+name: Temporary Wesi AI router sync and deploy
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-const-theme.yml'
 
 permissions:
   contents: write
 
 jobs:
-  fix:
-    runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
+  sync-deploy:
+    runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-tool-agent-handoff
+          fetch-depth: 0
 
-      - name: Strip const from dynamic AppTheme constructors
+      - name: Sync project quota labels into production workflows
         run: |
-          python3 << 'PY'
-          import re, pathlib
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
 
-          DYNAMIC = r'(?:textMuted|textPrimary|textSecondary|glassBorder|background|surface|surfaceLight|glassBackground|carbonDark|carbonMid|carbonLight|carbonHighlight|primary|accent|logoStroke|logoAccent)'
+          p = Path('.github/workflows/configure-wesi-ai-router.yml')
+          text = p.read_text(encoding='utf-8')
+          anchor = """          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}\n          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}\n"""
+          repl = """          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}\n          GEMINI_API_PROJECT: ${{ secrets.GEMINI_API_PROJECT }}\n          GEMINI_API_PROJECT_2: ${{ secrets.GEMINI_API_PROJECT_2 }}\n          GEMINI_API_PROJECT_3: ${{ secrets.GEMINI_API_PROJECT_3 }}\n          GEMINI_API_PROJECT_4: ${{ secrets.GEMINI_API_PROJECT_4 }}\n          GEMINI_API_PROJECT_5: ${{ secrets.GEMINI_API_PROJECT_5 }}\n          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}\n"""
+          if anchor not in text: raise SystemExit('configure env anchor missing')
+          text = text.replace(anchor, repl, 1)
+          anchor = """              'GEMINI_API_KEY_2','GEMINI_API_KEY_3','GEMINI_API_KEY_4','GEMINI_API_KEY_5',\n              'GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY',\n"""
+          repl = """              'GEMINI_API_KEY_2','GEMINI_API_KEY_3','GEMINI_API_KEY_4','GEMINI_API_KEY_5',\n              'GEMINI_API_PROJECT','GEMINI_API_PROJECT_2','GEMINI_API_PROJECT_3','GEMINI_API_PROJECT_4','GEMINI_API_PROJECT_5',\n              'GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY',\n"""
+          if anchor not in text: raise SystemExit('configure names anchor missing')
+          text = text.replace(anchor, repl, 1)
+          anchor = """              GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;;\n"""
+          repl = """              GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5|GEMINI_API_PROJECT|GEMINI_API_PROJECT_2|GEMINI_API_PROJECT_3|GEMINI_API_PROJECT_4|GEMINI_API_PROJECT_5|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;;\n"""
+          if anchor not in text: raise SystemExit('configure allowlist anchor missing')
+          p.write_text(text.replace(anchor, repl, 1), encoding='utf-8')
 
-          def fix(content: str) -> str:
-              lines = content.split('\n')
-              out = []
-              i = 0
-              while i < len(lines):
-                  line = lines[i]
-                  if re.search(r'\bconst\s+[A-Z]', line):
-                      window = '\n'.join(lines[i:i+12])
-                      if re.search(r'AppTheme\.' + DYNAMIC, window):
-                          line = re.sub(r'\bconst\s+', '', line, count=1)
-                  out.append(line)
-                  i += 1
-              return '\n'.join(out)
+          p = Path('.github/workflows/deploy-wesi-ai.yml')
+          text = p.read_text(encoding='utf-8')
+          anchor = """          GEMINI_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}\n          GROQ_KEY: ${{ secrets.GROQ_API_KEY }}\n"""
+          repl = """          GEMINI_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}\n          GEMINI_PROJECT: ${{ secrets.GEMINI_API_PROJECT }}\n          GEMINI_PROJECT_2: ${{ secrets.GEMINI_API_PROJECT_2 }}\n          GEMINI_PROJECT_3: ${{ secrets.GEMINI_API_PROJECT_3 }}\n          GEMINI_PROJECT_4: ${{ secrets.GEMINI_API_PROJECT_4 }}\n          GEMINI_PROJECT_5: ${{ secrets.GEMINI_API_PROJECT_5 }}\n          GROQ_KEY: ${{ secrets.GROQ_API_KEY }}\n"""
+          if anchor not in text: raise SystemExit('deploy sealed env anchor missing')
+          text = text.replace(anchor, repl, 1)
+          anchor = """          for index in range(2, 6):\n              value = os.environ.get(f'GEMINI_KEY_{index}', '').strip()\n              if value:\n                  values[f'GEMINI_API_KEY_{index}_B64'] = value\n"""
+          repl = """          primary_project = os.environ.get('GEMINI_PROJECT', '').strip()\n          if primary_project:\n              values['GEMINI_API_PROJECT_B64'] = primary_project\n          for index in range(2, 6):\n              value = os.environ.get(f'GEMINI_KEY_{index}', '').strip()\n              if value:\n                  values[f'GEMINI_API_KEY_{index}_B64'] = value\n              project = os.environ.get(f'GEMINI_PROJECT_{index}', '').strip()\n              if project:\n                  values[f'GEMINI_API_PROJECT_{index}_B64'] = project\n"""
+          if anchor not in text: raise SystemExit('deploy sealed python anchor missing')
+          text = text.replace(anchor, repl, 1)
 
-          changed = []
-          for path in pathlib.Path('lib').rglob('*.dart'):
-              text = path.read_text(encoding='utf-8')
-              fixed = fix(text)
-              if fixed != text:
-                  path.write_text(fixed, encoding='utf-8')
-                  changed.append(str(path))
-                  print(f'fixed: {path}')
-
-          print(f'Total fixed files: {len(changed)}')
-          if not changed:
-              print('Nothing to fix')
+          # second provider bundle must preserve project labels when it overwrites provider env
+          anchor = """          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}\n          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}\n"""
+          repl = """          GEMINI_API_KEY_5: ${{ secrets.GEMINI_API_KEY_5 }}\n          GEMINI_API_PROJECT: ${{ secrets.GEMINI_API_PROJECT }}\n          GEMINI_API_PROJECT_2: ${{ secrets.GEMINI_API_PROJECT_2 }}\n          GEMINI_API_PROJECT_3: ${{ secrets.GEMINI_API_PROJECT_3 }}\n          GEMINI_API_PROJECT_4: ${{ secrets.GEMINI_API_PROJECT_4 }}\n          GEMINI_API_PROJECT_5: ${{ secrets.GEMINI_API_PROJECT_5 }}\n          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}\n"""
+          if anchor not in text: raise SystemExit('deploy provider env anchor missing')
+          text = text.replace(anchor, repl, 1)
+          anchor = """              'GEMINI_API_KEY_2','GEMINI_API_KEY_3','GEMINI_API_KEY_4','GEMINI_API_KEY_5',\n              'GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY',\n"""
+          repl = """              'GEMINI_API_KEY_2','GEMINI_API_KEY_3','GEMINI_API_KEY_4','GEMINI_API_KEY_5',\n              'GEMINI_API_PROJECT','GEMINI_API_PROJECT_2','GEMINI_API_PROJECT_3','GEMINI_API_PROJECT_4','GEMINI_API_PROJECT_5',\n              'GROQ_API_KEY','MISTRAL_API_KEY','OPENROUTER_API_KEY',\n"""
+          if anchor not in text: raise SystemExit('deploy provider names anchor missing')
+          text = text.replace(anchor, repl, 1)
+          anchor = """              GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;;\n"""
+          repl = """              GEMINI_API_KEY_2|GEMINI_API_KEY_3|GEMINI_API_KEY_4|GEMINI_API_KEY_5|GEMINI_API_PROJECT|GEMINI_API_PROJECT_2|GEMINI_API_PROJECT_3|GEMINI_API_PROJECT_4|GEMINI_API_PROJECT_5|GROQ_API_KEY|MISTRAL_API_KEY|OPENROUTER_API_KEY) ;;\n"""
+          if anchor not in text: raise SystemExit('deploy provider allowlist anchor missing')
+          p.write_text(text.replace(anchor, repl, 1), encoding='utf-8')
           PY
+          grep -q 'GEMINI_API_PROJECT_5' .github/workflows/configure-wesi-ai-router.yml
+          grep -q 'GEMINI_API_PROJECT_5' .github/workflows/deploy-wesi-ai.yml
+          node --check server/wesi-ai-relay/google.mjs
+          node --check server/wesi-ai-relay/provider-failover.mjs
+          node --test server/wesi-ai-relay/provider-failover.test.mjs
+          bash -n server/wesi-ai-relay/deploy-relay.sh
+          git diff --check
 
-      - name: Commit and push
+      - name: Commit workflow synchronization
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          if git diff --staged --quiet; then
-            echo "No changes"
-            exit 0
+          git add .github/workflows/configure-wesi-ai-router.yml .github/workflows/deploy-wesi-ai.yml
+          if ! git diff --cached --quiet; then
+            git commit -m "fix(ai): preserve Gemini project quota scopes in deploys"
+            git push origin HEAD:fix/wesi-ai-tool-agent-handoff
           fi
-          git commit -m "fix(theme): remove const from widgets using dynamic AppTheme colors"
-          git push
+
+      - name: Prepare Relay SSH
+        env:
+          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${RELAY_HOST:-}" && test -n "${RELAY_USER:-}" && test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/relay_key
+          chmod 600 ~/.ssh/relay_key
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Deploy Router runtime with rollback
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          REMOTE="/tmp/wesi-router-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" server/wesi-ai-relay/google.mjs server/wesi-ai-relay/provider-failover.mjs "$RELAY_USER@$RELAY_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE_SCRIPT'
+          set -euo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=(); else SUDO=(sudo -n); fi
+          APP=/opt/wesi-ai-relay
+          test -d "$APP"
+          backup="/tmp/wesi-router-backup-$(date +%s)"
+          mkdir -p "$backup"
+          cp "$APP/google.mjs" "$APP/provider-failover.mjs" "$backup/"
+          rollback() {
+            echo 'Router deploy failed; rolling back' >&2
+            "${SUDO[@]}" install -o root -g root -m 0644 "$backup/google.mjs" "$APP/google.mjs" || true
+            "${SUDO[@]}" install -o root -g root -m 0644 "$backup/provider-failover.mjs" "$APP/provider-failover.mjs" || true
+            "${SUDO[@]}" systemctl restart wesi-ai-relay || true
+          }
+          trap rollback ERR
+          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/google.mjs" "$APP/google.mjs"
+          "${SUDO[@]}" install -o root -g root -m 0644 "$REMOTE/provider-failover.mjs" "$APP/provider-failover.mjs"
+          "${SUDO[@]}" systemctl restart wesi-ai-relay
+          "${SUDO[@]}" systemctl is-active --quiet wesi-ai-relay
+          curl -fsS --max-time 10 http://127.0.0.1:8787/health > /tmp/wesi-router-health.json
+          grep -q '"ready":true' /tmp/wesi-router-health.json
+          trap - ERR
+          rm -rf "$REMOTE" "$backup"
+          REMOTE_SCRIPT
+
+      - name: Verify public Relay health
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 20 https://ai.wesi-wf.su/health > health.json
+          python3 - <<'PY'
+          import json
+          data=json.load(open('health.json',encoding='utf-8'))
+          assert data.get('ok') is True and data.get('ready') is True, data
+          assert data.get('routing') == ['fast','pro','ultra'], data
+          print('quota-aware Fast / Pro / Maximum Router live')
+          PY
