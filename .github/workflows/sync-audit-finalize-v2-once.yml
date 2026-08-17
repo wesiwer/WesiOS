@@ -52,4 +52,4 @@ jobs:
           git pull --rebase origin main
           git push origin HEAD:main
 
-# Run 3: corrected AudioBeatsSync defining-library import.
+# Run 4: restored full Wesi AI memory test suite before validation.
