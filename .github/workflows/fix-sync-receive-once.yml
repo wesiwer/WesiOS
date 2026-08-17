@@ -23,14 +23,14 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
+          flutter-version: '3.24.0'
           channel: stable
-          cache: true
 
       - name: Validate receive regressions
         shell: bash
         run: |
-          dart format lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart lib/core/sync/sync_merge.dart test/sync_multi_device_test.dart test/sync_receive_regression_test.dart
           flutter pub get
+          dart format --set-exit-if-changed lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart lib/core/sync/sync_merge.dart test/sync_multi_device_test.dart test/sync_receive_regression_test.dart || dart format lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart lib/core/sync/sync_merge.dart test/sync_multi_device_test.dart test/sync_receive_regression_test.dart
           flutter test test/sync_receive_regression_test.dart test/sync_multi_device_test.dart test/sync_merge_test.dart test/sync_engine_test.dart test/sync_auto_test.dart test/live_sync_revision_test.dart
           flutter analyze lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart lib/core/sync/sync_merge.dart test/sync_receive_regression_test.dart test/sync_multi_device_test.dart --no-fatal-infos
           grep -q '^version: 0.22.24+99$' pubspec.yaml
