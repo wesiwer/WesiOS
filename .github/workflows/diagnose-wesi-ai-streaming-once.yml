@@ -14,44 +14,60 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
-      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare Main SSH
+      - name: Prepare Relay SSH
         env:
-          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "${MAIN_HOST:-}"
-          test -n "${MAIN_USER:-}"
+          test -n "${RELAY_HOST:-}"
+          test -n "${RELAY_USER:-}"
           test -n "${KEY:-}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/main_key
-          chmod 600 ~/.ssh/main_key
+          printf '%s\n' "$KEY" > ~/.ssh/relay_key
+          chmod 600 ~/.ssh/relay_key
           if [ -n "${KNOWN:-}" ]; then
-            printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts
+            printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts
           else
-            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
+            ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null
           fi
-          chmod 600 ~/.ssh/main_known_hosts
+          chmod 600 ~/.ssh/relay_known_hosts
 
-      - name: Compare production hooks with main
+      - name: Compare production Streaming Gateway with main
         run: |
           set -euo pipefail
-          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          echo '=== REPOSITORY CHECKSUMS ==='
-          sha256sum server/pb_hooks/wesi_ai_stream.pb.js server/pb_hooks/wesi_ai_routes.pb.js
-          echo '=== PRODUCTION CHECKSUMS ==='
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "sha256sum /opt/pocketbase/pb_hooks/wesi_ai_stream.pb.js /opt/pocketbase/pb_hooks/wesi_ai_routes.pb.js"
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          echo '=== REPOSITORY GATEWAY CHECKSUM ==='
+          sha256sum server/wesi-ai-stream/gateway.mjs server/wesi-ai-stream/server.mjs
+          echo '=== PRODUCTION GATEWAY CHECKSUM ==='
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "sudo -n sha256sum /opt/wesi-ai-stream/gateway.mjs /opt/wesi-ai-stream/server.mjs 2>/dev/null || sha256sum /opt/wesi-ai-stream/gateway.mjs /opt/wesi-ai-stream/server.mjs"
           echo '=== BYTE COMPARISON ==='
-          scp "${SSH[@]}" "$MAIN_USER@$MAIN_HOST:/opt/pocketbase/pb_hooks/wesi_ai_stream.pb.js" /tmp/prod-stream.pb.js
-          scp "${SSH[@]}" "$MAIN_USER@$MAIN_HOST:/opt/pocketbase/pb_hooks/wesi_ai_routes.pb.js" /tmp/prod-routes.pb.js
-          cmp -s server/pb_hooks/wesi_ai_stream.pb.js /tmp/prod-stream.pb.js && echo 'STREAM_MATCH=true' || echo 'STREAM_MATCH=false'
-          cmp -s server/pb_hooks/wesi_ai_routes.pb.js /tmp/prod-routes.pb.js && echo 'ROUTES_MATCH=true' || echo 'ROUTES_MATCH=false'
-          if ! cmp -s server/pb_hooks/wesi_ai_stream.pb.js /tmp/prod-stream.pb.js; then
-            echo '=== STREAM DIFF (NO SECRETS EXPECTED) ==='
-            diff -u /tmp/prod-stream.pb.js server/pb_hooks/wesi_ai_stream.pb.js | head -n 240 || true
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "sudo -n cat /opt/wesi-ai-stream/gateway.mjs 2>/dev/null || cat /opt/wesi-ai-stream/gateway.mjs" > /tmp/prod-gateway.mjs
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "sudo -n cat /opt/wesi-ai-stream/server.mjs 2>/dev/null || cat /opt/wesi-ai-stream/server.mjs" > /tmp/prod-server.mjs
+          cmp -s server/wesi-ai-stream/gateway.mjs /tmp/prod-gateway.mjs && echo 'GATEWAY_MATCH=true' || echo 'GATEWAY_MATCH=false'
+          cmp -s server/wesi-ai-stream/server.mjs /tmp/prod-server.mjs && echo 'SERVER_MATCH=true' || echo 'SERVER_MATCH=false'
+          if ! cmp -s server/wesi-ai-stream/gateway.mjs /tmp/prod-gateway.mjs; then
+            echo '=== GATEWAY DIFF ==='
+            diff -u /tmp/prod-gateway.mjs server/wesi-ai-stream/gateway.mjs | head -n 260 || true
           fi
+          echo '=== NONSECRET RUNTIME CONFIG ==='
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=''; fi
+          envfile=/etc/wesi-ai-stream.env
+          content="$($SUDO cat "$envfile")"
+          pb="$(printf '%s\n' "$content" | sed -n 's/^WESI_POCKETBASE_URL=//p')"
+          relay="$(printf '%s\n' "$content" | sed -n 's/^WESI_RELAY_URL=//p')"
+          stream_len="$(printf '%s\n' "$content" | sed -n 's/^WESI_STREAM_SECRET=//p' | awk '{print length}')"
+          shared_len="$(printf '%s\n' "$content" | sed -n 's/^WESI_MAIN_SHARED_SECRET=//p' | awk '{print length}')"
+          printf 'WESI_POCKETBASE_URL=%s\n' "$pb"
+          printf 'WESI_RELAY_URL=%s\n' "$relay"
+          printf 'WESI_STREAM_SECRET_LENGTH=%s\n' "$stream_len"
+          printf 'WESI_MAIN_SHARED_SECRET_LENGTH=%s\n' "$shared_len"
+          $SUDO systemctl is-active wesi-ai-stream || true
+          REMOTE
