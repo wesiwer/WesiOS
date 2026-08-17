@@ -1,0 +1,45 @@
+name: Audit All Wesi AI Tool Data Contracts Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-ai-tools-static-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Audit tool source patterns
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re
+          root = pathlib.Path('server/pb_hooks')
+          files = sorted(p for p in root.glob('wesi_ai_*.js') if 'test' not in p.name)
+          print('FILES', len(files))
+          for p in files:
+              text = p.read_text(encoding='utf-8')
+              hits=[]
+              for m in re.finditer(r'findRecordsByFilter\s*\(', text):
+                  start=max(0,m.start()-180); end=min(len(text),m.start()+650)
+                  snippet=' '.join(text[start:end].split())
+                  hits.append(('READ',snippet[:800]))
+              for pattern,label in [
+                  (r'input\.organizationId\s*\|\|\s*activeOrganizationId','MODEL_ORG_FIRST'),
+                  (r'activeOrganizationId\s*\|\|\s*input\.organizationId','TRUSTED_ORG_FIRST'),
+                  (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+\[\]','CATCH_EMPTY_LIST'),
+                  (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+\{\}','CATCH_EMPTY_OBJECT'),
+              ]:
+                  for m in re.finditer(pattern,text,re.S):
+                      hits.append((label,' '.join(text[m.start():min(len(text),m.end()+160)].split())[:500]))
+              if hits:
+                  print('\n###',p.name)
+                  for label,s in hits:
+                      print(label,s)
+          PY
