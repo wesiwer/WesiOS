@@ -148,7 +148,7 @@ class WesiAiD2DService {
     if (ttl <= Duration.zero || ttl > sessionTtl) {
       throw const FormatException('Некорректный D2D TTL');
     }
-    final build = await WesiAiBackupService.buildImportantPackage(state);
+    final build = await WesiAiBackupService.buildFullTransferPackage(state);
     final key = WesiAiBackupCrypto.randomSessionKey();
     final encrypted =
         WesiAiBackupCrypto.encryptTransfer(build.packageBytes, key);

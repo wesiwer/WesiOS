@@ -4,7 +4,7 @@ import '../../core/localization/wesi_locale.dart';
 import '../../core/sync/pocketbase_transport.dart';
 import '../../core/sync/sync_codec.dart';
 import '../../core/sync/sync_endpoint.dart';
-import '../../core/sync/sync_engine.dart';
+import '../../core/sync/sync_auto.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/widgets/window_controls.dart';
@@ -99,7 +99,7 @@ class _SyncScreenState extends State<SyncScreen> {
 
   Future<void> _syncNow() async {
     setState(() => _busy = true);
-    final report = await SyncEngine.run();
+    final report = await SyncAuto.now();
     if (!mounted) return;
     setState(() => _busy = false);
     _say(report.describe(russian: _ru), error: !report.ok);

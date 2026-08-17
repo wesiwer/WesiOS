@@ -85,37 +85,49 @@ class WesiAiBackupService {
 
   const WesiAiBackupService._();
 
-  static Future<WesiAiBackupBuildResult> buildImportantPackage(
-    WesiAiLocalState state,
-  ) async {
-    final selected = state.conversations
-        .where((conversation) => conversation.importantForBackup)
+  static Future<WesiAiBackupBuildResult> _buildPackage(
+    WesiAiLocalState state, {
+    required bool includeAll,
+    required bool strictArtifacts,
+  }) async {
+    final selected = (includeAll
+            ? state.conversations
+            : state.conversations
+                .where((conversation) => conversation.importantForBackup))
         .toList(growable: false);
     if (selected.isEmpty) {
-      throw const FormatException('Нет чатов, отмеченных для важного backup');
+      throw FormatException(includeAll
+          ? 'В Wesi AI пока нет чатов для D2D-переноса'
+          : 'Нет чатов, отмеченных для важного backup');
     }
     final selectedIds = selected.map((item) => item.id).toSet();
-    final selectedProjectIds =
-        selected.map((item) => item.projectId).whereType<String>().toSet();
-    final projects = state.projects
-        .where((project) => selectedProjectIds.contains(project.id))
+    final selectedProjectIds = includeAll
+        ? state.projects.map((item) => item.id).toSet()
+        : selected.map((item) => item.projectId).whereType<String>().toSet();
+    final projects = (includeAll
+            ? state.projects
+            : state.projects
+                .where((project) => selectedProjectIds.contains(project.id)))
         .toList(growable: false);
     final messages = state.messages
         .where((message) => selectedIds.contains(message.conversationId))
         .toList(growable: false);
-    final memoryEntries = state.memoryEntries.where((entry) {
-      if (entry.scope == WesiAiMemoryScope.project) {
-        return entry.projectId != null &&
-            selectedProjectIds.contains(entry.projectId);
-      }
-      if (entry.sourceConversationId != null &&
-          selectedIds.contains(entry.sourceConversationId)) {
-        return true;
-      }
-      return entry.scope == WesiAiMemoryScope.shared ||
-          entry.scope == WesiAiMemoryScope.zane ||
-          entry.scope == WesiAiMemoryScope.nirvana;
-    }).toList(growable: false);
+    final memoryEntries = (includeAll
+            ? state.memoryEntries
+            : state.memoryEntries.where((entry) {
+                if (entry.scope == WesiAiMemoryScope.project) {
+                  return entry.projectId != null &&
+                      selectedProjectIds.contains(entry.projectId);
+                }
+                if (entry.sourceConversationId != null &&
+                    selectedIds.contains(entry.sourceConversationId)) {
+                  return true;
+                }
+                return entry.scope == WesiAiMemoryScope.shared ||
+                    entry.scope == WesiAiMemoryScope.zane ||
+                    entry.scope == WesiAiMemoryScope.nirvana;
+              }))
+        .toList(growable: false);
 
     final archive = Archive();
     final artifactRecords = <Map<String, dynamic>>[];
@@ -149,6 +161,11 @@ class WesiAiBackupService {
           artifactRecords.add(record);
           metadata['backupArtifactId'] = record['id'];
         } else {
+          if (strictArtifacts) {
+            throw FormatException(
+              'D2D не может без потерь перенести artifact сообщения ${message.id}',
+            );
+          }
           skippedArtifacts++;
         }
       }
@@ -197,6 +214,19 @@ class WesiAiBackupService {
       skippedArtifacts: skippedArtifacts,
     );
   }
+
+  static Future<WesiAiBackupBuildResult> buildImportantPackage(
+    WesiAiLocalState state,
+  ) =>
+      _buildPackage(state, includeAll: false, strictArtifacts: false);
+
+  /// Полный пакет только для защищённого D2D между собственными устройствами.
+  /// В отличие от important-backup он включает все чаты, проекты и память и
+  /// отказывается собираться, если artifact нельзя перенести без потерь.
+  static Future<WesiAiBackupBuildResult> buildFullTransferPackage(
+    WesiAiLocalState state,
+  ) =>
+      _buildPackage(state, includeAll: true, strictArtifacts: true);
 
   static Future<WesiAiBackupExportResult> exportImportantBackup(
     WesiAiLocalState state,

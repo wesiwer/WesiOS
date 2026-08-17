@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/sync/sync_audit_extensions.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
@@ -33,7 +34,14 @@ class _SandboxScreenState extends State<SandboxScreen> {
   @override
   void initState() {
     super.initState();
+    SandboxSyncSignal.revision.addListener(_loadData);
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    SandboxSyncSignal.revision.removeListener(_loadData);
+    super.dispose();
   }
 
   /// Загрузка под страховкой: исключение не должно оставлять

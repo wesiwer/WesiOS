@@ -133,11 +133,14 @@ class AudioVaultExtrasService {
   /// Возвращает только актуальный отчёт. Если WAV заменён, изменился размер
   /// или mtime, старый анализ больше не показывается как действующий.
   static Future<AudioAnalysisReport?> analysisForBeat(BeatEntry beat) async {
-    final wav = beat.wavPath;
-    if (wav == null || wav.isEmpty) return null;
     final meta = await metaFor(beat.id);
     final report = meta.analysis;
     if (report == null) return null;
+    // A report received through sync deliberately has no device path. Its QC
+    // metrics are portable metadata and remain useful without the local WAV.
+    if (report.sourcePath.isEmpty) return report;
+    final wav = beat.wavPath;
+    if (wav == null || wav.isEmpty) return null;
     final file = File(wav);
     if (!await file.exists()) return null;
     final stat = await file.stat();
