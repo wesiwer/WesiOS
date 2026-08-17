@@ -1,0 +1,57 @@
+name: Diagnose Wesi AI Relay Stream Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-wesi-ai-relay-stream-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Prepare Relay SSH
+        env:
+          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${RELAY_HOST:-}"
+          test -n "${RELAY_USER:-}"
+          test -n "${KEY:-}"
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/relay_key
+          chmod 600 ~/.ssh/relay_key
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/relay_known_hosts
+      - name: Inspect real public stream gateway
+        shell: bash
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          echo '=== REPO GATEWAY SHA ==='
+          sha256sum server/wesi-ai-stream/gateway.mjs
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "bash -s" <<'REMOTE'
+          set -uo pipefail
+          if [ "$(id -u)" -eq 0 ]; then SUDO=''; else SUDO='sudo -n'; fi
+          echo '=== ID ==='; id || true
+          echo '=== SERVICES ==='; $SUDO systemctl is-active wesi-ai-stream || true; $SUDO systemctl is-active wesi-ai-relay || true; $SUDO systemctl is-active nginx || true
+          echo '=== DEPLOYED GATEWAY SHA ==='; $SUDO sha256sum /opt/wesi-ai-stream/gateway.mjs || true
+          echo '=== LOCAL HEALTH ==='; curl -sS -i --max-time 5 http://127.0.0.1:8792/health || true
+          echo '=== STREAM JOURNAL ==='; $SUDO journalctl -u wesi-ai-stream --since '12 hours ago' --no-pager -o short-iso 2>&1 | tail -n 4000 | grep -Ei 'WAI_|prepare|400|error|reject|main|listening|configuration' | tail -n 1200 || true
+          echo '=== NGINX ACCESS STREAM ==='; $SUDO tail -n 10000 /var/log/nginx/access.log 2>/dev/null | grep -E '/api/wesi/ai/chat/stream' | tail -n 1200 || true
+          echo '=== NGINX ERROR STREAM ==='; $SUDO tail -n 5000 /var/log/nginx/error.log 2>/dev/null | grep -Ei '8792|wesi|stream|upstream|400|502|503' | tail -n 1200 || true
+          echo '=== ACTIVE NGINX ROUTE ==='; $SUDO nginx -T 2>/dev/null | grep -A18 -B3 'location = /api/wesi/ai/chat/stream' | tail -n 80 || true
+          REMOTE
