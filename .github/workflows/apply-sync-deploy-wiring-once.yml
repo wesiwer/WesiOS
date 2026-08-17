@@ -1,0 +1,48 @@
+name: Apply Sync Deploy Wiring Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-sync-deploy-wiring-once.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  wire-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch permanent production deployment
+        run: |
+          set -euo pipefail
+          python3 tool/patch_sync_deploy.py
+          node --check server/pb_hooks/wesi_sync_extra.pb.js
+          grep -q 'wesi_sync_extra.pb.js' server/deploy-employee-portal.sh
+          grep -q 'wesi_sync_extra.pb.js' .github/workflows/deploy-employee-portal.yml
+          grep -q '/api/wesi/sync/revision-v2' .github/workflows/deploy-employee-portal.yml
+          git diff --check
+      - name: Commit deployment wiring
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add server/deploy-employee-portal.sh .github/workflows/deploy-employee-portal.yml
+          git diff --cached --check
+          if ! git diff --cached --quiet; then
+            git commit -m 'fix(sync): deploy audited PocketBase sync hooks'
+            git pull --rebase origin main
+            git push origin HEAD:main
+          fi
+      - name: Dispatch production deploy
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run deploy-employee-portal.yml --repo "$GITHUB_REPOSITORY" --ref main
+          echo 'SYNC_PRODUCTION_DEPLOY_DISPATCHED'
