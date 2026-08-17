@@ -1,0 +1,73 @@
+name: Validate Sync Audit Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-audit-validate-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Inventory local persistence and sync coverage
+        run: |
+          set -euo pipefail
+          echo '=== LOCAL PERSISTENCE REFERENCES ==='
+          grep -RInE "Hive\.(openBox|box)|openBox<|SharedPreferences|File\(|Directory\(" lib/core lib/features \
+            --include='*.dart' \
+            | grep -vE '\.g\.dart:' \
+            | head -n 1200 || true
+          echo '=== DECLARED SYNC COLLECTIONS ==='
+          grep -RInE "String get name =>|'[a-z_]+'.*Sync" lib/core/sync --include='*.dart' \
+            | head -n 800 || true
+          echo '=== AUDIT CONTRACT CHECKS ==='
+          grep -q "sandbox_transactions" lib/core/sync/sync_audit_extensions.dart
+          grep -q "what_if_presets" lib/core/sync/sync_audit_extensions.dart
+          grep -q "audio_extras" lib/core/sync/sync_audit_extensions.dart
+          grep -q "shield_private" lib/core/sync/sync_audit_extensions.dart
+          grep -q "revision-v2" lib/core/sync/pocketbase_transport.dart
+          grep -q "-updated,-id" server/pb_hooks/wesi_sync_extra.pb.js
+          grep -q "buildFullTransferPackage" lib/features/ai/backup/wesi_ai_d2d_service.dart
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Check formatting of audited files
+        run: |
+          dart format --output=none --set-exit-if-changed \
+            lib/core/sync/sync_audit_extensions.dart \
+            lib/core/sync/sync_auto.dart \
+            lib/core/sync/pocketbase_transport.dart \
+            lib/main.dart \
+            lib/features/settings/sync_screen.dart \
+            lib/features/treasury/sandbox_screen.dart \
+            lib/features/treasury/sandbox_forecast_screen.dart \
+            lib/features/audio/services/audio_vault_extras_service.dart \
+            lib/features/ai/backup/wesi_ai_backup_service.dart \
+            lib/features/ai/backup/wesi_ai_d2d_service.dart \
+            test/sync_audit_extensions_test.dart
+
+      - name: Check PocketBase hook syntax
+        run: node --check server/pb_hooks/wesi_sync_extra.pb.js
+
+      - name: Analyze full app
+        run: flutter analyze --no-fatal-infos
+
+      - name: Run sync audit regression test
+        run: flutter test test/sync_audit_extensions_test.dart
+
+      - name: Run full test suite
+        run: flutter test
