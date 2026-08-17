@@ -98,9 +98,15 @@ EOF
 rm -f "$TMP_SERVICE"
 
 "${SUDO[@]}" systemctl daemon-reload
-"${SUDO[@]}" systemctl enable --now wesi-ai-stream
+"${SUDO[@]}" systemctl enable wesi-ai-stream >/dev/null
+# `enable --now` does not restart an already-running unit after EnvironmentFile
+# changes. That left the live Node process holding an old WESI_STREAM_SECRET
+# while Main had already received the new sealed config, producing HTTP 403.
+"${SUDO[@]}" systemctl restart wesi-ai-stream
+
 for _ in $(seq 1 30); do
   if curl -fsS --max-time 2 http://127.0.0.1:8792/health >/dev/null; then
+    "${SUDO[@]}" systemctl is-active --quiet wesi-ai-stream
     exit 0
   fi
   sleep 1
