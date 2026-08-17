@@ -1,0 +1,27 @@
+name: Dispatch WesiOS 0.22.23 Release Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-once-0.22.23.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch audited synchronization release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Полный аудит синхронизации: live-синхронизация открытых устройств, полный ручной Sync, Tasks/Finance/Sandbox/Analytics/Roadmap/Calendar/Profile/Contacts/Chats/CRM, Wesi AI D2D и Audio Vault metadata/QC. Исправлены server revision, journal IDs, live UI refresh и production sync gateway.' \
+            -f deploy_to_server=true
+          echo 'RELEASE_0_22_23_98_DISPATCHED'
