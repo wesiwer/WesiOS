@@ -15,28 +15,25 @@ function hasForecastModule(ctx) {
 }
 
 function access(e, ctx) {
-  let orgRows = [];
-  let grantRows = [];
-  try {
-    orgRows = e.app.findRecordsByFilter(
-      "wesios_records",
-      "owner={:owner} && coll='organizations' && deleted=false",
-      "id",
-      0,
-      0,
-      {owner: ctx.ownerId},
-    );
-  } catch (_) {}
-  try {
-    grantRows = e.app.findRecordsByFilter(
-      "wesios_records",
-      "owner={:owner} && coll='organization_grants' && deleted=false",
-      "id",
-      0,
-      0,
-      {owner: ctx.ownerId},
-    );
-  } catch (_) {}
+  // Access data is security-critical. Never translate a backend read failure
+  // into an empty organization/grant set: callers must distinguish "no data"
+  // from "could not read data".
+  const orgRows = e.app.findRecordsByFilter(
+    "wesios_records",
+    "owner={:owner} && coll='organizations' && deleted=false",
+    "id",
+    1000,
+    0,
+    {owner: ctx.ownerId},
+  );
+  const grantRows = e.app.findRecordsByFilter(
+    "wesios_records",
+    "owner={:owner} && coll='organization_grants' && deleted=false",
+    "id",
+    1000,
+    0,
+    {owner: ctx.ownerId},
+  );
 
   const orgs = {};
   const parents = {};
