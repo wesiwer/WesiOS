@@ -29,26 +29,39 @@ jobs:
           if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Restart PocketBase and verify hook runtime
+      - name: Reload PocketBase through its own service process
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
-          sudo -n systemctl restart pocketbase
-          for _ in $(seq 1 30); do
-            if curl -fsS --max-time 3 http://127.0.0.1:8090/api/health >/dev/null; then break; fi
-            sleep 1
-          done
-          curl -fsS --max-time 5 http://127.0.0.1:8090/api/health
-          sudo -n systemctl is-active --quiet pocketbase
-          echo '=== POCKETBASE ACTIVE SINCE ==='
-          sudo -n systemctl show pocketbase -p ActiveEnterTimestamp --value
-          echo '=== STARTUP JS ERRORS ==='
-          if sudo -n journalctl -u pocketbase --since '2 minutes ago' --no-pager 2>/dev/null | grep -Ei 'ReferenceError|SyntaxError|streamSecret|wesi_ai.*error'; then
-            echo '::error::PocketBase hook runtime reported a JS error after restart'
+          me="$(id -un)"
+          echo "DEPLOY_USER=$me"
+          pid="$(pgrep -f '^/opt/pocketbase/pocketbase serve .*--dir=/opt/pocketbase/pb_data' | head -n 1 || true)"
+          if [ -z "$pid" ]; then
+            pid="$(pgrep -f '/opt/pocketbase/pocketbase serve' | head -n 1 || true)"
+          fi
+          test -n "$pid" || { echo '::error::PocketBase process not found'; exit 1; }
+          owner="$(ps -o user= -p "$pid" | xargs)"
+          echo "POCKETBASE_PID=$pid OWNER=$owner"
+          if [ "$owner" != "$me" ]; then
+            echo "::error::PocketBase is owned by $owner, deploy user is $me; refusing unsafely to signal another user process"
             exit 1
           fi
+
+          before="$pid"
+          kill -TERM "$pid"
+          for _ in $(seq 1 40); do
+            current="$(pgrep -f '/opt/pocketbase/pocketbase serve' | head -n 1 || true)"
+            if [ -n "$current" ] && [ "$current" != "$before" ] && curl -fsS --max-time 2 http://127.0.0.1:8090/api/health >/dev/null 2>&1; then
+              echo "POCKETBASE_RESTARTED old=$before new=$current"
+              break
+            fi
+            sleep 1
+          done
+          current="$(pgrep -f '/opt/pocketbase/pocketbase serve' | head -n 1 || true)"
+          test -n "$current" && test "$current" != "$before"
+          curl -fsS --max-time 5 http://127.0.0.1:8090/api/health
           echo 'POCKETBASE_WESI_AI_RUNTIME_RELOADED'
           REMOTE
 
