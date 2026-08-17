@@ -33,7 +33,7 @@ jobs:
           grep -q "audio_extras" lib/core/sync/sync_audit_extensions.dart
           grep -q "shield_private" lib/core/sync/sync_audit_extensions.dart
           grep -q "revision-v2" lib/core/sync/pocketbase_transport.dart
-          grep -q "-updated,-id" server/pb_hooks/wesi_sync_extra.pb.js
+          grep -q -- "-updated,-id" server/pb_hooks/wesi_sync_extra.pb.js
           grep -q "buildFullTransferPackage" lib/features/ai/backup/wesi_ai_d2d_service.dart
 
       - name: Setup Flutter
