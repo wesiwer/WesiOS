@@ -23,5 +23,7 @@ jobs:
           gh workflow run release-app.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
-            -f 'notes=Исправлена синхронизация между устройствами: безопасное серверное чтение, повтор зависимых записей и точная диагностика. Wesi AI Horizon теперь считает баланс по канонической логике Treasury.' \
+            -f 'notes=Исправлена синхронизация между устройствами: fail-closed серверные чтения, повтор зависимых записей без перезаписи сервера при неполном pull и точная диагностика. Усилен контракт Wesi AI tools и выровнен баланс Horizon с Treasury.' \
             -f 'deploy_to_server=true'
+
+# retry: aligned AppVersion 0.22.25+100
