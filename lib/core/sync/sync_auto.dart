@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import 'pocketbase_transport.dart';
 import 'sync_endpoint.dart';
@@ -40,12 +41,14 @@ class SyncAuto {
   static String? _sessionFingerprint;
   static int _probeFailures = 0;
   static DateTime? _nextProbeAt;
+  static final _SyncLifecycleObserver _lifecycle = _SyncLifecycleObserver();
 
   /// Начать следить. Повторный вызов ничего не ломает.
   static void start() {
     if (_listening) return;
     _listening = true;
     SyncJournal.localChanges.addListener(_onLocalChange);
+    WidgetsBinding.instance.addObserver(_lifecycle);
     running.value = true;
 
     _pollTimer?.cancel();
@@ -68,6 +71,7 @@ class SyncAuto {
     if (!force && SyncEndpoint.enabled && SyncEndpoint.isConnected) return;
     if (_listening) {
       SyncJournal.localChanges.removeListener(_onLocalChange);
+      WidgetsBinding.instance.removeObserver(_lifecycle);
     }
     _listening = false;
     _localTimer?.cancel();
@@ -92,6 +96,20 @@ class SyncAuto {
   static void _schedule(Duration after) {
     _localTimer?.cancel();
     _localTimer = Timer(after, () => unawaited(_runAuto()));
+  }
+
+  /// Мобильная ОС может заморозить Timer.periodic в фоне. При возврате в
+  /// приложение проверяем сервер сразу и сбрасываем сетевой backoff: изменение
+  /// на другом устройстве не должно ждать 16 секунд только потому, что этот
+  /// телефон раньше был офлайн.
+  static void _onResumed() {
+    if (!_listening || !SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
+      return;
+    }
+    _nextProbeAt = null;
+    _probeFailures = 0;
+    if (pending.value) _schedule(Duration.zero);
+    unawaited(_pollRemote(force: true));
   }
 
   static Future<SyncReport> _runAuto() async {
@@ -131,7 +149,7 @@ class SyncAuto {
   }
 
   /// Лёгкая проверка: изменилось ли вообще что-нибудь на сервере.
-  static Future<void> _pollRemote() async {
+  static Future<void> _pollRemote({bool force = false}) async {
     if (_probeBusy || SyncEngine.busy.value) return;
     if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
       _remoteRevision = null;
@@ -140,7 +158,9 @@ class SyncAuto {
     }
 
     final nextAllowed = _nextProbeAt;
-    if (nextAllowed != null && DateTime.now().isBefore(nextAllowed)) return;
+    if (!force && nextAllowed != null && DateTime.now().isBefore(nextAllowed)) {
+      return;
+    }
 
     final session = SyncEndpoint.session;
     final fingerprint = '${session?['userId']}|${session?['token']}';
@@ -245,5 +265,12 @@ class SyncAuto {
   static void reset() {
     stop(force: true);
     pending.value = false;
+  }
+}
+
+class _SyncLifecycleObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) SyncAuto._onResumed();
   }
 }
