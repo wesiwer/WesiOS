@@ -23,10 +23,13 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/fix_dynamic_patch_ambiguity.py
+          python3 scripts/fix_dynamic_gateway_patch.py
+          python3 scripts/fix_dynamic_classic_semantics.py
           python3 scripts/patch_wesi_ai_dynamic_deliberation.py
           grep -q 'thinkingMode: _uiMode == WesiAiUiMode.thinking' lib/features/ai/ai_assistant_v2_screen.dart
           grep -q 'public_deliberation.mjs' server/wesi-ai-stream/gateway.mjs
           grep -q 'thinkingMode && conversation.persona' lib/features/ai/wesi_ai_api.dart
+          grep -q 'streamVisible = thinkingMode' lib/features/ai/controllers/wesi_ai_chat_controller.dart
 
       - name: Validate Node runtime
         run: |
@@ -70,8 +73,13 @@ jobs:
             server/wesi-ai-stream/deploy-stream-gateway.sh \
             pubspec.yaml \
             lib/core/constants/app_version.dart
-          git rm scripts/patch_wesi_ai_dynamic_deliberation.py scripts/fix_dynamic_patch_ambiguity.py BRANCH_MARKER.tmp
+          git rm \
+            scripts/patch_wesi_ai_dynamic_deliberation.py \
+            scripts/fix_dynamic_patch_ambiguity.py \
+            scripts/fix_dynamic_gateway_patch.py \
+            scripts/fix_dynamic_classic_semantics.py \
+            BRANCH_MARKER.tmp
           git commit -m 'feat(ai): make Thinking a dynamic deliberation mode'
           git push origin HEAD:fix/wesi-ai-dynamic-deliberation
 
-# validation trigger 2
+# validation trigger 3
