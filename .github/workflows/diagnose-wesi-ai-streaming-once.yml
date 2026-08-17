@@ -14,60 +14,85 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
-      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Prepare Relay SSH
+      - name: Prepare Main SSH
         env:
-          KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "${RELAY_HOST:-}"
-          test -n "${RELAY_USER:-}"
+          test -n "${MAIN_HOST:-}"
+          test -n "${MAIN_USER:-}"
           test -n "${KEY:-}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/relay_key
-          chmod 600 ~/.ssh/relay_key
+          printf '%s\n' "$KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
           if [ -n "${KNOWN:-}" ]; then
-            printf '%s\n' "$KNOWN" > ~/.ssh/relay_known_hosts
+            printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts
           else
-            ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null
+            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
           fi
-          chmod 600 ~/.ssh/relay_known_hosts
+          chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Compare production Streaming Gateway with main
+      - name: Trace stream prepare through public proxy and local PocketBase
         run: |
           set -euo pipefail
-          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
-          echo '=== REPOSITORY GATEWAY CHECKSUM ==='
-          sha256sum server/wesi-ai-stream/gateway.mjs server/wesi-ai-stream/server.mjs
-          echo '=== PRODUCTION GATEWAY CHECKSUM ==='
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "sudo -n sha256sum /opt/wesi-ai-stream/gateway.mjs /opt/wesi-ai-stream/server.mjs 2>/dev/null || sha256sum /opt/wesi-ai-stream/gateway.mjs /opt/wesi-ai-stream/server.mjs"
-          echo '=== BYTE COMPARISON ==='
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "sudo -n cat /opt/wesi-ai-stream/gateway.mjs 2>/dev/null || cat /opt/wesi-ai-stream/gateway.mjs" > /tmp/prod-gateway.mjs
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "sudo -n cat /opt/wesi-ai-stream/server.mjs 2>/dev/null || cat /opt/wesi-ai-stream/server.mjs" > /tmp/prod-server.mjs
-          cmp -s server/wesi-ai-stream/gateway.mjs /tmp/prod-gateway.mjs && echo 'GATEWAY_MATCH=true' || echo 'GATEWAY_MATCH=false'
-          cmp -s server/wesi-ai-stream/server.mjs /tmp/prod-server.mjs && echo 'SERVER_MATCH=true' || echo 'SERVER_MATCH=false'
-          if ! cmp -s server/wesi-ai-stream/gateway.mjs /tmp/prod-gateway.mjs; then
-            echo '=== GATEWAY DIFF ==='
-            diff -u /tmp/prod-gateway.mjs server/wesi-ai-stream/gateway.mjs | head -n 260 || true
-          fi
-          echo '=== NONSECRET RUNTIME CONFIG ==='
-          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" 'bash -s' <<'REMOTE'
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=''; fi
-          envfile=/etc/wesi-ai-stream.env
-          content="$($SUDO cat "$envfile")"
-          pb="$(printf '%s\n' "$content" | sed -n 's/^WESI_POCKETBASE_URL=//p')"
-          relay="$(printf '%s\n' "$content" | sed -n 's/^WESI_RELAY_URL=//p')"
-          stream_len="$(printf '%s\n' "$content" | sed -n 's/^WESI_STREAM_SECRET=//p' | awk '{print length}')"
-          shared_len="$(printf '%s\n' "$content" | sed -n 's/^WESI_MAIN_SHARED_SECRET=//p' | awk '{print length}')"
-          printf 'WESI_POCKETBASE_URL=%s\n' "$pb"
-          printf 'WESI_RELAY_URL=%s\n' "$relay"
-          printf 'WESI_STREAM_SECRET_LENGTH=%s\n' "$stream_len"
-          printf 'WESI_MAIN_SHARED_SECRET_LENGTH=%s\n' "$shared_len"
-          $SUDO systemctl is-active wesi-ai-stream || true
+
+          echo '=== RECENT NGINX ACCESS: STREAM PREPARE ==='
+          for f in /var/log/nginx/access.log /var/log/nginx/*access*.log; do
+            [ -r "$f" ] || $SUDO test -r "$f" 2>/dev/null || continue
+            ($SUDO tail -n 5000 "$f" 2>/dev/null || true) \
+              | grep -F '/api/wesi/ai/stream/prepare' \
+              | tail -n 80 || true
+          done
+
+          echo '=== RECENT NGINX ERRORS: STREAM ==='
+          for f in /var/log/nginx/error.log /var/log/nginx/*error*.log; do
+            [ -r "$f" ] || $SUDO test -r "$f" 2>/dev/null || continue
+            ($SUDO tail -n 1200 "$f" 2>/dev/null || true) \
+              | grep -Ei 'stream/prepare|wesi/ai|client intended|too large|upstream|400' \
+              | tail -n 120 || true
+          done
+
+          echo '=== RELEVANT NGINX CONFIG ==='
+          ($SUDO nginx -T 2>/dev/null || true) \
+            | grep -E -C 4 'server_name[[:space:]]+api\.wesi-inc\.ru|client_max_body_size|proxy_pass|proxy_set_header|location[[:space:]].*/api|proxy_request_buffering' \
+            | head -n 320 || true
+
+          echo '=== PUBLIC VS LOCAL SYNTHETIC AUTH FAILURE ==='
+          secret="$($SUDO python3 - <<'PY'
+import json
+p='/opt/pocketbase/pb_hooks/.wesi-ai-relay.json'
+try:
+    print(json.load(open(p,encoding='utf-8')).get('streamSecret',''))
+except Exception:
+    print('')
+PY
+          )"
+          [ ${#secret} -ge 32 ] || { echo 'STREAM_SECRET_UNAVAILABLE'; exit 0; }
+          body='{"persona":"zane","tier":"fast","lobbyMode":"smart","message":"stream proxy probe","summary":"","projectContext":"","conversationId":"probe","activeOrganizationId":"","memory":{},"messages":[]}'
+          fake_token='fake.invalid.token'
+          fake_session='abcdefghijklmnopqrstuvwx'
+          for base in 'http://127.0.0.1:8090' 'https://api.wesi-inc.ru'; do
+            out="/tmp/probe-$(echo "$base" | tr -cd 'A-Za-z0-9').out"
+            hdr="${out}.headers"
+            code="$(curl -sS --max-time 15 -D "$hdr" -o "$out" -w '%{http_code}' \
+              -X POST "$base/api/wesi/ai/stream/prepare" \
+              -H 'Content-Type: application/json' \
+              -H 'Accept: application/json' \
+              -H "Authorization: $fake_token" \
+              -H "X-WesiOS-Session: $fake_session" \
+              -H "X-Wesi-AI-Stream-Secret: $secret" \
+              --data-binary "$body" || true)"
+            printf 'BASE=%s STATUS=%s\n' "$base" "$code"
+            grep -Ei '^(HTTP/|content-type:|server:|content-length:)' "$hdr" | tr -d '\r' || true
+            printf 'BODY='
+            head -c 800 "$out" | tr '\n' ' '; echo
+          done
           REMOTE
