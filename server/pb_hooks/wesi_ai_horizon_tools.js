@@ -1,16 +1,12 @@
 function rows(e, ctx, coll) {
-  try {
-    return e.app.findRecordsByFilter(
-      "wesios_records",
-      "owner={:owner} && coll={:coll} && deleted=false",
-      "-stamp",
-      0,
-      0,
-      {owner: ctx.ownerId, coll: coll},
-    );
-  } catch (_) {
-    return [];
-  }
+  return e.app.findRecordsByFilter(
+    "wesios_records",
+    "owner={:owner} && coll={:coll} && deleted=false",
+    "-stamp",
+    5000,
+    0,
+    {owner: ctx.ownerId, coll: coll},
+  );
 }
 
 function round(value) {
@@ -28,10 +24,10 @@ module.exports = {
     if (!policy.hasForecastModule(ctx)) return [];
     return [{
       name: "horizon_snapshot",
-      description: "Прочитать на основном сервере Wesi разрешённый ledger snapshot для Horizon. Требуются view_forecast и view_finance. Результат не выдаётся за полный клиентский Monte-Carlo Horizon.",
+      description: "Прочитать на основном сервере Wesi разрешённый ledger snapshot АКТИВНОЙ организации для Horizon. Для вопросов о текущем остатке используй currentBalance. Если WesiOS передал activeOrganizationId, не подменяй его аргументом модели. Ошибка чтения данных возвращается как ошибка, а не как нулевой баланс.",
       parameters: {
         type: "object",
-        properties: {organizationId: {type: "string"}},
+        properties: {organizationId: {type: "string", description: "Используй только если WesiOS не передал активную организацию"}},
       },
     }];
   },
@@ -39,10 +35,17 @@ module.exports = {
   context: function(e, ctx) {
     const policy = require(`${__hooks}/wesi_ai_horizon_policy.js`);
     if (!policy.hasForecastModule(ctx)) return {horizonOrganizations: []};
-    const state = policy.access(e, ctx);
-    return {horizonOrganizations: Object.keys(state.forecastOrgIds)
-      .filter((id) => state.forecastOrgIds[id] === true && state.orgs[id])
-      .map((id) => ({id: id, name: state.orgs[id].name, baseCurrency: state.orgs[id].baseCurrency}))};
+    try {
+      const state = policy.access(e, ctx);
+      return {
+        horizonOrganizations: Object.keys(state.forecastOrgIds)
+          .filter((id) => state.forecastOrgIds[id] === true && state.orgs[id])
+          .map((id) => ({id: id, name: state.orgs[id].name, baseCurrency: state.orgs[id].baseCurrency})),
+        horizonOrganizationRule: "activeOrganizationId from WesiOS is authoritative; never invent or switch organization IDs",
+      };
+    } catch (_) {
+      return {horizonOrganizations: [], horizonContextUnavailable: true};
+    }
   },
 
   execute: function(e, ctx, name, args, activeOrganizationId) {
@@ -54,13 +57,38 @@ module.exports = {
       return {ok: false, code: "FORBIDDEN", message: "Нет доступа к модулю Horizon"};
     }
     const input = args && typeof args === "object" ? args : {};
-    const state = policy.access(e, ctx);
+    let state;
+    try {
+      state = policy.access(e, ctx);
+    } catch (_) {
+      return {
+        ok: false,
+        code: "HORIZON_DATA_UNAVAILABLE",
+        message: "Не удалось прочитать организационный контекст Horizon. Нулевые данные не подставлены.",
+      };
+    }
     const organizationId = policy.select(
       state,
-      String(input.organizationId || activeOrganizationId || ""),
+      String(activeOrganizationId || input.organizationId || ""),
     );
     if (!organizationId) {
       return {ok: false, code: "FORBIDDEN", message: "Для Horizon нужны view_forecast и view_finance этой организации"};
+    }
+
+    let accounts;
+    let transactions;
+    try {
+      accounts = rows(e, ctx, "accounts");
+      transactions = rows(e, ctx, "transactions");
+    } catch (_) {
+      return {
+        ok: false,
+        code: "HORIZON_DATA_UNAVAILABLE",
+        message: "Не удалось прочитать финансовый ledger WesiOS. Нулевой баланс не подставлен.",
+      };
+    }
+    if (!Array.isArray(accounts) || !Array.isArray(transactions)) {
+      return {ok: false, code: "HORIZON_DATA_UNAVAILABLE", message: "Ledger WesiOS вернул некорректный набор данных"};
     }
 
     let balance = 0;
@@ -69,8 +97,6 @@ module.exports = {
     let count = 0;
     const now = new Date();
     const historyStart = new Date(now.getTime() - 90 * 86400000);
-    const accounts = rows(e, ctx, "accounts");
-    const transactions = rows(e, ctx, "transactions");
 
     for (const row of accounts) {
       const p = policy.payload(row);
@@ -83,7 +109,9 @@ module.exports = {
       const p = policy.payload(row);
       if (String(p.organizationId || policy.ROOT_ORG) !== organizationId) continue;
       if (p.isRecurring === true) continue;
-      const amount = Number(p.amount);
+      const rawBase = Number(p.organizationBaseAmount);
+      const rawAmount = Number(p.amount);
+      const amount = Number.isFinite(rawBase) ? rawBase : rawAmount;
       const at = date(p.date);
       if (!Number.isFinite(amount) || amount < 0 || !at || at > now) continue;
       const signed = String(p.type || "expense") === "income" ? amount : -amount;
@@ -105,6 +133,8 @@ module.exports = {
       reportingCurrency: state.orgs[organizationId].baseCurrency,
       asOf: now.toISOString(),
       currentBalance: round(balance),
+      sourceAccountCount: accounts.length,
+      sourceTransactionCount: transactions.length,
       recent90Days: {
         transactionCount: count,
         income: round(income),
