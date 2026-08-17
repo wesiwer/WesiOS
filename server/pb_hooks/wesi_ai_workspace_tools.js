@@ -18,7 +18,7 @@ function rows(e, ctx, collection) {
     return e.app.findRecordsByFilter(
       "wesios_records",
       "owner={:owner} && coll={:coll} && deleted=false",
-      "-stamp,-id", 0, 0,
+      "-stamp,-id", 5000, 0,
       {owner: ctx.ownerId, coll: collection},
     );
   } catch (_) { return []; }
@@ -309,7 +309,7 @@ module.exports = {
 
     if (name === "crm_clients" || name === "crm_deals" || name === "crm_pipeline_summary") {
       if (!moduleAllowed(ctx, access, "crm")) return {ok: false, code: "FORBIDDEN", message: "Нет доступа к CRM"};
-      const organizationId = String(input.organizationId || activeOrganizationId || "").trim();
+      const organizationId = String(activeOrganizationId || input.organizationId || "").trim();
       if (organizationId && access.allowedOrgIds[organizationId] !== true) return {ok: false, code: "FORBIDDEN", message: "Нет доступа к CRM этой организации"};
       const crm = crmVisible(e, ctx, access);
       const inOrg = function(item) { return !organizationId || orgIdOf(item) === organizationId; };

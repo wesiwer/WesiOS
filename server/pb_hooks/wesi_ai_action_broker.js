@@ -50,7 +50,7 @@ function confirmationBinding(e, ctx) {
 
 function organizationIdOf(activeOrganizationId, args) {
   const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
-  return String(input.organizationId || activeOrganizationId || "org_wesi_inc").slice(0, 180);
+  return String(activeOrganizationId || input.organizationId || "org_wesi_inc").slice(0, 180);
 }
 
 function entityIdOf(result, args, name) {

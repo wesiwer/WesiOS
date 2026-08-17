@@ -14,7 +14,7 @@ function rows(e, ctx, coll) {
   try {
     return e.app.findRecordsByFilter(
       "wesios_records", "owner={:owner} && coll={:coll} && deleted=false",
-      "id", 0, 0, {owner: ctx.ownerId, coll: coll},
+      "id", 1000, 0, {owner: ctx.ownerId, coll: coll},
     );
   } catch (_) { return []; }
 }

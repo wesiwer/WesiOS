@@ -10,7 +10,7 @@ function payload(record) {
   return {};
 }
 function rows(e, ctx, coll) {
-  try { return e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll={:coll} && deleted=false", "-stamp", 0, 0, {owner: ctx.ownerId, coll}); }
+  try { return e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll={:coll} && deleted=false", "-stamp", 5000, 0, {owner: ctx.ownerId, coll}); }
   catch (_) { return []; }
 }
 function recordById(e, ctx, coll, id) {

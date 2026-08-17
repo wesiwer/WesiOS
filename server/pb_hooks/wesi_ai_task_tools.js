@@ -35,13 +35,13 @@ function loadAccess(e, ctx) {
   try {
     organizations = e.app.findRecordsByFilter(
       "wesios_records", "owner={:owner} && coll='organizations' && deleted=false",
-      "id", 0, 0, {owner: ctx.ownerId},
+      "id", 1000, 0, {owner: ctx.ownerId},
     );
   } catch (_) { organizations = []; }
   try {
     grants = e.app.findRecordsByFilter(
       "wesios_records", "owner={:owner} && coll='organization_grants' && deleted=false",
-      "id", 0, 0, {owner: ctx.ownerId},
+      "id", 1000, 0, {owner: ctx.ownerId},
     );
   } catch (_) { grants = []; }
 
@@ -103,7 +103,7 @@ function employees(e, ctx) {
   try {
     rows = e.app.findRecordsByFilter(
       "wesios_records", "owner={:owner} && coll='employees' && deleted=false",
-      "id", 0, 0, {owner: ctx.ownerId},
+      "id", 1000, 0, {owner: ctx.ownerId},
     );
   } catch (_) { rows = []; }
   return rows.map((row) => {
@@ -169,7 +169,7 @@ module.exports = {
       try {
         rows = e.app.findRecordsByFilter(
           "wesios_records", "owner={:owner} && coll='tasks' && deleted=false",
-          "-stamp", 0, 0, {owner: ctx.ownerId},
+          "-stamp", 5000, 0, {owner: ctx.ownerId},
         );
       } catch (_) { rows = []; }
       const status = String(input.status || "");
@@ -190,12 +190,12 @@ module.exports = {
       if (!title || title.length > 500) return {ok: false, code: "VALIDATION_ERROR", message: "Некорректное название задачи"};
       const target = resolveEmployee(e, ctx, input.assignee);
       if (target.error) return {ok: false, code: target.error, message: target.error === "AMBIGUOUS_EMPLOYEE" ? "Найдено несколько сотрудников с таким именем" : "Сотрудник не найден"};
-      const requestedOrg = String(input.organizationId || activeOrganizationId || ROOT_ORG);
+      const requestedOrg = String(activeOrganizationId || input.organizationId || ROOT_ORG);
       if (target.id !== ctx.employeeId && !access.canAssignOthers) {
         recordAudit(e, ctx, {tool: "tasks_create", entityType: "wesi_ai_action", entityId: "tasks_create", organizationId: requestedOrg, ok: false, code: "FORBIDDEN", targetEmployeeId: target.id});
         return {ok: false, code: "FORBIDDEN", message: "Нет права назначать задачи другим сотрудникам", alternatives: ["Создать задачу себе", "Подготовить текст для руководителя"]};
       }
-      const orgId = chooseOrganization(access, input.organizationId || activeOrganizationId);
+      const orgId = chooseOrganization(access, activeOrganizationId || input.organizationId);
       if (!orgId) return {ok: false, code: "FORBIDDEN", message: "Нет доступной организации для задачи"};
       let dueDate = null;
       if (input.dueDate != null && String(input.dueDate).trim()) {
