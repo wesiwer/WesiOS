@@ -4,6 +4,9 @@ const WORKFLOWS = {
   imageReference: {mediaType: "image", minInputs: 1, maxInputs: 1, promptMax: 12000},
   musicGenerate: {mediaType: "music", minInputs: 0, maxInputs: 0, promptMax: 12000},
   musicStems: {mediaType: "music", minInputs: 1, maxInputs: 1, promptMax: 4000, defaultPrompt: "Разделить аудио на отдельные стемы"},
+  musicRegenerateStem: {mediaType: "music", minInputs: 1, maxInputs: 1, promptMax: 6000, defaultPrompt: "Перегенерировать выбранный музыкальный стем"},
+  musicMix: {mediaType: "music", minInputs: 2, maxInputs: 4, promptMax: 6000, defaultPrompt: "Свести выбранные музыкальные дорожки"},
+  musicExport: {mediaType: "music", minInputs: 1, maxInputs: 4, promptMax: 4000, defaultPrompt: "Экспортировать музыкальный результат"},
   videoGenerate: {mediaType: "video", minInputs: 0, maxInputs: 0, promptMax: 6000},
   videoCompose: {mediaType: "video", minInputs: 1, maxInputs: 4, promptMax: 6000},
   videoVoice: {mediaType: "video", minInputs: 2, maxInputs: 2, promptMax: 6000, defaultPrompt: "Добавить голосовую дорожку к видео"},
@@ -49,6 +52,21 @@ function normalizeOptions(workflow, input) {
     options = {mode: mode, format: mode === "pro" ? enumValue(String(input.format || "").toLowerCase(), ["mp3", "wav"], "mp3") : "mp3"};
   } else if (workflow === "musicStems") {
     options = {format: enumValue(String(input.format || "").toLowerCase(), ["wav", "flac"], "wav")};
+  } else if (workflow === "musicRegenerateStem") {
+    options = {
+      stemName: safeText(input.stemName || "stem", 80) || "stem",
+      format: enumValue(String(input.format || "").toLowerCase(), ["wav", "flac"], "wav")
+    };
+  } else if (workflow === "musicMix") {
+    options = {
+      format: enumValue(String(input.format || "").toLowerCase(), ["wav", "flac"], "wav"),
+      normalize: input.normalize !== false
+    };
+  } else if (workflow === "musicExport") {
+    options = {
+      target: enumValue(String(input.target || "").toLowerCase(), ["master", "stems", "package"], "master"),
+      format: enumValue(String(input.format || "").toLowerCase(), ["wav", "flac"], "wav")
+    };
   } else if (workflow === "videoGenerate" || workflow === "videoCompose") {
     const resolution = enumValue(String(input.resolution || "").toLowerCase(), ["720p", "1080p", "4k"], "720p");
     let durationSeconds = enumValue(String(input.durationSeconds || ""), ["4", "6", "8"], "8");

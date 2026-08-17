@@ -30,18 +30,77 @@ first stdout line. It must not print logs before that first JSON line.
 Request example:
 
 ```json
-{"prompt":"night city in rain","aspectRatio":"16:9"}
+{"prompt":"night city in rain","options":{"workflow":"videoGenerate"}}
 ```
 
-Minimum successful response contract for engine builders:
+A successful response is accepted only with `wesi-media-v1` validation
+evidence. `ok: true` by itself is not enough.
+
+Image example:
 
 ```json
-{"ok":true,"output":"generated/result.png","mimeType":"image/png"}
+{
+  "ok": true,
+  "output": "generated/result.png",
+  "mimeType": "image/png",
+  "validation": {
+    "validator": "wesi-media-v1",
+    "image": {"width": 1024, "height": 1024, "format": "png"}
+  }
+}
 ```
 
-`output` must be a relative path inside the installed engine directory. A
-runtime may place diagnostics after the first JSON line, but WesiOS ignores
-those diagnostics.
+Audio/video packages must run `ffprobe` inside the verified package and return
+canonicalized probe evidence. Video must contain a video stream; music/master
+outputs must contain an audio stream; duration and container must match the
+reported MIME type.
+
+```json
+{
+  "ok": true,
+  "output": "generated/result.mp4",
+  "mimeType": "video/mp4",
+  "validation": {
+    "validator": "wesi-media-v1",
+    "probe": {
+      "engine": "ffprobe",
+      "container": "mp4",
+      "durationMs": 8000,
+      "streams": [
+        {"type": "video", "codec": "h264"},
+        {"type": "audio", "codec": "aac"}
+      ]
+    }
+  }
+}
+```
+
+A stems workflow returns one bounded ZIP and a path-free manifest for each
+contained stem. Every stem entry contains only `name`, `mimeType`, `byteSize`,
+`durationMs`, and a lowercase 64-character `sha256`. Filesystem paths are
+forbidden in validation evidence.
+
+`output` must always be a relative path inside the installed engine directory.
+WesiOS resolves it against the verified package root, rejects traversal/symlink
+escape, validates the evidence above, then promotes the file into app-owned
+durable artifact storage before adding it to chat history.
+
+## Stage 14 producer workflows
+
+The music engine contract supports bounded operations selected by server tools:
+
+- `musicGenerate`
+- `musicStems`
+- `musicRegenerateStem`
+- `musicMix`
+- `musicExport`
+
+Inputs are staged from attachment indexes of the current turn. The model/server
+never supplies a trusted filesystem path. `musicExport` may return either a
+validated audio master or a validated stems/package ZIP.
+
+Video workflows (`videoGenerate`, `videoCompose`, `videoVoice`, `videoSfx`,
+`videoSubtitles`) are subject to the same `ffprobe` evidence requirements.
 
 ## Publishing
 

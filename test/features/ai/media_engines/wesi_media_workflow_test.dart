@@ -26,6 +26,19 @@ void main() {
     expect(result.code, 'WAI_MEDIA_INPUT_INVALID');
   });
 
+  test('music mix requires at least two trusted inputs', () async {
+    final result = await WesiMediaWorkflow.run(
+      const WesiMediaWorkflowRequest(
+        kind: WesiMediaWorkflowKind.musicMix,
+        prompt: 'mix tracks',
+        inputPaths: <String>['/only-one.wav'],
+      ),
+      isWorker: true,
+    );
+    expect(result.ok, isFalse);
+    expect(result.code, 'WAI_MEDIA_INPUT_INVALID');
+  });
+
   test('prompt is bounded before any engine call', () async {
     final result = await WesiMediaWorkflow.run(
       WesiMediaWorkflowRequest(
@@ -56,11 +69,26 @@ void main() {
     expect(request.options.containsKey('inputs'), isFalse);
   });
 
-  test('normalizes stems and subtitle workflows', () {
+  test('normalizes stems, producer and subtitle workflows', () {
     final stems = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
       'mediaType': 'music',
       'prompt': 'split this track',
       'operation': 'stems',
+    });
+    final regenerate = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
+      'mediaType': 'music',
+      'prompt': 'change this bass stem',
+      'options': <String, dynamic>{'workflow': 'musicRegenerateStem'},
+    });
+    final mix = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
+      'mediaType': 'music',
+      'prompt': 'mix these stems',
+      'options': <String, dynamic>{'workflow': 'musicMix'},
+    });
+    final exported = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
+      'mediaType': 'music',
+      'prompt': 'export package',
+      'options': <String, dynamic>{'workflow': 'musicExport'},
     });
     final subtitles = WesiMediaWorkflow.fromLocalRequest(<String, dynamic>{
       'mediaType': 'video',
@@ -68,6 +96,9 @@ void main() {
       'options': <String, dynamic>{'operation': 'subtitles'},
     });
     expect(stems?.kind, WesiMediaWorkflowKind.musicStems);
+    expect(regenerate?.kind, WesiMediaWorkflowKind.musicRegenerateStem);
+    expect(mix?.kind, WesiMediaWorkflowKind.musicMix);
+    expect(exported?.kind, WesiMediaWorkflowKind.musicExport);
     expect(subtitles?.kind, WesiMediaWorkflowKind.videoSubtitles);
   });
 
