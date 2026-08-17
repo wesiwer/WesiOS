@@ -1,0 +1,68 @@
+name: Repair Sync Data Contracts Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-sync-data-contracts-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply systemic sync data contract repair
+        run: python3 .github/scripts/repair-sync-data-contracts.py
+
+      - name: Check sync hook syntax and server contracts
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_sync_data_access.js
+          node --check server/pb_hooks/wesi_sync_context.pb.js
+          node --check server/pb_hooks/wesi_sync_read.pb.js
+          node --check server/pb_hooks/wesi_sync_write.pb.js
+          node --check server/pb_hooks/wesi_sync_extra_runtime.js
+          node --test server/pb_hooks/wesi_sync_data_access_contract_test.mjs server/pb_hooks/wesi_sync_extra_contract_test.mjs
+          git diff --check
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run full targeted sync regression suite
+        run: |
+          flutter test \
+            test/sync_receive_regression_test.dart \
+            test/sync_engine_test.dart \
+            test/sync_corruption_guard_test.dart \
+            test/sync_multi_device_test.dart \
+            test/organization_sync_integrity_test.dart
+
+      - name: Commit only validated sync repair
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Sync Contract Repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add \
+            server/pb_hooks/wesi_sync_data_access.js \
+            server/pb_hooks/wesi_sync_data_access_contract_test.mjs \
+            server/pb_hooks/wesi_sync_context.pb.js \
+            server/pb_hooks/wesi_sync_read.pb.js \
+            server/pb_hooks/wesi_sync_write.pb.js \
+            server/pb_hooks/wesi_sync_extra_runtime.js
+          git diff --cached --check
+          git commit -m 'fix(sync): fail closed across all sync data reads'
+          git push origin HEAD:main
