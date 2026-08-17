@@ -1,4 +1,4 @@
-name: Diagnose Wesi AI Streaming Once
+name: Reload Wesi AI Streaming Runtime Once
 
 on:
   push:
@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  diagnose:
+  reload:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
@@ -29,12 +29,32 @@ jobs:
           if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Inspect safe PocketBase log metadata
-        env:
-          LOG_READER_B64: CmltcG9ydCBzcWxpdGUzLCBqc29uLCBjb2xsZWN0aW9ucwpkYj0iL29wdC9wb2NrZXRiYXNlL3BiX2RhdGEvYXV4aWxpYXJ5LmRiIgpjPXNxbGl0ZTMuY29ubmVjdChmImZpbGU6e2RifT9tb2RlPXJvIiwgdXJpPVRydWUpCmMudGV4dF9mYWN0b3J5PWxhbWJkYSBiOiBiLmRlY29kZSgidXRmLTgiLCJyZXBsYWNlIikKcm93cz1jLmV4ZWN1dGUoInNlbGVjdCBjcmVhdGVkLCBsZXZlbCwgbWVzc2FnZSwgZGF0YSBmcm9tIF9sb2dzIG9yZGVyIGJ5IHJvd2lkIGRlc2MgbGltaXQgNDAwMCIpLmZldGNoYWxsKCkKcHJpbnQoIj09PSBSRUNFTlQgRVZFTlQgTkFNRVMgPT09IikKZm9yIGNyZWF0ZWQsIGxldmVsLCBtc2csIHJhdyBpbiByb3dzWzoxODBdOgogICAgcHJpbnQoZiJ7Y3JlYXRlZH0gfCB7bGV2ZWx9IHwge21zZ30iKQpwcmludCgiPT09IFRPUCBMRVZFTCBEQVRBIEtFWVMgPT09IikKY291bnRlcj1jb2xsZWN0aW9ucy5Db3VudGVyKCkKZm9yIF8sXyxfLHJhdyBpbiByb3dzWzo4MDBdOgogICAgdHJ5OgogICAgICAgIGQ9anNvbi5sb2FkcyhyYXcpIGlmIHJhdyBlbHNlIHt9CiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIGNvbnRpbnVlCiAgICBpZiBpc2luc3RhbmNlKGQsZGljdCk6CiAgICAgICAgY291bnRlci51cGRhdGUoZC5rZXlzKCkpCmZvciBrLG4gaW4gY291bnRlci5tb3N0X2NvbW1vbigxMDApOgogICAgcHJpbnQoayxuKQpwcmludCgiPT09IFNUUkVBTS80MDAgU0FGRSBNRVRBREFUQSA9PT0iKQpzYWZlX2tleXM9KCJtZXRob2QiLCJ1cmwiLCJ1cmkiLCJwYXRoIiwic3RhdHVzIiwic3RhdHVzQ29kZSIsImh0dHBTdGF0dXMiLCJkdXJhdGlvbiIsImR1cmF0aW9uTXMiLCJ0eXBlIiwiZXJyb3IiLCJlcnJvclR5cGUiLCJyZXF1ZXN0TWV0aG9kIiwicmVxdWVzdFVybCIsInJlcXVlc3RVcmkiKQpzaG93bj0wCmZvciBjcmVhdGVkLGxldmVsLG1zZyxyYXcgaW4gcm93czoKICAgIHRyeToKICAgICAgICBkPWpzb24ubG9hZHMocmF3KSBpZiByYXcgZWxzZSB7fQogICAgZXhjZXB0IEV4Y2VwdGlvbjoKICAgICAgICBjb250aW51ZQogICAgaWYgbm90IGlzaW5zdGFuY2UoZCxkaWN0KToKICAgICAgICBjb250aW51ZQogICAgb3V0PXt9CiAgICBmb3IgayBpbiBzYWZlX2tleXM6CiAgICAgICAgaWYgayBpbiBkOgogICAgICAgICAgICBvdXRba109ZC5nZXQoaykKICAgIGZvciBwYXJlbnQgaW4gKCJyZXF1ZXN0IiwicmVzcG9uc2UiKToKICAgICAgICBvYmo9ZC5nZXQocGFyZW50KQogICAgICAgIGlmIGlzaW5zdGFuY2Uob2JqLGRpY3QpOgogICAgICAgICAgICBmb3IgayBpbiBzYWZlX2tleXM6CiAgICAgICAgICAgICAgICBpZiBrIGluIG9iajoKICAgICAgICAgICAgICAgICAgICBvdXRbZiJ7cGFyZW50fS57a30iXT1vYmouZ2V0KGspCiAgICBzZWFyY2hhYmxlPShzdHIobXNnKSsiICIranNvbi5kdW1wcyhvdXQsZW5zdXJlX2FzY2lpPUZhbHNlKSkubG93ZXIoKQogICAgc3RhdHVzZXM9W3YgZm9yIHYgaW4gb3V0LnZhbHVlcygpIGlmIGlzaW5zdGFuY2UodiwoaW50LGZsb2F0KSldCiAgICBpZiAoInN0cmVhbSIgaW4gc2VhcmNoYWJsZSBvciAid2VzaSIgaW4gc2VhcmNoYWJsZSBvcgogICAgICAgIGFueSh2IGluICg0MDAsNDAxLDQwMyw0MTMsNTAwLDUwMiw1MDMpIGZvciB2IGluIHN0YXR1c2VzKSk6CiAgICAgICAgcHJpbnQoZiJ7Y3JlYXRlZH0gfCB7bGV2ZWx9IHwge21zZ30gfCB7anNvbi5kdW1wcyhvdXQsZW5zdXJlX2FzY2lpPUZhbHNlKX0iKQogICAgICAgIHNob3duKz0xCiAgICAgICAgaWYgc2hvd24+PTIwMDoKICAgICAgICAgICAgYnJlYWsKcHJpbnQoIk1BVENIRUQiLCBzaG93bikK
+      - name: Restart PocketBase and verify hook runtime
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          printf '%s' "$LOG_READER_B64" | base64 -d > /tmp/read_pb_logs.py
-          scp "${SSH[@]}" /tmp/read_pb_logs.py "$MAIN_USER@$MAIN_HOST:/tmp/read_pb_logs.py"
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'if sudo -n true 2>/dev/null; then sudo -n python3 /tmp/read_pb_logs.py; else python3 /tmp/read_pb_logs.py; fi; rm -f /tmp/read_pb_logs.py'
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          sudo -n systemctl restart pocketbase
+          for _ in $(seq 1 30); do
+            if curl -fsS --max-time 3 http://127.0.0.1:8090/api/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS --max-time 5 http://127.0.0.1:8090/api/health
+          sudo -n systemctl is-active --quiet pocketbase
+          echo '=== POCKETBASE ACTIVE SINCE ==='
+          sudo -n systemctl show pocketbase -p ActiveEnterTimestamp --value
+          echo '=== STARTUP JS ERRORS ==='
+          if sudo -n journalctl -u pocketbase --since '2 minutes ago' --no-pager 2>/dev/null | grep -Ei 'ReferenceError|SyntaxError|streamSecret|wesi_ai.*error'; then
+            echo '::error::PocketBase hook runtime reported a JS error after restart'
+            exit 1
+          fi
+          echo 'POCKETBASE_WESI_AI_RUNTIME_RELOADED'
+          REMOTE
+
+      - name: Verify public Main and streaming edge health
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://api.wesi-inc.ru/api/health >/dev/null
+          curl -fsS --max-time 15 https://wesi-ai-178-236-247-194.nip.io/health | grep -q '"streaming":true'
+          echo 'PUBLIC_WESI_AI_EDGE_READY'
