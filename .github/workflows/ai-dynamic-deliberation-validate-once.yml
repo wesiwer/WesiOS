@@ -77,7 +77,7 @@ jobs:
             server/wesi-ai-stream/deploy-stream-gateway.sh \
             pubspec.yaml \
             lib/core/constants/app_version.dart
-          git rm \
+          git rm -f \
             scripts/patch_wesi_ai_dynamic_deliberation.py \
             scripts/fix_dynamic_patch_ambiguity.py \
             scripts/fix_dynamic_gateway_patch.py \
@@ -88,4 +88,4 @@ jobs:
           git commit -m 'feat(ai): make Thinking a dynamic deliberation mode'
           git push origin HEAD:fix/wesi-ai-dynamic-deliberation
 
-# validation trigger 8
+# validation trigger 9
