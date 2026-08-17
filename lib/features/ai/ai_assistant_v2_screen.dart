@@ -1247,6 +1247,7 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     final result = await controller.submitUserMessage(
       text,
       attachments: attachments,
+      thinkingMode: _uiMode == WesiAiUiMode.thinking,
     );
     if (!mounted) return;
     if (result != WesiAiMessageSubmitResult.accepted) {

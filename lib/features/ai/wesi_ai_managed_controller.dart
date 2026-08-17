@@ -23,6 +23,7 @@ class WesiAiQueuedTurn {
   final List<WesiAiAttachment> attachments;
   final DateTime queuedAt;
   final WesiAiTurnIntent intent;
+  final bool thinkingMode;
 
   const WesiAiQueuedTurn({
     required this.id,
@@ -31,6 +32,7 @@ class WesiAiQueuedTurn {
     required this.attachments,
     required this.queuedAt,
     required this.intent,
+    required this.thinkingMode,
   });
 
   String get intentLabel => switch (intent) {
@@ -97,6 +99,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   Future<WesiAiMessageSubmitResult> submitUserMessage(
     String text, {
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    bool thinkingMode = true,
   }) {
     final intent = WesiAiTurnIntentClassifier.classify(
       text,
@@ -107,6 +110,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       attachments: attachments,
       startDrain: true,
       intent: intent,
+      thinkingMode: thinkingMode,
     );
   }
 
@@ -123,6 +127,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
     required List<WesiAiAttachment> attachments,
     required bool startDrain,
     required WesiAiTurnIntent intent,
+    required bool thinkingMode,
   }) async {
     if (_acceptingTurn && intent != WesiAiTurnIntent.control) {
       return WesiAiMessageSubmitResult.unavailable;
@@ -167,6 +172,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       attachments: List<WesiAiAttachment>.unmodifiable(attachments),
       queuedAt: queuedAt,
       intent: intent,
+      thinkingMode: thinkingMode,
     );
     // Reserve the slot before the await so concurrent submissions cannot all
     // pass the queue limit. UI only receives `accepted` after durable storage.
@@ -207,6 +213,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
         processSessionId: _queueSessionId,
         status: status,
         intent: turn.intent.name,
+        thinkingMode: turn.thinkingMode,
         attachments: turn.attachments
             .map((attachment) => attachment.toMetadataJson())
             .toList(growable: false),
@@ -223,6 +230,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   Future<void> addUserMessage(
     String text, {
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    bool thinkingMode = true,
   }) async {
     final conversation = state.activeConversation;
     final intent = WesiAiTurnIntentClassifier.classify(
@@ -234,6 +242,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
       attachments: attachments,
       startDrain: false,
       intent: intent,
+      thinkingMode: thinkingMode,
     );
     if (result == WesiAiMessageSubmitResult.accepted) {
       await _drainQueuedTurns();
@@ -367,6 +376,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
   Future<void> _sendNow(
     String text, {
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    bool thinkingMode = true,
   }) async {
     final conversationId = state.activeConversationId;
     final previousUserIds = conversationId == null
@@ -376,7 +386,11 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
             .where((message) => message.author == WesiAiMessageAuthor.user)
             .map((message) => message.id)
             .toSet();
-    await super.addUserMessage(text, attachments: attachments);
+    await super.addUserMessage(
+      text,
+      attachments: attachments,
+      thinkingMode: thinkingMode,
+    );
     if (attachments.isEmpty || conversationId == null) return;
     WesiAiMessage? added;
     for (final message in state.messagesFor(conversationId).reversed) {
@@ -448,7 +462,11 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
             );
             await _save();
           }
-          await _sendNow(turn.text, attachments: turn.attachments);
+          await _sendNow(
+            turn.text,
+            attachments: turn.attachments,
+            thinkingMode: turn.thinkingMode,
+          );
         } catch (_) {
           try {
             await _appendQueueItemError(turn.conversationId);
@@ -574,6 +592,7 @@ class WesiAiManagedChatController extends WesiAiLobbyChatController {
             attachments: const <WesiAiAttachment>[],
             queuedAt: item.queuedAt,
             intent: _intentFromName(item.intent),
+            thinkingMode: item.thinkingMode,
           ),
         );
       } catch (_) {

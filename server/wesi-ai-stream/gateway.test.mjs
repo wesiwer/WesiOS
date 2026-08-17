@@ -27,6 +27,7 @@ async function withGateway(fetchImpl, fn) {
     streamSecret: STREAM_SECRET,
     relaySecret: RELAY_SECRET,
     fetchImpl,
+    publicDeliberation: false,
   }));
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address();
@@ -297,6 +298,62 @@ test('tool JSON is never leaked and verified tool result precedes final stream',
     assert.equal(events.at(-1).type, 'done');
     assert.equal(events.at(-1).toolResults[0].verified, true);
   });
+});
+
+
+test('thinking mode emits model-authored contextual public deliberation', async () => {
+  let relayCalls = 0;
+  const fetchImpl = async (url) => {
+    const value = String(url);
+    if (value.endsWith('/api/wesi/ai/stream/prepare-v2')) {
+      return jsonResponse({ok: true, prepared: prepared()});
+    }
+    if (value.endsWith('/v1/wesi-ai-stream')) {
+      relayCalls += 1;
+      if (relayCalls === 1) {
+        return ndjson([{type: 'done', answer: JSON.stringify({
+          complexity: 'simple',
+          notes: [{
+            kind: 'observation',
+            title: 'Сначала пойму тон разговора',
+            text: 'Ты просто поздоровался, так что не буду усложнять ответ лишним анализом.',
+          }],
+        })}]);
+      }
+      return ndjson([{type: 'done', answer: 'Привет!'}]);
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+  const server = http.createServer(createGateway({
+    pocketBaseUrl: 'http://127.0.0.1:8090',
+    relayUrl: 'https://relay.example.test',
+    streamSecret: STREAM_SECRET,
+    relaySecret: RELAY_SECRET,
+    fetchImpl,
+    publicDeliberation: true,
+  }));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/wesi/ai/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer user-token',
+        'x-wesios-session': 'session_123456789012345678901234',
+      },
+      body: JSON.stringify({persona: 'zane', message: 'привет', thinkingMode: true}),
+    });
+    assert.equal(response.status, 200);
+    const events = await readEvents(response);
+    const publicNotes = events.filter((event) => event.type === 'activity' && event.publicDeliberation === true);
+    assert.equal(publicNotes.length, 1);
+    assert.equal(publicNotes[0].label, 'Сначала пойму тон разговора');
+    assert.match(publicNotes[0].detail, /просто поздоровался/);
+    assert.equal(JSON.stringify(events).includes('chain_of_thought'), false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test('gateway health exposes ready state', async () => {

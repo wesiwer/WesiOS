@@ -20,17 +20,26 @@ class WesiAiLobbyChatController extends WesiAiChatController {
   Future<void> addUserMessage(
     String text, {
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    bool thinkingMode = true,
   }) async {
     final conversation = state.activeConversation;
     if (conversation == null || conversation.persona != WesiAiPersona.lobby) {
-      return super.addUserMessage(text, attachments: attachments);
+      return super.addUserMessage(
+        text,
+        attachments: attachments,
+        thinkingMode: thinkingMode,
+      );
     }
 
     // Multimodal Lobby uses the canonical universal chat path. This avoids
     // the legacy dual-speaker codec ever dropping file bytes or pretending a
     // file was seen when it was not.
     if (attachments.isNotEmpty) {
-      return super.addUserMessage(text, attachments: attachments);
+      return super.addUserMessage(
+        text,
+        attachments: attachments,
+        thinkingMode: thinkingMode,
+      );
     }
 
     final clean = text.trim();

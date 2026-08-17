@@ -29,6 +29,7 @@ class WesiAiLobbyApi extends WesiAiApi {
     void Function(String delta)? onDelta,
     void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
+    bool thinkingMode = true,
   }) async {
     WesiAiAttachment.validateBatch(attachments);
     if (conversation.persona != WesiAiPersona.lobby) {
@@ -45,6 +46,7 @@ class WesiAiLobbyApi extends WesiAiApi {
         onDelta: onDelta,
         onActivity: onActivity,
         cancellation: cancellation,
+        thinkingMode: thinkingMode,
       );
     }
 
@@ -65,6 +67,7 @@ class WesiAiLobbyApi extends WesiAiApi {
         onDelta: onDelta,
         onActivity: onActivity,
         cancellation: cancellation,
+        thinkingMode: thinkingMode,
       );
     }
 

@@ -261,6 +261,7 @@ class WesiAiChatController extends ChangeNotifier {
   Future<void> addUserMessage(
     String text, {
     List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    bool thinkingMode = true,
   }) async {
     final c = state.activeConversation;
     final clean = text.trim();
@@ -338,7 +339,7 @@ class WesiAiChatController extends ChangeNotifier {
     final openAgents = <String, int>{};
     var activitySequence = 0;
     var streamedText = '';
-    var streamVisible = c.persona != WesiAiPersona.lobby;
+    var streamVisible = thinkingMode && c.persona != WesiAiPersona.lobby;
 
     Map<String, dynamic> streamMetadata(bool streaming) => <String, dynamic>{
           if (streaming) 'transportStreaming': true,
@@ -610,6 +611,7 @@ class WesiAiChatController extends ChangeNotifier {
         onDelta: onDelta,
         onActivity: onActivity,
         cancellation: cancellation,
+        thinkingMode: thinkingMode,
       ));
       if (reply == null) {
         removeTransientStream();

@@ -17,6 +17,7 @@ RUNTIME_FILES=(
   persona_coagent_orchestrator.mjs
   dynamic_subagent.mjs
   dynamic_subagent_orchestrator.mjs
+  public_deliberation.mjs
   multi_agent_workspace.mjs
   package.json
 )
