@@ -15,7 +15,7 @@ concurrency:
 jobs:
   repair-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,7 +27,7 @@ jobs:
           flutter-version: '3.24.0'
           channel: stable
 
-      - name: Apply audited Stage 14 fixes atomically
+      - name: Apply audited Stage 14 transport fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -39,46 +39,67 @@ jobs:
               text = p.read_text(encoding='utf-8')
               count = text.count(old)
               if count != 1:
-                  raise SystemExit(f'{path}: expected exactly one match, got {count}')
+                  raise SystemExit(f'{path}: expected exactly one match, got {count}: {old[:100]!r}')
               p.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          api = 'lib/features/ai/wesi_ai_api.dart'
-          replace_once(api, '''      final request = await _http.postUrl(uri);
-              cancellation?.bind(() => request.abort());
-              _applyAuth(request, auth);
-              request.headers.contentType = ContentType.json;
-              request.write(jsonEncode(body));
-              final response =
-                  await request.close().timeout(const Duration(seconds: 185));
-              final json = await _readJson(response);
-              cancellation?.unbind();
-          ''', '''      final request = await _http.postUrl(uri);
-              cancellation?.bind(() => request.abort());
-              _applyAuth(request, auth);
-              request.headers.contentType = ContentType.json;
-              request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-              request.write(jsonEncode(body));
-              late HttpClientResponse response;
-              late Map<String, dynamic> json;
-              try {
-                response = await request.close().timeout(const Duration(seconds: 185));
-                json = await readJsonResponse(
-                  response,
-                  stage: 'MAIN',
-                  component: 'WesiOS Main',
-                  operation: 'chat',
-                  lastSuccess: 'MAIN_RESPONSE_RECEIVED',
-                );
-              } finally {
-                cancellation?.unbind();
-              }
-          ''')
+          def replace_section(path, start_marker, end_marker, replacement):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              start = text.find(start_marker)
+              if start < 0:
+                  raise SystemExit(f'{path}: start marker not found: {start_marker!r}')
+              end = text.find(end_marker, start)
+              if end < 0:
+                  raise SystemExit(f'{path}: end marker not found: {end_marker!r}')
+              p.write_text(text[:start] + replacement + text[end:], encoding='utf-8')
 
-          replace_once(api, '''    if (response.statusCode < 200 || response.statusCode >= 300) {
+          api = Path('lib/features/ai/wesi_ai_api.dart')
+          text = api.read_text(encoding='utf-8')
+
+          # Direct Main transport: request JSON explicitly and always release cancellation binding.
+          direct_anchor = 'await request.close().timeout(const Duration(seconds: 185));'
+          direct_at = text.find(direct_anchor)
+          if direct_at < 0:
+              raise SystemExit('direct Main response anchor not found')
+          header = '      request.headers.contentType = ContentType.json;\n'
+          header_at = text.rfind(header, 0, direct_at)
+          if header_at < 0:
+              raise SystemExit('direct Main content-type header not found')
+          accept = "      request.headers.set(HttpHeaders.acceptHeader, 'application/json');\n"
+          if accept not in text[header_at:direct_at]:
+              text = text[:header_at + len(header)] + accept + text[header_at + len(header):]
+          old_direct = '''      final response =
+              await request.close().timeout(const Duration(seconds: 185));
+          final json = await _readJson(response);
+          cancellation?.unbind();
+          '''
+          new_direct = '''      late HttpClientResponse response;
+          late Map<String, dynamic> json;
+          try {
+            response = await request.close().timeout(const Duration(seconds: 185));
+            json = await readJsonResponse(
+              response,
+              stage: 'MAIN',
+              component: 'WesiOS Main',
+              operation: 'chat',
+              lastSuccess: 'MAIN_RESPONSE_RECEIVED',
+            );
+          } finally {
+            cancellation?.unbind();
+          }
+          '''
+          if text.count(old_direct) != 1:
+              raise SystemExit(f'direct Main response block mismatch: {text.count(old_direct)}')
+          text = text.replace(old_direct, new_direct, 1)
+
+          # Streaming errors: strict diagnostics for bad envelopes, but preserve the deliberate
+          # fallback to Main for unavailable/non-JSON 404/405/501/502 edges.
+          old_stream = '''    if (response.statusCode < 200 || response.statusCode >= 300) {
               final json = await _readJson(response);
               cancellation?.unbind();
               final code = '${json['code'] ?? ''}';
-          ''', '''    if (response.statusCode < 200 || response.statusCode >= 300) {
+          '''
+          new_stream = '''    if (response.statusCode < 200 || response.statusCode >= 300) {
               late Map<String, dynamic> json;
               try {
                 json = await readJsonResponse(
@@ -88,26 +109,23 @@ jobs:
                   operation: 'chat.stream error response',
                   lastSuccess: 'STREAM_RESPONSE_RECEIVED',
                 );
+              } on WesiAiApiException catch (error) {
+                if (const <int>{404, 405, 501, 502}.contains(response.statusCode) &&
+                    error.code == 'WAI_BAD_SERVER_RESPONSE') {
+                  return null;
+                }
+                rethrow;
               } finally {
                 cancellation?.unbind();
               }
               final code = '${json['code'] ?? ''}';
-          ''')
+          '''
+          if text.count(old_stream) != 1:
+              raise SystemExit(f'stream error block mismatch: {text.count(old_stream)}')
+          text = text.replace(old_stream, new_stream, 1)
+          api.write_text(text, encoding='utf-8')
 
-          replace_once(api, '''  static Future<Map<String, dynamic>> _readJson(
-              HttpClientResponse response) async {
-            final raw = await utf8.decoder.bind(response).join();
-            if (raw.trim().isEmpty) return <String, dynamic>{};
-            try {
-              final decoded = jsonDecode(raw);
-              return decoded is Map
-                  ? Map<String, dynamic>.from(decoded)
-                  : <String, dynamic>{};
-            } on FormatException {
-              return <String, dynamic>{};
-            }
-          }
-          ''', '''  static const int maxJsonResponseBytes = 4 * 1024 * 1024;
+          helper = '''  static const int maxJsonResponseBytes = 4 * 1024 * 1024;
 
           static Map<String, dynamic> decodeJsonObjectResponse(
             String raw, {
@@ -205,8 +223,7 @@ jobs:
             return decodeJsonObjectResponse(
               raw,
               httpStatus: response.statusCode,
-              contentType:
-                  response.headers.value(HttpHeaders.contentTypeHeader) ?? '',
+              contentType: response.headers.value(HttpHeaders.contentTypeHeader) ?? '',
               stage: stage,
               component: component,
               operation: operation,
@@ -234,53 +251,63 @@ jobs:
               if (clipped.isNotEmpty) 'Начало ответа: $clipped',
             ].join(' · ');
           }
-          ''')
 
-          replace_once(api, '''        'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
-                'WAI_STREAM_FAILED' ||
-          ''', '''        'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
-                'WAI_BAD_SERVER_RESPONSE' =>
-                  'Сервер WesiOS вернул некорректный ответ',
-                'WAI_RESPONSE_TOO_LARGE' =>
-                  'Сервер WesiOS вернул слишком большой ответ',
-                'WAI_STREAM_FAILED' ||
-          ''')
+          '''
+          replace_section(
+              'lib/features/ai/wesi_ai_api.dart',
+              '  static Future<Map<String, dynamic>> _readJson(',
+              '  static void _throwForUploadResponse',
+              helper)
+          replace_once(
+              'lib/features/ai/wesi_ai_api.dart',
+              "        'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',\n",
+              "        'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',\n"
+              "        'WAI_BAD_SERVER_RESPONSE' =>\n"
+              "          'Сервер WesiOS вернул некорректный ответ',\n"
+              "        'WAI_RESPONSE_TOO_LARGE' =>\n"
+              "          'Сервер WesiOS вернул слишком большой ответ',\n")
 
-          lobby = 'lib/features/ai/wesi_ai_lobby_api.dart'
-          replace_once(lobby, '''      request.headers.set(HttpHeaders.authorizationHeader, token);
-              request.headers.set('X-WesiOS-Session', sessionId);
-              request.headers.contentType = ContentType.json;
-              request.write(jsonEncode(body));
-              final response =
-                  await request.close().timeout(const Duration(seconds: 125));
-              final raw = await utf8.decoder.bind(response).join();
-              cancellation?.unbind();
-              Map<String, dynamic> json = const {};
-              if (raw.isNotEmpty) {
-                final decoded = jsonDecode(raw);
-                if (decoded is Map) json = Map<String, dynamic>.from(decoded);
-              }
-          ''', '''      request.headers.set(HttpHeaders.authorizationHeader, token);
-              request.headers.set('X-WesiOS-Session', sessionId);
-              request.headers.contentType = ContentType.json;
-              request.headers.set(HttpHeaders.acceptHeader, 'application/json');
-              request.write(jsonEncode(body));
-              late HttpClientResponse response;
-              late Map<String, dynamic> json;
-              try {
-                response = await request.close().timeout(const Duration(seconds: 125));
-                json = await WesiAiApi.readJsonResponse(
-                  response,
-                  stage: 'LOBBY',
-                  component: 'WesiAiLobbyApi',
-                  operation: 'decode response',
-                  lastSuccess: 'LOBBY_RESPONSE_RECEIVED',
-                );
-              } finally {
-                cancellation?.unbind();
-              }
-          ''')
-          replace_once(lobby, '''    } on FormatException catch (error) {
+          lobby = Path('lib/features/ai/wesi_ai_lobby_api.dart')
+          text = lobby.read_text(encoding='utf-8')
+          lobby_anchor = 'await request.close().timeout(const Duration(seconds: 125));'
+          lobby_at = text.find(lobby_anchor)
+          if lobby_at < 0:
+              raise SystemExit('Lobby response anchor not found')
+          lobby_header = '      request.headers.contentType = ContentType.json;\n'
+          lobby_header_at = text.rfind(lobby_header, 0, lobby_at)
+          if lobby_header_at < 0:
+              raise SystemExit('Lobby content-type header not found')
+          if accept not in text[lobby_header_at:lobby_at]:
+              text = text[:lobby_header_at + len(lobby_header)] + accept + text[lobby_header_at + len(lobby_header):]
+          old_lobby_response = '''      final response =
+              await request.close().timeout(const Duration(seconds: 125));
+          final raw = await utf8.decoder.bind(response).join();
+          cancellation?.unbind();
+          Map<String, dynamic> json = const {};
+          if (raw.isNotEmpty) {
+            final decoded = jsonDecode(raw);
+            if (decoded is Map) json = Map<String, dynamic>.from(decoded);
+          }
+          '''
+          new_lobby_response = '''      late HttpClientResponse response;
+          late Map<String, dynamic> json;
+          try {
+            response = await request.close().timeout(const Duration(seconds: 125));
+            json = await WesiAiApi.readJsonResponse(
+              response,
+              stage: 'LOBBY',
+              component: 'WesiAiLobbyApi',
+              operation: 'decode response',
+              lastSuccess: 'LOBBY_RESPONSE_RECEIVED',
+            );
+          } finally {
+            cancellation?.unbind();
+          }
+          '''
+          if text.count(old_lobby_response) != 1:
+              raise SystemExit(f'Lobby decode block mismatch: {text.count(old_lobby_response)}')
+          text = text.replace(old_lobby_response, new_lobby_response, 1)
+          format_catch = '''    } on FormatException catch (error) {
               throw WesiAiApiException(
                 'NOT_WESIOS',
                 'Сервер WesiOS вернул некорректный ответ',
@@ -290,9 +317,11 @@ jobs:
                 lastSuccess: 'LOBBY_RESPONSE_RECEIVED',
                 detail: error.message,
               );
-            }
-          ''', '''    }
-          ''')
+          '''
+          if text.count(format_catch) != 1:
+              raise SystemExit(f'Lobby legacy FormatException block mismatch: {text.count(format_catch)}')
+          text = text.replace(format_catch, '', 1)
+          lobby.write_text(text, encoding='utf-8')
 
           streaming = '.github/workflows/deploy-wesi-ai-streaming.yml'
           replace_once(streaming,
@@ -338,8 +367,8 @@ jobs:
               echo MAIN_WESI_AI_HOOKS_ACTIVATED
           ''')
           replace_once(streaming,
-              '          echo "WESI_AI_STREAMING_READY public=$code relay=$relay_code"\n',
-              '          bash server/verify-wesi-ai-main-routes.sh https://api.wesi-inc.ru\n          echo "WESI_AI_STREAMING_READY public=$code relay=$relay_code"\n')
+              '          health="$(curl -fsS --max-time 20 https://$PUBLIC_HOST/health)"\n',
+              '          bash server/verify-wesi-ai-main-routes.sh https://api.wesi-inc.ru\n          health="$(curl -fsS --max-time 20 https://$PUBLIC_HOST/health)"\n')
 
           deploy = '.github/workflows/deploy-wesi-ai.yml'
           replace_once(deploy,
@@ -380,14 +409,13 @@ jobs:
               echo 'Wesi AI production deployment complete: Fast / Pro / Ultra + Chat + Lobby + TTS + Main hooks.'
           ''')
 
-          router = '.github/workflows/configure-wesi-ai-router.yml'
-          p = Path(router)
-          text = p.read_text(encoding='utf-8')
+          router = Path('.github/workflows/configure-wesi-ai-router.yml')
+          text = router.read_text(encoding='utf-8')
           old_host = 'ai.wesi-wf.su'
           occurrences = text.count(old_host)
-          if occurrences < 2:
-              raise SystemExit(f'{router}: expected stale host at least twice, got {occurrences}')
-          p.write_text(text.replace(old_host, 'wesi-ai-178-236-247-194.nip.io'), encoding='utf-8')
+          if occurrences != 2:
+              raise SystemExit(f'configure router stale-host count changed: {occurrences}')
+          router.write_text(text.replace(old_host, 'wesi-ai-178-236-247-194.nip.io'), encoding='utf-8')
 
           preflight = '.github/workflows/wesi-ai-preflight.yml'
           replace_once(preflight, '''          [ "$hook_count" -gt 8 ] || {
@@ -418,7 +446,7 @@ jobs:
           import 'package:wesios/features/ai/wesi_ai_api.dart';
 
           void main() {
-            test('Wesi AI response contract decodes a JSON object', () {
+            test('response contract decodes a JSON object', () {
               final value = WesiAiApi.decodeJsonObjectResponse(
                 '{"ok":true,"answer":"OK"}',
                 httpStatus: 200,
@@ -428,7 +456,7 @@ jobs:
               expect(value['answer'], 'OK');
             });
 
-            test('Wesi AI response contract rejects HTML with diagnostics', () {
+            test('response contract rejects HTML with actionable diagnostics', () {
               expect(
                 () => WesiAiApi.decodeJsonObjectResponse(
                   '<html><body>502 Bad Gateway</body></html>',
@@ -450,7 +478,7 @@ jobs:
               );
             });
 
-            test('Wesi AI response contract rejects non-object JSON roots', () {
+            test('response contract rejects non-object JSON roots', () {
               expect(
                 () => WesiAiApi.decodeJsonObjectResponse(
                   '[{"answer":"wrong envelope"}]',
@@ -469,23 +497,26 @@ jobs:
           }
           ''', encoding='utf-8')
 
-          trigger = Path('.github/wesi-ai-router-deploy.trigger')
-          trigger.write_text(
-              'triggered_at=2026-08-17T07:30:00Z\n'
+          Path('.github/wesi-ai-router-deploy.trigger').write_text(
+              'triggered_at=2026-08-17T07:50:00Z\n'
               'purpose=stage14-full-system-lobby-chat-route-hardening\n'
               'attempt=10\n',
-              encoding='utf-8',
-          )
+              encoding='utf-8')
           PY
 
           dart format lib/features/ai/wesi_ai_api.dart lib/features/ai/wesi_ai_lobby_api.dart test/features/ai/wesi_ai_response_contract_test.dart
 
-      - name: Verify shell and JavaScript contracts
+      - name: Verify deployment invariants and server contracts
         shell: bash
         run: |
           set -euo pipefail
           bash -n server/verify-wesi-ai-main-routes.sh
           bash -n server/wesi-ai-stream/deploy-stream-gateway.sh
+          grep -q 'systemctl restart pocketbase' .github/workflows/deploy-wesi-ai.yml
+          grep -q 'systemctl restart pocketbase' .github/workflows/deploy-wesi-ai-streaming.yml
+          grep -q '/api/wesi/ai/lobby' server/verify-wesi-ai-main-routes.sh
+          grep -q '/api/wesi/ai/chat' server/verify-wesi-ai-main-routes.sh
+          ! grep -q 'ai.wesi-wf.su' .github/workflows/configure-wesi-ai-router.yml
           for file in server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js; do
             [ -f "$file" ] || continue
             node --check "$file"
@@ -493,7 +524,7 @@ jobs:
           node --test server/pb_hooks/wesi_ai_lobby_router_test.mjs server/pb_hooks/wesi_ai_lobby_turn_test.mjs server/pb_hooks/wesi_ai_stream_contract_test.mjs
           node --test server/wesi-ai-stream/*.test.mjs
 
-      - name: Verify Flutter transport and UI
+      - name: Verify Flutter transport contract
         shell: bash
         run: |
           set -euo pipefail
@@ -501,7 +532,7 @@ jobs:
           flutter analyze lib/features/ai/wesi_ai_api.dart lib/features/ai/wesi_ai_lobby_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart lib/features/ai/ai_assistant_v2_screen.dart test/features/ai/wesi_ai_response_contract_test.dart
           flutter test test/features/ai/wesi_ai_response_contract_test.dart
 
-      - name: Persist verified fixes to audit branch
+      - name: Persist only verified fixes
         shell: bash
         run: |
           set -euo pipefail
@@ -517,5 +548,5 @@ jobs:
             .github/wesi-ai-router-deploy.trigger \
             test/features/ai/wesi_ai_response_contract_test.dart
           git diff --cached --check
-          git commit -m 'fix(ai): harden Stage 14 transport and production route activation'
+          git commit -m 'fix(ai): harden Stage 14 transport and route activation'
           git push origin HEAD:agent/wesi-ai-stage14-full-system-audit-20260817
