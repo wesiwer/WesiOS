@@ -17,13 +17,31 @@ test('Relay nginx template stays compatible with the deployed nginx generation',
   assert.doesNotMatch(nginx, /\n\s*http2 on;/);
 });
 
-test('Both production workflows seal optional advisor credentials to Relay', () => {
-  for (const path of ['.github/workflows/deploy-wesi-ai.yml', '.github/workflows/deploy-wesi-ai-streaming.yml']) {
-    const text = fs.readFileSync(path, 'utf8');
-    for (const key of ['GROQ_API_KEY_B64', 'MISTRAL_API_KEY_B64', 'OPENROUTER_API_KEY_B64']) {
-      assert.match(text, new RegExp(key), `${path} missing ${key}`);
-    }
+test('Production workflows keep optional advisor credentials sealed to Relay', () => {
+  const classic = fs.readFileSync('.github/workflows/deploy-wesi-ai.yml', 'utf8');
+  for (const key of ['GROQ_API_KEY_B64', 'MISTRAL_API_KEY_B64', 'OPENROUTER_API_KEY_B64']) {
+    assert.match(classic, new RegExp(key), `.github/workflows/deploy-wesi-ai.yml missing ${key}`);
   }
+
+  const streaming = fs.readFileSync('.github/workflows/deploy-wesi-ai-streaming.yml', 'utf8');
+  for (const key of ['GROQ_KEY', 'MISTRAL_KEY', 'OPENROUTER_KEY']) {
+    assert.match(streaming, new RegExp(key), `.github/workflows/deploy-wesi-ai-streaming.yml missing ${key}`);
+  }
+  assert.match(streaming, /build-sealed-config\.py/);
+
+  const builder = fs.readFileSync('server/wesi-ai-stream/build-sealed-config.py', 'utf8');
+  for (const key of ['GROQ_API_KEY_B64', 'MISTRAL_API_KEY_B64', 'OPENROUTER_API_KEY_B64']) {
+    assert.match(builder, new RegExp(key), `stable sealed config builder missing ${key}`);
+  }
+});
+
+test('Streaming deploy must restart gateway and prove live trust parity', () => {
+  const workflow = fs.readFileSync('.github/workflows/deploy-wesi-ai-streaming.yml', 'utf8');
+  const installer = fs.readFileSync('server/wesi-ai-stream/deploy-stream-gateway.sh', 'utf8');
+  assert.match(installer, /systemctl restart wesi-ai-stream/);
+  assert.match(installer, /STREAM_GATEWAY_LIVE_SECRET_OK/);
+  assert.match(workflow, /Verify live gateway trust matches Main/);
+  assert.match(workflow, /WESI_AI_STREAM_TRUST_PARITY_OK/);
 });
 
 test('Streaming Pro and Maximum route through hidden advisors then Gemini finalizer', () => {
