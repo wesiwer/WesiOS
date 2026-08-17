@@ -36,43 +36,47 @@ jobs:
           fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Trace stream prepare through public proxy and local PocketBase
+      - name: Inspect PocketBase embedded logs safely
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=''; fi
+          echo '=== PB_DATA FILES ==='
+          $SUDO find /opt/pocketbase/pb_data -maxdepth 1 -type f -printf '%f %s bytes\n' 2>/dev/null | sort || true
 
-          echo '=== RECENT NGINX ACCESS: STREAM PREPARE ==='
-          for f in /var/log/nginx/access.log /var/log/nginx/*access*.log; do
-            [ -e "$f" ] || continue
-            ($SUDO tail -n 5000 "$f" 2>/dev/null || true) | grep -F '/api/wesi/ai/stream/prepare' | tail -n 80 || true
-          done
+          echo '=== SQLITE TABLE DISCOVERY ==='
+          $SUDO python3 -c "import os,sqlite3; base='/opt/pocketbase/pb_data';
+for name in os.listdir(base):
+ p=os.path.join(base,name)
+ if not os.path.isfile(p) or not (name.endswith('.db') or name.endswith('.sqlite')): continue
+ try:
+  con=sqlite3.connect('file:'+p+'?mode=ro',uri=True); tables=[r[0] for r in con.execute(\"select name from sqlite_master where type='table'\")]; print(name, 'TABLES=', ','.join(tables))
+ except Exception as e: print(name, 'OPEN_FAILED', type(e).__name__)" 2>/dev/null || true
 
-          echo '=== RECENT NGINX ERRORS: STREAM ==='
-          for f in /var/log/nginx/error.log /var/log/nginx/*error*.log; do
-            [ -e "$f" ] || continue
-            ($SUDO tail -n 1200 "$f" 2>/dev/null || true) | grep -Ei 'stream/prepare|wesi/ai|client intended|too large|upstream|400' | tail -n 120 || true
-          done
-
-          echo '=== RELEVANT NGINX CONFIG ==='
-          ($SUDO nginx -T 2>/dev/null || true) | grep -E -C 4 'server_name[[:space:]]+api\.wesi-inc\.ru|client_max_body_size|proxy_pass|proxy_set_header|location[[:space:]].*/api|proxy_request_buffering' | head -n 320 || true
-
-          echo '=== PUBLIC VS LOCAL SYNTHETIC AUTH FAILURE ==='
-          secret="$($SUDO python3 -c "import json; print(json.load(open('/opt/pocketbase/pb_hooks/.wesi-ai-relay.json', encoding='utf-8')).get('streamSecret',''))" 2>/dev/null || true)"
-          [ ${#secret} -ge 32 ] || { echo 'STREAM_SECRET_UNAVAILABLE'; exit 0; }
-          body='{"persona":"zane","tier":"fast","lobbyMode":"smart","message":"stream proxy probe","summary":"","projectContext":"","conversationId":"probe","activeOrganizationId":"","memory":{},"messages":[]}'
-          fake_token='fake.invalid.token'
-          fake_session='abcdefghijklmnopqrstuvwx'
-          for base in 'http://127.0.0.1:8090' 'https://api.wesi-inc.ru'; do
-            safe="$(printf '%s' "$base" | tr -cd 'A-Za-z0-9')"
-            out="/tmp/probe-${safe}.out"
-            hdr="${out}.headers"
-            code="$(curl -sS --max-time 15 -D "$hdr" -o "$out" -w '%{http_code}' -X POST "$base/api/wesi/ai/stream/prepare" -H 'Content-Type: application/json' -H 'Accept: application/json' -H "Authorization: $fake_token" -H "X-WesiOS-Session: $fake_session" -H "X-Wesi-AI-Stream-Secret: $secret" --data-binary "$body" || true)"
-            printf 'BASE=%s STATUS=%s\n' "$base" "$code"
-            grep -Ei '^(HTTP/|content-type:|server:|content-length:)' "$hdr" | tr -d '\r' || true
-            printf 'BODY='
-            head -c 800 "$out" | tr '\n' ' '; echo
-          done
+          echo '=== MATCHED REQUEST/ERROR LOGS ==='
+          $SUDO python3 -c "import os,sqlite3,re,json; base='/opt/pocketbase/pb_data'; token=re.compile(r'(?i)(authorization|x-wesios-session|x-wesi-ai-stream-secret)([=: ]+)([^, }\\\"\\n]+)');
+for name in os.listdir(base):
+ p=os.path.join(base,name)
+ if not os.path.isfile(p) or not (name.endswith('.db') or name.endswith('.sqlite')): continue
+ try: con=sqlite3.connect('file:'+p+'?mode=ro',uri=True)
+ except: continue
+ tables=[r[0] for r in con.execute(\"select name from sqlite_master where type='table'\")]
+ for table in tables:
+  low=table.lower()
+  if 'log' not in low and 'request' not in low: continue
+  try: cols=[r[1] for r in con.execute('pragma table_info(\\\"'+table.replace('\\\"','\\\"\\\"')+'\\\")')]
+  except: continue
+  wanted=[c for c in cols if c.lower() in ('id','created','updated','level','message','data','status','method','url','path')]
+  if not wanted: continue
+  try: rows=con.execute('select '+','.join('\\\"'+c.replace('\\\"','\\\"\\\"')+'\\\"' for c in wanted)+' from \\\"'+table.replace('\\\"','\\\"\\\"')+'\\\" order by rowid desc limit 1500').fetchall()
+  except: continue
+  shown=0
+  for row in rows:
+   text=' | '.join(str(v or '') for v in row); l=text.lower()
+   if '/api/wesi/ai/stream/prepare' not in l and 'wai_stream_main_rejected' not in l and not ('wesi' in l and ('status\\\":400' in l or 'status=400' in l or 'bad request' in l)): continue
+   text=token.sub(lambda m:m.group(1)+m.group(2)+'[REDACTED]', text)
+   print(name, table, text[:6000]); shown+=1
+   if shown>=100: break" 2>/dev/null || true
           REMOTE
