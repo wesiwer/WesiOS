@@ -52,11 +52,14 @@ jobs:
           test -n "${GEMINI_KEY:-}"
           echo "PUBLIC_HOST=$PUBLIC_HOST" >> "$GITHUB_ENV"
           python3 server/build-wesi-ai-personas.py
+          python3 -m py_compile server/wesi-ai-stream/build-sealed-config.py
           test -s server/pb_hooks/.wesi-ai-personas.json
           for file in server/wesi-ai-relay/*.mjs server/wesi-ai-stream/*.mjs; do node --check "$file"; done
           node --test server/wesi-ai-relay/*.test.mjs
           node --test server/wesi-ai-stream/*.test.mjs
           for file in server/wesi-ai-relay/*.sh server/wesi-ai-stream/*.sh; do bash -n "$file"; done
+          grep -q 'systemctl restart wesi-ai-stream' server/wesi-ai-stream/deploy-stream-gateway.sh
+          grep -q 'STREAM_GATEWAY_LIVE_SECRET_OK' server/wesi-ai-stream/deploy-stream-gateway.sh
           grep -q 'location = /v1/wesi-ai-stream' server/wesi-ai-relay/nginx-relay.conf
           grep -q 'location = /api/wesi/ai/chat/stream' server/wesi-ai-relay/nginx-relay.conf
 
@@ -76,6 +79,23 @@ jobs:
           if [ -n "${MAIN_KNOWN:-}" ]; then printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/relay_known_hosts ~/.ssh/main_known_hosts
 
+      - name: Snapshot current Main sealed configuration
+        run: |
+          set -euo pipefail
+          umask 077
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "cat /opt/pocketbase/pb_hooks/.wesi-ai-relay.json 2>/dev/null || printf '{}'" > existing-wesi-ai-relay.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          try:
+              value=json.loads(Path('existing-wesi-ai-relay.json').read_text())
+              assert isinstance(value, dict)
+          except Exception:
+              Path('existing-wesi-ai-relay.json').write_text('{}')
+          PY
+          chmod 600 existing-wesi-ai-relay.json
+
       - name: Build sealed configuration
         env:
           PROVIDED_SHARED: ${{ secrets.WESI_MAIN_SHARED_SECRET }}
@@ -91,51 +111,7 @@ jobs:
           NIRVANA_VOICE: ${{ secrets.WESI_NIRVANA_TTS_VOICE }}
         run: |
           set -euo pipefail
-          SHARED="${PROVIDED_SHARED:-}"
-          if [ -z "$SHARED" ]; then SHARED="$(openssl rand -hex 32)"; fi
-          [ ${#SHARED} -ge 32 ]
-          STREAM_SECRET="$(openssl rand -hex 32)"
-          echo "::add-mask::$SHARED"
-          echo "::add-mask::$STREAM_SECRET"
-          export WESI_SHARED_SECRET="$SHARED" WESI_STREAM_SECRET="$STREAM_SECRET"
-          python3 - <<'PY'
-          import base64, json, os
-          def add(d, key, value):
-              if value:
-                  d[key] = value
-          relay = {
-              'WESI_MAIN_SHARED_SECRET_B64': os.environ['WESI_SHARED_SECRET'],
-              'GEMINI_API_KEY_B64': os.environ['GEMINI_KEY'],
-          }
-          for i in range(2, 6):
-              add(relay, f'GEMINI_API_KEY_{i}_B64', os.environ.get(f'GEMINI_KEY_{i}', ''))
-          add(relay, 'GROQ_API_KEY_B64', os.environ.get('GROQ_KEY', ''))
-          add(relay, 'MISTRAL_API_KEY_B64', os.environ.get('MISTRAL_KEY', ''))
-          add(relay, 'OPENROUTER_API_KEY_B64', os.environ.get('OPENROUTER_KEY', ''))
-          add(relay, 'WESI_ZANE_TTS_VOICE_B64', os.environ.get('ZANE_VOICE', ''))
-          add(relay, 'WESI_NIRVANA_TTS_VOICE_B64', os.environ.get('NIRVANA_VOICE', ''))
-          with open('relay-secrets.b64', 'w', encoding='ascii') as f:
-              for key, value in relay.items():
-                  f.write(key + '=' + base64.b64encode(value.encode()).decode() + '\n')
-          main_cfg = {
-              'url': 'https://' + os.environ['PUBLIC_HOST'],
-              'sharedSecret': os.environ['WESI_SHARED_SECRET'],
-              'streamSecret': os.environ['WESI_STREAM_SECRET'],
-              'routes': {'fast': 'wesi/fast', 'pro': 'wesi/pro', 'maximum': 'wesi/ultra'},
-          }
-          with open('wesi-ai-relay.json', 'w', encoding='utf-8') as f:
-              json.dump(main_cfg, f, ensure_ascii=False)
-          stream = {
-              'WESI_STREAM_SECRET_B64': os.environ['WESI_STREAM_SECRET'],
-              'WESI_MAIN_SHARED_SECRET_B64': os.environ['WESI_SHARED_SECRET'],
-              'WESI_RELAY_URL_B64': 'https://' + os.environ['PUBLIC_HOST'],
-              'WESI_POCKETBASE_URL_B64': 'https://api.wesi-inc.ru',
-          }
-          with open('stream-secrets.b64', 'w', encoding='ascii') as f:
-              for key, value in stream.items():
-                  f.write(key + '=' + base64.b64encode(value.encode()).decode() + '\n')
-          print('configured_gemini_slots=' + str(1 + sum(bool(os.environ.get(f'GEMINI_KEY_{i}')) for i in range(2, 6))))
-          PY
+          python3 server/wesi-ai-stream/build-sealed-config.py existing-wesi-ai-relay.json
           chmod 600 relay-secrets.b64 stream-secrets.b64 wesi-ai-relay.json
 
       - name: Deploy Relay and public streaming routes
@@ -185,8 +161,6 @@ jobs:
             mv -f "$tmp" "$dst"
           }
 
-          # Library modules and sealed runtime configuration must be complete
-          # before route hooks are reloaded by PocketBase's file watcher.
           for src in "$REMOTE"/wesi_ai_*.js; do
             [ -f "$src" ] || continue
             atomic_install "$src" "$HOOK_DIR/$(basename "$src")" 0644
@@ -194,9 +168,6 @@ jobs:
           atomic_install "$REMOTE/.wesi-ai-personas.json" "$HOOK_DIR/.wesi-ai-personas.json" 0600
           atomic_install "$REMOTE/wesi-ai-relay.json" "$HOOK_DIR/.wesi-ai-relay.json" 0600
 
-          # Route files are installed last and only by atomic rename. Writing
-          # directly into a live .pb.js can make PocketBase observe a partial
-          # file and leave callbacks bound to an incomplete JS runtime.
           for src in "$REMOTE"/wesi_ai_*.pb.js; do
             [ -f "$src" ] || continue
             atomic_install "$src" "$HOOK_DIR/$(basename "$src")" 0644
@@ -204,11 +175,24 @@ jobs:
 
           sleep 3
           curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null
-          cmp -s "$REMOTE/wesi_ai_stream.pb.js" "$HOOK_DIR/wesi_ai_stream.pb.js"
+          cmp -s "$REMOTE/wesi_ai_stream_v2.pb.js" "$HOOK_DIR/wesi_ai_stream_v2.pb.js"
           cmp -s "$REMOTE/wesi-ai-relay.json" "$HOOK_DIR/.wesi-ai-relay.json"
           rm -rf "$REMOTE"
           echo MAIN_STREAM_HOOKS_ATOMICALLY_DEPLOYED
           REMOTE
+
+      - name: Verify live gateway trust matches Main
+        run: |
+          set -euo pipefail
+          MAIN_SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          RELAY_SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          main_hash="$(ssh "${MAIN_SSH[@]}" "$MAIN_USER@$MAIN_HOST" "python3 -c 'import hashlib,json; p=json.load(open(\"/opt/pocketbase/pb_hooks/.wesi-ai-relay.json\")); s=str(p.get(\"streamSecret\",\"\")); print(hashlib.sha256(s.encode()).hexdigest() if s else \"EMPTY\")'")"
+          live_hash="$(ssh "${RELAY_SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "sudo -n python3 -c 'import hashlib,subprocess; pid=subprocess.check_output([\"systemctl\",\"show\",\"wesi-ai-stream\",\"-p\",\"MainPID\",\"--value\"],text=True).strip(); raw=open(\"/proc/\"+pid+\"/environ\",\"rb\").read().split(b\"\\0\"); env=dict(x.split(b\"=\",1) for x in raw if b\"=\" in x); s=env.get(b\"WESI_STREAM_SECRET\",b\"\"); print(hashlib.sha256(s).hexdigest() if s else \"EMPTY\")'")"
+          echo "MAIN_STREAM_SECRET_SHA256=$main_hash"
+          echo "LIVE_GATEWAY_STREAM_SECRET_SHA256=$live_hash"
+          test "$main_hash" != EMPTY
+          test "$main_hash" = "$live_hash"
+          echo WESI_AI_STREAM_TRUST_PARITY_OK
 
       - name: Verify protected production streaming edge
         run: |
@@ -230,4 +214,4 @@ jobs:
 
       - name: Cleanup sealed files
         if: always()
-        run: rm -f relay-secrets.b64 stream-secrets.b64 wesi-ai-relay.json
+        run: rm -f relay-secrets.b64 stream-secrets.b64 wesi-ai-relay.json existing-wesi-ai-relay.json
