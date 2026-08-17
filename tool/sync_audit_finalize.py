@@ -71,6 +71,16 @@ if "rolling deploy" not in text:
     p.write_text(text.replace(old, new, 1))
 
 
+# Portable Audio Vault codec extends the canonical codec from sync_codec_crm.
+p = Path("lib/core/sync/sync_audit_extensions.dart")
+text = p.read_text()
+if "import 'sync_codec_crm.dart';" not in text:
+    anchor = "import 'sync_codec.dart';\n"
+    if text.count(anchor) != 1:
+        raise SystemExit("sync_audit_extensions.dart: codec import marker mismatch")
+    p.write_text(text.replace(anchor, anchor + "import 'sync_codec_crm.dart';\n", 1))
+
+
 # Regression registry includes the second-pass hidden business state too.
 p = Path("test/sync_audit_extensions_test.dart")
 text = p.read_text()
@@ -92,3 +102,23 @@ if "sync_business_extensions.dart" not in text:
         raise SystemExit("sync_audit_extensions_test.dart: registry marker mismatch")
     text = text.replace(needle, extra, 1)
     p.write_text(text)
+
+
+# WesiAiApi gained thinkingMode; old test doubles must keep the exact override
+# contract or the whole application no longer passes static analysis.
+for path in [
+    "test/wesi_ai_memory_engine_test.dart",
+    "test/wesi_ai_queue_hardening_test.dart",
+]:
+    p = Path(path)
+    text = p.read_text()
+    if "bool thinkingMode = false," not in text:
+        marker = "    WesiAiRequestCancellation? cancellation,\n"
+        count = text.count(marker)
+        if count == 0:
+            raise SystemExit(f"{path}: WesiAiApi send marker missing")
+        text = text.replace(
+            marker,
+            marker + "    bool thinkingMode = false,\n",
+        )
+        p.write_text(text)
