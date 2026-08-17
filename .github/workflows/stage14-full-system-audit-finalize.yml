@@ -1,0 +1,103 @@
+name: Stage 14 Full System Audit Finalize
+
+on:
+  push:
+    branches:
+      - agent/wesi-ai-stage14-full-system-audit-20260817
+
+permissions:
+  contents: write
+
+concurrency:
+  group: stage14-full-system-audit-finalize
+  cancel-in-progress: true
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: agent/wesi-ai-stage14-full-system-audit-20260817
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+
+      - name: Reuse the already proven audit patch step
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/stage14-full-system-audit-autofix.yml')
+          text = path.read_text(encoding='utf-8')
+          start_marker = "      - name: Apply audited Stage 14 fixes\n        shell: bash\n        run: |\n"
+          end_marker = "\n      - name: Verify server and deployment contracts"
+          start = text.find(start_marker)
+          if start < 0:
+              raise SystemExit('audit apply step start marker not found')
+          start += len(start_marker)
+          end = text.find(end_marker, start)
+          if end < 0:
+              raise SystemExit('audit apply step end marker not found')
+          source = text[start:end]
+          out = []
+          for line in source.splitlines():
+              if line:
+                  if not line.startswith('          '):
+                      raise SystemExit(f'unexpected apply-step indentation: {line!r}')
+                  line = line[10:]
+              out.append(line)
+          script = '\n'.join(out) + '\n'
+          Path('/tmp/stage14_apply.sh').write_text(script, encoding='utf-8')
+          PY
+          bash /tmp/stage14_apply.sh
+
+      - name: Verify server and deployment contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n server/verify-wesi-ai-main-routes.sh
+          grep -q 'systemctl restart pocketbase' .github/workflows/deploy-wesi-ai.yml
+          grep -q 'systemctl restart pocketbase' .github/workflows/deploy-wesi-ai-streaming.yml
+          grep -q '/api/wesi/ai/lobby' server/verify-wesi-ai-main-routes.sh
+          grep -q '/api/wesi/ai/chat' server/verify-wesi-ai-main-routes.sh
+          ! grep -q 'ai.wesi-wf.su' .github/workflows/configure-wesi-ai-router.yml
+          for file in server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*.pb.js; do
+            [ -f "$file" ] && node --check "$file"
+          done
+          node --test server/pb_hooks/wesi_ai_lobby_router_test.mjs server/pb_hooks/wesi_ai_lobby_turn_test.mjs server/pb_hooks/wesi_ai_stream_contract_test.mjs
+          node --test server/wesi-ai-stream/*.test.mjs
+
+      - name: Verify Flutter contract without promoting legacy info lints to failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter analyze --no-fatal-infos lib/features/ai/wesi_ai_api.dart lib/features/ai/wesi_ai_lobby_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart lib/features/ai/ai_assistant_v2_screen.dart test/features/ai/wesi_ai_response_contract_test.dart
+          flutter test test/features/ai/wesi_ai_response_contract_test.dart
+
+      - name: Persist verified fixes and remove temporary audit machinery
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/stage14-full-system-audit-autofix.yml
+          git rm .github/workflows/stage14-full-system-audit-finalize.yml
+          git add lib/features/ai/wesi_ai_api.dart lib/features/ai/wesi_ai_lobby_api.dart \
+            server/verify-wesi-ai-main-routes.sh \
+            .github/workflows/deploy-wesi-ai.yml \
+            .github/workflows/deploy-wesi-ai-streaming.yml \
+            .github/workflows/configure-wesi-ai-router.yml \
+            .github/workflows/wesi-ai-preflight.yml \
+            .github/wesi-ai-router-deploy.trigger \
+            test/features/ai/wesi_ai_response_contract_test.dart
+          git diff --cached --check
+          git commit -m 'fix(ai): harden Stage 14 transport and route activation'
+          git push origin HEAD:agent/wesi-ai-stage14-full-system-audit-20260817
