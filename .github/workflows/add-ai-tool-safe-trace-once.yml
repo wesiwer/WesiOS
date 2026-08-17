@@ -1,0 +1,41 @@
+name: Add Safe Wesi AI Tool Trace Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/add-ai-tool-safe-trace-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch gateway and tests
+        run: python3 .github/scripts/add-ai-tool-safe-trace.py
+
+      - name: Validate safe trace and tool protocol
+        run: |
+          set -euo pipefail
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --test server/wesi-ai-stream/gateway.test.mjs server/wesi-ai-stream/connector_protocol.test.mjs
+          grep -q "wesi_ai_tool_" server/wesi-ai-stream/gateway.mjs
+          ! grep -E "toolTrace\([^\n]*(arguments|result|message|prompt|token|session)" server/wesi-ai-stream/gateway.mjs
+          git diff --check
+
+      - name: Commit only after tests pass
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS AI Trace Hardening'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/wesi-ai-stream/gateway.mjs server/wesi-ai-stream/gateway.test.mjs
+          git diff --cached --check
+          git commit -m 'fix(ai): add privacy-safe production tool tracing'
+          git push origin HEAD:main
