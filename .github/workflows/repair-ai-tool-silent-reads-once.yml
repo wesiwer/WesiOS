@@ -18,7 +18,9 @@ jobs:
         with:
           fetch-depth: 0
       - name: Apply patch
-        run: python3 .github/scripts/repair-ai-tool-silent-reads.py
+        run: |
+          python3 .github/scripts/repair-ai-tool-silent-reads.py
+          sed -i 's/[[:space:]]*$//' server/pb_hooks/wesi_ai_*.js server/pb_hooks/wesi_ai_*_test.mjs
       - name: Check JavaScript
         run: |
           node --check server/pb_hooks/wesi_ai_data_access.js
