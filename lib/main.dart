@@ -21,6 +21,7 @@ import 'core/services/github_auth_service.dart';
 import 'core/services/github_release_download.dart';
 import 'core/services/quote_mind_charge_service.dart';
 import 'core/services/secrets_service.dart';
+import 'core/storage/hive_storage_bootstrap.dart';
 import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_endpoint.dart';
 import 'core/sync/sync_engine.dart';
@@ -104,7 +105,11 @@ Future<bool> _bootstrap(List<String> arguments) async {
     });
   }
 
-  await Hive.initFlutter();
+  // Hive creates box files but does not create a missing parent directory on
+  // every desktop environment. Prepare the exact same documents directory
+  // first so a removed/redirected Windows Documents folder cannot abort
+  // startup before the first frame.
+  await HiveStorageBootstrap.initialize();
 
   Hive.registerAdapter(TransactionModelAdapter());
   Hive.registerAdapter(TransactionTypeAdapter());
