@@ -23,6 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/fix_dynamic_patch_ambiguity.py
+          python3 scripts/fix_gateway_patcher_quotes.py
           python3 scripts/fix_dynamic_gateway_patch.py
           python3 scripts/fix_dynamic_classic_semantics.py
           python3 scripts/patch_wesi_ai_dynamic_deliberation.py
@@ -78,8 +79,9 @@ jobs:
             scripts/fix_dynamic_patch_ambiguity.py \
             scripts/fix_dynamic_gateway_patch.py \
             scripts/fix_dynamic_classic_semantics.py \
+            scripts/fix_gateway_patcher_quotes.py \
             BRANCH_MARKER.tmp
           git commit -m 'feat(ai): make Thinking a dynamic deliberation mode'
           git push origin HEAD:fix/wesi-ai-dynamic-deliberation
 
-# validation trigger 3
+# validation trigger 4
