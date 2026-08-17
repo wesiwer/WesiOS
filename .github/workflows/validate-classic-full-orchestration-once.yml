@@ -63,3 +63,5 @@ jobs:
           git rm -f scripts/patch_classic_full_orchestration.py
           git commit -m 'fix(ai): keep full orchestration in Classic mode'
           git push origin HEAD:fix/wesi-ai-classic-full-orchestration
+
+# validation trigger 2
