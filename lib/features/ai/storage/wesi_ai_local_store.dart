@@ -16,6 +16,7 @@ class WesiAiPendingQueueItem {
   final String processSessionId;
   final WesiAiPendingQueueStatus status;
   final String intent;
+  final bool thinkingMode;
   final List<Map<String, dynamic>> attachments;
 
   const WesiAiPendingQueueItem({
@@ -27,6 +28,7 @@ class WesiAiPendingQueueItem {
     required this.processSessionId,
     required this.status,
     this.intent = 'deferred',
+    this.thinkingMode = true,
     this.attachments = const <Map<String, dynamic>>[],
   });
 
@@ -34,6 +36,7 @@ class WesiAiPendingQueueItem {
     String? processSessionId,
     WesiAiPendingQueueStatus? status,
     String? intent,
+    bool? thinkingMode,
   }) =>
       WesiAiPendingQueueItem(
         id: id,
@@ -44,6 +47,7 @@ class WesiAiPendingQueueItem {
         processSessionId: processSessionId ?? this.processSessionId,
         status: status ?? this.status,
         intent: intent ?? this.intent,
+        thinkingMode: thinkingMode ?? this.thinkingMode,
         attachments: attachments,
       );
 
@@ -57,6 +61,7 @@ class WesiAiPendingQueueItem {
         'processSessionId': processSessionId,
         'status': status.name,
         'intent': intent,
+        'thinkingMode': thinkingMode,
         if (attachments.isNotEmpty) 'attachments': attachments,
       };
 
@@ -94,6 +99,8 @@ class WesiAiPendingQueueItem {
     }
 
     final intent = '${json['intent'] ?? 'deferred'}'.trim();
+    final rawThinkingMode = json['thinkingMode'];
+    final thinkingMode = rawThinkingMode is bool ? rawThinkingMode : true;
     if (!const <String>{'control', 'steer', 'deferred'}.contains(intent)) {
       throw const FormatException('Invalid Wesi AI pending queue intent');
     }
@@ -138,6 +145,7 @@ class WesiAiPendingQueueItem {
       processSessionId: processSessionId,
       status: status,
       intent: intent,
+      thinkingMode: thinkingMode,
       attachments: List<Map<String, dynamic>>.unmodifiable(attachments),
     );
   }

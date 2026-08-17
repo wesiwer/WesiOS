@@ -1,6 +1,14 @@
 import crypto from 'node:crypto';
 import {runPersonaCoagent} from './persona_coagent_orchestrator.mjs';
 import {runDynamicSubagents} from './dynamic_subagent_orchestrator.mjs';
+import {
+  appendDeliberation,
+  createDeliberationState,
+  finalDeliberationInput,
+  initialDeliberationInput,
+  parsePublicDeliberation,
+  reflectionInput,
+} from './public_deliberation.mjs';
 
 export const MAX_STREAM_BODY_BYTES = 28 * 1024 * 1024;
 export const MAX_TOOL_TURNS = 4;
@@ -420,12 +428,43 @@ async function streamOneTurn({prepared, toolResults, phase, finalOnly, relayUrl,
   };
 }
 
+function publicNoteEvent(note) {
+  return {
+    type: 'activity',
+    kind: 'reasoning',
+    phase: 'done',
+    label: String(note?.title || 'Промежуточный вывод').trim(),
+    detail: String(note?.text || '').trim(),
+    reasoningKind: String(note?.kind || '').trim(),
+    publicDeliberation: true,
+  };
+}
+
+async function bufferedPublicModel({relayUrl, relaySecret, prepared, input, requestId, signal, fetchImpl}) {
+  let buffered = '';
+  const finalEvent = await relayStream({
+    relayUrl,
+    relaySecret,
+    payload: {
+      requestId,
+      route: prepared.route,
+      operation: 'chat.stream',
+      input,
+    },
+    signal,
+    fetchImpl,
+    onDelta: (text) => { buffered += text; },
+  });
+  return buffered || String(finalEvent?.answer || '').trim();
+}
+
 export function createGateway(options = {}) {
   const pocketBaseUrl = String(options.pocketBaseUrl || process.env.WESI_POCKETBASE_URL || 'http://127.0.0.1:8090');
   const relayUrl = String(options.relayUrl || process.env.WESI_RELAY_URL || '');
   const streamSecret = String(options.streamSecret || process.env.WESI_STREAM_SECRET || '');
   const relaySecret = String(options.relaySecret || process.env.WESI_MAIN_SHARED_SECRET || '');
   const fetchImpl = options.fetchImpl || fetch;
+  const publicDeliberation = options.publicDeliberation !== false;
 
   if (!/^https?:\/\//.test(pocketBaseUrl) || !/^https:\/\//.test(relayUrl) || streamSecret.length < 32 || relaySecret.length < 32) {
     throw new Error('WAI_STREAM_GATEWAY_NOT_CONFIGURED');
@@ -453,6 +492,7 @@ export function createGateway(options = {}) {
 
     try {
       const body = await readRequestBody(req);
+      const thinkingMode = body?.thinkingMode === true;
       const preparedResponse = await postPocketBase({
         pocketBaseUrl,
         path: '/api/wesi/ai/stream/prepare-v2',
@@ -492,13 +532,61 @@ export function createGateway(options = {}) {
         label: 'Контекст подготовлен',
         detail: 'История, память, проект и доступные инструменты проверены.',
       });
-      writeNdjson(res, {
-        type: 'activity',
-        kind: 'reasoning',
-        phase: 'result',
-        label: 'Как я подхожу к запросу',
-        detail: visibleReasoningSummary(prepared),
-      });
+      let deliberationState = null;
+      if (publicDeliberation && thinkingMode) {
+        try {
+          const rawDeliberation = await bufferedPublicModel({
+            relayUrl,
+            relaySecret,
+            prepared,
+            input: initialDeliberationInput(prepared),
+            requestId: `${prepared.requestId}_public_initial`,
+            signal: abort.signal,
+            fetchImpl,
+          });
+          const parsed = parsePublicDeliberation(rawDeliberation, {maxNotes: 4});
+          if (parsed) {
+            deliberationState = createDeliberationState(parsed);
+            for (const note of deliberationState.notes) writeNdjson(res, publicNoteEvent(note));
+          }
+        } catch (deliberationError) {
+          if (abort.signal.aborted) throw deliberationError;
+        }
+      }
+      if (!deliberationState) {
+        writeNdjson(res, {
+          type: 'activity',
+          kind: 'reasoning',
+          phase: 'result',
+          label: 'Как я подхожу к запросу',
+          detail: visibleReasoningSummary(prepared),
+          publicDeliberation: false,
+        });
+      }
+
+      const reflectPublicly = async (evidence, suffix) => {
+        if (!deliberationState || deliberationState.remaining <= 0) return;
+        try {
+          const rawReflection = await bufferedPublicModel({
+            relayUrl,
+            relaySecret,
+            prepared,
+            input: reflectionInput(prepared, deliberationState, evidence),
+            requestId: `${prepared.requestId}_public_${suffix}`,
+            signal: abort.signal,
+            fetchImpl,
+          });
+          const parsed = parsePublicDeliberation(rawReflection, {
+            maxNotes: Math.min(3, deliberationState.remaining),
+          });
+          if (!parsed) return;
+          for (const note of appendDeliberation(deliberationState, parsed)) {
+            writeNdjson(res, publicNoteEvent(note));
+          }
+        } catch (reflectionError) {
+          if (abort.signal.aborted) throw reflectionError;
+        }
+      };
 
       let leadPrepared = prepared;
       if (prepared.coagent?.enabled === true) {
@@ -572,6 +660,14 @@ export function createGateway(options = {}) {
               label: 'Co-Agent review готов',
               detail: 'Проверенный результат второй Persona Agent передан Lead для интеграции.',
             });
+            await reflectPublicly({
+              source: 'coagent',
+              persona: collaboration.result.persona || '',
+              summary: collaboration.result.summary || '',
+              findings: Array.isArray(collaboration.result.findings) ? collaboration.result.findings.slice(0, 5) : [],
+              risks: Array.isArray(collaboration.result.risks) ? collaboration.result.risks.slice(0, 5) : [],
+              recommendation: collaboration.result.recommendation || '',
+            }, 'coagent');
           }
         } catch (coagentError) {
           if (abort.signal.aborted) throw coagentError;
@@ -672,6 +768,13 @@ export function createGateway(options = {}) {
               label: 'Dynamic specialists готовы',
               detail: `${accepted.length} временных специалистов завершили ограниченную проверку; результаты переданы Lead.`,
             });
+            await reflectPublicly({source: 'specialists', results: accepted.map((item) => ({
+              role: item.role || '',
+              summary: item.summary || '',
+              findings: Array.isArray(item.findings) ? item.findings.slice(0, 4) : [],
+              risks: Array.isArray(item.risks) ? item.risks.slice(0, 4) : [],
+              recommendation: item.recommendation || '',
+            }))}, 'specialists');
           }
         } catch (subagentError) {
           if (abort.signal.aborted) throw subagentError;
@@ -684,6 +787,28 @@ export function createGateway(options = {}) {
             label: 'Dynamic specialists недоступны',
             detail: 'Lead продолжает выполнение самостоятельно.',
           });
+        }
+      }
+
+      if (deliberationState?.remaining > 0) {
+        try {
+          const rawPosition = await bufferedPublicModel({
+            relayUrl,
+            relaySecret,
+            prepared: leadPrepared,
+            input: finalDeliberationInput(leadPrepared, deliberationState),
+            requestId: `${prepared.requestId}_public_position`,
+            signal: abort.signal,
+            fetchImpl,
+          });
+          const parsedPosition = parsePublicDeliberation(rawPosition, {maxNotes: 1});
+          if (parsedPosition) {
+            for (const note of appendDeliberation(deliberationState, parsedPosition)) {
+              writeNdjson(res, publicNoteEvent(note));
+            }
+          }
+        } catch (positionError) {
+          if (abort.signal.aborted) throw positionError;
         }
       }
 
@@ -798,6 +923,18 @@ export function createGateway(options = {}) {
           ...(toolPayload.organizationId ? {organizationId: String(toolPayload.organizationId)} : {}),
           ...(toolPayload.organizationName ? {organizationName: String(toolPayload.organizationName)} : {}),
         });
+        await reflectPublicly({
+          source: 'tool',
+          tool: toolRequest.name,
+          ok: toolResult?.ok === true,
+          code: toolResult?.code || '',
+          message: String(toolResult?.message || '').slice(0, 1200),
+          additions: diff.additions,
+          deletions: diff.deletions,
+          files: diff.files.slice(0, 12),
+          transactionCount: Number.isFinite(Number(toolPayload.transactionCount)) ? Number(toolPayload.transactionCount) : null,
+          organizationName: toolPayload.organizationName ? String(toolPayload.organizationName) : '',
+        }, `tool_${turn + 1}`);
       }
 
       const finalStream = await streamOneTurn({

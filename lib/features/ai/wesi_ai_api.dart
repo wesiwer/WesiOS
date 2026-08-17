@@ -242,6 +242,7 @@ class WesiAiApi {
     void Function(String delta)? onDelta,
     void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
+    bool thinkingMode = true,
   }) async {
     WesiAiAttachment.validateBatch(attachments);
     final auth = _auth();
@@ -278,9 +279,10 @@ class WesiAiApi {
         'messages': transportHistory(history),
         if (transportAttachments.isNotEmpty)
           'attachments': transportAttachments,
+        'thinkingMode': thinkingMode,
       };
 
-      if (conversation.persona != WesiAiPersona.lobby) {
+      if (thinkingMode && conversation.persona != WesiAiPersona.lobby) {
         try {
           final streamed = await _sendStream(
             base: base,
