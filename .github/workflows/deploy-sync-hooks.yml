@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
     paths:
+      - 'server/pb_hooks/wesi_sync_data_access.js'
+      - 'server/pb_hooks/wesi_sync_data_access_contract_test.mjs'
       - 'server/pb_hooks/wesi_sync_context.pb.js'
       - 'server/pb_hooks/wesi_sync_read.pb.js'
       - 'server/pb_hooks/wesi_sync_write.pb.js'
@@ -36,6 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           for file in \
+            server/pb_hooks/wesi_sync_data_access.js \
             server/pb_hooks/wesi_sync_context.pb.js \
             server/pb_hooks/wesi_sync_read.pb.js \
             server/pb_hooks/wesi_sync_write.pb.js \
@@ -44,13 +47,17 @@ jobs:
             test -s "$file"
             node --check "$file"
           done
-          node --test server/pb_hooks/wesi_sync_extra_contract_test.mjs
+          node --test \
+            server/pb_hooks/wesi_sync_data_access_contract_test.mjs \
+            server/pb_hooks/wesi_sync_extra_contract_test.mjs
           grep -q 'wesiSyncContext' server/pb_hooks/wesi_sync_context.pb.js
+          grep -q 'wesi_sync_data_access.js' server/pb_hooks/wesi_sync_context.pb.js
           grep -q '/api/wesi/sync/revision' server/pb_hooks/wesi_sync_read.pb.js
           grep -q '/api/wesi/sync/{collection}' server/pb_hooks/wesi_sync_read.pb.js
           grep -q '/api/wesi/sync/{collection}' server/pb_hooks/wesi_sync_write.pb.js
           grep -q '/api/wesi/sync/revision-v2' server/pb_hooks/wesi_sync_extra.pb.js
           grep -q 'wesi_sync_extra_runtime.js' server/pb_hooks/wesi_sync_extra.pb.js
+          grep -q 'wesi_sync_data_access.js' server/pb_hooks/wesi_sync_extra_runtime.js
 
       - name: Check server secrets
         env:
@@ -93,6 +100,7 @@ jobs:
           HOOK_DIR="${CONFIGURED_HOOK_DIR:-/opt/pocketbase/pb_hooks}"
           $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
           scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            server/pb_hooks/wesi_sync_data_access.js \
             server/pb_hooks/wesi_sync_context.pb.js \
             server/pb_hooks/wesi_sync_read.pb.js \
             server/pb_hooks/wesi_sync_write.pb.js \
@@ -101,7 +109,7 @@ jobs:
             "$USER@$HOST:$REMOTE/"
           $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' bash -s" <<'SH'
           set -euo pipefail
-          runtime_files=(wesi_sync_extra_runtime.js)
+          runtime_files=(wesi_sync_data_access.js wesi_sync_extra_runtime.js)
           route_files=(wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js)
 
           if [ ! -d "$HOOK_DIR" ]; then
