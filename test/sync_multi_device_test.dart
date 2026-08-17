@@ -116,8 +116,7 @@ void main() {
     t.seed('tasks', 'T1', const {}, base, deleted: true);
 
     await edit('T1', 'Всё-таки делаем', base.add(const Duration(hours: 1)));
-    await SyncEngine.run(
-        transport: t, now: base.add(const Duration(hours: 2)));
+    await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 2)));
 
     expect(taskBox().get('T1')?.title, 'Всё-таки делаем');
     expect(t.store['tasks']!['T1']!.deleted, isFalse,
@@ -134,8 +133,7 @@ void main() {
     t.seed('tasks', 'T2', const {}, base.add(const Duration(hours: 1)),
         deleted: true);
 
-    await SyncEngine.run(
-        transport: t, now: base.add(const Duration(hours: 2)));
+    await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 2)));
     expect(taskBox().containsKey('T2'), isFalse,
         reason: 'удаление обязано доехать');
   });
@@ -205,9 +203,11 @@ void main() {
         reason: 'непонятная соседняя запись не должна мешать');
     expect(taskBox().containsKey('FUTURE'), isFalse);
     // Отметка сброшена в начало времён — на следующем проходе, уже после
-    // обновления приложения, запись попробуют разобрать снова.
+    // обновления приложения, запись попробуют разобрать снова. При этом весь
+    // Sync не должен стать зелёным и продвинуть remote watermark.
     expect(SyncJournal.stampOf('tasks', 'FUTURE')?.updatedAt.year, 1970);
-    expect(report.ok, isTrue);
+    expect(report.ok, isFalse);
+    expect(report.firstFailure?.code, 'REMOTE_APPLY_INCOMPLETE');
   });
 
   test('одна и та же правка не ходит по кругу между устройствами', () async {
@@ -216,7 +216,8 @@ void main() {
     final t = FakeSyncTransport();
     t.seed('tasks', 'LOOP', taskFields('LOOP', 'Приехала'), base);
 
-    await SyncEngine.run(transport: t, now: base.add(const Duration(minutes: 1)));
+    await SyncEngine.run(
+        transport: t, now: base.add(const Duration(minutes: 1)));
     t.calls.clear();
 
     final second = await SyncEngine.run(

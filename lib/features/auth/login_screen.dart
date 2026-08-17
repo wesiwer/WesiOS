@@ -241,12 +241,11 @@ class _LoginScreenState extends State<LoginScreen> {
     _password.clear();
     _code.clear();
     SessionService.startHeartbeat();
-    if (employee.isOwner) {
-      await SyncEngine.runOnLaunch();
-      SyncAuto.start();
-    } else {
-      SyncAuto.stop();
-    }
+    // Every authenticated account participates in sync. The server applies
+    // module/org/row permissions; disabling SyncAuto for non-owners leaves
+    // their device without the remote revision receiver after a fresh login.
+    await SyncEngine.runOnLaunch();
+    SyncAuto.start();
     if (!mounted) return;
     setState(() => _busy = false);
     _goHome();

@@ -294,6 +294,21 @@ class SyncEngine {
     );
 
     var applied = 0;
+    SyncFailure? applyFailure;
+
+    Future<void> markApplyIncomplete(String id) async {
+      SyncJournal.forget(c.name, id);
+      await SyncJournal.record(
+        c.name,
+        id,
+        SyncStamp(DateTime.fromMillisecondsSinceEpoch(0)),
+      );
+      applyFailure ??= const SyncFailure(
+        'REMOTE_APPLY_INCOMPLETE',
+        'Часть полученных с сервера данных не удалось применить',
+      );
+    }
+
     for (final r in plan.toApplyLocally) {
       // Журнал предупреждается до записи, иначе он отметит чужую правку как
       // нашу, и она уедет обратно на сервер уже как более свежая.
@@ -302,27 +317,34 @@ class SyncEngine {
       await SyncJournal.record(
           c.name, r.id, SyncStamp(r.updatedAt, deleted: r.deleted));
 
-      if (r.deleted) {
-        await c.removeById(r.id);
-        applied++;
-      } else if (await c.applyFields(r.fields)) {
-        applied++;
-      } else {
-        // Запись не разобралась — например, приехала от более новой версии
-        // приложения. Откатываем отметку в самое начало времён: тогда
-        // следующий проход снова увидит серверную копию как более свежую и
-        // попробует ещё раз, уже после обновления. Оставить отметку как есть
-        // значило бы решить, что запись у нас уже есть.
-        SyncJournal.forget(c.name, r.id);
-        await SyncJournal.record(
-            c.name, r.id, SyncStamp(DateTime.fromMillisecondsSinceEpoch(0)));
+      try {
+        if (r.deleted) {
+          await c.removeById(r.id);
+          applied++;
+        } else if (await c.applyFields(r.fields)) {
+          applied++;
+        } else {
+          // The row was fetched but not actually accepted by the local model.
+          // Do not report a successful full sync: otherwise SyncAuto advances
+          // its server watermark and this row can remain stranded forever.
+          await markApplyIncomplete(r.id);
+        }
+      } catch (_) {
+        // One malformed/dependency-blocked row must not abort application of
+        // the remaining remote rows, but the pass is still incomplete and
+        // must be retried before the revision watermark advances.
+        await markApplyIncomplete(r.id);
       }
     }
 
     if (applied > 0) c.notifyChanged();
 
     if (plan.toUpload.isEmpty) {
-      return SyncCollectionReport(collection: c.name, applied: applied);
+      return SyncCollectionReport(
+        collection: c.name,
+        applied: applied,
+        failure: applyFailure,
+      );
     }
     final pushed = await t.push(c.name, plan.toUpload);
     // Сообщаем коллекции ровно то, что действительно уехало, а не весь план.
@@ -335,7 +357,7 @@ class SyncEngine {
       collection: c.name,
       applied: applied,
       uploaded: pushed.sent,
-      failure: pushed.failure,
+      failure: pushed.failure ?? applyFailure,
     );
   }
 

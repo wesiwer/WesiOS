@@ -185,17 +185,14 @@ class SyncAuto {
       _nextProbeAt = null;
       final revision = result.value!;
 
-      // runOnLaunch уже сделал полный обмен — его результат можно принять
-      // как исходную точку и не повторять тот же проход через секунду.
+      // A watermark is valid only after this receiver has completed its own
+      // fresh full pull. `lastReport` may be left from an earlier listener or
+      // session phase; accepting the current revision from that stale report
+      // can permanently hide changes that arrived while SyncAuto was stopped.
       if (_remoteRevision == null) {
-        if (SyncEngine.lastReport.value?.ok == true) {
-          _remoteRevision = revision;
-          return;
-        }
-
         final report = await _runAuto();
         if (report.ok) {
-          _remoteRevision = revision;
+          await _captureRemoteRevision(fallback: revision);
         } else {
           _registerProbeFailure();
         }
