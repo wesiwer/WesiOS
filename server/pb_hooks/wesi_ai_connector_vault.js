@@ -43,10 +43,30 @@ function decryptValue(ciphertext) {
   } catch (_) { throw new ConnectorVaultError("CONNECTOR_CREDENTIAL_CORRUPT", "Connector credential payload is corrupt"); }
 }
 
-function findRecord(e, ctx, rid) {
+function readRows(e, filter, sort, limit, params) {
   try {
-    return e.app.findFirstRecordByFilter(COLLECTION, "owner={:owner} && rid={:rid}", {owner: owner(ctx), rid: String(rid || "")});
-  } catch (_) { return null; }
+    return e.app.findRecordsByFilter(
+      COLLECTION,
+      filter,
+      sort,
+      Math.max(1, Math.min(Number(limit || 100), 1000)),
+      0,
+      params,
+    );
+  } catch (_) {
+    throw new ConnectorVaultError("CONNECTOR_VAULT_READ_FAILED", "Connector credential vault could not be read");
+  }
+}
+
+function findRecord(e, ctx, rid) {
+  const rows = readRows(
+    e,
+    "owner={:owner} && rid={:rid}",
+    "id",
+    1,
+    {owner: owner(ctx), rid: String(rid || "")},
+  );
+  return rows.length ? rows[0] : null;
 }
 
 function save(e, ctx, rid, provider, kind, value, expiresAt) {
@@ -96,10 +116,13 @@ function safeCredential(value) {
 }
 
 function listCredentials(e, ctx, provider) {
-  let records = [];
-  try {
-    records = e.app.findRecordsByFilter(COLLECTION, "owner={:owner} && kind='credential' && provider={:provider}", "-stamp", 100, 0, {owner: owner(ctx), provider: String(provider || "")});
-  } catch (_) { return []; }
+  const records = readRows(
+    e,
+    "owner={:owner} && kind='credential' && provider={:provider}",
+    "-stamp",
+    100,
+    {owner: owner(ctx), provider: String(provider || "")},
+  );
   const out = [];
   for (const record of records) {
     try {

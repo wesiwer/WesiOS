@@ -173,9 +173,7 @@ function slimIssue(item) { return {number: item.number, title: String(item.title
 function slimPull(item) { return {number: item.number, title: String(item.title || "").slice(0, 1000), state: String(item.state || ""), draft: item.draft === true, merged: item.merged === true, url: String(item.html_url || ""), head: item.head && item.head.ref ? String(item.head.ref) : "", base: item.base && item.base.ref ? String(item.base.ref) : ""}; }
 
 function definitions(e, ctx) {
-  try {
-    if (!vault.ready() || !vault.listCredentials(e, ctx, "github").some((c) => c.status === "active")) return [];
-  } catch (_) { return []; }
+  if (!vault.ready()) return [];
   const cred = {type: "string", description: "Logical GitHub credential id from runtime context; omit only when exactly one account is connected."};
   const repo = {credentialId: cred, owner: {type: "string"}, repo: {type: "string"}};
   return [
@@ -342,7 +340,17 @@ function listMetadata(e, ctx) {
 
 module.exports = {
   definitions,
-  context: (e,ctx) => { let accounts=[]; try{accounts=listMetadata(e,ctx).filter((x)=>x.status==="active");}catch(_){} return {connectors:{github:{connected:accounts.length>0,accounts}}}; },
+  context: (e,ctx) => {
+    if (!vault.ready()) {
+      return {connectors:{github:{connected:false,accounts:[],errorCode:"CONNECTOR_VAULT_NOT_CONFIGURED"}}};
+    }
+    try {
+      const accounts=listMetadata(e,ctx).filter((x)=>x.status==="active");
+      return {connectors:{github:{connected:accounts.length>0,accounts,errorCode:null}}};
+    } catch (error) {
+      return {connectors:{github:{connected:false,accounts:[],errorCode:String((error&&error.code)||"CONNECTOR_VAULT_READ_FAILED")}}};
+    }
+  },
   execute,
   startDeviceFlow,
   pollDeviceFlow,

@@ -212,12 +212,19 @@ module.exports = {
     }
     let record = null;
     try {
-      record = e.app.findFirstRecordByFilter(
+      record = require(modulePath("wesi_ai_data_access.js")).first(
+        e.app,
         "wesios_records",
         "owner={:owner} && coll={:coll} && rid={:rid} && deleted=false",
         {owner: ctx.ownerId, coll: CONFIRMATION_COLL, rid: id},
       );
-    } catch (_) { record = null; }
+    } catch (error) {
+      return {
+        ok: false,
+        code: String((error && error.wesiCode) || "WAI_TOOL_DATA_UNAVAILABLE"),
+        message: String((error && error.wesiMessage) || "Не удалось прочитать данные WesiOS"),
+      };
+    }
     if (!record) return {ok: false, code: "CONFIRMATION_EXPIRED", message: "Подтверждение истекло или уже использовано"};
     const ticket = payloadOf(record);
     const expires = Date.parse(String(ticket.expiresAt || ""));

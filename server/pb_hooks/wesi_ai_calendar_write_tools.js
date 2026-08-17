@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 function payloadOf(record) {
   if (!record) return {};
   try {
@@ -9,13 +10,12 @@ function payloadOf(record) {
 }
 
 function recordById(e, ctx, id) {
-  try {
-    return e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner={:owner} && coll='calendar_events' && rid={:rid} && deleted=false",
-      {owner: ctx.ownerId, rid: id},
-    );
-  } catch (_) { return null; }
+  return dataAccess.first(
+    e.app,
+    "wesios_records",
+    "owner={:owner} && coll='calendar_events' && rid={:rid} && deleted=false",
+    {owner: ctx.ownerId, rid: id},
+  );
 }
 
 function parseStart(value) {

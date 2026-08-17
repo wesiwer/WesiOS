@@ -1,3 +1,4 @@
+const dataAccess = require(`${__hooks}/wesi_ai_data_access.js`);
 const rw = require(`${__hooks}/wesi_ai_remote_worker_lib.js`);
 
 const COLL_PAIRING = "ai_remote_worker_pairings";
@@ -28,36 +29,33 @@ function randomId(length) {
 }
 
 function findRecord(app, ownerId, coll, rid) {
-  try {
-    return app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner={:owner} && coll={:coll} && rid={:rid} && deleted=false",
-      {owner: ownerId, coll: coll, rid: rid},
-    );
-  } catch (_) { return null; }
+  return dataAccess.first(
+    app,
+    "wesios_records",
+    "owner={:owner} && coll={:coll} && rid={:rid} && deleted=false",
+    {owner: ownerId, coll: coll, rid: rid},
+  );
 }
 
 function findRecordAnyOwner(app, coll, rid) {
-  try {
-    return app.findFirstRecordByFilter(
-      "wesios_records",
-      "coll={:coll} && rid={:rid} && deleted=false",
-      {coll: coll, rid: rid},
-    );
-  } catch (_) { return null; }
+  return dataAccess.first(
+    app,
+    "wesios_records",
+    "coll={:coll} && rid={:rid} && deleted=false",
+    {coll: coll, rid: rid},
+  );
 }
 
 function rowsForWorker(app, ownerId, coll, workerId, limit) {
-  try {
-    return app.findRecordsByFilter(
-      "wesios_records",
-      "owner={:owner} && coll={:coll} && org={:worker} && deleted=false",
-      "stamp",
-      Math.max(1, Math.min(Number(limit || MAX_MESSAGES_PER_WORKER), MAX_MESSAGES_PER_WORKER)),
-      0,
-      {owner: ownerId, coll: coll, worker: workerId},
-    );
-  } catch (_) { return []; }
+  return dataAccess.records(
+    app,
+    "wesios_records",
+    "owner={:owner} && coll={:coll} && org={:worker} && deleted=false",
+    "stamp",
+    Math.max(1, Math.min(Number(limit || MAX_MESSAGES_PER_WORKER), MAX_MESSAGES_PER_WORKER)),
+    0,
+    {owner: ownerId, coll: coll, worker: workerId},
+  );
 }
 
 function upsert(app, ownerId, org, coll, rid, payload) {
@@ -363,18 +361,15 @@ routerAdd("POST", "/api/wesi/ai/workers/pairing/poll", (e) => {
 
 routerAdd("GET", "/api/wesi/ai/workers", (e) => {
   const ctx = aiContext(e);
-  const rows = (() => {
-    try {
-      return e.app.findRecordsByFilter(
-        "wesios_records",
-        "owner={:owner} && coll={:coll} && deleted=false",
-        "stamp",
-        64,
-        0,
-        {owner: ctx.ownerId, coll: COLL_HEARTBEAT},
-      );
-    } catch (_) { return []; }
-  })();
+  const rows = dataAccess.records(
+    e.app,
+    "wesios_records",
+    "owner={:owner} && coll={:coll} && deleted=false",
+    "stamp",
+    64,
+    0,
+    {owner: ctx.ownerId, coll: COLL_HEARTBEAT},
+  );
   const heartbeats = [];
   const nowMs = Date.now();
   for (const row of rows) {

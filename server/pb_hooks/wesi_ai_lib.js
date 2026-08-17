@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 module.exports = {
   resolveIdentity: function(e) {
     if (!e.auth || e.hasSuperuserAuth()) {
@@ -23,34 +24,22 @@ module.exports = {
     };
     const sid = String(e.request.header.get("X-WesiOS-Session") || "").trim();
     if (!/^[A-Za-z0-9_-]{24,96}$/.test(sid)) throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
-    let session = null;
-    try {
-      session = e.app.findFirstRecordByFilter("wesios_records", "owner='__wesios_security__' && coll='security' && rid={:rid} && deleted=false", {rid: "session:" + sid});
-    } catch (_) { session = null; }
+    const session = dataAccess.first(e.app, "wesios_records", "owner='__wesios_security__' && coll='security' && rid={:rid} && deleted=false", {rid: "session:" + sid});
     if (!session) throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
     const sp = sessionPayloadOf(session);
     const exp = Date.parse(String(sp.expiresAt || ""));
     if (String(sp.userId || "") !== e.auth.id || String(sp.revokedAt || "") || !Number.isFinite(exp) || exp <= Date.now()) {
       throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
     }
-    let ownerMarker = null;
-    try {
-      ownerMarker = e.app.findFirstRecordByFilter("wesios_records", "owner={:owner} && coll='system' && rid='portal-owner' && deleted=false", {owner: e.auth.id});
-    } catch (_) { ownerMarker = null; }
+    const ownerMarker = dataAccess.first(e.app, "wesios_records", "owner={:owner} && coll='system' && rid='portal-owner' && deleted=false", {owner: e.auth.id});
     if (ownerMarker) return {isOwner: true, ownerId: e.auth.id, employeeId: "owner", modules: ["ai"]};
-    let link = null;
-    try {
-      link = e.app.findFirstRecordByFilter("wesios_records", "coll='system' && rid={:rid} && deleted=false", {rid: "portal-account:" + e.auth.id});
-    } catch (_) { link = null; }
+    const link = dataAccess.first(e.app, "wesios_records", "coll='system' && rid={:rid} && deleted=false", {rid: "portal-account:" + e.auth.id});
     if (!link) throw new ForbiddenError("Учётная запись не привязана к сотруднику WesiOS");
     const lp = payloadOf(link);
     const ownerId = link.getString("owner");
     const employeeId = String(lp.employeeId || "");
     if (!ownerId || !employeeId) throw new ForbiddenError("Привязка сотрудника повреждена");
-    let employee = null;
-    try {
-      employee = e.app.findFirstRecordByFilter("wesios_records", "owner={:owner} && coll='employees' && rid={:rid} && deleted=false", {owner: ownerId, rid: employeeId});
-    } catch (_) { employee = null; }
+    const employee = dataAccess.first(e.app, "wesios_records", "owner={:owner} && coll='employees' && rid={:rid} && deleted=false", {owner: ownerId, rid: employeeId});
     const snapshot = employee ? payloadOf(employee) : (lp.snapshot && typeof lp.snapshot === "object" ? lp.snapshot : lp);
     const permissions = snapshot.permissions && typeof snapshot.permissions === "object" ? snapshot.permissions : {};
     return {isOwner: false, ownerId: ownerId, employeeId: employeeId, modules: Array.isArray(permissions.modules) ? permissions.modules.map(String) : []};

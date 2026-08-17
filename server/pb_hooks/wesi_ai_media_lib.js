@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 const PUBLIC_BASE = "https://api.wesi-inc.ru";
 const STORAGE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const MAX_FILE_BYTES = 128 * 1024 * 1024;
@@ -136,15 +137,12 @@ function failJob(record, code) {
 function findJob(jobId) {
   const id = safeJobId(jobId);
   if (!id) return null;
-  try {
-    return $app.findFirstRecordByFilter(
-      "wesios_records",
-      "coll='ai_media' && rid={:rid} && deleted=false",
-      {rid: "media:" + id}
-    );
-  } catch (_) {
-    return null;
-  }
+  return dataAccess.first(
+    $app,
+    "wesios_records",
+    "coll='ai_media' && rid={:rid} && deleted=false",
+    {rid: "media:" + id},
+  );
 }
 
 function canAccess(ctx, record) {

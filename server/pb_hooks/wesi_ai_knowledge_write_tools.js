@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 function payload(record) {
   if (!record) return {};
   try {
@@ -10,13 +11,11 @@ function payload(record) {
 
 function permissionsFor(e, ctx) {
   if (ctx.isOwner) return {knowledgeAll: true, knowledgeIds: [], modules: ["knowledge"]};
-  let employee = null;
-  try {
-    employee = e.app.findFirstRecordByFilter(
-      "wesios_records", "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
-      {owner: ctx.ownerId, rid: ctx.employeeId},
-    );
-  } catch (_) { employee = null; }
+  const employee = dataAccess.first(
+    e.app,
+    "wesios_records", "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
+    {owner: ctx.ownerId, rid: ctx.employeeId},
+  );
   const p = payload(employee);
   const permissions = p.permissions && typeof p.permissions === "object" ? p.permissions : {};
   return {
@@ -27,12 +26,11 @@ function permissionsFor(e, ctx) {
 }
 
 function byId(e, ctx, id) {
-  try {
-    return e.app.findFirstRecordByFilter(
-      "wesios_records", "owner={:owner} && coll='articles' && rid={:rid} && deleted=false",
-      {owner: ctx.ownerId, rid: id},
-    );
-  } catch (_) { return null; }
+  return dataAccess.first(
+    e.app,
+    "wesios_records", "owner={:owner} && coll='articles' && rid={:rid} && deleted=false",
+    {owner: ctx.ownerId, rid: id},
+  );
 }
 
 function canEdit(perms, ctx, id, parentId) {
