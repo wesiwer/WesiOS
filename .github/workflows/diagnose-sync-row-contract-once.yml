@@ -63,7 +63,9 @@ jobs:
 
           def dt(v):
               if not isinstance(v,str) or not v.strip():return None
-              try:return datetime.fromisoformat(v.replace('Z','+00:00'))
+              try:
+                  parsed=datetime.fromisoformat(v.replace('Z','+00:00'))
+                  return parsed if parsed.tzinfo is not None else parsed.replace(tzinfo=timezone.utc)
               except Exception:return None
           def bucket(n):
               return '0' if n==0 else '1' if n==1 else '2-5' if n<=5 else '6-20' if n<=20 else '21+'
@@ -118,7 +120,6 @@ jobs:
           print('ORG_BAD=',bucket(org_bad),'EMP_BAD=',bucket(emp_bad),'ACCOUNT_BAD=',bucket(acc_bad),'TX_BAD=',bucket(tx_bad),'TASK_BAD=',bucket(task_bad))
 
           print('=== ORGANIZATION_APPLY_ORDER_RISK ===')
-          # Base read sorts by PocketBase record id, not hierarchy. Simulate an empty receiver.
           org_rows=[]
           for r in rows:
               if str(r['owner'])==owner and r['coll']=='organizations' and not r['deleted']:org_rows.append(r)
