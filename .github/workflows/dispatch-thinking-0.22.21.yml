@@ -1,0 +1,37 @@
+name: Dispatch Wesi AI Thinking 0.22.21 Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dispatch-thinking-0.22.21.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy dynamic Thinking runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run deploy-wesi-ai-streaming.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main
+          echo 'THINKING_STREAMING_DEPLOY_DISPATCHED'
+
+      - name: Dispatch signed WesiOS 0.22.21+96 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Classic теперь использует быстрый обычный AI-маршрут. Thinking использует отдельный поток динамических публичных рассуждений текущей персоны: понимание задачи, гипотезы, проверки, пересмотр после подтверждённых фактов и промежуточные решения. Количество шагов масштабируется со сложностью запроса.' \
+            -f deploy_to_server=true
+          echo 'WESIOS_0_22_21_96_RELEASE_DISPATCHED'
