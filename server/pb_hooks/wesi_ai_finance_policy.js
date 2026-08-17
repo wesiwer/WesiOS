@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 const ROOT_ORG = "org_wesi_inc";
 const MODULES = ["treasury", "forecast", "sandbox", "analytics"];
 
@@ -21,12 +22,8 @@ function access(e, ctx) {
   // backend read failed.
   let orgRows = [];
   let grantRows = [];
-  try {
-    orgRows = e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll='organizations' && deleted=false", "id", 1000, 0, {owner: ctx.ownerId});
-  } catch (_) {}
-  try {
-    grantRows = e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll='organization_grants' && deleted=false", "id", 1000, 0, {owner: ctx.ownerId});
-  } catch (_) {}
+  orgRows = dataAccess.records(e.app, "wesios_records", "owner={:owner} && coll='organizations' && deleted=false", "id", 1000, 0, {owner: ctx.ownerId});
+  grantRows = dataAccess.records(e.app, "wesios_records", "owner={:owner} && coll='organization_grants' && deleted=false", "id", 1000, 0, {owner: ctx.ownerId});
 
   const orgs = {};
   const parents = {};

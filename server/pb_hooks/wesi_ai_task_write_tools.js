@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 const ROOT_ORG = "org_wesi_inc";
 
 function payloadOf(record) {
@@ -11,12 +12,10 @@ function payloadOf(record) {
 }
 
 function rows(e, ctx, coll) {
-  try {
-    return e.app.findRecordsByFilter(
+  return dataAccess.records(e.app,
       "wesios_records", "owner={:owner} && coll={:coll} && deleted=false",
       "id", 1000, 0, {owner: ctx.ownerId, coll: coll},
     );
-  } catch (_) { return []; }
 }
 
 function loadAccess(e, ctx) {
@@ -25,13 +24,11 @@ function loadAccess(e, ctx) {
     permissions = {canManageTeam: true, canAssignTasks: true};
   } else {
     let employee = null;
-    try {
-      employee = e.app.findFirstRecordByFilter(
+    employee = dataAccess.first(e.app,
         "wesios_records",
         "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
         {owner: ctx.ownerId, rid: ctx.employeeId},
       );
-    } catch (_) { employee = null; }
     const p = payloadOf(employee);
     permissions = p.permissions && typeof p.permissions === "object" ? p.permissions : {};
   }
@@ -76,13 +73,11 @@ function loadAccess(e, ctx) {
 }
 
 function taskRecord(e, ctx, id) {
-  try {
-    return e.app.findFirstRecordByFilter(
+  return dataAccess.first(e.app,
       "wesios_records",
       "owner={:owner} && coll='tasks' && rid={:rid} && deleted=false",
       {owner: ctx.ownerId, rid: id},
     );
-  } catch (_) { return null; }
 }
 
 function taskOwned(access, ctx, p) {

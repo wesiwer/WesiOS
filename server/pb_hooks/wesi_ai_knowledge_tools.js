@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 function payload(record) {
   if (!record) return {};
   try {
@@ -29,13 +30,11 @@ function plainKnowledgeBody(body) {
 function permissionsFor(e, ctx) {
   if (ctx.isOwner) return {knowledgeAll: true, knowledgeIds: [], modules: ["knowledge"]};
   let employee = null;
-  try {
-    employee = e.app.findFirstRecordByFilter(
+  employee = dataAccess.first(e.app,
       "wesios_records",
       "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
       {owner: ctx.ownerId, rid: ctx.employeeId},
     );
-  } catch (_) { employee = null; }
   const p = payload(employee);
   const permissions = p.permissions && typeof p.permissions === "object" ? p.permissions : {};
   return {
@@ -47,26 +46,22 @@ function permissionsFor(e, ctx) {
 
 function articleById(e, ctx, articleId) {
   let record = null;
-  try {
-    record = e.app.findFirstRecordByFilter(
+  record = dataAccess.first(e.app,
       "wesios_records",
       "owner={:owner} && coll='articles' && rid={:rid} && deleted=false",
       {owner: ctx.ownerId, rid: articleId},
     );
-  } catch (_) { record = null; }
   if (record) return record;
 
   // Legacy records should normally use article id as rid, but keep a bounded
   // compatibility fallback for older imports where payload.id differs.
   let rows = [];
-  try {
-    rows = e.app.findRecordsByFilter(
+  rows = dataAccess.records(e.app,
       "wesios_records",
       "owner={:owner} && coll='articles' && deleted=false",
       "-stamp,-id", 200, 0,
       {owner: ctx.ownerId},
     );
-  } catch (_) { rows = []; }
   for (const row of rows) {
     if (String(payload(row).id || "") === articleId) return row;
   }

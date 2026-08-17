@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 function payload(record) {
   if (!record) return {};
   try {
@@ -8,10 +9,9 @@ function payload(record) {
   return {};
 }
 function rows(e, ctx, coll) {
-  try { return e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll={:coll} && deleted=false", "stamp", 5000, 0, {owner:ctx.ownerId,coll}); }
-  catch (_) { return []; }
+  return dataAccess.records(e.app, "wesios_records", "owner={:owner} && coll={:coll} && deleted=false", "stamp", 5000, 0, {owner:ctx.ownerId,coll});
 }
-function recordById(e,ctx,coll,id){try{return e.app.findFirstRecordByFilter("wesios_records","owner={:owner} && coll={:coll} && rid={:rid} && deleted=false",{owner:ctx.ownerId,coll,rid:id});}catch(_){return null;}}
+function recordById(e,ctx,coll,id){return dataAccess.first(e.app, "wesios_records","owner={:owner} && coll={:coll} && rid={:rid} && deleted=false",{owner:ctx.ownerId,coll,rid:id});}
 function saveNew(e,ctx,coll,id,value){const now=new Date().toISOString(),c=e.app.findCollectionByNameOrId("wesios_records"),r=new Record(c);r.set("owner",ctx.ownerId);r.set("org","wesi-inc");r.set("coll",coll);r.set("rid",id);r.set("payload",value);r.set("stamp",now);r.set("deleted",false);e.app.save(r);}
 function parseDate(value){const d=new Date(String(value||""));return Number.isFinite(d.getTime())?d.toISOString():null;}
 function listStrings(value,max=50){if(!Array.isArray(value))return[];const out=[];for(const raw of value.slice(0,max)){const v=String(raw||"").trim().slice(0,180);if(v&&out.indexOf(v)<0)out.push(v);}return out;}

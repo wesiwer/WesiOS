@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 const ROOT_ORG = "org_wesi_inc";
 
 function payload(record) {
@@ -14,14 +15,12 @@ function payload(record) {
 }
 
 function rows(e, ctx, collection) {
-  try {
-    return e.app.findRecordsByFilter(
+  return dataAccess.records(e.app,
       "wesios_records",
       "owner={:owner} && coll={:coll} && deleted=false",
       "-stamp,-id", 5000, 0,
       {owner: ctx.ownerId, coll: collection},
     );
-  } catch (_) { return []; }
 }
 
 function state(e, ctx) {
@@ -35,13 +34,11 @@ function state(e, ctx) {
     };
   } else {
     let employee = null;
-    try {
-      employee = e.app.findFirstRecordByFilter(
+    employee = dataAccess.first(e.app,
         "wesios_records",
         "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
         {owner: ctx.ownerId, rid: ctx.employeeId},
       );
-    } catch (_) { employee = null; }
     const p = payload(employee);
     permissions = p.permissions && typeof p.permissions === "object" ? p.permissions : {};
   }

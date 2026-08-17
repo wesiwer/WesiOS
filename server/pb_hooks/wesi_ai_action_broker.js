@@ -171,8 +171,14 @@ function executeAdapter(e, ctx, adapter, capability, name, args, activeOrganizat
     if (!result || typeof result !== "object" || Array.isArray(result)) {
       result = {ok: false, code: "WAI_TOOL_BAD_RESULT", message: "Инструмент вернул некорректный результат"};
     }
-  } catch (_) {
-    result = {ok: false, code: "WAI_TOOL_EXECUTION_FAILED", message: "Не удалось выполнить действие WesiOS"};
+  } catch (error) {
+    const taggedCode = error && error.wesiCode ? String(error.wesiCode) : "";
+    const taggedMessage = error && error.wesiMessage ? String(error.wesiMessage) : "";
+    result = {
+      ok: false,
+      code: taggedCode || "WAI_TOOL_EXECUTION_FAILED",
+      message: taggedMessage || "Не удалось выполнить действие WesiOS",
+    };
   }
   recordResult(e, ctx, capability, name, args, activeOrganizationId, invocation, result, decision);
   return result;

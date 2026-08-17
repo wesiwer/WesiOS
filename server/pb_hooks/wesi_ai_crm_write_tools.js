@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 const ROOT_ORG = "org_wesi_inc";
 
 function payload(record) {
@@ -10,18 +11,16 @@ function payload(record) {
   return {};
 }
 function rows(e, ctx, coll) {
-  try { return e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll={:coll} && deleted=false", "-stamp", 5000, 0, {owner: ctx.ownerId, coll}); }
-  catch (_) { return []; }
+  return dataAccess.records(e.app, "wesios_records", "owner={:owner} && coll={:coll} && deleted=false", "-stamp", 5000, 0, {owner: ctx.ownerId, coll});
 }
 function recordById(e, ctx, coll, id) {
-  try { return e.app.findFirstRecordByFilter("wesios_records", "owner={:owner} && coll={:coll} && rid={:rid} && deleted=false", {owner: ctx.ownerId, coll, rid: id}); }
-  catch (_) { return null; }
+  return dataAccess.first(e.app, "wesios_records", "owner={:owner} && coll={:coll} && rid={:rid} && deleted=false", {owner: ctx.ownerId, coll, rid: id});
 }
 function access(e, ctx) {
   let permissions = {};
   if (!ctx.isOwner) {
     let employee = null;
-    try { employee = e.app.findFirstRecordByFilter("wesios_records", "owner={:owner} && coll='employees' && rid={:rid} && deleted=false", {owner: ctx.ownerId, rid: ctx.employeeId}); } catch (_) {}
+    employee = dataAccess.first(e.app, "wesios_records", "owner={:owner} && coll='employees' && rid={:rid} && deleted=false", {owner: ctx.ownerId, rid: ctx.employeeId});
     const p = payload(employee); permissions = p.permissions && typeof p.permissions === "object" ? p.permissions : {};
   }
   const orgs = {}, parents = {};

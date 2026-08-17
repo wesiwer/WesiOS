@@ -1,9 +1,10 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 const ROOT_ORG = "org_wesi_inc";
 
 function policy() { return require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_finance_policy.js"); }
 function payload(record) { return policy().payload(record); }
-function rows(e, ctx, coll) { try { return e.app.findRecordsByFilter("wesios_records", "owner={:owner} && coll={:coll} && deleted=false", "id", 1000, 0, {owner:ctx.ownerId,coll}); } catch (_) { return []; } }
-function recordById(e,ctx,id){try{return e.app.findFirstRecordByFilter("wesios_records","owner={:owner} && coll='transactions' && rid={:rid} && deleted=false",{owner:ctx.ownerId,rid:id});}catch(_){return null;}}
+function rows(e, ctx, coll) { return dataAccess.records(e.app, "wesios_records", "owner={:owner} && coll={:coll} && deleted=false", "id", 1000, 0, {owner:ctx.ownerId,coll}); }
+function recordById(e,ctx,id){return dataAccess.first(e.app, "wesios_records","owner={:owner} && coll='transactions' && rid={:rid} && deleted=false",{owner:ctx.ownerId,rid:id});}
 function grants(e,ctx){if(ctx.isOwner)return[];return rows(e,ctx,"organization_grants").map(payload).filter((g)=>String(g.employeeId||"")===ctx.employeeId);}
 function parents(e,ctx){const out={};for(const row of rows(e,ctx,"organizations")){const p=payload(row),id=String(p.id||row.getString("rid")||"");if(id)out[id]=p.parentId==null?null:String(p.parentId);}return out;}
 function grantApplies(e,ctx,orgId,permission){if(ctx.isOwner)return true;const gs=grants(e,ctx),ps=parents(e,ctx);let cursor=orgId,first=true;while(cursor){for(const g of gs){if(String(g.organizationId||"")!==cursor)continue;if(!first&&g.includeSubtree!==true)continue;const perms=Array.isArray(g.permissions)?g.permissions.map(String):[];if(perms.indexOf(permission)>=0)return true;}first=false;cursor=ps[cursor];}return false;}

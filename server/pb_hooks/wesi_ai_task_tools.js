@@ -1,3 +1,4 @@
+const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
 const ROOT_ORG = "org_wesi_inc";
 
 function payloadOf(record) {
@@ -18,13 +19,11 @@ function loadAccess(e, ctx) {
     permissions = {canManageTeam: true, canSeeOthersStats: true, canAssignTasks: true};
   } else {
     let employee = null;
-    try {
-      employee = e.app.findFirstRecordByFilter(
+    employee = dataAccess.first(e.app,
         "wesios_records",
         "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
         {owner: ctx.ownerId, rid: ctx.employeeId},
       );
-    } catch (_) { employee = null; }
     const snapshot = payloadOf(employee);
     permissions = snapshot.permissions && typeof snapshot.permissions === "object"
       ? snapshot.permissions : {};
@@ -32,18 +31,14 @@ function loadAccess(e, ctx) {
 
   let organizations = [];
   let grants = [];
-  try {
-    organizations = e.app.findRecordsByFilter(
+  organizations = dataAccess.records(e.app,
       "wesios_records", "owner={:owner} && coll='organizations' && deleted=false",
       "id", 1000, 0, {owner: ctx.ownerId},
     );
-  } catch (_) { organizations = []; }
-  try {
-    grants = e.app.findRecordsByFilter(
+  grants = dataAccess.records(e.app,
       "wesios_records", "owner={:owner} && coll='organization_grants' && deleted=false",
       "id", 1000, 0, {owner: ctx.ownerId},
     );
-  } catch (_) { grants = []; }
 
   const orgs = {};
   const parents = {};
@@ -100,12 +95,10 @@ function chooseOrganization(access, requested) {
 
 function employees(e, ctx) {
   let rows = [];
-  try {
-    rows = e.app.findRecordsByFilter(
+  rows = dataAccess.records(e.app,
       "wesios_records", "owner={:owner} && coll='employees' && deleted=false",
       "id", 1000, 0, {owner: ctx.ownerId},
     );
-  } catch (_) { rows = []; }
   return rows.map((row) => {
     const p = payloadOf(row);
     return {
@@ -166,12 +159,10 @@ module.exports = {
 
     if (name === "tasks_list") {
       let rows = [];
-      try {
-        rows = e.app.findRecordsByFilter(
+      rows = dataAccess.records(e.app,
           "wesios_records", "owner={:owner} && coll='tasks' && deleted=false",
           "-stamp", 5000, 0, {owner: ctx.ownerId},
         );
-      } catch (_) { rows = []; }
       const status = String(input.status || "");
       const limit = Math.max(1, Math.min(50, Number(input.limit || 20)));
       const out = [];
