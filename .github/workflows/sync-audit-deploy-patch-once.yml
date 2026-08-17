@@ -1,0 +1,66 @@
+name: Wire Sync Extra Hook Into Deploy Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-audit-deploy-patch-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Patch canonical server deployment
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def once(path, old, new):
+              p=Path(path); text=p.read_text(); n=text.count(old)
+              if n != 1: raise SystemExit(f'{path}: expected 1 match, got {n}')
+              p.write_text(text.replace(old,new,1))
+
+          w='.github/workflows/deploy-employee-portal.yml'
+          once(w,
+            "      - 'server/pb_hooks/wesi_sync_write.pb.js'\n",
+            "      - 'server/pb_hooks/wesi_sync_write.pb.js'\n      - 'server/pb_hooks/wesi_sync_extra.pb.js'\n")
+          once(w,
+            "            server/pb_hooks/wesi_sync_write.pb.js \\\n            server/pb_hooks/wesi_sysadmin.pb.js \\\n",
+            "            server/pb_hooks/wesi_sync_write.pb.js \\\n            server/pb_hooks/wesi_sync_extra.pb.js \\\n            server/pb_hooks/wesi_sysadmin.pb.js \\\n")
+          # The same sequence appears once in the non-scp validation list.
+          once(w,
+            "            server/pb_hooks/wesi_sync_write.pb.js \\\n            server/pb_hooks/wesi_sysadmin.pb.js \\\n            assets/images/app_icon.png; do\n",
+            "            server/pb_hooks/wesi_sync_write.pb.js \\\n            server/pb_hooks/wesi_sync_extra.pb.js \\\n            server/pb_hooks/wesi_sysadmin.pb.js \\\n            assets/images/app_icon.png; do\n")
+          once(w,
+            "          node --check server/pb_hooks/wesi_sync_write.pb.js\n",
+            "          node --check server/pb_hooks/wesi_sync_write.pb.js\n          node --check server/pb_hooks/wesi_sync_extra.pb.js\n")
+          once(w,
+            "          grep -q 'vault_private' server/pb_hooks/wesi_sync_write.pb.js\n",
+            "          grep -q 'vault_private' server/pb_hooks/wesi_sync_write.pb.js\n          grep -q '/api/wesi/sync/revision-v2' server/pb_hooks/wesi_sync_extra.pb.js\n          grep -q 'sandbox_transactions' server/pb_hooks/wesi_sync_extra.pb.js\n")
+          once(w,
+            "            /api/wesi/sync/revision; do\n",
+            "            /api/wesi/sync/revision \\\n            /api/wesi/sync/revision-v2; do\n")
+
+          s='server/deploy-employee-portal.sh'
+          once(s,
+            "  wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js \\\n  wesi_sysadmin.pb.js; do\n",
+            "  wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js \\\n  wesi_sync_extra.pb.js wesi_sysadmin.pb.js; do\n")
+          once(s,
+            "  \"$FROM/wesi_sync_write.pb.js\"\n  \"$FROM/wesi_sysadmin.pb.js\"\n",
+            "  \"$FROM/wesi_sync_write.pb.js\"\n  \"$FROM/wesi_sync_extra.pb.js\"\n  \"$FROM/wesi_sysadmin.pb.js\"\n")
+          PY
+          git diff --check
+      - name: Commit deployment wiring
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add .github/workflows/deploy-employee-portal.yml server/deploy-employee-portal.sh
+          git commit -m 'ci(sync): deploy revision-v2 and audited sync routes'
+          git push origin HEAD:main
