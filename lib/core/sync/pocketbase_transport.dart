@@ -127,6 +127,15 @@ class PocketBaseTransport implements SyncTransport {
   /// Старый формат ответа PocketBase оставлен для unit-тестов миграционного
   /// слоя. Рабочий transport получает готовую строку с `/api/wesi/sync/revision-v2`.
   static String revisionFromResponse(Map<String, dynamic> json) {
+    // Current legacy WesiOS hook already returns the same compact revision
+    // string as revision-v2. Accept it first so a rolling deploy fallback is
+    // genuinely live instead of silently collapsing every response to empty.
+    final direct = json['revision'];
+    if (direct is String && direct.isNotEmpty) return direct;
+
+    // Older pre-gateway responses exposed the newest record through items.
+    // Keep this parser for backwards compatibility with those installations
+    // and with migration fixtures.
     final items = json['items'];
     if (items is! List || items.isEmpty) return 'empty';
     final first = items.first;
