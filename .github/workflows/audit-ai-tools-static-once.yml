@@ -12,10 +12,11 @@ permissions:
 jobs:
   audit:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v4
-      - name: Audit tool source patterns
+
+      - name: Audit server tool source patterns
         run: |
           set -euo pipefail
           python3 - <<'PY'
@@ -26,15 +27,9 @@ jobs:
           for p in files:
               text = p.read_text(encoding='utf-8')
               hits=[]
-              for m in re.finditer(r'findRecordsByFilter\s*\(', text):
-                  start=max(0,m.start()-180); end=min(len(text),m.start()+650)
-                  snippet=' '.join(text[start:end].split())
-                  hits.append(('READ',snippet[:800]))
-              for m in re.finditer(r'findFirstRecordByFilter\s*\(', text):
-                  start=max(0,m.start()-180); end=min(len(text),m.start()+500)
-                  snippet=' '.join(text[start:end].split())
-                  hits.append(('FIRST',snippet[:650]))
               for pattern,label in [
+                  (r'findRecordsByFilter\s*\(','READ'),
+                  (r'findFirstRecordByFilter\s*\(','FIRST'),
                   (r'input\.organizationId\s*\|\|\s*activeOrganizationId','MODEL_ORG_FIRST'),
                   (r'activeOrganizationId\s*\|\|\s*input\.organizationId','TRUSTED_ORG_FIRST'),
                   (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+\[\]','CATCH_EMPTY_LIST'),
@@ -42,10 +37,31 @@ jobs:
                   (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+null','CATCH_NULL'),
               ]:
                   for m in re.finditer(pattern,text,re.S):
-                      hits.append((label,' '.join(text[m.start():min(len(text),m.end()+160)].split())[:500]))
+                      start=max(0,m.start()-120); end=min(len(text),m.end()+260)
+                      hits.append((label,' '.join(text[start:end].split())[:600]))
               if hits:
                   print('\n###',p.name)
                   for label,s in hits:
                       print(label,s)
           PY
-# rerun: 2026-08-17T22:20+03:00 full tools + first/null
+
+      - name: Audit streaming tool loop and confirmation wiring
+        run: |
+          set -euo pipefail
+          echo '=== STREAM TOOL ENDPOINTS ==='
+          git grep -n -E 'stream/tool-v2|MAX_TOOL_TURNS|parseToolRequest|WESI_AI_VERIFIED_TOOL_RESULTS' -- server/wesi-ai-stream server/pb_hooks || true
+          echo '=== CONFIRMATION CLIENT REFERENCES ==='
+          git grep -n -E 'WesiAiActionApi|WesiAiActionConfirmationResult|confirmationId|CONFIRMATION_REQUIRED|confirmation_required' -- lib server test || true
+          echo '=== ACTION API IMPORTS ==='
+          git grep -n "wesi_ai_action_api.dart" -- lib test || true
+          echo '=== STREAM TOOL RESULT PARSING ==='
+          git grep -n -E "type.*tool|toolResults|confirmation" -- lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/ai_assistant_v2_screen.dart || true
+
+      - name: Run gateway and tool contract suites
+        run: |
+          set -euo pipefail
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --test server/wesi-ai-stream/gateway.test.mjs server/wesi-ai-stream/connector_protocol.test.mjs
+          node --test server/pb_hooks/wesi_ai_tool_data_access_contract_test.mjs server/pb_hooks/wesi_ai_remaining_data_contract_test.mjs
+
+# orchestration audit: confirmation wiring + stream loop
