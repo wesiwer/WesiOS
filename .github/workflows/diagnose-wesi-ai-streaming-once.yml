@@ -23,16 +23,13 @@ jobs:
           KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
         run: |
           set -euo pipefail
-          test -n "${MAIN_HOST:-}"
-          test -n "${MAIN_USER:-}"
-          test -n "${KEY:-}"
+          test -n "${MAIN_HOST:-}" && test -n "${MAIN_USER:-}" && test -n "${KEY:-}"
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/main_key
-          chmod 600 ~/.ssh/main_key
+          printf '%s\n' "$KEY" > ~/.ssh/main_key && chmod 600 ~/.ssh/main_key
           if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Read recent stream prepare failures
+      - name: Inspect safe PocketBase log metadata
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
@@ -40,8 +37,24 @@ jobs:
           set -euo pipefail
           if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=''; fi
           db=/opt/pocketbase/pb_data/auxiliary.db
-          echo '=== _LOGS SCHEMA ==='
-          $SUDO python3 -c 'import sqlite3,sys; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); print("\n".join(str(r) for r in c.execute("pragma table_info(_logs)")))' "$db"
-          echo '=== RECENT WESI STREAM LOGS ==='
-          $SUDO python3 -c 'import sqlite3,sys,re; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); cols=[r[1] for r in c.execute("pragma table_info(_logs)")]; wanted=[x for x in ("id","created","updated","level","message","data") if x in cols]; rows=c.execute("select "+",".join(wanted)+" from _logs order by rowid desc limit 3000").fetchall(); rx=re.compile(r"(?i)(authorization|x-wesios-session|x-wesi-ai-stream-secret)([=: ]+)([^, }\\\"\\n]+)"); n=0; print("COLUMNS="+",".join(wanted)); [(print(rx.sub(lambda m:m.group(1)+m.group(2)+"[REDACTED]", " | ".join(str(v or "") for v in row))[:8000]), globals().__setitem__("n",n+1)) for row in rows if ("/api/wesi/ai/stream/prepare" in " | ".join(str(v or "") for v in row).lower() or "wai_stream_main_rejected" in " | ".join(str(v or "") for v in row).lower() or ("wesi" in " | ".join(str(v or "") for v in row).lower() and ("status\\\":400" in " | ".join(str(v or "") for v in row).lower() or "bad request" in " | ".join(str(v or "") for v in row).lower())))][:120]' "$db" 2>/dev/null || true
+          echo '=== RECENT LOG EVENT NAMES ==='
+          $SUDO python3 -c 'import sqlite3,sys; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); rows=c.execute("select created,level,message from _logs order by rowid desc limit 180").fetchall(); [print(" | ".join(map(str,r))) for r in rows]' "$db"
+          echo '=== TOP LEVEL DATA KEYS ==='
+          $SUDO python3 -c 'import sqlite3,sys,json,collections; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); rows=c.execute("select data from _logs order by rowid desc limit 400").fetchall(); k=collections.Counter(); [(k.update(json.loads(r[0]).keys()) if isinstance(json.loads(r[0]),dict) else None) for r in rows if r[0]]; [print(x,n) for x,n in k.most_common(80)]' "$db" 2>/dev/null || true
+          echo '=== REQUEST-LIKE SAFE FIELDS ==='
+          $SUDO python3 -c 'import sqlite3,sys,json; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); rows=c.execute("select created,level,message,data from _logs order by rowid desc limit 600").fetchall(); keys=("method","url","uri","path","status","statusCode","httpStatus","duration","durationMs"); n=0;
+for created,level,msg,raw in rows:
+ try: d=json.loads(raw) if raw else {}
+ except: continue
+ if not isinstance(d,dict): continue
+ vals={k:d.get(k) for k in keys if k in d}
+ req=d.get("request") if isinstance(d.get("request"),dict) else {}
+ res=d.get("response") if isinstance(d.get("response"),dict) else {}
+ for k in keys:
+  if k in req: vals["request."+k]=req.get(k)
+  if k in res: vals["response."+k]=res.get(k)
+ text=str(vals).lower()
+ if "wesi" in text or "stream" in text or vals.get("status") in (400,401,403,500,502,503) or vals.get("response.status") in (400,401,403,500,502,503):
+  print(created,"|",level,"|",msg,"|",vals); n+=1
+  if n>=120: break' "$db" 2>/dev/null || true
           REMOTE
