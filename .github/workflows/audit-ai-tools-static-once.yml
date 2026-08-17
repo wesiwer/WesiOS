@@ -43,3 +43,4 @@ jobs:
                   for label,s in hits:
                       print(label,s)
           PY
+# rerun: 2026-08-17T21:24+03:00
