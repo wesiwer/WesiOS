@@ -253,7 +253,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
         crmRows = e.app.findRecordsByFilter(
           "wesios_records",
           "owner={:owner} && coll='crm_state' && deleted=false",
-          "id", 0, 0, {"owner": ctx.ownerId},
+          "id", 10000, 0, {"owner": ctx.ownerId},
         );
       } catch (_) { crmRows = []; }
       for (const row of crmRows) {

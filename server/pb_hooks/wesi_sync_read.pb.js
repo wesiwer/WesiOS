@@ -106,9 +106,9 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     records = e.app.findRecordsByFilter(
       "wesios_records",
       "owner={:owner} && coll={:coll}",
-      "id", 0, 0, {"owner": ownerScope, "coll": collection},
+      "id", 10000, 0, {"owner": ownerScope, "coll": collection},
     );
-  } catch (_) { records = []; }
+  } catch (error) { throw error; }
 
   const visibleChatIds = {};
   if (collection === "messages" && !ctx.isOwner) {
@@ -117,9 +117,9 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
       chats = e.app.findRecordsByFilter(
         "wesios_records",
         "owner={:owner} && coll='chats' && deleted=false",
-        "id", 0, 0, {"owner": ctx.ownerId},
+        "id", 10000, 0, {"owner": ctx.ownerId},
       );
-    } catch (_) { chats = []; }
+    } catch (error) { throw error; }
     for (const row of chats) {
       const p = payloadOf(row);
       if (chatVisible(p)) visibleChatIds[String(p.id || row.getString("rid"))] = true;
