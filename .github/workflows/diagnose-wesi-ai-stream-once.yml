@@ -50,22 +50,24 @@ jobs:
           echo '=== PRODUCTION HOOK / SERVICE / RECENT ERRORS ==='
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "bash -s" <<'REMOTE'
           set -uo pipefail
-          SUDO=''
-          if [ "$(id -u)" -ne 0 ]; then SUDO='sudo -n'; fi
+          echo '--- identity/groups ---'
+          id || true
           echo '--- installed stream hook sha256 ---'
-          $SUDO sha256sum /opt/pocketbase/pb_hooks/wesi_ai_stream.pb.js || true
+          sha256sum /opt/pocketbase/pb_hooks/wesi_ai_stream.pb.js || true
           echo '--- relevant validation contract ---'
-          $SUDO grep -nE 'persona\)|tier\)|lobbyMode\)|message.length|summary.length|conversationId.length|provider !=|attachmentsRaw.length|Слишком длинное сообщение' /opt/pocketbase/pb_hooks/wesi_ai_stream.pb.js || true
+          grep -nE 'persona\)|tier\)|lobbyMode\)|message.length|summary.length|conversationId.length|provider !=|attachmentsRaw.length|Слишком длинное сообщение' /opt/pocketbase/pb_hooks/wesi_ai_stream.pb.js || true
           echo '--- pocketbase status ---'
-          $SUDO systemctl is-active pocketbase || true
+          systemctl is-active pocketbase || true
           echo '--- stream service status ---'
-          $SUDO systemctl is-active wesi-ai-stream || true
+          systemctl is-active wesi-ai-stream || true
           echo '--- pocketbase recent stream/400/errors ---'
-          $SUDO journalctl -u pocketbase --since '12 hours ago' --no-pager -o short-iso 2>/dev/null | grep -Ei 'stream/prepare|WAI_|BadRequest|bad request|status.?400|http.?400|Wesi AI|Некоррект|Слишком|Недоступная настройка' | tail -n 600 || true
+          journalctl -u pocketbase --since '12 hours ago' --no-pager -o short-iso 2>&1 | grep -Ei 'stream/prepare|WAI_|BadRequest|bad request|status.?400|http.?400|Wesi AI|Некоррект|Слишком|Недоступная настройка|permission denied' | tail -n 800 || true
           echo '--- stream gateway recent errors ---'
-          $SUDO journalctl -u wesi-ai-stream --since '12 hours ago' --no-pager -o short-iso 2>/dev/null | grep -Ei 'WAI_|prepare|400|error|reject|main' | tail -n 600 || true
-          echo '--- nginx recent stream access ---'
-          if [ -r /var/log/nginx/access.log ] || $SUDO test -r /var/log/nginx/access.log; then
-            $SUDO tail -n 3000 /var/log/nginx/access.log 2>/dev/null | grep -E '/api/wesi/ai/(chat/stream|stream/prepare)' | tail -n 300 || true
+          journalctl -u wesi-ai-stream --since '12 hours ago' --no-pager -o short-iso 2>&1 | grep -Ei 'WAI_|prepare|400|error|reject|main|permission denied' | tail -n 800 || true
+          echo '--- readable nginx stream access ---'
+          if [ -r /var/log/nginx/access.log ]; then
+            tail -n 5000 /var/log/nginx/access.log | grep -E '/api/wesi/ai/(chat/stream|stream/prepare)' | tail -n 500 || true
+          else
+            echo 'nginx access log is not readable by deploy user'
           fi
           REMOTE
