@@ -1,12 +1,13 @@
 from pathlib import Path
 
-# AudioBeatsSync lives in sync_codec_files.dart and is not re-exported by
-# sync_codec.dart. Import its defining library explicitly before subclassing it.
+# AudioBeatsSync lives in sync_codec_crm.dart (historical grouping with the
+# CRM/Profile codecs) and is not re-exported by sync_codec.dart. Import its
+# defining library explicitly before subclassing it.
 p = Path('lib/core/sync/sync_audit_extensions.dart')
 text = p.read_text()
 needle = "import 'sync_codec.dart';\n"
-extra = "import 'sync_codec.dart';\nimport 'sync_codec_files.dart';\n"
-if "import 'sync_codec_files.dart';" not in text:
+extra = "import 'sync_codec.dart';\nimport 'sync_codec_crm.dart';\n"
+if "import 'sync_codec_crm.dart';" not in text:
     if text.count(needle) != 1:
         raise SystemExit('sync_audit_extensions.dart: sync codec import mismatch')
     p.write_text(text.replace(needle, extra, 1))
