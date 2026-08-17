@@ -1,0 +1,99 @@
+name: Diagnose Wesi AI Streaming Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-wesi-ai-streaming-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - name: Prepare Main SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${MAIN_HOST:-}"
+          test -n "${MAIN_USER:-}"
+          test -n "${KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts
+          else
+            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/main_known_hosts
+
+      - name: Capture PocketBase streaming diagnostics
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          redact() {
+            sed -E \
+              -e 's/(Authorization[=: ]+Bearer[[:space:]]+)[A-Za-z0-9._~-]+/\1[REDACTED]/Ig' \
+              -e 's/(X-WesiOS-Session[=: ]+)[A-Za-z0-9_-]+/\1[REDACTED]/Ig' \
+              -e 's/(X-Wesi-AI-Stream-Secret[=: ]+)[A-Za-z0-9_-]+/\1[REDACTED]/Ig'
+          }
+
+          echo '=== POCKETBASE JOURNAL: STREAM PREPARE ==='
+          if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=''; fi
+          ($SUDO journalctl -u pocketbase --since '90 minutes ago' --no-pager -o short-iso 2>/dev/null || true) \
+            | grep -Ei 'stream/prepare|WAI_STREAM|BadRequest|bad request|Wesi AI|wesi_ai' \
+            | tail -n 240 \
+            | redact || true
+
+          echo '=== POCKETBASE LOG DB: RECENT 4XX/5XX + STREAM ==='
+          python3 - <<'PY' || true
+          import os, re, sqlite3, json
+          path='/opt/pocketbase/pb_data/logs.db'
+          if not os.path.exists(path):
+              print('NO_LOGS_DB')
+              raise SystemExit
+          try:
+              con=sqlite3.connect(f'file:{path}?mode=ro', uri=True)
+          except Exception as exc:
+              print('LOG_DB_OPEN_FAILED', type(exc).__name__, str(exc)[:160])
+              raise SystemExit
+          tables=[r[0] for r in con.execute("select name from sqlite_master where type='table'")]
+          print('LOG_TABLES', ','.join(tables))
+          target='_logs' if '_logs' in tables else ('logs' if 'logs' in tables else '')
+          if not target:
+              raise SystemExit
+          cols=[r[1] for r in con.execute(f'pragma table_info({target})')]
+          print('LOG_COLUMNS', ','.join(cols))
+          wanted=[c for c in ('created','level','message','data') if c in cols]
+          if not wanted:
+              raise SystemExit
+          rows=con.execute(f"select {','.join(wanted)} from {target} order by rowid desc limit 500").fetchall()
+          token=re.compile(r'(?i)(Authorization[=: ]+Bearer\s+|X-WesiOS-Session[=: ]+|X-Wesi-AI-Stream-Secret[=: ]+)[A-Za-z0-9._~-]+')
+          shown=0
+          for row in rows:
+              record=dict(zip(wanted,row))
+              text=' | '.join(str(record.get(k,'')) for k in wanted)
+              low=text.lower()
+              if not any(x in low for x in ('stream/prepare','wai_stream','badrequest','bad request','/api/wesi/ai/stream','status":400','status": 400','status=400','status":500','status": 500','status=500')):
+                  continue
+              text=token.sub(lambda m:m.group(1)+'[REDACTED]', text)
+              print(text[:5000])
+              shown += 1
+              if shown >= 120: break
+          print('MATCHED_LOG_ROWS', shown)
+          PY
+
+          echo '=== ACTIVE HOOK CHECKSUMS ==='
+          sha256sum /opt/pocketbase/pb_hooks/wesi_ai_stream.pb.js /opt/pocketbase/pb_hooks/wesi_ai_routes.pb.js 2>/dev/null || true
+          REMOTE
