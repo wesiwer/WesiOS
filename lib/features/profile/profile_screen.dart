@@ -41,6 +41,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   int _selectedAvatarIndex = 0;
   String? _savedHint;
   Timer? _debounce;
+  bool _applyingSyncedProfile = false;
 
   /// Доступ к секции ключей Firebase подтверждён в этом сеансе экрана.
   /// Намеренно не сохраняется между открытиями: закрыл профиль — снова
@@ -51,6 +52,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _bioAvailable = false;
 
   final List<String> _genders = ['Не указан', 'Мужской', 'Женский'];
+
   /// Полный список стран. При русском интерфейсе Россия и соседи идут
   /// первыми — искать свою страну в середине алфавита неудобно.
   List<String> get _countries => Countries.all;
@@ -59,6 +61,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadAll();
+    ProfileService.revision.addListener(_onProfileRevision);
     for (final c in [
       _nameCtrl,
       _emailCtrl,
@@ -75,6 +78,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   void _scheduleSave() {
+    if (_applyingSyncedProfile) return;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 600), _autoSave);
   }
@@ -107,6 +111,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _storageBucketCtrl.text = config['storageBucket'] ?? '';
     _measurementIdCtrl.text = config['measurementId'] ?? '';
 
+    if (mounted) setState(() {});
+  }
+
+  void _onProfileRevision() {
+    if (!mounted || _applyingSyncedProfile) return;
+    final box = Hive.box('wesios_settings');
+    _applyingSyncedProfile = true;
+    try {
+      final idx = box.get('avatar_index');
+      _selectedAvatarIndex = idx is int ? idx : 0;
+      _nameCtrl.text = '${box.get('profile_name', defaultValue: '')}';
+      _emailCtrl.text = '${box.get('profile_email', defaultValue: '')}';
+      _gender = '${box.get('profile_gender', defaultValue: 'Не указан')}';
+      _country = '${box.get('profile_country', defaultValue: 'Не указана')}';
+      final birth = box.get('profile_birth');
+      _birthDate =
+          birth is String && birth.isNotEmpty ? DateTime.tryParse(birth) : null;
+    } finally {
+      _applyingSyncedProfile = false;
+    }
     if (mounted) setState(() {});
   }
 
@@ -161,6 +185,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   void dispose() {
+    ProfileService.revision.removeListener(_onProfileRevision);
     _debounce?.cancel();
     for (final c in [
       _nameCtrl,
@@ -230,8 +255,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (_savedHint != null)
                 Text(
                   _savedHint!,
-                  style: TextStyle(
-                      fontSize: 12, color: AppTheme.accentGreen),
+                  style: TextStyle(fontSize: 12, color: AppTheme.accentGreen),
                 ),
             ],
           ),
@@ -255,9 +279,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _field(_emailCtrl, 'Email', 'email@example.com'),
           _dropdown(
             'Дата рождения',
-            _birthDate != null
-                ? _formatDate(_birthDate!)
-                : 'Не указана',
+            _birthDate != null ? _formatDate(_birthDate!) : 'Не указана',
             _pickBirthDate,
           ),
           _dropdown(
@@ -316,8 +338,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ? 'Введите пароль, чтобы посмотреть или изменить ключи Firebase.'
                 : 'Ключи Firebase дают доступ к бэкенду проекта. Задайте пароль, '
                     'чтобы их нельзя было прочитать с разблокированного устройства.',
-            style: TextStyle(
-                fontSize: 12, color: AppTheme.textMuted, height: 1.4),
+            style:
+                TextStyle(fontSize: 12, color: AppTheme.textMuted, height: 1.4),
           ),
           SizedBox(height: 14),
           HoverButton(
@@ -350,10 +372,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
             value: ShieldService.biometricsEnabled,
             activeColor: AppTheme.accent,
             title: Text('Отпечаток или Face ID',
-                style: TextStyle(
-                    fontSize: 14, color: AppTheme.textPrimary)),
-            subtitle: Text(
-                'Открывать ключи биометрией вместо ввода пароля',
+                style: TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
+            subtitle: Text('Открывать ключи биометрией вместо ввода пароля',
                 style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
             onChanged: (v) async {
               await ShieldService.setBiometricsEnabled(v);
@@ -372,8 +392,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               );
             }
           },
-          child: Text('Сменить пароль',
-              style: TextStyle(color: AppTheme.accent)),
+          child:
+              Text('Сменить пароль', style: TextStyle(color: AppTheme.accent)),
         ),
         // Всё остальное — автоблокировка, журнал, область защиты — живёт в
         // Wesi Shield; дублировать те же переключатели здесь значит однажды
@@ -546,7 +566,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _signOut() async {
     await TeamService.signOut();
-    if (mounted) Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
+    if (mounted)
+      Navigator.of(context).pushNamedAndRemoveUntil('/login', (_) => false);
   }
 
   Widget _section(String t) => Padding(
@@ -586,8 +607,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             labelText: label,
             helperText: tip,
             helperMaxLines: 2,
-            helperStyle:
-                TextStyle(fontSize: 11, color: AppTheme.textMuted),
+            helperStyle: TextStyle(fontSize: 11, color: AppTheme.textMuted),
             labelStyle: TextStyle(color: AppTheme.textSecondary),
           ),
         ),
@@ -652,8 +672,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       color: AppTheme.textPrimary)),
             ),
             ...items.map((item) => ListTile(
-                  title: Text(item,
-                      style: TextStyle(color: AppTheme.textPrimary)),
+                  title:
+                      Text(item, style: TextStyle(color: AppTheme.textPrimary)),
                   onTap: () {
                     onSelect(item);
                     Navigator.pop(ctx);
@@ -683,8 +703,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               SizedBox(width: 8),
               Text(
                 WesiLocale.get('upload_avatar'),
-                style: TextStyle(
-                    fontSize: 13, color: AppTheme.textSecondary),
+                style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
               ),
             ],
           ),
@@ -711,13 +730,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Icon(Icons.restart_alt,
-                    size: 16, color: AppTheme.textMuted),
+                Icon(Icons.restart_alt, size: 16, color: AppTheme.textMuted),
                 SizedBox(width: 8),
                 Text(
                   WesiLocale.get('reset_avatar'),
-                  style: TextStyle(
-                      fontSize: 13, color: AppTheme.textSecondary),
+                  style: TextStyle(fontSize: 13, color: AppTheme.textSecondary),
                 ),
               ],
             ),

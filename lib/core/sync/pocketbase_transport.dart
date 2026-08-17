@@ -104,7 +104,17 @@ class PocketBaseTransport implements SyncTransport {
   Future<SyncResult<String>> revision() async {
     if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
     final res = await _send('GET', '/api/wesi/sync/revision-v2');
-    if (res.failure != null) return SyncResult.fail(res.failure!);
+    if (res.failure != null) {
+      // During a rolling deploy an updated client may start before the new
+      // PocketBase hook. Keep live sync alive on the legacy endpoint until
+      // revision-v2 becomes available.
+      if (res.failure!.code == 'NOT_WESIOS') {
+        final legacy = await _send('GET', '/api/wesi/sync/revision');
+        if (legacy.failure != null) return SyncResult.fail(legacy.failure!);
+        return SyncResult.ok(revisionFromResponse(legacy.value!));
+      }
+      return SyncResult.fail(res.failure!);
+    }
     final revision = res.value!['revision'];
     if (revision is! String || revision.isEmpty) {
       return const SyncResult.fail(

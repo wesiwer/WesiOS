@@ -192,10 +192,8 @@ class _ChatScreenState extends State<ChatScreen> {
                 'Такой не отправится: хранилища для больших файлов пока нет, '
                 'и отправка молча висела бы.'
             : 'File is too large',
-        AttachmentStore.empty =>
-          _ru ? 'Файл пустой' : 'The file is empty',
-        AttachmentStore.gone =>
-          _ru ? 'Файл не найден' : 'File not found',
+        AttachmentStore.empty => _ru ? 'Файл пустой' : 'The file is empty',
+        AttachmentStore.gone => _ru ? 'Файл не найден' : 'File not found',
         _ => _ru ? 'Не удалось приложить файл' : 'Could not attach the file',
       }),
       backgroundColor: AppTheme.surface,
@@ -403,16 +401,14 @@ class _ChatScreenState extends State<ChatScreen> {
     if (_refinedFor == signature) return;
 
     _refining = true;
-    TopicRefiner
-        .refine(
+    TopicRefiner.refine(
       messages: prepared.input,
       kind: chat.kind,
       judge: TopicPrivacy.modelWillBeAsked(chat.kind)
           ? AiTopicJudge()
           : const HeuristicJudge(),
       modelUrl: AiEndpoint.baseUrl,
-    )
-        .then((result) {
+    ).then((result) {
       if (!mounted) return;
       setState(() {
         _refined = TopicDivider.fromRefined(messages, prepared, result);
@@ -458,47 +454,50 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
-      valueListenable: MessageStore.revision,
-      builder: (context, _, __) {
-        final chat = _chat;
-        if (chat == null) {
+      valueListenable: ChatService.revision,
+      builder: (context, _, __) => ValueListenableBuilder<int>(
+        valueListenable: MessageStore.revision,
+        builder: (context, __, ___) {
+          final chat = _chat;
+          if (chat == null) {
+            return Scaffold(
+              backgroundColor: AppTheme.background,
+              body: Center(
+                child: Text(_ru ? 'Разговор удалён' : 'Chat removed',
+                    style: TextStyle(color: AppTheme.textMuted)),
+              ),
+            );
+          }
+          final searching = _searching && _query.trim().isNotEmpty;
+          final messages = searching
+              ? MessageStore.search(chat.id, _query)
+              : MessageStore.of(chat.id);
+
           return Scaffold(
             backgroundColor: AppTheme.background,
-            body: Center(
-              child: Text(_ru ? 'Разговор удалён' : 'Chat removed',
-                  style: TextStyle(color: AppTheme.textMuted)),
+            body: SafeArea(
+              child: Column(
+                children: [
+                  _header(chat),
+                  if (_searching) _searchBar(found: messages.length),
+                  Expanded(
+                    child: messages.isEmpty
+                        ? (searching ? _nothingFound() : _empty())
+                        : _list(chat, messages, searching: searching),
+                  ),
+                  // В поиске нижняя часть не нужна: там показан не разговор, а
+                  // выборка из него, и «ответить» на строчку из выборки значило
+                  // бы ответить непонятно куда.
+                  if (!_searching) ...[
+                    if (_replyTo != null) _replyBar(),
+                    _composer(),
+                  ],
+                ],
+              ),
             ),
           );
-        }
-        final searching = _searching && _query.trim().isNotEmpty;
-        final messages = searching
-            ? MessageStore.search(chat.id, _query)
-            : MessageStore.of(chat.id);
-
-        return Scaffold(
-          backgroundColor: AppTheme.background,
-          body: SafeArea(
-            child: Column(
-              children: [
-                _header(chat),
-                if (_searching) _searchBar(found: messages.length),
-                Expanded(
-                  child: messages.isEmpty
-                      ? (searching ? _nothingFound() : _empty())
-                      : _list(chat, messages, searching: searching),
-                ),
-                // В поиске нижняя часть не нужна: там показан не разговор, а
-                // выборка из него, и «ответить» на строчку из выборки значило
-                // бы ответить непонятно куда.
-                if (!_searching) ...[
-                  if (_replyTo != null) _replyBar(),
-                  _composer(),
-                ],
-              ],
-            ),
-          ),
-        );
-      },
+        },
+      ),
     );
   }
 
@@ -591,8 +590,7 @@ class _ChatScreenState extends State<ChatScreen> {
           decoration: InputDecoration(
             hintText: _ru ? 'Искать в переписке' : 'Search this chat',
             hintStyle: TextStyle(fontSize: 13, color: AppTheme.textMuted),
-            prefixIcon:
-                Icon(Icons.search, size: 18, color: AppTheme.textMuted),
+            prefixIcon: Icon(Icons.search, size: 18, color: AppTheme.textMuted),
             suffixIcon: _query.trim().isEmpty
                 ? null
                 : Padding(
@@ -601,8 +599,8 @@ class _ChatScreenState extends State<ChatScreen> {
                       widthFactor: 1,
                       child: Text(
                         _ru ? 'найдено $found' : '$found found',
-                        style: TextStyle(
-                            fontSize: 11, color: AppTheme.textMuted),
+                        style:
+                            TextStyle(fontSize: 11, color: AppTheme.textMuted),
                       ),
                     ),
                   ),
@@ -706,8 +704,7 @@ class _ChatScreenState extends State<ChatScreen> {
               TopicQuestionCard(
                 question: question,
                 onSplit: () => _splitAt(messages, question.index),
-                onKeep: () =>
-                    setState(() => blocks?.dismiss(question.index)),
+                onKeep: () => setState(() => blocks?.dismiss(question.index)),
               ),
             // В выборке рядом оказываются сообщения из разных дней, и без
             // даты непонятно, что именно нашлось.
@@ -716,9 +713,7 @@ class _ChatScreenState extends State<ChatScreen> {
               message: m,
               mine: mine,
               showAuthor: chat.isGroup && !mine,
-              replyTo: m.replyTo == null
-                  ? null
-                  : MessageStore.byId(m.replyTo!),
+              replyTo: m.replyTo == null ? null : MessageStore.byId(m.replyTo!),
               onLongPress: () => _actions(m),
               highlight: searching ? _query : '',
               onReact: (emoji) => _react(m, emoji),
@@ -741,7 +736,7 @@ class _ChatScreenState extends State<ChatScreen> {
         '${[
           if (who.isNotEmpty) who,
         ].join()} · ${two(at.day)}.${two(at.month)}.${at.year} '
-            '${two(at.hour)}:${two(at.minute)}',
+        '${two(at.hour)}:${two(at.minute)}',
         style: TextStyle(fontSize: 9.5, color: AppTheme.textMuted),
       ),
     );
@@ -789,8 +784,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     _replyTo!.isSticker ? '🖼' : _replyTo!.body,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                        fontSize: 11.5, color: AppTheme.textMuted),
+                    style: TextStyle(fontSize: 11.5, color: AppTheme.textMuted),
                   ),
                 ],
               ),
@@ -821,8 +815,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           IconButton(
             tooltip: _ru ? 'Приложить файл' : 'Attach a file',
-            icon: Icon(Icons.attach_file,
-                size: 21, color: AppTheme.textMuted),
+            icon: Icon(Icons.attach_file, size: 21, color: AppTheme.textMuted),
             onPressed: _attach,
           ),
           Expanded(
@@ -838,11 +831,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 style: TextStyle(fontSize: 14, color: AppTheme.textPrimary),
                 decoration: InputDecoration(
                   hintText: _ru ? 'Сообщение' : 'Message',
-                  hintStyle:
-                      TextStyle(fontSize: 14, color: AppTheme.textMuted),
+                  hintStyle: TextStyle(fontSize: 14, color: AppTheme.textMuted),
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 10),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                   filled: true,
                   fillColor: AppTheme.surfaceLight.withOpacity(0.5),
                   border: OutlineInputBorder(

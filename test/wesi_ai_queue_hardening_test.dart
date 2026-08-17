@@ -73,6 +73,7 @@ class _ControlledApi extends WesiAiApi {
     void Function(String delta)? onDelta,
     void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
+    bool thinkingMode = false,
   }) {
     prompts.add(message);
     attachmentNames.add(
@@ -106,6 +107,7 @@ class _LobbyControlledApi extends WesiAiApi {
     void Function(String delta)? onDelta,
     void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
+    bool thinkingMode = false,
   }) {
     calls++;
     return reply.future;
@@ -131,6 +133,7 @@ class _StreamingControlledApi extends WesiAiApi {
     void Function(String delta)? onDelta,
     void Function(Map<String, dynamic> event)? onActivity,
     WesiAiRequestCancellation? cancellation,
+    bool thinkingMode = false,
   }) {
     this.onDelta = onDelta;
     activityCallback = onActivity;

@@ -14,6 +14,7 @@ import '../../features/treasury/models/transaction_model.dart';
 import '../../features/treasury/services/what_if_store.dart';
 import '../security/shield_service.dart';
 import 'sync_codec.dart';
+import 'sync_codec_crm.dart';
 import 'sync_feature_extensions.dart';
 
 /// Дополняет базовый реестр синхронизации состояниями, которые исторически
