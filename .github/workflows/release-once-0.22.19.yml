@@ -1,0 +1,27 @@
+name: Dispatch WesiOS 0.22.19 Release Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/release-once-0.22.19.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch signed production release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Windows: Hive перенесён из Documents в LOCALAPPDATA/WesiOS/hive с безопасной миграцией старых локальных данных. Исправлен PathNotFoundException при запуске.' \
+            -f deploy_to_server=true
+          echo 'RELEASE_0_22_19_94_DISPATCHED'
