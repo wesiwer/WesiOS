@@ -114,67 +114,18 @@ s = s.replace(needle, repl, 1)
 p.write_text(s, encoding='utf-8')
 
 
-# 2) Horizon: mirror AccountService.summaries actual-balance semantics.
+# 2) Horizon: mirror AccountService.summaries actual-balance semantics while
+# preserving the already hardened source-read diagnostics around the formula.
 p = Path('server/pb_hooks/wesi_ai_horizon_tools.js')
 s = p.read_text(encoding='utf-8')
-old = '''    let balance = 0;
+calc_start = s.index('    let balance = 0;\n', s.index('execute: function'))
+calc_end = s.index('    const spendPerDay = expense / 90;\n', calc_start)
+calculation = '''    let balance = 0;
     let income = 0;
     let expense = 0;
     let count = 0;
     const now = new Date();
     const historyStart = new Date(now.getTime() - 90 * 86400000);
-    let accounts;
-    let transactions;
-    try {
-      accounts = rows(e, ctx, "accounts");
-      transactions = rows(e, ctx, "transactions");
-    } catch (_) {
-      return {ok: false, code: "HORIZON_DATA_UNAVAILABLE", message: "Не удалось прочитать синхронизированные данные WesiOS для Horizon. Нулевой результат не подставлен."};
-    }
-    if (!Array.isArray(accounts) || !Array.isArray(transactions)) {
-      return {ok: false, code: "HORIZON_DATA_UNAVAILABLE", message: "Хранилище WesiOS вернуло некорректный набор данных для Horizon"};
-    }
-
-    for (const row of accounts) {
-      const p = policy.payload(row);
-      if (String(p.organizationId || policy.ROOT_ORG) !== organizationId || p.archived === true) continue;
-      const opening = Number(p.openingBalance || 0);
-      if (Number.isFinite(opening)) balance += opening;
-    }
-
-    for (const row of transactions) {
-      const p = policy.payload(row);
-      if (String(p.organizationId || policy.ROOT_ORG) !== organizationId) continue;
-      if (p.isRecurring === true) continue;
-      const amount = Number(p.organizationBaseAmount != null ? p.organizationBaseAmount : p.amount);
-      const at = date(p.date);
-      if (!Number.isFinite(amount) || amount < 0 || !at || at > now) continue;
-      const signed = String(p.type || "expense") === "income" ? amount : -amount;
-      balance += signed;
-      if (at >= historyStart) {
-        count++;
-        if (signed >= 0) income += amount;
-        else expense += amount;
-      }
-    }
-'''
-new = '''    let balance = 0;
-    let income = 0;
-    let expense = 0;
-    let count = 0;
-    const now = new Date();
-    const historyStart = new Date(now.getTime() - 90 * 86400000);
-    let accounts;
-    let transactions;
-    try {
-      accounts = rows(e, ctx, "accounts");
-      transactions = rows(e, ctx, "transactions");
-    } catch (_) {
-      return {ok: false, code: "HORIZON_DATA_UNAVAILABLE", message: "Не удалось прочитать синхронизированные данные WesiOS для Horizon. Нулевой результат не подставлен."};
-    }
-    if (!Array.isArray(accounts) || !Array.isArray(transactions)) {
-      return {ok: false, code: "HORIZON_DATA_UNAVAILABLE", message: "Хранилище WesiOS вернуло некорректный набор данных для Horizon"};
-    }
 
     for (const row of accounts) {
       const p = policy.payload(row);
@@ -217,10 +168,9 @@ new = '''    let balance = 0;
         else expense += amount;
       }
     }
+
 '''
-if old not in s:
-    raise SystemExit('Horizon calculation anchor does not match current main')
-s = s.replace(old, new, 1)
+s = s[:calc_start] + calculation + s[calc_end:]
 p.write_text(s, encoding='utf-8')
 
 
