@@ -1,0 +1,51 @@
+name: Finalize Sync Audit V2 Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-audit-finalize-v2-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+      - name: Apply deterministic final patches
+        run: python3 tool/sync_audit_finalize.py
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+      - name: Get dependencies
+        run: flutter pub get
+      - name: Format audited Dart code
+        run: dart format lib/core/sync/sync_audit_extensions.dart lib/core/sync/sync_business_extensions.dart lib/core/sync/sync_auto.dart lib/core/sync/pocketbase_transport.dart lib/core/sync/sync_codec.dart lib/core/sync/sync_engine.dart lib/core/sync/sync_journal.dart lib/core/sync/sync_feature_extensions.dart lib/main.dart lib/features/settings/sync_screen.dart lib/features/treasury/sandbox_screen.dart lib/features/treasury/sandbox_forecast_screen.dart lib/features/profile/profile_screen.dart lib/features/chats/chat_screen.dart lib/features/audio/services/audio_vault_extras_service.dart lib/features/ai/backup/wesi_ai_backup_service.dart lib/features/ai/backup/wesi_ai_d2d_service.dart test/sync_audit_extensions_test.dart
+      - name: Check patch whitespace
+        run: git diff --check
+      - name: Check PocketBase hook syntax
+        run: node --check server/pb_hooks/wesi_sync_extra.pb.js
+      - name: Analyze full app
+        run: flutter analyze --no-fatal-infos
+      - name: Run sync audit regression
+        run: flutter test test/sync_audit_extensions_test.dart
+      - name: Run full test suite
+        run: flutter test
+      - name: Commit validated audit fixes
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add lib/core/sync lib/main.dart lib/features/settings/sync_screen.dart lib/features/treasury/sandbox_screen.dart lib/features/treasury/sandbox_forecast_screen.dart lib/features/profile/profile_screen.dart lib/features/chats/chat_screen.dart lib/features/audio/services/audio_vault_extras_service.dart lib/features/ai/backup/wesi_ai_backup_service.dart lib/features/ai/backup/wesi_ai_d2d_service.dart test/sync_audit_extensions_test.dart
+          git diff --cached --check
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'fix(sync): finalize validated cross-device audit'
+          git pull --rebase origin main
+          git push origin HEAD:main
