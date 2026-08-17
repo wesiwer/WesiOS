@@ -1,4 +1,4 @@
-name: Inspect Latest Wesi AI Streaming Request Once
+name: Repair Wesi AI Streaming V2 Once
 
 on:
   push:
@@ -7,33 +7,171 @@ on:
       - '.github/workflows/diagnose-wesi-ai-streaming-once.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  inspect:
+  repair:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     env:
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
-      LOG_READER_B64: CmltcG9ydCBzcWxpdGUzLCBqc29uCmRiPSIvb3B0L3BvY2tldGJhc2UvcGJfZGF0YS9hdXhpbGlhcnkuZGIiCmM9c3FsaXRlMy5jb25uZWN0KGYiZmlsZTp7ZGJ9P21vZGU9cm8iLCB1cmk9VHJ1ZSkKYy50ZXh0X2ZhY3Rvcnk9bGFtYmRhIGI6IGIuZGVjb2RlKCJ1dGYtOCIsInJlcGxhY2UiKQpyb3dzPWMuZXhlY3V0ZSgiIiIKc2VsZWN0IGNyZWF0ZWQsIGxldmVsLCBtZXNzYWdlLCBkYXRhCmZyb20gX2xvZ3MKd2hlcmUgY3JlYXRlZCA+PSAnMjAyNi0wOC0xNyAxMTozOTowMC4wMDBaJwpvcmRlciBieSByb3dpZCBhc2MKIiIiKS5mZXRjaGFsbCgpCmZvciBjcmVhdGVkLGxldmVsLG1zZyxyYXcgaW4gcm93czoKICAgIGlmICIvYXBpL3dlc2kvYWkvc3RyZWFtL3ByZXBhcmUiIG5vdCBpbiBzdHIobXNnKSBhbmQgIi9hcGkvd2VzaS9haS9jaGF0IiBub3QgaW4gc3RyKG1zZykgYW5kICIvYXBpL3dlc2kvYWkvY2hhdC9zdHJlYW0iIG5vdCBpbiBzdHIobXNnKToKICAgICAgICBjb250aW51ZQogICAgdHJ5OgogICAgICAgIGQ9anNvbi5sb2FkcyhyYXcpIGlmIHJhdyBlbHNlIHt9CiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIGQ9e30KICAgIHNhZmU9e2s6ZC5nZXQoaykgZm9yIGsgaW4gKCJtZXRob2QiLCJ1cmwiLCJzdGF0dXMiLCJ0eXBlIiwiZXJyb3IiLCJleGVjVGltZSIpIGlmIGsgaW4gZH0KICAgIHByaW50KGYie2NyZWF0ZWR9IHwge2xldmVsfSB8IHttc2d9IHwge2pzb24uZHVtcHMoc2FmZSwgZW5zdXJlX2FzY2lpPUZhbHNlKX0iKQo=
+      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
     steps:
-      - name: Prepare Main SSH
-        env:
-          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
-          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+      - uses: actions/checkout@v4
+
+      - name: Generate v2 Main routes and switch gateway
         run: |
           set -euo pipefail
-          test -n "${MAIN_HOST:-}" && test -n "${MAIN_USER:-}" && test -n "${KEY:-}"
-          mkdir -p ~/.ssh && chmod 700 ~/.ssh
-          printf '%s\n' "$KEY" > ~/.ssh/main_key && chmod 600 ~/.ssh/main_key
-          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
-          chmod 600 ~/.ssh/main_known_hosts
+          python3 - <<'PY'
+          from pathlib import Path
 
-      - name: Read latest stream and fallback request records
+          hook_path = Path('server/pb_hooks/wesi_ai_stream.pb.js')
+          source = hook_path.read_text(encoding='utf-8')
+          prepare_marker = 'routerAdd("POST", "/api/wesi/ai/stream/prepare",'
+          tool_marker = 'routerAdd("POST", "/api/wesi/ai/stream/tool",'
+          if source.count(prepare_marker) != 1 or source.count(tool_marker) != 1:
+              raise SystemExit('Unexpected stream hook route shape')
+
+          prefix, after_prepare = source.split(prepare_marker, 1)
+          prepare_tail, tool_tail = after_prepare.split(tool_marker, 1)
+
+          runtime = prefix.rstrip() + '\n\nmodule.exports = {\n  streamSecret: streamSecret,\n  cleanRequest: cleanRequest,\n};\n'
+          Path('server/pb_hooks/wesi_ai_stream_runtime_v2.js').write_text(runtime, encoding='utf-8')
+
+          prepare_route = prepare_marker + prepare_tail
+          prepare_route = prepare_route.replace('/api/wesi/ai/stream/prepare"', '/api/wesi/ai/stream/prepare-v2"', 1)
+          prepare_route = prepare_route.replace(
+              '  const ai = require(`${__hooks}/wesi_ai_lib.js`);\n',
+              '  const ai = require(`${__hooks}/wesi_ai_lib.js`);\n  const runtime = require(`${__hooks}/wesi_ai_stream_runtime_v2.js`);\n',
+              1,
+          )
+          prepare_route = prepare_route.replace('  const cfg = streamSecret(e, ai);', '  const cfg = runtime.streamSecret(e, ai);', 1)
+          prepare_route = prepare_route.replace('  const result = cleanRequest(e, e.requestInfo().body || {}, ctx, ai, personaRuntime, tools, cfg);', '  const result = runtime.cleanRequest(e, e.requestInfo().body || {}, ctx, ai, personaRuntime, tools, cfg);', 1)
+
+          tool_route = tool_marker + tool_tail
+          tool_route = tool_route.replace('/api/wesi/ai/stream/tool"', '/api/wesi/ai/stream/tool-v2"', 1)
+          tool_route = tool_route.replace(
+              '  const ai = require(`${__hooks}/wesi_ai_lib.js`);\n',
+              '  const ai = require(`${__hooks}/wesi_ai_lib.js`);\n  const runtime = require(`${__hooks}/wesi_ai_stream_runtime_v2.js`);\n',
+              1,
+          )
+          tool_route = tool_route.replace('  streamSecret(e, ai);', '  runtime.streamSecret(e, ai);', 1)
+
+          v2 = '// Wesi AI streaming v2 routes. Route callbacks intentionally depend only on per-request require() values.\n' + prepare_route.strip() + '\n\n' + tool_route.strip() + '\n'
+          Path('server/pb_hooks/wesi_ai_stream_v2.pb.js').write_text(v2, encoding='utf-8')
+
+          for path in [Path('server/wesi-ai-stream/gateway.mjs'), Path('server/wesi-ai-stream/gateway.test.mjs')]:
+              text = path.read_text(encoding='utf-8')
+              text = text.replace('/api/wesi/ai/stream/prepare', '/api/wesi/ai/stream/prepare-v2')
+              text = text.replace('/api/wesi/ai/stream/tool', '/api/wesi/ai/stream/tool-v2')
+              path.write_text(text, encoding='utf-8')
+          PY
+
+          grep -q '/api/wesi/ai/stream/prepare-v2' server/pb_hooks/wesi_ai_stream_v2.pb.js
+          grep -q '/api/wesi/ai/stream/tool-v2' server/pb_hooks/wesi_ai_stream_v2.pb.js
+          grep -q "path: '/api/wesi/ai/stream/prepare-v2'" server/wesi-ai-stream/gateway.mjs
+          ! grep -q "path: '/api/wesi/ai/stream/prepare'" server/wesi-ai-stream/gateway.mjs
+          node --check server/pb_hooks/wesi_ai_stream_runtime_v2.js
+          node --check server/pb_hooks/wesi_ai_stream_v2.pb.js
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --test server/wesi-ai-stream/gateway.test.mjs
+
+      - name: Prepare SSH
+        env:
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          RELAY_KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${MAIN_HOST:-}" && test -n "${MAIN_USER:-}" && test -n "${MAIN_KEY:-}"
+          test -n "${RELAY_HOST:-}" && test -n "${RELAY_USER:-}" && test -n "${RELAY_KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          printf '%s\n' "$RELAY_KEY" > ~/.ssh/relay_key
+          chmod 600 ~/.ssh/main_key ~/.ssh/relay_key
+          if [ -n "${MAIN_KNOWN:-}" ]; then printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
+          if [ -n "${RELAY_KNOWN:-}" ]; then printf '%s\n' "$RELAY_KNOWN" > ~/.ssh/relay_known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/main_known_hosts ~/.ssh/relay_known_hosts
+
+      - name: Deploy new Main v2 routes atomically
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          printf '%s' "$LOG_READER_B64" | base64 -d > /tmp/read_latest_stream.py
-          scp "${SSH[@]}" /tmp/read_latest_stream.py "$MAIN_USER@$MAIN_HOST:/tmp/read_latest_stream.py"
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'python3 /tmp/read_latest_stream.py; rm -f /tmp/read_latest_stream.py'
+          REMOTE="/tmp/wesi-ai-stream-v2-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" server/pb_hooks/wesi_ai_stream_runtime_v2.js server/pb_hooks/wesi_ai_stream_v2.pb.js "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          test -d "$HOOK_DIR" && test -w "$HOOK_DIR"
+          for name in wesi_ai_stream_runtime_v2.js wesi_ai_stream_v2.pb.js; do
+            src="$REMOTE/$name"
+            dst="$HOOK_DIR/$name"
+            staged="$HOOK_DIR/.$name.atomic.$$"
+            cat "$src" > "$staged"
+            chmod 0644 "$staged"
+            cmp -s "$src" "$staged"
+            mv -f "$staged" "$dst"
+            cmp -s "$src" "$dst"
+          done
+          sleep 3
+          code="$(curl -sS -o /tmp/wesi-v2-probe.out -w '%{http_code}' --max-time 10 -X POST http://127.0.0.1:8090/api/wesi/ai/stream/prepare-v2 -H 'Content-Type: application/json' -d '{"persona":"zane","tier":"fast","message":"probe"}' || true)"
+          if [ "$code" != 401 ] && [ "$code" != 403 ]; then
+            echo "Unexpected v2 route probe status: $code"
+            cat /tmp/wesi-v2-probe.out || true
+            exit 1
+          fi
+          curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null
+          rm -rf "$REMOTE" /tmp/wesi-v2-probe.out
+          echo "MAIN_STREAM_V2_READY status=$code"
+          REMOTE
+
+      - name: Switch production streaming gateway to v2
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          REMOTE="/tmp/wesi-ai-gateway-v2-$GITHUB_RUN_ID.mjs"
+          scp "${SSH[@]}" server/wesi-ai-stream/gateway.mjs "$RELAY_USER@$RELAY_HOST:$REMOTE"
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          grep -q '/api/wesi/ai/stream/prepare-v2' "$REMOTE"
+          sudo -n install -o root -g wesi-ai-stream -m 0640 "$REMOTE" /opt/wesi-ai-stream/gateway.mjs
+          sudo -n systemctl restart wesi-ai-stream
+          for _ in $(seq 1 30); do
+            if curl -fsS --max-time 2 http://127.0.0.1:8792/health >/dev/null; then break; fi
+            sleep 1
+          done
+          curl -fsS --max-time 5 http://127.0.0.1:8792/health | grep -q '"streaming":true'
+          grep -q '/api/wesi/ai/stream/prepare-v2' /opt/wesi-ai-stream/gateway.mjs
+          rm -f "$REMOTE"
+          echo 'STREAM_GATEWAY_V2_ACTIVE'
+          REMOTE
+
+      - name: Verify protected public streaming edge
+        run: |
+          set -euo pipefail
+          curl -fsS --max-time 15 https://api.wesi-inc.ru/api/health >/dev/null
+          curl -fsS --max-time 15 https://wesi-ai-178-236-247-194.nip.io/health | grep -q '"streaming":true'
+          code="$(curl -sS -o /tmp/public-stream-v2.out -w '%{http_code}' --max-time 20 -X POST https://wesi-ai-178-236-247-194.nip.io/api/wesi/ai/chat/stream -H 'Content-Type: application/json' -d '{"persona":"zane","tier":"fast","message":"probe"}' || true)"
+          if [ "$code" != 401 ] && [ "$code" != 403 ]; then
+            echo "Unexpected protected edge status: $code"
+            cat /tmp/public-stream-v2.out || true
+            exit 1
+          fi
+          echo "PUBLIC_STREAM_V2_READY status=$code"
+
+      - name: Persist v2 repair in main
+        run: |
+          set -euo pipefail
+          git config user.name 'wesiwer'
+          git config user.email '77644223+wesiwer@users.noreply.github.com'
+          git add server/pb_hooks/wesi_ai_stream_runtime_v2.js server/pb_hooks/wesi_ai_stream_v2.pb.js server/wesi-ai-stream/gateway.mjs server/wesi-ai-stream/gateway.test.mjs
+          if git diff --cached --quiet; then
+            echo 'V2_REPAIR_ALREADY_COMMITTED'
+            exit 0
+          fi
+          git commit -m 'fix(ai): route streaming through request-local v2 runtime'
+          git push origin HEAD:main
