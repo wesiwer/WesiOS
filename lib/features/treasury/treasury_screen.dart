@@ -46,12 +46,16 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
   void initState() {
     super.initState();
     OrganizationContext.revision.addListener(_onOrganizationContextChanged);
+    TreasuryService.revision.addListener(_loadData);
+    AccountService.revision.addListener(_loadData);
     _loadData();
   }
 
   @override
   void dispose() {
     OrganizationContext.revision.removeListener(_onOrganizationContextChanged);
+    TreasuryService.revision.removeListener(_loadData);
+    AccountService.revision.removeListener(_loadData);
     super.dispose();
   }
 
@@ -127,7 +131,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       _balance = opening +
           visible.where((t) => !t.isRecurring).fold<double>(
               0,
-              (sum, t) => sum +
+              (sum, t) =>
+                  sum +
                   (t.type == TransactionType.income ? t.amount : -t.amount));
       _breakdown = {
         'income': income,
@@ -188,7 +193,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
       await _loadData();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
       }
     }
   }
@@ -311,7 +317,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
           ),
           const SizedBox(height: 12),
           HoverButton(
-            onTap: () => Navigator.pushNamed(context, '/organizations/transfer'),
+            onTap: () =>
+                Navigator.pushNamed(context, '/organizations/transfer'),
             padding: const EdgeInsets.all(18),
             backgroundColor: AppTheme.surface,
             child: Row(
@@ -556,7 +563,8 @@ class _TreasuryScreenState extends State<TreasuryScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(tx.title,
-                    style: TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
+                    style:
+                        TextStyle(fontSize: 14, color: AppTheme.textPrimary)),
                 Text(tx.category ?? WesiLocale.get('uncategorized'),
                     style: TextStyle(fontSize: 11, color: AppTheme.textMuted)),
               ],
