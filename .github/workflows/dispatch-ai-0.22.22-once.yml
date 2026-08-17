@@ -1,0 +1,50 @@
+name: Dispatch Wesi AI 0.22.22 Production Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dispatch-ai-0.22.22-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  deploy-then-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Deploy streaming and wait for success
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run deploy-wesi-ai-streaming.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f public_host='wesi-ai-178-236-247-194.nip.io'
+          sleep 6
+          DEPLOY_ID="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow deploy-wesi-ai-streaming.yml \
+            --branch main \
+            --event workflow_dispatch \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')"
+          test -n "$DEPLOY_ID"
+          echo "DEPLOY_RUN_ID=$DEPLOY_ID"
+          gh run watch "$DEPLOY_ID" --repo "$GITHUB_REPOSITORY" --exit-status
+
+      - name: Dispatch signed WesiOS 0.22.22+97 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Classic и Thinking теперь используют полный Wesi AI orchestration: инструменты, Co-Agent и Dynamic specialists доступны в обоих режимах; Thinking дополнительно показывает динамический ход рассуждения.' \
+            -f deploy_to_server=true
+          echo RELEASE_0_22_22_97_DISPATCHED
