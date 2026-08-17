@@ -12,6 +12,23 @@ import {
 
 export const MAX_STREAM_BODY_BYTES = 28 * 1024 * 1024;
 export const MAX_TOOL_TURNS = 4;
+
+function toolTrace(event, fields = {}) {
+  const safe = {
+    event: `wesi_ai_tool_${String(event || 'event')}`,
+    at: new Date().toISOString(),
+  };
+  for (const key of ['requestId', 'phase', 'tool', 'code', 'persona']) {
+    const value = fields[key];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      safe[key] = String(value).slice(0, 180);
+    }
+  }
+  if (fields.ok !== undefined) safe.ok = fields.ok === true;
+  if (Number.isFinite(Number(fields.toolCount))) safe.toolCount = Number(fields.toolCount);
+  // Never log prompts, messages, arguments, tool results, credentials or session data.
+  console.info(JSON.stringify(safe));
+}
 export const MAX_TOOL_CLASSIFICATION_BYTES = 4096;
 
 function safeCode(value, fallback = 'WAI_STREAM_FAILED') {
@@ -812,6 +829,12 @@ export function createGateway(options = {}) {
         }
       }
 
+      toolTrace('prepare', {
+        requestId: prepared.requestId,
+        persona: prepared.persona,
+        phase: 'lead',
+        toolCount: Array.isArray(prepared.toolDefinitions) ? prepared.toolDefinitions.length : 0,
+      });
       const toolResults = [];
       const seenCalls = new Set();
       for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
@@ -829,6 +852,13 @@ export function createGateway(options = {}) {
         const toolRequest = streamed.toolRequest;
         if (!toolRequest) {
           if (streamed.invalidToolProtocol) {
+            toolTrace('invalid_protocol', {
+              requestId: prepared.requestId,
+              persona: prepared.persona,
+              phase: String(turn + 1),
+              code: 'INVALID_TOOL_CALL',
+              ok: false,
+            });
             toolResults.push({
               tool: 'wesi_tool_protocol',
               verified: true,
@@ -883,6 +913,12 @@ export function createGateway(options = {}) {
           };
         } else {
           seenCalls.add(signature);
+          toolTrace('start', {
+            requestId: prepared.requestId,
+            persona: prepared.persona,
+            phase: String(turn + 1),
+            tool: toolRequest.name,
+          });
           writeNdjson(res, {type: 'tool', phase: 'start', name: toolRequest.name});
           const toolResponse = await postPocketBase({
             pocketBaseUrl,
@@ -905,6 +941,14 @@ export function createGateway(options = {}) {
           toolResult = toolResponse.toolResult;
         }
         toolResults.push(toolResult);
+        toolTrace('result', {
+          requestId: prepared.requestId,
+          persona: prepared.persona,
+          phase: String(turn + 1),
+          tool: toolRequest.name,
+          ok: toolResult?.ok === true,
+          code: toolResult?.code || (toolResult?.ok === true ? 'OK' : 'WAI_TOOL_FAILED'),
+        });
         const diff = diffStatsFromToolResult(toolResult);
         const toolPayload = toolResult && typeof toolResult.result === 'object' && !Array.isArray(toolResult.result)
           ? toolResult.result

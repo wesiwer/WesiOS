@@ -94,6 +94,21 @@ test('tool parser accepts only structured Wesi tool envelope', () => {
   assert.equal(parseToolRequest('Обычный ответ'), null);
 });
 
+test('tool parser tolerates bounded service chatter but not arbitrary prose', () => {
+  assert.deepEqual(
+    parseToolRequest('Проверяю через инструмент. {"wesiTool":{"name":"tasks_list","arguments":{"limit":2}}}'),
+    {name: 'tasks_list', arguments: {limit: 2}},
+  );
+  assert.deepEqual(
+    parseToolRequest('```json\n{"wesiTool":{"name":"finance_summary","arguments":{}}}\n```'),
+    {name: 'finance_summary', arguments: {}},
+  );
+  assert.equal(
+    parseToolRequest('Например, вот формат вызова: {"wesiTool":{"name":"tasks_list","arguments":{}}}'),
+    null,
+  );
+});
+
 test('stream sniffer reveals normal text but withholds tool JSON', () => {
   assert.equal(shouldRevealBufferedText('Привет'), true);
   assert.equal(shouldRevealBufferedText('{"wesiTool":'), false);
