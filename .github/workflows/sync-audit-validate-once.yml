@@ -1,3 +1,4 @@
+# audit-pass: 5
 name: Validate Sync Audit Once
 
 on:
