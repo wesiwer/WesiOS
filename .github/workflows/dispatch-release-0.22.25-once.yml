@@ -1,0 +1,27 @@
+name: Dispatch WesiOS 0.22.25 Release Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dispatch-release-0.22.25-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch canonical release workflow
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f 'notes=Исправлена синхронизация между устройствами: безопасное серверное чтение, повтор зависимых записей и точная диагностика. Wesi AI Horizon теперь считает баланс по канонической логике Treasury.' \
+            -f 'deploy_to_server=true'
