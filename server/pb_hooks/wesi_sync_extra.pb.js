@@ -20,9 +20,10 @@ const wesiSyncExtraPayload = (record) => {
 const wesiSyncExtraRead = (e, collection, scope, requiredModule, privateKeyed) => {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
-  if (requiredModule && !ctx.isOwner && ctx.modules.indexOf(requiredModule) < 0) {
-    return e.json(200, {"items": []});
-  }
+  const moduleAllowed = !requiredModule || ctx.isOwner || (Array.isArray(requiredModule)
+    ? requiredModule.some((name) => ctx.modules.indexOf(name) >= 0)
+    : ctx.modules.indexOf(requiredModule) >= 0);
+  if (!moduleAllowed) return e.json(200, {"items": []});
   const privateScope = scope === "private" || privateKeyed === true;
   const owner = privateScope ? e.auth.id : ctx.ownerId;
   let records = [];
@@ -46,9 +47,10 @@ const wesiSyncExtraRead = (e, collection, scope, requiredModule, privateKeyed) =
 const wesiSyncExtraWrite = (e, collection, scope, requiredModule, privateKeyed) => {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
-  if (requiredModule && !ctx.isOwner && ctx.modules.indexOf(requiredModule) < 0) {
-    throw new ForbiddenError("Раздел не открыт этому сотруднику");
-  }
+  const moduleAllowed = !requiredModule || ctx.isOwner || (Array.isArray(requiredModule)
+    ? requiredModule.some((name) => ctx.modules.indexOf(name) >= 0)
+    : ctx.modules.indexOf(requiredModule) >= 0);
+  if (!moduleAllowed) throw new ForbiddenError("Раздел не открыт этому сотруднику");
 
   const body = e.requestInfo().body || {};
   const rid = String(body.rid || "").trim();
@@ -152,6 +154,49 @@ routerAdd("GET", "/api/wesi/sync/shield_private", (e) =>
   $apis.requireAuth("users"));
 routerAdd("POST", "/api/wesi/sync/shield_private", (e) =>
   wesiSyncExtraWrite(e, "shield_private", "private", null, true),
+  $apis.requireAuth("users"));
+
+// Business state found by the second audit pass.
+routerAdd("GET", "/api/wesi/sync/finance_categories", (e) =>
+  wesiSyncExtraRead(e, "finance_categories", "company", ["treasury", "forecast", "sandbox", "analytics"]),
+  $apis.requireAuth("users"));
+routerAdd("POST", "/api/wesi/sync/finance_categories", (e) =>
+  wesiSyncExtraWrite(e, "finance_categories", "company", ["treasury", "forecast", "sandbox", "analytics"]),
+  $apis.requireAuth("users"));
+
+routerAdd("GET", "/api/wesi/sync/team_skills", (e) =>
+  wesiSyncExtraRead(e, "team_skills", "company", ["contacts", "tasks"]),
+  $apis.requireAuth("users"));
+routerAdd("POST", "/api/wesi/sync/team_skills", (e) =>
+  wesiSyncExtraWrite(e, "team_skills", "company", ["contacts", "tasks"]),
+  $apis.requireAuth("users"));
+
+routerAdd("GET", "/api/wesi/sync/time_center", (e) =>
+  wesiSyncExtraRead(e, "time_center", "private", null), $apis.requireAuth("users"));
+routerAdd("POST", "/api/wesi/sync/time_center", (e) =>
+  wesiSyncExtraWrite(e, "time_center", "private", null), $apis.requireAuth("users"));
+
+for (const name of ["horizon_predictions", "horizon_learning", "horizon_competition"]) {
+  routerAdd("GET", "/api/wesi/sync/" + name, (e) =>
+    wesiSyncExtraRead(e, name, "private", ["treasury", "forecast", "analytics"]),
+    $apis.requireAuth("users"));
+  routerAdd("POST", "/api/wesi/sync/" + name, (e) =>
+    wesiSyncExtraWrite(e, name, "private", ["treasury", "forecast", "analytics"]),
+    $apis.requireAuth("users"));
+}
+
+routerAdd("GET", "/api/wesi/sync/horizon_contracts", (e) =>
+  wesiSyncExtraRead(e, "horizon_contracts", "private", ["audio", "forecast", "analytics"]),
+  $apis.requireAuth("users"));
+routerAdd("POST", "/api/wesi/sync/horizon_contracts", (e) =>
+  wesiSyncExtraWrite(e, "horizon_contracts", "private", ["audio", "forecast", "analytics"]),
+  $apis.requireAuth("users"));
+
+routerAdd("GET", "/api/wesi/sync/task_ai_memory", (e) =>
+  wesiSyncExtraRead(e, "task_ai_memory", "private", ["tasks", "ai"]),
+  $apis.requireAuth("users"));
+routerAdd("POST", "/api/wesi/sync/task_ai_memory", (e) =>
+  wesiSyncExtraWrite(e, "task_ai_memory", "private", ["tasks", "ai"]),
   $apis.requireAuth("users"));
 
 // Audio cards remain company-shared. Extended analysis/QC metadata belongs to

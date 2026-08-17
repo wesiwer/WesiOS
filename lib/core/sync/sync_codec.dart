@@ -43,6 +43,13 @@ abstract class SyncCollection<T> {
   T? decode(Map<String, dynamic> fields);
   bool shouldSync(T value) => true;
 
+  /// A collection may share a Hive box with unrelated local settings.
+  bool watchesBoxKey(Object? key) => true;
+
+  /// Most boxes use their Hive key as the sync id. Private keyed stores may
+  /// map a short local key to an account-scoped server id.
+  String syncIdForBoxKey(Object? key) => '$key';
+
   Box<T>? box() {
     if (!Hive.isBoxOpen(boxName)) return null;
     try {

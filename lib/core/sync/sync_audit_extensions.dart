@@ -469,6 +469,13 @@ class _ShieldPrivateSync extends SyncCollection<dynamic> {
   String get boxName => SyncFeatureExtensions.profileBoxName();
 
   @override
+  bool watchesBoxKey(Object? key) => _keys.contains('$key');
+
+  @override
+  String syncIdForBoxKey(Object? key) =>
+      SyncFeatureExtensions.privateRecordId('$key');
+
+  @override
   String idOf(dynamic value) => value is _PrivateKeyedValue
       ? SyncFeatureExtensions.privateRecordId(value.key)
       : '';
@@ -545,6 +552,9 @@ class _AudioExtrasSync extends SyncCollection<dynamic> {
 
   @override
   String get boxName => AudioVaultService.boxName;
+
+  @override
+  bool watchesBoxKey(Object? key) => '$key' == _metaKey;
 
   @override
   String idOf(dynamic value) => _metaKey;

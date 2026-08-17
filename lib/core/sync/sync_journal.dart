@@ -94,10 +94,17 @@ class SyncJournal {
   }
 
   /// Начинает следить за боксом. Повторный вызов ничего не ломает.
-  static void attach(String collection, BoxBase<dynamic> box) {
+  static void attach(
+    String collection,
+    BoxBase<dynamic> box, {
+    bool Function(Object? key)? acceptsKey,
+    String Function(Object? key)? syncIdForKey,
+  }) {
     if (_watchers.containsKey(collection)) return;
     _watchers[collection] = box.watch().listen((event) {
-      final id = '${event.key}';
+      if (acceptsKey != null && !acceptsKey(event.key)) return;
+      final id = syncIdForKey?.call(event.key) ?? '${event.key}';
+      if (id.isEmpty) return;
       final k = key(collection, id);
       final expected = _expected.remove(k);
       _opened?.put(

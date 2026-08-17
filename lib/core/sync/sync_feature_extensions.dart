@@ -451,6 +451,13 @@ class _ProfilePrivateSync extends _KeyedStateSync {
   Set<String> get keys => SyncFeatureExtensions._profileKeys;
 
   @override
+  bool watchesBoxKey(Object? key) => keys.contains('$key');
+
+  @override
+  String syncIdForBoxKey(Object? key) =>
+      SyncFeatureExtensions.privateRecordId('$key');
+
+  @override
   String idOf(dynamic value) => value is _KeyedValue
       ? SyncFeatureExtensions.privateRecordId(value.key)
       : '';
@@ -498,6 +505,11 @@ class _VaultPrivateSync extends SyncCollection<dynamic> {
   String get name => 'vault_private';
   @override
   String get boxName => SyncFeatureExtensions.vaultBoxName();
+  @override
+  bool watchesBoxKey(Object? key) => SyncFeatureExtensions._vaultKey(key);
+  @override
+  String syncIdForBoxKey(Object? key) =>
+      SyncFeatureExtensions.privateRecordId('$key');
   @override
   String idOf(dynamic value) => value is _KeyedValue
       ? SyncFeatureExtensions.privateRecordId(value.key)

@@ -207,7 +207,13 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
         "isOwner": self && p.isOwner === true,
         "demoStats": (self || ctx.canSeeOthersStats) && p.demoStats && typeof p.demoStats === "object"
           ? p.demoStats : {},
-        "photo": p.photo == null ? null : p.photo
+        "photo": p.photo == null ? null : p.photo,
+        "skills": Array.isArray(p.skills) ? p.skills.map(String) : [],
+        "weeklyCapacityPoints": Number(p.weeklyCapacityPoints || 10),
+        "workloadMinRatio": Number(p.workloadMinRatio == null ? 0.65 : p.workloadMinRatio),
+        "workloadMaxRatio": Number(p.workloadMaxRatio == null ? 1.10 : p.workloadMaxRatio),
+        "managerEmployeeId": p.managerEmployeeId == null ? null : String(p.managerEmployeeId),
+        "workloadAlertTarget": String(p.workloadAlertTarget || "manager")
       };
     } else if (collection === "tasks") {
       const orgId = orgIdOf(p);

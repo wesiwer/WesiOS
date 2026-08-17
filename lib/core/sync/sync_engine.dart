@@ -104,7 +104,12 @@ class SyncEngine {
 
     for (final c in SyncCodec.collections) {
       try {
-        SyncJournal.attach(c.name, await c.ensureBox());
+        SyncJournal.attach(
+          c.name,
+          await c.ensureBox(),
+          acceptsKey: c.watchesBoxKey,
+          syncIdForKey: c.syncIdForBoxKey,
+        );
       } catch (_) {
         // Один недоступный бокс не должен срывать подписку на остальные:
         // без синхронизации одного модуля жить можно, без запуска — нет.

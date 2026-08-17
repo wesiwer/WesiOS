@@ -23,6 +23,7 @@ import 'core/services/github_release_download.dart';
 import 'core/services/quote_mind_charge_service.dart';
 import 'core/services/secrets_service.dart';
 import 'core/sync/sync_audit_extensions.dart';
+import 'core/sync/sync_business_extensions.dart';
 import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_endpoint.dart';
 import 'core/sync/sync_engine.dart';
@@ -202,6 +203,7 @@ Future<bool> _bootstrap(List<String> arguments) async {
   SyncTransactionAnchorFix.install();
   await SyncFeatureExtensions.install();
   SyncAuditExtensions.install();
+  SyncBusinessExtensions.install();
 
   if (TeamService.current != null && SyncEndpoint.isConnected) {
     SessionService.startHeartbeat();
