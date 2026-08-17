@@ -29,14 +29,10 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/main_key
           chmod 600 ~/.ssh/main_key
-          if [ -n "${KNOWN:-}" ]; then
-            printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts
-          else
-            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
-          fi
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Inspect PocketBase embedded logs safely
+      - name: Discover PocketBase databases and log tables
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
@@ -45,38 +41,10 @@ jobs:
           if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=''; fi
           echo '=== PB_DATA FILES ==='
           $SUDO find /opt/pocketbase/pb_data -maxdepth 1 -type f -printf '%f %s bytes\n' 2>/dev/null | sort || true
-
-          echo '=== SQLITE TABLE DISCOVERY ==='
-          $SUDO python3 -c "import os,sqlite3; base='/opt/pocketbase/pb_data';
-for name in os.listdir(base):
- p=os.path.join(base,name)
- if not os.path.isfile(p) or not (name.endswith('.db') or name.endswith('.sqlite')): continue
- try:
-  con=sqlite3.connect('file:'+p+'?mode=ro',uri=True); tables=[r[0] for r in con.execute(\"select name from sqlite_master where type='table'\")]; print(name, 'TABLES=', ','.join(tables))
- except Exception as e: print(name, 'OPEN_FAILED', type(e).__name__)" 2>/dev/null || true
-
-          echo '=== MATCHED REQUEST/ERROR LOGS ==='
-          $SUDO python3 -c "import os,sqlite3,re,json; base='/opt/pocketbase/pb_data'; token=re.compile(r'(?i)(authorization|x-wesios-session|x-wesi-ai-stream-secret)([=: ]+)([^, }\\\"\\n]+)');
-for name in os.listdir(base):
- p=os.path.join(base,name)
- if not os.path.isfile(p) or not (name.endswith('.db') or name.endswith('.sqlite')): continue
- try: con=sqlite3.connect('file:'+p+'?mode=ro',uri=True)
- except: continue
- tables=[r[0] for r in con.execute(\"select name from sqlite_master where type='table'\")]
- for table in tables:
-  low=table.lower()
-  if 'log' not in low and 'request' not in low: continue
-  try: cols=[r[1] for r in con.execute('pragma table_info(\\\"'+table.replace('\\\"','\\\"\\\"')+'\\\")')]
-  except: continue
-  wanted=[c for c in cols if c.lower() in ('id','created','updated','level','message','data','status','method','url','path')]
-  if not wanted: continue
-  try: rows=con.execute('select '+','.join('\\\"'+c.replace('\\\"','\\\"\\\"')+'\\\"' for c in wanted)+' from \\\"'+table.replace('\\\"','\\\"\\\"')+'\\\" order by rowid desc limit 1500').fetchall()
-  except: continue
-  shown=0
-  for row in rows:
-   text=' | '.join(str(v or '') for v in row); l=text.lower()
-   if '/api/wesi/ai/stream/prepare' not in l and 'wai_stream_main_rejected' not in l and not ('wesi' in l and ('status\\\":400' in l or 'status=400' in l or 'bad request' in l)): continue
-   text=token.sub(lambda m:m.group(1)+m.group(2)+'[REDACTED]', text)
-   print(name, table, text[:6000]); shown+=1
-   if shown>=100: break" 2>/dev/null || true
+          echo '=== SQLITE TABLES ==='
+          for db in /opt/pocketbase/pb_data/*.db /opt/pocketbase/pb_data/*.sqlite; do
+            $SUDO test -f "$db" 2>/dev/null || continue
+            printf 'DB=%s\n' "$(basename "$db")"
+            $SUDO python3 -c 'import sqlite3,sys; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); print("\n".join(r[0] for r in c.execute("select name from sqlite_master where type=\"table\" order by name")))' "$db" 2>/dev/null || true
+          done
           REMOTE
