@@ -8,12 +8,6 @@ new = '''replace_once(\n    managed,\n    "      startDrain: false,\\n      inte
 if text.count(old) != 1:
     raise SystemExit(f'managed override patch marker count={text.count(old)}')
 text = text.replace(old, new, 1)
-
-old_prompt = "Перед финальным ответом дай одну короткую публичную decision note: какой вывод/подход теперь считаешь наиболее обоснованным и на что он опирается. Не пиши сам финальный ответ. Верни ТОЛЬКО JSON: {\\\"complexity\\\":\\\"' + safeComplexity(state?.complexity) + '\\\",\\\"notes\\\":[{\\\"kind\\\":\\\"decision\\\",\\\"title\\\":\\\"...\\\",\\\"text\\\":\\\"...\\\"}]}.'"
-new_prompt = "Перед основным решением дай одну короткую публичную рабочую позицию: к чему сейчас склоняешься и почему. Если фактов уже достаточно — kind=decision. Если ещё нужна проверка инструментом — kind=hypothesis и прямо обозначь, что это пока рабочее предположение. Не пиши финальный ответ. Верни ТОЛЬКО JSON: {\\\"complexity\\\":\\\"' + safeComplexity(state?.complexity) + '\\\",\\\"notes\\\":[{\\\"kind\\\":\\\"decision|hypothesis\\\",\\\"title\\\":\\\"...\\\",\\\"text\\\":\\\"...\\\"}]}.'"
-if old_prompt not in text:
-    raise SystemExit('final deliberation prompt marker not found')
-text = text.replace(old_prompt, new_prompt, 1)
 p.write_text(text, encoding='utf-8')
 
 # Extend the current-gateway adapter with one model-authored working-position checkpoint.
