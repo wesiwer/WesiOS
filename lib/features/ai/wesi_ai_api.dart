@@ -282,7 +282,9 @@ class WesiAiApi {
         'thinkingMode': thinkingMode,
       };
 
-      if (thinkingMode && conversation.persona != WesiAiPersona.lobby) {
+      // Classic and Thinking both use the full orchestration pipeline.
+      // thinkingMode controls only extra public deliberation checkpoints.
+      if (conversation.persona != WesiAiPersona.lobby) {
         try {
           final streamed = await _sendStream(
             base: base,

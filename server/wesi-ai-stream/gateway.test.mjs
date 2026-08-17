@@ -148,10 +148,8 @@ test('gateway forwards true deltas and final done event without provider metadat
     assert.equal(response.status, 200);
     const events = await readEvents(response);
     assert.equal(relayCalls, 1);
-    assert.deepEqual(events.map((event) => event.type), ['meta', 'agent', 'activity', 'activity', 'delta', 'delta', 'agent', 'done']);
-    const visibleReasoning = events.find((event) => event.type === 'activity' && event.label === 'Как я подхожу к запросу');
-    assert.ok(visibleReasoning);
-    assert.match(String(visibleReasoning.detail || ''), /приветств/i);
+    assert.deepEqual(events.map((event) => event.type), ['meta', 'agent', 'activity', 'delta', 'delta', 'agent', 'done']);
+    assert.equal(events.some((event) => event.publicDeliberation === true), false);
     assert.equal(events.filter((event) => event.type === 'delta').map((event) => event.text).join(''), 'Привет');
     assert.equal(JSON.stringify(events).includes('provider'), false);
   });
@@ -351,6 +349,54 @@ test('thinking mode emits model-authored contextual public deliberation', async 
     assert.equal(publicNotes[0].label, 'Сначала пойму тон разговора');
     assert.match(publicNotes[0].detail, /просто поздоровался/);
     assert.equal(JSON.stringify(events).includes('chain_of_thought'), false);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
+});
+
+
+test('classic mode keeps streaming orchestration but skips public deliberation', async () => {
+  let relayCalls = 0;
+  const fetchImpl = async (url) => {
+    const value = String(url);
+    if (value.endsWith('/api/wesi/ai/stream/prepare-v2')) {
+      return jsonResponse({ok: true, prepared: prepared()});
+    }
+    if (value.endsWith('/v1/wesi-ai-stream')) {
+      relayCalls += 1;
+      return ndjson([
+        {type: 'delta', text: 'Быстрый полноценный ответ.'},
+        {type: 'done', answer: 'Быстрый полноценный ответ.'},
+      ]);
+    }
+    throw new Error(`unexpected URL ${url}`);
+  };
+  const server = http.createServer(createGateway({
+    pocketBaseUrl: 'http://127.0.0.1:8090',
+    relayUrl: 'https://relay.example.test',
+    streamSecret: STREAM_SECRET,
+    relaySecret: RELAY_SECRET,
+    fetchImpl,
+    publicDeliberation: true,
+  }));
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  try {
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/wesi/ai/chat/stream`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: 'Bearer user-token',
+        'x-wesios-session': 'session_123456789012345678901234',
+      },
+      body: JSON.stringify({persona: 'zane', message: 'быстро проверь', thinkingMode: false}),
+    });
+    assert.equal(response.status, 200);
+    const events = await readEvents(response);
+    assert.equal(relayCalls, 1, 'Classic must not add a deliberation model call');
+    assert.equal(events.some((event) => event.publicDeliberation === true), false);
+    assert.equal(events.at(-1).type, 'done');
+    assert.equal(events.at(-1).answer, 'Быстрый полноценный ответ.');
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }

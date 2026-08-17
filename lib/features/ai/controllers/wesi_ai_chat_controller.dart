@@ -441,6 +441,9 @@ class WesiAiChatController extends ChangeNotifier {
     }
 
     void onActivity(Map<String, dynamic> raw) {
+      // Classic keeps agents/tools/subagents on the server, but does not
+      // expose their activity/reasoning timeline in the conversation UI.
+      if (!thinkingMode) return;
       final type = '${raw['type'] ?? 'activity'}'.toLowerCase();
       final phase = '${raw['phase'] ?? ''}'.toLowerCase();
       final name =
@@ -648,6 +651,10 @@ class WesiAiChatController extends ChangeNotifier {
           activity.add(copy);
         }
       }
+      // Tool results can still arrive in the final stream payload. Keep
+      // them available to the response parser, but do not surface the
+      // visible activity block in Classic mode.
+      if (!thinkingMode) activity.clear();
       final completedAt = DateTime.now().toUtc().toIso8601String();
       for (var index = 0; index < activity.length; index++) {
         final current = activity[index];
