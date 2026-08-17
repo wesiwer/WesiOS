@@ -23,6 +23,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/patch_wesi_ai_visible_reasoning.py
+          python3 scripts/patch_wesi_ai_visible_reasoning_test.py
           grep -q 'Как я подхожу к запросу' server/wesi-ai-stream/gateway.mjs
           grep -q 'Зачем нужен' server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs
           grep -q 'humanReason' server/wesi-ai-stream/persona_coagent_orchestrator.mjs
@@ -102,6 +103,6 @@ jobs:
             server/wesi-ai-stream/gateway.test.mjs \
             server/wesi-ai-stream/persona_coagent_orchestrator.mjs \
             server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs
-          git rm scripts/patch_wesi_ai_visible_reasoning.py
+          git rm scripts/patch_wesi_ai_visible_reasoning.py scripts/patch_wesi_ai_visible_reasoning_test.py
           git commit -m 'feat(ai): add human-readable contextual reasoning timeline'
           git push origin HEAD:main
