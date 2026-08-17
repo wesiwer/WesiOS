@@ -2,40 +2,59 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wesios/core/sync/sync_audit_extensions.dart';
+import 'package:wesios/core/sync/sync_business_extensions.dart';
 import 'package:wesios/core/sync/sync_codec.dart';
+import 'package:wesios/features/team/models/employee_model.dart';
 import 'package:wesios/features/treasury/models/transaction_model.dart';
 
 void main() {
-  setUpAll(SyncAuditExtensions.install);
+  setUpAll(() {
+    SyncAuditExtensions.install();
+    SyncBusinessExtensions.install();
+  });
 
   test('audited registry has one source of truth per module', () {
     final names = SyncCodec.collections.map((c) => c.name).toList();
 
-    expect(names, containsAll(<String>[
-      'tasks',
-      'accounts',
-      'transactions',
-      'sandbox_transactions',
-      'what_if_presets',
-      'calendar_events',
-      'roadmap_projects',
-      'roadmap_items',
-      'crm_clients',
-      'crm_deals',
-      'crm_interactions',
-      'profile',
-      'shield_private',
-      'employees',
-      'chats',
-      'messages',
-      'audio_beats',
-      'audio_extras',
-    ]));
+    expect(
+      names,
+      containsAll(<String>[
+        'tasks',
+        'accounts',
+        'transactions',
+        'sandbox_transactions',
+        'what_if_presets',
+        'finance_categories',
+        'calendar_events',
+        'time_center',
+        'roadmap_projects',
+        'roadmap_items',
+        'crm_clients',
+        'crm_deals',
+        'crm_interactions',
+        'profile',
+        'shield_private',
+        'employees',
+        'team_skills',
+        'chats',
+        'messages',
+        'audio_beats',
+        'audio_extras',
+        'horizon_predictions',
+        'horizon_learning',
+        'horizon_competition',
+        'horizon_contracts',
+        'task_ai_memory',
+      ]),
+    );
     expect(names, isNot(contains('roadmap_state')));
     expect(names, isNot(contains('crm_state')));
     expect(names, isNot(contains('profile_private')));
-    expect(names.toSet().length, names.length,
-        reason: 'Одна коллекция не должна быть зарегистрирована дважды');
+    expect(
+      names.toSet().length,
+      names.length,
+      reason: 'Одна коллекция не должна быть зарегистрирована дважды',
+    );
   });
 
   test('finance sync preserves recurring anchor exactly', () {
@@ -58,6 +77,33 @@ void main() {
     final decoded = codec.decode(encoded) as TransactionModel?;
     expect(decoded, isNotNull);
     expect(decoded!.recurringAnchor, anchor);
+  });
+
+  test('employee sync preserves skills and workload configuration', () {
+    final codec = SyncCodec.byName('employees')!;
+    final employee = EmployeeModel(
+      id: 'employee-sync-test',
+      login: 'test',
+      fullName: 'Test Employee',
+      createdAt: DateTime.utc(2026, 8, 17),
+      skills: const <String>['Битмейкинг', 'CRM'],
+      weeklyCapacityPoints: 7.5,
+      workloadMinRatio: .55,
+      workloadMaxRatio: .95,
+      managerEmployeeId: 'manager-1',
+      workloadAlertTarget: 'both',
+    );
+
+    final encoded = codec.encode(employee);
+    final decoded = codec.decode(encoded) as EmployeeModel?;
+
+    expect(decoded, isNotNull);
+    expect(decoded!.skills, employee.skills);
+    expect(decoded.weeklyCapacityPoints, 7.5);
+    expect(decoded.workloadMinRatio, .55);
+    expect(decoded.workloadMaxRatio, .95);
+    expect(decoded.managerEmployeeId, 'manager-1');
+    expect(decoded.workloadAlertTarget, 'both');
   });
 
   test('Audio Vault sync keeps attachment metadata but strips device paths', () {
