@@ -19,7 +19,7 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
   const collection = String(e.request.pathValue("collection") || "");
-  const privateCollections = {"profile_private": true, "vault_private": true};
+  const privateCollections = {"profile": true, "profile_private": true, "vault_private": true};
   const known = {
     "organizations": true, "employees": true, "organization_grants": true,
     "accounts": true, "transactions": true, "tasks": true,
