@@ -13,12 +13,17 @@ permissions:
 jobs:
   persist:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           ref: agent/wesi-ai-stage14-full-system-audit-20260817
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
 
       - name: Apply the already verified audit patch
         shell: bash
