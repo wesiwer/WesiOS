@@ -78,9 +78,8 @@ class SandboxSyncSignal {
 
 class _LosslessTransactionsSync extends TransactionsSync {
   @override
-  Map<String, dynamic> encode(TransactionModel value) =>
-      super.encode(value)
-        ..['recurringAnchor'] = value.recurringAnchor?.toIso8601String();
+  Map<String, dynamic> encode(TransactionModel value) => super.encode(value)
+    ..['recurringAnchor'] = value.recurringAnchor?.toIso8601String();
 
   @override
   TransactionModel? decode(Map<String, dynamic> fields) {
@@ -183,7 +182,8 @@ class _PortableAudioBeatsSync extends AudioBeatsSync {
     if (localRaw != null && localRaw.isNotEmpty) {
       try {
         final raw = jsonDecode(localRaw);
-        if (raw is Map) local = BeatEntry.fromJson(Map<String, dynamic>.from(raw));
+        if (raw is Map)
+          local = BeatEntry.fromJson(Map<String, dynamic>.from(raw));
       } catch (_) {}
     }
 
@@ -221,7 +221,9 @@ class _PortableAudioBeatsSync extends AudioBeatsSync {
   }
 
   static String? _existingPath(String? value) =>
-      value != null && value.isNotEmpty && File(value).existsSync() ? value : null;
+      value != null && value.isNotEmpty && File(value).existsSync()
+          ? value
+          : null;
 }
 
 extension on BeatFileRef {
@@ -299,7 +301,11 @@ class _SandboxTransactionsSync extends SyncCollection<TransactionModel> {
     final id = text(fields['id']);
     final amount = number(fields['amount']);
     final at = date(fields['date']);
-    if (id == null || id.isEmpty || amount == null || !amount.isFinite || at == null) {
+    if (id == null ||
+        id.isEmpty ||
+        amount == null ||
+        !amount.isFinite ||
+        at == null) {
       return null;
     }
     final fxRate = number(fields['fxRateToReporting']) ?? 1.0;
@@ -343,7 +349,8 @@ class _SandboxTransactionsSync extends SyncCollection<TransactionModel> {
       interOrgTransferId: text(fields['interOrgTransferId']),
       createdByEmployeeId: text(fields['createdByEmployeeId']),
       originalAmount: number(fields['originalAmount']),
-      originalCurrency: (text(fields['originalCurrency']) ?? 'RUB').toUpperCase(),
+      originalCurrency:
+          (text(fields['originalCurrency']) ?? 'RUB').toUpperCase(),
       organizationBaseAmount: number(fields['organizationBaseAmount']),
       organizationBaseCurrency:
           (text(fields['organizationBaseCurrency']) ?? 'RUB').toUpperCase(),
@@ -626,7 +633,8 @@ class _AudioExtrasSync extends SyncCollection<dynamic> {
         }
         if (next['analysis'] is Map && mine['analysis'] is Map) {
           final analysis = Map<String, dynamic>.from(next['analysis'] as Map);
-          final mineAnalysis = Map<String, dynamic>.from(mine['analysis'] as Map);
+          final mineAnalysis =
+              Map<String, dynamic>.from(mine['analysis'] as Map);
           if (mineAnalysis['sourcePath'] != null) {
             analysis['sourcePath'] = mineAnalysis['sourcePath'];
           }

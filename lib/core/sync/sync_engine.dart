@@ -39,8 +39,7 @@ class SyncReport {
     this.failure,
   });
 
-  int get uploaded =>
-      collections.fold(0, (sum, c) => sum + c.uploaded);
+  int get uploaded => collections.fold(0, (sum, c) => sum + c.uploaded);
 
   int get applied => collections.fold(0, (sum, c) => sum + c.applied);
 
@@ -173,9 +172,8 @@ class SyncEngine {
         // Записи без отметки быть не должно — журнал засевается на старте.
         // Но если она всё-таки есть, лучше объявить её свежей, чем дать
         // молча стереть себя чужой копией.
-        updatedAt: (stamp != null && !stamp.deleted)
-            ? stamp.updatedAt
-            : fallbackStamp,
+        updatedAt:
+            (stamp != null && !stamp.deleted) ? stamp.updatedAt : fallbackStamp,
       );
     });
 
@@ -285,8 +283,7 @@ class SyncEngine {
   ) async {
     final remote = await t.fetch(c.name);
     if (!remote.ok) {
-      return SyncCollectionReport(
-          collection: c.name, failure: remote.failure);
+      return SyncCollectionReport(collection: c.name, failure: remote.failure);
     }
 
     final plan = SyncMerge.merge(
@@ -300,7 +297,8 @@ class SyncEngine {
     for (final r in plan.toApplyLocally) {
       // Журнал предупреждается до записи, иначе он отметит чужую правку как
       // нашу, и она уедет обратно на сервер уже как более свежая.
-      SyncJournal.expect(c.name, r.id, SyncStamp(r.updatedAt, deleted: r.deleted));
+      SyncJournal.expect(
+          c.name, r.id, SyncStamp(r.updatedAt, deleted: r.deleted));
       await SyncJournal.record(
           c.name, r.id, SyncStamp(r.updatedAt, deleted: r.deleted));
 

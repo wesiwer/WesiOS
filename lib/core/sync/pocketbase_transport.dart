@@ -95,9 +95,7 @@ class PocketBaseTransport implements SyncTransport {
         id: rid,
         updatedAt: stamp,
         deleted: item['deleted'] == true,
-        fields: payload is Map
-            ? Map<String, dynamic>.from(payload)
-            : const {},
+        fields: payload is Map ? Map<String, dynamic>.from(payload) : const {},
       );
     }
     return SyncResult.ok(out);
@@ -235,7 +233,9 @@ class PocketBaseTransport implements SyncTransport {
         return SyncResult.fail(
           SyncFailure(
             'FORBIDDEN',
-            _briefly(text).isEmpty ? 'Нет доступа к этим данным' : _briefly(text),
+            _briefly(text).isEmpty
+                ? 'Нет доступа к этим данным'
+                : _briefly(text),
           ),
         );
       }

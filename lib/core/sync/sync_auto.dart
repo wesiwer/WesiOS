@@ -116,7 +116,8 @@ class SyncAuto {
     if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
       return SyncReport(
         at: DateTime.now(),
-        failure: const SyncFailure('NOT_SIGNED_IN', 'Синхронизация не подключена'),
+        failure:
+            const SyncFailure('NOT_SIGNED_IN', 'Синхронизация не подключена'),
       );
     }
 
@@ -135,7 +136,8 @@ class SyncAuto {
       _schedule(retryAfter);
       return SyncReport(
         at: DateTime.now(),
-        failure: const SyncFailure('NETWORK', 'Не удалось выполнить синхронизацию'),
+        failure:
+            const SyncFailure('NETWORK', 'Не удалось выполнить синхронизацию'),
       );
     }
 
@@ -242,7 +244,8 @@ class SyncAuto {
     if (!SyncEndpoint.isConnected) {
       return SyncReport(
         at: DateTime.now(),
-        failure: const SyncFailure('NOT_SIGNED_IN', 'Сначала войдите в синхронизацию'),
+        failure: const SyncFailure(
+            'NOT_SIGNED_IN', 'Сначала войдите в синхронизацию'),
       );
     }
 

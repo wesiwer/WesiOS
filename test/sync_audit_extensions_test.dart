@@ -106,7 +106,8 @@ void main() {
     expect(decoded.workloadAlertTarget, 'both');
   });
 
-  test('Audio Vault sync keeps attachment metadata but strips device paths', () {
+  test('Audio Vault sync keeps attachment metadata but strips device paths',
+      () {
     final codec = SyncCodec.byName('audio_beats')!;
     final raw = jsonEncode(<String, dynamic>{
       'id': 'beat-sync-test',

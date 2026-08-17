@@ -98,8 +98,8 @@ class SyncFeatureExtensions {
 
     await _bind(allowLegacy: true);
     _settingsSub ??= Hive.box<dynamic>(_settingsBox).watch().listen(
-      (event) => unawaited(_mirrorSetting(event)),
-    );
+          (event) => unawaited(_mirrorSetting(event)),
+        );
   }
 
   static void _onTeamRevision() {
@@ -245,7 +245,8 @@ class SyncFeatureExtensions {
     }
     for (final rawKey in profile.keys) {
       final key = '$rawKey';
-      if (_profileKeys.contains(key)) await settings.put(key, profile.get(rawKey));
+      if (_profileKeys.contains(key))
+        await settings.put(key, profile.get(rawKey));
     }
     ShieldService.revision.value++;
   }
@@ -348,7 +349,8 @@ class SyncFeatureExtensions {
       try {
         final codec = await ui.instantiateImageCodec(bytes, targetWidth: width);
         final frame = await codec.getNextFrame();
-        final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+        final data =
+            await frame.image.toByteData(format: ui.ImageByteFormat.png);
         frame.image.dispose();
         codec.dispose();
         if (data == null) continue;
@@ -469,7 +471,8 @@ class _ProfilePrivateSync extends _KeyedStateSync {
     return {
       for (final key in keys)
         if (b.containsKey(key))
-          SyncFeatureExtensions.privateRecordId(key): _KeyedValue(key, b.get(key)),
+          SyncFeatureExtensions.privateRecordId(key):
+              _KeyedValue(key, b.get(key)),
     };
   }
 
@@ -523,7 +526,8 @@ class _VaultPrivateSync extends SyncCollection<dynamic> {
     for (final rawKey in b.keys) {
       final key = '$rawKey';
       if (!SyncFeatureExtensions._vaultKey(key)) continue;
-      out[SyncFeatureExtensions.privateRecordId(key)] = _KeyedValue(key, b.get(rawKey));
+      out[SyncFeatureExtensions.privateRecordId(key)] =
+          _KeyedValue(key, b.get(rawKey));
     }
     return out;
   }
@@ -571,9 +575,12 @@ dynamic _wire(dynamic value) {
 }
 
 dynamic _unwire(dynamic value) {
-  if (value is Map && value.length == 1 && value['__wesios_bytes_v1'] is String) {
+  if (value is Map &&
+      value.length == 1 &&
+      value['__wesios_bytes_v1'] is String) {
     try {
-      return Uint8List.fromList(base64Decode(value['__wesios_bytes_v1'] as String));
+      return Uint8List.fromList(
+          base64Decode(value['__wesios_bytes_v1'] as String));
     } catch (_) {
       return null;
     }

@@ -181,7 +181,8 @@ class AudioVaultExtrasService {
 
   static Future<Directory> _musicRoot() async {
     final base = await getApplicationDocumentsDirectory();
-    final dir = Directory(p.join(base.path, 'WesiOS', 'AudioVault', 'MusicHub'));
+    final dir =
+        Directory(p.join(base.path, 'WesiOS', 'AudioVault', 'MusicHub'));
     if (!await dir.exists()) await dir.create(recursive: true);
     return dir;
   }

@@ -73,7 +73,8 @@ class _SyncScreenState extends State<SyncScreen> {
     var result = await transport.signIn(login, password);
     if (!result.ok && !login.contains('@')) {
       transport = PocketBaseTransport(address);
-      result = await transport.signIn('${login.toLowerCase()}@wesi.local', password);
+      result =
+          await transport.signIn('${login.toLowerCase()}@wesi.local', password);
     }
 
     if (!mounted) return;
@@ -123,13 +124,13 @@ class _SyncScreenState extends State<SyncScreen> {
                   child: Row(
                     children: [
                       IconButton(
-                        icon: Icon(Icons.arrow_back,
-                            color: AppTheme.textPrimary),
+                        icon:
+                            Icon(Icons.arrow_back, color: AppTheme.textPrimary),
                         onPressed: () => Navigator.pop(context),
                       ),
                       Expanded(
-                        child: WesiTitle(
-                            _ru ? 'Синхронизация' : 'Sync', size: 22),
+                        child:
+                            WesiTitle(_ru ? 'Синхронизация' : 'Sync', size: 22),
                       ),
                     ],
                   ),
@@ -177,9 +178,8 @@ class _SyncScreenState extends State<SyncScreen> {
                       ),
                       const SizedBox(height: 10),
                       _button(
-                        label: _ru
-                            ? 'Синхронизировать сейчас'
-                            : 'Synchronise now',
+                        label:
+                            _ru ? 'Синхронизировать сейчас' : 'Synchronise now',
                         onTap: (_busy || !signedIn) ? null : _syncNow,
                         filled: true,
                       ),
@@ -244,8 +244,7 @@ class _SyncScreenState extends State<SyncScreen> {
                 ],
               ),
             ),
-            Icon(Icons.lock_outline,
-                size: 17, color: AppTheme.accentGreen),
+            Icon(Icons.lock_outline, size: 17, color: AppTheme.accentGreen),
           ],
         ),
       );
@@ -329,9 +328,7 @@ class _SyncScreenState extends State<SyncScreen> {
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w600,
-                    color: signedIn
-                        ? AppTheme.textPrimary
-                        : AppTheme.textMuted,
+                    color: signedIn ? AppTheme.textPrimary : AppTheme.textMuted,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -391,7 +388,8 @@ class _SyncScreenState extends State<SyncScreen> {
                   Icon(Icons.circle, size: 5, color: AppTheme.textMuted),
                   const SizedBox(width: 8),
                   Text(names[c.name] ?? c.name,
-                      style: TextStyle(fontSize: 12, color: AppTheme.textMuted)),
+                      style:
+                          TextStyle(fontSize: 12, color: AppTheme.textMuted)),
                 ],
               ),
             ),
@@ -409,8 +407,8 @@ class _SyncScreenState extends State<SyncScreen> {
                   'пароль Wesi Shield на сервер не отправляются.'
               : 'The password is not stored after sign-in. Only a limited '
                   'server token remains on the device.',
-          style: TextStyle(fontSize: 11.5, height: 1.45,
-              color: AppTheme.textMuted),
+          style: TextStyle(
+              fontSize: 11.5, height: 1.45, color: AppTheme.textMuted),
         ),
       );
 
@@ -448,7 +446,8 @@ class _SyncScreenState extends State<SyncScreen> {
     required String label,
     required String hint,
     bool obscure = false,
-  }) => Column(
+  }) =>
+      Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(label,
@@ -483,7 +482,8 @@ class _SyncScreenState extends State<SyncScreen> {
     required VoidCallback? onTap,
     bool muted = false,
     bool filled = false,
-  }) => Material(
+  }) =>
+      Material(
         color: filled
             ? AppTheme.accent
             : muted

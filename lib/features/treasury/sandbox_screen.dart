@@ -109,8 +109,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
   Future<void> _addTransaction(TransactionType type) async {
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (context) =>
-          AddTransactionDialog(type: type, symbol: _sym),
+      builder: (context) => AddTransactionDialog(type: type, symbol: _sym),
     );
     if (result != null) {
       final tx = TransactionModel(
@@ -179,78 +178,79 @@ class _SandboxScreenState extends State<SandboxScreen> {
           children: [
             if (kHasCustomTitleBar) const SizedBox(height: kTitleBarHeight),
             _banner(),
-          Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(24),
-              children: [
-                Row(
-                  children: [
-                    IconButton(
-                      icon: const Icon(Icons.arrow_back),
-                      onPressed: () => Navigator.pop(context),
-                    ),
-                    WesiTitle(WesiLocale.get('wesi_sandbox_title'), size: 22),
-                    Spacer(),
-                    GestureDetector(
-                      onTap: _toggleCurrency,
-                      child: Container(
-                        padding: EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
-                        margin: EdgeInsets.only(right: kHasCustomTitleBar ? 140 : 0),
-                        decoration: BoxDecoration(
-                          color: AppTheme.surface.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(color: AppTheme.glassBorder),
+            Expanded(
+              child: ListView(
+                padding: const EdgeInsets.all(24),
+                children: [
+                  Row(
+                    children: [
+                      IconButton(
+                        icon: const Icon(Icons.arrow_back),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      WesiTitle(WesiLocale.get('wesi_sandbox_title'), size: 22),
+                      Spacer(),
+                      GestureDetector(
+                        onTap: _toggleCurrency,
+                        child: Container(
+                          padding:
+                              EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          margin: EdgeInsets.only(
+                              right: kHasCustomTitleBar ? 140 : 0),
+                          decoration: BoxDecoration(
+                            color: AppTheme.surface.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: AppTheme.glassBorder),
+                          ),
+                          child: Text('$_sym ${_currency.toUpperCase()}',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.accent)),
                         ),
-                        child: Text('$_sym ${_currency.toUpperCase()}',
-                            style: TextStyle(
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.accent)),
                       ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 16),
-                _scenarios(),
-                SizedBox(height: 20),
-                _balanceCard(),
-                SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _action(
-                        Icons.add_circle,
-                        WesiLocale.isRussian ? 'Доход' : 'Income',
-                        AppTheme.accentGreen,
-                        () => _addTransaction(TransactionType.income),
+                    ],
+                  ),
+                  SizedBox(height: 16),
+                  _scenarios(),
+                  SizedBox(height: 20),
+                  _balanceCard(),
+                  SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _action(
+                          Icons.add_circle,
+                          WesiLocale.isRussian ? 'Доход' : 'Income',
+                          AppTheme.accentGreen,
+                          () => _addTransaction(TransactionType.income),
+                        ),
                       ),
-                    ),
-                    SizedBox(width: 12),
-                    Expanded(
-                      child: _action(
-                        Icons.remove_circle,
-                        WesiLocale.isRussian ? 'Траты' : 'Expense',
-                        AppTheme.accentRed,
-                        () => _addTransaction(TransactionType.expense),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: _action(
+                          Icons.remove_circle,
+                          WesiLocale.isRussian ? 'Траты' : 'Expense',
+                          AppTheme.accentRed,
+                          () => _addTransaction(TransactionType.expense),
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 12),
-                SandboxForecastButton(),
-                SizedBox(height: 20),
-                Text(
-                  '${WesiLocale.get('sandbox_transactions')} (${_transactions.length})',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      color: AppTheme.textPrimary),
-                ),
-                const SizedBox(height: 12),
-                ..._transactions.take(20).map(_tx),
-              ],
+                    ],
+                  ),
+                  SizedBox(height: 12),
+                  SandboxForecastButton(),
+                  SizedBox(height: 20),
+                  Text(
+                    '${WesiLocale.get('sandbox_transactions')} (${_transactions.length})',
+                    style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                        color: AppTheme.textPrimary),
+                  ),
+                  const SizedBox(height: 12),
+                  ..._transactions.take(20).map(_tx),
+                ],
+              ),
             ),
-          ),
           ],
         ),
       ),
@@ -278,8 +278,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
                   AppTheme.accent.withOpacity(0.08),
                 ],
         ),
-        border: Border(
-            bottom: BorderSide(color: AppTheme.accent.withOpacity(0.3))),
+        border:
+            Border(bottom: BorderSide(color: AppTheme.accent.withOpacity(0.3))),
       ),
       child: Row(
         children: [
@@ -288,13 +288,11 @@ class _SandboxScreenState extends State<SandboxScreen> {
             decoration: BoxDecoration(
               color: AppTheme.accent.withOpacity(0.2),
               borderRadius: BorderRadius.circular(6),
-              border:
-                  Border.all(color: AppTheme.accent.withOpacity(0.4)),
+              border: Border.all(color: AppTheme.accent.withOpacity(0.4)),
             ),
             child: Row(
               children: [
-                Icon(Icons.science,
-                    size: 14, color: AppTheme.accent),
+                Icon(Icons.science, size: 14, color: AppTheme.accent),
                 SizedBox(width: 6),
                 Text(
                   WesiLocale.get('sandbox_mode'),
@@ -317,8 +315,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
             ),
           ),
           IconButton(
-            icon: Icon(Icons.delete_outline,
-                size: 18, color: AppTheme.textMuted),
+            icon:
+                Icon(Icons.delete_outline, size: 18, color: AppTheme.textMuted),
             onPressed: () => _runScenario('clear'),
             tooltip: WesiLocale.get('clear_sandbox'),
           ),
@@ -348,14 +346,13 @@ class _SandboxScreenState extends State<SandboxScreen> {
                       decoration: BoxDecoration(
                         color: AppTheme.surface.withOpacity(0.4),
                         borderRadius: BorderRadius.circular(14),
-                        border: Border.all(
-                            color: AppTheme.accent.withOpacity(0.2)),
+                        border:
+                            Border.all(color: AppTheme.accent.withOpacity(0.2)),
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(s.$3,
-                              size: 22, color: AppTheme.accent),
+                          Icon(s.$3, size: 22, color: AppTheme.accent),
                           SizedBox(height: 8),
                           Text(s.$2,
                               style: TextStyle(
@@ -386,8 +383,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(WesiLocale.get('sandbox_balance'),
-              style: TextStyle(
-                  fontSize: 13, color: AppTheme.textSecondary)),
+              style: TextStyle(fontSize: 13, color: AppTheme.textSecondary)),
           SizedBox(height: 8),
           Text(
             CurrencyService.formatExact(_balance),
@@ -453,8 +449,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
     );
   }
 
-  Widget _action(
-      IconData icon, String label, Color color, VoidCallback onTap) {
+  Widget _action(IconData icon, String label, Color color, VoidCallback onTap) {
     return HoverButton(
       onTap: onTap,
       padding: EdgeInsets.symmetric(vertical: 16),
@@ -464,8 +459,7 @@ class _SandboxScreenState extends State<SandboxScreen> {
           Icon(icon, color: color, size: 28),
           SizedBox(height: 8),
           Text(label,
-              style: TextStyle(
-                  fontSize: 12, color: AppTheme.textSecondary)),
+              style: TextStyle(fontSize: 12, color: AppTheme.textSecondary)),
         ],
       ),
     );
@@ -488,8 +482,8 @@ class _SandboxScreenState extends State<SandboxScreen> {
               size: 18),
           SizedBox(width: 10),
           Expanded(
-            child: Text(tx.title,
-                style: TextStyle(color: AppTheme.textPrimary)),
+            child:
+                Text(tx.title, style: TextStyle(color: AppTheme.textPrimary)),
           ),
           Text(
             '${isIncome ? '+' : '-'}'
@@ -502,14 +496,12 @@ class _SandboxScreenState extends State<SandboxScreen> {
           SizedBox(width: 8),
           GestureDetector(
             onTap: () => _editTransaction(tx),
-            child: Icon(Icons.edit,
-                size: 16, color: AppTheme.textMuted),
+            child: Icon(Icons.edit, size: 16, color: AppTheme.textMuted),
           ),
           SizedBox(width: 8),
           GestureDetector(
             onTap: () => _deleteTransaction(tx.id),
-            child: Icon(Icons.close,
-                size: 16, color: AppTheme.textMuted),
+            child: Icon(Icons.close, size: 16, color: AppTheme.textMuted),
           ),
         ],
       ),
