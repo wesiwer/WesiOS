@@ -51,3 +51,5 @@ jobs:
           git commit -m 'fix(sync): finalize validated cross-device audit'
           git pull --rebase origin main
           git push origin HEAD:main
+
+# Run 3: corrected AudioBeatsSync defining-library import.
