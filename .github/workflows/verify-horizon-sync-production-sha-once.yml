@@ -47,8 +47,12 @@ jobs:
             wesi_ai_workspace_tools.js
             wesi_ai_horizon_tools.js
             wesi_ai_finance_tools.js
+            wesi_sync_data_access.js
+            wesi_sync_context.pb.js
             wesi_sync_read.pb.js
             wesi_sync_write.pb.js
+            wesi_sync_extra.pb.js
+            wesi_sync_extra_runtime.js
           )
           for f in "${files[@]}"; do
             local="server/pb_hooks/$f"
