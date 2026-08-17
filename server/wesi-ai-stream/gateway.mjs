@@ -553,7 +553,7 @@ export function createGateway(options = {}) {
           if (abort.signal.aborted) throw deliberationError;
         }
       }
-      if (!deliberationState) {
+      if (thinkingMode && !deliberationState) {
         writeNdjson(res, {
           type: 'activity',
           kind: 'reasoning',
