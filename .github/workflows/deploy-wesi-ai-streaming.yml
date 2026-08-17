@@ -161,7 +161,7 @@ jobs:
           REMOTE
           ssh "${SSH[@]}" "$RELAY_SSH_USER@$RELAY_SSH_HOST" "rm -rf '$REMOTE'" || true
 
-      - name: Hot deploy Main streaming hooks without root
+      - name: Atomically deploy Main streaming hooks without root
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
@@ -173,25 +173,41 @@ jobs:
           HOOK_DIR=/opt/pocketbase/pb_hooks
           test -d "$HOOK_DIR"
           test -w "$HOOK_DIR"
-          for src in "$REMOTE"/wesi_ai_*.js "$REMOTE"/wesi_ai_*.pb.js; do
+
+          atomic_install() {
+            src="$1"
+            dst="$2"
+            mode="$3"
+            tmp="$HOOK_DIR/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
+            cat "$src" > "$tmp"
+            chmod "$mode" "$tmp"
+            cmp -s "$src" "$tmp"
+            mv -f "$tmp" "$dst"
+          }
+
+          # Library modules and sealed runtime configuration must be complete
+          # before route hooks are reloaded by PocketBase's file watcher.
+          for src in "$REMOTE"/wesi_ai_*.js; do
             [ -f "$src" ] || continue
-            dst="$HOOK_DIR/$(basename "$src")"
-            [ ! -e "$dst" ] || test -w "$dst"
-            cat "$src" > "$dst"
-            chmod 0644 "$dst"
+            atomic_install "$src" "$HOOK_DIR/$(basename "$src")" 0644
           done
-          cat "$REMOTE/.wesi-ai-personas.json" > "$HOOK_DIR/.wesi-ai-personas.json"
-          cat "$REMOTE/wesi-ai-relay.json" > "$HOOK_DIR/.wesi-ai-relay.json"
-          chmod 0600 "$HOOK_DIR/.wesi-ai-personas.json" "$HOOK_DIR/.wesi-ai-relay.json"
-          for _ in $(seq 1 20); do
-            curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null && break
-            sleep 1
+          atomic_install "$REMOTE/.wesi-ai-personas.json" "$HOOK_DIR/.wesi-ai-personas.json" 0600
+          atomic_install "$REMOTE/wesi-ai-relay.json" "$HOOK_DIR/.wesi-ai-relay.json" 0600
+
+          # Route files are installed last and only by atomic rename. Writing
+          # directly into a live .pb.js can make PocketBase observe a partial
+          # file and leave callbacks bound to an incomplete JS runtime.
+          for src in "$REMOTE"/wesi_ai_*.pb.js; do
+            [ -f "$src" ] || continue
+            atomic_install "$src" "$HOOK_DIR/$(basename "$src")" 0644
           done
+
+          sleep 3
           curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null
           cmp -s "$REMOTE/wesi_ai_stream.pb.js" "$HOOK_DIR/wesi_ai_stream.pb.js"
           cmp -s "$REMOTE/wesi-ai-relay.json" "$HOOK_DIR/.wesi-ai-relay.json"
           rm -rf "$REMOTE"
-          echo MAIN_STREAM_HOOKS_HOT_DEPLOYED
+          echo MAIN_STREAM_HOOKS_ATOMICALLY_DEPLOYED
           REMOTE
 
       - name: Verify protected production streaming edge
