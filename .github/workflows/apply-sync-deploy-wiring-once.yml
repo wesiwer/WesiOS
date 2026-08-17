@@ -46,3 +46,5 @@ jobs:
           set -euo pipefail
           gh workflow run deploy-employee-portal.yml --repo "$GITHUB_REPOSITORY" --ref main
           echo 'SYNC_PRODUCTION_DEPLOY_DISPATCHED'
+
+# Retry 2: patch both repeated hook-list blocks.
