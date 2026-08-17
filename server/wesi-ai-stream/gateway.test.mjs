@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import test from 'node:test';
-import {createGateway, parseToolRequest, shouldRevealBufferedText, signRelayRequest} from './gateway.mjs';
+import {createGateway, parseToolRequest, shouldRevealBufferedText, signRelayRequest, visibleReasoningSummary} from './gateway.mjs';
 
 const STREAM_SECRET = 's'.repeat(64);
 const RELAY_SECRET = 'r'.repeat(64);
@@ -104,6 +104,17 @@ test('HMAC signing matches deterministic payload', () => {
   assert.equal(actual, '00869641839c4678dd4316b6a4d07ced9cdd8b44751bb15286e4665e39093a78');
 });
 
+test('visible reasoning summary is human and context-aware', () => {
+  const greeting = visibleReasoningSummary(prepared());
+  assert.match(greeting, /приветств/i);
+  assert.match(greeting, /коротко|естественно/i);
+
+  const complex = visibleReasoningSummary(preparedWithCoagent());
+  assert.match(complex, /Сделай приложение с хорошим UX/i);
+  assert.match(complex, /Нирван/i);
+  assert.doesNotMatch(complex, /chain.of.thought|budget|depth=/i);
+});
+
 test('gateway forwards true deltas and final done event without provider metadata', async () => {
   let relayCalls = 0;
   const fetchImpl = async (url, options) => {
@@ -136,7 +147,10 @@ test('gateway forwards true deltas and final done event without provider metadat
     assert.equal(response.status, 200);
     const events = await readEvents(response);
     assert.equal(relayCalls, 1);
-    assert.deepEqual(events.map((event) => event.type), ['meta', 'agent', 'activity', 'delta', 'delta', 'agent', 'done']);
+    assert.deepEqual(events.map((event) => event.type), ['meta', 'agent', 'activity', 'activity', 'delta', 'delta', 'agent', 'done']);
+    const visibleReasoning = events.find((event) => event.type === 'activity' && event.label === 'Как я подхожу к запросу');
+    assert.ok(visibleReasoning);
+    assert.match(String(visibleReasoning.detail || ''), /приветств/i);
     assert.equal(events.filter((event) => event.type === 'delta').map((event) => event.text).join(''), 'Привет');
     assert.equal(JSON.stringify(events).includes('provider'), false);
   });

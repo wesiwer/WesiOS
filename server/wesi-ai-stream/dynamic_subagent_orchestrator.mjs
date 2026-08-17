@@ -40,6 +40,16 @@ function parseObject(value) {
   }
 }
 
+function visibleSnippet(value, max = 360) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
+}
+
+function reasoningEvent(label, detail) {
+  return {type: 'activity', kind: 'reasoning', phase: 'done', label, detail};
+}
+
 export function parseDynamicSubagentToolRequest(value) {
   const parsed = parseObject(value);
   const tool = parsed && typeof parsed.wesiTool === 'object' && !Array.isArray(parsed.wesiTool) ? parsed.wesiTool : null;
@@ -197,7 +207,12 @@ async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool,
   } else if (workspaceResult.applied.length) {
     send(buildDynamicSubagentEvent(spec, 'workspace', {label: `${spec.role}: workspace`, detail: `${workspaceResult.applied.length} revision-safe edits accepted.`}));
   }
-  send(buildDynamicSubagentEvent(spec, 'result', {label: `${spec.role}: готово`, detail: 'Структурированный результат передан Lead Coordinator.'}));
+  send(buildDynamicSubagentEvent(spec, 'result', {label: `${spec.role}: готово`, detail: 'Результат передан Lead Coordinator.'}));
+  const visibleResult = visibleSnippet([result.summary, result.recommendation].filter(Boolean).join(' '), 520);
+  send(reasoningEvent(
+    `Что дал ${spec.role}`,
+    visibleResult || 'Независимая проверка завершена; её выводы учту при сборке итогового ответа.',
+  ));
   return {ok: true, spec, result, toolResults, workspaceResult};
 }
 
@@ -215,7 +230,11 @@ export async function runDynamicSubagents({prepared, invokeModel, invokeTool, em
   if (!specs.length) return {ok: true, skipped: true, reason: 'planner_selected_none', results: [], workspace: workspaceSnapshot(workspace)};
 
   for (const spec of specs) {
-    send(buildDynamicSubagentEvent(spec, 'planned', {label: `Специалист: ${spec.role}`, detail: 'Lead создал временного специалиста с depth=1 и ограниченным budget.'}));
+    send(buildDynamicSubagentEvent(spec, 'planned', {label: `Специалист: ${spec.role}`, detail: 'Lead создал временного специалиста с ограниченным scope.'}));
+    send(reasoningEvent(
+      `Зачем нужен ${spec.role}`,
+      `Поручу ему отдельную проверку: ${visibleSnippet(spec.task, 420)}`,
+    ));
   }
 
   const budget = {remainingToolTurns: Math.max(0, Math.min(12, Number(policy.maxTotalToolTurns || 0) || 0))};

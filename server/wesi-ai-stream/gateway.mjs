@@ -295,6 +295,39 @@ function writeNdjson(res, event) {
   return true;
 }
 
+function compactVisibleText(value, max = 320) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
+}
+
+function personaRu(value) {
+  return String(value || '').trim().toLowerCase() === 'nirvana' ? 'Нирвана' : 'Зейн';
+}
+
+export function visibleReasoningSummary(prepared = {}) {
+  const message = compactVisibleText(prepared.message, 180);
+  const normalized = message.toLowerCase().replace(/[!?.…]+$/g, '').trim();
+  const attachments = Array.isArray(prepared.attachments) ? prepared.attachments : [];
+  const greetingOnly = /^(привет|здравствуй|здравствуйте|добрый день|добрый вечер|доброе утро|хай|hello|hi|hey|ку|салют)$/i.test(normalized);
+  if (greetingOnly && !attachments.length) {
+    return 'Здесь всё просто: это приветствие, поэтому глубокая проверка не нужна. Отвечу коротко и естественно, чтобы продолжить разговор без лишней сложности.';
+  }
+
+  const parts = [];
+  if (message) parts.push(`Сначала разберусь, что именно нужно сделать в запросе «${message}».`);
+  if (attachments.length) parts.push(`Есть ${attachments.length} ${attachments.length === 1 ? 'вложение' : 'вложения'} — учту его содержимое до вывода.`);
+  if (prepared.coagent?.enabled === true) {
+    parts.push(`Задача затрагивает несколько областей, поэтому сверю свою оценку с ${personaRu(prepared.coagent.coagentPersona)} и возьму только полезные выводы.`);
+  }
+  if (prepared.subagents?.enabled === true) {
+    parts.push('Отдельные независимые проверки разнесу между временными специалистами, а итог соберу сам, чтобы не смешивать противоречащие выводы.');
+  } else {
+    parts.push('После этого дам прямой ответ, опираясь на доступный контекст и проверенные данные.');
+  }
+  return compactVisibleText(parts.join(' '), 760);
+}
+
 function diffStatsFromToolResult(toolResult) {
   const payload = toolResult && typeof toolResult.result === 'object' && !Array.isArray(toolResult.result)
     ? toolResult.result
@@ -458,6 +491,13 @@ export function createGateway(options = {}) {
         phase: 'result',
         label: 'Контекст подготовлен',
         detail: 'История, память, проект и доступные инструменты проверены.',
+      });
+      writeNdjson(res, {
+        type: 'activity',
+        kind: 'reasoning',
+        phase: 'result',
+        label: 'Как я подхожу к запросу',
+        detail: visibleReasoningSummary(prepared),
       });
 
       let leadPrepared = prepared;

@@ -68,6 +68,24 @@ function timelineEvent(label, detail = '') {
   };
 }
 
+function visibleSnippet(value, max = 360) {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return text.length <= max ? text : `${text.slice(0, Math.max(1, max - 1)).trimEnd()}…`;
+}
+
+function humanReason(value) {
+  const key = String(value || '').trim();
+  const labels = {
+    joint_mode: 'нужна совместная проверка обеих специализаций',
+    cross_domain_product: 'в запросе пересекаются продуктовая и техническая части',
+    mixed_specializations: 'в задаче одновременно есть технические и творческие требования',
+    creative_review_needed: 'полезна независимая проверка UX/визуальной части',
+    technical_review_needed: 'полезна независимая техническая проверка',
+  };
+  return labels[key] || 'вторая специализация может заметить то, что легко пропустить одному агенту';
+}
+
 function resultInstruction(reviewRound) {
   return '[WESI_AI_COAGENT_OUTPUT]\n' +
     'Верни ТОЛЬКО JSON без markdown и без скрытых рассуждений: ' +
@@ -172,8 +190,8 @@ async function runAttempt({prepared, policy, invokeModel, invokeTool, emit, sign
   send(timelineEvent(
     reviewRound > 0 ? `${leadLabel} → ${coagentLabel} · уточнение` : `${leadLabel} → ${coagentLabel}`,
     reviewRound > 0
-      ? 'Lead запросил одну ограниченную правку результата.'
-      : 'Передан только ограниченный контекст задачи и разрешённые возможности.',
+      ? `Нужно уточнить только один момент: ${visibleSnippet(policy.revisionRequest, 260) || 'Lead запросил точечную правку результата.'}`
+      : `Подключаю ${coagentLabel}, потому что ${humanReason(policy.reason)}. Его задача: ${visibleSnippet(handoff.task, 300)}`,
   ));
   send(buildCoagentEvent(handoff, 'start', {
     label: `${coagentLabel}: проверка`,
@@ -257,9 +275,13 @@ async function runAttempt({prepared, policy, invokeModel, invokeTool, emit, sign
     label: `${coagentLabel}: готово`,
     detail: 'Проверка завершена, структурированный результат передан Lead Persona.',
   }));
+  const visibleResult = visibleSnippet(
+    [result.summary, result.recommendation].filter(Boolean).join(' '),
+    520,
+  );
   send(timelineEvent(
     reviewRound > 0 ? `${coagentLabel} → ${leadLabel} · исправлено` : `${coagentLabel} → ${leadLabel}`,
-    'Структурированный результат передан Lead Persona для проверки и интеграции.',
+    visibleResult || 'Проверка завершена; полезные выводы переданы Lead для итогового ответа.',
   ));
   return {ok: true, handoff, result, toolResults};
 }
@@ -303,7 +325,7 @@ export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit
   if (review.decision === 'accept') {
     send(timelineEvent(
       `${leadLabel} · результат принят`,
-      'Дополнительная правка Co-Agent не требуется.',
+      `Вывод ${personaLabel(initial.handoff.coagentPersona)} согласуется с основной линией ответа; дополнительная правка не нужна.`,
     ));
     return {...initial, review};
   }
