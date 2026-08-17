@@ -105,7 +105,7 @@ class PocketBaseTransport implements SyncTransport {
 
   Future<SyncResult<String>> revision() async {
     if (!isSignedIn) return const SyncResult.fail(SyncFailure.notSignedIn);
-    final res = await _send('GET', '/api/wesi/sync/revision');
+    final res = await _send('GET', '/api/wesi/sync/revision-v2');
     if (res.failure != null) return SyncResult.fail(res.failure!);
     final revision = res.value!['revision'];
     if (revision is! String || revision.isEmpty) {
@@ -117,7 +117,7 @@ class PocketBaseTransport implements SyncTransport {
   }
 
   /// Старый формат ответа PocketBase оставлен для unit-тестов миграционного
-  /// слоя. Рабочий transport получает готовую строку с `/api/wesi/sync/revision`.
+  /// слоя. Рабочий transport получает готовую строку с `/api/wesi/sync/revision-v2`.
   static String revisionFromResponse(Map<String, dynamic> json) {
     final items = json['items'];
     if (items is! List || items.isEmpty) return 'empty';
