@@ -19,7 +19,9 @@ jobs:
           fetch-depth: 0
 
       - name: Apply receive-path hardening
-        run: python tools/fix_sync_receive_once.py
+        run: |
+          python tools/fix_sync_receive_once.py
+          python tools/fix_sync_receive_followup_once.py
 
       - uses: subosito/flutter-action@v2
         with:
@@ -30,9 +32,9 @@ jobs:
         shell: bash
         run: |
           flutter pub get
-          dart format --set-exit-if-changed lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart lib/core/sync/sync_merge.dart test/sync_multi_device_test.dart test/sync_receive_regression_test.dart || dart format lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart lib/core/sync/sync_merge.dart test/sync_multi_device_test.dart test/sync_receive_regression_test.dart
+          dart format lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart test/sync_multi_device_test.dart test/sync_engine_test.dart test/sync_receive_regression_test.dart
           flutter test test/sync_receive_regression_test.dart test/sync_multi_device_test.dart test/sync_merge_test.dart test/sync_engine_test.dart test/sync_auto_test.dart test/live_sync_revision_test.dart
-          flutter analyze lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart lib/core/sync/sync_merge.dart test/sync_receive_regression_test.dart test/sync_multi_device_test.dart --no-fatal-infos
+          flutter analyze lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart test/sync_receive_regression_test.dart test/sync_multi_device_test.dart test/sync_engine_test.dart --no-fatal-infos
           grep -q '^version: 0.22.24+99$' pubspec.yaml
           grep -q "static const String number = '0.22.24';" lib/core/constants/app_version.dart
           grep -q 'static const int build = 99;' lib/core/constants/app_version.dart
@@ -40,10 +42,10 @@ jobs:
       - name: Commit validated receive fix
         shell: bash
         run: |
-          rm tools/fix_sync_receive_once.py
+          rm tools/fix_sync_receive_once.py tools/fix_sync_receive_followup_once.py
           git config user.name "WesiOS Sync Audit"
           git config user.email "actions@users.noreply.github.com"
-          git add lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart lib/core/sync/sync_merge.dart test/sync_multi_device_test.dart test/sync_receive_regression_test.dart pubspec.yaml lib/core/constants/app_version.dart tools/fix_sync_receive_once.py
+          git add lib/features/auth/login_screen.dart lib/core/sync/sync_auto.dart lib/core/sync/sync_engine.dart test/sync_multi_device_test.dart test/sync_engine_test.dart test/sync_receive_regression_test.dart pubspec.yaml lib/core/constants/app_version.dart tools/fix_sync_receive_once.py tools/fix_sync_receive_followup_once.py
           git commit -m "fix(sync): harden incoming cross-device updates"
           git push origin HEAD:main
 
