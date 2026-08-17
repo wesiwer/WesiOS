@@ -17,13 +17,14 @@ const wesiSyncExtraPayload = (record) => {
   return {};
 };
 
-const wesiSyncExtraRead = (e, collection, scope, requiredModule) => {
+const wesiSyncExtraRead = (e, collection, scope, requiredModule, privateKeyed) => {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
   if (requiredModule && !ctx.isOwner && ctx.modules.indexOf(requiredModule) < 0) {
     return e.json(200, {"items": []});
   }
-  const owner = scope === "private" ? e.auth.id : ctx.ownerId;
+  const privateScope = scope === "private" || privateKeyed === true;
+  const owner = privateScope ? e.auth.id : ctx.ownerId;
   let records = [];
   try {
     records = e.app.findRecordsByFilter(
@@ -42,7 +43,7 @@ const wesiSyncExtraRead = (e, collection, scope, requiredModule) => {
   });
 };
 
-const wesiSyncExtraWrite = (e, collection, scope, requiredModule) => {
+const wesiSyncExtraWrite = (e, collection, scope, requiredModule, privateKeyed) => {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
   if (requiredModule && !ctx.isOwner && ctx.modules.indexOf(requiredModule) < 0) {
@@ -62,11 +63,14 @@ const wesiSyncExtraWrite = (e, collection, scope, requiredModule) => {
   if (incoming.id != null && String(incoming.id) !== rid) {
     throw new BadRequestError("id записи не совпадает с rid");
   }
-  if (incoming.key != null && String(incoming.key) !== rid) {
-    throw new BadRequestError("key записи не совпадает с rid");
+  if (incoming.key != null) {
+    const key = String(incoming.key);
+    const expected = privateKeyed === true ? String(ctx.employeeId) + "::" + key : key;
+    if (expected !== rid) throw new BadRequestError("key записи не совпадает с rid");
   }
 
-  const owner = scope === "private" ? e.auth.id : ctx.ownerId;
+  const privateScope = scope === "private" || privateKeyed === true;
+  const owner = privateScope ? e.auth.id : ctx.ownerId;
   let existing = null;
   try {
     existing = e.app.findFirstRecordByFilter(
@@ -83,7 +87,7 @@ const wesiSyncExtraWrite = (e, collection, scope, requiredModule) => {
   const recordsCollection = e.app.findCollectionByNameOrId("wesios_records");
   const record = existing || new Record(recordsCollection);
   record.set("owner", owner);
-  record.set("org", scope === "private" ? "private:" + ctx.employeeId : "wesi-inc");
+  record.set("org", privateScope ? "private:" + ctx.employeeId : "wesi-inc");
   record.set("coll", collection);
   record.set("rid", rid);
   record.set("payload", incoming);
@@ -139,6 +143,15 @@ routerAdd("GET", "/api/wesi/sync/profile", (e) =>
   $apis.requireAuth("users"));
 routerAdd("POST", "/api/wesi/sync/profile", (e) =>
   wesiSyncExtraWrite(e, "profile", "private", null),
+  $apis.requireAuth("users"));
+
+// Shield settings are private too, but keyed rows use employee::key rids to
+// preserve compatibility with the existing per-account local boxes.
+routerAdd("GET", "/api/wesi/sync/shield_private", (e) =>
+  wesiSyncExtraRead(e, "shield_private", "private", null, true),
+  $apis.requireAuth("users"));
+routerAdd("POST", "/api/wesi/sync/shield_private", (e) =>
+  wesiSyncExtraWrite(e, "shield_private", "private", null, true),
   $apis.requireAuth("users"));
 
 // Audio cards remain company-shared. Extended analysis/QC metadata belongs to
