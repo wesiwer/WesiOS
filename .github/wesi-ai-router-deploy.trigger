@@ -1,3 +1,3 @@
-triggered_at=2026-08-16T22:46:00Z
-purpose=wesi-ai-finance-scope-and-active-org-fix
-attempt=9
+triggered_at=2026-08-17T08:05:00Z
+purpose=stage14-full-system-lobby-chat-route-hardening
+attempt=10

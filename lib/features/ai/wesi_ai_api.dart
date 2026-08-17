@@ -273,11 +273,22 @@ class WesiAiApi {
       cancellation?.bind(() => request.abort());
       _applyAuth(request, auth);
       request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       request.write(jsonEncode(body));
-      final response =
-          await request.close().timeout(const Duration(seconds: 185));
-      final json = await _readJson(response);
-      cancellation?.unbind();
+      late HttpClientResponse response;
+      late Map<String, dynamic> json;
+      try {
+        response = await request.close().timeout(const Duration(seconds: 185));
+        json = await readJsonResponse(
+          response,
+          stage: 'MAIN',
+          component: 'WesiOS Main',
+          operation: 'chat',
+          lastSuccess: 'MAIN_RESPONSE_RECEIVED',
+        );
+      } finally {
+        cancellation?.unbind();
+      }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final code = '${json['code'] ?? 'WAI_REQUEST_FAILED'}';
         throw WesiAiApiException.fromPayload(
@@ -373,8 +384,24 @@ class WesiAiApi {
     request.write(jsonEncode(body));
     final response = await request.close().timeout(const Duration(seconds: 30));
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      final json = await _readJson(response);
-      cancellation?.unbind();
+      late Map<String, dynamic> json;
+      try {
+        json = await readJsonResponse(
+          response,
+          stage: 'STREAM_GATEWAY',
+          component: 'Streaming edge',
+          operation: 'chat.stream error response',
+          lastSuccess: 'STREAM_RESPONSE_RECEIVED',
+        );
+      } on WesiAiApiException catch (error) {
+        if (const <int>{404, 405, 501, 502}.contains(response.statusCode) &&
+            error.code == 'WAI_BAD_SERVER_RESPONSE') {
+          return null;
+        }
+        rethrow;
+      } finally {
+        cancellation?.unbind();
+      }
       final code = '${json['code'] ?? ''}';
       if (const <int>{404, 405, 501, 502}.contains(response.statusCode) &&
           (code.isEmpty || code == 'WAI_STREAM_GATEWAY_NOT_CONFIGURED')) {
@@ -690,18 +717,126 @@ class WesiAiApi {
     } catch (_) {}
   }
 
-  static Future<Map<String, dynamic>> _readJson(
-      HttpClientResponse response) async {
-    final raw = await utf8.decoder.bind(response).join();
-    if (raw.trim().isEmpty) return <String, dynamic>{};
+  static const int maxJsonResponseBytes = 4 * 1024 * 1024;
+
+  static Map<String, dynamic> decodeJsonObjectResponse(
+    String raw, {
+    int? httpStatus,
+    String contentType = '',
+    String stage = 'HTTP_RESPONSE',
+    String component = 'WesiAiApi',
+    String operation = 'decode response',
+    String lastSuccess = 'RESPONSE_RECEIVED',
+  }) {
+    final trimmed = raw.trim();
+    if (trimmed.isEmpty) return <String, dynamic>{};
+    dynamic decoded;
     try {
-      final decoded = jsonDecode(raw);
-      return decoded is Map
-          ? Map<String, dynamic>.from(decoded)
-          : <String, dynamic>{};
-    } on FormatException {
-      return <String, dynamic>{};
+      decoded = jsonDecode(trimmed);
+    } on FormatException catch (error) {
+      throw WesiAiApiException(
+        'WAI_BAD_SERVER_RESPONSE',
+        'Сервер WesiOS вернул некорректный ответ',
+        stage: stage,
+        component: component,
+        operation: operation,
+        httpStatus: httpStatus,
+        lastSuccess: lastSuccess,
+        detail: _responseDiagnosticDetail(contentType, trimmed, error.message),
+      );
     }
+    if (decoded is! Map) {
+      throw WesiAiApiException(
+        'WAI_BAD_SERVER_RESPONSE',
+        'Сервер WesiOS вернул некорректный ответ',
+        stage: stage,
+        component: component,
+        operation: operation,
+        httpStatus: httpStatus,
+        lastSuccess: lastSuccess,
+        detail: _responseDiagnosticDetail(
+          contentType,
+          trimmed,
+          'JSON root is ${decoded.runtimeType}, expected object',
+        ),
+      );
+    }
+    return Map<String, dynamic>.from(decoded);
+  }
+
+  static Future<Map<String, dynamic>> readJsonResponse(
+    HttpClientResponse response, {
+    String stage = 'HTTP_RESPONSE',
+    String component = 'WesiAiApi',
+    String operation = 'decode response',
+    String lastSuccess = 'RESPONSE_RECEIVED',
+  }) async {
+    final bytes = <int>[];
+    var total = 0;
+    await for (final chunk in response) {
+      total += chunk.length;
+      if (total > maxJsonResponseBytes) {
+        throw WesiAiApiException(
+          'WAI_RESPONSE_TOO_LARGE',
+          'Сервер WesiOS вернул слишком большой ответ',
+          stage: stage,
+          component: component,
+          operation: operation,
+          httpStatus: response.statusCode,
+          lastSuccess: lastSuccess,
+          detail: 'Ответ превысил лимит $maxJsonResponseBytes байт',
+        );
+      }
+      bytes.addAll(chunk);
+    }
+    String raw;
+    try {
+      raw = utf8.decode(bytes, allowMalformed: false);
+    } on FormatException catch (error) {
+      throw WesiAiApiException(
+        'WAI_BAD_SERVER_RESPONSE',
+        'Сервер WesiOS вернул некорректный ответ',
+        stage: stage,
+        component: component,
+        operation: operation,
+        httpStatus: response.statusCode,
+        lastSuccess: lastSuccess,
+        detail: _responseDiagnosticDetail(
+          response.headers.value(HttpHeaders.contentTypeHeader) ?? '',
+          '',
+          error.message,
+        ),
+      );
+    }
+    return decodeJsonObjectResponse(
+      raw,
+      httpStatus: response.statusCode,
+      contentType: response.headers.value(HttpHeaders.contentTypeHeader) ?? '',
+      stage: stage,
+      component: component,
+      operation: operation,
+      lastSuccess: lastSuccess,
+    );
+  }
+
+  static Future<Map<String, dynamic>> _readJson(
+    HttpClientResponse response,
+  ) =>
+      readJsonResponse(response);
+
+  static String _responseDiagnosticDetail(
+    String contentType,
+    String raw,
+    String reason,
+  ) {
+    final preview = raw.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final clipped =
+        preview.length > 240 ? '${preview.substring(0, 240)}…' : preview;
+    return <String>[
+      if (contentType.trim().isNotEmpty) 'Content-Type: ${contentType.trim()}',
+      if (reason.trim().isNotEmpty) 'Причина: ${reason.trim()}',
+      if (clipped.isNotEmpty) 'Начало ответа: $clipped',
+    ].join(' · ');
   }
 
   static void _throwForUploadResponse(int status, Map<String, dynamic> json) {
@@ -808,6 +943,9 @@ class WesiAiApi {
           'Профиль Wesi AI ещё не готов на сервере',
         'WAI_RELAY_UNAVAILABLE' => 'Сервис Wesi AI временно недоступен',
         'WAI_RELAY_BAD_RESPONSE' => 'Сервис Wesi AI вернул ошибку',
+        'WAI_BAD_SERVER_RESPONSE' => 'Сервер WesiOS вернул некорректный ответ',
+        'WAI_RESPONSE_TOO_LARGE' =>
+          'Сервер WesiOS вернул слишком большой ответ',
         'WAI_STREAM_FAILED' ||
         'WAI_STREAM_RELAY_REJECTED' ||
         'WAI_STREAM_MAIN_REJECTED' =>

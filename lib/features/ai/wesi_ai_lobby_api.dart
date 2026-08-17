@@ -107,15 +107,21 @@ class WesiAiLobbyApi extends WesiAiApi {
       request.headers.set(HttpHeaders.authorizationHeader, token);
       request.headers.set('X-WesiOS-Session', sessionId);
       request.headers.contentType = ContentType.json;
+      request.headers.set(HttpHeaders.acceptHeader, 'application/json');
       request.write(jsonEncode(body));
-      final response =
-          await request.close().timeout(const Duration(seconds: 125));
-      final raw = await utf8.decoder.bind(response).join();
-      cancellation?.unbind();
-      Map<String, dynamic> json = const {};
-      if (raw.isNotEmpty) {
-        final decoded = jsonDecode(raw);
-        if (decoded is Map) json = Map<String, dynamic>.from(decoded);
+      late HttpClientResponse response;
+      late Map<String, dynamic> json;
+      try {
+        response = await request.close().timeout(const Duration(seconds: 125));
+        json = await WesiAiApi.readJsonResponse(
+          response,
+          stage: 'LOBBY',
+          component: 'WesiAiLobbyApi',
+          operation: 'decode response',
+          lastSuccess: 'LOBBY_RESPONSE_RECEIVED',
+        );
+      } finally {
+        cancellation?.unbind();
       }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final code = '${json['code'] ?? 'WAI_REQUEST_FAILED'}';
@@ -181,16 +187,6 @@ class WesiAiLobbyApi extends WesiAiApi {
         operation: '/api/wesi/ai/lobby',
         lastSuccess: 'REQUEST_SENT',
         detail: '$error',
-      );
-    } on FormatException catch (error) {
-      throw WesiAiApiException(
-        'NOT_WESIOS',
-        'Сервер WesiOS вернул некорректный ответ',
-        stage: 'LOBBY',
-        component: 'WesiAiLobbyApi',
-        operation: 'decode response',
-        lastSuccess: 'LOBBY_RESPONSE_RECEIVED',
-        detail: error.message,
       );
     }
   }
