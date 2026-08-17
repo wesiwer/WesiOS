@@ -30,11 +30,16 @@ jobs:
                   start=max(0,m.start()-180); end=min(len(text),m.start()+650)
                   snippet=' '.join(text[start:end].split())
                   hits.append(('READ',snippet[:800]))
+              for m in re.finditer(r'findFirstRecordByFilter\s*\(', text):
+                  start=max(0,m.start()-180); end=min(len(text),m.start()+500)
+                  snippet=' '.join(text[start:end].split())
+                  hits.append(('FIRST',snippet[:650]))
               for pattern,label in [
                   (r'input\.organizationId\s*\|\|\s*activeOrganizationId','MODEL_ORG_FIRST'),
                   (r'activeOrganizationId\s*\|\|\s*input\.organizationId','TRUSTED_ORG_FIRST'),
                   (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+\[\]','CATCH_EMPTY_LIST'),
                   (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+\{\}','CATCH_EMPTY_OBJECT'),
+                  (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+null','CATCH_NULL'),
               ]:
                   for m in re.finditer(pattern,text,re.S):
                       hits.append((label,' '.join(text[m.start():min(len(text),m.end()+160)].split())[:500]))
@@ -43,4 +48,4 @@ jobs:
                   for label,s in hits:
                       print(label,s)
           PY
-# rerun: 2026-08-17T21:24+03:00
+# rerun: 2026-08-17T22:20+03:00 full tools + first/null
