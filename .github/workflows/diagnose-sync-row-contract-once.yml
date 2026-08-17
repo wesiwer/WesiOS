@@ -1,0 +1,134 @@
+name: Diagnose Sync Row Contract Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-sync-row-contract-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_diag && chmod 600 ~/.ssh/id_diag
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Classify current owner rows without exposing business data
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_diag -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" 'python3 -' <<'PY'
+          import json, sqlite3
+          from collections import Counter, defaultdict
+          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+
+          db=Path('/opt/pocketbase/pb_data/data.db')
+          con=sqlite3.connect(f'file:{db}?mode=ro', uri=True); con.row_factory=sqlite3.Row
+          def payload(raw):
+              try:
+                  v=json.loads(raw) if isinstance(raw,str) else raw
+                  return v if isinstance(v,dict) else {}
+              except Exception:return {}
+          rows=[dict(r) for r in con.execute('select owner,coll,rid,payload,stamp,deleted from wesios_records')]
+          for r in rows:r['p']=payload(r.get('payload'))
+
+          latest=None
+          for r in rows:
+              if r['coll']!='critical_audit' or r['deleted']:continue
+              p=r['p']; a=p.get('after') if isinstance(p.get('after'),dict) else {}
+              if p.get('event')!='wesi_ai_tool' or a.get('tool') not in ('finance_summary','horizon_snapshot'):continue
+              ts=str(p.get('timestamp') or r.get('stamp') or '')
+              if latest is None or ts>latest[0]:latest=(ts,str(r['owner']))
+          if latest is None:raise SystemExit('no recent AI owner')
+          owner=latest[1]
+          by=defaultdict(list)
+          for r in rows:
+              if str(r['owner'])==owner and not r['deleted']:by[r['coll']].append(r['p'])
+
+          def dt(v):
+              if not isinstance(v,str) or not v.strip():return None
+              try:return datetime.fromisoformat(v.replace('Z','+00:00'))
+              except Exception:return None
+          def bucket(n):
+              return '0' if n==0 else '1' if n==1 else '2-5' if n<=5 else '6-20' if n<=20 else '21+'
+          now=datetime.now(timezone.utc)
+
+          print('=== FINANCE_DATE_CONTRACT ===')
+          tx=by['transactions']
+          parseable=sum(dt(p.get('date')) is not None for p in tx)
+          recent=sum((lambda d: d is not None and now-timedelta(days=93)<=d<=now+timedelta(days=1))(dt(p.get('date'))) for p in tx)
+          future=sum((lambda d: d is not None and d>now+timedelta(days=1))(dt(p.get('date'))) for p in tx)
+          old=sum((lambda d: d is not None and d<now-timedelta(days=93))(dt(p.get('date'))) for p in tx)
+          print('TX_TOTAL=',bucket(len(tx)),'DATE_PARSEABLE=',bucket(parseable),'RECENT_93D=',bucket(recent),'OLDER=',bucket(old),'FUTURE=',bucket(future))
+          print('TX_DATE_TYPES=',dict(Counter(type(p.get('date')).__name__ for p in tx)))
+          print('TX_AMOUNT_TYPES=',dict(Counter(type(p.get('amount')).__name__ for p in tx)))
+          print('TX_TYPE_VALUES=',sorted(set(str(p.get('type')) for p in tx)))
+
+          print('=== GRANT_CONTRACT ===')
+          grants=by['organization_grants']
+          created=Counter()
+          for p in grants:
+              c=str(p.get('createdBy') or '')
+              if c in ('sync','untrusted-sync'): created['REJECTED_SYNC_MARKER']+=1
+              elif c in ('migration','migration/internal'): created['MIGRATION_MARKER']+=1
+              elif c: created['EMPLOYEE_OR_OTHER']+=1
+              else: created['EMPTY']+=1
+          print('GRANTS=',bucket(len(grants)),'CREATED_BY_CLASSES=',dict(created))
+          bad_id=sum(str(p.get('id') or '') != f"{p.get('employeeId')}::{p.get('organizationId')}" for p in grants)
+          bad_date=sum(dt(p.get('createdAt')) is None for p in grants)
+          print('GRANT_BAD_ID=',bucket(bad_id),'GRANT_BAD_CREATED_AT=',bucket(bad_date))
+
+          print('=== BASE_DECODER_SHAPES ===')
+          org_bad=0
+          for p in by['organizations']:
+              oid=p.get('id'); name=p.get('name'); created_at=dt(p.get('createdAt')); is_root=p.get('isRoot') is True; parent=p.get('parentId')
+              if not isinstance(oid,str) or not isinstance(name,str) or not name.strip() or created_at is None or is_root!=(oid=='org_wesi_inc') or (is_root and parent is not None):org_bad+=1
+          emp_bad=sum(not isinstance(p.get('id'),str) or not p.get('id') or dt(p.get('createdAt')) is None for p in by['employees'])
+          acc_bad=0
+          for p in by['accounts']:
+              if not isinstance(p.get('id'),str) or dt(p.get('createdAt')) is None:acc_bad+=1
+              for k in ('openingBalance','minimumBalance'):
+                  try:float(p.get(k,0))
+                  except Exception:acc_bad+=1;break
+          tx_bad=0
+          for p in tx:
+              try:a=float(p.get('amount'))
+              except Exception:a=-1
+              fx=p.get('fxRateToReporting',1)
+              try:fx=float(fx)
+              except Exception:fx=0
+              if not isinstance(p.get('id'),str) or a<0 or dt(p.get('date')) is None or fx<=0:tx_bad+=1
+          task_bad=sum(not isinstance(p.get('id'),str) or dt(p.get('createdAt')) is None for p in by['tasks'])
+          print('ORG_BAD=',bucket(org_bad),'EMP_BAD=',bucket(emp_bad),'ACCOUNT_BAD=',bucket(acc_bad),'TX_BAD=',bucket(tx_bad),'TASK_BAD=',bucket(task_bad))
+
+          print('=== ORGANIZATION_APPLY_ORDER_RISK ===')
+          # Base read sorts by PocketBase record id, not hierarchy. Simulate an empty receiver.
+          org_rows=[]
+          for r in rows:
+              if str(r['owner'])==owner and r['coll']=='organizations' and not r['deleted']:org_rows.append(r)
+          org_rows.sort(key=lambda r:str(r.get('rid') or ''))
+          known=set(); blocked=0
+          for r in org_rows:
+              p=r['p']; oid=str(p.get('id') or r['rid']); parent=p.get('parentId')
+              if oid=='org_wesi_inc':known.add(oid);continue
+              if parent and str(parent) not in known:blocked+=1
+              else:known.add(oid)
+          print('EMPTY_DEVICE_PARENT_ORDER_BLOCKED=',bucket(blocked))
+          con.close()
+          PY
