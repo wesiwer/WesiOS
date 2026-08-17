@@ -1,0 +1,74 @@
+name: Wesi AI Dynamic Deliberation Validate Once
+
+on:
+  push:
+    branches: [fix/wesi-ai-dynamic-deliberation]
+    paths:
+      - '.github/workflows/ai-dynamic-deliberation-validate-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/wesi-ai-dynamic-deliberation
+          fetch-depth: 0
+
+      - name: Apply implementation
+        run: |
+          set -euo pipefail
+          python3 scripts/patch_wesi_ai_dynamic_deliberation.py
+          grep -q 'thinkingMode: _uiMode == WesiAiUiMode.thinking' lib/features/ai/ai_assistant_v2_screen.dart
+          grep -q 'public_deliberation.mjs' server/wesi-ai-stream/gateway.mjs
+          grep -q 'thinkingMode && conversation.persona' lib/features/ai/wesi_ai_api.dart
+
+      - name: Validate Node runtime
+        run: |
+          set -euo pipefail
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --check server/wesi-ai-stream/public_deliberation.mjs
+          node --check server/wesi-ai-stream/persona_coagent_orchestrator.mjs
+          node --check server/wesi-ai-stream/dynamic_subagent_orchestrator.mjs
+          node --test server/wesi-ai-stream/*.test.mjs
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Validate Flutter client
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter test test/features/ai
+          flutter analyze lib/features/ai lib/core/constants/app_version.dart
+
+      - name: Commit validated implementation to fix branch
+        run: |
+          set -euo pipefail
+          git config user.name 'wesiwer'
+          git config user.email '77644223+wesiwer@users.noreply.github.com'
+          git add \
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            lib/features/ai/storage/wesi_ai_local_store.dart \
+            lib/features/ai/wesi_ai_managed_controller.dart \
+            lib/features/ai/controllers/wesi_ai_chat_controller.dart \
+            lib/features/ai/wesi_ai_lobby_controller.dart \
+            lib/features/ai/wesi_ai_api.dart \
+            lib/features/ai/wesi_ai_lobby_api.dart \
+            server/wesi-ai-stream/gateway.mjs \
+            server/wesi-ai-stream/public_deliberation.mjs \
+            server/wesi-ai-stream/public_deliberation.test.mjs \
+            server/wesi-ai-stream/gateway.test.mjs \
+            server/wesi-ai-stream/deploy-stream-gateway.sh \
+            pubspec.yaml \
+            lib/core/constants/app_version.dart
+          git rm scripts/patch_wesi_ai_dynamic_deliberation.py
+          git commit -m 'feat(ai): make Thinking a dynamic deliberation mode'
+          git push origin HEAD:fix/wesi-ai-dynamic-deliberation
