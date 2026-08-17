@@ -1,13 +1,20 @@
 import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../../features/audio/models/audio_vault_models.dart';
 import '../../features/audio/services/audio_vault_extras_service.dart';
 import '../../features/audio/services/audio_vault_service.dart';
+import '../../features/chats/models/chat_message.dart';
+import '../../features/profile/services/profile_service.dart';
 import '../../features/treasury/models/transaction_model.dart';
 import '../../features/treasury/services/what_if_store.dart';
+import '../security/shield_service.dart';
 import 'sync_codec.dart';
+import 'sync_feature_extensions.dart';
 
 /// Дополняет базовый реестр синхронизации состояниями, которые исторически
 /// жили только на одном устройстве, и заменяет lossy-кодеки на полные.
@@ -31,6 +38,15 @@ class SyncAuditExtensions {
     );
 
     _replace('transactions', _LosslessTransactionsSync());
+    _replace('messages', _PortableMessagesSync());
+    _replace('audio_beats', _PortableAudioBeatsSync());
+
+    // profile_private раньше дублировал обычный профиль и Shield в одном
+    // боксе. Профиль теперь имеет единственный источник `profile`, а Shield
+    // едет своим приватным каналом без гонки двух копий имени/аватарки.
+    SyncCodec.collections.removeWhere((c) => c.name == 'profile_private');
+    _add(_ShieldPrivateSync());
+
     _add(_SandboxTransactionsSync());
     _add(_WhatIfPresetsSync());
     _add(_AudioExtrasSync());
@@ -73,6 +89,150 @@ class _LosslessTransactionsSync extends TransactionsSync {
     final anchor = DateTime.tryParse('${fields['recurringAnchor'] ?? ''}');
     return anchor == null ? base : base.copyWith(recurringAnchor: anchor);
   }
+}
+
+/// Путь вложения чата — адрес файла на конкретном устройстве. На сервере
+/// остаётся только имя/тип/размер/checksum. Если такой же файл уже есть на
+/// принимающем устройстве, его локальный путь сохраняется.
+class _PortableMessagesSync extends MessagesSync {
+  @override
+  Map<String, dynamic> encode(ChatMessage value) {
+    final out = super.encode(value);
+    final raw = out['attachment'];
+    if (raw is Map) {
+      out['attachment'] = <String, dynamic>{
+        for (final entry in raw.entries) '${entry.key}': entry.value,
+        'path': '',
+      };
+    }
+    return out;
+  }
+
+  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final target = box();
+    final incoming = decode(fields);
+    if (target == null || incoming == null) return false;
+
+    var next = incoming;
+    final remoteAttachment = incoming.attachment;
+    final localAttachment = target.get(incoming.id)?.attachment;
+    if (remoteAttachment != null &&
+        localAttachment != null &&
+        localAttachment.path.isNotEmpty &&
+        File(localAttachment.path).existsSync() &&
+        _sameAttachment(remoteAttachment, localAttachment)) {
+      next = incoming.copyWith(
+        attachment: remoteAttachment.withPath(localAttachment.path).toMap(),
+      );
+    }
+    await target.put(next.id, next);
+    return true;
+  }
+
+  static bool _sameAttachment(dynamic a, dynamic b) {
+    final aSha = '${a.sha256}'.trim();
+    final bSha = '${b.sha256}'.trim();
+    if (aSha.isNotEmpty && bSha.isNotEmpty) return aSha == bSha;
+    return a.name == b.name && a.sizeBytes == b.sizeBytes && a.mime == b.mime;
+  }
+}
+
+/// Audio Vault по прежнему договору синхронизирует карточку и метаданные,
+/// но не MP3/WAV/ALS и не локальные пути. Метаданные дополнительных файлов
+/// при этом не выбрасываются: на другом устройстве видно, какой файл связан
+/// с битом, даже если самого файла там ещё нет.
+class _PortableAudioBeatsSync extends AudioBeatsSync {
+  @override
+  Map<String, dynamic> encode(String value) {
+    try {
+      final raw = jsonDecode(value);
+      if (raw is! Map) return const {};
+      final out = Map<String, dynamic>.from(raw);
+      out.remove('mp3Path');
+      out.remove('wavPath');
+      out.remove('trackoutPath');
+      out.remove('coverPath');
+      final attachments = out['attachments'];
+      if (attachments is List) {
+        out['attachments'] = [
+          for (final item in attachments)
+            if (item is Map)
+              <String, dynamic>{
+                for (final entry in item.entries) '${entry.key}': entry.value,
+                'path': '',
+              },
+        ];
+      }
+      return out;
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final target = box();
+    if (target == null) return false;
+    final decoded = decode(fields);
+    if (decoded == null) return false;
+
+    final remote = BeatEntry.fromJson(fields);
+    BeatEntry? local;
+    final localRaw = target.get(remote.id);
+    if (localRaw != null && localRaw.isNotEmpty) {
+      try {
+        final raw = jsonDecode(localRaw);
+        if (raw is Map) local = BeatEntry.fromJson(Map<String, dynamic>.from(raw));
+      } catch (_) {}
+    }
+
+    final localAttachments = <String, BeatFileRef>{
+      for (final file in local?.attachments ?? const <BeatFileRef>[])
+        file.id: file,
+    };
+    final attachments = <BeatFileRef>[
+      for (final remoteFile in remote.attachments)
+        if (localAttachments[remoteFile.id] case final mine?)
+          BeatFileRef(
+            id: remoteFile.id,
+            name: remoteFile.name,
+            path: mine.path.isNotEmpty && File(mine.path).existsSync()
+                ? mine.path
+                : '',
+            kind: remoteFile.kind,
+            bytes: remoteFile.bytes,
+            createdAt: remoteFile.createdAt,
+          )
+        else
+          remoteFile.withEmptyPath(),
+    ];
+
+    final merged = <String, dynamic>{
+      ...fields,
+      'mp3Path': _existingPath(local?.mp3Path),
+      'wavPath': _existingPath(local?.wavPath),
+      'trackoutPath': _existingPath(local?.trackoutPath),
+      'coverPath': _existingPath(local?.coverPath),
+      'attachments': attachments.map((e) => e.toJson()).toList(),
+    };
+    await target.put(remote.id, jsonEncode(merged));
+    return true;
+  }
+
+  static String? _existingPath(String? value) =>
+      value != null && value.isNotEmpty && File(value).existsSync() ? value : null;
+}
+
+extension on BeatFileRef {
+  BeatFileRef withEmptyPath() => BeatFileRef(
+        id: id,
+        name: name,
+        path: '',
+        kind: kind,
+        bytes: bytes,
+        createdAt: createdAt,
+      );
 }
 
 class _SandboxTransactionsSync extends SyncCollection<TransactionModel> {
@@ -283,6 +443,97 @@ class _WhatIfPresetsSync extends SyncCollection<dynamic> {
   void notifyChanged() => WhatIfStore.revision.value++;
 }
 
+class _PrivateKeyedValue {
+  final String key;
+  final dynamic value;
+  const _PrivateKeyedValue(this.key, this.value);
+}
+
+/// Переносимые настройки Shield. Состояние блокировки, биометрия, счётчики
+/// ошибок и локальный журнал безопасности намеренно остаются устройству.
+class _ShieldPrivateSync extends SyncCollection<dynamic> {
+  static const Set<String> _keys = {
+    'shield_hash',
+    'shield_salt',
+    'shield_iterations',
+    'shield_scope',
+    'shield_timeout_minutes',
+    'shield_wipe_after',
+    'shield_password_hint',
+  };
+
+  @override
+  String get name => 'shield_private';
+
+  @override
+  String get boxName => SyncFeatureExtensions.profileBoxName();
+
+  @override
+  String idOf(dynamic value) => value is _PrivateKeyedValue
+      ? SyncFeatureExtensions.privateRecordId(value.key)
+      : '';
+
+  @override
+  Box<dynamic>? box() {
+    if (!Hive.isBoxOpen(boxName)) return null;
+    return Hive.box<dynamic>(boxName);
+  }
+
+  @override
+  Future<Box<dynamic>> ensureBox() async => Hive.isBoxOpen(boxName)
+      ? Hive.box<dynamic>(boxName)
+      : await Hive.openBox<dynamic>(boxName);
+
+  @override
+  Map<String, dynamic> local() {
+    final target = box();
+    if (target == null) return const {};
+    return {
+      for (final key in _keys)
+        if (target.containsKey(key))
+          SyncFeatureExtensions.privateRecordId(key):
+              _PrivateKeyedValue(key, target.get(key)),
+    };
+  }
+
+  @override
+  Map<String, dynamic> encode(dynamic value) => value is _PrivateKeyedValue
+      ? {'key': value.key, 'value': _portableWire(value.value)}
+      : const {};
+
+  @override
+  dynamic decode(Map<String, dynamic> fields) {
+    final key = fields['key'];
+    if (key is! String || !_keys.contains(key)) return null;
+    return _PrivateKeyedValue(key, _portableUnwire(fields['value']));
+  }
+
+  @override
+  Future<bool> applyFields(Map<String, dynamic> fields) async {
+    final incoming = decode(fields);
+    final target = box();
+    if (incoming is! _PrivateKeyedValue || target == null) return false;
+    await target.put(incoming.key, incoming.value);
+    if (Hive.isBoxOpen(ProfileService.settingsBoxName)) {
+      await Hive.box<dynamic>(ProfileService.settingsBoxName)
+          .put(incoming.key, incoming.value);
+    }
+    ShieldService.revision.value++;
+    return true;
+  }
+
+  @override
+  Future<void> removeById(String id) async {
+    final key = SyncFeatureExtensions.privateKeyFromRecordId(id);
+    if (!_keys.contains(key)) return;
+    await box()?.delete(key);
+    if (Hive.isBoxOpen(ProfileService.settingsBoxName)) {
+      await Hive.box<dynamic>(ProfileService.settingsBoxName).delete(key);
+    }
+    ShieldService.revision.value++;
+  }
+}
+
 /// Расширенные Audio Vault метаданные (QC/analysis). Путь к Ableton-проекту
 /// и sourcePath анализа являются путями конкретного устройства и не едут;
 /// сами результаты анализа остаются переносимыми.
@@ -383,4 +634,26 @@ class _AudioExtrasSync extends SyncCollection<dynamic> {
 
   @override
   void notifyChanged() => AudioVaultExtrasService.revision.value++;
+}
+
+dynamic _portableWire(dynamic value) {
+  if (value is Uint8List || value is List<int>) {
+    return {'__wesios_bytes_v1': base64Encode(value as List<int>)};
+  }
+  return value;
+}
+
+dynamic _portableUnwire(dynamic value) {
+  if (value is Map &&
+      value.length == 1 &&
+      value['__wesios_bytes_v1'] is String) {
+    try {
+      return Uint8List.fromList(
+        base64Decode(value['__wesios_bytes_v1'] as String),
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+  return value;
 }
