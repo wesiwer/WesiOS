@@ -19,4 +19,5 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          echo 'retry after stable trust contract validation'
           gh workflow run deploy-wesi-ai-streaming.yml --repo "$GITHUB_REPOSITORY" --ref main -f public_host=wesi-ai-178-236-247-194.nip.io
