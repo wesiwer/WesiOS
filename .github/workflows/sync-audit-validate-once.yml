@@ -35,7 +35,8 @@ jobs:
             grep -q "$token" lib/core/sync/sync_business_extensions.dart
             grep -q "$token" server/pb_hooks/wesi_sync_extra.pb.js
           done
-          grep -q "syncIdForBoxKey" lib/core/sync/sync_journal.dart
+          grep -q "syncIdForKey" lib/core/sync/sync_journal.dart
+          grep -q "syncIdForBoxKey" lib/core/sync/sync_codec.dart
           grep -q "revision-v2" lib/core/sync/pocketbase_transport.dart
           grep -q -- "-updated,-id" server/pb_hooks/wesi_sync_extra.pb.js
           grep -q "buildFullTransferPackage" lib/features/ai/backup/wesi_ai_d2d_service.dart
