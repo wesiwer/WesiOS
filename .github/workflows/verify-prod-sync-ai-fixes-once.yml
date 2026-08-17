@@ -1,0 +1,103 @@
+name: Verify Production Sync and AI Fixes Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-prod-sync-ai-fixes-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Prepare SSH
+        env:
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+          MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+          RELAY_KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          printf '%s\n' "$RELAY_KEY" > ~/.ssh/relay_key
+          chmod 600 ~/.ssh/main_key ~/.ssh/relay_key
+          if [ -n "${MAIN_KNOWN:-}" ]; then printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known 2>/dev/null; fi
+          if [ -n "${RELAY_KNOWN:-}" ]; then printf '%s\n' "$RELAY_KNOWN" > ~/.ssh/relay_known; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known 2>/dev/null; fi
+          chmod 600 ~/.ssh/main_known ~/.ssh/relay_known
+
+      - name: Verify Main sync logs after runtime deploy
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/main_key -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/main_known "$USER@$HOST" 'python3 -' <<'PY'
+          import json, sqlite3
+          from pathlib import Path
+
+          db = Path('/opt/pocketbase/pb_data/auxiliary.db')
+          con = sqlite3.connect(f'file:{db}?mode=ro', uri=True)
+          con.row_factory = sqlite3.Row
+          rows = con.execute("select id,level,message,data,created from _logs where created >= ? order by created desc limit 1500", ('2026-08-17 15:39:00.000Z',)).fetchall()
+          extended = {
+              '/api/wesi/sync/profile', '/api/wesi/sync/sandbox_transactions',
+              '/api/wesi/sync/what_if_presets', '/api/wesi/sync/audio_extras',
+              '/api/wesi/sync/finance_categories', '/api/wesi/sync/team_skills',
+              '/api/wesi/sync/time_center', '/api/wesi/sync/shield_private',
+              '/api/wesi/sync/horizon_predictions', '/api/wesi/sync/horizon_learning',
+              '/api/wesi/sync/horizon_competition', '/api/wesi/sync/horizon_contracts',
+              '/api/wesi/sync/task_ai_memory',
+          }
+          found=[]
+          bad=[]
+          ai=[]
+          for row in rows:
+              msg=str(row['message'] or '')
+              try: data=json.loads(row['data'] or '{}')
+              except Exception: data={}
+              url=str(data.get('url') or '')
+              status=data.get('status')
+              error=str(data.get('error') or '')
+              if url in extended:
+                  item=(row['created'], data.get('method'), url, status, error[:240])
+                  found.append(item)
+                  if 'ReferenceError' in error or (isinstance(status,int) and status >= 400) or status == 0:
+                      bad.append(item)
+              if '/api/wesi/ai/stream/prepare-v2' in url:
+                  ai.append((row['created'], status, error[:240]))
+          print('EXTENDED_SYNC_REQUESTS_AFTER_DEPLOY=', len(found))
+          for item in found[:40]: print('SYNC', item)
+          print('EXTENDED_SYNC_BAD_AFTER_DEPLOY=', len(bad))
+          for item in bad[:40]: print('SYNC_BAD', item)
+          print('AI_PREPARE_V2_AFTER_DEPLOY=', len(ai))
+          for item in ai[:20]: print('AI_PREPARE', item)
+          con.close()
+          if any('wesiSyncExtraRead is not defined' in x[4] or 'ReferenceError: name is not defined' in x[4] for x in bad):
+              raise SystemExit('stale sync callback ReferenceError still present after deploy')
+          PY
+
+      - name: Verify live AI trust parity again
+        env:
+          MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+          MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+          RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+          RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+        run: |
+          set -euo pipefail
+          main_hash="$(ssh -i ~/.ssh/main_key -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/main_known "$MAIN_USER@$MAIN_HOST" "python3 -c 'import hashlib,json; p=json.load(open(\"/opt/pocketbase/pb_hooks/.wesi-ai-relay.json\")); s=str(p.get(\"streamSecret\",\"\")); print(hashlib.sha256(s.encode()).hexdigest())'")"
+          relay_line="$(ssh -i ~/.ssh/relay_key -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/relay_known "$RELAY_USER@$RELAY_HOST" "sudo -n python3 -c 'import hashlib,subprocess; pid=subprocess.check_output([\"systemctl\",\"show\",\"wesi-ai-stream\",\"-p\",\"MainPID\",\"--value\"],text=True).strip(); started=subprocess.check_output([\"systemctl\",\"show\",\"wesi-ai-stream\",\"-p\",\"ExecMainStartTimestamp\",\"--value\"],text=True).strip(); raw=open(\"/proc/\"+pid+\"/environ\",\"rb\").read().split(b\"\\0\"); env=dict(x.split(b\"=\",1) for x in raw if b\"=\" in x); s=env.get(b\"WESI_STREAM_SECRET\",b\"\"); print(pid+\"|\"+started+\"|\"+hashlib.sha256(s).hexdigest())'")"
+          IFS='|' read -r pid started live_hash <<< "$relay_line"
+          echo "STREAM_PID=$pid"
+          echo "STREAM_STARTED=$started"
+          echo "MAIN_SECRET_SHA256=$main_hash"
+          echo "LIVE_SECRET_SHA256=$live_hash"
+          test "$main_hash" = "$live_hash"
+          curl -fsS --max-time 10 https://wesi-ai-178-236-247-194.nip.io/health | grep -q '"streaming":true'
+          echo POST_DEPLOY_AI_TRUST_OK
