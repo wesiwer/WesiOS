@@ -32,19 +32,16 @@ jobs:
           if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Discover PocketBase databases and log tables
+      - name: Read recent stream prepare failures
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
           set -euo pipefail
           if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=''; fi
-          echo '=== PB_DATA FILES ==='
-          $SUDO find /opt/pocketbase/pb_data -maxdepth 1 -type f -printf '%f %s bytes\n' 2>/dev/null | sort || true
-          echo '=== SQLITE TABLES ==='
-          for db in /opt/pocketbase/pb_data/*.db /opt/pocketbase/pb_data/*.sqlite; do
-            $SUDO test -f "$db" 2>/dev/null || continue
-            printf 'DB=%s\n' "$(basename "$db")"
-            $SUDO python3 -c 'import sqlite3,sys; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); print("\n".join(r[0] for r in c.execute("select name from sqlite_master where type=\"table\" order by name")))' "$db" 2>/dev/null || true
-          done
+          db=/opt/pocketbase/pb_data/auxiliary.db
+          echo '=== _LOGS SCHEMA ==='
+          $SUDO python3 -c 'import sqlite3,sys; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); print("\n".join(str(r) for r in c.execute("pragma table_info(_logs)")))' "$db"
+          echo '=== RECENT WESI STREAM LOGS ==='
+          $SUDO python3 -c 'import sqlite3,sys,re; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); cols=[r[1] for r in c.execute("pragma table_info(_logs)")]; wanted=[x for x in ("id","created","updated","level","message","data") if x in cols]; rows=c.execute("select "+",".join(wanted)+" from _logs order by rowid desc limit 3000").fetchall(); rx=re.compile(r"(?i)(authorization|x-wesios-session|x-wesi-ai-stream-secret)([=: ]+)([^, }\\\"\\n]+)"); n=0; print("COLUMNS="+",".join(wanted)); [(print(rx.sub(lambda m:m.group(1)+m.group(2)+"[REDACTED]", " | ".join(str(v or "") for v in row))[:8000]), globals().__setitem__("n",n+1)) for row in rows if ("/api/wesi/ai/stream/prepare" in " | ".join(str(v or "") for v in row).lower() or "wai_stream_main_rejected" in " | ".join(str(v or "") for v in row).lower() or ("wesi" in " | ".join(str(v or "") for v in row).lower() and ("status\\\":400" in " | ".join(str(v or "") for v in row).lower() or "bad request" in " | ".join(str(v or "") for v in row).lower())))][:120]' "$db" 2>/dev/null || true
           REMOTE
