@@ -1,0 +1,51 @@
+name: Verify Horizon And Sync Production SHA Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-horizon-sync-production-sha-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_verify && chmod 600 ~/.ssh/id_verify
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Verify exact production files
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          files=(
+            wesi_ai_horizon_tools.js
+            wesi_ai_horizon_policy.js
+            wesi_ai_finance_tools.js
+            wesi_sync_read.pb.js
+            wesi_sync_write.pb.js
+          )
+          for f in "${files[@]}"; do
+            case "$f" in
+              wesi_sync_*) local="server/pb_hooks/$f" ;;
+              *) local="server/pb_hooks/$f" ;;
+            esac
+            expected=$(sha256sum "$local" | awk '{print $1}')
+            actual=$(ssh -i ~/.ssh/id_verify -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" "sha256sum '/opt/pocketbase/pb_hooks/$f' | awk '{print \\$1}'")
+            [ "$actual" = "$expected" ] || { echo "mismatch:$f expected=$expected actual=$actual"; exit 1; }
+            echo "match:$f $actual"
+          done
