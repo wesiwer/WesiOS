@@ -72,3 +72,5 @@ jobs:
           git rm scripts/patch_wesi_ai_dynamic_deliberation.py
           git commit -m 'feat(ai): make Thinking a dynamic deliberation mode'
           git push origin HEAD:fix/wesi-ai-dynamic-deliberation
+
+# validation trigger 2026-08-17T15:05+03:00
