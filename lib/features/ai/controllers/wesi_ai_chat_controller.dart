@@ -1006,7 +1006,7 @@ class WesiAiChatController extends ChangeNotifier {
         _ => 'медиа',
       };
       final text = result.ok
-          ? 'Локальная генерация $label завершена. Файл сохранён: ${result.outputPath}'
+          ? 'Локальная генерация $label завершена. Файл сохранён в WesiOS.'
           : result.code == 'WAI_MEDIA_ENGINE_NOT_INSTALLED'
               ? 'Для генерации $label установите соответствующий Wesi AI Media Engine в Настройки → Модели.'
               : 'Локальная генерация $label не завершилась (${result.code}).';
@@ -1026,6 +1026,9 @@ class WesiAiChatController extends ChangeNotifier {
               'mediaType': type,
               if (result.outputPath != null) 'localPath': result.outputPath,
               if (result.mimeType != null) 'mimeType': result.mimeType,
+              if (result.byteSize != null) 'byteSize': result.byteSize,
+              if (result.sha256Hex != null) 'sha256': result.sha256Hex,
+              'artifactOwned': result.ok && result.outputPath != null,
             },
           ),
         ],
