@@ -44,6 +44,18 @@ replace_once(
     '      if (thinkingMode && !deliberationState) {',
 )
 
+# Existing baseline request is Classic (thinkingMode omitted/false). It should
+# still stream the answer, but no longer receive the old template deliberation.
+replace_once(
+    'server/wesi-ai-stream/gateway.test.mjs',
+    "    assert.deepEqual(events.map((event) => event.type), ['meta', 'agent', 'activity', 'activity', 'delta', 'delta', 'agent', 'done']);\n"
+    "    const visibleReasoning = events.find((event) => event.type === 'activity' && event.label === 'Как я подхожу к запросу');\n"
+    "    assert.ok(visibleReasoning);\n"
+    "    assert.match(String(visibleReasoning.detail || ''), /приветств/i);",
+    "    assert.deepEqual(events.map((event) => event.type), ['meta', 'agent', 'activity', 'delta', 'delta', 'agent', 'done']);\n"
+    "    assert.equal(events.some((event) => event.publicDeliberation === true), false);",
+)
+
 # Add a regression test: Classic must not spend a model call on public
 # deliberation, while still using the streaming orchestration endpoint.
 test_path = Path('server/wesi-ai-stream/gateway.test.mjs')
@@ -61,7 +73,10 @@ test('classic mode keeps streaming orchestration but skips public deliberation',
     }
     if (value.endsWith('/v1/wesi-ai-stream')) {
       relayCalls += 1;
-      return ndjson([{type: 'done', answer: 'Быстрый полноценный ответ.'}]);
+      return ndjson([
+        {type: 'delta', text: 'Быстрый полноценный ответ.'},
+        {type: 'done', answer: 'Быстрый полноценный ответ.'},
+      ]);
     }
     throw new Error(`unexpected URL ${url}`);
   };
