@@ -295,49 +295,95 @@ class SyncEngine {
 
     var applied = 0;
     SyncFailure? applyFailure;
+    var pending = List<SyncRecord>.from(plan.toApplyLocally);
 
-    Future<void> markApplyIncomplete(String id) async {
+    Future<void> resetIncompleteStamp(String id) async {
       SyncJournal.forget(c.name, id);
       await SyncJournal.record(
         c.name,
         id,
         SyncStamp(DateTime.fromMillisecondsSinceEpoch(0)),
       );
-      applyFailure ??= const SyncFailure(
+    }
+
+    // Some valid server rows depend on another row in the same collection.
+    // Organizations are the obvious case: a child can sort before its parent.
+    // Grants may also depend on an actor grant. One-pass application therefore
+    // turns a harmless wire order into a permanent sync failure. Retry only
+    // rows that were not accepted, and stop as soon as a full pass makes no
+    // progress. This is bounded by the number of rows because every continuing
+    // pass must apply at least one row.
+    while (pending.isNotEmpty) {
+      var progressed = false;
+      final deferred = <SyncRecord>[];
+
+      for (final r in pending) {
+        SyncJournal.expect(
+          c.name,
+          r.id,
+          SyncStamp(r.updatedAt, deleted: r.deleted),
+        );
+        await SyncJournal.record(
+          c.name,
+          r.id,
+          SyncStamp(r.updatedAt, deleted: r.deleted),
+        );
+
+        var accepted = false;
+        try {
+          if (r.deleted) {
+            await c.removeById(r.id);
+            accepted = true;
+          } else {
+            accepted = await c.applyFields(r.fields);
+          }
+        } catch (_) {
+          accepted = false;
+        }
+
+        if (accepted) {
+          applied++;
+          progressed = true;
+        } else {
+          // The expected Hive event will never arrive for a rejected row.
+          // Do not let the expectation consume a later real user edit.
+          SyncJournal.forget(c.name, r.id);
+          deferred.add(r);
+        }
+      }
+
+      if (deferred.isEmpty) {
+        pending = const <SyncRecord>[];
+        break;
+      }
+      pending = deferred;
+      if (!progressed) break;
+    }
+
+    if (pending.isNotEmpty) {
+      for (final r in pending) {
+        await resetIncompleteStamp(r.id);
+      }
+      final first = pending.first.id;
+      final suffix = pending.length > 1 ? ' (+${pending.length - 1})' : '';
+      applyFailure = SyncFailure(
         'REMOTE_APPLY_INCOMPLETE',
-        'Часть полученных с сервера данных не удалось применить',
+        'Не удалось применить ${c.name}:$first$suffix',
       );
     }
 
-    for (final r in plan.toApplyLocally) {
-      // Журнал предупреждается до записи, иначе он отметит чужую правку как
-      // нашу, и она уедет обратно на сервер уже как более свежая.
-      SyncJournal.expect(
-          c.name, r.id, SyncStamp(r.updatedAt, deleted: r.deleted));
-      await SyncJournal.record(
-          c.name, r.id, SyncStamp(r.updatedAt, deleted: r.deleted));
-
-      try {
-        if (r.deleted) {
-          await c.removeById(r.id);
-          applied++;
-        } else if (await c.applyFields(r.fields)) {
-          applied++;
-        } else {
-          // The row was fetched but not actually accepted by the local model.
-          // Do not report a successful full sync: otherwise SyncAuto advances
-          // its server watermark and this row can remain stranded forever.
-          await markApplyIncomplete(r.id);
-        }
-      } catch (_) {
-        // One malformed/dependency-blocked row must not abort application of
-        // the remaining remote rows, but the pass is still incomplete and
-        // must be retried before the revision watermark advances.
-        await markApplyIncomplete(r.id);
-      }
-    }
-
     if (applied > 0) c.notifyChanged();
+
+    // Never push a merge plan derived from a state that we failed to apply.
+    // Retrying later is safe; uploading while incomplete can overwrite a valid
+    // server row with stale local state.
+    if (applyFailure != null) {
+      return SyncCollectionReport(
+        collection: c.name,
+        applied: applied,
+        failure: applyFailure,
+      );
+    }
 
     if (plan.toUpload.isEmpty) {
       return SyncCollectionReport(

@@ -105,13 +105,30 @@ module.exports = {
       if (Number.isFinite(opening)) balance += opening;
     }
 
+    // Keep this exactly aligned with AccountService.summaries(): recurring
+    // templates do not affect actual balance, future operations do not count,
+    // and legacy materialized recurring-income rows are excluded to prevent a
+    // historical double count. Actual Treasury balance is in reporting amount
+    // (`amount`), not organizationBaseAmount.
+    const recurringIncomeIds = [];
     for (const row of transactions) {
       const p = policy.payload(row);
       if (String(p.organizationId || policy.ROOT_ORG) !== organizationId) continue;
-      if (p.isRecurring === true) continue;
-      const rawBase = Number(p.organizationBaseAmount);
-      const rawAmount = Number(p.amount);
-      const amount = Number.isFinite(rawBase) ? rawBase : rawAmount;
+      if (p.isRecurring === true && String(p.type || "expense") === "income") {
+        recurringIncomeIds.push(String(p.id || row.getString("rid") || ""));
+      }
+    }
+    const legacyAutoIncome = (p, row) => {
+      if (p.isRecurring === true || String(p.type || "expense") !== "income") return false;
+      const id = String(p.id || row.getString("rid") || "");
+      return recurringIncomeIds.some((recurringId) => recurringId && id.indexOf(recurringId + "_") === 0);
+    };
+
+    for (const row of transactions) {
+      const p = policy.payload(row);
+      if (String(p.organizationId || policy.ROOT_ORG) !== organizationId) continue;
+      if (p.isRecurring === true || legacyAutoIncome(p, row)) continue;
+      const amount = Number(p.amount);
       const at = date(p.date);
       if (!Number.isFinite(amount) || amount < 0 || !at || at > now) continue;
       const signed = String(p.type || "expense") === "income" ? amount : -amount;
