@@ -1,0 +1,92 @@
+name: Repair AI Tool Data Contracts Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/repair-ai-tool-data-contracts-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply bounded reads and trusted organization scope
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re
+          root=pathlib.Path('server/pb_hooks')
+          files=sorted(root.glob('wesi_ai_*.js'))
+          changed=[]
+          replacements=0
+          org_replacements=0
+          for p in files:
+              text=p.read_text(encoding='utf-8')
+              before=text
+              # PocketBase JSVM production rejects/behaves inconsistently with
+              # zero maxRecords. Use bounded positive reads everywhere.
+              rules=[
+                  (r'("-stamp,-id"\s*,\s*)0(\s*,\s*0\s*,)', r'\g<1>5000\2'),
+                  (r'("-stamp"\s*,\s*)0(\s*,\s*0\s*,)', r'\g<1>5000\2'),
+                  (r'("stamp"\s*,\s*)0(\s*,\s*0\s*,)', r'\g<1>5000\2'),
+                  (r'("id"\s*,\s*)0(\s*,\s*0\s*,)', r'\g<1>1000\2'),
+              ]
+              for pattern,repl in rules:
+                  text,n=re.subn(pattern,repl,text)
+                  replacements += n
+              text,n=re.subn(r'input\.organizationId\s*\|\|\s*activeOrganizationId', 'activeOrganizationId || input.organizationId', text)
+              org_replacements += n
+              if text!=before:
+                  p.write_text(text,encoding='utf-8')
+                  changed.append(str(p))
+          if replacements < 8:
+              raise SystemExit(f'expected systemic zero-limit replacements, got {replacements}')
+          if org_replacements < 3:
+              raise SystemExit(f'expected model-first organization replacements, got {org_replacements}')
+          print('READ_LIMIT_REPLACEMENTS=',replacements)
+          print('ORG_SCOPE_REPLACEMENTS=',org_replacements)
+          print('CHANGED_FILES=',*changed,sep='\n')
+          PY
+
+      - name: Verify no zero-limit tool read or model-first org scope remains
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib,re
+          offenders=[]
+          for p in sorted(pathlib.Path('server/pb_hooks').glob('wesi_ai_*.js')):
+              text=p.read_text(encoding='utf-8')
+              # Detect the exact production anti-pattern after a sort argument.
+              if re.search(r'findRecordsByFilter\s*\([^;]{0,700}?["\x27](?:-?stamp(?:,-id)?|id)["\x27]\s*,\s*0\s*,\s*0',text,re.S):
+                  offenders.append(str(p)+': zero maxRecords')
+              if re.search(r'input\.organizationId\s*\|\|\s*activeOrganizationId',text):
+                  offenders.append(str(p)+': model organization precedes trusted activeOrganizationId')
+          if offenders:
+              raise SystemExit('\n'.join(offenders))
+          print('AI_TOOL_DATA_CONTRACT_STATIC_OK')
+          PY
+
+      - name: Run AI hook tests
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_ai_horizon_tools.js
+          node --check server/pb_hooks/wesi_ai_horizon_policy.js
+          node --check server/pb_hooks/wesi_ai_finance_tools.js
+          node --test server/wesi-ai-relay/*.test.mjs
+
+      - name: Commit systemic repair
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then echo 'No diff'; exit 0; fi
+          git config user.name 'WesiOS AI Contract Repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/pb_hooks
+          git commit -m 'fix(ai): repair systemic tool data access contracts'
+          git push origin HEAD:main
