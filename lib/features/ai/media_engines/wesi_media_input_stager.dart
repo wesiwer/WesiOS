@@ -171,6 +171,7 @@ class WesiMediaInputStager {
       'text/plain': 'txt',
       'text/vtt': 'vtt',
       'application/x-subrip': 'srt',
+      'application/zip': 'zip',
     };
     return byMime[mime] ?? 'bin';
   }

@@ -1,5 +1,6 @@
 import 'wesi_media_engine_path_guard.dart';
 import 'wesi_media_engine_service.dart';
+import 'wesi_media_output_validator.dart';
 
 class WesiMediaRunResult {
   final bool ok;
@@ -18,6 +19,8 @@ class WesiMediaRunResult {
 /// Executes only a server-verified localMediaRequest produced by Wesi tools.
 /// The model never chooses an executable path. The selected engine comes from
 /// the enum and the output must resolve inside that engine's managed directory.
+/// Successful media output is accepted only after structured validation
+/// evidence from the verified engine package passes WesiMediaOutputValidator.
 class WesiMediaEngineRunner {
   const WesiMediaEngineRunner._();
 
@@ -77,11 +80,24 @@ class WesiMediaEngineRunner {
         code: 'WAI_MEDIA_ENGINE_BAD_OUTPUT',
       );
     }
+
+    final mimeType = '${result['mimeType'] ?? ''}'.trim();
+    final workflow = '${options['workflow'] ?? ''}'.trim();
+    final validation = WesiMediaOutputValidator.validate(
+      mediaType: mediaType,
+      workflow: workflow,
+      mimeType: mimeType,
+      evidence: result['validation'],
+    );
+    if (!validation.ok) {
+      return WesiMediaRunResult(ok: false, code: validation.code);
+    }
+
     return WesiMediaRunResult(
       ok: true,
       code: 'OK',
       outputPath: outputPath,
-      mimeType: '${result['mimeType'] ?? ''}'.trim(),
+      mimeType: mimeType,
     );
   }
 }

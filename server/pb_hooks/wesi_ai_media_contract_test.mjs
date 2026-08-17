@@ -13,6 +13,9 @@ const expectedTools = [
   'reference_image',
   'generate_music',
   'separate_music_stems',
+  'regenerate_music_stem',
+  'mix_music',
+  'export_music',
   'generate_video',
   'compose_video',
   'add_video_voice',
@@ -51,8 +54,38 @@ test('input workflow accepts only current-turn attachment indexes', () => {
 
 test('input workflow rejects missing, duplicate, and out-of-range indexes', () => {
   assert.equal(media.normalize('musicStems', {}).code, 'WAI_MEDIA_INPUT_REQUIRED');
+  assert.equal(media.normalize('musicMix', {attachmentIndexes: [0]}).code, 'WAI_MEDIA_INPUT_REQUIRED');
   assert.equal(media.normalize('videoCompose', {prompt: 'compose', attachmentIndexes: [0, 0]}).code, 'WAI_MEDIA_INPUT_REQUIRED');
   assert.equal(media.normalize('videoCompose', {prompt: 'compose', attachmentIndexes: [4]}).code, 'WAI_MEDIA_INPUT_REQUIRED');
+});
+
+test('producer workflows are bounded and normalized', () => {
+  const regenerate = media.normalize('musicRegenerateStem', {
+    attachmentIndex: 0,
+    prompt: 'make the bass warmer',
+    stemName: 'bass',
+    format: 'flac',
+  });
+  assert.equal(regenerate.ok, true);
+  assert.equal(regenerate.request.options.stemName, 'bass');
+  assert.equal(regenerate.request.options.format, 'flac');
+
+  const mix = media.normalize('musicMix', {
+    attachmentIndexes: [0, 1, 2],
+    format: 'wav',
+    normalize: false,
+  });
+  assert.equal(mix.ok, true);
+  assert.deepEqual(mix.request.attachmentIndexes, [0, 1, 2]);
+  assert.equal(mix.request.options.normalize, false);
+
+  const exported = media.normalize('musicExport', {
+    attachmentIndexes: [0],
+    target: 'package',
+    format: 'wav',
+  });
+  assert.equal(exported.ok, true);
+  assert.equal(exported.request.options.target, 'package');
 });
 
 test('voice workflow requires exactly video and voice attachment indexes', () => {
@@ -101,6 +134,15 @@ test('input tools emit only normalized workflow and attachment indexes', () => {
   assert.equal(voice.ok, true);
   assert.equal(voice.result.localMediaRequest.workflow, 'videoVoice');
   assert.deepEqual(voice.result.localMediaRequest.attachmentIndexes, [0, 1]);
+
+  const mix = tools.execute(null, {}, 'mix_music', {
+    attachmentIndexes: [0, 1],
+    inputPaths: ['/etc/passwd'],
+  });
+  assert.equal(mix.ok, true);
+  assert.equal(mix.result.localMediaRequest.workflow, 'musicMix');
+  assert.deepEqual(mix.result.localMediaRequest.attachmentIndexes, [0, 1]);
+  assert.equal('inputPaths' in mix.result.localMediaRequest, false);
 });
 
 test('unknown workflows fail closed', () => {

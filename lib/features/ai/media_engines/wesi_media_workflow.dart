@@ -14,6 +14,9 @@ enum WesiMediaWorkflowKind {
   imageReference,
   musicGenerate,
   musicStems,
+  musicRegenerateStem,
+  musicMix,
+  musicExport,
   videoGenerate,
   videoCompose,
   videoVoice,
@@ -40,7 +43,10 @@ class WesiMediaWorkflowRequest {
         WesiMediaWorkflowKind.imageReference =>
           'image',
         WesiMediaWorkflowKind.musicGenerate ||
-        WesiMediaWorkflowKind.musicStems =>
+        WesiMediaWorkflowKind.musicStems ||
+        WesiMediaWorkflowKind.musicRegenerateStem ||
+        WesiMediaWorkflowKind.musicMix ||
+        WesiMediaWorkflowKind.musicExport =>
           'music',
         _ => 'video',
       };
@@ -49,6 +55,9 @@ class WesiMediaWorkflowRequest {
         WesiMediaWorkflowKind.imageEdit ||
         WesiMediaWorkflowKind.imageReference ||
         WesiMediaWorkflowKind.musicStems ||
+        WesiMediaWorkflowKind.musicRegenerateStem ||
+        WesiMediaWorkflowKind.musicMix ||
+        WesiMediaWorkflowKind.musicExport ||
         WesiMediaWorkflowKind.videoCompose ||
         WesiMediaWorkflowKind.videoVoice ||
         WesiMediaWorkflowKind.videoSfx ||
@@ -106,6 +115,9 @@ class WesiMediaWorkflow {
       'imageReference' => WesiMediaWorkflowKind.imageReference,
       'musicGenerate' => WesiMediaWorkflowKind.musicGenerate,
       'musicStems' => WesiMediaWorkflowKind.musicStems,
+      'musicRegenerateStem' => WesiMediaWorkflowKind.musicRegenerateStem,
+      'musicMix' => WesiMediaWorkflowKind.musicMix,
+      'musicExport' => WesiMediaWorkflowKind.musicExport,
       'videoGenerate' => WesiMediaWorkflowKind.videoGenerate,
       'videoCompose' => WesiMediaWorkflowKind.videoCompose,
       'videoVoice' => WesiMediaWorkflowKind.videoVoice,
@@ -124,6 +136,11 @@ class WesiMediaWorkflow {
         },
       'music' || 'audio' => switch (operation) {
           'stems' || 'musicstems' => WesiMediaWorkflowKind.musicStems,
+          'regeneratestem' ||
+          'musicregeneratestem' =>
+            WesiMediaWorkflowKind.musicRegenerateStem,
+          'mix' || 'musicmix' => WesiMediaWorkflowKind.musicMix,
+          'export' || 'musicexport' => WesiMediaWorkflowKind.musicExport,
           _ => WesiMediaWorkflowKind.musicGenerate,
         },
       'video' => switch (operation) {
@@ -192,7 +209,9 @@ class WesiMediaWorkflow {
       );
     }
     if (request.inputPaths.length > maxInputs ||
-        (request.requiresInput && request.inputPaths.isEmpty)) {
+        (request.requiresInput && request.inputPaths.isEmpty) ||
+        (request.kind == WesiMediaWorkflowKind.musicMix &&
+            request.inputPaths.length < 2)) {
       return const WesiMediaWorkflowResult(
         ok: false,
         code: 'WAI_MEDIA_INPUT_INVALID',

@@ -10,6 +10,7 @@ function localRequest(workflow, input) {
 }
 
 const attachmentIndex = {type: "integer", enum: [0, 1, 2, 3]};
+const attachmentIndexes = {type: "array", minItems: 1, maxItems: 4, items: attachmentIndex};
 
 module.exports = {
   definitions: function() {
@@ -21,8 +22,7 @@ module.exports = {
           type: "object",
           required: ["prompt"],
           properties: {
-            prompt: {type: "string"},
-            title: {type: "string"},
+            prompt: {type: "string"}, title: {type: "string"},
             aspectRatio: {type: "string", enum: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]},
             imageSize: {type: "string", enum: ["0.5K", "1K", "2K", "4K"]}
           }
@@ -30,14 +30,11 @@ module.exports = {
       },
       {
         name: "edit_image",
-        description: "Изменить изображение из вложений текущего сообщения. attachmentIndex — номер вложения начиная с 0. Используй только по явной просьбе пользователя изменить приложенное изображение.",
+        description: "Изменить изображение из вложений текущего сообщения. attachmentIndex — номер вложения начиная с 0.",
         parameters: {
-          type: "object",
-          required: ["prompt", "attachmentIndex"],
+          type: "object", required: ["prompt", "attachmentIndex"],
           properties: {
-            prompt: {type: "string"},
-            attachmentIndex: attachmentIndex,
-            title: {type: "string"},
+            prompt: {type: "string"}, attachmentIndex: attachmentIndex, title: {type: "string"},
             aspectRatio: {type: "string", enum: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]},
             imageSize: {type: "string", enum: ["0.5K", "1K", "2K", "4K"]}
           }
@@ -47,12 +44,9 @@ module.exports = {
         name: "reference_image",
         description: "Создать новое изображение с опорой на изображение из вложений текущего сообщения. attachmentIndex — номер вложения начиная с 0.",
         parameters: {
-          type: "object",
-          required: ["prompt", "attachmentIndex"],
+          type: "object", required: ["prompt", "attachmentIndex"],
           properties: {
-            prompt: {type: "string"},
-            attachmentIndex: attachmentIndex,
-            title: {type: "string"},
+            prompt: {type: "string"}, attachmentIndex: attachmentIndex, title: {type: "string"},
             aspectRatio: {type: "string", enum: ["1:1", "2:3", "3:2", "3:4", "4:3", "4:5", "5:4", "9:16", "16:9", "21:9"]},
             imageSize: {type: "string", enum: ["0.5K", "1K", "2K", "4K"]}
           }
@@ -62,11 +56,9 @@ module.exports = {
         name: "generate_music",
         description: "Сгенерировать новую музыку локальным Wesi Music Engine по явной просьбе пользователя.",
         parameters: {
-          type: "object",
-          required: ["prompt"],
+          type: "object", required: ["prompt"],
           properties: {
-            prompt: {type: "string"},
-            title: {type: "string"},
+            prompt: {type: "string"}, title: {type: "string"},
             mode: {type: "string", enum: ["clip", "pro"]},
             format: {type: "string", enum: ["mp3", "wav"]}
           }
@@ -74,92 +66,89 @@ module.exports = {
       },
       {
         name: "separate_music_stems",
-        description: "Разделить аудиофайл из вложений текущего сообщения на стемы. attachmentIndex — номер аудио-вложения начиная с 0.",
+        description: "Разделить аудиофайл из вложений текущего сообщения на стемы.",
         parameters: {
-          type: "object",
-          required: ["attachmentIndex"],
+          type: "object", required: ["attachmentIndex"],
+          properties: {attachmentIndex: attachmentIndex, prompt: {type: "string"}, title: {type: "string"}, format: {type: "string", enum: ["wav", "flac"]}}
+        }
+      },
+      {
+        name: "regenerate_music_stem",
+        description: "Перегенерировать один выбранный музыкальный стем из текущего вложения. Не принимает filesystem path.",
+        parameters: {
+          type: "object", required: ["attachmentIndex", "prompt"],
           properties: {
-            attachmentIndex: attachmentIndex,
-            prompt: {type: "string"},
-            title: {type: "string"},
-            format: {type: "string", enum: ["wav", "flac"]}
+            attachmentIndex: attachmentIndex, prompt: {type: "string"}, title: {type: "string"},
+            stemName: {type: "string"}, format: {type: "string", enum: ["wav", "flac"]}
+          }
+        }
+      },
+      {
+        name: "mix_music",
+        description: "Свести 2–4 музыкальных дорожки/стема из вложений текущего сообщения.",
+        parameters: {
+          type: "object", required: ["attachmentIndexes"],
+          properties: {
+            attachmentIndexes: {type: "array", minItems: 2, maxItems: 4, items: attachmentIndex},
+            prompt: {type: "string"}, title: {type: "string"}, format: {type: "string", enum: ["wav", "flac"]}, normalize: {type: "boolean"}
+          }
+        }
+      },
+      {
+        name: "export_music",
+        description: "Экспортировать мастер, стемы или пакет из 1–4 музыкальных вложений текущего сообщения.",
+        parameters: {
+          type: "object", required: ["attachmentIndexes"],
+          properties: {
+            attachmentIndexes: attachmentIndexes, prompt: {type: "string"}, title: {type: "string"},
+            target: {type: "string", enum: ["master", "stems", "package"]}, format: {type: "string", enum: ["wav", "flac"]}
           }
         }
       },
       {
         name: "generate_video",
-        description: "Сгенерировать новое видео с нуля локальным Wesi Video Engine по явной просьбе пользователя. Не используй для обработки приложенного видео.",
+        description: "Сгенерировать новое видео с нуля локальным Wesi Video Engine по явной просьбе пользователя.",
         parameters: {
-          type: "object",
-          required: ["prompt"],
+          type: "object", required: ["prompt"],
           properties: {
-            prompt: {type: "string"},
-            title: {type: "string"},
-            aspectRatio: {type: "string", enum: ["16:9", "9:16"]},
-            resolution: {type: "string", enum: ["720p", "1080p", "4k"]},
-            durationSeconds: {type: "string", enum: ["4", "6", "8"]},
+            prompt: {type: "string"}, title: {type: "string"}, aspectRatio: {type: "string", enum: ["16:9", "9:16"]},
+            resolution: {type: "string", enum: ["720p", "1080p", "4k"]}, durationSeconds: {type: "string", enum: ["4", "6", "8"]},
             quality: {type: "string", enum: ["fast", "quality"]}
           }
         }
       },
       {
         name: "compose_video",
-        description: "Собрать видео из 1–4 вложений текущего сообщения. attachmentIndexes — номера вложений начиная с 0; произвольные пути запрещены.",
+        description: "Собрать видео из 1–4 вложений текущего сообщения. Произвольные пути запрещены.",
         parameters: {
-          type: "object",
-          required: ["prompt", "attachmentIndexes"],
+          type: "object", required: ["prompt", "attachmentIndexes"],
           properties: {
-            prompt: {type: "string"},
-            attachmentIndexes: {type: "array", minItems: 1, maxItems: 4, items: attachmentIndex},
-            title: {type: "string"},
-            aspectRatio: {type: "string", enum: ["16:9", "9:16"]},
-            resolution: {type: "string", enum: ["720p", "1080p", "4k"]},
-            durationSeconds: {type: "string", enum: ["4", "6", "8"]},
-            quality: {type: "string", enum: ["fast", "quality"]}
+            prompt: {type: "string"}, attachmentIndexes: attachmentIndexes, title: {type: "string"},
+            aspectRatio: {type: "string", enum: ["16:9", "9:16"]}, resolution: {type: "string", enum: ["720p", "1080p", "4k"]},
+            durationSeconds: {type: "string", enum: ["4", "6", "8"]}, quality: {type: "string", enum: ["fast", "quality"]}
           }
         }
       },
       {
         name: "add_video_voice",
-        description: "Добавить голосовую дорожку из вложения к видео из другого вложения текущего сообщения. Укажи оба индекса 0–3.",
+        description: "Добавить голосовую дорожку из вложения к видео из другого вложения текущего сообщения.",
         parameters: {
-          type: "object",
-          required: ["videoAttachmentIndex", "voiceAttachmentIndex"],
+          type: "object", required: ["videoAttachmentIndex", "voiceAttachmentIndex"],
           properties: {
-            videoAttachmentIndex: attachmentIndex,
-            voiceAttachmentIndex: attachmentIndex,
-            prompt: {type: "string"},
-            title: {type: "string"},
+            videoAttachmentIndex: attachmentIndex, voiceAttachmentIndex: attachmentIndex, prompt: {type: "string"}, title: {type: "string"},
             mix: {type: "string", enum: ["replace", "duck", "overlay"]}
           }
         }
       },
       {
         name: "add_video_sfx",
-        description: "Добавить или сгенерировать звуковые эффекты для видео из вложения текущего сообщения. videoAttachmentIndex — номер видео начиная с 0.",
-        parameters: {
-          type: "object",
-          required: ["videoAttachmentIndex", "prompt"],
-          properties: {
-            videoAttachmentIndex: attachmentIndex,
-            prompt: {type: "string"},
-            title: {type: "string"}
-          }
-        }
+        description: "Добавить или сгенерировать звуковые эффекты для видео из вложения текущего сообщения.",
+        parameters: {type: "object", required: ["videoAttachmentIndex", "prompt"], properties: {videoAttachmentIndex: attachmentIndex, prompt: {type: "string"}, title: {type: "string"}}}
       },
       {
         name: "add_video_subtitles",
-        description: "Добавить субтитры к видео из вложения текущего сообщения. videoAttachmentIndex — номер видео начиная с 0.",
-        parameters: {
-          type: "object",
-          required: ["videoAttachmentIndex"],
-          properties: {
-            videoAttachmentIndex: attachmentIndex,
-            prompt: {type: "string"},
-            language: {type: "string"},
-            title: {type: "string"}
-          }
-        }
+        description: "Добавить субтитры к видео из вложения текущего сообщения.",
+        parameters: {type: "object", required: ["videoAttachmentIndex"], properties: {videoAttachmentIndex: attachmentIndex, prompt: {type: "string"}, language: {type: "string"}, title: {type: "string"}}}
       }
     ];
   },
@@ -169,11 +158,12 @@ module.exports = {
       mediaGeneration: ["image", "music", "video"],
       mediaWorkflows: [
         "imageGenerate", "imageEdit", "imageReference",
-        "musicGenerate", "musicStems",
+        "musicGenerate", "musicStems", "musicRegenerateStem", "musicMix", "musicExport",
         "videoGenerate", "videoCompose", "videoVoice", "videoSfx", "videoSubtitles"
       ],
       mediaAttachmentSelection: "current_turn_indexes_0_to_3",
       mediaExecution: "verified_client_engine",
+      mediaValidation: "wesi-media-v1",
       paidCloudMedia: false
     };
   },
@@ -185,6 +175,9 @@ module.exports = {
     if (name === "reference_image") return localRequest("imageReference", input);
     if (name === "generate_music") return localRequest("musicGenerate", input);
     if (name === "separate_music_stems") return localRequest("musicStems", input);
+    if (name === "regenerate_music_stem") return localRequest("musicRegenerateStem", input);
+    if (name === "mix_music") return localRequest("musicMix", input);
+    if (name === "export_music") return localRequest("musicExport", input);
     if (name === "generate_video") return localRequest("videoGenerate", input);
     if (name === "compose_video") return localRequest("videoCompose", input);
     if (name === "add_video_voice") return localRequest("videoVoice", input);
