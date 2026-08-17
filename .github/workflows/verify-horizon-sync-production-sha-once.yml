@@ -40,12 +40,9 @@ jobs:
             wesi_sync_write.pb.js
           )
           for f in "${files[@]}"; do
-            case "$f" in
-              wesi_sync_*) local="server/pb_hooks/$f" ;;
-              *) local="server/pb_hooks/$f" ;;
-            esac
-            expected=$(sha256sum "$local" | awk '{print $1}')
-            actual=$(ssh -i ~/.ssh/id_verify -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" "sha256sum '/opt/pocketbase/pb_hooks/$f' | awk '{print \\$1}'")
+            local="server/pb_hooks/$f"
+            expected=$(sha256sum "$local" | cut -d' ' -f1)
+            actual=$(ssh -i ~/.ssh/id_verify -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" "sha256sum '/opt/pocketbase/pb_hooks/$f' | cut -d' ' -f1")
             [ "$actual" = "$expected" ] || { echo "mismatch:$f expected=$expected actual=$actual"; exit 1; }
             echo "match:$f $actual"
           done
