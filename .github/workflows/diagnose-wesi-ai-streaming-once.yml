@@ -46,50 +46,30 @@ jobs:
 
           echo '=== RECENT NGINX ACCESS: STREAM PREPARE ==='
           for f in /var/log/nginx/access.log /var/log/nginx/*access*.log; do
-            [ -r "$f" ] || $SUDO test -r "$f" 2>/dev/null || continue
-            ($SUDO tail -n 5000 "$f" 2>/dev/null || true) \
-              | grep -F '/api/wesi/ai/stream/prepare' \
-              | tail -n 80 || true
+            [ -e "$f" ] || continue
+            ($SUDO tail -n 5000 "$f" 2>/dev/null || true) | grep -F '/api/wesi/ai/stream/prepare' | tail -n 80 || true
           done
 
           echo '=== RECENT NGINX ERRORS: STREAM ==='
           for f in /var/log/nginx/error.log /var/log/nginx/*error*.log; do
-            [ -r "$f" ] || $SUDO test -r "$f" 2>/dev/null || continue
-            ($SUDO tail -n 1200 "$f" 2>/dev/null || true) \
-              | grep -Ei 'stream/prepare|wesi/ai|client intended|too large|upstream|400' \
-              | tail -n 120 || true
+            [ -e "$f" ] || continue
+            ($SUDO tail -n 1200 "$f" 2>/dev/null || true) | grep -Ei 'stream/prepare|wesi/ai|client intended|too large|upstream|400' | tail -n 120 || true
           done
 
           echo '=== RELEVANT NGINX CONFIG ==='
-          ($SUDO nginx -T 2>/dev/null || true) \
-            | grep -E -C 4 'server_name[[:space:]]+api\.wesi-inc\.ru|client_max_body_size|proxy_pass|proxy_set_header|location[[:space:]].*/api|proxy_request_buffering' \
-            | head -n 320 || true
+          ($SUDO nginx -T 2>/dev/null || true) | grep -E -C 4 'server_name[[:space:]]+api\.wesi-inc\.ru|client_max_body_size|proxy_pass|proxy_set_header|location[[:space:]].*/api|proxy_request_buffering' | head -n 320 || true
 
           echo '=== PUBLIC VS LOCAL SYNTHETIC AUTH FAILURE ==='
-          secret="$($SUDO python3 - <<'PY'
-import json
-p='/opt/pocketbase/pb_hooks/.wesi-ai-relay.json'
-try:
-    print(json.load(open(p,encoding='utf-8')).get('streamSecret',''))
-except Exception:
-    print('')
-PY
-          )"
+          secret="$($SUDO python3 -c "import json; print(json.load(open('/opt/pocketbase/pb_hooks/.wesi-ai-relay.json', encoding='utf-8')).get('streamSecret',''))" 2>/dev/null || true)"
           [ ${#secret} -ge 32 ] || { echo 'STREAM_SECRET_UNAVAILABLE'; exit 0; }
           body='{"persona":"zane","tier":"fast","lobbyMode":"smart","message":"stream proxy probe","summary":"","projectContext":"","conversationId":"probe","activeOrganizationId":"","memory":{},"messages":[]}'
           fake_token='fake.invalid.token'
           fake_session='abcdefghijklmnopqrstuvwx'
           for base in 'http://127.0.0.1:8090' 'https://api.wesi-inc.ru'; do
-            out="/tmp/probe-$(echo "$base" | tr -cd 'A-Za-z0-9').out"
+            safe="$(printf '%s' "$base" | tr -cd 'A-Za-z0-9')"
+            out="/tmp/probe-${safe}.out"
             hdr="${out}.headers"
-            code="$(curl -sS --max-time 15 -D "$hdr" -o "$out" -w '%{http_code}' \
-              -X POST "$base/api/wesi/ai/stream/prepare" \
-              -H 'Content-Type: application/json' \
-              -H 'Accept: application/json' \
-              -H "Authorization: $fake_token" \
-              -H "X-WesiOS-Session: $fake_session" \
-              -H "X-Wesi-AI-Stream-Secret: $secret" \
-              --data-binary "$body" || true)"
+            code="$(curl -sS --max-time 15 -D "$hdr" -o "$out" -w '%{http_code}' -X POST "$base/api/wesi/ai/stream/prepare" -H 'Content-Type: application/json' -H 'Accept: application/json' -H "Authorization: $fake_token" -H "X-WesiOS-Session: $fake_session" -H "X-Wesi-AI-Stream-Secret: $secret" --data-binary "$body" || true)"
             printf 'BASE=%s STATUS=%s\n' "$base" "$code"
             grep -Ei '^(HTTP/|content-type:|server:|content-length:)' "$hdr" | tr -d '\r' || true
             printf 'BODY='
