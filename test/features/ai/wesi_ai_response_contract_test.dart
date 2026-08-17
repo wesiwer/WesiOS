@@ -34,6 +34,38 @@ void main() {
     );
   });
 
+  test('direct chat falls back when stream Main prepare rejects before connect',
+      () {
+    const error = WesiAiApiException(
+      'WAI_STREAM_MAIN_REJECTED',
+      'stream prepare rejected',
+      httpStatus: 400,
+      stage: 'MAIN',
+      lastSuccess: 'STREAM_GATEWAY',
+    );
+    expect(WesiAiApi.shouldFallbackFromStreamError(error), isTrue);
+  });
+
+  test('stream auth failures never fall back and hide permission errors', () {
+    const error = WesiAiApiException(
+      'WAI_STREAM_UNAUTHORIZED',
+      'unauthorized',
+      httpStatus: 401,
+      stage: 'AUTH',
+      lastSuccess: 'CLIENT',
+    );
+    expect(WesiAiApi.shouldFallbackFromStreamError(error), isFalse);
+  });
+
+  test('cancelled stream is never replayed through Main', () {
+    const error = WesiAiApiException(
+      'WAI_CANCELLED',
+      'cancelled',
+      stage: 'STREAM_GATEWAY',
+    );
+    expect(WesiAiApi.shouldFallbackFromStreamError(error), isFalse);
+  });
+
   test('response contract rejects non-object JSON roots', () {
     expect(
       () => WesiAiApi.decodeJsonObjectResponse(

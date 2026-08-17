@@ -260,6 +260,13 @@ class WesiAiApi {
             cancellation: cancellation,
           );
           if (streamed != null) return streamed;
+        } on WesiAiApiException catch (error) {
+          if (!shouldFallbackFromStreamError(error)) rethrow;
+          _emitStreamFallback(
+            onActivity,
+            error.code,
+            error.technicalDetails,
+          );
         } on SocketException catch (error) {
           _emitStreamFallback(onActivity, 'STREAM_SOCKET', error.message);
         } on HttpException catch (error) {
@@ -334,6 +341,30 @@ class WesiAiApi {
     } on FormatException catch (e) {
       throw WesiAiApiException('WAI_ATTACHMENT_INVALID', e.message);
     }
+  }
+
+  static bool shouldFallbackFromStreamError(WesiAiApiException error) {
+    if (error.code == 'WAI_CANCELLED') return false;
+    if (error.httpStatus == 401 || error.httpStatus == 403) return false;
+    if (error.stage.toUpperCase() == 'AUTH') return false;
+
+    if (error.code == 'WAI_STREAM_MAIN_REJECTED' ||
+        error.code == 'WAI_STREAM_GATEWAY_NOT_CONFIGURED' ||
+        error.code == 'WAI_STREAM_FAILED') {
+      return true;
+    }
+    if (error.code == 'WAI_BAD_SERVER_RESPONSE' &&
+        error.stage.toUpperCase() == 'STREAM_GATEWAY') {
+      return true;
+    }
+
+    // A stream failure before a live provider connection is an optional
+    // transport failure, not a failed chat. Fall back to the canonical Main
+    // /chat route. Once provider streaming has actually connected, do not
+    // replay the request and risk a duplicate model/tool action.
+    return error.code.startsWith('WAI_STREAM_') &&
+        error.lastSuccess != 'STREAM_CONNECTED' &&
+        error.lastSuccess != 'RELAY_CONNECTED';
   }
 
   static void _emitStreamFallback(

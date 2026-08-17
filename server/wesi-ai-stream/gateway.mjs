@@ -191,7 +191,13 @@ async function postPocketBase({pocketBaseUrl, path, body, request, streamSecret,
   if (!response.ok || data.ok !== true) {
     const error = new Error(safeCode(data.code, response.status === 401 ? 'WAI_STREAM_UNAUTHORIZED' : 'WAI_STREAM_MAIN_REJECTED'));
     error.status = response.status;
-    error.diagnostic = data.diagnostic || diagnosticPayload({requestId: body?.requestId || '', stage: 'MAIN', component: 'WesiOS Main', operation: path, code: error.message, httpStatus: response.status, lastSuccess: 'STREAM_GATEWAY'});
+    const mainDetail = [
+      typeof data?.message === 'string' ? data.message.trim() : '',
+      data?.data && typeof data.data === 'object' && !Array.isArray(data.data)
+        ? JSON.stringify(data.data).slice(0, 300)
+        : '',
+    ].filter(Boolean).join(' | ');
+    error.diagnostic = data.diagnostic || diagnosticPayload({requestId: body?.requestId || '', stage: 'MAIN', component: 'WesiOS Main', operation: path, code: error.message, httpStatus: response.status, lastSuccess: 'STREAM_GATEWAY', detail: mainDetail});
     throw error;
   }
   return data;
