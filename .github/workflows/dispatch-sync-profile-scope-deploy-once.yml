@@ -1,0 +1,23 @@
+name: Dispatch Sync Profile Scope Deploy Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dispatch-sync-profile-scope-deploy-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Dispatch canonical sync hooks deployment
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run deploy-sync-hooks.yml --repo "$GITHUB_REPOSITORY" --ref main
