@@ -60,6 +60,24 @@ if "valueListenable: ChatService.revision" not in text:
     p.write_text(text)
 
 
+# Treasury: remote transactions/accounts already notify their services, but the
+# open screen historically listened only to organization changes. Subscribe to
+# both data revisions so an already-open Finance screen reloads immediately.
+p = Path("lib/features/treasury/treasury_screen.dart")
+text = p.read_text()
+if "TreasuryService.revision.addListener(_loadData);" not in text:
+    old = """    OrganizationContext.revision.addListener(_onOrganizationContextChanged);\n    _loadData();\n"""
+    new = """    OrganizationContext.revision.addListener(_onOrganizationContextChanged);\n    TreasuryService.revision.addListener(_loadData);\n    AccountService.revision.addListener(_loadData);\n    _loadData();\n"""
+    if text.count(old) != 1:
+        raise SystemExit("treasury_screen.dart: init listener marker mismatch")
+    text = text.replace(old, new, 1)
+    old = """    OrganizationContext.revision.removeListener(_onOrganizationContextChanged);\n    super.dispose();\n"""
+    new = """    OrganizationContext.revision.removeListener(_onOrganizationContextChanged);\n    TreasuryService.revision.removeListener(_loadData);\n    AccountService.revision.removeListener(_loadData);\n    super.dispose();\n"""
+    if text.count(old) != 1:
+        raise SystemExit("treasury_screen.dart: dispose listener marker mismatch")
+    p.write_text(text.replace(old, new, 1))
+
+
 # Revision-v2 rolling-deploy fallback.
 p = Path("lib/core/sync/pocketbase_transport.dart")
 text = p.read_text()
