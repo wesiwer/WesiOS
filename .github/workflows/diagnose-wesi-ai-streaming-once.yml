@@ -1,4 +1,4 @@
-name: Atomic Reload Wesi AI Streaming Hook Once
+name: Inspect Latest Wesi AI Streaming Request Once
 
 on:
   push:
@@ -10,15 +10,14 @@ permissions:
   contents: read
 
 jobs:
-  reload:
+  inspect:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
       MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+      LOG_READER_B64: CmltcG9ydCBzcWxpdGUzLCBqc29uCmRiPSIvb3B0L3BvY2tldGJhc2UvcGJfZGF0YS9hdXhpbGlhcnkuZGIiCmM9c3FsaXRlMy5jb25uZWN0KGYiZmlsZTp7ZGJ9P21vZGU9cm8iLCB1cmk9VHJ1ZSkKYy50ZXh0X2ZhY3Rvcnk9bGFtYmRhIGI6IGIuZGVjb2RlKCJ1dGYtOCIsInJlcGxhY2UiKQpyb3dzPWMuZXhlY3V0ZSgiIiIKc2VsZWN0IGNyZWF0ZWQsIGxldmVsLCBtZXNzYWdlLCBkYXRhCmZyb20gX2xvZ3MKd2hlcmUgY3JlYXRlZCA+PSAnMjAyNi0wOC0xNyAxMTozOTowMC4wMDBaJwpvcmRlciBieSByb3dpZCBhc2MKIiIiKS5mZXRjaGFsbCgpCmZvciBjcmVhdGVkLGxldmVsLG1zZyxyYXcgaW4gcm93czoKICAgIGlmICIvYXBpL3dlc2kvYWkvc3RyZWFtL3ByZXBhcmUiIG5vdCBpbiBzdHIobXNnKSBhbmQgIi9hcGkvd2VzaS9haS9jaGF0IiBub3QgaW4gc3RyKG1zZykgYW5kICIvYXBpL3dlc2kvYWkvY2hhdC9zdHJlYW0iIG5vdCBpbiBzdHIobXNnKToKICAgICAgICBjb250aW51ZQogICAgdHJ5OgogICAgICAgIGQ9anNvbi5sb2FkcyhyYXcpIGlmIHJhdyBlbHNlIHt9CiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIGQ9e30KICAgIHNhZmU9e2s6ZC5nZXQoaykgZm9yIGsgaW4gKCJtZXRob2QiLCJ1cmwiLCJzdGF0dXMiLCJ0eXBlIiwiZXJyb3IiLCJleGVjVGltZSIpIGlmIGsgaW4gZH0KICAgIHByaW50KGYie2NyZWF0ZWR9IHwge2xldmVsfSB8IHttc2d9IHwge2pzb24uZHVtcHMoc2FmZSwgZW5zdXJlX2FzY2lpPUZhbHNlKX0iKQo=
     steps:
-      - uses: actions/checkout@v4
-
       - name: Prepare Main SSH
         env:
           KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
@@ -31,32 +30,10 @@ jobs:
           if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Atomically replace live streaming hook
+      - name: Read latest stream and fallback request records
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          REMOTE="/tmp/wesi-ai-stream-atomic-$GITHUB_RUN_ID.pb.js"
-          scp "${SSH[@]}" server/pb_hooks/wesi_ai_stream.pb.js "$MAIN_USER@$MAIN_HOST:$REMOTE"
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
-          set -euo pipefail
-          HOOK_DIR=/opt/pocketbase/pb_hooks
-          TARGET="$HOOK_DIR/wesi_ai_stream.pb.js"
-          STAGED="$HOOK_DIR/.wesi_ai_stream.pb.js.atomic.$$"
-          test -d "$HOOK_DIR" && test -w "$HOOK_DIR"
-          cat "$REMOTE" > "$STAGED"
-          chmod 0644 "$STAGED"
-          cmp -s "$REMOTE" "$STAGED"
-          mv -f "$STAGED" "$TARGET"
-          sleep 3
-          cmp -s "$REMOTE" "$TARGET"
-          rm -f "$REMOTE"
-          curl -fsS --max-time 5 http://127.0.0.1:8090/api/health >/dev/null
-          echo 'STREAM_HOOK_ATOMICALLY_RELOADED'
-          REMOTE
-
-      - name: Verify public services remain healthy
-        run: |
-          set -euo pipefail
-          curl -fsS --max-time 15 https://api.wesi-inc.ru/api/health >/dev/null
-          curl -fsS --max-time 15 https://wesi-ai-178-236-247-194.nip.io/health | grep -q '"streaming":true'
-          echo 'PUBLIC_WESI_AI_EDGE_READY'
+          printf '%s' "$LOG_READER_B64" | base64 -d > /tmp/read_latest_stream.py
+          scp "${SSH[@]}" /tmp/read_latest_stream.py "$MAIN_USER@$MAIN_HOST:/tmp/read_latest_stream.py"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'python3 /tmp/read_latest_stream.py; rm -f /tmp/read_latest_stream.py'
