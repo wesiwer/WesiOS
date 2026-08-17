@@ -1,3 +1,3 @@
-triggered_at=2026-08-17T08:05:00Z
-purpose=stage14-full-system-lobby-chat-route-hardening
-attempt=10
+triggered_at=2026-08-17T17:46:30Z
+purpose=repair-ai-tool-data-contracts-production
+attempt=11
