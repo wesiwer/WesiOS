@@ -1,0 +1,23 @@
+name: Cancel Stale Thinking Release Once
+
+on:
+  push:
+    branches: [fix/wesi-ai-dynamic-deliberation]
+    paths:
+      - '.github/workflows/cancel-stale-thinking-release-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  cancel:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel stale deploy/release dispatcher
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh run cancel 32030368563 --repo "$GITHUB_REPOSITORY" || true
+          echo STALE_THINKING_RELEASE_CANCEL_REQUESTED
