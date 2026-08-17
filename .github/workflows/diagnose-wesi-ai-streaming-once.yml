@@ -30,31 +30,11 @@ jobs:
           chmod 600 ~/.ssh/main_known_hosts
 
       - name: Inspect safe PocketBase log metadata
+        env:
+          LOG_READER_B64: CmltcG9ydCBzcWxpdGUzLCBqc29uLCBjb2xsZWN0aW9ucywgc3lzCmRiPSIvb3B0L3BvY2tldGJhc2UvcGJfZGF0YS9hdXhpbGlhcnkuZGIiCmM9c3FsaXRlMy5jb25uZWN0KGYiZmlsZTp7ZGJ9P21vZGU9cm8iLCB1cmk9VHJ1ZSkKcm93cz1jLmV4ZWN1dGUoInNlbGVjdCBjcmVhdGVkLCBsZXZlbCwgbWVzc2FnZSwgZGF0YSBmcm9tIF9sb2dzIG9yZGVyIGJ5IHJvd2lkIGRlc2MgbGltaXQgMjAwMCIpLmZldGNoYWxsKCkKcHJpbnQoIj09PSBSRUNFTlQgRVZFTlQgTkFNRVMgPT09IikKZm9yIGNyZWF0ZWQsIGxldmVsLCBtc2csIHJhdyBpbiByb3dzWzoxNjBdOgogICAgcHJpbnQoZiJ7Y3JlYXRlZH0gfCB7bGV2ZWx9IHwge21zZ30iKQpwcmludCgiPT09IFRPUCBMRVZFTCBEQVRBIEtFWVMgPT09IikKY291bnRlcj1jb2xsZWN0aW9ucy5Db3VudGVyKCkKZm9yIF8sXyxfLHJhdyBpbiByb3dzWzo2MDBdOgogICAgdHJ5OgogICAgICAgIGQ9anNvbi5sb2FkcyhyYXcpIGlmIHJhdyBlbHNlIHt9CiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIGNvbnRpbnVlCiAgICBpZiBpc2luc3RhbmNlKGQsZGljdCk6CiAgICAgICAgY291bnRlci51cGRhdGUoZC5rZXlzKCkpCmZvciBrLG4gaW4gY291bnRlci5tb3N0X2NvbW1vbig4MCk6CiAgICBwcmludChrLG4pCnByaW50KCI9PT0gU1RSRUFNLzQwMCBTQUZFIE1FVEFEQVRBID09PSIpCnNhZmVfa2V5cz0oIm1ldGhvZCIsInVybCIsInVyaSIsInBhdGgiLCJzdGF0dXMiLCJzdGF0dXNDb2RlIiwiaHR0cFN0YXR1cyIsImR1cmF0aW9uIiwiZHVyYXRpb25NcyIsInR5cGUiLCJlcnJvciIsImVycm9yVHlwZSIpCnNob3duPTAKZm9yIGNyZWF0ZWQsbGV2ZWwsbXNnLHJhdyBpbiByb3dzOgogICAgdHJ5OgogICAgICAgIGQ9anNvbi5sb2FkcyhyYXcpIGlmIHJhdyBlbHNlIHt9CiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIGNvbnRpbnVlCiAgICBpZiBub3QgaXNpbnN0YW5jZShkLGRpY3QpOgogICAgICAgIGNvbnRpbnVlCiAgICBvdXQ9e30KICAgIGZvciBrIGluIHNhZmVfa2V5czoKICAgICAgICBpZiBrIGluIGQ6CiAgICAgICAgICAgIG91dFtrXT1kLmdldChrKQogICAgZm9yIHBhcmVudCBpbiAoInJlcXVlc3QiLCJyZXNwb25zZSIpOgogICAgICAgIG9iaj1kLmdldChwYXJlbnQpCiAgICAgICAgaWYgaXNpbnN0YW5jZShvYmosZGljdCk6CiAgICAgICAgICAgIGZvciBrIGluIHNhZmVfa2V5czoKICAgICAgICAgICAgICAgIGlmIGsgaW4gb2JqOgogICAgICAgICAgICAgICAgICAgIG91dFtmIntwYXJlbnR9LntrfSJdPW9iai5nZXQoaykKICAgIHNlYXJjaGFibGU9KHN0cihtc2cpKyIgIitqc29uLmR1bXBzKG91dCxlbnN1cmVfYXNjaWk9RmFsc2UpKS5sb3dlcigpCiAgICBpZiAoInN0cmVhbSIgaW4gc2VhcmNoYWJsZSBvciAid2VzaSIgaW4gc2VhcmNoYWJsZSBvcgogICAgICAgIGFueSh2IGluICg0MDAsNDAxLDQwMyw0MTMsNTAwLDUwMiw1MDMpIGZvciB2IGluIG91dC52YWx1ZXMoKSkpOgogICAgICAgIHByaW50KGYie2NyZWF0ZWR9IHwge2xldmVsfSB8IHttc2d9IHwge2pzb24uZHVtcHMob3V0LGVuc3VyZV9hc2NpaT1GYWxzZSl9IikKICAgICAgICBzaG93bis9MQogICAgICAgIGlmIHNob3duPj0xNjA6CiAgICAgICAgICAgIGJyZWFrCnByaW50KCJNQVRDSEVEIiwgc2hvd24pCg==
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
-          set -euo pipefail
-          if sudo -n true 2>/dev/null; then SUDO='sudo -n'; else SUDO=''; fi
-          db=/opt/pocketbase/pb_data/auxiliary.db
-          echo '=== RECENT LOG EVENT NAMES ==='
-          $SUDO python3 -c 'import sqlite3,sys; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); rows=c.execute("select created,level,message from _logs order by rowid desc limit 180").fetchall(); [print(" | ".join(map(str,r))) for r in rows]' "$db"
-          echo '=== TOP LEVEL DATA KEYS ==='
-          $SUDO python3 -c 'import sqlite3,sys,json,collections; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); rows=c.execute("select data from _logs order by rowid desc limit 400").fetchall(); k=collections.Counter(); [(k.update(json.loads(r[0]).keys()) if isinstance(json.loads(r[0]),dict) else None) for r in rows if r[0]]; [print(x,n) for x,n in k.most_common(80)]' "$db" 2>/dev/null || true
-          echo '=== REQUEST-LIKE SAFE FIELDS ==='
-          $SUDO python3 -c 'import sqlite3,sys,json; c=sqlite3.connect("file:"+sys.argv[1]+"?mode=ro",uri=True); rows=c.execute("select created,level,message,data from _logs order by rowid desc limit 600").fetchall(); keys=("method","url","uri","path","status","statusCode","httpStatus","duration","durationMs"); n=0;
-for created,level,msg,raw in rows:
- try: d=json.loads(raw) if raw else {}
- except: continue
- if not isinstance(d,dict): continue
- vals={k:d.get(k) for k in keys if k in d}
- req=d.get("request") if isinstance(d.get("request"),dict) else {}
- res=d.get("response") if isinstance(d.get("response"),dict) else {}
- for k in keys:
-  if k in req: vals["request."+k]=req.get(k)
-  if k in res: vals["response."+k]=res.get(k)
- text=str(vals).lower()
- if "wesi" in text or "stream" in text or vals.get("status") in (400,401,403,500,502,503) or vals.get("response.status") in (400,401,403,500,502,503):
-  print(created,"|",level,"|",msg,"|",vals); n+=1
-  if n>=120: break' "$db" 2>/dev/null || true
-          REMOTE
+          printf '%s' "$LOG_READER_B64" | base64 -d > /tmp/read_pb_logs.py
+          scp "${SSH[@]}" /tmp/read_pb_logs.py "$MAIN_USER@$MAIN_HOST:/tmp/read_pb_logs.py"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'if sudo -n true 2>/dev/null; then sudo -n python3 /tmp/read_pb_logs.py; else python3 /tmp/read_pb_logs.py; fi; rm -f /tmp/read_pb_logs.py'
