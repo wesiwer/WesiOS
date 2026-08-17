@@ -86,13 +86,11 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
 
   const ownerScope = privateCollections[collection] ? e.auth.id : ctx.ownerId;
   let existing = null;
-  try {
-    existing = e.app.findFirstRecordByFilter(
+  existing = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
       "wesios_records",
       "owner={:owner} && coll={:coll} && rid={:rid}",
       {"owner": ownerScope, "coll": collection, "rid": rid},
     );
-  } catch (_) { existing = null; }
   const before = existing ? payloadOf(existing) : {};
 
   const requireModule = (name) => {
@@ -211,13 +209,11 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
     const target = deleted ? before : incoming;
     const chatId = String(target.chatId || "");
     let chat = null;
-    try {
-      chat = e.app.findFirstRecordByFilter(
+    chat = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
         "wesios_records",
         "owner={:owner} && coll='chats' && rid={:rid} && deleted=false",
         {"owner": ctx.ownerId, "rid": chatId},
       );
-    } catch (_) { chat = null; }
     if (!chat || !chatVisible(payloadOf(chat))) {
       throw new ForbiddenError("Нет доступа к сообщениям этого чата");
     }
@@ -249,13 +245,11 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
       // Load the other CRM snapshots to validate cross references.
       const state = {};
       let crmRows = [];
-      try {
-        crmRows = e.app.findRecordsByFilter(
+      crmRows = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
           "wesios_records",
           "owner={:owner} && coll='crm_state' && deleted=false",
           "id", 10000, 0, {"owner": ctx.ownerId},
         );
-      } catch (_) { crmRows = []; }
       for (const row of crmRows) {
         const p = payloadOf(row);
         state[String(p.key || row.getString("rid"))] = parseList(p.value);

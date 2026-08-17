@@ -2,14 +2,12 @@ routerAdd("GET", "/api/wesi/sync/revision", (e) => {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
   let rows = [];
-  try {
-    rows = e.app.findRecordsByFilter(
+  rows = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
       "wesios_records",
       "owner={:company} || owner={:private}",
       "-stamp,-id", 1, 0,
       {"company": ctx.ownerId, "private": e.auth.id},
     );
-  } catch (_) { rows = []; }
   if (!rows.length) return e.json(200, {"revision": "empty"});
   const first = rows[0];
   return e.json(200, {
@@ -102,24 +100,20 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
 
   const ownerScope = privateCollections[collection] ? e.auth.id : ctx.ownerId;
   let records = [];
-  try {
-    records = e.app.findRecordsByFilter(
+  records = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
       "wesios_records",
       "owner={:owner} && coll={:coll}",
       "id", 10000, 0, {"owner": ownerScope, "coll": collection},
     );
-  } catch (error) { throw error; }
 
   const visibleChatIds = {};
   if (collection === "messages" && !ctx.isOwner) {
     let chats = [];
-    try {
-      chats = e.app.findRecordsByFilter(
+    chats = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
         "wesios_records",
         "owner={:owner} && coll='chats' && deleted=false",
         "id", 10000, 0, {"owner": ctx.ownerId},
       );
-    } catch (error) { throw error; }
     for (const row of chats) {
       const p = payloadOf(row);
       if (chatVisible(p)) visibleChatIds[String(p.id || row.getString("rid"))] = true;

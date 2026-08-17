@@ -40,8 +40,7 @@ function read(e, collection, scope, requiredModule, privateKeyed) {
   const privateScope = scope === "private" || privateKeyed === true;
   const owner = privateScope ? e.auth.id : ctx.ownerId;
   let records = [];
-  try {
-    records = e.app.findRecordsByFilter(
+  records = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
       "wesios_records",
       "owner={:owner} && coll={:coll}",
       "id",
@@ -49,9 +48,6 @@ function read(e, collection, scope, requiredModule, privateKeyed) {
       0,
       {owner: owner, coll: collection},
     );
-  } catch (_) {
-    records = [];
-  }
 
   return e.json(200, {
     items: records.map(function(row) {
@@ -105,15 +101,11 @@ function write(e, collection, scope, requiredModule, privateKeyed) {
   const privateScope = scope === "private" || privateKeyed === true;
   const owner = privateScope ? e.auth.id : ctx.ownerId;
   let existing = null;
-  try {
-    existing = e.app.findFirstRecordByFilter(
+  existing = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
       "wesios_records",
       "owner={:owner} && coll={:coll} && rid={:rid}",
       {owner: owner, coll: collection, rid: rid},
     );
-  } catch (_) {
-    existing = null;
-  }
 
   // Keep the previous payload on tombstones so scoped metadata is not lost.
   if (deleted && existing) incoming = payloadOf(existing);
@@ -140,8 +132,7 @@ function revision(e) {
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
 
   let rows = [];
-  try {
-    rows = e.app.findRecordsByFilter(
+  rows = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
       "wesios_records",
       "owner={:company} || owner={:private}",
       "-updated,-id",
@@ -149,9 +140,6 @@ function revision(e) {
       0,
       {company: ctx.ownerId, private: e.auth.id},
     );
-  } catch (_) {
-    rows = [];
-  }
 
   if (!rows.length) return e.json(200, {revision: "empty"});
   const first = rows[0];

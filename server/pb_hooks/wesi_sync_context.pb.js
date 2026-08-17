@@ -58,13 +58,11 @@ routerUse((e) => {
     throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
   }
   let session = null;
-  try {
-    session = e.app.findFirstRecordByFilter(
+  session = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
       "wesios_records",
       "owner='__wesios_security__' && coll='security' && rid={:rid} && deleted=false",
       {"rid": "session:" + sid},
     );
-  } catch (_) { session = null; }
   if (!session) throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
   const sessionPayload = sessionPayloadOf(session);
   const expiresAt = Date.parse(String(sessionPayload.expiresAt || ""));
@@ -75,13 +73,11 @@ routerUse((e) => {
   }
 
   let ownerMarker = null;
-  try {
-    ownerMarker = e.app.findFirstRecordByFilter(
+  ownerMarker = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
       "wesios_records",
       "owner={:owner} && coll='system' && rid='portal-owner' && deleted=false",
       {"owner": e.auth.id},
     );
-  } catch (_) { ownerMarker = null; }
 
   let ownerId = "";
   let employeeId = "";
@@ -109,13 +105,11 @@ routerUse((e) => {
     };
   } else {
     let link = null;
-    try {
-      link = e.app.findFirstRecordByFilter(
+    link = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
         "wesios_records",
         "coll='system' && rid={:rid} && deleted=false",
         {"rid": "portal-account:" + e.auth.id},
       );
-    } catch (_) { link = null; }
     if (!link) throw new ForbiddenError("Учётная запись не привязана к сотруднику WesiOS");
     const linkPayload = payloadOf(link);
     ownerId = link.getString("owner");
@@ -123,13 +117,11 @@ routerUse((e) => {
     if (!ownerId || !employeeId) throw new ForbiddenError("Привязка сотрудника повреждена");
 
     let employee = null;
-    try {
-      employee = e.app.findFirstRecordByFilter(
+    employee = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
         "wesios_records",
         "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
         {"owner": ownerId, "rid": employeeId},
       );
-    } catch (_) { employee = null; }
     snapshot = employee ? payloadOf(employee) :
       (linkPayload.snapshot && typeof linkPayload.snapshot === "object"
         ? linkPayload.snapshot : linkPayload);
@@ -143,20 +135,16 @@ routerUse((e) => {
 
   let organizations = [];
   let grants = [];
-  try {
-    organizations = e.app.findRecordsByFilter(
+  organizations = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
       "wesios_records",
       "owner={:owner} && coll='organizations' && deleted=false",
       "id", 0, 0, {"owner": ownerId},
     );
-  } catch (_) { organizations = []; }
-  try {
-    grants = e.app.findRecordsByFilter(
+  grants = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
       "wesios_records",
       "owner={:owner} && coll='organization_grants' && deleted=false",
       "id", 0, 0, {"owner": ownerId},
     );
-  } catch (_) { grants = []; }
 
   const orgParents = {};
   const allOrgIds = {};
@@ -273,13 +261,11 @@ routerUse((e) => {
   const sameJson = (a, b) => JSON.stringify(a == null ? null : a) === JSON.stringify(b == null ? null : b);
 
   let existing = null;
-  try {
-    existing = e.app.findFirstRecordByFilter(
+  existing = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
       "wesios_records",
       "owner={:owner} && coll='messages' && rid={:rid}",
       {"owner": ctx.ownerId, "rid": rid},
     );
-  } catch (_) { existing = null; }
 
   if (!existing) {
     if (String(incoming.authorId || "") !== ctx.employeeId) {
