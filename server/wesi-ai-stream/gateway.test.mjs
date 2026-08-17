@@ -107,7 +107,7 @@ test('HMAC signing matches deterministic payload', () => {
 test('gateway forwards true deltas and final done event without provider metadata', async () => {
   let relayCalls = 0;
   const fetchImpl = async (url, options) => {
-    if (String(url).endsWith('/api/wesi/ai/stream/prepare')) {
+    if (String(url).endsWith('/api/wesi/ai/stream/prepare-v2')) {
       assert.equal(options.headers.authorization, 'Bearer user-token');
       assert.equal(options.headers['x-wesios-session'], 'session_123456789012345678901234');
       return jsonResponse({ok: true, prepared: prepared()});
@@ -154,7 +154,7 @@ test('Co-Agent and Lead review stay buffered on same tier while Lead owns final 
   });
   const fetchImpl = async (url, options) => {
     const value = String(url);
-    if (value.endsWith('/api/wesi/ai/stream/prepare')) {
+    if (value.endsWith('/api/wesi/ai/stream/prepare-v2')) {
       return jsonResponse({ok: true, prepared: preparedWithCoagent()});
     }
     if (value.endsWith('/v1/wesi-ai-stream')) {
@@ -226,10 +226,10 @@ test('tool JSON is never leaked and verified tool result precedes final stream',
   const toolJson = '{"wesiTool":{"name":"tasks_list","arguments":{"limit":2}}}';
   const fetchImpl = async (url) => {
     const value = String(url);
-    if (value.endsWith('/api/wesi/ai/stream/prepare')) {
+    if (value.endsWith('/api/wesi/ai/stream/prepare-v2')) {
       return jsonResponse({ok: true, prepared: prepared()});
     }
-    if (value.endsWith('/api/wesi/ai/stream/tool')) {
+    if (value.endsWith('/api/wesi/ai/stream/tool-v2')) {
       toolCalls += 1;
       return jsonResponse({
         ok: true,

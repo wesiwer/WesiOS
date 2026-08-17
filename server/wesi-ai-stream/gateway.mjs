@@ -422,7 +422,7 @@ export function createGateway(options = {}) {
       const body = await readRequestBody(req);
       const preparedResponse = await postPocketBase({
         pocketBaseUrl,
-        path: '/api/wesi/ai/stream/prepare',
+        path: '/api/wesi/ai/stream/prepare-v2',
         body,
         request: req,
         streamSecret,
@@ -487,7 +487,7 @@ export function createGateway(options = {}) {
             invokeTool: async ({handoff, name, arguments: args}) => {
               const toolResponse = await postPocketBase({
                 pocketBaseUrl,
-                path: '/api/wesi/ai/stream/tool',
+                path: '/api/wesi/ai/stream/tool-v2',
                 body: {
                   name,
                   arguments: args,
@@ -575,7 +575,7 @@ export function createGateway(options = {}) {
             invokeTool: async ({spec, name, arguments: args}) => {
               const toolResponse = await postPocketBase({
                 pocketBaseUrl,
-                path: '/api/wesi/ai/stream/tool',
+                path: '/api/wesi/ai/stream/tool-v2',
                 body: {
                   name,
                   arguments: args,
@@ -721,7 +721,7 @@ export function createGateway(options = {}) {
           writeNdjson(res, {type: 'tool', phase: 'start', name: toolRequest.name});
           const toolResponse = await postPocketBase({
             pocketBaseUrl,
-            path: '/api/wesi/ai/stream/tool',
+            path: '/api/wesi/ai/stream/tool-v2',
             body: {
               name: toolRequest.name,
               arguments: toolRequest.arguments,
