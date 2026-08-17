@@ -105,19 +105,51 @@ Future<bool> _bootstrap(List<String> arguments) async {
     });
   }
 
-  // hive_flutter stores boxes directly in the application Documents directory.
-  // Some Windows installations (including the affected machine) can report that
-  // path even when the directory itself does not exist. Hive then fails while
-  // creating the first *.hive file with PathNotFoundException. Create the
-  // directory explicitly while keeping the exact same storage location, so
-  // existing installations continue to read their current local data.
-  if (!kIsWeb) {
-    final hiveDirectory = await getApplicationDocumentsDirectory();
-    if (!await hiveDirectory.exists()) {
-      await hiveDirectory.create(recursive: true);
+  // On Windows hive_flutter defaults to the user's Documents known folder.
+  // That folder can be redirected or unavailable even though Windows still
+  // reports a path for it. Keeping the database there therefore makes startup
+  // depend on a user-facing shell folder that WesiOS does not control.
+  //
+  // Store Windows Hive data in LOCALAPPDATA instead. Before switching, copy
+  // only WesiOS boxes from the legacy Documents location when it is readable.
+  // A broken legacy folder must never prevent a clean startup.
+  if (!kIsWeb && Platform.isWindows) {
+    final separator = Platform.pathSeparator;
+    final localAppData = Platform.environment['LOCALAPPDATA']?.trim();
+    final Directory hiveDirectory;
+    if (localAppData != null && localAppData.isNotEmpty) {
+      hiveDirectory = Directory(
+        '$localAppData${separator}WesiOS${separator}hive',
+      );
+    } else {
+      final supportDirectory = await getApplicationSupportDirectory();
+      hiveDirectory = Directory('${supportDirectory.path}${separator}hive');
     }
+    await hiveDirectory.create(recursive: true);
+
+    try {
+      final legacyDirectory = await getApplicationDocumentsDirectory();
+      if (await legacyDirectory.exists()) {
+        await for (final entity in legacyDirectory.list(followLinks: false)) {
+          if (entity is! File) continue;
+          final name = entity.path.split(separator).last;
+          if (!name.startsWith('wesios_') || !name.endsWith('.hive')) {
+            continue;
+          }
+          final target = File('${hiveDirectory.path}$separator$name');
+          if (!await target.exists()) {
+            await entity.copy(target.path);
+          }
+        }
+      }
+    } catch (error, stack) {
+      debugPrint('Legacy Hive migration skipped: $error\n$stack');
+    }
+
+    Hive.init(hiveDirectory.path);
+  } else {
+    await Hive.initFlutter();
   }
-  await Hive.initFlutter();
 
   Hive.registerAdapter(TransactionModelAdapter());
   Hive.registerAdapter(TransactionTypeAdapter());
