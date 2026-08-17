@@ -24,3 +24,19 @@ test('generic persona streaming stays scoped to concrete personas, not Lobby', (
 test('stream prepare keeps active organization in runtime context', () => {
   assert.match(source, /activeOrganizationId/);
 });
+
+test('stream prepare bounds historical context instead of rejecting long prior replies', () => {
+  assert.ok(
+    source.includes('const cleanHistory = ai.sanitizeHistory(history);'),
+    'stream prepare must use the shared bounded history sanitizer',
+  );
+  assert.ok(
+    !source.includes('Слишком длинное сообщение в контексте'),
+    'a long prior reply must not permanently poison a direct chat',
+  );
+});
+
+test('stream prepare conversation id limit matches ordinary Main chat', () => {
+  assert.ok(source.includes('conversationId.length > 180'));
+});
+

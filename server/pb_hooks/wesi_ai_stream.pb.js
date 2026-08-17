@@ -36,7 +36,7 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
   }
   let taskStateJson = "{}";
   try { taskStateJson = JSON.stringify(taskState); } catch (_) { throw new BadRequestError("Некорректный task state Wesi AI"); }
-  if (summary.length > 64000 || projectContext.length > 64000 || taskStateJson.length > 12000 || history.length > 100 || conversationId.length > 160) {
+  if (summary.length > 64000 || projectContext.length > 64000 || taskStateJson.length > 12000 || conversationId.length > 180) {
     throw new BadRequestError("Слишком большой контекст Wesi AI");
   }
   if (body.provider != null || body.model != null || body.providerModel != null) {
@@ -78,15 +78,7 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
     return {status: 503, error: {ok: false, code: "WAI_RELAY_NOT_CONFIGURED"}};
   }
 
-  const cleanHistory = [];
-  for (const item of history) {
-    if (!item || typeof item !== "object") continue;
-    const author = String(item.author || item.role || "").toLowerCase();
-    const text = String(item.text || item.content || "");
-    if (["user", "zane", "nirvana", "tool"].indexOf(author) < 0) continue;
-    if (text.length > 32000) throw new BadRequestError("Слишком длинное сообщение в контексте");
-    cleanHistory.push({author: author, text: text});
-  }
+  const cleanHistory = ai.sanitizeHistory(history);
 
   const cleanMemory = ai.sanitizeMemory(memory);
   const toolDefinitions = tools.definitions(e, ctx);

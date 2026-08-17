@@ -164,6 +164,44 @@ module.exports = {
     return {ok: true, bytes: relay.body, mimeType: mimeType, kind: kind};
   },
 
+  sanitizeHistory: function(history) {
+    const MAX_ITEMS = 80;
+    const MAX_ITEM_CHARS = 24000;
+    const MAX_TOTAL_CHARS = 180000;
+    const TRUNCATED = "\n...[WESI_AI_HISTORY_TRUNCATED]...\n";
+    const source = Array.isArray(history) ? history : [];
+    const newestFirst = [];
+    let totalChars = 0;
+
+    const clampText = function(text, limit) {
+      const value = String(text || "");
+      if (value.length <= limit) return value;
+      if (limit <= TRUNCATED.length) return value.slice(value.length - limit);
+      const payload = limit - TRUNCATED.length;
+      const head = Math.floor(payload * 0.6);
+      const tail = payload - head;
+      return value.slice(0, head) + TRUNCATED + value.slice(value.length - tail);
+    };
+
+    for (let index = source.length - 1; index >= 0 && newestFirst.length < MAX_ITEMS; index--) {
+      const item = source[index];
+      if (!item || typeof item !== "object") continue;
+      const author = String(item.author || item.role || "").trim().toLowerCase();
+      if (["user", "zane", "nirvana", "tool"].indexOf(author) < 0) continue;
+      const rawText = String(item.text || item.content || "");
+      if (!rawText) continue;
+      const remaining = MAX_TOTAL_CHARS - totalChars;
+      if (remaining <= TRUNCATED.length) break;
+      const limit = Math.min(MAX_ITEM_CHARS, remaining);
+      const text = clampText(rawText, limit);
+      if (!text) continue;
+      newestFirst.push({author: author, text: text});
+      totalChars += text.length;
+    }
+
+    return newestFirst.reverse();
+  },
+
   sanitizeMemory: function(memory) {
     const result = {shared: [], zane: [], nirvana: [], project: []};
     for (const key of ["shared", "zane", "nirvana", "project"]) {

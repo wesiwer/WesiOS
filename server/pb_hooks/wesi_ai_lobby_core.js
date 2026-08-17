@@ -14,13 +14,7 @@ module.exports = {
     const cfg = ai.readRelayConfig();
     const route = cfg.routes[tier] || "";
     if (!cfg.ready || !route) return {status: 503, body: {ok: false, code: "WAI_RELAY_NOT_CONFIGURED"}};
-    const history = [];
-    for (const item of Array.isArray(body.messages) ? body.messages : []) {
-      if (!item || typeof item !== "object") continue;
-      const author = String(item.author || "").toLowerCase();
-      const text = String(item.text || "");
-      if (["user", "zane", "nirvana", "tool"].indexOf(author) >= 0 && text.length <= 32000) history.push({author, text});
-    }
+    const history = ai.sanitizeHistory(body.messages);
     const memory = ai.sanitizeMemory(body.memory && typeof body.memory === "object" ? body.memory : {});
     const projectContext = String(body.projectContext || "").trim();
     const taskState = body.taskState && typeof body.taskState === "object" && !Array.isArray(body.taskState) ? body.taskState : {};

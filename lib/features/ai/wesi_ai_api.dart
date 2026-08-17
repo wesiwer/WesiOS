@@ -140,6 +140,10 @@ class WesiAiRequestCancellation {
 
 class WesiAiApi {
   static const int maxTransportHistoryMessages = 80;
+  static const int maxTransportHistoryMessageChars = 24000;
+  static const int maxTransportHistoryTotalChars = 180000;
+  static const String _historyTruncatedMarker =
+      '\n...[WESI_AI_HISTORY_TRUNCATED]...\n';
   static const String streamBaseUrl = String.fromEnvironment(
     'WESI_AI_STREAM_BASE_URL',
     defaultValue: 'https://wesi-ai-178-236-247-194.nip.io',
@@ -151,16 +155,43 @@ class WesiAiApi {
 
   const WesiAiApi();
 
+  static String _truncateHistoryText(String text, int limit) {
+    if (text.length <= limit) return text;
+    if (limit <= _historyTruncatedMarker.length) {
+      return text.substring(text.length - limit);
+    }
+    final payload = limit - _historyTruncatedMarker.length;
+    final head = (payload * 3) ~/ 5;
+    final tail = payload - head;
+    return '${text.substring(0, head)}$_historyTruncatedMarker${text.substring(text.length - tail)}';
+  }
+
   static List<Map<String, String>> transportHistory(
       List<WesiAiMessage> history) {
-    final messages = history
-        .where((m) =>
-            m.kind == WesiAiMessageKind.text &&
-            m.author != WesiAiMessageAuthor.system)
-        .map((m) => {'author': m.author.name, 'text': m.text})
+    final eligible = history
+        .where((message) =>
+            message.kind == WesiAiMessageKind.text &&
+            message.author != WesiAiMessageAuthor.system)
         .toList(growable: false);
-    if (messages.length <= maxTransportHistoryMessages) return messages;
-    return messages.sublist(messages.length - maxTransportHistoryMessages);
+    final newestFirst = <Map<String, String>>[];
+    var totalChars = 0;
+    for (var index = eligible.length - 1;
+        index >= 0 && newestFirst.length < maxTransportHistoryMessages;
+        index--) {
+      final message = eligible[index];
+      if (message.text.isEmpty) continue;
+      final remaining = maxTransportHistoryTotalChars - totalChars;
+      if (remaining <= _historyTruncatedMarker.length) break;
+      final limit = math.min(maxTransportHistoryMessageChars, remaining);
+      final text = _truncateHistoryText(message.text, limit);
+      if (text.isEmpty) continue;
+      newestFirst.add(<String, String>{
+        'author': message.author.name,
+        'text': text,
+      });
+      totalChars += text.length;
+    }
+    return newestFirst.reversed.toList(growable: false);
   }
 
   static String projectContext(WesiAiProject? project) {
@@ -260,13 +291,6 @@ class WesiAiApi {
             cancellation: cancellation,
           );
           if (streamed != null) return streamed;
-        } on WesiAiApiException catch (error) {
-          if (!shouldFallbackFromStreamError(error)) rethrow;
-          _emitStreamFallback(
-            onActivity,
-            error.code,
-            error.technicalDetails,
-          );
         } on SocketException catch (error) {
           _emitStreamFallback(onActivity, 'STREAM_SOCKET', error.message);
         } on HttpException catch (error) {
@@ -341,30 +365,6 @@ class WesiAiApi {
     } on FormatException catch (e) {
       throw WesiAiApiException('WAI_ATTACHMENT_INVALID', e.message);
     }
-  }
-
-  static bool shouldFallbackFromStreamError(WesiAiApiException error) {
-    if (error.code == 'WAI_CANCELLED') return false;
-    if (error.httpStatus == 401 || error.httpStatus == 403) return false;
-    if (error.stage.toUpperCase() == 'AUTH') return false;
-
-    if (error.code == 'WAI_STREAM_MAIN_REJECTED' ||
-        error.code == 'WAI_STREAM_GATEWAY_NOT_CONFIGURED' ||
-        error.code == 'WAI_STREAM_FAILED') {
-      return true;
-    }
-    if (error.code == 'WAI_BAD_SERVER_RESPONSE' &&
-        error.stage.toUpperCase() == 'STREAM_GATEWAY') {
-      return true;
-    }
-
-    // A stream failure before a live provider connection is an optional
-    // transport failure, not a failed chat. Fall back to the canonical Main
-    // /chat route. Once provider streaming has actually connected, do not
-    // replay the request and risk a duplicate model/tool action.
-    return error.code.startsWith('WAI_STREAM_') &&
-        error.lastSuccess != 'STREAM_CONNECTED' &&
-        error.lastSuccess != 'RELAY_CONNECTED';
   }
 
   static void _emitStreamFallback(

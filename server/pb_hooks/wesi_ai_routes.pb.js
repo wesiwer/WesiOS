@@ -71,7 +71,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   if ((!message && !attachmentsRaw.length) || message.length > 32000) throw new BadRequestError("Некорректное сообщение Wesi AI");
   let taskStateJson = "{}";
   try { taskStateJson = JSON.stringify(taskState); } catch (_) { throw new BadRequestError("Некорректный task state Wesi AI"); }
-  if (summary.length > 64000 || projectContext.length > 64000 || taskStateJson.length > 12000 || history.length > 100 || conversationId.length > 180) throw new BadRequestError("Слишком большой контекст Wesi AI");
+  if (summary.length > 64000 || projectContext.length > 64000 || taskStateJson.length > 12000 || conversationId.length > 180) throw new BadRequestError("Слишком большой контекст Wesi AI");
   if (body.provider != null || body.model != null || body.providerModel != null) throw new BadRequestError("Недоступная настройка Wesi AI");
 
   const cleanAttachments = [];
@@ -106,15 +106,7 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
   const route = cfg.routes[tier] || "";
   if (!cfg.ready || !route) return e.json(503, {ok: false, code: "WAI_RELAY_NOT_CONFIGURED", requestId: requestId, diagnostic: diagnostic("MAIN", "RelayConfig", "route.resolve", "WAI_RELAY_NOT_CONFIGURED", 503, "PERSONA_READY", tier)});
 
-  const cleanHistory = [];
-  for (const item of history) {
-    if (!item || typeof item !== "object") continue;
-    const author = String(item.author || item.role || "").toLowerCase();
-    const text = String(item.text || item.content || "");
-    if (["user", "zane", "nirvana", "tool"].indexOf(author) < 0) continue;
-    if (text.length > 32000) throw new BadRequestError("Слишком длинное сообщение в контексте");
-    cleanHistory.push({author: author, text: text});
-  }
+  const cleanHistory = ai.sanitizeHistory(history);
 
   const cleanMemory = ai.sanitizeMemory(memory);
   const toolDefinitions = tools.definitions(e, ctx);
