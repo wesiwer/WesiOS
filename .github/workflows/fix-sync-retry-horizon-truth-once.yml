@@ -79,3 +79,5 @@ jobs:
           git add lib/core/sync/sync_engine.dart test/sync_receive_regression_test.dart server/pb_hooks/wesi_ai_horizon_tools.js server/pb_hooks/wesi_ai_horizon_truth_test.mjs
           git commit -m 'fix(sync,ai): converge dependencies and align Horizon balance truth'
           git push origin HEAD:main
+
+# validation revision: 2
