@@ -37,7 +37,7 @@ jobs:
         run: flutter analyze lib/features/ai/media_engines lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/wesi_ai_api.dart test/features/ai/media_engines --no-fatal-infos
       - name: Test Stage14 media layer
         run: flutter test test/features/ai/media_engines
-      - name: Enforce L4, staging and archive policy
+      - name: Enforce L4, staging, archive and artifact policy
         shell: bash
         run: |
           set -euo pipefail
@@ -50,5 +50,11 @@ jobs:
           grep -q "WesiMediaTurnExecutor.run" lib/features/ai/controllers/wesi_ai_chat_controller.dart
           grep -q "turnAttachments: attachments" lib/features/ai/controllers/wesi_ai_chat_controller.dart
           grep -q "_localMediaRequestIdentity" lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          grep -q "WesiMediaEnginePathGuard.resolveOutput" lib/features/ai/media_engines/wesi_media_engine_runner.dart
+          grep -q "WesiMediaArtifactStore.promote" lib/features/ai/media_engines/wesi_media_workflow.dart
+          grep -q "maxVideoBytes" lib/features/ai/media_engines/wesi_media_artifact_store.dart
+          grep -q "'artifactOwned'" lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          grep -q "'sha256'" lib/features/ai/controllers/wesi_ai_chat_controller.dart
+          ! grep -q 'Файл сохранён: ${result.outputPath}' lib/features/ai/controllers/wesi_ai_chat_controller.dart
           grep -q "videoGenerate" server/pb_hooks/wesi_ai_media_contract.js
           grep -q "edit_image" server/pb_hooks/wesi_ai_capability_registry.js
