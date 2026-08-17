@@ -1,0 +1,203 @@
+name: Fix Wesi AI Direct Stream Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-wesi-ai-direct-stream-once.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  hotfix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply direct-chat fallback and diagnostics fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          api = Path('lib/features/ai/wesi_ai_api.dart')
+          s = api.read_text(encoding='utf-8')
+          old = """          if (streamed != null) return streamed;
+        } on SocketException catch (error) {
+"""
+          new = """          if (streamed != null) return streamed;
+        } on WesiAiApiException catch (error) {
+          if (!shouldFallbackFromStreamError(error)) rethrow;
+          _emitStreamFallback(
+            onActivity,
+            error.code,
+            error.technicalDetails,
+          );
+        } on SocketException catch (error) {
+"""
+          if old not in s:
+              raise SystemExit('stream catch insertion point not found')
+          s = s.replace(old, new, 1)
+
+          marker = """  static void _emitStreamFallback(
+"""
+          helper = """  static bool shouldFallbackFromStreamError(WesiAiApiException error) {
+    if (error.code == 'WAI_CANCELLED') return false;
+    if (error.httpStatus == 401 || error.httpStatus == 403) return false;
+    if (error.stage.toUpperCase() == 'AUTH') return false;
+
+    if (error.code == 'WAI_STREAM_MAIN_REJECTED' ||
+        error.code == 'WAI_STREAM_GATEWAY_NOT_CONFIGURED' ||
+        error.code == 'WAI_STREAM_FAILED') {
+      return true;
+    }
+    if (error.code == 'WAI_BAD_SERVER_RESPONSE' &&
+        error.stage.toUpperCase() == 'STREAM_GATEWAY') {
+      return true;
+    }
+
+    // A stream failure before a live provider connection is an optional
+    // transport failure, not a failed chat. Fall back to the canonical Main
+    // /chat route. Once provider streaming has actually connected, do not
+    // replay the request and risk a duplicate model/tool action.
+    return error.code.startsWith('WAI_STREAM_') &&
+        error.lastSuccess != 'STREAM_CONNECTED' &&
+        error.lastSuccess != 'RELAY_CONNECTED';
+  }
+
+"""
+          if marker not in s:
+              raise SystemExit('fallback helper insertion point not found')
+          s = s.replace(marker, helper + marker, 1)
+          api.write_text(s, encoding='utf-8')
+
+          test = Path('test/features/ai/wesi_ai_response_contract_test.dart')
+          t = test.read_text(encoding='utf-8')
+          tail = """  test('response contract rejects non-object JSON roots', () {
+"""
+          if tail not in t:
+              raise SystemExit('response contract test insertion point not found')
+          additions = """
+  test('direct chat falls back when stream Main prepare rejects before connect', () {
+    const error = WesiAiApiException(
+      'WAI_STREAM_MAIN_REJECTED',
+      'stream prepare rejected',
+      httpStatus: 400,
+      stage: 'MAIN',
+      lastSuccess: 'STREAM_GATEWAY',
+    );
+    expect(WesiAiApi.shouldFallbackFromStreamError(error), isTrue);
+  });
+
+  test('stream auth failures never fall back and hide permission errors', () {
+    const error = WesiAiApiException(
+      'WAI_STREAM_UNAUTHORIZED',
+      'unauthorized',
+      httpStatus: 401,
+      stage: 'AUTH',
+      lastSuccess: 'CLIENT',
+    );
+    expect(WesiAiApi.shouldFallbackFromStreamError(error), isFalse);
+  });
+
+  test('cancelled stream is never replayed through Main', () {
+    const error = WesiAiApiException(
+      'WAI_CANCELLED',
+      'cancelled',
+      stage: 'STREAM_GATEWAY',
+    );
+    expect(WesiAiApi.shouldFallbackFromStreamError(error), isFalse);
+  });
+
+"""
+          t = t.replace(tail, additions + tail, 1)
+          test.write_text(t, encoding='utf-8')
+
+          gateway = Path('server/wesi-ai-stream/gateway.mjs')
+          g = gateway.read_text(encoding='utf-8')
+          old_g = """    error.diagnostic = data.diagnostic || diagnosticPayload({requestId: body?.requestId || '', stage: 'MAIN', component: 'WesiOS Main', operation: path, code: error.message, httpStatus: response.status, lastSuccess: 'STREAM_GATEWAY'});
+"""
+          new_g = """    const mainDetail = [
+      typeof data?.message === 'string' ? data.message.trim() : '',
+      data?.data && typeof data.data === 'object' && !Array.isArray(data.data)
+        ? JSON.stringify(data.data).slice(0, 300)
+        : '',
+    ].filter(Boolean).join(' | ');
+    error.diagnostic = data.diagnostic || diagnosticPayload({requestId: body?.requestId || '', stage: 'MAIN', component: 'WesiOS Main', operation: path, code: error.message, httpStatus: response.status, lastSuccess: 'STREAM_GATEWAY', detail: mainDetail});
+"""
+          if old_g not in g:
+              raise SystemExit('gateway diagnostic insertion point not found')
+          g = g.replace(old_g, new_g, 1)
+          gateway.write_text(g, encoding='utf-8')
+
+          pubspec = Path('pubspec.yaml')
+          p = pubspec.read_text(encoding='utf-8')
+          if 'version: 0.22.19+94' not in p:
+              raise SystemExit('unexpected pubspec version')
+          pubspec.write_text(p.replace('version: 0.22.19+94', 'version: 0.22.20+95', 1), encoding='utf-8')
+
+          appv = Path('lib/core/constants/app_version.dart')
+          v = appv.read_text(encoding='utf-8')
+          if "static const String number = '0.22.19';" not in v or 'static const int build = 94;' not in v:
+              raise SystemExit('unexpected AppVersion')
+          v = v.replace("static const String number = '0.22.19';", "static const String number = '0.22.20';", 1)
+          v = v.replace('static const int build = 94;', 'static const int build = 95;', 1)
+          appv.write_text(v, encoding='utf-8')
+          PY
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+
+      - name: Validate hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          dart format lib/features/ai/wesi_ai_api.dart test/features/ai/wesi_ai_response_contract_test.dart
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --test server/wesi-ai-stream/gateway.test.mjs
+          flutter pub get
+          flutter test test/features/ai/wesi_ai_response_contract_test.dart
+          flutter analyze lib/features/ai/wesi_ai_api.dart --no-fatal-infos
+          grep -q '^version: 0.22.20+95$' pubspec.yaml
+          grep -q "static const String number = '0.22.20';" lib/core/constants/app_version.dart
+          grep -q 'static const int build = 95;' lib/core/constants/app_version.dart
+
+      - name: Commit validated hotfix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wesiwer'
+          git config user.email '77644223+wesiwer@users.noreply.github.com'
+          git add lib/features/ai/wesi_ai_api.dart \
+                  test/features/ai/wesi_ai_response_contract_test.dart \
+                  server/wesi-ai-stream/gateway.mjs \
+                  pubspec.yaml \
+                  lib/core/constants/app_version.dart
+          git commit -m 'fix(ai): restore direct Zane Nirvana chat fallback'
+          git push origin HEAD:main
+
+      - name: Redeploy streaming gateway and publish signed app
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run deploy-wesi-ai-streaming.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f public_host='wesi-ai-178-236-247-194.nip.io'
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Wesi AI: исправлены отдельные чаты Зейна и Нирваны — streaming 400 больше не блокирует ответ, добавлен безопасный fallback на Main и расширена диагностика stream/prepare.' \
+            -f deploy_to_server=true
+          echo 'WESI_AI_DIRECT_CHAT_HOTFIX_DISPATCHED'
