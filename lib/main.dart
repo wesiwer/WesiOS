@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
@@ -104,6 +105,18 @@ Future<bool> _bootstrap(List<String> arguments) async {
     });
   }
 
+  // hive_flutter stores boxes directly in the application Documents directory.
+  // Some Windows installations (including the affected machine) can report that
+  // path even when the directory itself does not exist. Hive then fails while
+  // creating the first *.hive file with PathNotFoundException. Create the
+  // directory explicitly while keeping the exact same storage location, so
+  // existing installations continue to read their current local data.
+  if (!kIsWeb) {
+    final hiveDirectory = await getApplicationDocumentsDirectory();
+    if (!await hiveDirectory.exists()) {
+      await hiveDirectory.create(recursive: true);
+    }
+  }
   await Hive.initFlutter();
 
   Hive.registerAdapter(TransactionModelAdapter());
