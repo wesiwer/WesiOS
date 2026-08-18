@@ -1,3 +1,5 @@
+const atomic = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_sync_atomic.js");
+
 function clean(value, max) {
   const text = String(value == null ? "" : value);
   return text.length <= max ? text : text.slice(0, max);
@@ -34,17 +36,16 @@ module.exports = {
           targetEmployeeId: entry.targetEmployeeId == null ? null : clean(entry.targetEmployeeId, 180),
         },
       };
-      const collection = e.app.findCollectionByNameOrId("wesios_records");
-      const record = new Record(collection);
-      record.set("owner", ctx.ownerId);
-      record.set("org", "wesi-inc");
-      record.set("coll", "critical_audit");
-      record.set("rid", id);
-      record.set("payload", payload);
-      record.set("stamp", now);
-      record.set("deleted", false);
-      e.app.save(record);
-      return true;
+      const result = atomic.commit(e.app, {
+        owner: ctx.ownerId,
+        org: "wesi-inc",
+        coll: "critical_audit",
+        rid: id,
+        payload: payload,
+        stamp: now,
+        deleted: false,
+      });
+      return result.applied === true;
     } catch (_) {
       return false;
     }
