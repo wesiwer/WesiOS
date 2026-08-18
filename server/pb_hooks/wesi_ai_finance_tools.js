@@ -46,11 +46,6 @@ module.exports = {
     if (!policy.hasModule(ctx)) return [];
     return [
       {
-        name: "finance_balance",
-        description: "Получить текущий фактический остаток разрешённой АКТИВНОЙ организации WesiOS из того же ledger и по тому же правилу, что использует приложение. Используй для короткого вопроса о текущей кассе/балансе.",
-        parameters: {type: "object", properties: {organizationId: {type: "string", description: "Используй только если активная организация не передана WesiOS"}}},
-      },
-      {
         name: "finance_summary",
         description: "Посчитать на основном сервере Wesi финансы АКТИВНОЙ организации: текущий остаток на счетах (currentBalance и разбивка accounts) и сводку за период. На вопрос «сколько денег на счету / сколько у меня есть» отвечай currentBalance, а не net за период. Если WesiOS передал activeOrganizationId, не подменяй его другой организацией и не выдумывай ID.",
         parameters: {type: "object", properties: {organizationId: {type: "string", description: "Используй только если активная организация не передана WesiOS"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}}},
@@ -88,6 +83,8 @@ module.exports = {
     const organizationId = policy.select(state, requested);
     if (!organizationId) return {ok: false, code: "FORBIDDEN", message: "Нет права просматривать финансы этой организации"};
 
+    // Internal read alias for Wesi Telegram. It deliberately stays out of
+    // definitions(), so the public Wesi AI capability registry remains stable.
     if (name === "finance_balance") {
       const balance = balanceState(e, ctx, policy, organizationId);
       if (!balance) {
