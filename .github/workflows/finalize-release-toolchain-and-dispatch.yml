@@ -1,0 +1,59 @@
+name: Finalize Release Toolchain And Dispatch
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/finalize-release-toolchain-and-dispatch.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Align release workflow and dispatch current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --ff-only origin main
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/release-app.yml')
+          s = p.read_text()
+          old = """      - uses: subosito/flutter-action@v2\n        with:\n          flutter-version: '3.24.0'\n          channel: 'stable'\n"""
+          new = """      - uses: subosito/flutter-action@v2\n        with:\n          channel: 'stable'\n"""
+          count = s.count(old)
+          if count not in (0, 2):
+              raise SystemExit(f'unexpected Flutter pin count: {count}')
+          if count:
+              p.write_text(s.replace(old, new))
+          PY
+          if ! git diff --quiet -- .github/workflows/release-app.yml; then
+            git config user.name 'WesiOS Release Toolchain'
+            git config user.email 'actions@users.noreply.github.com'
+            git add .github/workflows/release-app.yml
+            git commit -m 'fix(release): use current Flutter stable'
+            git push origin HEAD:main
+          fi
+          # Ensure the pushed workflow definition is visible before dispatch.
+          for i in $(seq 1 12); do
+            if gh api "repos/$GITHUB_REPOSITORY/contents/.github/workflows/release-app.yml?ref=main" \
+                --jq '.content' | base64 -d | grep -q "flutter-version: '3.24.0'"; then
+              sleep 2
+            else
+              break
+            fi
+          done
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Синхронизация усилена и исправлена; обновлены Flutter-зависимости и Android toolchain. Финальная сборка 0.22.26+101.' \
+            -f deploy_to_server=true
