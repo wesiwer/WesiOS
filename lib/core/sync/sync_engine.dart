@@ -121,9 +121,7 @@ class SyncEngine {
           acceptsKey: c.watchesBoxKey,
           syncIdForKey: c.syncIdForBoxKey,
         );
-      } catch (_) {
-        // Один недоступный бокс не должен срывать подписку на остальные.
-      }
+      } catch (_) {}
     }
 
     if (cancelled()) return;
@@ -229,13 +227,6 @@ class SyncEngine {
     }
   }
 
-  /// Policy eviction is not a business delete.
-  ///
-  /// Some codecs intentionally ignore/remove tombstones conservatively (for
-  /// example OrganizationsSync refuses normal remote deletion to avoid
-  /// orphaning finance/tasks). Permission revocation needs different semantics:
-  /// data the current identity may no longer read must disappear from its local
-  /// cache even when the business codec would reject a domain delete.
   static Future<bool> _purgeLocalCacheBySyncId(
     SyncCollection<dynamic> c,
     String id,
@@ -264,9 +255,6 @@ class SyncEngine {
       }
     }
 
-    // Fallback for non-standard stores that implement deletion outside their
-    // primary Hive key. Verify the cache afterwards instead of trusting a
-    // no-op domain implementation.
     try {
       await c.removeById(id);
     } catch (_) {
@@ -584,10 +572,32 @@ class SyncEngine {
 
     SyncFailure? policyFailure;
     var policyApplied = 0;
+    Map<String, SyncRecord> policyRemote = remote.value!;
+
+    if (pushed.forbiddenIds.isNotEmpty) {
+      // A permission change can happen between the original fetch and this
+      // forbidden push. Never decide read-only-vs-revoked from the stale
+      // pre-push snapshot; re-read under the post-denial identity/policy.
+      final refreshed = await t.fetch(c.name);
+      if (cancelled()) return cancelledReport(applied: applied);
+      if (refreshed.ok) {
+        policyRemote = refreshed.value!;
+      } else {
+        // Fail closed. We still evict forbidden local rows below because the
+        // server has just denied writing them and we cannot prove they remain
+        // readable. A later successful sync can restore any still-authorized
+        // remote records.
+        policyRemote = const <String, SyncRecord>{};
+        policyFailure = SyncFailure(
+          'POLICY_REFRESH_FAILED',
+          'Сервер запретил изменение ${c.name}, но не удалось обновить права чтения: ${refreshed.failure?.message ?? 'неизвестная ошибка'}',
+        );
+      }
+    }
 
     for (final id in pushed.forbiddenIds) {
       if (cancelled()) return cancelledReport(applied: applied + policyApplied);
-      final visibleRemote = remote.value![id];
+      final visibleRemote = policyRemote[id];
 
       if (visibleRemote != null) {
         if (await applyAuthoritative(visibleRemote)) {
