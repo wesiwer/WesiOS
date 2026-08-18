@@ -1095,6 +1095,14 @@ export function createGateway(options = {}) {
           name: toolRequest.name,
           ok: toolResult?.ok === true,
           code: toolResult?.code || null,
+          // Признак изменения приходит из реестра прав вместе с результатом.
+          // По нему собирается итог прохода: что именно он поменял в WesiOS,
+          // а не что просто прочитал.
+          ...(toolResult?.capability ? {
+            mutation: toolResult.capability.mutation === true,
+            module: String(toolResult.capability.module || ''),
+            action: String(toolResult.capability.action || ''),
+          } : {}),
           ...stepIo(toolRequest, toolResult),
         ...(toolResult?.ok === true ? {} : {diagnostic: toolResult?.diagnostic || diagnosticPayload({requestId: prepared.requestId, stage: 'TOOL', component: toolRequest.name, operation: 'tool.execute', code: toolResult?.code || 'WAI_TOOL_FAILED', httpStatus: 500, lastSuccess: 'TOOL_DISPATCH', detail: toolResult?.message || ''})}),
         ...(hasDiffMetadata ? {additions: diff.additions, deletions: diff.deletions, files: diff.files} : {}),

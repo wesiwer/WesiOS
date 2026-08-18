@@ -19,6 +19,7 @@ import 'wesi_ai_voice_devices.dart';
 import 'wesi_ai_voice_session.dart';
 import 'widgets/wesi_ai_camera_capture.dart';
 import 'widgets/wesi_ai_message_content.dart';
+import 'widgets/wesi_ai_run_summary_chip.dart';
 import 'widgets/wesi_ai_message_actions.dart';
 import 'widgets/wesi_ai_rich_message.dart';
 
@@ -984,6 +985,25 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
     );
   }
 
+  /// Изменения последнего ответа персоны.
+  ///
+  /// Берётся именно последний ответ, а не весь разговор: плашка отвечает на
+  /// вопрос «что сейчас произошло», и складывать в неё изменения недельной
+  /// давности значило бы отвечать не на него.
+  List<WesiAiRunChange> _lastRunChanges(
+      WesiAiManagedChatController controller) {
+    final active = controller.state.activeConversation;
+    if (active == null) return const <WesiAiRunChange>[];
+    final messages = controller.state.messagesFor(active.id);
+    for (final message in messages.reversed) {
+      final assistant = message.author == WesiAiMessageAuthor.zane ||
+          message.author == WesiAiMessageAuthor.nirvana;
+      if (!assistant) continue;
+      return runChangesFrom(message.metadata['activity']);
+    }
+    return const <WesiAiRunChange>[];
+  }
+
   Widget _composerBar(WesiAiManagedChatController controller) => Padding(
         padding: const EdgeInsets.fromLTRB(12, 5, 12, 12),
         child: Center(
@@ -1000,6 +1020,10 @@ class _AiAssistantV2ScreenState extends State<AiAssistantV2Screen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    // Итог последнего прохода: что он изменил в WesiOS.
+                    // Стоит над полем ввода, потому что отвечает на вопрос,
+                    // который возникает сразу после длинной работы.
+                    WesiAiRunSummaryChip(changes: _lastRunChanges(controller)),
                     if (controller.queuedTurnCount > 0)
                       Container(
                         margin: const EdgeInsets.fromLTRB(4, 2, 4, 7),

@@ -28,6 +28,15 @@ class WesiAiActivityEvent {
   final String input;
   final String output;
 
+  /// Шаг изменил данные WesiOS, а не только прочитал их, и изменение удалось.
+  ///
+  /// Признак приходит из реестра прав вместе с результатом инструмента. По
+  /// нему собирается итог прохода: за двадцать шагов человеку важно не то,
+  /// сколько раз ассистент что-то посмотрел, а что он поменял.
+  final bool mutation;
+  final bool succeeded;
+  final String module;
+
   const WesiAiActivityEvent({
     required this.id,
     required this.kind,
@@ -43,7 +52,13 @@ class WesiAiActivityEvent {
     this.sourceName = '',
     this.input = '',
     this.output = '',
+    this.mutation = false,
+    this.succeeded = false,
+    this.module = '',
   });
+
+  /// Изменение, которое действительно применилось.
+  bool get appliedChange => mutation && succeeded;
 
   bool get hasIo => input.isNotEmpty || output.isNotEmpty;
 
@@ -69,6 +84,9 @@ class WesiAiActivityEvent {
     String? sourceName,
     String? input,
     String? output,
+    bool? mutation,
+    bool? succeeded,
+    String? module,
   }) =>
       WesiAiActivityEvent(
         id: id,
@@ -85,6 +103,9 @@ class WesiAiActivityEvent {
         sourceName: sourceName ?? this.sourceName,
         input: input ?? this.input,
         output: output ?? this.output,
+        mutation: mutation ?? this.mutation,
+        succeeded: succeeded ?? this.succeeded,
+        module: module ?? this.module,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -102,6 +123,9 @@ class WesiAiActivityEvent {
         if (sourceName.isNotEmpty) 'sourceName': sourceName,
         if (input.isNotEmpty) 'input': input,
         if (output.isNotEmpty) 'output': output,
+        if (mutation) 'mutation': true,
+        if (succeeded) 'ok': true,
+        if (module.isNotEmpty) 'module': module,
       };
 
   static WesiAiActivityEvent? fromJson(dynamic raw, {int fallbackIndex = 0}) {
@@ -180,6 +204,9 @@ class WesiAiActivityEvent {
     // нельзя — она лежит на устройстве.
     final input = _clip('${map['input'] ?? ''}', 8000);
     final output = _clip('${map['output'] ?? ''}', 8000);
+    final mutation = map['mutation'] == true;
+    final succeeded = map['ok'] == true;
+    final module = _clip('${map['module'] ?? ''}', 60);
     return WesiAiActivityEvent(
       id: id.isEmpty ? 'activity_$fallbackIndex' : id,
       kind: kind,
@@ -195,6 +222,9 @@ class WesiAiActivityEvent {
       sourceName: sourceName,
       input: input,
       output: output,
+      mutation: mutation,
+      succeeded: succeeded,
+      module: module,
     );
   }
 

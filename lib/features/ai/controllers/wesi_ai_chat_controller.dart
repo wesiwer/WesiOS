@@ -384,6 +384,9 @@ class WesiAiChatController extends ChangeNotifier {
       List<dynamic> files = const <dynamic>[],
       String input = '',
       String output = '',
+      bool mutation = false,
+      bool succeeded = false,
+      String module = '',
     }) {
       final at = DateTime.now().toUtc();
       return <String, dynamic>{
@@ -404,6 +407,9 @@ class WesiAiChatController extends ChangeNotifier {
               files.take(40).map((item) => '$item').toList(growable: false),
         if (input.isNotEmpty) 'input': input,
         if (output.isNotEmpty) 'output': output,
+        if (mutation) 'mutation': true,
+        if (succeeded) 'ok': true,
+        if (module.isNotEmpty) 'module': module,
       };
     }
 
@@ -498,6 +504,10 @@ class WesiAiChatController extends ChangeNotifier {
             final stepOutput = '${raw['output'] ?? ''}'.trim();
             if (stepInput.isNotEmpty) current['input'] = stepInput;
             if (stepOutput.isNotEmpty) current['output'] = stepOutput;
+            if (raw['mutation'] == true) current['mutation'] = true;
+            if (raw['ok'] == true) current['ok'] = true;
+            final stepModule = '${raw['module'] ?? ''}'.trim();
+            if (stepModule.isNotEmpty) current['module'] = stepModule;
             activity[index] = current;
           } else {
             activity.add(activityEntry(
@@ -515,6 +525,9 @@ class WesiAiChatController extends ChangeNotifier {
               files: files,
               input: '${raw['input'] ?? ''}'.trim(),
               output: '${raw['output'] ?? ''}'.trim(),
+              mutation: raw['mutation'] == true,
+              succeeded: raw['ok'] == true,
+              module: '${raw['module'] ?? ''}'.trim(),
             ));
           }
         }
