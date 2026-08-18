@@ -34,6 +34,9 @@ jobs:
           node --check server/pb_hooks/wesi_telegram_morning.js
           node --check server/pb_hooks/wesi_telegram.pb.js
           node server/pb_hooks/wesi_telegram_morning_test.mjs
+          grep -q 'ANCHOR_DAY' server/pb_hooks/wesi_telegram_morning.js
+          grep -q 'MORNING_HOUR = 8' server/pb_hooks/wesi_telegram_morning.js
+          grep -q 'images.pexels.com/photos/' server/pb_hooks/wesi_telegram_morning.js
 
       - name: Prepare SSH
         env:
