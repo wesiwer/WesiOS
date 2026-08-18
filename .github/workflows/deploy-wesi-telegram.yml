@@ -7,6 +7,7 @@ on:
       - 'server/pb_hooks/wesi_telegram*.js'
       - 'server/pb_hooks/wesi_ai_finance_tools.js'
       - 'server/pb_hooks/wesi_ai_task_tools.js'
+      - 'scripts/generate_wesi_telegram_visuals.py'
       - '.github/workflows/deploy-wesi-telegram.yml'
   workflow_dispatch:
     inputs:
@@ -38,6 +39,7 @@ jobs:
       MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
       BOT_USERNAME: ${{ inputs.bot_username || 'WesiOSBot' }}
       PUBLIC_BASE_URL: ${{ inputs.public_base_url || 'https://api.wesi-inc.ru' }}
+      BOT_DISPLAY_NAME: 'WesiOS: BUSINESS OPERATING SYSTEM'
 
     steps:
       - uses: actions/checkout@v4
@@ -71,6 +73,8 @@ jobs:
             server/pb_hooks/wesi_telegram_lib.js \
             server/pb_hooks/wesi_telegram_store.js \
             server/pb_hooks/wesi_telegram_gateway.js \
+            server/pb_hooks/wesi_telegram_experience.js \
+            server/pb_hooks/wesi_telegram_interactions.js \
             server/pb_hooks/wesi_telegram.pb.js \
             server/pb_hooks/wesi_ai_finance_tools.js \
             server/pb_hooks/wesi_ai_task_tools.js; do
@@ -102,6 +106,22 @@ jobs:
           echo "WEBHOOK_SECRET=$WEBHOOK_SECRET" >> "$GITHUB_ENV"
           chmod 600 wesi-telegram.json
 
+      - name: Generate WesiOS Telegram visuals
+        run: |
+          set -euo pipefail
+          python3 -m pip install --disable-pip-version-check --quiet 'Pillow>=11.0,<13.0'
+          python3 scripts/generate_wesi_telegram_visuals.py
+          for kind in brief cash risk today overdue push farewell; do
+            test -s "build/wesi_telegram_visuals/$kind.jpg"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in Path('build/wesi_telegram_visuals').glob('*.jpg'):
+              data = path.read_bytes()
+              assert data[:2] == b'\xff\xd8' and data[-2:] == b'\xff\xd9', path
+          print('WESI_TELEGRAM_VISUALS_OK')
+          PY
+
       - name: Prepare SSH
         env:
           MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
@@ -118,33 +138,39 @@ jobs:
           fi
           chmod 600 ~/.ssh/main_known_hosts
 
-      - name: Atomically deploy Telegram and shared tool hooks
+      - name: Atomically deploy Telegram hooks and visuals
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
           REMOTE="/tmp/wesi-telegram-$GITHUB_RUN_ID"
-          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE/visuals'"
           scp "${SSH[@]}" \
             server/pb_hooks/wesi_telegram_lib.js \
             server/pb_hooks/wesi_telegram_store.js \
             server/pb_hooks/wesi_telegram_gateway.js \
+            server/pb_hooks/wesi_telegram_experience.js \
+            server/pb_hooks/wesi_telegram_interactions.js \
             server/pb_hooks/wesi_telegram.pb.js \
             server/pb_hooks/wesi_ai_finance_tools.js \
             server/pb_hooks/wesi_ai_task_tools.js \
             wesi-telegram.json \
             "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+          scp "${SSH[@]}" build/wesi_telegram_visuals/*.jpg "$MAIN_USER@$MAIN_HOST:$REMOTE/visuals/"
 
           ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
           set -euo pipefail
           HOOK_DIR=/opt/pocketbase/pb_hooks
+          PUBLIC_DIR=/opt/pocketbase/pb_public/telegram/visuals
           test -d "$HOOK_DIR"
           test -w "$HOOK_DIR"
+          mkdir -p "$PUBLIC_DIR"
 
           atomic_install() {
             src="$1"
             dst="$2"
             mode="$3"
-            tmp="$HOOK_DIR/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
+            dir="$(dirname "$dst")"
+            tmp="$dir/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
             cat "$src" > "$tmp"
             chmod "$mode" "$tmp"
             cmp -s "$src" "$tmp"
@@ -154,25 +180,47 @@ jobs:
           atomic_install "$REMOTE/wesi_telegram_lib.js" "$HOOK_DIR/wesi_telegram_lib.js" 0644
           atomic_install "$REMOTE/wesi_telegram_store.js" "$HOOK_DIR/wesi_telegram_store.js" 0644
           atomic_install "$REMOTE/wesi_telegram_gateway.js" "$HOOK_DIR/wesi_telegram_gateway.js" 0644
+          atomic_install "$REMOTE/wesi_telegram_experience.js" "$HOOK_DIR/wesi_telegram_experience.js" 0644
+          atomic_install "$REMOTE/wesi_telegram_interactions.js" "$HOOK_DIR/wesi_telegram_interactions.js" 0644
           atomic_install "$REMOTE/wesi_ai_finance_tools.js" "$HOOK_DIR/wesi_ai_finance_tools.js" 0644
           atomic_install "$REMOTE/wesi_ai_task_tools.js" "$HOOK_DIR/wesi_ai_task_tools.js" 0644
           atomic_install "$REMOTE/wesi-telegram.json" "$HOOK_DIR/.wesi-telegram.json" 0600
+          for kind in brief cash risk today overdue push farewell; do
+            atomic_install "$REMOTE/visuals/$kind.jpg" "$PUBLIC_DIR/$kind.jpg" 0644
+          done
           atomic_install "$REMOTE/wesi_telegram.pb.js" "$HOOK_DIR/wesi_telegram.pb.js" 0644
 
           sleep 4
           curl -fsS --max-time 8 http://127.0.0.1:8090/api/health >/dev/null
-          cmp -s "$REMOTE/wesi_telegram_gateway.js" "$HOOK_DIR/wesi_telegram_gateway.js"
+          cmp -s "$REMOTE/wesi_telegram_experience.js" "$HOOK_DIR/wesi_telegram_experience.js"
+          cmp -s "$REMOTE/wesi_telegram_interactions.js" "$HOOK_DIR/wesi_telegram_interactions.js"
           cmp -s "$REMOTE/wesi_telegram.pb.js" "$HOOK_DIR/wesi_telegram.pb.js"
+          cmp -s "$REMOTE/visuals/farewell.jpg" "$PUBLIC_DIR/farewell.jpg"
           cmp -s "$REMOTE/wesi-telegram.json" "$HOOK_DIR/.wesi-telegram.json"
           rm -rf "$REMOTE"
-          echo WESI_TELEGRAM_HOOKS_DEPLOYED
+          echo WESI_TELEGRAM_HOOKS_AND_VISUALS_DEPLOYED
           REMOTE
 
-      - name: Configure Telegram webhook
+      - name: Configure Telegram profile menu and webhook
         run: |
           set -euo pipefail
+          tg_post() {
+            method="$1"
+            payload="$2"
+            response="$(curl -fsS --max-time 20 -X POST \
+              "https://api.telegram.org/bot${BOT_TOKEN}/${method}" \
+              -H 'Content-Type: application/json' \
+              --data-binary "$payload")"
+            RESPONSE="$response" METHOD="$method" python3 - <<'PY'
+          import json, os
+          data=json.loads(os.environ['RESPONSE'])
+          assert data.get('ok') is True, (os.environ['METHOD'], data)
+          print('TELEGRAM_' + os.environ['METHOD'].upper() + '_OK')
+          PY
+          }
+
           webhook_url="${PUBLIC_BASE_URL%/}/api/wesi/telegram/webhook"
-          payload="$(python3 - <<'PY'
+          webhook_payload="$(python3 - <<'PY'
           import json, os
           print(json.dumps({
               'url': os.environ['PUBLIC_BASE_URL'].rstrip('/') + '/api/wesi/telegram/webhook',
@@ -182,24 +230,37 @@ jobs:
           }))
           PY
           )"
-          response="$(curl -fsS --max-time 20 \
-            -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
-            -H 'Content-Type: application/json' \
-            --data-binary "$payload")"
-          echo "$response" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("ok") is True, data; print("TELEGRAM_SET_WEBHOOK_OK")'
+          tg_post setWebhook "$webhook_payload"
+          tg_post setMyName '{"name":"WesiOS: BUSINESS OPERATING SYSTEM"}'
+          tg_post setMyDescription '{"description":"WesiOS — операционная система бизнеса в Telegram: сводка, деньги, риски, задачи, организации и серверные уведомления."}'
+          tg_post setMyShortDescription '{"short_description":"WesiOS — управление бизнесом и важные сигналы прямо в Telegram."}'
+          tg_post setMyCommands '[{"command":"brief","description":"📊 Главная сводка"},{"command":"cash","description":"💰 Деньги и текущий баланс"},{"command":"risk","description":"⚠️ Риски и кассовый runway"},{"command":"today","description":"✅ Задачи на сегодня"},{"command":"overdue","description":"⏰ Просроченные задачи"},{"command":"org","description":"🏢 Выбрать организацию"},{"command":"test","description":"🔔 Проверить Telegram-уведомления"},{"command":"help","description":"🧭 Все возможности"}]'
+          tg_post setChatMenuButton '{"menu_button":{"type":"commands"}}'
 
           info="$(curl -fsS --max-time 20 "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo")"
-          INFO="$info" EXPECTED="$webhook_url" python3 - <<'PY'
+          name="$(curl -fsS --max-time 20 "https://api.telegram.org/bot${BOT_TOKEN}/getMyName")"
+          commands="$(curl -fsS --max-time 20 "https://api.telegram.org/bot${BOT_TOKEN}/getMyCommands")"
+          INFO="$info" NAME="$name" COMMANDS="$commands" EXPECTED="$webhook_url" python3 - <<'PY'
           import json, os
-          data=json.loads(os.environ['INFO'])
-          assert data.get('ok') is True, data
-          result=data.get('result') or {}
+          info=json.loads(os.environ['INFO'])
+          assert info.get('ok') is True, info
+          result=info.get('result') or {}
           assert result.get('url') == os.environ['EXPECTED'], result
           assert result.get('has_custom_certificate') in (False, None), result
-          print('TELEGRAM_WEBHOOK_VERIFIED pending=' + str(result.get('pending_update_count', 0)))
+
+          name=json.loads(os.environ['NAME'])
+          assert name.get('ok') is True, name
+          assert (name.get('result') or {}).get('name') == 'WesiOS: BUSINESS OPERATING SYSTEM', name
+
+          commands=json.loads(os.environ['COMMANDS'])
+          assert commands.get('ok') is True, commands
+          actual=[x.get('command') for x in commands.get('result') or []]
+          expected=['brief','cash','risk','today','overdue','org','test','help']
+          assert actual == expected, (actual, expected)
+          print('TELEGRAM_PROFILE_MENU_WEBHOOK_VERIFIED pending=' + str(result.get('pending_update_count', 0)))
           PY
 
-      - name: Verify public Telegram routes
+      - name: Verify public Telegram routes and visuals
         run: |
           set -euo pipefail
           base="${PUBLIC_BASE_URL%/}"
@@ -207,6 +268,19 @@ jobs:
           test "$code" = 401
           open_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$base/api/wesi/telegram/open?target=home" || true)"
           test "$open_code" = 302
+          push_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 -X POST "$base/api/wesi/telegram/test-push" || true)"
+          test "$push_code" = 401
+          for kind in brief cash risk today overdue push farewell; do
+            curl -fsS --max-time 15 "$base/telegram/visuals/$kind.jpg" -o "/tmp/$kind.jpg"
+            test -s "/tmp/$kind.jpg"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          for path in Path('/tmp').glob('*.jpg'):
+              data=path.read_bytes()
+              assert data[:2] == b'\xff\xd8', path
+          print('WESI_TELEGRAM_PUBLIC_VISUALS_OK')
+          PY
           echo WESI_TELEGRAM_PUBLIC_ROUTES_OK
 
       - name: Cleanup secrets
@@ -225,5 +299,5 @@ jobs:
               sha: context.sha,
               state: ok ? 'success' : 'failure',
               context: 'Wesi Telegram Deploy',
-              description: ok ? 'Production Telegram gateway deployed and verified' : 'Production Telegram deploy failed'
+              description: ok ? 'Telegram profile, menu, visuals, hooks and webhook verified' : 'Production Telegram deploy failed'
             });
