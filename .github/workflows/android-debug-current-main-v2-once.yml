@@ -24,7 +24,7 @@ jobs:
       - name: Build Android debug
         shell: bash
         run: |
-          # Revalidate latest main after sync/build fixes and parallel AI changes.
+          # Revalidate after dartssh2/compileSdk/NDK compatibility fixes.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           PUB=$?
