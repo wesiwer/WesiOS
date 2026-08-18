@@ -7,7 +7,7 @@ on:
       - '.github/workflows/verify-horizon-sync-production-sha-once.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   verify:
@@ -68,5 +68,14 @@ jobs:
             [ "$actual" = "$expected" ] || { echo "mismatch:$f expected=$expected actual=$actual"; exit 1; }
             echo "match:$f $actual"
           done
+      - name: Record verified production bundle
+        run: |
+          set -euo pipefail
+          printf 'verified_commit=%s\nverified_at=%s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .github/production-sync-verified.txt
+          git config user.name 'WesiOS Production Verification'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/production-sync-verified.txt
+          git commit -m 'ops: record verified production sync bundle'
+          git push origin HEAD:main
 
-# validation: 2026-08-18 final sync/profile production SHA pass
+# validation: 2026-08-18 self-recording production SHA pass
