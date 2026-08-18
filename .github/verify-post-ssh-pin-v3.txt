@@ -1,0 +1,307 @@
+SOURCE=d650e9145825e56daae748d036e04ccf35194cf3
+PUB_GET=0
+ANALYZE=0
+TESTS=0
+ANDROID_DEBUG=1
+NODE_SYNC=0
+=== PUB TAIL ===
++ vector_math 2.4.2
++ vibration 1.9.0 (3.2.0 available)
++ vibration_platform_interface 0.0.3 (0.1.2 available)
++ video_player 2.14.0
++ video_player_android 2.12.0
++ video_player_avfoundation 2.11.0
++ video_player_platform_interface 6.9.0
++ video_player_web 2.4.0
++ vm_service 15.3.0
++ watcher 1.2.1
++ web 1.1.1
++ web_socket 1.0.1
++ web_socket_channel 3.0.3
++ win32 5.15.0 (6.4.0 available)
++ win32_registry 1.1.5 (3.0.3 available)
++ window_manager 0.3.9 (0.5.2 available)
++ xdg_directories 1.1.0
++ xml 6.5.0 (7.0.1 available)
++ yaml 3.1.3
+Changed 226 dependencies!
+78 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+=== ANALYZE ERRORS ===
+=== TEST FAILURES ===
+=== ANDROID ERRORS ===
+74:Target kernel_snapshot_program failed: Exception
+77:FAILURE: Build failed with an exception.
+79:* What went wrong:
+89:BUILD FAILED in 4m 15s
+=== NODE FAILURES ===
+=== TAILS ===
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ Passing tests
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера оставляет только цифры и ведущий плюс
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера пустое и мусор дают пустую строку
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера плюс не в начале не считается плюсом
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети готовый адрес берётся как есть
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети собачка превращается в адрес
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети русские названия сетей тоже понимаются
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети WhatsApp получает номер без знаков
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети незнакомая сеть с доменом открывается как адрес
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети незнакомая сеть без домена ссылкой не становится
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети пустое значение ссылкой не становится
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: пустой профиль не отправляется и не затирает чужой
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ Passing tests
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети регистр названия сети не важен
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: секреты в профиль не попадают
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: (tearDownAll)
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ Passing tests
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: help перечисляет реальные диагностические команды
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: обычная команда безопасно печатается в prompt
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: echo учитывает кавычки и сохраняет историю
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: повтор команды не дублируется в истории
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: токен не попадает в историю и маскируется для экрана
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: JWT разбирается локально без вывода полного секрета
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: отпечаток токена имеет SHA-256 и не раскрывает токен
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: каталог содержит WesiOS, сертификаты, SSH и токены
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: templates печатает готовые команды
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: шаблоны и команды привязываются к выбранному серверу
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: clear возвращает управляющий флаг без вывода
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: неизвестная команда объясняет, как открыть справку
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: автодополнение предлагает команды по префиксу
+::endgroup::
+
+🎉 1649 tests passed.
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+Upgrading build.gradle
+Upgrading gradle.properties
+Upgrading gradle.properties
+Running Gradle task 'assembleDebug'...                          
+Warning: Flutter support for your project's Gradle version (8.14.3) will soon be dropped. Please upgrade your Gradle version to a version of at least 9.1.0 soon.
+Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
+
+Potential fix: Your project's gradle version is typically defined in the gradle wrapper file. By default, this can be found at /home/runner/work/WesiOS/WesiOS/android/gradle/wrapper/gradle-wrapper.properties. 
+For more information, see https://docs.gradle.org/current/userguide/gradle_wrapper.html.
+
+Warning: Flutter support for your project's Android Gradle Plugin version (Android Gradle Plugin version 8.11.1) will soon be dropped. Please upgrade your Android Gradle Plugin version to a version of at least Android Gradle Plugin version 9.0.1 soon.
+Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
+
+Potential fix: Your project's AGP version is typically defined in the plugins block of the `settings.gradle` file (/home/runner/work/WesiOS/WesiOS/android/settings.gradle), by a plugin with the id of com.android.application. 
+If you don't see a plugins block, your project was likely created with an older template version. In this case it is most likely defined in the top-level build.gradle file (/home/runner/work/WesiOS/WesiOS/android/build.gradle) by the following line in the dependencies block of the buildscript: "classpath 'com.android.tools.build:gradle:<version>'".
+
+Warning: Flutter support for your project's Kotlin version (2.2.20) will soon be dropped. Please upgrade your Kotlin version to a version of at least 2.3.20 soon.
+Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
+
+Potential fix: Your project's KGP version is typically defined in the plugins block of the `settings.gradle` file (/home/runner/work/WesiOS/WesiOS/android/settings.gradle), by a plugin with the id of org.jetbrains.kotlin.android. 
+If you don't see a plugins block, your project was likely created with an older template version, in which case it is most likely defined in the top-level build.gradle file (/home/runner/work/WesiOS/WesiOS/android/build.gradle) by the ext.kotlin_version property.
+
+Checking the license for package NDK (Side by side) 27.0.12077973 in /usr/local/lib/android/sdk/licenses
+License for package NDK (Side by side) 27.0.12077973 accepted.
+Preparing "Install NDK (Side by side) 27.0.12077973 v.27.0.12077973".
+"Install NDK (Side by side) 27.0.12077973 v.27.0.12077973" ready.
+Installing NDK (Side by side) 27.0.12077973 in /usr/local/lib/android/sdk/ndk/27.0.12077973
+"Install NDK (Side by side) 27.0.12077973 v.27.0.12077973" complete.
+"Install NDK (Side by side) 27.0.12077973 v.27.0.12077973" finished.
+Checking the license for package Android SDK Platform 33 in /usr/local/lib/android/sdk/licenses
+License for package Android SDK Platform 33 accepted.
+Preparing "Install Android SDK Platform 33 (revision 3)".
+"Install Android SDK Platform 33 (revision 3)" ready.
+Installing Android SDK Platform 33 in /usr/local/lib/android/sdk/platforms/android-33
+"Install Android SDK Platform 33 (revision 3)" complete.
+"Install Android SDK Platform 33 (revision 3)" finished.
+[=========                              ] 25%                                   
+[=========                              ] 25% Fetch remote repository...        
+[=======================================] 100% Fetch remote repository...       
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+../../../.pub-cache/hosted/pub.dev/dartssh2-2.14.0/lib/src/sftp/sftp_client.dart:602:29: Error: A value of type 'int?' can't be assigned to a variable of type 'num'.
+      if (bytessRecieved >= length) {
+                            ^
+../../../.pub-cache/hosted/pub.dev/dartssh2-2.14.0/lib/src/sftp/sftp_client.dart:583:17: Context: Variable 'length' could not be promoted due to an 'await' or 'yield'.
+Try checking the type of the variable after the 'await' or 'yield'.  See http://dart.dev/go/non-promo-suspension
+        chunk = await _readChunk(chunkLength, chunkStart);
+                ^
+Target kernel_snapshot_program failed: Exception
+
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileFlutterBuildDebug'.
+> Process 'command '/opt/hostedtoolcache/flutter/stable-3.47.0-x64/flutter/bin/flutter'' finished with non-zero exit value 1
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 4m 15s
+Running Gradle task 'assembleDebug'...                            257.0s
+Gradle task assembleDebug failed with exit code 1
+  ...
+# Subtest: company and private scopes produce one composite revision
+ok 104 - company and private scopes produce one composite revision
+  ---
+  duration_ms: 1.491579
+  type: 'test'
+  ...
+# Subtest: owner account does not need a duplicate private marker
+ok 105 - owner account does not need a duplicate private marker
+  ---
+  duration_ms: 0.258978
+  type: 'test'
+  ...
+# Subtest: duplicate historical markers are deterministic and all affect the token
+ok 106 - duplicate historical markers are deterministic and all affect the token
+  ---
+  duration_ms: 0.189557
+  type: 'test'
+  ...
+# Subtest: marker logical stamp advances even when two writes share one millisecond
+ok 107 - marker logical stamp advances even when two writes share one millisecond
+  ---
+  duration_ms: 0.476248
+  type: 'test'
+  ...
+# Subtest: duplicate markers advance from the newest previous logical stamp
+ok 108 - duplicate markers advance from the newest previous logical stamp
+  ---
+  duration_ms: 0.272152
+  type: 'test'
+  ...
+# Subtest: marker stays above an allowed future business stamp for legacy revision
+ok 109 - marker stays above an allowed future business stamp for legacy revision
+  ---
+  duration_ms: 0.303422
+  type: 'test'
+  ...
+# Subtest: pre-marker installations fall back to latest business state until first write
+ok 110 - pre-marker installations fall back to latest business state until first write
+  ---
+  duration_ms: 0.331555
+  type: 'test'
+  ...
+# Subtest: latest business row remains a fallback when marker nonce is unchanged
+ok 111 - latest business row remains a fallback when marker nonce is unchanged
+  ---
+  duration_ms: 0.276621
+  type: 'test'
+  ...
+# Subtest: record hook covers create, update and delete while excluding marker recursion
+ok 112 - record hook covers create, update and delete while excluding marker recursion
+  ---
+  duration_ms: 0.788535
+  type: 'test'
+  ...
+# Subtest: legacy profile_private POST is rejected while old GET data stays migratable
+ok 113 - legacy profile_private POST is rejected while old GET data stays migratable
+  ---
+  duration_ms: 0.565095
+  type: 'test'
+  ...
+# Subtest: revision-v2 no longer derives its primary token from one max row
+ok 114 - revision-v2 no longer derives its primary token from one max row
+  ---
+  duration_ms: 0.307158
+  type: 'test'
+  ...
+# Subtest: touch retries as update when another hook wins the first marker create
+ok 115 - touch retries as update when another hook wins the first marker create
+  ---
+  duration_ms: 2.445496
+  type: 'test'
+  ...
+# Subtest: clean install exits before querying a missing wesios_records table
+ok 116 - clean install exits before querying a missing wesios_records table
+  ---
+  duration_ms: 2.530115
+  type: 'test'
+  ...
+# Subtest: migration keeps one deterministic LWW winner per sync identity
+ok 117 - migration keeps one deterministic LWW winner per sync identity
+  ---
+  duration_ms: 2.143207
+  type: 'test'
+  ...
+# Subtest: migration persists the exact unique owner/coll/rid index
+ok 118 - migration persists the exact unique owner/coll/rid index
+  ---
+  duration_ms: 0.70648
+  type: 'test'
+  ...
+1..118
+# tests 118
+# suites 0
+# pass 118
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 766.042723
