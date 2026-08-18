@@ -51,9 +51,9 @@ dependencies:
   local_auth: ^2.2.0
   crypto: ^3.0.3
   cryptography: ^2.9.0
-  pointycastle: ^3.9.1
+  pointycastle: ^4.0.0
   local_notifier: ^0.1.6
-  dartssh2: 2.14.0
+  dartssh2: 2.22.5
 
 dev_dependencies:
   flutter_test:
