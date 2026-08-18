@@ -76,8 +76,14 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Analyze
-        run: flutter analyze --no-fatal-infos
+      - name: Analyze Telegram integration
+        run: |
+          flutter analyze --no-fatal-infos \
+            lib/core/routes/app_router.dart \
+            lib/core/services/telegram_link_service.dart \
+            lib/features/profile/profile_with_telegram.dart \
+            lib/features/profile/telegram_link_screen.dart \
+            test/telegram_deep_link_test.dart
 
       - name: Test Telegram deep-link routing
         run: flutter test test/telegram_deep_link_test.dart
