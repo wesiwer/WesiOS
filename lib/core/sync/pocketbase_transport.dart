@@ -168,6 +168,7 @@ class PocketBaseTransport implements SyncTransport {
 
     final delivered = <String>[];
     final acceptedStamps = <String, DateTime>{};
+    final forbidden = <String>[];
     SyncFailure? firstFailure;
 
     for (final r in records) {
@@ -182,7 +183,14 @@ class PocketBaseTransport implements SyncTransport {
         },
       );
       if (res.failure != null) {
-        if (res.failure!.code == 'FORBIDDEN') continue;
+        // FORBIDDEN is actionable row-level policy information. Keep it out of
+        // the ordinary failure channel and let SyncEngine reconcile the local
+        // cache against the remote snapshot it fetched immediately before the
+        // push: restore visible read-only rows, purge rows no longer visible.
+        if (res.failure!.code == 'FORBIDDEN') {
+          forbidden.add(r.id);
+          continue;
+        }
 
         firstFailure ??= res.failure;
         if (_fatalCodes.contains(res.failure!.code)) break;
@@ -190,22 +198,18 @@ class PocketBaseTransport implements SyncTransport {
       }
 
       // HTTP 200 + applied:false means the server rejected this stale write
-      // at its LWW boundary. It must NOT be reported as delivered; the next
-      // revision-driven pull will apply the authoritative remote row.
+      // at its LWW boundary. It is not delivered; the revision-driven pull
+      // will bring the authoritative row that raced with this request.
       if (res.value!['applied'] == false) continue;
 
       delivered.add(r.id);
 
-      // The server can normalize an invalid/far-future client timestamp to its
-      // own clock. Preserve the timestamp that was actually committed so the
-      // local journal converges to the same LWW coordinate immediately.
+      // Reconcile to the timestamp the server actually committed. The server
+      // may clamp a far-future device clock to its own current time.
       final accepted = DateTime.tryParse('${res.value!['stamp'] ?? ''}');
       if (accepted != null) {
         acceptedStamps[r.id] = accepted;
       } else {
-        // The write already happened, so do not retry it blindly as if it
-        // failed. Mark the pass degraded; SyncEngine will use an epoch journal
-        // fallback for this delivered row, forcing a safe authoritative pull.
         firstFailure ??= SyncFailure(
           'REMOTE_DATA_INVALID',
           'Сервер принял $collection:${r.id}, но не вернул корректное время записи',
@@ -216,6 +220,7 @@ class PocketBaseTransport implements SyncTransport {
     return SyncPushResult(
       deliveredIds: delivered,
       acceptedStamps: acceptedStamps,
+      forbiddenIds: forbidden,
       failure: firstFailure,
     );
   }
