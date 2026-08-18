@@ -24,6 +24,7 @@ jobs:
       - name: Check pub resolution and Node contracts
         shell: bash
         run: |
+          # Retry after Quill/intl and remaining atomic-writer fixes.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           PUB=$?
