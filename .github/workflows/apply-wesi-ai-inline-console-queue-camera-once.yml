@@ -1,4 +1,4 @@
-name: Apply Wesi AI inline console queue camera fix once
+name: Apply Wesi AI mobile visualizations fix once
 
 on:
   push:
@@ -11,7 +11,7 @@ permissions:
   statuses: write
 
 concurrency:
-  group: apply-wesi-ai-inline-console-queue-camera-once
+  group: apply-wesi-ai-mobile-visualizations-once
   cancel-in-progress: true
 
 jobs:
@@ -31,12 +31,12 @@ jobs:
               repo: context.repo.repo,
               sha: context.sha,
               state: 'pending',
-              context: 'Wesi AI UX Patch',
-              description: 'Applying and verifying chat UX patch',
+              context: 'Wesi AI Mobile Visuals',
+              description: 'Applying responsive tables and charts fix',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
-      - name: Apply Wesi AI patch
+      - name: Apply responsive visualizations patch
         run: python3 .github/scripts/apply_wesi_ai_inline_console_queue_camera.py
 
       - name: Setup Flutter
@@ -48,39 +48,37 @@ jobs:
       - name: Get dependencies
         run: flutter pub get
 
-      - name: Format changed Dart files
-        run: |
-          dart format \
-            lib/features/ai/ai_assistant_v2_screen.dart \
-            lib/features/ai/widgets/wesi_ai_camera_capture.dart \
-            lib/features/ai/widgets/wesi_ai_rich_message.dart \
-            lib/features/ai/widgets/wesi_ai_code_console.dart
+      - name: Format visualization widget
+        run: dart format lib/features/ai/widgets/wesi_ai_visualization.dart
 
-      - name: Analyze Wesi AI
-        run: flutter analyze --no-fatal-infos lib/features/ai
+      - name: Analyze visualization widget
+        run: flutter analyze --no-fatal-infos lib/features/ai/widgets/wesi_ai_visualization.dart
 
-      - name: Verify camera frame and aspect contract
+      - name: Verify mobile visualization contract
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          screen = Path('lib/features/ai/ai_assistant_v2_screen.dart').read_text(encoding='utf-8')
-          camera = Path('lib/features/ai/widgets/wesi_ai_camera_capture.dart').read_text(encoding='utf-8')
+          source = Path('lib/features/ai/widgets/wesi_ai_visualization.dart').read_text(encoding='utf-8')
+          compact_table = source.split('Widget _buildCompactTable', 1)[1].split('Widget _buildWideTable', 1)[0]
 
           checks = {
-              'compact 58% camera dialog': 'size.height * 0.58' in screen,
-              'bounded camera dialog height': 'clamp(360.0, 560.0)' in screen,
-              'rounded camera frame': 'BorderRadius.circular(24)' in screen and 'clipBehavior: Clip.antiAlias' in screen,
-              'uniform aspect-preserving fill': 'FittedBox(' in camera and 'fit: BoxFit.cover' in camera,
-              'portrait preview dimensions swapped correctly': 'final width = portrait ? previewSize.height : previewSize.width;' in camera and 'final height = portrait ? previewSize.width : previewSize.height;' in camera,
-              'preview clipped to frame': 'ClipRect(' in camera and 'SizedBox.expand(' in camera,
-              'real CameraPreview remains source': 'CameraPreview(controller)' in camera,
+              'responsive width detection': source.count('constraints.maxWidth < _compactBreakpoint') >= 2,
+              'phone breakpoint': source.count('static const double _compactBreakpoint = 560;') >= 2,
+              'compact table renderer': '_buildCompactTable(theme)' in source,
+              'compact table wraps fields': 'Flexible(' in compact_table and 'SelectableText(' in compact_table,
+              'no horizontal scrolling in compact table': 'SingleChildScrollView' not in compact_table,
+              'desktop table layout preserved': '_buildWideTable() => SingleChildScrollView(' in source and 'DataTable(' in source,
+              'adaptive chart height': 'spec.type == WesiAiChartType.pie ? 178.0 : 200.0' in source,
+              'compact painter mode': 'required this.compact' in source and 'final bool compact;' in source,
+              'adaptive chart labels': '_labelStride(' in source and '_showLabel(' in source,
+              'mobile pie legend': '_compactPieLegend(theme, accents)' in source,
           }
           failed = [name for name, ok in checks.items() if not ok]
           for name, ok in checks.items():
               print(f"{'OK' if ok else 'FAIL'}: {name}")
           if failed:
-              raise SystemExit('Camera presentation contract failed: ' + ', '.join(failed))
+              raise SystemExit('Mobile visualization contract failed: ' + ', '.join(failed))
           PY
 
       - name: Commit verified patch
@@ -89,16 +87,12 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add \
-            lib/features/ai/ai_assistant_v2_screen.dart \
-            lib/features/ai/widgets/wesi_ai_camera_capture.dart \
-            lib/features/ai/widgets/wesi_ai_rich_message.dart \
-            lib/features/ai/widgets/wesi_ai_code_console.dart
+          git add lib/features/ai/widgets/wesi_ai_visualization.dart
           if git diff --cached --quiet; then
-            echo "No patch changes to commit."
+            echo "No visualization changes to commit."
             exit 0
           fi
-          git commit -m "fix(ai): inline code console queue and camera UX"
+          git commit -m "fix(ai): adapt generated visuals for phone widths"
 
           for attempt in 1 2 3; do
             git fetch origin main
@@ -127,9 +121,9 @@ jobs:
               repo: context.repo.repo,
               sha: context.sha,
               state,
-              context: 'Wesi AI UX Patch',
+              context: 'Wesi AI Mobile Visuals',
               description: state === 'success'
-                ? 'Chat UX patch applied and camera contract verified'
-                : 'Chat UX patch verification failed',
+                ? 'Responsive mobile tables and charts verified'
+                : 'Responsive mobile visualization verification failed',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
