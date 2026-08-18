@@ -1,0 +1,93 @@
+name: WesiOS Green Build Gate
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/green-build-gate-once.yml'
+
+permissions:
+  contents: read
+  statuses: write
+
+jobs:
+  flutter-and-android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Resolve dependencies
+        run: flutter pub get
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Flutter tests
+        run: flutter test
+      - name: Android compile
+        run: flutter build apk --debug
+
+  windows-release:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - run: flutter config --enable-windows-desktop
+      - name: Recreate Windows platform
+        shell: pwsh
+        run: |
+          if (Test-Path windows) { Remove-Item -Recurse -Force windows }
+          flutter create --platforms=windows --project-name=wesios .
+          if (Test-Path assets/images/app_icon.ico) {
+            Copy-Item assets/images/app_icon.ico windows/runner/resources/app_icon.ico -Force
+          }
+      - run: flutter pub get
+      - name: Windows release compile
+        run: flutter build windows --release
+
+  publish-status:
+    if: always()
+    needs: [flutter-and-android, windows-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish green build status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LINUX_RESULT: ${{ needs.flutter-and-android.result }}
+          WINDOWS_RESULT: ${{ needs.windows-release.result }}
+        run: |
+          set -euo pipefail
+          if [ "$LINUX_RESULT" = success ] && [ "$WINDOWS_RESULT" = success ]; then
+            STATE=success
+            DESCRIPTION='Analyze, tests, Android and Windows builds are green'
+          else
+            STATE=failure
+            DESCRIPTION="Flutter/Android=$LINUX_RESULT Windows=$WINDOWS_RESULT"
+          fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -d "$(python3 - <<'PY'
+          import json, os
+          print(json.dumps({
+            'state': os.environ['STATE'],
+            'context': 'WesiOS Green Build',
+            'description': os.environ['DESCRIPTION'][:140],
+          }))
+          PY
+          )"
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LINUX_RESULT: ${{ needs.flutter-and-android.result }}
+          WINDOWS_RESULT: ${{ needs.windows-release.result }}
+          STATE: ${{ (needs.flutter-and-android.result == 'success' && needs.windows-release.result == 'success') && 'success' || 'failure' }}
+          DESCRIPTION: ${{ format('Flutter/Android={0} Windows={1}', needs.flutter-and-android.result, needs.windows-release.result) }}
