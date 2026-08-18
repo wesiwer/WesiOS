@@ -20,19 +20,10 @@ test('route callbacks require the runtime instead of closing over top-level help
 
 test('all audited extended collections remain explicitly registered', () => {
   for (const collection of [
-    'sandbox_transactions',
-    'what_if_presets',
-    'profile',
-    'shield_private',
-    'finance_categories',
-    'team_skills',
-    'time_center',
-    'horizon_predictions',
-    'horizon_learning',
-    'horizon_competition',
-    'horizon_contracts',
-    'task_ai_memory',
-    'audio_extras',
+    'sandbox_transactions', 'what_if_presets', 'profile', 'shield_private',
+    'finance_categories', 'team_skills', 'time_center', 'horizon_predictions',
+    'horizon_learning', 'horizon_competition', 'horizon_contracts',
+    'task_ai_memory', 'audio_extras',
   ]) {
     assert.match(routes, new RegExp(`/api/wesi/sync/${collection}`));
   }
@@ -42,7 +33,6 @@ test('all audited extended collections remain explicitly registered', () => {
 test('legacy profile_private is migrated before canonical profile or shield access', () => {
   assert.match(runtime, /function\s+migrateLegacyProfilePrivate\s*\(/);
   assert.match(runtime, /coll='profile_private'\s*&&\s*deleted=false/);
-
   const readStart = runtime.indexOf('function read(e, collection');
   const writeStart = runtime.indexOf('function write(e, collection');
   const revisionStart = runtime.indexOf('function revision(e)');
@@ -60,28 +50,34 @@ test('migration never overwrites canonical targets and converts avatar bytes', (
   const readStart = runtime.indexOf('function read(e, collection');
   assert.ok(migrationStart >= 0 && readStart > migrationStart);
   const migrationBody = runtime.slice(migrationStart, readStart);
-
   assert.match(migrationBody, /wesi_sync_atomic\.js/);
   assert.match(migrationBody, /atomic\.createIfAbsent\(e\.app/);
   assert.match(migrationBody, /coll:\s*"shield_private"/);
   assert.match(migrationBody, /coll:\s*"profile"/);
   assert.match(migrationBody, /rid:\s*"me"/);
-  assert.doesNotMatch(migrationBody, /e\.app\.save\(/,
-    'legacy migration must not use non-atomic check-then-save');
+  assert.doesNotMatch(migrationBody, /e\.app\.save\(/);
   assert.match(runtime, /legacyBytesToBase64/);
   assert.match(runtime, /__wesios_bytes_v1/);
-  assert.match(runtime, /Math\.min\(parsed, now\)/,
-    'legacy future stamps must be clamped during migration');
+  assert.match(runtime, /Math\.min\(parsed, now\)/);
 });
 
 test('extended normal writes use transactional authoritative commit', () => {
   const writeStart = runtime.indexOf('function write(e, collection');
   const revisionStart = runtime.indexOf('function revision(e)');
   const writeBody = runtime.slice(writeStart, revisionStart);
-
   assert.match(writeBody, /wesi_sync_atomic\.js/);
   assert.match(writeBody, /\.commit\(e\.app/);
-  assert.doesNotMatch(writeBody, /wesi_sync_lww\.js/,
-    'outer preflight LWW is not the authoritative write boundary anymore');
+  assert.doesNotMatch(writeBody, /wesi_sync_lww\.js/);
   assert.doesNotMatch(writeBody, /e\.app\.save\(/);
+});
+
+test('profile is a singleton channel with rid me on both read and write', () => {
+  const readStart = runtime.indexOf('function read(e, collection');
+  const writeStart = runtime.indexOf('function write(e, collection');
+  const revisionStart = runtime.indexOf('function revision(e)');
+  const readBody = runtime.slice(readStart, writeStart);
+  const writeBody = runtime.slice(writeStart, revisionStart);
+  assert.match(readBody, /collection === "profile"/);
+  assert.match(readBody, /row\.getString\("rid"\) === "me"/);
+  assert.match(writeBody, /collection === "profile" && rid !== "me"/);
 });
