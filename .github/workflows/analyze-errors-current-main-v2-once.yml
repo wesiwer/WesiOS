@@ -1,0 +1,48 @@
+name: Analyze Errors Current Main V2 Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/analyze-errors-current-main-v2-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Analyze actual errors only
+        shell: bash
+        run: |
+          set +e
+          flutter pub get >/tmp/pub.log 2>&1
+          PUB=$?
+          flutter analyze --no-fatal-infos --no-fatal-warnings >/tmp/analyze.log 2>&1
+          ANALYZE=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "PUB_GET=$PUB"
+            echo "ANALYZE=$ANALYZE"
+            echo '=== ERRORS ==='
+            grep -n 'error •' /tmp/analyze.log || true
+            echo '=== SUMMARY ==='
+            tail -n 8 /tmp/analyze.log
+          } > .github/analyze-errors-current-main-v2.txt
+          git config user.name 'WesiOS Analyzer V2'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/analyze-errors-current-main-v2
+          git add .github/analyze-errors-current-main-v2.txt
+          git commit -m 'ops: capture analyzer errors current main v2'
+          git push --force origin HEAD:diag/analyze-errors-current-main-v2
+          test "$PUB" -eq 0 -a "$ANALYZE" -eq 0
