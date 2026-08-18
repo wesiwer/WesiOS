@@ -1,15 +1,9 @@
 // Reliable change token for WesiOS synchronization.
 //
-// The old endpoint returned only the id+updated value of the newest business
-// row. Two different writes can share the same database timestamp; when the
-// second row sorts below the first, that token remains unchanged and live
-// clients never pull it.
-//
-// Every persisted wesios_records business row now touches an owner-scoped
-// marker with a fresh random nonce. The returned token ALSO carries the newest
-// non-marker row as a fallback. The nonce closes timestamp collisions; the
-// fallback still changes for normal writes if marker maintenance ever suffers
-// a transient failure after the business record has already committed.
+// Every persisted wesios_records business row touches an owner-scoped marker.
+// New clients read its random nonce. Older clients still call the legacy
+// revision endpoint, which sorts by record `stamp`; therefore the marker stamp
+// is also maintained as a strictly increasing millisecond logical clock.
 
 const dataAccess = require(
   (typeof __hooks !== "undefined" ? __hooks + "/" : "./") +
@@ -51,12 +45,24 @@ function nonce() {
   return String(Date.now()) + ":" + $security.randomString(24);
 }
 
+function nextMarkerStamp(existing) {
+  let previousMs = -1;
+  for (const record of existing || []) {
+    const parsed = Date.parse(String(record.getString("stamp") || ""));
+    if (Number.isFinite(parsed) && parsed > previousMs) previousMs = parsed;
+  }
+  const nextMs = Math.max(Date.now(), previousMs + 1);
+  return new Date(nextMs).toISOString();
+}
+
 function touch(app, owner) {
   owner = String(owner || "").trim();
   if (!owner) return;
 
   const value = nonce();
   const existing = markerRows(app, owner);
+  const markerStamp = nextMarkerStamp(existing);
+
   if (!existing.length) {
     const collection = app.findCollectionByNameOrId("wesios_records");
     const record = new Record(collection);
@@ -65,7 +71,7 @@ function touch(app, owner) {
     record.set("coll", markerCollection);
     record.set("rid", markerRid);
     record.set("payload", { nonce: value });
-    record.set("stamp", new Date().toISOString());
+    record.set("stamp", markerStamp);
     record.set("deleted", false);
     app.save(record);
     return;
@@ -73,10 +79,11 @@ function touch(app, owner) {
 
   // Historical concurrent first-writes could theoretically create duplicate
   // markers because (owner,coll,rid) is not a database unique constraint.
-  // Keep duplicates harmless by rewriting every marker to the same nonce.
+  // Rewriting all duplicates to the same nonce AND the same next logical stamp
+  // keeps both revision-v2 and the legacy max-row endpoint deterministic.
   for (const record of existing) {
     record.set("payload", { nonce: value });
-    record.set("stamp", new Date().toISOString());
+    record.set("stamp", markerStamp);
     record.set("deleted", false);
     app.save(record);
   }
@@ -114,10 +121,8 @@ function readOwner(app, owner) {
   if (!values.length) return "legacy:" + latest;
   values.sort();
 
-  // `latest` is intentionally included even when a marker exists. If a
-  // business save committed but touch() failed, ordinary distinct-timestamp
-  // writes still invalidate polling. Equal-timestamp writes remain protected
-  // by the nonce path during normal marker operation.
+  // `latest` remains an independent fallback if marker maintenance ever fails
+  // after a business row has already committed.
   return "marker:" + values.join(",") + "|latest:" + latest;
 }
 
@@ -143,4 +148,5 @@ module.exports = {
   readOwner,
   readForContext,
   isMarker,
+  nextMarkerStamp,
 };
