@@ -1,4 +1,4 @@
-name: Align Release Flutter Stable Once
+name: Ship Telegram MVP Release Once
 
 on:
   push:
@@ -8,32 +8,134 @@ on:
 
 permissions:
   contents: write
+  actions: write
+  statuses: write
 
 jobs:
-  patch:
+  release:
     runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Align release workflow with current Flutter stable
+
+      - name: Refresh main
+        shell: bash
+        run: git pull --ff-only origin main
+
+      - name: Align release toolchain and bump app version
         shell: bash
         run: |
-          # Required after current dependency/toolchain alignment.
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('.github/workflows/release-app.yml')
-          s = p.read_text()
+          import re
+
+          release = Path('.github/workflows/release-app.yml')
+          s = release.read_text(encoding='utf-8')
           old = """      - uses: subosito/flutter-action@v2\n        with:\n          flutter-version: '3.24.0'\n          channel: 'stable'\n"""
           new = """      - uses: subosito/flutter-action@v2\n        with:\n          channel: 'stable'\n"""
           count = s.count(old)
-          if count != 2:
-              raise SystemExit(f'expected 2 Flutter 3.24 pins in release-app.yml, got {count}')
-          p.write_text(s.replace(old, new))
+          if count not in (0, 2):
+              raise SystemExit(f'expected 0 or 2 Flutter 3.24 pins in release-app.yml, got {count}')
+          if count == 2:
+              release.write_text(s.replace(old, new), encoding='utf-8')
+
+          pubspec = Path('pubspec.yaml')
+          p = pubspec.read_text(encoding='utf-8')
+          m = re.search(r'^version:\s*(\d+)\.(\d+)\.(\d+)\+(\d+)\s*$', p, re.M)
+          if not m:
+              raise SystemExit('pubspec version not found')
+          major, minor, patch, build = map(int, m.groups())
+          # This one-shot is specifically the first build containing the
+          # production Telegram MVP. Never decrement if another agent bumped it.
+          target_patch = max(patch + 1, 27)
+          target_build = max(build + 1, 102)
+          new_version = f'{major}.{minor}.{target_patch}+{target_build}'
+          p = p[:m.start()] + f'version: {new_version}' + p[m.end():]
+          pubspec.write_text(p, encoding='utf-8')
+          print('Release version:', new_version)
           PY
-          git config user.name 'WesiOS Release Toolchain'
+
+      - name: Commit release inputs
+        id: commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Release Bot'
           git config user.email 'actions@users.noreply.github.com'
-          git add .github/workflows/release-app.yml
-          git commit -m 'fix(release): build with current Flutter stable'
-          git push origin HEAD:main
+          git add .github/workflows/release-app.yml pubspec.yaml
+          if git diff --cached --quiet; then
+            echo 'No release input changes were needed'
+          else
+            git commit -m 'release: Wesi Telegram MVP'
+            git push origin HEAD:main
+          fi
+          SHA=$(git rev-parse HEAD)
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$SHA" \
+            -f state=pending \
+            -f context='WesiOS Release' \
+            -f description='Signed Telegram MVP release is building' >/dev/null
+          echo "Release SHA: $SHA"
+
+      - name: Dispatch signed release
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --ref main \
+            -f notes='Telegram: привязка аккаунта, /brief, /cash, /risk, /today, /overdue, переключение организации и серверные алерты.' \
+            -f deploy_to_server=true
+
+      - name: Wait for release workflow
+        id: wait
+        shell: bash
+        env:
+          TARGET_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          set -euo pipefail
+          RUN_ID=''
+          for i in $(seq 1 30); do
+            RUN_ID=$(gh run list \
+              --workflow release-app.yml \
+              --branch main \
+              --event workflow_dispatch \
+              --limit 30 \
+              --json databaseId,headSha \
+              --jq ".[] | select(.headSha == \"$TARGET_SHA\") | .databaseId" | head -1)
+            if [ -n "$RUN_ID" ]; then break; fi
+            sleep 4
+          done
+          if [ -z "$RUN_ID" ]; then
+            echo '::error::Could not find dispatched release run for target SHA'
+            exit 1
+          fi
+          echo "release_run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "Watching release run $RUN_ID for $TARGET_SHA"
+          gh run watch "$RUN_ID" --exit-status --interval 15
+
+      - name: Publish successful release status
+        if: success()
+        env:
+          TARGET_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA" \
+            -f state=success \
+            -f context='WesiOS Release' \
+            -f description='Signed Telegram MVP release published' >/dev/null
+
+      - name: Publish failed release status
+        if: failure()
+        env:
+          TARGET_SHA: ${{ steps.commit.outputs.sha }}
+        run: |
+          if [ -n "${TARGET_SHA:-}" ]; then
+            gh api "repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA" \
+              -f state=failure \
+              -f context='WesiOS Release' \
+              -f description='Telegram MVP release build failed' >/dev/null || true
+          fi
