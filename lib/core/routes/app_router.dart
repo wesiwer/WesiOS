@@ -35,9 +35,31 @@ import '../../features/team/services/team_service.dart';
 import '../sync/sync_endpoint.dart';
 
 class AppRouter {
+  /// Normalizes both Navigator route names and platform custom-scheme links.
+  ///
+  /// Android/iOS can deliver `wesios:///tasks` (path form) or
+  /// `wesios://tasks` (host form). Treating only [Uri.path] as the route makes
+  /// the host form fall through to Home. Keep the normalization pure so it is
+  /// covered by a small unit test and cannot broaden organization access.
+  static String? routeNameFor(String? rawName) {
+    if (rawName == null || rawName.isEmpty) return rawName;
+    final uri = Uri.tryParse(rawName);
+    if (uri == null) return rawName;
+
+    if (uri.scheme.toLowerCase() == 'wesios') {
+      final segments = <String>[
+        if (uri.host.isNotEmpty) uri.host,
+        ...uri.pathSegments,
+      ].where((segment) => segment.isNotEmpty).toList(growable: false);
+      return segments.isEmpty ? '/' : '/${segments.join('/')}';
+    }
+
+    return uri.path.isNotEmpty ? uri.path : rawName;
+  }
+
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     final uri = Uri.tryParse(settings.name ?? '');
-    final routeName = uri != null && uri.path.isNotEmpty ? uri.path : settings.name;
+    final routeName = routeNameFor(settings.name);
     final deepLinkOrganizationId = uri?.queryParameters['organizationId'];
 
     Widget orgAware(Widget child) => _DeepLinkOrganizationGate(
