@@ -1,0 +1,4 @@
+EXIT=1
+FIELD_DIFF accountId REMOTE=null (Null) LOCAL=main (String)
+  Expected: <0>
+    Actual: <1>
