@@ -1,0 +1,522 @@
+analyze_exit=1
+tests_exit=1
+android_exit=1
+=== ANALYZE TAIL ===
+Analyzing WesiOS...                                             
+
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/core/sync/sync_audit_extensions.dart:3:8 • unnecessary_import
+   info • 'profileBoxName' is deprecated and shouldn't be used. Use shieldBoxName; profile now has its own canonical box • lib/core/sync/sync_audit_extensions.dart:479:47 • deprecated_member_use_from_same_package
+   info • The import of 'package:flutter/foundation.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/widgets.dart' • lib/core/sync/sync_auto.dart:3:8 • unnecessary_import
+   info • Constructors for public widgets should have a named 'key' parameter • lib/core/theme/app_theme.dart:344:9 • use_key_in_widget_constructors
+   info • The parameter name 'old' doesn't match the name 'oldWidget' in the overridden method • lib/core/theme/app_theme.dart:347:49 • avoid_renaming_method_parameters
+   info • Constructors in '@immutable' classes should be declared as 'const' • lib/core/widgets/wesi_wordmark.dart:23:3 • prefer_const_constructors_in_immutables
+   info • Use 'const' for final variables initialized to a constant value • lib/features/ai/backup/wesi_ai_backup_crypto.dart:47:5 • prefer_const_declarations
+   info • Use 'const' for final variables initialized to a constant value • lib/features/ai/backup/wesi_ai_backup_service.dart:570:5 • prefer_const_declarations
+   info • The import of 'package:cross_file/cross_file.dart' is unnecessary because all of the used elements are also provided by the import of 'package:share_plus/share_plus.dart' • lib/features/ai/backup/wesi_ai_backup_sheet.dart:3:8 • unnecessary_import
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/ai/backup/wesi_ai_backup_sheet.dart:195:7 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/ai/backup/wesi_ai_backup_sheet.dart:224:9 • use_build_context_synchronously
+   info • Statements in an if should be enclosed in a block • lib/features/ai/connectors/wesi_connector_api.dart:100:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/connectors/wesi_connector_api.dart:141:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/connectors/wesi_connector_api.dart:153:9 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/connectors/wesi_connector_api.dart:185:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/connectors/wesi_connector_api.dart:204:9 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/connectors/wesi_connector_manager_sheet.dart:85:7 • curly_braces_in_flow_control_structures
+   info • Statements in a for should be enclosed in a block • lib/features/ai/connectors/wesi_connector_manager_sheet.dart:276:30 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/controllers/wesi_ai_chat_controller.dart:476:15 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/controllers/wesi_ai_chat_controller.dart:513:15 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/controllers/wesi_ai_chat_controller.dart:640:17 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/controllers/wesi_ai_chat_controller.dart:807:9 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/controllers/wesi_ai_chat_controller.dart:839:9 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/models/wesi_ai_content_blocks.dart:205:11 • curly_braces_in_flow_control_structures
+   info • The 'if' statement could be replaced by a null-aware assignment • lib/features/ai/runtime/wesi_remote_worker_controller.dart:313:7 • prefer_conditional_assignment
+   info • Statements in an if should be enclosed in a block • lib/features/ai/runtime/wesi_resource_scheduler.dart:589:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/runtime/wesi_self_debug_engine.dart:537:9 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/storage/wesi_ai_local_store.dart:176:9 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/storage/wesi_ai_local_store.dart:216:11 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/storage/wesi_ai_local_store.dart:403:7 • curly_braces_in_flow_control_structures
+   info • Unnecessary braces in a string interpolation • lib/features/ai/wesi_ai_api.dart:90:48 • unnecessary_brace_in_string_interps
+   info • Statements in an if should be enclosed in a block • lib/features/ai/wesi_ai_api.dart:576:9 • curly_braces_in_flow_control_structures
+   info • Unnecessary braces in a string interpolation • lib/features/ai/wesi_ai_chat_ui.dart:28:31 • unnecessary_brace_in_string_interps
+   info • Convert 'store' to a super parameter • lib/features/ai/wesi_ai_handoff_controller.dart:8:3 • use_super_parameters
+   info • Convert 'store', 'api', and 'memoryApi' to super parameters • lib/features/ai/wesi_ai_lobby_controller.dart:13:3 • use_super_parameters
+   info • Convert 'store', 'api', and 'memoryApi' to super parameters • lib/features/ai/wesi_ai_managed_controller.dart:73:3 • use_super_parameters
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/features/ai/wesi_ai_speech_output.dart:4:8 • unnecessary_import
+   info • 'partialResults' is deprecated and shouldn't be used. Use SpeechListenOptions.partialResults instead • lib/features/ai/wesi_ai_voice_controller.dart:54:9 • deprecated_member_use
+   info • 'cancelOnError' is deprecated and shouldn't be used. Use SpeechListenOptions.cancelOnError instead • lib/features/ai/wesi_ai_voice_controller.dart:55:9 • deprecated_member_use
+   info • 'listenMode' is deprecated and shouldn't be used. Use SpeechListenOptions.listenMode instead • lib/features/ai/wesi_ai_voice_controller.dart:56:9 • deprecated_member_use
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_rich_message.dart:213:9 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_rich_message.dart:286:9 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_rich_message.dart:540:7 • curly_braces_in_flow_control_structures
+   info • Unnecessary braces in a string interpolation • lib/features/ai/widgets/wesi_ai_rich_message.dart:756:29 • unnecessary_brace_in_string_interps
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_visualization.dart:20:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_visualization.dart:213:15 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_visualization.dart:230:13 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_visualization.dart:241:11 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_visualization.dart:440:11 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_visualization.dart:442:11 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/ai/widgets/wesi_ai_visualization.dart:534:7 • curly_braces_in_flow_control_structures
+   info • The declaration '_ru' isn't referenced • lib/features/audio/audio_vault_v2_screen.dart:43:12 • unused_element
+   info • Statements in an if should be enclosed in a block • lib/features/audio/audio_vault_v2_screen.dart:92:7 • curly_braces_in_flow_control_structures
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/features/audio/services/audio_analysis_v2_service.dart:3:8 • unnecessary_import
+   info • Unnecessary braces in a string interpolation • lib/features/audio/services/audio_analysis_v2_service.dart:777:14 • unnecessary_brace_in_string_interps
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/features/audio/services/audio_player_service.dart:3:8 • unnecessary_import
+   info • Statements in a for should be enclosed in a block • lib/features/calculator/calculator_screen.dart:405:36 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/calendar/calendar_v2_screen.dart:757:17 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/calendar/calendar_v2_screen.dart:882:31 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/calendar/calendar_v2_screen.dart:899:37 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/calendar/calendar_v2_screen.dart:928:27 • curly_braces_in_flow_control_structures
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/crm/crm_screen.dart:2152:50 • use_build_context_synchronously
+   info • Constructors in '@immutable' classes should be declared as 'const' • lib/features/founder/founder_story_screen.dart:7:3 • prefer_const_constructors_in_immutables
+   info • The declaration '_TableEmbed' isn't referenced • lib/features/knowledge/screens/article_editor_screen.dart:15:7 • unused_element
+   info • The declaration '_VideoEmbed' isn't referenced • lib/features/knowledge/screens/article_editor_screen.dart:18:7 • unused_element
+   info • The declaration '_AudioEmbed' isn't referenced • lib/features/knowledge/screens/article_editor_screen.dart:21:7 • unused_element
+   info • Don't use 'BuildContext's across async gaps • lib/features/knowledge/screens/article_editor_screen.dart:330:7 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/knowledge/screens/article_editor_screen.dart:390:61 • use_build_context_synchronously
+   info • Statements in an if should be enclosed in a block • lib/features/knowledge/services/knowledge_linked_chart_service.dart:97:11 • curly_braces_in_flow_control_structures
+   info • The declaration '_lockedVault' isn't referenced • lib/features/profile/profile_screen.dart:307:10 • unused_element
+   info • The declaration '_vaultOptions' isn't referenced • lib/features/profile/profile_screen.dart:365:10 • unused_element
+   info • Statements in an if should be enclosed in a block • lib/features/profile/profile_screen.dart:570:7 • curly_braces_in_flow_control_structures
+   info • The declaration '_fieldTip' isn't referenced • lib/features/profile/profile_screen.dart:597:10 • unused_element
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/features/profile/services/profile_service.dart:2:8 • unnecessary_import
+   info • Unnecessary constructor invocation • lib/features/roadmap/roadmap_screen.dart:468:44 • prefer_collection_literals
+   info • Use 'const' for final variables initialized to a constant value • lib/features/roadmap/roadmap_screen.dart:1203:5 • prefer_const_declarations
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/roadmap/roadmap_screen.dart:1638:50 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/roadmap/roadmap_screen.dart:1962:50 • use_build_context_synchronously
+   info • Don't use 'BuildContext's across async gaps • lib/features/shield/shield_screen.dart:593:19 • use_build_context_synchronously
+   info • Unnecessary braces in a string interpolation • lib/features/sysadmin/console/console_command_service.dart:559:49 • unnecessary_brace_in_string_interps
+   info • Use 'isNotEmpty' rather than negating the result of 'isEmpty' • lib/features/sysadmin/console/console_screen.dart:457:29 • prefer_is_not_empty
+   info • Use 'isNotEmpty' rather than negating the result of 'isEmpty' • lib/features/sysadmin/console/console_screen.dart:534:28 • prefer_is_not_empty
+   info • Use 'isNotEmpty' rather than negating the result of 'isEmpty' • lib/features/sysadmin/console/console_screen.dart:539:42 • prefer_is_not_empty
+   info • Don't use 'BuildContext's across async gaps, guarded by an unrelated 'mounted' check • lib/features/sysadmin/widgets/target_editor_sheet.dart:406:52 • use_build_context_synchronously
+   info • Statements in an if should be enclosed in a block • lib/features/tasks/ai/services/wesi_ai_task_engine.dart:739:7 • curly_braces_in_flow_control_structures
+   info • Unnecessary braces in a string interpolation • lib/features/tasks/ai/widgets/wesi_ai_suggestions_panel.dart:406:15 • unnecessary_brace_in_string_interps
+   info • Unnecessary braces in a string interpolation • lib/features/tasks/ai/widgets/wesi_ai_suggestions_panel.dart:409:15 • unnecessary_brace_in_string_interps
+   info • Unnecessary braces in a string interpolation • lib/features/tasks/ai/widgets/wesi_ai_suggestions_panel.dart:411:13 • unnecessary_brace_in_string_interps
+   info • The declaration '_valueInList' isn't referenced • lib/features/tasks/widgets/assignee_field.dart:97:8 • unused_element
+   info • The declaration '_person' isn't referenced • lib/features/tasks/widgets/assignee_field.dart:100:10 • unused_element
+   info • Statements in an if should be enclosed in a block • lib/features/tasks/widgets/task_cash_impact_field.dart:38:7 • curly_braces_in_flow_control_structures
+   info • The import of 'dart:typed_data' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/foundation.dart' • lib/features/team/services/team_service.dart:3:8 • unnecessary_import
+   info • 'androidAllowWhileIdle' is deprecated and shouldn't be used. Deprecated in favor of the androidScheduleMode parameter • lib/features/time_center/services/time_notification_scheduler.dart:172:11 • deprecated_member_use
+   info • The import of 'package:flutter/foundation.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/widgets.dart' • lib/features/time_center/services/time_schedule_automation.dart:3:8 • unnecessary_import
+   info • Statements in an if should be enclosed in a block • lib/features/time_center/time_center_screen.dart:629:31 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/time_center/time_center_screen.dart:648:33 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/time_center/time_center_screen.dart:781:31 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/time_center/time_center_screen.dart:794:31 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • lib/features/treasury/sandbox_forecast_screen.dart:480:7 • curly_braces_in_flow_control_structures
+   info • Constructors in '@immutable' classes should be declared as 'const' • lib/features/treasury/sandbox_forecast_screen.dart:915:3 • prefer_const_constructors_in_immutables
+   info • Statements in an if should be enclosed in a block • lib/features/treasury/services/forecast_engine.dart:1534:13 • curly_braces_in_flow_control_structures
+   info • The import of 'forecast_engine_kind.dart' is unnecessary because all of the used elements are also provided by the import of 'multi_engine_forecast.dart' • lib/features/treasury/services/horizon_engine_competition.dart:13:8 • unnecessary_import
+   info • The import of 'package:flutter/foundation.dart' is unnecessary because all of the used elements are also provided by the import of 'package:flutter/widgets.dart' • lib/features/treasury/services/recurring_payment_automation.dart:3:8 • unnecessary_import
+   info • Use 'const' for final variables initialized to a constant value • lib/features/treasury/widgets/horizon_decision_panel.dart:78:15 • prefer_const_declarations
+   info • Use 'const' for final variables initialized to a constant value • test/financial_health_test.dart:87:5 • prefer_const_declarations
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:27:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:29:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:31:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:33:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:35:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:37:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:39:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:41:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:43:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:45:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:47:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:49:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_corruption_guard_test.dart:51:7 • curly_braces_in_flow_control_structures
+  error • A value of type 'Object' can't be returned from the method 'ensureBox' because it has a return type of 'Future<Box<String>>' • test/sync_engine_lifecycle_test.dart:56:12 • return_of_invalid_type
+   info • Statements in an if should be enclosed in a block • test/sync_repeat_audit_security_test.dart:25:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_repeat_audit_security_test.dart:27:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_repeat_audit_security_test.dart:29:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_repeat_audit_security_test.dart:31:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_repeat_audit_security_test.dart:33:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_repeat_audit_security_test.dart:35:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_repeat_audit_security_test.dart:37:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_repeat_audit_security_test.dart:39:7 • curly_braces_in_flow_control_structures
+   info • Statements in an if should be enclosed in a block • test/sync_repeat_audit_security_test.dart:41:7 • curly_braces_in_flow_control_structures
+   info • Use 'const' for final variables initialized to a constant value • test/sysadmin_defaults_test.dart:8:7 • prefer_const_declarations
+   info • 'generateDemoStats' is deprecated and shouldn't be used. Demo business statistics were removed • test/team_service_test.dart:173:26 • deprecated_member_use_from_same_package
+   info • Use 'const' for final variables initialized to a constant value • test/update_paths_test.dart:21:7 • prefer_const_declarations
+   info • Unnecessary escape in string literal • test/update_paths_test.dart:21:28 • unnecessary_string_escapes
+   info • Use 'const' for final variables initialized to a constant value • test/update_paths_test.dart:28:7 • prefer_const_declarations
+   info • The import of 'dart:async' is unnecessary because all of the used elements are also provided by the import of 'package:flutter_test/flutter_test.dart' • test/wesi_ai_memory_engine_test.dart:1:8 • unnecessary_import
+   info • Convert 'employeeId' to a super parameter • test/wesi_ai_queue_hardening_test.dart:19:3 • use_super_parameters
+   info • Unnecessary use of string interpolation • test/wesi_runtime_pack_test.dart:438:59 • unnecessary_string_interpolations
+
+136 issues found. (ran in 29.5s)
+=== TESTS TAIL ===
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: password уважает переданную длину
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: password не даёт длину короче 8 символов
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: password два подряд вызова не совпадают
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: normalize регистр не имеет значения
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: normalize обрезает края и схлопывает пробелы
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: isValid принимает нейтральные логины из словаря
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: isValid принимает логин с точкой, дефисом и подчёркиванием внутри
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: isValid отвергает слишком короткую и слишком длинную строку
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: isValid отвергает начало/конец на разделителе
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: isValid отвергает недопустимые символы
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: isValid пробел внутри схлопывается, а не запрещает логин
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: toEmail / fromEmail строит служебный адрес на wesi.local по умолчанию
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: toEmail / fromEmail уважает переданный домен
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: toEmail / fromEmail round-trip: fromEmail(toEmail(x)) == normalize(x)
+✅ /home/runner/work/WesiOS/WesiOS/test/credentials_generator_test.dart: toEmail / fromEmail fromEmail без @ возвращает строку как есть
+✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: openedBox находит бокс, открытый с конкретным типом
+✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: openedBox на неоткрытый бокс возвращает null, а не падает
+✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: countLocalRecords считает записи во всех типизированных боксах
+✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: countLocalRecords на пустых данных — ноль
+✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: clearLocalData действительно стирает, а не сообщает об этом
+✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: export в файле лежат данные, а не пустые списки
+✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: export встроенные статьи не выгружаются — они приезжают с обновлением
+✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: export ключи и пароль в копию не попадают
+✅ /home/runner/work/WesiOS/WesiOS/test/backup_service_test.dart: export счётчики в результате совпадают с содержимым файла
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Environment Scanner compares numeric versions without lexicographic mistakes
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Environment Scanner reuses a compatible PATH dependency and executes fixed probe only
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Environment Scanner relative PATH entries are ignored during system reuse scanning
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Environment Scanner managed dependency wins over system and no-reuse spec stays managed
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: real Ed25519 descriptor verification accepts valid and rejects tampered payload
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Pack planning and artifact policy plan chooses reuse, upgrade, install and unsupported deterministically
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Pack planning and artifact policy artifact descriptor rejects credentials, insecure URL and traversal
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_message_authorization_contract_test.dart: sync gateway blocks chat impersonation and foreign message edits
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Pack planning and artifact policy preview fails closed when catalog signature is rejected
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Verified installation checksum mismatch aborts before extraction
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Verified installation ZIP traversal is rejected and cannot escape managed runtime root
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Verified installation failed post-install scan restores the previously active pack
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: Verified installation post-install scan is mandatory before a dependency becomes reusable
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_runtime_pack_test.dart: workspaceV1 wrapper contract executor invokes trusted wrapper with limits and target before model args
+✅ /home/runner/work/WesiOS/WesiOS/test/window_controls_overlay_test.dart: tooltips in the app-level overlay find an Overlay ancestor
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Wesi Horizon honesty foundation a lucky recent month mean-reverts instead of becoming millionaire math
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Wesi Horizon honesty foundation low-data mode admits uncertainty instead of a razor-thin truth
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Wesi Horizon honesty foundation same UI seed is deterministic while alternate seed changes paths
+✅ /home/runner/work/WesiOS/WesiOS/test/inter_org_visibility_test.dart: basic organization membership does not reveal inter-org transfer history
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Wesi Horizon honesty foundation weekly seasonality is not cloned unchanged into the far future
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Calibration and backtest coverage calibration widens interval and bias moves the median
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Calibration and backtest risk calibration bins shrink empirical probability without fake certainty
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_coagent_activity_test.dart: Co-Agent activity payload remains observable status, not hidden reasoning
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Calibration and backtest multi-horizon backtest keeps 14/30/90/180 separate
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions committed cash is separated and explained
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions uncertain business cash stays probabilistic instead of becoming committed
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_coagent_activity_test.dart: Thinking shows Co-Agent work timeline
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_coagent_activity_test.dart: Classic hides Co-Agent work timeline completely
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions stress package has base/conservative/aggressive/stress and stress worsens cash
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions What-If exposes direct risk/runway delta
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Cash structure, stress and decisions account liquidity reports risk in the needed location
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Backward-compatible domain memory contract memory JSON roundtrip preserves probabilities
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_top_tier_test.dart: Backward-compatible domain memory account liquidity metadata keeps migration-free defaults
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: пустое состояние когда всё в порядке — уведомлений нет
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: задачи просроченная задача даёт уведомление уровня danger
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: задачи завершённая задача с прошедшим сроком не считается просроченной — иначе список краснел бы от уже сделанного
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: задачи срок сегодня — предупреждение, а не тревога
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: задачи далёкий срок не тревожит
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: задачи срок через три дня попадает в «ближайшие», через четыре — нет
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: регулярные платежи ежемесячный платёж 20-го числа виден за три дня
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: регулярные платежи ежемесячный платёж 1-го числа сейчас не тревожит
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: регулярные платежи годовой платёж срабатывает в свой месяц, а не в любой
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: регулярные платежи годовой платёж в текущем месяце всё же виден
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: регулярные платежи платёж 31-го числа в коротком месяце не проскакивает мимо
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: регулярные платежи когда на счету меньше суммы списаний — уровень поднимается
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: регулярные платежи регулярный доход не выдаётся за предстоящее списание
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: регулярные платежи регулярный платёж без периода молчит, а не угадывает
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: прочее отрицательный баланс — danger
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: прочее выключенная защита ведёт в Wesi Shield
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: прочее обновление — информационное, не тревога
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: порядок срочное идёт первым независимо от порядка проверок
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: порядок при равном уровне порядок стабилен между вызовами
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: прочитанное до открытия всё непрочитано
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: прочитанное открыли — и после пересчёта они остаются прочитанными
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: прочитанное новый повод всплывает непрочитанным рядом с прочитанными
+✅ /home/runner/work/WesiOS/WesiOS/test/alert_service_test.dart: прочитанное вернувшийся повод считается новым, а не «уже видели»
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_stage8_acceptance_test.dart: Stage 8 rejects internally inconsistent GPU telemetry
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_stage8_acceptance_test.dart: Stage 8 never uses a stale checkpoint after later progress
+✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with a handful of tasks per column renders four columns side by side on a desktop-width window without overflowing
+✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with a handful of tasks per column falls back to stacked columns on a phone-width window without overflowing — four columns side by side are unreadable there
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_overdue_cash_truth_test.dart: overdue expected cash remains visible but loses false certainty
+✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with far more tasks than fit on screen a column scrolls internally instead of overflowing
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_overdue_cash_truth_test.dart: fallback uncertainty learns from actual non-recurring history only
+✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: board with far more tasks than fit on screen the stacked phone layout also survives it
+✅ /home/runner/work/WesiOS/WesiOS/test/tasks_screen_layout_test.dart: empty board shows the empty placeholder in every column
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_interaction_integrity_test.dart: owned deal cannot bridge an interaction into another client
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_interaction_integrity_test.dart: existing hidden interaction cannot be stolen by re-parenting its id
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки просроченный контакт называет клиента и считает просрочку
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки архивный клиент не тревожат
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки клиент без единого касания попадает в работу
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки заведённый вчера клиент ещё не повод
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки просроченное закрытие сделки называет сумму и стадию
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки закрытая сделка не тревожит
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки застой считается от последнего касания, а не от даты сделки
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки молчание дольше десяти дней на активной стадии — повод
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки новый лид без движения застоем не считается
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки крупная сделка без ответственного всплывает, мелкая — нет
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: клиенты и сделки крупность считается по меркам организации, а не по числу
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: дорожная карта просроченная веха на высокой готовности — «дожать»
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: дорожная карта просроченная веха на нуле — «пересобрать срок»
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: дорожная карта срок ещё не прошёл, но при такой готовности не успеть
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: дорожная карта веха почти готова и в срок — молчим
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: дорожная карта заблокированная веха всплывает отдельно от просрочки
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: дорожная карта веха архивного проекта не тревожит
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: дорожная карта готовая веха не всплывает даже с прошедшим сроком
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: биты и лицензии готовый бит без обложки называет бит по имени
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: биты и лицензии черновик без обложки — не повод
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: биты и лицензии отданный по лицензии бит без WAV — критично
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: биты и лицензии лицензия на исходе предупреждает заранее
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: биты и лицензии истёкшая лицензия требует решения
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: биты и лицензии лицензия на полгода вперёд не тревожит
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: биты и лицензии бит, застрявший в сведении, напоминает о себе
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: биты и лицензии архивный бит не трогают
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: задачи, файлы и платежи давно просроченная задача становится поводом разобраться
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: задачи, файлы и платежи вчерашняя просрочка ещё не повод
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: задачи, файлы и платежи задача, выросшая из наблюдения, не порождает следующее
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: задачи, файлы и платежи срок близко, а ответственного нет
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: задачи, файлы и платежи запрос файла без ответа поднимается
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: задачи, файлы и платежи вчерашний запрос ещё ждёт спокойно
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: задачи, файлы и платежи крупный регулярный платёж на носу — повод проверить деньги
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: задачи, файлы и платежи регулярный доход не превращается в задачу
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: общие правила поставленная работа снимает наблюдение
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: общие правила закрытая задача наблюдение обратно не удерживает
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: общие правила пустое приложение фактов не выдумывает
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: общие правила факты приходят от срочных к спокойным
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: счёт срочности просрочка растёт, но не разгоняется бесконечно
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: счёт срочности масштаб — медиана, её не сдвигает одна крупная сделка
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: счёт срочности вес суммы относителен и всегда в пределах ноль-один
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: счёт срочности деньги усиливают просрочку, но не заменяют её
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: счёт срочности дни склоняются по-русски
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_fact_finder_test.dart: счёт срочности перевод часов не меняет число дней
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: TransactionModel.effectiveAccountId an operation created before accounts existed belongs to the main account — if such rows fell out of every query, the balance would drop to zero the moment the user updated the app
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: TransactionModel.effectiveAccountId an explicit account is respected
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.filter null means all accounts
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.filter the main account picks up legacy rows without an accountId
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.filter a secondary account sees only its own rows
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.ensureMain creates the main account once and reuses it afterwards
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.summaries balance includes the opening balance, income and expenses
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.summaries the main account always sorts first, so the list does not reshuffle when accounts get renamed
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.delete refuses to delete the main account — every legacy operation points at it
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.delete an account holding history is archived, not erased — deleting it would take part of the past with it
+✅ /home/runner/work/WesiOS/WesiOS/test/accounts_test.dart: AccountService.delete an empty account is archived instead of physically erased
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_remote_worker_http_transport_test.dart: user pairing transport applies WesiOS auth and never puts poll secret in ticket
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_remote_worker_http_transport_test.dart: worker heartbeat is HMAC signed over payloadJson and not user auth
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_remote_worker_http_transport_test.dart: worker mailbox parses authenticated assignment messages
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_remote_worker_http_transport_test.dart: user worker list converts server heartbeats into trusted remote profiles
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_concurrent_receive_edit_test.dart: remote apply never overwrites edit made after merge snapshot
+✅ /home/runner/work/WesiOS/WesiOS/test/feedback_test.dart: что умеет устройство вибрация и звук не предлагаются на одной платформе сразу
+✅ /home/runner/work/WesiOS/WesiOS/test/feedback_test.dart: что умеет устройство на этой платформе доступно хоть что-то одно
+✅ /home/runner/work/WesiOS/WesiOS/test/feedback_test.dart: настройки по умолчанию включено
+✅ /home/runner/work/WesiOS/WesiOS/test/feedback_test.dart: настройки выключенное не зовёт платформу
+✅ /home/runner/work/WesiOS/WesiOS/test/feedback_test.dart: настройки переключение поднимает отметку — экраны перечитывают
+✅ /home/runner/work/WesiOS/WesiOS/test/feedback_test.dart: настройки вибрация не включается там, где её нет
+✅ /home/runner/work/WesiOS/WesiOS/test/feedback_test.dart: события каждое событие доходит своим видом
+✅ /home/runner/work/WesiOS/WesiOS/test/feedback_test.dart: события общий вход равнозначен именованному
+✅ /home/runner/work/WesiOS/WesiOS/test/feedback_test.dart: события вызов ничего не ждёт
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_backup_memory_merge_test.dart: newer backup memory cannot erase local pinned/manual intent
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам пустая сводка ничего не выдумывает
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам минимум, среднее и максимум считаются по ответившим
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам разброс считается между соседними, а не от среднего
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам одного замера мало, чтобы говорить о разбросе
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам быстро и стабильно — это «работает»
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам десятая часть потерь — уже перебои
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам очень медленные ответы — тоже перебои, хотя ответы есть
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам рваная связь — перебои даже без потерь
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам не отвечает — это «лежит»
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам поднявшийся сервер показывает «работает», а не «лежит»
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сводка по замерам нет сети у устройства — это не «сервер лежит»
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сертификат свежий сертификат тревоги не поднимает
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сертификат две недели до конца — пора беспокоиться
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: сертификат истёкший распознаётся как истёкший
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: показатели с агента настоящий вывод агента разбирается
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: показатели с агента загрузка делится на число ядер
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: показатели с агента без обязательных полей не разбирается, а не подставляет нули
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: показатели с агента старые цифры распознаются как старые
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: показатели с агента деление на ноль не роняет экран
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: наблюдаемый узел переживает круг через JSON
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: наблюдаемый узел без адреса — не узел
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: наблюдаемый узел без названия подставляется адрес, а не пустая строка
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: наблюдаемый узел copyWith умеет стирать необязательное поле
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: замеры вживую несуществующее имя распознаётся как проблема с именем
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: замеры вживую закрытый порт на себе самом распознаётся как отказ
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_test.dart: замеры вживую замер до самого себя занимает разумное время
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: occursOn до первой даты не срабатывает
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: occursOn ежедневный — каждый день после начала
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: occursOn еженедельный — только в тот же день недели
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: occursOn еженедельный переживает перевод часов
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: occursOn ежемесячный — в своё число
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: occursOn ежемесячный 31-го в коротком месяце — в последний день
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: occursOn годовой — только в свой месяц
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: occursOn нерегулярная операция и операция без периода не повторяются
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: nextOccurrence будущая первая дата возвращается как есть
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: nextOccurrence ежемесячный: сегодняшнее число считается ближайшим, а не следующим месяцем
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: nextOccurrence ежемесячный: после своего числа переходит на следующий месяц
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: nextOccurrence ежемесячный на границе года не улетает в тринадцатый месяц
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: nextOccurrence годовой считает год, а не месяц
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: nextOccurrence еженедельный доводит до ближайшего того же дня недели
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: nextOccurrence без периода — null, а не догадка
+✅ /home/runner/work/WesiOS/WesiOS/test/recurrence_test.dart: nextOccurrence occursOn и nextOccurrence согласованы между собой
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: файл доходит целиком и совпадает побайтно
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: без пропуска файл не отдаётся
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: раздача закрывается после первой выдачи
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: подменённый файл не принимается
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: недоступное устройство не роняет попытку
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: срок раздачи истекает сам
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: несуществующий файл не поднимает раздачу
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: пропуск каждый раз новый и достаточно длинный
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: частные адреса свои сети распознаются
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: частные адреса адреса из интернета — нет
+✅ /home/runner/work/WesiOS/WesiOS/test/local_file_transfer_test.dart: отпечаток считается по содержимому, а не по имени
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_balance_truth_test.dart: historical reconstruction ignores transactions scheduled after current balance date
+✅ /home/runner/work/WesiOS/WesiOS/test/horizon_balance_truth_test.dart: current account summary source excludes future-dated operations
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_self_debug_engine_test.dart: repairs failed verification, re-tests and only then delivers
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_self_debug_engine_test.dart: repeated objective failure becomes blocker instead of infinite loop
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_self_debug_engine_test.dart: does not report success when artifact delivery fails
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_self_debug_engine_test.dart: requires objective verification before executing a plan
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_self_debug_engine_test.dart: rejects unknown repair tool before executor call
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_self_debug_engine_test.dart: rejects unknown local tool before execution
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: клиент, сделка и касание сохраняются и читаются
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: следующий шаг из касания обновляет карточку клиента
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: сводка считает воронку, выигранное и архив отдельно
+✅ /home/runner/work/WesiOS/WesiOS/test/crm_service_test.dart: удаление клиента каскадно удаляет сделки и историю
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам раньше такого наблюдения не существовало вовсе
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам срабатывает, когда новых битов давно нет
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам молчит, пока пауза укладывается в обычный ритм
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам порог берётся из собственного ритма, а не из общего числа
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам молчит, пока над битом идёт работа прямо сейчас
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам пустой каталог — не повод: этим занимается шаблон
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам без сложившегося ритма работает общий порог
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам биты, которые приносили деньги, поднимают важность
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам исполнителем становится автор последнего бита
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам поставленная задача снимает наблюдение
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам архив не считается за живой каталог
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам срочность растёт вместе с длиной молчания
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам наблюдение остаётся обоснованным для движка
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам не обгоняет поводы с настоящим сроком
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам совет без срока можно заставить замолчать отказами
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: молчание по новым битам истекающая лицензия остаётся важнее пустого каталога
+✅ /home/runner/work/WesiOS/WesiOS/test/wesi_ai_beat_cadence_test.dart: наблюдение доходит до панели предложение «написать новый бит» появляется в списке
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: запомнить меня с галочкой вход переживает перезапуск
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: запомнить меня без галочки вход не переживает перезапуск
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: запомнить меня по умолчанию запоминаем
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: смена логина логин меняется, старый возвращается в свободные
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: пустые стороны обе пусты — делать нечего
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: пустые стороны пусто в облаке — всё локальное уходит наверх
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: пустые стороны пусто локально — всё облачное приходит вниз
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: кто победил более поздняя правка побеждает — локальная
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: кто победил более поздняя правка побеждает — облачная
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: кто победил одинаковые по времени записи не гоняются туда-сюда
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: кто победил одинаковое время, но разные payload сходятся к серверной версии
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: кто победил порядок ключей payload не создаёт ложный конфликт
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: удаления не воскресают удалили в облаке — удаление приезжает к нам
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: удаления не воскресают удалили у нас — удаление уезжает наверх
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: удаления не воскресают правка ПОСЛЕ удаления возвращает запись — это осознанное решение
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: удаления не воскресают надгробие, которого нет у другой стороны, всё равно доезжает
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: удаления не воскресают при совпадении времени удаление важнее правки
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: слияние по записям, а не по документу правки разных записей на разных устройствах обе выживают
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: слияние по записям, а не по документу после слияния обе стороны приходят к одному состоянию
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: слияние по записям, а не по документу порядок сторон не меняет итог
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: уборка надгробий свежие надгробия остаются
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: уборка надгробий старые выбрасываются
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_merge_test.dart: уборка надгробий живые записи не трогаются, сколько бы им ни было лет
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: смена логина вход работает под новым логином и не работает под старым
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: смена логина занятый чужим логин не отдаётся
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: смена логина слишком короткий логин не принимается
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: смена логина тот же логин — не ошибка и ничего не ломает
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: смена логина несуществующему человеку логин не меняется
+✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: профиль участвует в обмене
+✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: заполненный профиль уезжает на сервер
+✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: профиль с другого устройства виден на экране сразу
+✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: загруженная аватарка переезжает вместе с профилем
+✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: слишком большая картинка не уезжает целиком
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера оставляет только цифры и ведущий плюс
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера пустое и мусор дают пустую строку
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера плюс не в начале не считается плюсом
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети готовый адрес берётся как есть
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети собачка превращается в адрес
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети русские названия сетей тоже понимаются
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети WhatsApp получает номер без знаков
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети незнакомая сеть с доменом открывается как адрес
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети незнакомая сеть без домена ссылкой не становится
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети пустое значение ссылкой не становится
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети регистр названия сети не важен
+::group::❌ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: профиль из старых настроек переносится в запись (failed)
+Expected: 'Старое имя'
+  Actual: <null>
+   Which: not an <Instance of 'String'>
+профиль, заполненный до перехода, обязан сохраниться
+
+package:matcher                                     expect
+package:flutter_test/src/widget_tester.dart 480:18  expect
+test/profile_sync_test.dart 144:5                   main.<fn>
+::endgroup::
+✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: пустой профиль не отправляется и не затирает чужой
+✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: секреты в профиль не попадают
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: help перечисляет реальные диагностические команды
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: обычная команда безопасно печатается в prompt
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: echo учитывает кавычки и сохраняет историю
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: повтор команды не дублируется в истории
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: токен не попадает в историю и маскируется для экрана
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: JWT разбирается локально без вывода полного секрета
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: отпечаток токена имеет SHA-256 и не раскрывает токен
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: каталог содержит WesiOS, сертификаты, SSH и токены
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: templates печатает готовые команды
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: шаблоны и команды привязываются к выбранному серверу
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: clear возвращает управляющий флаг без вывода
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: неизвестная команда объясняет, как открыть справку
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: автодополнение предлагает команды по префиксу
+
+::error::1622 tests passed, 7 failed.
+=== ANDROID TAIL ===
+
+Running Gradle task 'assembleRelease'...                        
+
+FAILURE: Build completed with 3 failures.
+
+1: Task failed with an exception.
+-----------
+* Where:
+Build file '/home/runner/work/WesiOS/WesiOS/android/app/build.gradle' line: 68
+
+* What went wrong:
+A problem occurred evaluating project ':app'.
+> Release signing key is required. Set KEYSTORE_PATH, KEYSTORE_PASSWORD, KEY_ALIAS and KEY_PASSWORD. Debug-signed release APKs are forbidden because they cannot update installed WesiOS builds.
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+A problem occurred configuring project ':app'.
+> Failed to notify project evaluation listener.
+   > compileSdkVersion is not specified. Please add it to build.gradle
+   > Cannot invoke method substring() on null object
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+3: Task failed with an exception.
+-----------
+* What went wrong:
+Failed to query the value of property 'buildFlowServiceProperty'.
+> Could not isolate value org.jetbrains.kotlin.gradle.plugin.statistics.BuildFlowService$Parameters_Decorated@1c79c600 of type BuildFlowService.Parameters
+   > A problem occurred configuring project ':app'.
+      > Failed to notify project evaluation listener.
+         > compileSdkVersion is not specified. Please add it to build.gradle
+         > Cannot invoke method substring() on null object
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+BUILD FAILED in 1m 23s
+Running Gradle task 'assembleRelease'...                           83.7s
+Gradle task assembleRelease failed with exit code 1
