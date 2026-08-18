@@ -21,7 +21,7 @@ dependencies:
   flutter_animate: ^4.3.0
   fl_chart: ^0.66.0
   table_calendar: ^3.0.9
-  flutter_quill: ^11.5.1
+  flutter_quill: 11.5.0
   audioplayers: ^5.2.1
   flutter_soloud: 3.1.12
   video_player: ^2.8.1
