@@ -1,0 +1,80 @@
+name: Validate Final Main Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/validate-final-main-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Run final gates
+        shell: bash
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos > /tmp/analyze.log 2>&1
+          analyze=$?
+          flutter test > /tmp/tests.log 2>&1
+          tests=$?
+          flutter build apk --debug > /tmp/android.log 2>&1
+          android=$?
+          node --test \
+            server/pb_hooks/wesi_sync_data_access_contract_test.mjs \
+            server/pb_hooks/wesi_sync_lww_test.mjs \
+            server/pb_hooks/wesi_sync_atomic_test.mjs \
+            server/pb_hooks/wesi_sync_authz_test.mjs \
+            server/pb_hooks/wesi_sync_generic_policy_test.mjs \
+            server/pb_hooks/wesi_sync_context_contract_test.mjs \
+            server/pb_hooks/wesi_sync_revision_contract_test.mjs \
+            server/pb_hooks/wesi_sync_revision_race_test.mjs \
+            server/pb_hooks/wesi_sync_extra_contract_test.mjs \
+            server/pb_hooks/wesi_sync_crm_contract_test.mjs \
+            server/pb_hooks/wesi_sync_files_contract_test.mjs \
+            server/pb_hooks/wesi_sync_unique_migration_test.mjs \
+            server/pb_hooks/wesi_ai_identity_contract_test.mjs \
+            server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs \
+            server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs > /tmp/node.log 2>&1
+          nodecode=$?
+          set -e
+          {
+            echo "ANALYZE=$analyze"
+            echo "TESTS=$tests"
+            echo "ANDROID_DEBUG=$android"
+            echo "NODE_SYNC=$nodecode"
+            echo "SOURCE=$GITHUB_SHA"
+            if [ "$analyze" -ne 0 ]; then echo '=== ANALYZE ==='; grep -E 'error •|warning •|issues found' /tmp/analyze.log | tail -n 160; fi
+            if [ "$tests" -ne 0 ]; then echo '=== TESTS ==='; grep -E -B4 -A14 '❌|Expected:|Actual:|Some tests failed|Error:' /tmp/tests.log | tail -n 700; fi
+            if [ "$android" -ne 0 ]; then echo '=== ANDROID ==='; grep -E -B5 -A20 'FAILURE:|What went wrong|Error:|BUILD FAILED|Gradle task.*failed' /tmp/android.log | tail -n 350; fi
+            if [ "$nodecode" -ne 0 ]; then echo '=== NODE ==='; tail -n 400 /tmp/node.log; fi
+          } > /tmp/report.txt
+      - name: Publish validation branch
+        if: always()
+        shell: bash
+        run: |
+          git reset --hard "$GITHUB_SHA"
+          cp /tmp/report.txt .github/final-main-validation.txt
+          git config user.name 'WesiOS Final Validation'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/final-main-validation
+          git add .github/final-main-validation.txt
+          git commit -m 'ops: record final main validation'
+          git push --force origin HEAD:diag/final-main-validation
