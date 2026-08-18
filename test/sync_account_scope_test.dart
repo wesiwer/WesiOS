@@ -35,26 +35,26 @@ void main() {
   });
 
   group('feature private boxes', () {
-    test('profile and vault storage follows auth user, not employee id', () {
-      final profileA = SyncFeatureExtensions.profileBoxName('auth_a');
-      final profileB = SyncFeatureExtensions.profileBoxName('auth_b');
+    test('shield and vault storage follow auth user, not employee id', () {
+      final shieldA = SyncFeatureExtensions.shieldBoxName('auth_a');
+      final shieldB = SyncFeatureExtensions.shieldBoxName('auth_b');
       final vaultA = SyncFeatureExtensions.vaultBoxName('auth_a');
       final vaultB = SyncFeatureExtensions.vaultBoxName('auth_b');
 
-      expect(profileA, 'wesios_profile_sync_v1__acct_auth_a');
-      expect(profileB, 'wesios_profile_sync_v1__acct_auth_b');
+      expect(shieldA, 'wesios_profile_sync_v1__acct_auth_a');
+      expect(shieldB, 'wesios_profile_sync_v1__acct_auth_b');
       expect(vaultA, 'wesios_vault_sync_v1__acct_auth_a');
       expect(vaultB, 'wesios_vault_sync_v1__acct_auth_b');
-      expect(profileA, isNot(profileB));
+      expect(shieldA, isNot(shieldB));
       expect(vaultA, isNot(vaultB));
     });
 
     test('private wire record id still belongs to business employee', () {
       expect(
-        SyncFeatureExtensions.privateRecordId('avatar_custom', 'employee_42'),
-        'employee_42::avatar_custom',
+        SyncFeatureExtensions.privateRecordId('shield_hash', 'employee_42'),
+        'employee_42::shield_hash',
         reason:
-            'server validates rid by ctx.employeeId even though owner scope is e.auth.id',
+            'server validates private keyed rid by ctx.employeeId even though owner scope is e.auth.id',
       );
     });
 
@@ -74,6 +74,18 @@ void main() {
         reason:
             'same employee with a different auth user must force a fresh binding',
       );
+      expect(source, contains('_privateSettingsAuthOwnerKey'),
+          reason:
+              'legacy Shield/Vault projection may only be claimed once by an auth-user namespace');
+    });
+
+    test('new client no longer registers overloaded profile_private', () {
+      final source =
+          File('lib/core/sync/sync_feature_extensions.dart').readAsStringSync();
+      expect(source, contains("SyncCodec.byName('shield_private')"));
+      expect(source, contains("String get name => 'shield_private';"));
+      expect(source, isNot(contains("SyncCodec.byName('profile_private')")));
+      expect(source, isNot(contains("String get name => 'profile_private';")));
     });
   });
 }

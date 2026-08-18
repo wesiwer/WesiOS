@@ -38,3 +38,31 @@ test('all audited extended collections remain explicitly registered', () => {
   }
   assert.match(routes, /\/api\/wesi\/sync\/revision-v2/);
 });
+
+test('legacy profile_private is migrated before canonical profile or shield access', () => {
+  assert.match(runtime, /function\s+migrateLegacyProfilePrivate\s*\(/);
+  assert.match(runtime, /coll='profile_private'\s*&&\s*deleted=false/);
+  assert.match(runtime, /coll='profile'\s*&&\s*rid='me'/);
+  assert.match(runtime, /coll='shield_private'/);
+  assert.match(runtime, /if\s*\(!existingProfile\)/);
+
+  const readStart = runtime.indexOf('function read(e, collection');
+  const writeStart = runtime.indexOf('function write(e, collection');
+  const revisionStart = runtime.indexOf('function revision(e)');
+  assert.ok(readStart >= 0 && writeStart > readStart && revisionStart > writeStart);
+  const readBody = runtime.slice(readStart, writeStart);
+  const writeBody = runtime.slice(writeStart, revisionStart);
+  assert.match(readBody, /collection === "profile" \|\| collection === "shield_private"/);
+  assert.match(readBody, /migrateLegacyProfilePrivate\(e\)/);
+  assert.match(writeBody, /collection === "profile" \|\| collection === "shield_private"/);
+  assert.match(writeBody, /migrateLegacyProfilePrivate\(e\)/);
+});
+
+test('migration never overwrites canonical targets and converts avatar bytes', () => {
+  assert.match(runtime, /if\s*\(!existingShield\)/);
+  assert.match(runtime, /if\s*\(existingProfile\) return;/);
+  assert.match(runtime, /legacyBytesToBase64/);
+  assert.match(runtime, /__wesios_bytes_v1/);
+  assert.match(runtime, /Math\.min\(parsed, now\)/,
+    'legacy future stamps must be clamped during migration');
+});
