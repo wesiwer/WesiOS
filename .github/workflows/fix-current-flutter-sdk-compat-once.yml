@@ -1,0 +1,37 @@
+name: Fix Current Flutter SDK Compat Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-current-flutter-sdk-compat-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Fix current Flutter SDK API compatibility
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('lib/core/theme/app_theme.dart')
+          s = p.read_text()
+          old = '      cardTheme: CardTheme(\n'
+          new = '      cardTheme: CardThemeData(\n'
+          if old not in s:
+              raise SystemExit('CardTheme compatibility snippet not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+          git config user.name 'WesiOS Flutter Compat'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/core/theme/app_theme.dart
+          git commit -m 'fix(build): use CardThemeData on current Flutter stable'
+          git push origin HEAD:main
