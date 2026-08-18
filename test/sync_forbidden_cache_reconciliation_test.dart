@@ -6,6 +6,8 @@ import 'package:wesios/core/sync/sync_codec.dart';
 import 'package:wesios/core/sync/sync_endpoint.dart';
 import 'package:wesios/core/sync/sync_engine.dart';
 import 'package:wesios/core/sync/sync_journal.dart';
+import 'package:wesios/core/sync/sync_merge.dart';
+import 'package:wesios/core/sync/sync_transport.dart';
 
 import 'fake_sync_transport.dart';
 
@@ -37,6 +39,86 @@ class _NoDomainDeletePolicyCollection extends _PolicyCollection {
     // Mirrors codecs such as OrganizationsSync where a normal synced business
     // tombstone is intentionally not allowed to delete the local entity.
   }
+}
+
+/// First fetch still exposes the row; the push is denied because permissions
+/// change at that exact boundary; the mandatory post-403 fetch then returns the
+/// updated, empty visibility snapshot.
+class _PermissionRevokedBetweenFetchAndPush implements SyncTransport {
+  final SyncRecord initiallyVisible;
+  int fetchCount = 0;
+
+  _PermissionRevokedBetweenFetchAndPush(this.initiallyVisible);
+
+  @override
+  bool get isSignedIn => true;
+
+  @override
+  Future<SyncResult<Map<String, SyncRecord>>> fetch(String collection) async {
+    fetchCount++;
+    if (fetchCount == 1) {
+      return SyncResult.ok({'row': initiallyVisible});
+    }
+    return const SyncResult.ok(<String, SyncRecord>{});
+  }
+
+  @override
+  Future<SyncPushResult> push(
+    String collection,
+    List<SyncRecord> records,
+  ) async {
+    return SyncPushResult(
+      forbiddenIds: records.map((r) => r.id).toList(),
+    );
+  }
+
+  @override
+  Future<SyncResult<String>> signIn(String login, String password) async =>
+      const SyncResult.ok('test');
+
+  @override
+  void signOut() {}
+}
+
+/// The permission denial is known, but the follow-up visibility refresh fails.
+/// The only safe local behavior is to evict the denied cache and report the
+/// degraded pass; a later healthy pull can restore rows that remain readable.
+class _PermissionRefreshFails implements SyncTransport {
+  final SyncRecord initiallyVisible;
+  int fetchCount = 0;
+
+  _PermissionRefreshFails(this.initiallyVisible);
+
+  @override
+  bool get isSignedIn => true;
+
+  @override
+  Future<SyncResult<Map<String, SyncRecord>>> fetch(String collection) async {
+    fetchCount++;
+    if (fetchCount == 1) {
+      return SyncResult.ok({'row': initiallyVisible});
+    }
+    return const SyncResult.fail(
+      SyncFailure('NETWORK', 'permission refresh unavailable'),
+    );
+  }
+
+  @override
+  Future<SyncPushResult> push(
+    String collection,
+    List<SyncRecord> records,
+  ) async {
+    return SyncPushResult(
+      forbiddenIds: records.map((r) => r.id).toList(),
+    );
+  }
+
+  @override
+  Future<SyncResult<String>> signIn(String login, String password) async =>
+      const SyncResult.ok('test');
+
+  @override
+  void signOut() {}
 }
 
 void main() {
@@ -159,5 +241,68 @@ void main() {
       reason:
           'read-only cache must converge to the exact server LWW coordinate',
     );
+  });
+
+  test('permission revoked between fetch and forbidden push purges stale cache',
+      () async {
+    final box = Hive.box<String>(_PolicyCollection.testBox);
+    await box.put('row', 'row:local-edit');
+    await Future<void>.delayed(Duration.zero);
+    final localStamp = base.add(const Duration(minutes: 10));
+    await SyncJournal.record(collection.name, 'row', SyncStamp(localStamp));
+
+    final staleVisibleRemote = SyncRecord(
+      id: 'row',
+      updatedAt: base.add(const Duration(minutes: 2)),
+      fields: const {'value': 'row:old-visible-server'},
+    );
+    final transport =
+        _PermissionRevokedBetweenFetchAndPush(staleVisibleRemote);
+
+    final report = await SyncEngine.run(
+      transport: transport,
+      now: base.add(const Duration(minutes: 11)),
+      only: {collection.name},
+    );
+
+    expect(report.ok, isTrue, reason: report.describe());
+    expect(transport.fetchCount, 2,
+        reason: '403 must force a fresh permission-filtered snapshot');
+    expect(box.containsKey('row'), isFalse,
+        reason:
+            'the stale pre-push fetch must never preserve data after read access was revoked');
+  });
+
+  test('failed post-403 permission refresh fails closed and purges denied cache',
+      () async {
+    final box = Hive.box<String>(_PolicyCollection.testBox);
+    await box.put('row', 'row:local-edit');
+    await Future<void>.delayed(Duration.zero);
+    await SyncJournal.record(
+      collection.name,
+      'row',
+      SyncStamp(base.add(const Duration(minutes: 10))),
+    );
+
+    final transport = _PermissionRefreshFails(
+      SyncRecord(
+        id: 'row',
+        updatedAt: base.add(const Duration(minutes: 2)),
+        fields: const {'value': 'row:old-visible-server'},
+      ),
+    );
+
+    final report = await SyncEngine.run(
+      transport: transport,
+      now: base.add(const Duration(minutes: 11)),
+      only: {collection.name},
+    );
+
+    expect(report.ok, isFalse);
+    expect(report.firstFailure?.code, 'POLICY_REFRESH_FAILED');
+    expect(transport.fetchCount, 2);
+    expect(box.containsKey('row'), isFalse,
+        reason:
+            'after an explicit server denial, an unverifiable sensitive cache must not remain local');
   });
 }
