@@ -24,7 +24,7 @@ jobs:
       - name: Build Android debug
         shell: bash
         run: |
-          # Revalidate after Gradle 8.14.3 / AGP 8.11.1 / Kotlin 2.2.20 alignment.
+          # Revalidate latest main after sync/build fixes and parallel AI changes.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           PUB=$?
