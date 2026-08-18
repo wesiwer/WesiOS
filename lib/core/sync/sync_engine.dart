@@ -46,9 +46,6 @@ class SyncReport {
   int get changed => uploaded + applied;
 
   /// Проход считается удачным, только если удались все коллекции.
-  ///
-  /// «Три из пяти прошло» — это не успех: человек увидит зелёную галочку и
-  /// решит, что данные на сервере, а двух коллекций там нет.
   bool get ok => failure == null && collections.every((c) => c.ok);
 
   /// Первая настоящая причина отказа — её и показываем.
@@ -73,18 +70,6 @@ class SyncReport {
 }
 
 /// Синхронизация устройств.
-///
-/// Порядок работы одинаков для всех коллекций:
-/// 1. собрать местное состояние — записи из бокса плюс надгробия из журнала;
-/// 2. забрать состояние сервера;
-/// 3. слить ([SyncMerge]) — правила спора живут там и только там;
-/// 4. применить чужие правки у себя;
-/// 5. отправить свои.
-///
-/// **Почему сначала применяем, потом отправляем.** Если отправить первым и
-/// оборваться на середине, сервер окажется в состоянии, которого нет ни у
-/// одного устройства. Обратный порядок в худшем случае оставляет наши правки
-/// дома — их отправит следующий проход.
 class SyncEngine {
   static final ValueNotifier<bool> busy = ValueNotifier<bool>(false);
   static final ValueNotifier<SyncReport?> lastReport =
@@ -92,11 +77,27 @@ class SyncEngine {
 
   static bool _journalReady = false;
 
-  /// Открыть журнал и подписать его на все синхронизируемые боксы.
+  /// Generation текущего жизненного цикла sync engine.
   ///
-  /// Вызывается на старте приложения — до того, как человек что-то поменяет.
-  /// Подписка, поставленная позже, пропустила бы правки, сделанные до неё, и
-  /// они выглядели бы как «не менялось никогда».
+  /// Нужна отдельно от SyncAuto: ручной/чатовый проход тоже может быть активен
+  /// в момент logout/account switch. Старый run не должен после смены identity
+  /// применить remote row в динамически вычисленный private box нового user.
+  static int _runGeneration = 0;
+
+  /// Немедленно делает все уже запущенные production-run протухшими.
+  /// Реальный сетевой Future нельзя отменить задним числом, но после ближайшего
+  /// await старый проход увидит generation mismatch и остановится до apply/push.
+  static void invalidateActiveRun() {
+    _runGeneration++;
+    SyncJournal.clearExpectations();
+  }
+
+  static String _sessionFingerprint() {
+    final session = SyncEndpoint.session;
+    return '${session?['userId']}|${session?['sessionId']}|${session?['token']}';
+  }
+
+  /// Открыть журнал и подписать его на все синхронизируемые боксы.
   static Future<void> prepare({DateTime? now}) async {
     if (_journalReady) return;
     await SyncJournal.open();
@@ -110,19 +111,10 @@ class SyncEngine {
           syncIdForKey: c.syncIdForBoxKey,
         );
       } catch (_) {
-        // Один недоступный бокс не должен срывать подписку на остальные:
-        // без синхронизации одного модуля жить можно, без запуска — нет.
+        // Один недоступный бокс не должен срывать подписку на остальные.
       }
     }
 
-    // Первый запуск после обновления: в боксах лежат данные, а отметок нет.
-    // Ставим им текущее время — «когда меняли, неизвестно, считаем, что
-    // недавно». Это безопасное направление: запись, объявленная свежей,
-    // в худшем случае перезапишет свою же копию на сервере, а объявленная
-    // древней — молча пропадёт под чужой.
-    //
-    // Первый обмен с сервером это не портит: там действует отдельное
-    // правило (см. [_onlyNewTo]), и по спорным записям принимается сервер.
     if (SyncEndpoint.seededAt == null) {
       final at = now ?? SyncClock.now();
       for (final c in SyncCodec.collections) {
@@ -135,27 +127,25 @@ class SyncEngine {
   }
 
   /// Сбросить подписки и результат последнего прохода.
+  ///
+  /// Сначала инвалидируем уже идущий run и ждём, пока он выйдет через guard.
+  /// Только затем можно отвязать journal и открыть private boxes другой учётки.
   static Future<void> reset() async {
+    invalidateActiveRun();
+    while (busy.value) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
     await SyncJournal.detach();
     lastReport.value = null;
     _journalReady = false;
   }
 
-  /// Проход при запуске программы, если человек включил «автоматически».
-  ///
-  /// Молча: неудача при старте не должна встречать человека сообщением об
-  /// ошибке — он ещё ничего не сделал. Результат виден на экране
-  /// синхронизации и в подписи к пункту настроек.
   static Future<void> runOnLaunch() async {
     await prepare();
     if (!SyncEndpoint.enabled) return;
     await run();
   }
 
-  /// Местное состояние коллекции в виде, понятном слиянию.
-  ///
-  /// Надгробия берутся из журнала: записи в боксе уже нет, а сказать серверу
-  /// «её удалили тогда-то» надо — иначе она вернётся с другого устройства.
   static Map<String, SyncRecord> localState(
     SyncCollection<dynamic> c,
     DateTime fallbackStamp,
@@ -169,9 +159,6 @@ class SyncEngine {
       out[id] = SyncRecord(
         id: id,
         fields: c.encode(value),
-        // Записи без отметки быть не должно — журнал засевается на старте.
-        // Но если она всё-таки есть, лучше объявить её свежей, чем дать
-        // молча стереть себя чужой копией.
         updatedAt:
             (stamp != null && !stamp.deleted) ? stamp.updatedAt : fallbackStamp,
       );
@@ -185,24 +172,8 @@ class SyncEngine {
     return out;
   }
 
-  /// Это первый в жизни устройства обмен с сервером.
   static bool get firstEverExchange => SyncEndpoint.lastRun == null;
 
-  /// Оставить только то, чего на сервере нет.
-  ///
-  /// Правило первого обмена: **по спорным записям принимаем сервер**.
-  ///
-  /// Без него свежая установка затирает настоящие данные своими пустыми, и
-  /// это не редкий случай, а гарантированный. Приложение само создаёт при
-  /// первом запуске счёт с постоянным идентификатором `main` и владельца с
-  /// идентификатором `owner`. На новом телефоне это «Основной счёт» с нулём и
-  /// «Владелец» без прав — и оба новее того, что лежит на сервере, потому что
-  /// созданы только что. Обычное слияние по времени честно решило бы, что
-  /// пустая заготовка свежее, и отправило бы её наверх поверх настоящих
-  /// данных.
-  ///
-  /// Записи, которых на сервере нет, всё равно уезжают: устройство, где
-  /// человек уже работал, ничего не теряет.
   static Map<String, SyncRecord> _onlyNewTo(
     Map<String, SyncRecord> local,
     Map<String, SyncRecord> remote,
@@ -214,24 +185,17 @@ class SyncEngine {
 
   /// Один проход по всем коллекциям.
   ///
-  /// [transport] передаётся тестами; в приложении берётся из настроек.
-  /// Один проход.
-  ///
-  /// [only] — обменяться лишь этими коллекциями. Нужно для переписки:
-  /// пока чат открыт, обмен идёт часто, и таскать при этом операции,
-  /// задачи, статьи и состав — лишняя работа для сервера с одним ядром.
-  /// null — все коллекции, как при обычном проходе.
+  /// Тестовый injected [transport] не привязывается к реальной server-session,
+  /// чтобы существующие unit-тесты могли работать без SyncEndpoint. Production
+  /// transport дополнительно фиксирует fingerprint auth-session на старте.
   static Future<SyncReport> run({
     SyncTransport? transport,
     DateTime? now,
     Set<String>? only,
   }) async {
-    // Вся сверка времени идёт по общей шкале — см. [SyncClock].
     final at = now ?? SyncClock.now();
 
     if (busy.value) {
-      // Два прохода одновременно означали бы, что второй читает боксы,
-      // пока первый их переписывает.
       return SyncReport(
         at: at,
         failure: const SyncFailure('BUSY', 'Синхронизация уже идёт'),
@@ -243,29 +207,66 @@ class SyncEngine {
       return _finish(SyncReport(at: at, failure: SyncFailure.notSignedIn));
     }
 
+    final generation = _runGeneration;
+    final productionSession = transport == null ? _sessionFingerprint() : null;
+    bool cancelled() => generation != _runGeneration ||
+        (productionSession != null &&
+            productionSession != _sessionFingerprint());
+
+    SyncFailure cancelledFailure() => const SyncFailure(
+          'SESSION_CHANGED',
+          'Сеанс изменился во время синхронизации',
+        );
+
     busy.value = true;
     try {
       await prepare(now: at);
-      final reports = <SyncCollectionReport>[];
+      if (cancelled()) {
+        return _finish(SyncReport(at: at, failure: cancelledFailure()));
+      }
 
+      final reports = <SyncCollectionReport>[];
       for (final c in SyncCodec.collections) {
         if (only != null && !only.contains(c.name)) continue;
-        reports.add(await _runOne(c, t, at));
+        if (cancelled()) {
+          return _finish(SyncReport(
+            at: at,
+            collections: reports,
+            failure: cancelledFailure(),
+          ));
+        }
+        final one = await _runOne(c, t, at, cancelled: cancelled);
+        reports.add(one);
+        if (cancelled() || one.failure?.code == 'SESSION_CHANGED') {
+          return _finish(SyncReport(
+            at: at,
+            collections: reports,
+            failure: cancelledFailure(),
+          ));
+        }
+      }
+
+      if (cancelled()) {
+        return _finish(SyncReport(
+          at: at,
+          collections: reports,
+          failure: cancelledFailure(),
+        ));
       }
 
       await SyncJournal.pruneTombstones(at);
+      if (cancelled()) {
+        return _finish(SyncReport(
+          at: at,
+          collections: reports,
+          failure: cancelledFailure(),
+        ));
+      }
       SyncJournal.clearExpectations();
 
       final report = SyncReport(at: at, collections: reports);
-      // Частичный обмен не считается «первым полным»: правило первого
-      // обмена (см. _onlyNewTo) должно отработать на всех коллекциях, а не
-      // на двух из семи. Иначе счета и состав приехали бы уже по обычным
-      // правилам слияния — то есть могли бы затереться пустой заготовкой.
       if (report.ok && only == null) await SyncEndpoint.markRun(at);
 
-      // Пропуск протух — выбрасываем его. Иначе экран продолжал бы
-      // показывать «сервер подключён», а каждый следующий проход молча
-      // отказывал бы: худший вид поломки — тот, который выглядит рабочим.
       if (report.firstFailure?.code == 'NOT_SIGNED_IN') {
         t.signOut();
         await SyncEndpoint.clearSession();
@@ -279,13 +280,28 @@ class SyncEngine {
   static Future<SyncCollectionReport> _runOne(
     SyncCollection<dynamic> c,
     SyncTransport t,
-    DateTime at,
-  ) async {
+    DateTime at, {
+    required bool Function() cancelled,
+  }) async {
+    SyncCollectionReport cancelledReport({int applied = 0}) =>
+        SyncCollectionReport(
+          collection: c.name,
+          applied: applied,
+          failure: const SyncFailure(
+            'SESSION_CHANGED',
+            'Сеанс изменился во время синхронизации',
+          ),
+        );
+
+    if (cancelled()) return cancelledReport();
     final remote = await t.fetch(c.name);
+    if (cancelled()) return cancelledReport();
     if (!remote.ok) {
       return SyncCollectionReport(collection: c.name, failure: remote.failure);
     }
 
+    // После сетевого await identity проверена, поэтому синхронный localState
+    // читается из того же account namespace, с которым начался этот run.
     final plan = SyncMerge.merge(
       local: firstEverExchange
           ? _onlyNewTo(localState(c, at), remote.value!)
@@ -306,18 +322,13 @@ class SyncEngine {
       );
     }
 
-    // Some valid server rows depend on another row in the same collection.
-    // Organizations are the obvious case: a child can sort before its parent.
-    // Grants may also depend on an actor grant. One-pass application therefore
-    // turns a harmless wire order into a permanent sync failure. Retry only
-    // rows that were not accepted, and stop as soon as a full pass makes no
-    // progress. This is bounded by the number of rows because every continuing
-    // pass must apply at least one row.
     while (pending.isNotEmpty) {
       var progressed = false;
       final deferred = <SyncRecord>[];
 
       for (final r in pending) {
+        if (cancelled()) return cancelledReport(applied: applied);
+
         SyncJournal.expect(
           c.name,
           r.id,
@@ -328,6 +339,10 @@ class SyncEngine {
           r.id,
           SyncStamp(r.updatedAt, deleted: r.deleted),
         );
+        if (cancelled()) {
+          SyncJournal.forget(c.name, r.id);
+          return cancelledReport(applied: applied);
+        }
 
         var accepted = false;
         try {
@@ -341,12 +356,15 @@ class SyncEngine {
           accepted = false;
         }
 
+        if (cancelled()) {
+          SyncJournal.forget(c.name, r.id);
+          return cancelledReport(applied: applied);
+        }
+
         if (accepted) {
           applied++;
           progressed = true;
         } else {
-          // The expected Hive event will never arrive for a rejected row.
-          // Do not let the expectation consume a later real user edit.
           SyncJournal.forget(c.name, r.id);
           deferred.add(r);
         }
@@ -360,8 +378,11 @@ class SyncEngine {
       if (!progressed) break;
     }
 
+    if (cancelled()) return cancelledReport(applied: applied);
+
     if (pending.isNotEmpty) {
       for (final r in pending) {
+        if (cancelled()) return cancelledReport(applied: applied);
         await resetIncompleteStamp(r.id);
       }
       final first = pending.first.id;
@@ -372,11 +393,9 @@ class SyncEngine {
       );
     }
 
+    if (cancelled()) return cancelledReport(applied: applied);
     if (applied > 0) c.notifyChanged();
 
-    // Never push a merge plan derived from a state that we failed to apply.
-    // Retrying later is safe; uploading while incomplete can overwrite a valid
-    // server row with stale local state.
     if (applyFailure != null) {
       return SyncCollectionReport(
         collection: c.name,
@@ -389,21 +408,24 @@ class SyncEngine {
       return SyncCollectionReport(
         collection: c.name,
         applied: applied,
-        failure: applyFailure,
       );
     }
+
+    // Последняя проверка непосредственно перед write boundary: старый run не
+    // должен отправлять plan, рассчитанный до account switch.
+    if (cancelled()) return cancelledReport(applied: applied);
     final pushed = await t.push(c.name, plan.toUpload);
-    // Сообщаем коллекции ровно то, что действительно уехало, а не весь план.
-    // Это нужно сообщениям: у них есть состояние «дошло ли», и пометить
-    // доставленным то, что осталось дома, — прямая ложь на экране.
+    if (cancelled()) return cancelledReport(applied: applied);
+
     if (pushed.deliveredIds.isNotEmpty) {
       await c.afterUpload(pushed.deliveredIds);
+      if (cancelled()) return cancelledReport(applied: applied);
     }
     return SyncCollectionReport(
       collection: c.name,
       applied: applied,
       uploaded: pushed.sent,
-      failure: pushed.failure ?? applyFailure,
+      failure: pushed.failure,
     );
   }
 
