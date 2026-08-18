@@ -1,0 +1,143 @@
+=== RELEASE JSON ===
+{"conclusion":"failure","createdAt":"2026-08-18T23:25:13Z","databaseId":32197090987,"headSha":"0d4e2e4b3d4e9eb3002fb897db81910481f49c9a","jobs":[{"completedAt":"2026-08-18T23:25:24Z","conclusion":"success","databaseId":95903213329,"name":"version","startedAt":"2026-08-18T23:25:17Z","status":"completed","steps":[{"completedAt":"2026-08-18T23:25:19Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-08-18T23:25:18Z","status":"completed"},{"completedAt":"2026-08-18T23:25:21Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-08-18T23:25:19Z","status":"completed"},{"completedAt":"2026-08-18T23:25:21Z","conclusion":"success","name":"Read version from pubspec","number":3,"startedAt":"2026-08-18T23:25:21Z","status":"completed"},{"completedAt":"2026-08-18T23:25:21Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":6,"startedAt":"2026-08-18T23:25:21Z","status":"completed"},{"completedAt":"2026-08-18T23:25:21Z","conclusion":"success","name":"Complete job","number":7,"startedAt":"2026-08-18T23:25:21Z","status":"completed"}],"url":"https://github.com/wesiwer/WesiOS/actions/runs/32197090987/job/95903213329"},{"completedAt":"2026-08-18T23:33:20Z","conclusion":"success","databaseId":95903246650,"name":"build-windows","startedAt":"2026-08-18T23:25:29Z","status":"completed","steps":[{"completedAt":"2026-08-18T23:25:33Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-08-18T23:25:30Z","status":"completed"},{"completedAt":"2026-08-18T23:25:38Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-08-18T23:25:33Z","status":"completed"},{"completedAt":"2026-08-18T23:27:17Z","conclusion":"success","name":"Run subosito/flutter-action@v2","number":3,"startedAt":"2026-08-18T23:25:38Z","status":"completed"},{"completedAt":"2026-08-18T23:27:50Z","conclusion":"success","name":"Run flutter config --enable-windows-desktop","number":4,"startedAt":"2026-08-18T23:27:17Z","status":"completed"},{"completedAt":"2026-08-18T23:27:50Z","conclusion":"success","name":"Wipe broken Windows platform stub","number":5,"startedAt":"2026-08-18T23:27:50Z","status":"completed"},{"completedAt":"2026-08-18T23:28:22Z","conclusion":"success","name":"Regenerate Windows platform files","number":6,"startedAt":"2026-08-18T23:27:50Z","status":"completed"},{"completedAt":"2026-08-18T23:28:22Z","conclusion":"success","name":"Restore custom Windows icon","number":7,"startedAt":"2026-08-18T23:28:22Z","status":"completed"},{"completedAt":"2026-08-18T23:28:24Z","conclusion":"success","name":"Run flutter pub get","number":8,"startedAt":"2026-08-18T23:28:22Z","status":"completed"},{"completedAt":"2026-08-18T23:33:02Z","conclusion":"success","name":"Run flutter build windows --release","number":9,"startedAt":"2026-08-18T23:28:24Z","status":"completed"},{"completedAt":"2026-08-18T23:33:05Z","conclusion":"success","name":"Pack the portable build","number":10,"startedAt":"2026-08-18T23:33:02Z","status":"completed"},{"completedAt":"2026-08-18T23:33:09Z","conclusion":"success","name":"Upload Windows artifact","number":11,"startedAt":"2026-08-18T23:33:05Z","status":"completed"},{"completedAt":"2026-08-18T23:33:15Z","conclusion":"success","name":"Publish to GitHub Release","number":12,"startedAt":"2026-08-18T23:33:09Z","status":"completed"},{"completedAt":"2026-08-18T23:33:16Z","conclusion":"success","name":"Collect metadata","number":13,"startedAt":"2026-08-18T23:33:15Z","status":"completed"},{"completedAt":"2026-08-18T23:33:16Z","conclusion":"success","name":"Post Run subosito/flutter-action@v2","number":25,"startedAt":"2026-08-18T23:33:16Z","status":"completed"},{"completedAt":"2026-08-18T23:33:18Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":26,"startedAt":"2026-08-18T23:33:16Z","status":"completed"},{"completedAt":"2026-08-18T23:33:18Z","conclusion":"success","name":"Complete job","number":27,"startedAt":"2026-08-18T23:33:18Z","status":"completed"}],"url":"https://github.com/wesiwer/WesiOS/actions/runs/32197090987/job/95903246650"},{"completedAt":"2026-08-18T23:36:29Z","conclusion":"failure","databaseId":95903246696,"name":"build-android","startedAt":"2026-08-18T23:25:27Z","status":"completed","steps":[{"completedAt":"2026-08-18T23:25:30Z","conclusion":"success","name":"Set up job","number":1,"startedAt":"2026-08-18T23:25:28Z","status":"completed"},{"completedAt":"2026-08-18T23:25:32Z","conclusion":"success","name":"Run actions/checkout@v4","number":2,"startedAt":"2026-08-18T23:25:30Z","status":"completed"},{"completedAt":"2026-08-18T23:25:32Z","conclusion":"success","name":"Setup Java","number":3,"startedAt":"2026-08-18T23:25:32Z","status":"completed"},{"completedAt":"2026-08-18T23:26:34Z","conclusion":"success","name":"Run subosito/flutter-action@v2","number":4,"startedAt":"2026-08-18T23:25:32Z","status":"completed"},{"completedAt":"2026-08-18T23:26:54Z","conclusion":"success","name":"Run flutter pub get","number":5,"startedAt":"2026-08-18T23:26:34Z","status":"completed"},{"completedAt":"2026-08-18T23:26:54Z","conclusion":"success","name":"Ensure google-services.json exists","number":6,"startedAt":"2026-08-18T23:26:54Z","status":"completed"},{"completedAt":"2026-08-18T23:26:56Z","conclusion":"success","name":"Decode and verify release keystore","number":7,"startedAt":"2026-08-18T23:26:54Z","status":"completed"},{"completedAt":"2026-08-18T23:27:15Z","conclusion":"success","name":"Setup Android NDK","number":8,"startedAt":"2026-08-18T23:26:56Z","status":"completed"},{"completedAt":"2026-08-18T23:36:26Z","conclusion":"failure","name":"Build signed APK","number":9,"startedAt":"2026-08-18T23:27:15Z","status":"completed"},{"completedAt":"2026-08-18T23:36:26Z","conclusion":"skipped","name":"Rename APK","number":10,"startedAt":"2026-08-18T23:36:26Z","status":"completed"},{"completedAt":"2026-08-18T23:36:26Z","conclusion":"skipped","name":"Upload Android artifact","number":11,"startedAt":"2026-08-18T23:36:26Z","status":"completed"},{"completedAt":"2026-08-18T23:36:26Z","conclusion":"skipped","name":"Publish to GitHub Release","number":12,"startedAt":"2026-08-18T23:36:26Z","status":"completed"},{"completedAt":"2026-08-18T23:36:26Z","conclusion":"skipped","name":"Collect metadata","number":13,"startedAt":"2026-08-18T23:36:26Z","status":"completed"},{"completedAt":"2026-08-18T23:36:26Z","conclusion":"success","name":"Post Run subosito/flutter-action@v2","number":24,"startedAt":"2026-08-18T23:36:26Z","status":"completed"},{"completedAt":"2026-08-18T23:36:26Z","conclusion":"success","name":"Post Setup Java","number":25,"startedAt":"2026-08-18T23:36:26Z","status":"completed"},{"completedAt":"2026-08-18T23:36:26Z","conclusion":"success","name":"Post Run actions/checkout@v4","number":26,"startedAt":"2026-08-18T23:36:26Z","status":"completed"},{"completedAt":"2026-08-18T23:36:27Z","conclusion":"success","name":"Complete job","number":27,"startedAt":"2026-08-18T23:36:26Z","status":"completed"}],"url":"https://github.com/wesiwer/WesiOS/actions/runs/32197090987/job/95903246696"},{"completedAt":"2026-08-18T23:36:29Z","conclusion":"skipped","databaseId":95905456038,"name":"publish-manifest","startedAt":"2026-08-18T23:36:29Z","status":"completed","steps":[],"url":"https://github.com/wesiwer/WesiOS/actions/runs/32197090987/job/95905456038"},{"completedAt":"2026-08-18T23:36:29Z","conclusion":"skipped","databaseId":95905456201,"name":"deploy-server","startedAt":"2026-08-18T23:36:29Z","status":"completed","steps":[],"url":"https://github.com/wesiwer/WesiOS/actions/runs/32197090987/job/95905456201"}],"status":"completed"}
+
+=== FAILED LOGS ===
+build-android	Build signed APK	﻿2026-08-18T23:27:15.7161404Z ##[group]Run flutter build apk --release
+build-android	Build signed APK	2026-08-18T23:27:15.7161796Z ^[[36;1mflutter build apk --release^[[0m
+build-android	Build signed APK	2026-08-18T23:27:15.7203404Z shell: /usr/bin/bash -e {0}
+build-android	Build signed APK	2026-08-18T23:27:15.7203673Z env:
+build-android	Build signed APK	2026-08-18T23:27:15.7203895Z   RELEASE_TAG: app-latest
+build-android	Build signed APK	2026-08-18T23:27:15.7204276Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-8/x64
+build-android	Build signed APK	2026-08-18T23:27:15.7204770Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-8/x64
+build-android	Build signed APK	2026-08-18T23:27:15.7205247Z   FLUTTER_ROOT: /opt/hostedtoolcache/flutter/stable-3.47.0-x64/flutter
+build-android	Build signed APK	2026-08-18T23:27:15.7205625Z   PUB_CACHE: /home/runner/.pub-cache
+build-android	Build signed APK	2026-08-18T23:27:15.7206058Z   KEYSTORE_PATH: /home/runner/work/_temp/***-release.jks
+build-android	Build signed APK	2026-08-18T23:27:15.7206606Z   KEYSTORE_PASSWORD: ***
+build-android	Build signed APK	2026-08-18T23:27:15.7206879Z   KEY_ALIAS: ***
+build-android	Build signed APK	2026-08-18T23:27:15.7207130Z   KEY_PASSWORD: ***
+build-android	Build signed APK	2026-08-18T23:27:15.7207379Z   ANDROID_HOME: /usr/local/lib/android/sdk
+build-android	Build signed APK	2026-08-18T23:27:15.7207688Z   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+build-android	Build signed APK	2026-08-18T23:27:15.7208114Z   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false
+build-android	Build signed APK	2026-08-18T23:27:15.7208476Z ##[endgroup]
+build-android	Build signed APK	2026-08-18T23:27:16.1486734Z Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+build-android	Build signed APK	2026-08-18T23:27:16.1489482Z Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+build-android	Build signed APK	2026-08-18T23:27:16.1491055Z 
+build-android	Build signed APK	2026-08-18T23:27:16.1491905Z Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+build-android	Build signed APK	2026-08-18T23:27:16.1494343Z Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+build-android	Build signed APK	2026-08-18T23:27:16.1495205Z 
+build-android	Build signed APK	2026-08-18T23:27:16.1495755Z Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+build-android	Build signed APK	2026-08-18T23:27:16.1497229Z Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+build-android	Build signed APK	2026-08-18T23:27:16.1498055Z 
+build-android	Build signed APK	2026-08-18T23:27:16.2880684Z Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+build-android	Build signed APK	2026-08-18T23:27:16.2883209Z Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+build-android	Build signed APK	2026-08-18T23:27:16.2884690Z 
+build-android	Build signed APK	2026-08-18T23:27:16.2885601Z Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+build-android	Build signed APK	2026-08-18T23:27:16.2887608Z Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+build-android	Build signed APK	2026-08-18T23:27:16.2889201Z 
+build-android	Build signed APK	2026-08-18T23:27:16.2890103Z Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+build-android	Build signed APK	2026-08-18T23:27:16.2892640Z Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+build-android	Build signed APK	2026-08-18T23:27:16.2894133Z 
+build-android	Build signed APK	2026-08-18T23:27:16.3335722Z Upgrading build.gradle
+build-android	Build signed APK	2026-08-18T23:27:16.3359138Z Upgrading gradle.properties
+build-android	Build signed APK	2026-08-18T23:27:16.3372439Z Upgrading gradle.properties
+build-android	Build signed APK	2026-08-18T23:30:16.0153944Z Running Gradle task 'assembleRelease'...                        
+build-android	Build signed APK	2026-08-18T23:30:16.0176709Z Warning: Flutter support for your project's Gradle version (8.14.3) will soon be dropped. Please upgrade your Gradle version to a version of at least 9.1.0 soon.
+build-android	Build signed APK	2026-08-18T23:30:16.0207551Z Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
+build-android	Build signed APK	2026-08-18T23:30:16.0224323Z 
+build-android	Build signed APK	2026-08-18T23:30:16.0237636Z Potential fix: Your project's gradle version is typically defined in the gradle wrapper file. By default, this can be found at /home/runner/work/WesiOS/WesiOS/android/gradle/wrapper/gradle-wrapper.properties. 
+build-android	Build signed APK	2026-08-18T23:30:16.0245225Z For more information, see https://docs.gradle.org/current/userguide/gradle_wrapper.html.
+build-android	Build signed APK	2026-08-18T23:30:16.0249380Z 
+build-android	Build signed APK	2026-08-18T23:30:16.0253629Z Warning: Flutter support for your project's Android Gradle Plugin version (Android Gradle Plugin version 8.11.1) will soon be dropped. Please upgrade your Android Gradle Plugin version to a version of at least Android Gradle Plugin version 9.0.1 soon.
+build-android	Build signed APK	2026-08-18T23:30:16.0255803Z Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
+build-android	Build signed APK	2026-08-18T23:30:16.0257022Z 
+build-android	Build signed APK	2026-08-18T23:30:16.0258979Z Potential fix: Your project's AGP version is typically defined in the plugins block of the `settings.gradle` file (/home/runner/work/WesiOS/WesiOS/android/settings.gradle), by a plugin with the id of com.android.application. 
+build-android	Build signed APK	2026-08-18T23:30:16.0262989Z If you don't see a plugins block, your project was likely created with an older template version. In this case it is most likely defined in the top-level build.gradle file (/home/runner/work/WesiOS/WesiOS/android/build.gradle) by the following line in the dependencies block of the buildscript: "classpath 'com.android.tools.build:gradle:<version>'".
+build-android	Build signed APK	2026-08-18T23:30:16.0265147Z 
+build-android	Build signed APK	2026-08-18T23:30:16.0266311Z Warning: Flutter support for your project's Kotlin version (2.2.20) will soon be dropped. Please upgrade your Kotlin version to a version of at least 2.3.20 soon.
+build-android	Build signed APK	2026-08-18T23:30:16.0268214Z Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
+build-android	Build signed APK	2026-08-18T23:30:16.0269291Z 
+build-android	Build signed APK	2026-08-18T23:30:16.0270954Z Potential fix: Your project's KGP version is typically defined in the plugins block of the `settings.gradle` file (/home/runner/work/WesiOS/WesiOS/android/settings.gradle), by a plugin with the id of org.jetbrains.kotlin.android. 
+build-android	Build signed APK	2026-08-18T23:30:16.0318044Z If you don't see a plugins block, your project was likely created with an older template version, in which case it is most likely defined in the top-level build.gradle file (/home/runner/work/WesiOS/WesiOS/android/build.gradle) by the ext.kotlin_version property.
+build-android	Build signed APK	2026-08-18T23:30:16.0333107Z 
+build-android	Build signed APK	2026-08-18T23:31:46.9039671Z Checking the license for package NDK (Side by side) 27.0.12077973 in /usr/local/lib/android/sdk/licenses
+build-android	Build signed APK	2026-08-18T23:31:46.9048462Z License for package NDK (Side by side) 27.0.12077973 accepted.
+build-android	Build signed APK	2026-08-18T23:31:46.9052179Z Preparing "Install NDK (Side by side) 27.0.12077973 v.27.0.12077973".
+build-android	Build signed APK	2026-08-18T23:32:00.6030147Z "Install NDK (Side by side) 27.0.12077973 v.27.0.12077973" ready.
+build-android	Build signed APK	2026-08-18T23:32:00.6031357Z Installing NDK (Side by side) 27.0.12077973 in /usr/local/lib/android/sdk/ndk/27.0.12077973
+build-android	Build signed APK	2026-08-18T23:32:00.6032378Z "Install NDK (Side by side) 27.0.12077973 v.27.0.12077973" complete.
+build-android	Build signed APK	2026-08-18T23:32:00.8049552Z "Install NDK (Side by side) 27.0.12077973 v.27.0.12077973" finished.
+build-android	Build signed APK	2026-08-18T23:32:50.1029120Z Checking the license for package Android SDK Platform 33 in /usr/local/lib/android/sdk/licenses
+build-android	Build signed APK	2026-08-18T23:32:50.1031320Z License for package Android SDK Platform 33 accepted.
+build-android	Build signed APK	2026-08-18T23:32:50.1031999Z Preparing "Install Android SDK Platform 33 (revision 3)".
+build-android	Build signed APK	2026-08-18T23:32:53.0029155Z "Install Android SDK Platform 33 (revision 3)" ready.
+build-android	Build signed APK	2026-08-18T23:32:53.0030484Z Installing Android SDK Platform 33 in /usr/local/lib/android/sdk/platforms/android-33
+build-android	Build signed APK	2026-08-18T23:32:53.0031996Z "Install Android SDK Platform 33 (revision 3)" complete.
+build-android	Build signed APK	2026-08-18T23:32:53.0033032Z "Install Android SDK Platform 33 (revision 3)" finished.
+build-android	Build signed APK	2026-08-18T23:32:53.1057733Z [=========                              ] 25%                                   
+build-android	Build signed APK	2026-08-18T23:32:53.1058917Z [=========                              ] 25% Fetch remote repository...        
+build-android	Build signed APK	2026-08-18T23:32:53.1059715Z [=======================================] 100% Fetch remote repository...       
+build-android	Build signed APK	2026-08-18T23:32:54.3030529Z Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+build-android	Build signed APK	2026-08-18T23:32:54.3051664Z Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+build-android	Build signed APK	2026-08-18T23:32:54.3068134Z 
+build-android	Build signed APK	2026-08-18T23:32:54.3069765Z Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+build-android	Build signed APK	2026-08-18T23:32:54.3071825Z Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+build-android	Build signed APK	2026-08-18T23:32:54.3073127Z 
+build-android	Build signed APK	2026-08-18T23:32:54.3073957Z Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+build-android	Build signed APK	2026-08-18T23:32:54.3076347Z Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+build-android	Build signed APK	2026-08-18T23:32:54.3077664Z 
+build-android	Build signed APK	2026-08-18T23:33:32.1041309Z Font asset "MaterialIcons-Regular.otf" was tree-shaken, reducing it from 1645184 to 57860 bytes (96.5% reduction). Tree-shaking can be disabled by providing the --no-tree-shake-icons flag when building your app.
+build-android	Build signed APK	2026-08-18T23:34:14.9029692Z Checking the license for package CMake 3.22.1 in /usr/local/lib/android/sdk/licenses
+build-android	Build signed APK	2026-08-18T23:34:14.9030766Z License for package CMake 3.22.1 accepted.
+build-android	Build signed APK	2026-08-18T23:34:14.9031401Z Preparing "Install CMake 3.22.1 v.3.22.1".
+build-android	Build signed APK	2026-08-18T23:34:16.3028345Z "Install CMake 3.22.1 v.3.22.1" ready.
+build-android	Build signed APK	2026-08-18T23:34:16.3029817Z Installing CMake 3.22.1 in /usr/local/lib/android/sdk/cmake/3.22.1
+build-android	Build signed APK	2026-08-18T23:34:16.3030540Z "Install CMake 3.22.1 v.3.22.1" complete.
+build-android	Build signed APK	2026-08-18T23:34:16.3031064Z "Install CMake 3.22.1 v.3.22.1" finished.
+build-android	Build signed APK	2026-08-18T23:36:25.7070569Z /home/runner/.pub-cache/hosted/pub.dev/file_picker-6.2.1/android/src/main/java/com/mr/flutter/plugin/filepicker/FilePickerPlugin.java:122: error: cannot find symbol
+build-android	Build signed APK	2026-08-18T23:36:25.7102525Z     public static void registerWith(final io.flutter.plugin.common.PluginRegistry.Registrar registrar) {
+build-android	Build signed APK	2026-08-18T23:36:25.7103814Z                                                                                  ^
+build-android	Build signed APK	2026-08-18T23:36:25.7104681Z   symbol:   class Registrar
+build-android	Build signed APK	2026-08-18T23:36:25.7105503Z   location: interface PluginRegistry
+build-android	Build signed APK	2026-08-18T23:36:25.7107115Z /home/runner/.pub-cache/hosted/pub.dev/file_picker-6.2.1/android/src/main/java/com/mr/flutter/plugin/filepicker/FilePickerPlugin.java:251: error: cannot find symbol
+build-android	Build signed APK	2026-08-18T23:36:25.7108436Z             final PluginRegistry.Registrar registrar,
+build-android	Build signed APK	2026-08-18T23:36:25.7109145Z                                 ^
+build-android	Build signed APK	2026-08-18T23:36:25.7109610Z   symbol:   class Registrar
+build-android	Build signed APK	2026-08-18T23:36:25.7110107Z   location: interface PluginRegistry
+build-android	Build signed APK	2026-08-18T23:36:25.8044413Z 2 errors
+build-android	Build signed APK	2026-08-18T23:36:25.9026772Z 
+build-android	Build signed APK	2026-08-18T23:36:25.9051086Z FAILURE: Build failed with an exception.
+build-android	Build signed APK	2026-08-18T23:36:25.9069076Z 
+build-android	Build signed APK	2026-08-18T23:36:25.9081236Z * What went wrong:
+build-android	Build signed APK	2026-08-18T23:36:25.9082177Z Execution failed for task ':file_picker:compileReleaseJavaWithJavac'.
+build-android	Build signed APK	2026-08-18T23:36:25.9083002Z > Compilation failed; see the compiler output below.
+build-android	Build signed APK	2026-08-18T23:36:25.9084793Z   /home/runner/.pub-cache/hosted/pub.dev/file_picker-6.2.1/android/src/main/java/com/mr/flutter/plugin/filepicker/FilePickerPlugin.java:122: error: cannot find symbol
+build-android	Build signed APK	2026-08-18T23:36:25.9086361Z       public static void registerWith(final io.flutter.plugin.common.PluginRegistry.Registrar registrar) {
+build-android	Build signed APK	2026-08-18T23:36:25.9087351Z                                                                                    ^
+build-android	Build signed APK	2026-08-18T23:36:25.9087974Z     symbol:   class Registrar
+build-android	Build signed APK	2026-08-18T23:36:25.9088554Z     location: interface PluginRegistry
+build-android	Build signed APK	2026-08-18T23:36:25.9090124Z   /home/runner/.pub-cache/hosted/pub.dev/file_picker-6.2.1/android/src/main/java/com/mr/flutter/plugin/filepicker/FilePickerPlugin.java:251: error: cannot find symbol
+build-android	Build signed APK	2026-08-18T23:36:25.9091607Z               final PluginRegistry.Registrar registrar,
+build-android	Build signed APK	2026-08-18T23:36:25.9092493Z                                   ^
+build-android	Build signed APK	2026-08-18T23:36:25.9093077Z     symbol:   class Registrar
+build-android	Build signed APK	2026-08-18T23:36:25.9093630Z     location: interface PluginRegistry
+build-android	Build signed APK	2026-08-18T23:36:25.9094079Z   2 errors
+build-android	Build signed APK	2026-08-18T23:36:25.9094262Z 
+build-android	Build signed APK	2026-08-18T23:36:25.9094390Z * Try:
+build-android	Build signed APK	2026-08-18T23:36:25.9094991Z > Check your code and dependencies to fix the compilation error(s)
+build-android	Build signed APK	2026-08-18T23:36:25.9095691Z > Run with --scan to get full insights.
+build-android	Build signed APK	2026-08-18T23:36:25.9096008Z 
+build-android	Build signed APK	2026-08-18T23:36:25.9096216Z BUILD FAILED in 9m 9s
+build-android	Build signed APK	2026-08-18T23:36:26.3631572Z Running Gradle task 'assembleRelease'...                          550.0s
+build-android	Build signed APK	2026-08-18T23:36:26.3658979Z 
+build-android	Build signed APK	2026-08-18T23:36:26.3662959Z ┌─ Flutter Fix ───────────────────────────────────────────────────────────────────────────────────┐
+build-android	Build signed APK	2026-08-18T23:36:26.3664307Z │ [!] Consult the error logs above to identify any broken plugins, specifically those containing  │
+build-android	Build signed APK	2026-08-18T23:36:26.3665751Z │ "error: cannot find symbol..."                                                                  │
+build-android	Build signed APK	2026-08-18T23:36:26.3667059Z │ This issue is likely caused by v1 embedding removal and the plugin's continued usage of removed │
+build-android	Build signed APK	2026-08-18T23:36:26.3668449Z │ references to the v1 embedding.                                                                 │
+build-android	Build signed APK	2026-08-18T23:36:26.3669980Z │ To fix this error, please upgrade your current package's dependencies to latest versions by     │
+build-android	Build signed APK	2026-08-18T23:36:26.3671248Z │ running `flutter pub upgrade`.                                                                  │
+build-android	Build signed APK	2026-08-18T23:36:26.3672165Z │ If that does not work, please file an issue for the problematic plugin(s) here:                 │
+build-android	Build signed APK	2026-08-18T23:36:26.3673041Z │ https://github.com/flutter/flutter/issues                                                       │
+build-android	Build signed APK	2026-08-18T23:36:26.3673772Z └─────────────────────────────────────────────────────────────────────────────────────────────────┘
+build-android	Build signed APK	2026-08-18T23:36:26.4124509Z Gradle task assembleRelease failed with exit code 1
+build-android	Build signed APK	2026-08-18T23:36:26.4255875Z ##[error]Process completed with exit code 1.
