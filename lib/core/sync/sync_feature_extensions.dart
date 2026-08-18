@@ -5,7 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:hive/hive.dart';
 
-import '../../features/team/models/employee_model.dart';
+import '../../features/profile/services/profile_service.dart';
 import '../../features/team/services/team_service.dart';
 import '../security/secret_vault.dart';
 import '../security/shield_service.dart';
@@ -15,19 +15,29 @@ import 'sync_codec.dart';
 import 'sync_endpoint.dart';
 import 'sync_engine.dart';
 
-/// Adds synchronization for feature state that used to live only on one
-/// device: Roadmap, CRM, Profile/Shield and encrypted Secret Vault rows.
+/// Synchronization for private settings that are not represented by normal
+/// business models.
+///
+/// User profile is intentionally NOT here anymore. It has one canonical
+/// `profile/me` record through [ProfileService]/ProfileSync. This extension
+/// owns only portable Shield configuration and encrypted Secret Vault rows.
 class SyncFeatureExtensions {
   SyncFeatureExtensions._();
 
   static const _settingsBox = 'wesios_settings';
-  static const _profileOwnerKey = 'sync_profile_settings_owner_v1';
-  static const _profileBoxPrefix = 'wesios_profile_sync_v1';
+
+  /// Legacy marker used only to decide whether old unscoped Shield settings
+  /// may be migrated on the first launch after upgrade.
+  static const _legacySettingsOwnerKey = 'sync_profile_settings_owner_v1';
+
+  /// Keep the old base name so the already-created auth-scoped box is reused,
+  /// but its contents are sanitized to Shield-only during bind.
+  static const _shieldBoxPrefix = 'wesios_profile_sync_v1';
   static const _vaultBoxPrefix = 'wesios_vault_sync_v1';
   static const _vaultSaltKey = 'vault_kdf_salt';
   static const _vaultPrefix = 'vault_secret_';
 
-  static const Set<String> _profileKeys = {
+  static const Set<String> _legacyProfileKeys = {
     'profile_name',
     'profile_email',
     'profile_gender',
@@ -35,8 +45,11 @@ class SyncFeatureExtensions {
     'profile_birth',
     'avatar_index',
     'avatar_custom',
-    // Portable Shield configuration. Biometric enrollment, failed attempts
-    // and the local security log stay device-local.
+  };
+
+  /// Only portable Shield configuration belongs to shield_private.
+  /// Biometric enrollment, failed attempts and security log remain local.
+  static const Set<String> _shieldKeys = {
     'shield_hash',
     'shield_salt',
     'shield_iterations',
@@ -58,13 +71,9 @@ class SyncFeatureExtensions {
   static String _safe(String raw) =>
       raw.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
 
-  /// Private box namespace follows PocketBase auth user — the same identity the
-  /// server uses for `owner=e.auth.id` and SyncJournal uses for its account
-  /// scope. Employee id remains part of the record id, but must never decide
-  /// which local vault/profile box is opened.
-  static String profileBoxName([String? authUserId]) =>
+  static String shieldBoxName([String? authUserId]) =>
       SyncAccountScope.forUser(
-        _profileBoxPrefix,
+        _shieldBoxPrefix,
         authUserId ?? SyncAccountScope.currentUserId,
       );
 
@@ -74,8 +83,8 @@ class SyncFeatureExtensions {
         authUserId ?? SyncAccountScope.currentUserId,
       );
 
-  static String _legacyProfileBoxName(String employeeId) =>
-      '${_profileBoxPrefix}_${_safe(employeeId)}';
+  static String _legacyPrivateBoxName(String employeeId) =>
+      '${_shieldBoxPrefix}_${_safe(employeeId)}';
 
   static String _legacyVaultBoxName(String employeeId) =>
       '${_vaultBoxPrefix}_${_safe(employeeId)}';
@@ -96,8 +105,8 @@ class SyncFeatureExtensions {
   static Future<void> install() async {
     if (!_registered) {
       _registered = true;
-      if (SyncCodec.byName('profile_private') == null) {
-        SyncCodec.collections.add(_ProfilePrivateSync());
+      if (SyncCodec.byName('shield_private') == null) {
+        SyncCodec.collections.add(_ShieldPrivateSync());
       }
       if (SyncCodec.byName('vault_private') == null) {
         SyncCodec.collections.add(_VaultPrivateSync());
@@ -118,11 +127,6 @@ class SyncFeatureExtensions {
   }
 
   static void _onTeamRevision() {
-    // A revision can fire while a previous logout/account rebind is still
-    // awaiting SyncEngine.reset() or private-box restoration. Never discard a
-    // different identity just because `_rebinding` is true. Mark another pass
-    // as requested; the single worker below drains requests until both the
-    // business employee and the auth-user namespace are current.
     if (_bindingMatchesCurrent()) return;
     _requestRebind();
   }
@@ -132,8 +136,6 @@ class SyncFeatureExtensions {
     unawaited(_ensureRebindWorker());
   }
 
-  /// Serializes account switches and coalesces changes that happen while a
-  /// previous switch is still running.
   static Future<void> rebindCurrentAccountAndSync() {
     _rebindRequestGeneration++;
     return _ensureRebindWorker();
@@ -160,7 +162,6 @@ class SyncFeatureExtensions {
       while (true) {
         final handledGeneration = _rebindRequestGeneration;
         await _performRebindPass();
-
         if (handledGeneration == _rebindRequestGeneration &&
             _bindingMatchesCurrent()) {
           break;
@@ -193,7 +194,6 @@ class SyncFeatureExtensions {
 
     if (TeamService.current != null && SyncEndpoint.isConnected) {
       await SyncEngine.runOnLaunch();
-
       if (TeamService.current?.id == targetEmployeeId &&
           SyncAccountScope.currentUserId == targetAuthUserId &&
           _bindingMatchesCurrent() &&
@@ -203,12 +203,8 @@ class SyncFeatureExtensions {
     }
   }
 
-  /// One-time migration from the previous employee-scoped private boxes.
-  ///
-  /// Copy only when the new auth-scoped target is empty. If both exist, the
-  /// auth-scoped box is authoritative. In either case clear the legacy box so
-  /// private profile/vault values do not remain readable under a namespace
-  /// that is weaker than the server's auth-user boundary.
+  /// Copies old employee-scoped private storage into the current auth-user
+  /// namespace exactly once. Auth-scoped target wins if it already has data.
   static Future<void> _migrateLegacyPrivateBox(
     String legacyName,
     Box<dynamic> target,
@@ -224,23 +220,73 @@ class SyncFeatureExtensions {
       }
       if (copy.isNotEmpty) await target.putAll(copy);
     }
-
     await legacy.clear();
   }
 
+  /// Before the old overloaded private box is reduced to Shield-only, rescue
+  /// profile fields into the canonical ProfileService record when that record
+  /// is still empty. This handles devices that had local profile_private data
+  /// but never successfully uploaded the newer `profile/me` record.
+  static Future<void> _migrateEmbeddedLegacyProfile(Box<dynamic> oldPrivate) async {
+    final hasLegacy = _legacyProfileKeys.any(oldPrivate.containsKey);
+    if (!hasLegacy) return;
+
+    final canonical = await ProfileService.read();
+    if (canonical.isNotEmpty) return;
+
+    String text(String key) => '${oldPrivate.get(key) ?? ''}'.trim();
+    final birthText = text('profile_birth');
+    final rawAvatar = oldPrivate.get('avatar_index');
+    final avatarIndex = rawAvatar is num ? rawAvatar.toInt() : int.tryParse('$rawAvatar') ?? 0;
+    final rawPhoto = oldPrivate.get('avatar_custom');
+    Uint8List? photo;
+    if (rawPhoto is Uint8List) {
+      photo = rawPhoto;
+    } else if (rawPhoto is List<int>) {
+      photo = Uint8List.fromList(rawPhoto);
+    }
+    if (photo != null && photo.length > ProfileService.maxPhotoBytes) {
+      photo = null;
+    }
+
+    final name = text('profile_name');
+    final email = text('profile_email');
+    final gender = text('profile_gender');
+    final country = text('profile_country');
+    final birth = DateTime.tryParse(birthText);
+    final meaningful = name.isNotEmpty ||
+        email.isNotEmpty ||
+        gender.isNotEmpty ||
+        country.isNotEmpty ||
+        birth != null ||
+        avatarIndex != 0 ||
+        photo != null;
+    if (!meaningful) return;
+
+    await ProfileService.write(
+      name: name,
+      email: email,
+      gender: gender,
+      country: country,
+      birth: birth,
+      avatarIndex: avatarIndex,
+      photo: photo,
+    );
+  }
+
+  static Future<void> _keepShieldOnly(Box<dynamic> shield) async {
+    for (final rawKey in shield.keys.toList()) {
+      final key = '$rawKey';
+      if (!_shieldKeys.contains(key)) await shield.delete(rawKey);
+    }
+  }
+
   static Future<void> _bind({required bool allowLegacy}) async {
-    final current = TeamService.current;
-    final id = current?.id;
+    final id = TeamService.current?.id;
     final authUserId = SyncAccountScope.currentUserId;
     final settings = Hive.box<dynamic>(_settingsBox);
-    final previousOwner = settings.get(_profileOwnerKey);
+    final previousOwner = settings.get(_legacySettingsOwnerKey);
 
-    // Sync run/seed metadata is intentionally NOT handled here. SyncEndpoint
-    // owns those markers under `::<PocketBase userId>`. Older versions kept a
-    // second employee-scoped stash/restore layer in this feature extension;
-    // retaining it after auth-scoped metadata was introduced meant two
-    // different identity systems could claim authority over first-exchange
-    // history. Rebinding now manages only profile/vault projection state.
     if (id == null || id.isEmpty || authUserId == 'anonymous') {
       _boundEmployeeId = null;
       _boundAuthUserId = authUserId;
@@ -249,29 +295,28 @@ class SyncFeatureExtensions {
     }
     if (_boundEmployeeId == id && _boundAuthUserId == authUserId) return;
 
-    final migrateLegacy = allowLegacy &&
+    final migrateLegacySettings = allowLegacy &&
         _boundEmployeeId == null &&
         (previousOwner == null || '$previousOwner' == id);
 
-    final profile = await _open(profileBoxName(authUserId));
+    final shield = await _open(shieldBoxName(authUserId));
     final vault = await _open(vaultBoxName(authUserId));
-    await _migrateLegacyPrivateBox(_legacyProfileBoxName(id), profile);
+    await _migrateLegacyPrivateBox(_legacyPrivateBoxName(id), shield);
     await _migrateLegacyPrivateBox(_legacyVaultBoxName(id), vault);
+    await _migrateEmbeddedLegacyProfile(shield);
+    await _keepShieldOnly(shield);
 
-    // Account could switch while legacy Hive data was being copied. Do not
-    // project the stale target into global settings; the drain loop will reset
-    // and bind the new identity immediately.
     if (TeamService.current?.id != id ||
         SyncAccountScope.currentUserId != authUserId) {
       return;
     }
 
-    if (migrateLegacy && profile.isEmpty) {
-      await _seedProfile(settings, profile);
+    if (migrateLegacySettings && shield.isEmpty) {
+      await _seedShield(settings, shield);
     } else {
-      await _restoreProfile(settings, profile, current!);
+      await _restoreShield(settings, shield);
     }
-    if (migrateLegacy && vault.isEmpty) {
+    if (migrateLegacySettings && vault.isEmpty) {
       await _seedVault(settings, vault);
     } else {
       await _restoreVault(settings, vault);
@@ -282,7 +327,7 @@ class SyncFeatureExtensions {
       return;
     }
 
-    await settings.put(_profileOwnerKey, id);
+    await settings.put(_legacySettingsOwnerKey, id);
     _boundEmployeeId = id;
     _boundAuthUserId = authUserId;
     await _projectAvatarToEmployee();
@@ -292,37 +337,28 @@ class SyncFeatureExtensions {
       ? Future.value(Hive.box<dynamic>(name))
       : Hive.openBox<dynamic>(name);
 
-  static Future<void> _seedProfile(
+  static Future<void> _seedShield(
     Box<dynamic> settings,
-    Box<dynamic> profile,
+    Box<dynamic> shield,
   ) async {
-    for (final key in _profileKeys) {
+    for (final key in _shieldKeys) {
       if (!settings.containsKey(key)) continue;
-      var value = settings.get(key);
-      if (key == 'avatar_custom') value = await _normalizeAvatar(value);
-      if (value != null) await profile.put(key, value);
+      final value = settings.get(key);
+      if (value != null) await shield.put(key, value);
     }
   }
 
-  static Future<void> _restoreProfile(
+  static Future<void> _restoreShield(
     Box<dynamic> settings,
-    Box<dynamic> profile,
-    EmployeeModel current,
+    Box<dynamic> shield,
   ) async {
-    for (final key in _profileKeys) {
+    for (final key in _shieldKeys) {
       await settings.delete(key);
     }
-    if (profile.isEmpty) {
-      await profile.put('profile_name', current.fullName);
-      await profile.put('profile_email', current.email);
-      await profile.put('avatar_index', current.avatarIndex);
-      final photo = await _normalizeAvatar(current.photo);
-      if (photo != null) await profile.put('avatar_custom', photo);
-    }
-    for (final rawKey in profile.keys) {
+    for (final rawKey in shield.keys) {
       final key = '$rawKey';
-      if (_profileKeys.contains(key)) {
-        await settings.put(key, profile.get(rawKey));
+      if (_shieldKeys.contains(key)) {
+        await settings.put(key, shield.get(rawKey));
       }
     }
     ShieldService.revision.value++;
@@ -354,30 +390,23 @@ class SyncFeatureExtensions {
   static Future<void> _mirrorSetting(BoxEvent event) async {
     if (_rebinding || TeamService.current == null) return;
     final key = '${event.key}';
-    if (key == _profileOwnerKey) return;
+    if (key == _legacySettingsOwnerKey) return;
 
-    if (_profileKeys.contains(key)) {
-      final box = await _open(profileBoxName());
+    if (_shieldKeys.contains(key)) {
+      final box = await _open(shieldBoxName());
       if (event.deleted) {
         await box.delete(key);
-      } else {
-        var value = event.value;
-        if (key == 'avatar_custom') {
-          value = await _normalizeAvatar(value);
-          if (value == null) {
-            await box.delete(key);
-            await Hive.box<dynamic>(_settingsBox).delete(key);
-            _scheduleAvatarProjection();
-            return;
-          }
-          final settings = Hive.box<dynamic>(_settingsBox);
-          if (!_same(settings.get(key), value)) await settings.put(key, value);
-        }
-        if (!_same(box.get(key), value)) await box.put(key, value);
+      } else if (!_same(box.get(key), event.value)) {
+        await box.put(key, event.value);
       }
-      if (key == 'avatar_index' || key == 'avatar_custom') {
-        _scheduleAvatarProjection();
-      }
+      return;
+    }
+
+    // Avatar still projects to the employee/contact card, but it is NOT
+    // mirrored into shield_private. ProfileService is the only profile sync
+    // authority and already owns profile settings projection.
+    if (key == 'avatar_index' || key == 'avatar_custom') {
+      _scheduleAvatarProjection();
       return;
     }
 
@@ -499,13 +528,15 @@ abstract class _KeyedStateSync extends SyncCollection<dynamic> {
   }
 }
 
-class _ProfilePrivateSync extends _KeyedStateSync {
+class _ShieldPrivateSync extends _KeyedStateSync {
   @override
-  String get name => 'profile_private';
+  String get name => 'shield_private';
+
   @override
-  String get boxName => SyncFeatureExtensions.profileBoxName();
+  String get boxName => SyncFeatureExtensions.shieldBoxName();
+
   @override
-  Set<String> get keys => SyncFeatureExtensions._profileKeys;
+  Set<String> get keys => SyncFeatureExtensions._shieldKeys;
 
   @override
   bool watchesBoxKey(Object? key) => keys.contains('$key');
@@ -539,9 +570,6 @@ class _ProfilePrivateSync extends _KeyedStateSync {
     await b.put(incoming.key, incoming.value);
     await Hive.box<dynamic>(SyncFeatureExtensions._settingsBox)
         .put(incoming.key, incoming.value);
-    if (incoming.key == 'avatar_index' || incoming.key == 'avatar_custom') {
-      SyncFeatureExtensions._scheduleAvatarProjection();
-    }
     ShieldService.revision.value++;
     return true;
   }
@@ -551,9 +579,6 @@ class _ProfilePrivateSync extends _KeyedStateSync {
     final key = SyncFeatureExtensions.privateKeyFromRecordId(id);
     await box()?.delete(key);
     await Hive.box<dynamic>(SyncFeatureExtensions._settingsBox).delete(key);
-    if (key == 'avatar_index' || key == 'avatar_custom') {
-      SyncFeatureExtensions._scheduleAvatarProjection();
-    }
     ShieldService.revision.value++;
   }
 }
@@ -561,13 +586,17 @@ class _ProfilePrivateSync extends _KeyedStateSync {
 class _VaultPrivateSync extends SyncCollection<dynamic> {
   @override
   String get name => 'vault_private';
+
   @override
   String get boxName => SyncFeatureExtensions.vaultBoxName();
+
   @override
   bool watchesBoxKey(Object? key) => SyncFeatureExtensions._vaultKey(key);
+
   @override
   String syncIdForBoxKey(Object? key) =>
       SyncFeatureExtensions.privateRecordId('$key');
+
   @override
   String idOf(dynamic value) => value is _KeyedValue
       ? SyncFeatureExtensions.privateRecordId(value.key)
