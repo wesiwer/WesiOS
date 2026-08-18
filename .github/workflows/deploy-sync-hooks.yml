@@ -18,7 +18,9 @@ on:
       - 'server/pb_hooks/wesi_sync_extra.pb.js'
       - 'server/pb_hooks/wesi_sync_extra_runtime.js'
       - 'server/pb_hooks/wesi_sync_extra_contract_test.mjs'
+      - 'server/pb_hooks/wesi_sync_unique_migration_test.mjs'
       - 'server/pb_migrations/1787055000_wesios_records_unique_rid.js'
+      - 'server/verify-sync-db.py'
       - '.github/workflows/deploy-sync-hooks.yml'
 
 permissions:
@@ -57,11 +59,13 @@ jobs:
             test -s "$file"
             node --check "$file"
           done
+          python3 -m py_compile server/verify-sync-db.py
           node --test \
             server/pb_hooks/wesi_sync_data_access_contract_test.mjs \
             server/pb_hooks/wesi_sync_lww_test.mjs \
             server/pb_hooks/wesi_sync_revision_contract_test.mjs \
-            server/pb_hooks/wesi_sync_extra_contract_test.mjs
+            server/pb_hooks/wesi_sync_extra_contract_test.mjs \
+            server/pb_hooks/wesi_sync_unique_migration_test.mjs
           grep -q 'wesiSyncContext' server/pb_hooks/wesi_sync_context.pb.js
           grep -q 'wesi_sync_data_access.js' server/pb_hooks/wesi_sync_context.pb.js
           grep -q '/api/wesi/sync/revision' server/pb_hooks/wesi_sync_read.pb.js
@@ -133,6 +137,7 @@ jobs:
             server/pb_hooks/wesi_sync_extra.pb.js \
             server/pb_hooks/wesi_sync_extra_runtime.js \
             server/pb_migrations/1787055000_wesios_records_unique_rid.js \
+            server/verify-sync-db.py \
             "$USER@$HOST:$REMOTE/"
           $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' MIGRATION_DIR='$MIGRATION_DIR' PB_DATA='$PB_DATA' bash -s" <<'SH'
           set -euo pipefail
@@ -173,6 +178,28 @@ jobs:
             fi
           }
 
+          verify_db() {
+            if [ -r "$PB_DATA/data.db" ]; then
+              python3 "$REMOTE/verify-sync-db.py" "$PB_DATA/data.db"
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+              sudo -n python3 "$REMOTE/verify-sync-db.py" "$PB_DATA/data.db"
+            else
+              echo "Нет прав проверить $PB_DATA/data.db" >&2
+              return 99
+            fi
+          }
+
+          restart_pocketbase() {
+            if systemctl restart pocketbase 2>/dev/null; then
+              return
+            fi
+            if command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then
+              return
+            fi
+            echo "Не удалось перезапустить pocketbase" >&2
+            exit 5
+          }
+
           for f in "${runtime_files[@]}"; do
             atomic_install "$REMOTE/$f" "$HOOK_DIR/$f"
           done
@@ -202,80 +229,24 @@ jobs:
             fi
           done
 
-          if [ "$migration_changed" = "1" ]; then
-            echo "Перезапускаю PocketBase для применения новой migration"
-            if systemctl restart pocketbase 2>/dev/null; then
-              :
-            elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then
-              :
+          restart_needed="$migration_changed"
+          if [ "$restart_needed" = "0" ]; then
+            if verify_db >"$REMOTE/schema-before.txt" 2>&1; then
+              cat "$REMOTE/schema-before.txt"
             else
-              echo "Не удалось перезапустить pocketbase" >&2
-              exit 5
+              cat "$REMOTE/schema-before.txt" >&2 || true
+              echo "Schema invariant ещё не применён — нужен restart"
+              restart_needed=1
             fi
+          fi
+
+          if [ "$restart_needed" = "1" ]; then
+            echo "Перезапускаю PocketBase для применения/восстановления sync migration"
+            restart_pocketbase
             sleep 3
           fi
 
-          verify_db() {
-            python3 - "$PB_DATA/data.db" <<'PY'
-          import sqlite3
-          import sys
-
-          path = sys.argv[1]
-          db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-          try:
-              indexes = db.execute("PRAGMA index_list('wesios_records')").fetchall()
-              match = [row for row in indexes if row[1] == 'idx_wesios_rid']
-              if not match or int(match[0][2]) != 1:
-                  raise SystemExit('idx_wesios_rid is missing or not UNIQUE')
-              columns = [row[2] for row in db.execute("PRAGMA index_info('idx_wesios_rid')").fetchall()]
-              if columns != ['owner', 'coll', 'rid']:
-                  raise SystemExit(f'idx_wesios_rid has wrong columns: {columns}')
-              duplicate_groups = db.execute(
-                  "SELECT COUNT(*) FROM ("
-                  "SELECT owner, coll, rid FROM wesios_records "
-                  "GROUP BY owner, coll, rid HAVING COUNT(*) > 1)"
-              ).fetchone()[0]
-              if duplicate_groups:
-                  raise SystemExit(f'duplicate sync identities remain: {duplicate_groups}')
-              print('Sync DB invariant OK: UNIQUE(owner, coll, rid), duplicates=0')
-          finally:
-              db.close()
-          PY
-          }
-
-          if [ -r "$PB_DATA/data.db" ]; then
-            verify_db
-          elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
-            sudo -n python3 - "$PB_DATA/data.db" <<'PY'
-          import sqlite3
-          import sys
-
-          path = sys.argv[1]
-          db = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
-          try:
-              indexes = db.execute("PRAGMA index_list('wesios_records')").fetchall()
-              match = [row for row in indexes if row[1] == 'idx_wesios_rid']
-              if not match or int(match[0][2]) != 1:
-                  raise SystemExit('idx_wesios_rid is missing or not UNIQUE')
-              columns = [row[2] for row in db.execute("PRAGMA index_info('idx_wesios_rid')").fetchall()]
-              if columns != ['owner', 'coll', 'rid']:
-                  raise SystemExit(f'idx_wesios_rid has wrong columns: {columns}')
-              duplicate_groups = db.execute(
-                  "SELECT COUNT(*) FROM ("
-                  "SELECT owner, coll, rid FROM wesios_records "
-                  "GROUP BY owner, coll, rid HAVING COUNT(*) > 1)"
-              ).fetchone()[0]
-              if duplicate_groups:
-                  raise SystemExit(f'duplicate sync identities remain: {duplicate_groups}')
-              print('Sync DB invariant OK: UNIQUE(owner, coll, rid), duplicates=0')
-          finally:
-              db.close()
-          PY
-          else
-            echo "Нет прав проверить $PB_DATA/data.db" >&2
-            exit 6
-          fi
-
+          verify_db
           rm -rf "$REMOTE"
           SH
 
