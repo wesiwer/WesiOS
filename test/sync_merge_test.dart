@@ -69,6 +69,47 @@ void main() {
       );
       expect(plan.isEmpty, isTrue);
     });
+
+    test('одинаковое время, но разные payload сходятся к серверной версии', () {
+      final plan = SyncMerge.merge(
+        local: map([rec('a', t1, value: 'локально')]),
+        remote: map([rec('a', t1, value: 'сервер')]),
+      );
+
+      expect(plan.merged['a']!.fields['value'], 'сервер');
+      expect(plan.toUpload, isEmpty);
+      expect(plan.toApplyLocally.single.id, 'a');
+      expect(plan.toApplyLocally.single.fields['value'], 'сервер');
+    });
+
+    test('порядок ключей payload не создаёт ложный конфликт', () {
+      final local = SyncRecord(
+        id: 'a',
+        updatedAt: t1,
+        fields: {
+          'outer': {'b': 2, 'a': 1},
+          'list': [
+            {'y': 2, 'x': 1}
+          ],
+        },
+      );
+      final remote = SyncRecord(
+        id: 'a',
+        updatedAt: t1,
+        fields: {
+          'list': [
+            {'x': 1, 'y': 2}
+          ],
+          'outer': {'a': 1, 'b': 2},
+        },
+      );
+
+      final plan = SyncMerge.merge(
+        local: {'a': local},
+        remote: {'a': remote},
+      );
+      expect(plan.isEmpty, isTrue);
+    });
   });
 
   group('удаления не воскресают', () {
