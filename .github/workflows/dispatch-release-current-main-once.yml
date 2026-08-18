@@ -1,0 +1,28 @@
+name: Dispatch Release Current Main Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/dispatch-release-current-main-once.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch signed WesiOS release from current main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='WesiOS 0.22.28+103: Telegram bot updates, Wesi AI improvements including adaptive mobile visualizations, and synchronization hardening.' \
+            -f deploy_to_server=true
+          echo 'Release workflow dispatched.'
