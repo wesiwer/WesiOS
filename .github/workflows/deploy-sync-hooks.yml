@@ -9,6 +9,9 @@ on:
       - 'server/pb_hooks/wesi_sync_data_access_contract_test.mjs'
       - 'server/pb_hooks/wesi_sync_lww.js'
       - 'server/pb_hooks/wesi_sync_lww_test.mjs'
+      - 'server/pb_hooks/wesi_sync_revision.js'
+      - 'server/pb_hooks/wesi_sync_revision.pb.js'
+      - 'server/pb_hooks/wesi_sync_revision_contract_test.mjs'
       - 'server/pb_hooks/wesi_sync_context.pb.js'
       - 'server/pb_hooks/wesi_sync_read.pb.js'
       - 'server/pb_hooks/wesi_sync_write.pb.js'
@@ -42,6 +45,8 @@ jobs:
           for file in \
             server/pb_hooks/wesi_sync_data_access.js \
             server/pb_hooks/wesi_sync_lww.js \
+            server/pb_hooks/wesi_sync_revision.js \
+            server/pb_hooks/wesi_sync_revision.pb.js \
             server/pb_hooks/wesi_sync_context.pb.js \
             server/pb_hooks/wesi_sync_read.pb.js \
             server/pb_hooks/wesi_sync_write.pb.js \
@@ -53,6 +58,7 @@ jobs:
           node --test \
             server/pb_hooks/wesi_sync_data_access_contract_test.mjs \
             server/pb_hooks/wesi_sync_lww_test.mjs \
+            server/pb_hooks/wesi_sync_revision_contract_test.mjs \
             server/pb_hooks/wesi_sync_extra_contract_test.mjs
           grep -q 'wesiSyncContext' server/pb_hooks/wesi_sync_context.pb.js
           grep -q 'wesi_sync_data_access.js' server/pb_hooks/wesi_sync_context.pb.js
@@ -64,6 +70,9 @@ jobs:
           grep -q 'wesi_sync_extra_runtime.js' server/pb_hooks/wesi_sync_extra.pb.js
           grep -q 'wesi_sync_data_access.js' server/pb_hooks/wesi_sync_extra_runtime.js
           grep -q 'wesi_sync_lww.js' server/pb_hooks/wesi_sync_extra_runtime.js
+          grep -q 'wesi_sync_revision.js' server/pb_hooks/wesi_sync_extra_runtime.js
+          grep -q 'onRecordAfterCreateSuccess' server/pb_hooks/wesi_sync_revision.pb.js
+          grep -q 'onRecordAfterUpdateSuccess' server/pb_hooks/wesi_sync_revision.pb.js
 
       - name: Check server secrets
         env:
@@ -108,6 +117,8 @@ jobs:
           scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
             server/pb_hooks/wesi_sync_data_access.js \
             server/pb_hooks/wesi_sync_lww.js \
+            server/pb_hooks/wesi_sync_revision.js \
+            server/pb_hooks/wesi_sync_revision.pb.js \
             server/pb_hooks/wesi_sync_context.pb.js \
             server/pb_hooks/wesi_sync_read.pb.js \
             server/pb_hooks/wesi_sync_write.pb.js \
@@ -116,8 +127,8 @@ jobs:
             "$USER@$HOST:$REMOTE/"
           $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' bash -s" <<'SH'
           set -euo pipefail
-          runtime_files=(wesi_sync_data_access.js wesi_sync_lww.js wesi_sync_extra_runtime.js)
-          route_files=(wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js)
+          runtime_files=(wesi_sync_data_access.js wesi_sync_lww.js wesi_sync_revision.js wesi_sync_extra_runtime.js)
+          route_files=(wesi_sync_revision.pb.js wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js)
 
           if [ ! -d "$HOOK_DIR" ]; then
             if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
