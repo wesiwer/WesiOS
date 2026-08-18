@@ -1,14 +1,15 @@
 // Reliable change token for WesiOS synchronization.
 //
-// The previous revision endpoint returned only the id+updated value of the
-// newest wesios_records row. Two distinct writes can share the same database
-// timestamp; if the second row sorts below the first one, that token does not
-// change and a live client never starts a pull.
+// The old endpoint returned only the id+updated value of the newest business
+// row. Two different writes can share the same database timestamp; when the
+// second row sorts below the first, that token remains unchanged and live
+// clients never pull it.
 //
-// Every persisted business record now touches an owner-scoped marker with a
-// fresh random nonce. Revision reads the marker payload, not its timestamp.
-// Therefore every committed write changes the observable token even when
-// PocketBase timestamps collide.
+// Every persisted wesios_records business row now touches an owner-scoped
+// marker with a fresh random nonce. The returned token ALSO carries the newest
+// non-marker row as a fallback. The nonce closes timestamp collisions; the
+// fallback still changes for normal writes if marker maintenance ever suffers
+// a transient failure after the business record has already committed.
 
 const dataAccess = require(
   (typeof __hooks !== "undefined" ? __hooks + "/" : "./") +
@@ -47,9 +48,6 @@ function markerRows(app, owner) {
 }
 
 function nonce() {
-  // Randomness, not wall-clock ordering, is the invariant. Date.now() remains
-  // useful in diagnostics but two writes in the same millisecond must still
-  // produce different revisions.
   return String(Date.now()) + ":" + $security.randomString(24);
 }
 
@@ -73,9 +71,9 @@ function touch(app, owner) {
     return;
   }
 
-  // If an old concurrent first-write ever produced duplicate marker rows,
-  // update all of them to the same nonce. readOwner() combines every marker,
-  // so duplicates remain harmless and no migration is required.
+  // Historical concurrent first-writes could theoretically create duplicate
+  // markers because (owner,coll,rid) is not a database unique constraint.
+  // Keep duplicates harmless by rewriting every marker to the same nonce.
   for (const record of existing) {
     record.set("payload", { nonce: value });
     record.set("stamp", new Date().toISOString());
@@ -84,7 +82,7 @@ function touch(app, owner) {
   }
 }
 
-function legacyOwnerRevision(app, owner) {
+function latestBusinessRevision(app, owner) {
   if (!owner) return "empty";
   const rows = dataAccess.records(
     app,
@@ -97,26 +95,30 @@ function legacyOwnerRevision(app, owner) {
   );
   if (!rows.length) return "empty";
   const first = rows[0];
-  return "legacy:" + String(first.id || "") + "|" + first.getString("updated");
+  return String(first.id || "") + "|" + first.getString("updated");
 }
 
 function readOwner(app, owner) {
   owner = String(owner || "").trim();
   if (!owner) return "empty";
-  const rows = markerRows(app, owner);
-  if (!rows.length) return legacyOwnerRevision(app, owner);
 
-  // Normally there is one row. Sorting nonce values also makes a historical
-  // duplicate set deterministic; touching the owner rewrites all duplicates
-  // to a fresh value and therefore changes this token.
+  const latest = latestBusinessRevision(app, owner);
+  const rows = markerRows(app, owner);
+  if (!rows.length) return "legacy:" + latest;
+
   const values = [];
   for (const row of rows) {
     const value = String(payloadOf(row).nonce || "").trim();
     if (value) values.push(value);
   }
-  if (!values.length) return legacyOwnerRevision(app, owner);
+  if (!values.length) return "legacy:" + latest;
   values.sort();
-  return "marker:" + values.join(",");
+
+  // `latest` is intentionally included even when a marker exists. If a
+  // business save committed but touch() failed, ordinary distinct-timestamp
+  // writes still invalidate polling. Equal-timestamp writes remain protected
+  // by the nonce path during normal marker operation.
+  return "marker:" + values.join(",") + "|latest:" + latest;
 }
 
 function readForContext(app, companyOwner, privateOwner) {
