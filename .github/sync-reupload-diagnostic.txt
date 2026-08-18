@@ -1,0 +1,28 @@
+DIAG uploaded=0 applied=1
+DIAG collection=organizations uploaded=0 applied=0 failure=null
+DIAG collection=employees uploaded=0 applied=0 failure=null
+DIAG collection=organization_grants uploaded=0 applied=0 failure=null
+DIAG collection=accounts uploaded=0 applied=0 failure=null
+DIAG collection=transactions uploaded=0 applied=1 failure=null
+DIAG collection=tasks uploaded=0 applied=0 failure=null
+DIAG collection=inter_org_transfers uploaded=0 applied=0 failure=null
+DIAG collection=transaction_audit uploaded=0 applied=0 failure=null
+DIAG collection=critical_audit uploaded=0 applied=0 failure=null
+DIAG collection=calendar_events uploaded=0 applied=0 failure=null
+DIAG collection=articles uploaded=0 applied=0 failure=null
+DIAG collection=chats uploaded=0 applied=0 failure=null
+DIAG collection=messages uploaded=0 applied=0 failure=null
+DIAG collection=roadmap_projects uploaded=0 applied=0 failure=null
+DIAG collection=roadmap_items uploaded=0 applied=0 failure=null
+DIAG collection=crm_clients uploaded=0 applied=0 failure=null
+DIAG collection=crm_deals uploaded=0 applied=0 failure=null
+DIAG collection=crm_interactions uploaded=0 applied=0 failure=null
+DIAG collection=audio_beats uploaded=0 applied=0 failure=null
+DIAG collection=profile uploaded=0 applied=0 failure=null
+DIAG collection=file_grants uploaded=0 applied=0 failure=null
+DIAG collection=file_requests uploaded=0 applied=0 failure=null
+DIAG collection=file_handovers uploaded=0 applied=0 failure=null
+DIAG calls=fetch:organizations || fetch:employees || fetch:organization_grants || fetch:accounts || fetch:transactions || fetch:tasks || fetch:inter_org_transfers || fetch:transaction_audit || fetch:critical_audit || fetch:calendar_events || fetch:articles || fetch:chats || fetch:messages || fetch:roadmap_projects || fetch:roadmap_items || fetch:crm_clients || fetch:crm_deals || fetch:crm_interactions || fetch:audio_beats || fetch:profile || fetch:file_grants || fetch:file_requests || fetch:file_handovers
+  Expected: <0>
+    Actual: <1>
+00:00 +0 -1: Some tests failed.
