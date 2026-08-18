@@ -24,8 +24,6 @@ class SyncFeatureExtensions {
   static const _profileOwnerKey = 'sync_profile_settings_owner_v1';
   static const _profileBoxPrefix = 'wesios_profile_sync_v1';
   static const _vaultBoxPrefix = 'wesios_vault_sync_v1';
-  static const _lastRunKey = 'sync_last_run';
-  static const _seededKey = 'sync_seeded_at';
   static const _vaultSaltKey = 'vault_kdf_salt';
   static const _vaultPrefix = 'vault_secret_';
 
@@ -205,33 +203,6 @@ class SyncFeatureExtensions {
     }
   }
 
-  static String _marker(String key, String employeeId) =>
-      '$key.account.${_safe(employeeId)}';
-
-  static Future<void> _stashMarkers(Box<dynamic> settings, String id) async {
-    for (final key in const [_lastRunKey, _seededKey]) {
-      final value = settings.get(key);
-      if (value != null) await settings.put(_marker(key, id), value);
-    }
-  }
-
-  static Future<void> _restoreMarkers(
-    Box<dynamic> settings,
-    String id, {
-    required bool allowLegacy,
-  }) async {
-    for (final key in const [_lastRunKey, _seededKey]) {
-      final scoped = settings.get(_marker(key, id));
-      if (scoped != null) {
-        await settings.put(key, scoped);
-      } else if (allowLegacy && settings.get(key) != null) {
-        await settings.put(_marker(key, id), settings.get(key));
-      } else {
-        await settings.delete(key);
-      }
-    }
-  }
-
   /// One-time migration from the previous employee-scoped private boxes.
   ///
   /// Copy only when the new auth-scoped target is empty. If both exist, the
@@ -264,14 +235,13 @@ class SyncFeatureExtensions {
     final settings = Hive.box<dynamic>(_settingsBox);
     final previousOwner = settings.get(_profileOwnerKey);
 
+    // Sync run/seed metadata is intentionally NOT handled here. SyncEndpoint
+    // owns those markers under `::<PocketBase userId>`. Older versions kept a
+    // second employee-scoped stash/restore layer in this feature extension;
+    // retaining it after auth-scoped metadata was introduced meant two
+    // different identity systems could claim authority over first-exchange
+    // history. Rebinding now manages only profile/vault projection state.
     if (id == null || id.isEmpty || authUserId == 'anonymous') {
-      final previous = _boundEmployeeId ??
-          (previousOwner is String && previousOwner.isNotEmpty
-              ? previousOwner
-              : null);
-      if (previous != null) await _stashMarkers(settings, previous);
-      await settings.delete(_lastRunKey);
-      await settings.delete(_seededKey);
       _boundEmployeeId = null;
       _boundAuthUserId = authUserId;
       SecretVault.lock();
@@ -279,13 +249,9 @@ class SyncFeatureExtensions {
     }
     if (_boundEmployeeId == id && _boundAuthUserId == authUserId) return;
 
-    if (_boundEmployeeId case final previous? when previous != id) {
-      await _stashMarkers(settings, previous);
-    }
     final migrateLegacy = allowLegacy &&
         _boundEmployeeId == null &&
         (previousOwner == null || '$previousOwner' == id);
-    await _restoreMarkers(settings, id, allowLegacy: migrateLegacy);
 
     final profile = await _open(profileBoxName(authUserId));
     final vault = await _open(vaultBoxName(authUserId));
