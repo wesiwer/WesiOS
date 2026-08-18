@@ -110,6 +110,24 @@ function write(e, collection, scope, requiredModule, privateKeyed) {
   // Keep the previous payload on tombstones so scoped metadata is not lost.
   if (deleted && existing) incoming = payloadOf(existing);
 
+  if (existing) {
+    const decision = require(`${__hooks}/wesi_sync_lww.js`).decide(
+      existing.getString("stamp"),
+      existing.getBool("deleted"),
+      stamp,
+      deleted,
+    );
+    if (!decision.apply) {
+      return e.json(200, {
+        ok: true,
+        rid: rid,
+        stamp: existing.getString("stamp"),
+        applied: false,
+        reason: decision.reason,
+      });
+    }
+  }
+
   const recordsCollection = e.app.findCollectionByNameOrId("wesios_records");
   const record = existing || new Record(recordsCollection);
   record.set("owner", owner);
@@ -124,7 +142,7 @@ function write(e, collection, scope, requiredModule, privateKeyed) {
   record.set("deleted", deleted);
   e.app.save(record);
 
-  return e.json(200, {ok: true, rid: rid, stamp: stamp});
+  return e.json(200, {ok: true, rid: rid, stamp: stamp, applied: true});
 }
 
 function revision(e) {
