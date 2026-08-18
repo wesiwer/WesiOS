@@ -62,6 +62,7 @@ jobs:
           for file in \
             server/pb_hooks/wesi_telegram_lib.js \
             server/pb_hooks/wesi_telegram_store.js \
+            server/pb_hooks/wesi_telegram_gateway.js \
             server/pb_hooks/wesi_telegram.pb.js \
             server/pb_hooks/wesi_ai_finance_tools.js \
             server/pb_hooks/wesi_ai_task_tools.js; do
@@ -118,6 +119,7 @@ jobs:
           scp "${SSH[@]}" \
             server/pb_hooks/wesi_telegram_lib.js \
             server/pb_hooks/wesi_telegram_store.js \
+            server/pb_hooks/wesi_telegram_gateway.js \
             server/pb_hooks/wesi_telegram.pb.js \
             server/pb_hooks/wesi_ai_finance_tools.js \
             server/pb_hooks/wesi_ai_task_tools.js \
@@ -143,6 +145,7 @@ jobs:
 
           atomic_install "$REMOTE/wesi_telegram_lib.js" "$HOOK_DIR/wesi_telegram_lib.js" 0644
           atomic_install "$REMOTE/wesi_telegram_store.js" "$HOOK_DIR/wesi_telegram_store.js" 0644
+          atomic_install "$REMOTE/wesi_telegram_gateway.js" "$HOOK_DIR/wesi_telegram_gateway.js" 0644
           atomic_install "$REMOTE/wesi_ai_finance_tools.js" "$HOOK_DIR/wesi_ai_finance_tools.js" 0644
           atomic_install "$REMOTE/wesi_ai_task_tools.js" "$HOOK_DIR/wesi_ai_task_tools.js" 0644
           atomic_install "$REMOTE/wesi-telegram.json" "$HOOK_DIR/.wesi-telegram.json" 0600
@@ -152,6 +155,7 @@ jobs:
 
           sleep 4
           curl -fsS --max-time 8 http://127.0.0.1:8090/api/health >/dev/null
+          cmp -s "$REMOTE/wesi_telegram_gateway.js" "$HOOK_DIR/wesi_telegram_gateway.js"
           cmp -s "$REMOTE/wesi_telegram.pb.js" "$HOOK_DIR/wesi_telegram.pb.js"
           cmp -s "$REMOTE/wesi-telegram.json" "$HOOK_DIR/.wesi-telegram.json"
           rm -rf "$REMOTE"
