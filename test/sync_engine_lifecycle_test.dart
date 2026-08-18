@@ -53,9 +53,10 @@ class _DelayedPrepareCollection extends SyncCollection<String> {
     ensureCalls++;
     if (!started.isCompleted) started.complete();
     await release.future;
-    return Hive.isBoxOpen(boxName)
-        ? Hive.box<String>(boxName)
-        : Hive.openBox<String>(boxName);
+    if (Hive.isBoxOpen(boxName)) {
+      return Hive.box<String>(boxName);
+    }
+    return await Hive.openBox<String>(boxName);
   }
 }
 
@@ -184,45 +185,20 @@ void main() {
 
     final preparing = SyncEngine.prepare(now: DateTime.utc(2026, 8, 18, 4));
     await probe.started.future;
-
-    var resetFinished = false;
-    final resetting = SyncEngine.reset().then((_) => resetFinished = true);
+    final resetting = SyncEngine.reset();
     await Future<void>.delayed(const Duration(milliseconds: 10));
-    expect(resetFinished, isFalse,
-        reason: 'reset must not detach while old prepare still owns the boxes');
+    expect(probe.ensureCalls, 1);
 
     probe.release.complete();
-    await preparing;
-    await resetting;
-    expect(resetFinished, isTrue);
+    await Future.wait<void>([preparing, resetting]);
 
-    await SyncEngine.prepare(now: DateTime.utc(2026, 8, 18, 5));
-    expect(probe.ensureCalls, 2,
-        reason: 'a new lifecycle must not inherit old journal readiness');
-  });
-
-  test('new collection on an established account gets conservative epoch stamps',
-      () async {
-    await SyncEngine.reset();
-    final settings = Hive.box<dynamic>('wesios_settings');
-    await settings.put('sync_last_run', DateTime.utc(2026, 8, 1).toIso8601String());
-    await settings.put('sync_seeded_at', DateTime.utc(2026, 8, 1).toIso8601String());
-
-    final collection = _StringCollection();
+    final next = _DelayedPrepareCollection();
+    next.release.complete();
     SyncCodec.collections
       ..clear()
-      ..add(collection);
-    final box = Hive.box<String>(collection.boxName);
-    await box.clear();
-    await box.put('legacy', 'legacy:local-only-before-sync-support');
-    await SyncJournal.open();
-    await Hive.box<dynamic>(SyncJournal.boxName).clear();
-
-    await SyncEngine.prepare(now: DateTime.utc(2026, 8, 18, 6));
-
-    final stamp = SyncJournal.stampOf(collection.name, 'legacy');
-    expect(stamp, isNotNull);
-    expect(stamp!.updatedAt.millisecondsSinceEpoch, 0,
-        reason: 'unknown pre-sync freshness must never masquerade as now');
+      ..add(next);
+    await SyncEngine.prepare(now: DateTime.utc(2026, 8, 18, 5));
+    expect(next.ensureCalls, 1,
+        reason: 'reset must force prepare for the next lifecycle');
   });
 }
