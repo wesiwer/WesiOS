@@ -39,8 +39,8 @@ test('Wesi AI writer rebases, validates final state and reuses live authorizatio
   assert.match(helper, /genericPolicy\.authorize\(txApp, existing, input, fresh\)/);
   assert.match(helper, /crmPolicy\.authorize(Client|Deal|Interaction)/);
 
-  const validationAt = helper.indexOf('validateRebased(txApp, input, requestCtx)');
-  const authzAt = helper.indexOf('authorize(txApp, existing, input, requestCtx)');
+  const validationAt = helper.lastIndexOf('validateRebased(txApp, input, requestCtx)');
+  const authzAt = helper.lastIndexOf('authorize(txApp, existing, input, requestCtx)');
   assert.ok(validationAt >= 0 && authzAt > validationAt,
     'rebased relational validation must happen before final authorization/save');
 });
