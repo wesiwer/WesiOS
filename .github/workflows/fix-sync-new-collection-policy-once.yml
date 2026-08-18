@@ -19,7 +19,7 @@ jobs:
           fetch-depth: 0
 
       - name: Integrate per-record sync policy
-        run: python3 .github/scripts/fix-sync-new-collection-policy.py
+        run: python3 .github/scripts/fix-sync-new-collection-policy-current.py
 
       - name: Validate server sync contracts
         run: |
@@ -28,7 +28,7 @@ jobs:
           node --check server/pb_hooks/wesi_sync_read.pb.js
           node --check server/pb_hooks/wesi_sync_write.pb.js
           node --test server/pb_hooks/wesi_sync_new_collection_policy_test.mjs
-          node --test server/pb_hooks/wesi_sync_data_access_contract_test.mjs server/pb_hooks/wesi_sync_profile_scope_contract_test.mjs server/pb_hooks/wesi_sync_extra_contract_test.mjs
+          node --test server/pb_hooks/wesi_sync_data_access_contract_test.mjs server/pb_hooks/wesi_sync_profile_scope_contract_test.mjs server/pb_hooks/wesi_sync_extra_contract_test.mjs server/pb_hooks/wesi_sync_lww_test.mjs
           git diff --check
 
       - name: Setup Flutter
@@ -66,3 +66,5 @@ jobs:
           git commit -m 'fix(sync): enforce per-record policy on new collections'
           git pull --rebase origin main
           git push origin HEAD:main
+
+# retry: current atomic deploy shape
