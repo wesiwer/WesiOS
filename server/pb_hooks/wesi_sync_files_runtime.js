@@ -100,8 +100,6 @@ function authorizeRequest(txApp, existing, input, ctx) {
     forbidden("Нет права изменять этот запрос файла");
   }
 
-  // Request identity/participants are immutable after creation. Only status,
-  // decision metadata and decline reason may change.
   if (!input.deleted) {
     input.payload = Object.assign({}, input.payload, {
       id: before.id,
@@ -123,7 +121,7 @@ function authorizeGrant(txApp, existing, input, ctx) {
 
 function authorizeHandover(txApp, existing, input, ctx) {
   if (input.deleted) bad("Журнал выдачи файлов нельзя удалять");
-  if (existing) return; // atomic append-only boundary rejects the update.
+  if (existing) return;
   if (manager(ctx)) return;
   const from = String(input.payload.fromEmployeeId || "");
   if (from !== String(ctx.employeeId || "")) {
@@ -132,9 +130,9 @@ function authorizeHandover(txApp, existing, input, ctx) {
 }
 
 function write(e, collection) {
-  const ctx = e.get("wesiSyncContext");
-  if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
-  if (!hasAudio(ctx)) forbidden("Раздел Audio не открыт этому сотруднику");
+  const requestCtx = e.get("wesiSyncContext");
+  if (!requestCtx) throw new UnauthorizedError("Нет контекста синхронизации");
+  if (!hasAudio(requestCtx)) forbidden("Раздел Audio не открыт этому сотруднику");
 
   const body = e.requestInfo().body || {};
   const rid = String(body.rid || "").trim();
@@ -153,13 +151,25 @@ function write(e, collection) {
     : new Date(now).toISOString();
 
   const authorize = collection === "file_requests"
-    ? function(txApp, existing, input) { authorizeRequest(txApp, existing, input, ctx); }
+    ? function(txApp, existing, input) {
+        const ctx = require(`${__hooks}/wesi_sync_authz.js`).refresh(txApp, requestCtx);
+        if (!hasAudio(ctx)) forbidden("Раздел Audio больше не открыт этому сотруднику");
+        authorizeRequest(txApp, existing, input, ctx);
+      }
     : collection === "file_grants"
-      ? function(txApp, existing, input) { authorizeGrant(txApp, existing, input, ctx); }
-      : function(txApp, existing, input) { authorizeHandover(txApp, existing, input, ctx); };
+      ? function(txApp, existing, input) {
+          const ctx = require(`${__hooks}/wesi_sync_authz.js`).refresh(txApp, requestCtx);
+          if (!hasAudio(ctx)) forbidden("Раздел Audio больше не открыт этому сотруднику");
+          authorizeGrant(txApp, existing, input, ctx);
+        }
+      : function(txApp, existing, input) {
+          const ctx = require(`${__hooks}/wesi_sync_authz.js`).refresh(txApp, requestCtx);
+          if (!hasAudio(ctx)) forbidden("Раздел Audio больше не открыт этому сотруднику");
+          authorizeHandover(txApp, existing, input, ctx);
+        };
 
   const result = require(`${__hooks}/wesi_sync_atomic.js`).commit(e.app, {
-    owner: ctx.ownerId,
+    owner: requestCtx.ownerId,
     org: "wesi-inc",
     coll: collection,
     rid: rid,
