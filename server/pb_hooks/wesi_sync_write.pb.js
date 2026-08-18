@@ -23,8 +23,6 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
     );
   }
 
-  // CRM/File metadata have exact handlers with stronger row-level policy. A
-  // partial hook deployment must fail closed rather than fall through here.
   if (collection === "crm_clients" ||
       collection === "crm_deals" ||
       collection === "crm_interactions" ||
@@ -250,7 +248,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
     "stamp": stamp,
     "deleted": deleted,
     "authorize": function(txApp, current, input) {
-      require(`${__hooks}/wesi_sync_generic_policy.js`).authorize(
+      require(`${__hooks}/wesi_sync_generic_policy.js`).authorizeFresh(
         txApp,
         current,
         input,
