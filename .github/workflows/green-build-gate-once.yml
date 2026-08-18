@@ -1,4 +1,5 @@
 name: WesiOS Green Build Gate
+# Verification run for current main 0.22.28+103 after signed release toolchain alignment.
 
 on:
   push:
@@ -11,6 +12,32 @@ permissions:
   statuses: write
 
 jobs:
+  mark-running:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish pending build statuses
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          for CONTEXT in 'WesiOS Green Build' 'WesiOS Flutter Android' 'WesiOS Windows Build'; do
+            curl -fsS -X POST \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H 'Accept: application/vnd.github+json' \
+              "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+              -d "$(CONTEXT="$CONTEXT" URL="$URL" python3 - <<'PY'
+          import json, os
+          print(json.dumps({
+            'state': 'pending',
+            'context': os.environ['CONTEXT'],
+            'description': 'WesiOS validation is running',
+            'target_url': os.environ['URL'],
+          }))
+          PY
+          )"
+          done
+
   flutter-and-android:
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -53,6 +80,46 @@ jobs:
       - name: Windows release compile
         run: flutter build windows --release
 
+  flutter-android-status:
+    if: always()
+    needs: [flutter-and-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish Flutter and Android status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.flutter-and-android.result }}
+        run: |
+          set -euo pipefail
+          if [ "$RESULT" = success ]; then export STATE=success; export DESC='Analyze, tests and Android compile are green'; else export STATE=failure; export DESC="Flutter/Android=$RESULT"; fi
+          export URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          PAYLOAD=$(python3 - <<'PY'
+          import json, os
+          print(json.dumps({'state':os.environ['STATE'],'context':'WesiOS Flutter Android','description':os.environ['DESC'][:140],'target_url':os.environ['URL']}))
+          PY
+          )
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -d "$PAYLOAD"
+
+  windows-status:
+    if: always()
+    needs: [windows-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish Windows status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.windows-release.result }}
+        run: |
+          set -euo pipefail
+          if [ "$RESULT" = success ]; then export STATE=success; export DESC='Windows release compile is green'; else export STATE=failure; export DESC="Windows=$RESULT"; fi
+          export URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
+          PAYLOAD=$(python3 - <<'PY'
+          import json, os
+          print(json.dumps({'state':os.environ['STATE'],'context':'WesiOS Windows Build','description':os.environ['DESC'][:140],'target_url':os.environ['URL']}))
+          PY
+          )
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -d "$PAYLOAD"
+
   publish-status:
     if: always()
     needs: [flutter-and-android, windows-release]
@@ -65,24 +132,11 @@ jobs:
           WINDOWS_RESULT: ${{ needs.windows-release.result }}
         run: |
           set -euo pipefail
-          if [ "$LINUX_RESULT" = success ] && [ "$WINDOWS_RESULT" = success ]; then
-            export STATE=success
-            export DESCRIPTION='Analyze, tests, Android and Windows builds are green'
-          else
-            export STATE=failure
-            export DESCRIPTION="Flutter/Android=$LINUX_RESULT Windows=$WINDOWS_RESULT"
-          fi
+          if [ "$LINUX_RESULT" = success ] && [ "$WINDOWS_RESULT" = success ]; then export STATE=success; export DESCRIPTION='Analyze, tests, Android and Windows builds are green'; else export STATE=failure; export DESCRIPTION="Flutter/Android=$LINUX_RESULT Windows=$WINDOWS_RESULT"; fi
+          export URL="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID"
           PAYLOAD=$(python3 - <<'PY'
           import json, os
-          print(json.dumps({
-            'state': os.environ['STATE'],
-            'context': 'WesiOS Green Build',
-            'description': os.environ['DESCRIPTION'][:140],
-          }))
+          print(json.dumps({'state':os.environ['STATE'],'context':'WesiOS Green Build','description':os.environ['DESCRIPTION'][:140],'target_url':os.environ['URL']}))
           PY
           )
-          curl -fsS -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -d "$PAYLOAD"
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -d "$PAYLOAD"
