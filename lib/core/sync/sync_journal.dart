@@ -117,7 +117,7 @@ class SyncJournal {
       await sub.cancel();
     }
     _watchers.clear();
-    _discardExpectations();
+    discardExpectations();
   }
 
   static void expect(String collection, String id, SyncStamp stamp) {
@@ -136,8 +136,8 @@ class SyncJournal {
   /// Backwards-compatible end-of-pass hook.
   ///
   /// Fresh expectations are intentionally NOT cleared here. Existing engine
-  /// code calls this after a run; turning it into TTL pruning fixes the race
-  /// without allowing a five-second-old expectation to swallow a real edit.
+  /// code calls this after a normal run; turning it into TTL pruning fixes the
+  /// asynchronous Hive watcher race without swallowing a later real user edit.
   static void clearExpectations() => pruneExpectations();
 
   static void pruneExpectations() {
@@ -154,7 +154,13 @@ class SyncJournal {
     }
   }
 
-  static void _discardExpectations() {
+  /// Жёстко выбрасывает все remote expectations.
+  ///
+  /// Используется только на lifecycle/account boundary. В отличие от
+  /// [clearExpectations] здесь нельзя оставлять свежие ожидания на TTL: event
+  /// старого аккаунта после logout не должен быть принят новым lifecycle даже
+  /// в течение нескольких миллисекунд.
+  static void discardExpectations() {
     _expected.clear();
     _expectedAt.clear();
   }
