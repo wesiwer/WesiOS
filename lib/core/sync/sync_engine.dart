@@ -82,6 +82,12 @@ class SyncEngine {
     return '${session?['userId']}|${session?['sessionId']}|${session?['token']}';
   }
 
+  static bool _fatalTransportFailure(String? code) =>
+      code == 'NOT_SIGNED_IN' ||
+      code == 'NETWORK' ||
+      code == 'BAD_ADDRESS' ||
+      code == 'NOT_WESIOS';
+
   static Future<void> prepare({DateTime? now}) async {
     if (_journalReady) return;
 
@@ -368,6 +374,14 @@ class SyncEngine {
             collections: reports,
             failure: cancelledFailure(),
           ));
+        }
+        if (_fatalTransportFailure(one.failure?.code)) {
+          final report = SyncReport(at: at, collections: reports);
+          if (one.failure?.code == 'NOT_SIGNED_IN') {
+            t.signOut();
+            await SyncEndpoint.clearSession();
+          }
+          return _finish(report);
         }
       }
 
