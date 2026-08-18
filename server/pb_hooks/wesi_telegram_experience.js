@@ -1,5 +1,6 @@
 const tg = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_lib.js");
 const store = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_store.js");
+const interactions = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_interactions.js");
 const horizonTools = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_horizon_tools.js");
 const taskTools = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_task_tools.js");
 
@@ -76,7 +77,17 @@ function sendPhoto(cfg, chatId, kind, caption, keyboard) {
   };
   const markup = inlineKeyboard(keyboard);
   if (markup) body.reply_markup = markup;
-  return telegramApi(cfg, "sendPhoto", body);
+  const result = telegramApi(cfg, "sendPhoto", body);
+  try {
+    interactions.trackOutgoing(
+      typeof $app !== "undefined" ? $app : null,
+      cfg,
+      chatId,
+      result,
+      "bot",
+    );
+  } catch (_) {}
+  return result;
 }
 
 function payloadOf(record) {
@@ -408,6 +419,8 @@ function offboardByAuth(app, authUserId, reason) {
   );
 
   // Revoke first. Any command racing with cleanup loses authorization immediately.
+  // This also disables WesiOS retention for all future messages in this chat;
+  // the farewell sent below therefore never receives a deleteAfter timestamp.
   store.revokeByAuth(app, authUserId, reason || "employee-offboarded");
   if (telegramUserId) {
     systemUpsert(app, OFFBOARD_COLL, offboardRid(telegramUserId), {
