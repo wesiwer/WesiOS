@@ -9,15 +9,21 @@ import 'sync_endpoint.dart';
 class SyncAccountScope {
   const SyncAccountScope._();
 
+  /// Текущий auth-user в той же форме, в которой он участвует в namespace.
+  /// Отдельное значение `anonymous` важно для logout: после очистки сессии ни
+  /// один приватный сервис не должен случайно снова открыть box прошлого user.
+  static String get currentUserId {
+    final raw = SyncEndpoint.session?['userId'];
+    final userId = raw is String ? raw.trim() : '';
+    return userId.isEmpty ? 'anonymous' : _safe(userId);
+  }
+
   /// Имя персонального Hive-box для текущей подтверждённой server-сессии.
   ///
   /// Когда сессии нет, используем отдельный anonymous namespace и никогда не
   /// возвращаем старое unscoped-имя. Это принципиально: logout не должен снова
   /// открыть legacy-box, в котором могли остаться данные предыдущего аккаунта.
-  static String boxName(String base) {
-    final userId = SyncEndpoint.session?['userId'];
-    return forUser(base, userId is String ? userId : null);
-  }
+  static String boxName(String base) => forUser(base, currentUserId);
 
   /// Чистая часть вынесена отдельно, чтобы правило namespace можно было
   /// проверить unit-тестом без подмены secure session.
