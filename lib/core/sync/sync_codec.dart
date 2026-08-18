@@ -656,7 +656,7 @@ class TransactionsSync extends SyncCollection<TransactionModel> {
             ),
       isAnomaly: fields['isAnomaly'] == true,
       zScore: _double(fields['zScore']),
-      accountId: accountId,
+      accountId: _strOrNull(fields['accountId']),
       organizationId: orgId,
       projectId: _strOrNull(fields['projectId']),
       counterpartyId: _strOrNull(fields['counterpartyId']),
