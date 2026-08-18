@@ -1,0 +1,66 @@
+name: Apply Wesi AI inline console queue camera fix once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/apply-wesi-ai-inline-console-queue-camera-once.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: apply-wesi-ai-inline-console-queue-camera-once
+  cancel-in-progress: false
+
+jobs:
+  apply:
+    if: github.repository == 'wesiwer/WesiOS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply Wesi AI patch
+        run: python3 .github/scripts/apply_wesi_ai_inline_console_queue_camera.py
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Format changed Dart files
+        run: |
+          dart format \
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            lib/features/ai/widgets/wesi_ai_camera_capture.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            lib/features/ai/widgets/wesi_ai_code_console.dart
+
+      - name: Analyze Wesi AI
+        run: flutter analyze --no-fatal-infos lib/features/ai
+
+      - name: Run tests
+        run: flutter test
+
+      - name: Commit verified patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            lib/features/ai/ai_assistant_v2_screen.dart \
+            lib/features/ai/widgets/wesi_ai_camera_capture.dart \
+            lib/features/ai/widgets/wesi_ai_rich_message.dart \
+            lib/features/ai/widgets/wesi_ai_code_console.dart
+          if git diff --cached --quiet; then
+            echo "No patch changes to commit."
+            exit 0
+          fi
+          git commit -m "fix(ai): inline code console queue and camera UX"
+          git push origin HEAD:main
