@@ -24,6 +24,7 @@ jobs:
       - name: Run full verification and publish result
         shell: bash
         run: |
+          # Retry after aligning intl with flutter_localizations.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           flutter analyze --no-fatal-infos >/tmp/analyze.log 2>&1
