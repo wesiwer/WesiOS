@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:hive/hive.dart';
 
+import '../../features/tasks/ai/services/wesi_ai_task_service.dart';
 import '../../features/tasks/services/task_service.dart';
 import '../../features/team/models/employee_model.dart';
 import '../../features/team/services/team_service.dart';
@@ -265,7 +266,7 @@ class _WesiTaskAiMemorySync extends _KeyedBoxSync {
   String get name => 'task_ai_memory';
 
   @override
-  String get boxName => 'wesios_wesi_ai_task_memory_v1';
+  String get boxName => WesiAiTaskService.memoryBoxName;
 
   @override
   void notifyChanged() => TaskService.revision.value++;
