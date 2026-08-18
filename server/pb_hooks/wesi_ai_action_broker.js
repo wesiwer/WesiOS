@@ -120,16 +120,15 @@ function createConfirmation(e, ctx, capability, name, args, activeOrganizationId
     usedAt: null,
   };
   try {
-    const collection = e.app.findCollectionByNameOrId("wesios_records");
-    const record = new Record(collection);
-    record.set("owner", ctx.ownerId);
-    record.set("org", "wesi-inc");
-    record.set("coll", CONFIRMATION_COLL);
-    record.set("rid", id);
-    record.set("payload", payload);
-    record.set("stamp", now.toISOString());
-    record.set("deleted", false);
-    e.app.save(record);
+    require(modulePath("wesi_sync_atomic.js")).commit(e.app, {
+      owner: ctx.ownerId,
+      org: "wesi-inc",
+      coll: CONFIRMATION_COLL,
+      rid: id,
+      payload: payload,
+      stamp: now.toISOString(),
+      deleted: false,
+    });
   } catch (_) {
     return {ok: false, code: "WAI_CONFIRMATION_STORE_FAILED", message: "Не удалось создать безопасное подтверждение"};
   }
