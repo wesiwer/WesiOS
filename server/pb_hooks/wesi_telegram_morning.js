@@ -102,8 +102,8 @@ function variantFor(speaker, dateKey, telegramUserId) {
   return source[hash32(`${dateKey}:${telegramUserId}:${speaker}`) % source.length];
 }
 
-function photoFor(dateKey, telegramUserId) {
-  return PHOTOS[hash32(`${dateKey}:${telegramUserId}:photo`) % PHOTOS.length];
+function photoFor(dateKey) {
+  return PHOTOS[hash32(`${dateKey}:photo`) % PHOTOS.length];
 }
 
 function todayTaskCount(app, identity, organizationId, offset) {
@@ -147,7 +147,7 @@ function sendMorning(cfg, app, payload, identity, selected, clock) {
     text: "📊 Сводка дня",
     callback_data: tg.callback("brief", ""),
   }]]};
-  const photo = photoFor(clock.dateKey, payload.telegramUserId);
+  const photo = photoFor(clock.dateKey);
   let sent = telegramApi(cfg, "sendPhoto", {
     chat_id: payload.telegramChatId,
     photo: photo,
