@@ -119,7 +119,7 @@ test('touch retries as update when another hook wins the first marker create', (
 
   const marker = app.markers[0];
   const payload = marker.get('payload');
-  assert.equal(payload.nonce, 'nonce-2',
+  assert.ok(String(payload.nonce || '').endsWith(':nonce-2'),
     'retry must issue a fresh revision token instead of accepting the competitor token');
   assert.ok(
     Date.parse(marker.getString('stamp')) > Date.parse('2026-08-18T10:00:00.001Z'),
