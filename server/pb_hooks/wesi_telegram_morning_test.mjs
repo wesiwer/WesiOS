@@ -19,6 +19,8 @@ const first = morning.variantFor('nirvana', '2026-08-20', '123');
 const same = morning.variantFor('nirvana', '2026-08-20', '123');
 assert.equal(first, same);
 assert.ok(first.length > 80);
-assert.ok(morning.photoFor('2026-08-20', '123').startsWith('https://images.pexels.com/photos/'));
+const photo = morning.photoFor('2026-08-20');
+assert.ok(photo.startsWith('https://images.pexels.com/photos/'));
+assert.equal(photo, morning.photoFor('2026-08-20'));
 
 console.log('WESI_TELEGRAM_MORNING_ROTATION_OK');
