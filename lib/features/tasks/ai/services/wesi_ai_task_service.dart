@@ -1,5 +1,6 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../../../core/sync/sync_account_scope.dart';
 import '../../../audio/models/audio_vault_models.dart';
 import '../../../audio/services/audio_vault_service.dart';
 import '../../../crm/models/crm_models.dart';
@@ -29,7 +30,8 @@ import 'wesi_ai_task_engine.dart';
 class WesiAiTaskService {
   WesiAiTaskService._();
 
-  static const String _memoryBoxName = 'wesios_wesi_ai_task_memory_v1';
+  static const String memoryBaseBoxName = 'wesios_wesi_ai_task_memory_v1';
+  static String get memoryBoxName => SyncAccountScope.boxName(memoryBaseBoxName);
   static const int visibleLimit = 5;
 
   static Future<AiTaskAnalysisResult> analyze({DateTime? now}) async {
@@ -42,7 +44,7 @@ class WesiAiTaskService {
     final transactions = await _scopedTransactions(organization.id);
     final businessSignal = await _businessSignal(clock, transactions);
     final world = await _worldState(organization.id, tasks, transactions);
-    final box = await Hive.openBox<dynamic>(_memoryBoxName);
+    final box = await Hive.openBox<dynamic>(memoryBoxName);
     final learningProfile = _learningProfile(box, organization.id);
 
     final raw = WesiAiTaskEngine.analyze(WesiAiAnalysisInput(
@@ -88,7 +90,7 @@ class WesiAiTaskService {
     AiTaskSuggestion suggestion, {
     Duration duration = const Duration(days: 3),
   }) async {
-    final box = await Hive.openBox<dynamic>(_memoryBoxName);
+    final box = await Hive.openBox<dynamic>(memoryBoxName);
     await box.put(_decisionKey(suggestion.fingerprint), {
       'type': 'snooze',
       'until': DateTime.now().add(duration).toIso8601String(),
@@ -101,7 +103,7 @@ class WesiAiTaskService {
     AiTaskSuggestion suggestion, {
     Duration duration = const Duration(days: 14),
   }) async {
-    final box = await Hive.openBox<dynamic>(_memoryBoxName);
+    final box = await Hive.openBox<dynamic>(memoryBoxName);
     await box.put(_decisionKey(suggestion.fingerprint), {
       'type': 'reject',
       'until': DateTime.now().add(duration).toIso8601String(),
@@ -143,7 +145,7 @@ class WesiAiTaskService {
     );
     await TaskService().save(task);
 
-    final box = await Hive.openBox<dynamic>(_memoryBoxName);
+    final box = await Hive.openBox<dynamic>(memoryBoxName);
     await box.put(_decisionKey(suggestion.fingerprint), {
       'type': 'accepted',
       'taskId': task.id,
