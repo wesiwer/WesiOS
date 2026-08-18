@@ -18,27 +18,35 @@ function loadAccess(e, ctx) {
   if (ctx.isOwner) {
     permissions = {canManageTeam: true, canSeeOthersStats: true, canAssignTasks: true};
   } else {
-    let employee = null;
-    employee = dataAccess.first(e.app,
-        "wesios_records",
-        "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
-        {owner: ctx.ownerId, rid: ctx.employeeId},
-      );
+    const employee = dataAccess.first(
+      e.app,
+      "wesios_records",
+      "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
+      {owner: ctx.ownerId, rid: ctx.employeeId},
+    );
     const snapshot = payloadOf(employee);
     permissions = snapshot.permissions && typeof snapshot.permissions === "object"
       ? snapshot.permissions : {};
   }
 
-  let organizations = [];
-  let grants = [];
-  organizations = dataAccess.records(e.app,
-      "wesios_records", "owner={:owner} && coll='organizations' && deleted=false",
-      "id", 1000, 0, {owner: ctx.ownerId},
-    );
-  grants = dataAccess.records(e.app,
-      "wesios_records", "owner={:owner} && coll='organization_grants' && deleted=false",
-      "id", 1000, 0, {owner: ctx.ownerId},
-    );
+  const organizations = dataAccess.records(
+    e.app,
+    "wesios_records",
+    "owner={:owner} && coll='organizations' && deleted=false",
+    "id",
+    1000,
+    0,
+    {owner: ctx.ownerId},
+  );
+  const grants = dataAccess.records(
+    e.app,
+    "wesios_records",
+    "owner={:owner} && coll='organization_grants' && deleted=false",
+    "id",
+    1000,
+    0,
+    {owner: ctx.ownerId},
+  );
 
   const orgs = {};
   const parents = {};
@@ -46,7 +54,11 @@ function loadAccess(e, ctx) {
     const p = payloadOf(row);
     const id = String(p.id || row.getString("rid") || "");
     if (!id || String(p.status || "active") === "archived") continue;
-    orgs[id] = {id: id, name: String(p.name || id), parentId: p.parentId == null ? null : String(p.parentId)};
+    orgs[id] = {
+      id: id,
+      name: String(p.name || id),
+      parentId: p.parentId == null ? null : String(p.parentId),
+    };
     parents[id] = orgs[id].parentId;
   }
 
@@ -68,7 +80,10 @@ function loadAccess(e, ctx) {
         for (const childId of Object.keys(orgs)) {
           let cursor = parents[childId];
           while (cursor) {
-            if (cursor === id) { allowed[childId] = true; break; }
+            if (cursor === id) {
+              allowed[childId] = true;
+              break;
+            }
             cursor = parents[cursor];
           }
         }
@@ -89,16 +104,21 @@ function chooseOrganization(access, requested) {
   const id = String(requested || "").trim();
   if (id && access.allowedOrgIds[id] === true && access.orgs[id]) return id;
   if (access.allowedOrgIds[ROOT_ORG] === true && access.orgs[ROOT_ORG]) return ROOT_ORG;
-  const ids = Object.keys(access.allowedOrgIds).filter((x) => access.allowedOrgIds[x] === true && access.orgs[x]);
+  const ids = Object.keys(access.allowedOrgIds)
+    .filter((x) => access.allowedOrgIds[x] === true && access.orgs[x]);
   return ids.length ? ids[0] : "";
 }
 
 function employees(e, ctx) {
-  let rows = [];
-  rows = dataAccess.records(e.app,
-      "wesios_records", "owner={:owner} && coll='employees' && deleted=false",
-      "id", 1000, 0, {owner: ctx.ownerId},
-    );
+  const rows = dataAccess.records(
+    e.app,
+    "wesios_records",
+    "owner={:owner} && coll='employees' && deleted=false",
+    "id",
+    1000,
+    0,
+    {owner: ctx.ownerId},
+  );
   return rows.map((row) => {
     const p = payloadOf(row);
     return {
@@ -114,10 +134,22 @@ function resolveEmployee(e, ctx, query) {
   const q = String(query || "").trim().toLowerCase();
   if (!q) return {id: ctx.employeeId, label: ctx.employeeId};
   const all = employees(e, ctx);
-  const exact = all.filter((x) => [x.id, x.login, x.fullName, x.nickname].some((v) => v && v.toLowerCase() === q));
-  if (exact.length === 1) return {id: exact[0].id, label: exact[0].fullName || exact[0].nickname || exact[0].login || exact[0].id};
-  const partial = all.filter((x) => [x.login, x.fullName, x.nickname].some((v) => v && v.toLowerCase().includes(q)));
-  if (partial.length === 1) return {id: partial[0].id, label: partial[0].fullName || partial[0].nickname || partial[0].login || partial[0].id};
+  const exact = all.filter((x) => [x.id, x.login, x.fullName, x.nickname]
+    .some((v) => v && v.toLowerCase() === q));
+  if (exact.length === 1) {
+    return {
+      id: exact[0].id,
+      label: exact[0].fullName || exact[0].nickname || exact[0].login || exact[0].id,
+    };
+  }
+  const partial = all.filter((x) => [x.login, x.fullName, x.nickname]
+    .some((v) => v && v.toLowerCase().includes(q)));
+  if (partial.length === 1) {
+    return {
+      id: partial[0].id,
+      label: partial[0].fullName || partial[0].nickname || partial[0].login || partial[0].id,
+    };
+  }
   if (exact.length > 1 || partial.length > 1) return {error: "AMBIGUOUS_EMPLOYEE"};
   return {error: "EMPLOYEE_NOT_FOUND"};
 }
@@ -126,7 +158,25 @@ function taskVisible(access, ctx, p) {
   const orgId = String(p.organizationId || ROOT_ORG);
   if (access.allowedOrgIds[orgId] !== true) return false;
   if (access.canReadOthers) return true;
-  return String(p.assignee || "") === ctx.employeeId || String(p.responsibleEmployeeId || "") === ctx.employeeId;
+  return String(p.assignee || "") === ctx.employeeId ||
+    String(p.responsibleEmployeeId || "") === ctx.employeeId;
+}
+
+function localDay(value, offsetMinutes) {
+  const date = value instanceof Date ? value : new Date(String(value || ""));
+  if (!Number.isFinite(date.getTime())) return "";
+  const offset = Math.max(-840, Math.min(840, Number(offsetMinutes || 0)));
+  return new Date(date.getTime() + offset * 60000).toISOString().slice(0, 10);
+}
+
+function dayState(value, now, offsetMinutes) {
+  if (!value) return "none";
+  const dueDay = localDay(value, offsetMinutes);
+  const nowDay = localDay(now, offsetMinutes);
+  if (!dueDay || !nowDay) return "none";
+  if (dueDay < nowDay) return "overdue";
+  if (dueDay === nowDay) return "today";
+  return "future";
 }
 
 module.exports = {
@@ -135,66 +185,167 @@ module.exports = {
     return [
       {
         name: "tasks_list",
-        description: "Получить реальные задачи WesiOS, доступные текущему сотруднику.",
-        parameters: {type: "object", properties: {status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]}, limit: {type: "integer", minimum: 1, maximum: 50}}},
+        description: "Получить реальные задачи WesiOS, доступные текущему сотруднику. Если передана активная организация, список ограничивается ею; dueMode позволяет получить задачи на сегодня или просроченные без клиентского угадывания.",
+        parameters: {
+          type: "object",
+          properties: {
+            organizationId: {type: "string", description: "Используй только если активная организация не передана WesiOS"},
+            status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]},
+            dueMode: {type: "string", enum: ["today", "overdue"]},
+            timezoneOffsetMinutes: {type: "integer", minimum: -840, maximum: 840},
+            limit: {type: "integer", minimum: 1, maximum: 100},
+          },
+        },
       },
       {
         name: "tasks_create",
         description: "Создать реальную задачу WesiOS. Можно назначить другому сотруднику только при наличии соответствующего права.",
-        parameters: {type: "object", required: ["title"], properties: {title: {type: "string"}, description: {type: "string"}, dueDate: {type: "string", description: "ISO date YYYY-MM-DD"}, assignee: {type: "string", description: "Имя, логин или id сотрудника; пусто означает текущего сотрудника"}, organizationId: {type: "string"}, priority: {type: "string", enum: ["low", "normal", "high", "urgent"]}}},
+        parameters: {
+          type: "object",
+          required: ["title"],
+          properties: {
+            title: {type: "string"},
+            description: {type: "string"},
+            dueDate: {type: "string", description: "ISO date YYYY-MM-DD"},
+            assignee: {type: "string", description: "Имя, логин или id сотрудника; пусто означает текущего сотрудника"},
+            organizationId: {type: "string"},
+            priority: {type: "string", enum: ["low", "normal", "high", "urgent"]},
+          },
+        },
       },
     ];
   },
 
   context: function(e, ctx, activeOrganizationId) {
     const access = loadAccess(e, ctx);
-    const visible = Object.keys(access.allowedOrgIds).filter((id) => access.allowedOrgIds[id] === true && access.orgs[id]).map((id) => ({id: id, name: access.orgs[id].name}));
-    return {serverTime: new Date().toISOString(), activeOrganizationId: chooseOrganization(access, activeOrganizationId), organizations: visible, canAssignTasksToOthers: access.canAssignOthers};
+    const visible = Object.keys(access.allowedOrgIds)
+      .filter((id) => access.allowedOrgIds[id] === true && access.orgs[id])
+      .map((id) => ({id: id, name: access.orgs[id].name}));
+    return {
+      serverTime: new Date().toISOString(),
+      activeOrganizationId: chooseOrganization(access, activeOrganizationId),
+      organizations: visible,
+      canAssignTasksToOthers: access.canAssignOthers,
+    };
   },
 
   execute: function(e, ctx, name, args, activeOrganizationId) {
-    if (!ctx.isOwner && ctx.modules.indexOf("tasks") < 0) return {ok: false, code: "FORBIDDEN", message: "Нет доступа к модулю задач"};
+    if (!ctx.isOwner && ctx.modules.indexOf("tasks") < 0) {
+      return {ok: false, code: "FORBIDDEN", message: "Нет доступа к модулю задач"};
+    }
     const access = loadAccess(e, ctx);
     const input = args && typeof args === "object" ? args : {};
 
     if (name === "tasks_list") {
-      let rows = [];
-      rows = dataAccess.records(e.app,
-          "wesios_records", "owner={:owner} && coll='tasks' && deleted=false",
-          "-stamp", 5000, 0, {owner: ctx.ownerId},
-        );
+      const rows = dataAccess.records(
+        e.app,
+        "wesios_records",
+        "owner={:owner} && coll='tasks' && deleted=false",
+        "-stamp",
+        5000,
+        0,
+        {owner: ctx.ownerId},
+      );
       const status = String(input.status || "");
-      const limit = Math.max(1, Math.min(50, Number(input.limit || 20)));
+      const dueMode = String(input.dueMode || "");
+      if (dueMode && ["today", "overdue"].indexOf(dueMode) < 0) {
+        return {ok: false, code: "VALIDATION_ERROR", message: "Некорректный dueMode"};
+      }
+      const timezoneOffsetMinutes = Math.max(
+        -840,
+        Math.min(840, Number(input.timezoneOffsetMinutes || 0)),
+      );
+      const requestedOrg = String(activeOrganizationId || input.organizationId || "").trim();
+      let organizationId = "";
+      if (requestedOrg) {
+        organizationId = chooseOrganization(access, requestedOrg);
+        if (!organizationId || organizationId !== requestedOrg) {
+          return {ok: false, code: "FORBIDDEN", message: "Нет доступа к задачам этой организации"};
+        }
+      }
+      const limit = Math.max(1, Math.min(100, Number(input.limit || 20)));
+      const now = new Date();
       const out = [];
+      let totalCount = 0;
       for (const row of rows) {
         const p = payloadOf(row);
         if (!taskVisible(access, ctx, p)) continue;
+        const taskOrgId = String(p.organizationId || ROOT_ORG);
+        if (organizationId && taskOrgId !== organizationId) continue;
         if (status && String(p.status || "backlog") !== status) continue;
-        out.push({id: String(p.id || row.getString("rid")), title: String(p.title || ""), status: String(p.status || "backlog"), priority: String(p.priority || "normal"), dueDate: p.dueDate || null, assignee: p.assignee || null, organizationId: String(p.organizationId || ROOT_ORG)});
-        if (out.length >= limit) break;
+        if (dueMode && dayState(p.dueDate, now, timezoneOffsetMinutes) !== dueMode) continue;
+        totalCount++;
+        if (out.length >= limit) continue;
+        out.push({
+          id: String(p.id || row.getString("rid")),
+          title: String(p.title || ""),
+          status: String(p.status || "backlog"),
+          priority: String(p.priority || "normal"),
+          dueDate: p.dueDate || null,
+          assignee: p.assignee || null,
+          organizationId: taskOrgId,
+        });
       }
-      return {ok: true, result: {tasks: out}};
+      return {
+        ok: true,
+        result: {
+          organizationId: organizationId || null,
+          timezoneOffsetMinutes: timezoneOffsetMinutes,
+          totalCount: totalCount,
+          tasks: out,
+        },
+      };
     }
 
     if (name === "tasks_create") {
       const title = String(input.title || "").trim();
-      if (!title || title.length > 500) return {ok: false, code: "VALIDATION_ERROR", message: "Некорректное название задачи"};
+      if (!title || title.length > 500) {
+        return {ok: false, code: "VALIDATION_ERROR", message: "Некорректное название задачи"};
+      }
       const target = resolveEmployee(e, ctx, input.assignee);
-      if (target.error) return {ok: false, code: target.error, message: target.error === "AMBIGUOUS_EMPLOYEE" ? "Найдено несколько сотрудников с таким именем" : "Сотрудник не найден"};
+      if (target.error) {
+        return {
+          ok: false,
+          code: target.error,
+          message: target.error === "AMBIGUOUS_EMPLOYEE"
+            ? "Найдено несколько сотрудников с таким именем"
+            : "Сотрудник не найден",
+        };
+      }
       const requestedOrg = String(activeOrganizationId || input.organizationId || ROOT_ORG);
       if (target.id !== ctx.employeeId && !access.canAssignOthers) {
-        recordAudit(e, ctx, {tool: "tasks_create", entityType: "wesi_ai_action", entityId: "tasks_create", organizationId: requestedOrg, ok: false, code: "FORBIDDEN", targetEmployeeId: target.id});
-        return {ok: false, code: "FORBIDDEN", message: "Нет права назначать задачи другим сотрудникам", alternatives: ["Создать задачу себе", "Подготовить текст для руководителя"]};
+        recordAudit(e, ctx, {
+          tool: "tasks_create",
+          entityType: "wesi_ai_action",
+          entityId: "tasks_create",
+          organizationId: requestedOrg,
+          ok: false,
+          code: "FORBIDDEN",
+          targetEmployeeId: target.id,
+        });
+        return {
+          ok: false,
+          code: "FORBIDDEN",
+          message: "Нет права назначать задачи другим сотрудникам",
+          alternatives: ["Создать задачу себе", "Подготовить текст для руководителя"],
+        };
       }
       const orgId = chooseOrganization(access, activeOrganizationId || input.organizationId);
-      if (!orgId) return {ok: false, code: "FORBIDDEN", message: "Нет доступной организации для задачи"};
+      if (!orgId) {
+        return {ok: false, code: "FORBIDDEN", message: "Нет доступной организации для задачи"};
+      }
       let dueDate = null;
       if (input.dueDate != null && String(input.dueDate).trim()) {
         const raw = String(input.dueDate).trim();
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || !Number.isFinite(Date.parse(raw + "T12:00:00Z"))) return {ok: false, code: "VALIDATION_ERROR", message: "Некорректный срок задачи"};
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(raw) || !Number.isFinite(Date.parse(raw + "T12:00:00Z"))) {
+          return {ok: false, code: "VALIDATION_ERROR", message: "Некорректный срок задачи"};
+        }
         dueDate = raw + "T12:00:00.000Z";
       }
-      const priority = ["low", "normal", "high", "urgent"].indexOf(String(input.priority || "normal")) >= 0 ? String(input.priority || "normal") : "normal";
+      const priority = ["low", "normal", "high", "urgent"]
+        .indexOf(String(input.priority || "normal")) >= 0
+        ? String(input.priority || "normal")
+        : "normal";
       const now = new Date().toISOString();
       const id = "wai_task_" + Date.now() + "_" + $security.randomString(8);
       const payload = {
@@ -222,8 +373,27 @@ module.exports = {
       record.set("stamp", now);
       record.set("deleted", false);
       e.app.save(record);
-      recordAudit(e, ctx, {tool: "tasks_create", entityType: "task", entityId: id, organizationId: orgId, ok: true, targetEmployeeId: target.id});
-      return {ok: true, result: {task: {id: id, title: title, dueDate: dueDate, assigneeId: target.id, assignee: target.label, organizationId: orgId}}};
+      recordAudit(e, ctx, {
+        tool: "tasks_create",
+        entityType: "task",
+        entityId: id,
+        organizationId: orgId,
+        ok: true,
+        targetEmployeeId: target.id,
+      });
+      return {
+        ok: true,
+        result: {
+          task: {
+            id: id,
+            title: title,
+            dueDate: dueDate,
+            assigneeId: target.id,
+            assignee: target.label,
+            organizationId: orgId,
+          },
+        },
+      };
     }
 
     return {ok: false, code: "UNKNOWN_TOOL", message: "Неизвестный инструмент Wesi AI"};
