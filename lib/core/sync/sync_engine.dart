@@ -589,41 +589,135 @@ class SyncEngine {
     final pushed = await t.push(c.name, plan.toUpload);
     if (cancelled()) return cancelledReport(applied: applied);
 
-    SyncFailure? policyFailure;
-    var policyApplied = 0;
-    Map<String, SyncRecord> policyRemote = remote.value!;
+    final uploadedById = <String, SyncRecord>{
+      for (final record in plan.toUpload) record.id: record,
+    };
 
-    if (pushed.forbiddenIds.isNotEmpty) {
-      // A permission change can happen between the original fetch and this
-      // forbidden push. Never decide read-only-vs-revoked from the stale
-      // pre-push snapshot; re-read under the post-denial identity/policy.
+    SyncFailure? reconciliationFailure;
+    var reconciliationApplied = 0;
+    Map<String, SyncRecord> refreshedRemote = remote.value!;
+    final needsRefresh = pushed.forbiddenIds.isNotEmpty ||
+        pushed.authoritativeIds.isNotEmpty;
+    var refreshSucceeded = true;
+
+    if (needsRefresh) {
+      // Both permission denial and `applied:false` are post-push outcomes, so
+      // the pre-push fetch is stale by definition. One shared refresh gives us
+      // the current permission-filtered server payload for both cases.
       final refreshed = await t.fetch(c.name);
       if (cancelled()) return cancelledReport(applied: applied);
       if (refreshed.ok) {
-        policyRemote = refreshed.value!;
+        refreshedRemote = refreshed.value!;
       } else {
-        // Fail closed. We still evict forbidden local rows below because the
-        // server has just denied writing them and we cannot prove they remain
-        // readable. A later successful sync can restore any still-authorized
-        // remote records.
-        policyRemote = const <String, SyncRecord>{};
-        policyFailure = SyncFailure(
-          'POLICY_REFRESH_FAILED',
-          'Сервер запретил изменение ${c.name}, но не удалось обновить права чтения: ${refreshed.failure?.message ?? 'неизвестная ошибка'}',
-        );
+        refreshSucceeded = false;
+        // For forbidden rows keep the old fail-closed purge behaviour below.
+        // For authoritativeIds do NOT destroy local data merely because this
+        // second GET had a transient network failure; surface the real failure
+        // and retry later.
+        if (pushed.authoritativeIds.isNotEmpty) {
+          reconciliationFailure ??= refreshed.failure ??
+              const SyncFailure(
+                'AUTHORITATIVE_REFRESH_FAILED',
+                'Не удалось перечитать серверную версию после отклонённой записи',
+              );
+        } else {
+          reconciliationFailure ??= SyncFailure(
+            'POLICY_REFRESH_FAILED',
+            'Сервер запретил изменение ${c.name}, но не удалось обновить права чтения: ${refreshed.failure?.message ?? 'неизвестная ошибка'}',
+          );
+        }
       }
     }
 
+    // applied:false means the server intentionally kept its current row. It is
+    // neither a delivered upload nor a permission failure. Re-fetch and apply
+    // that exact row now, otherwise server revision may not change and local
+    // payload could remain divergent indefinitely.
+    if (refreshSucceeded) {
+      for (final id in pushed.authoritativeIds) {
+        if (cancelled()) {
+          return cancelledReport(applied: applied + reconciliationApplied);
+        }
+
+        final source = uploadedById[id];
+        if (source == null) continue;
+        if (!_localSnapshotStillCurrent(c, id, allLocalBefore[id])) {
+          return SyncCollectionReport(
+            collection: c.name,
+            applied: applied + reconciliationApplied,
+            uploaded: pushed.sent,
+            failure: SyncFailure(
+              'LOCAL_CHANGED_DURING_SYNC',
+              'Локальная запись ${c.name}:$id изменилась, пока сервер отклонял предыдущую версию; новый конфликт будет пересчитан',
+            ),
+          );
+        }
+
+        final visibleRemote = refreshedRemote[id];
+        if (visibleRemote != null) {
+          if (await applyAuthoritative(visibleRemote)) {
+            reconciliationApplied++;
+          } else {
+            await resetIncompleteStamp(id);
+            reconciliationFailure ??= SyncFailure(
+              'REMOTE_APPLY_INCOMPLETE',
+              'Не удалось применить authoritative ${c.name}:$id после server rejection',
+            );
+          }
+          continue;
+        }
+
+        // The POST returned applied:false for an existing authoritative row,
+        // but a permission-filtered GET no longer exposes it. Fail closed: do
+        // not retain a cache that current identity cannot prove it may read.
+        SyncJournal.expect(c.name, id, SyncStamp(_epoch, deleted: true));
+        try {
+          final purged = await _purgeLocalCacheBySyncId(c, id);
+          if (cancelled()) {
+            SyncJournal.forget(c.name, id);
+            return cancelledReport(applied: applied + reconciliationApplied);
+          }
+          if (!purged) throw StateError('cache still contains $id');
+          await SyncJournal.record(
+            c.name,
+            id,
+            SyncStamp(_epoch, deleted: true),
+          );
+          reconciliationApplied++;
+          reconciliationFailure ??= SyncFailure(
+            'AUTHORITATIVE_ROW_HIDDEN',
+            'Сервер отклонил ${c.name}:$id и после обновления прав запись больше не доступна',
+          );
+        } catch (_) {
+          SyncJournal.forget(c.name, id);
+          await resetIncompleteStamp(id);
+          reconciliationFailure ??= SyncFailure(
+            'LOCAL_POLICY_PURGE_FAILED',
+            'Не удалось удалить локальный кэш ${c.name}:$id после скрытия authoritative записи',
+          );
+        }
+      }
+    }
+
+    // Permission-denied writes are reconciled independently. If the refresh
+    // failed, `refreshedRemote` must be treated as empty so forbidden cache is
+    // evicted rather than trusting the stale pre-push snapshot.
+    final policyRemote = refreshSucceeded
+        ? refreshedRemote
+        : const <String, SyncRecord>{};
+
     for (final id in pushed.forbiddenIds) {
-      if (cancelled()) return cancelledReport(applied: applied + policyApplied);
+      if (cancelled()) {
+        return cancelledReport(applied: applied + reconciliationApplied);
+      }
       final visibleRemote = policyRemote[id];
 
       if (visibleRemote != null) {
         if (await applyAuthoritative(visibleRemote)) {
-          policyApplied++;
+          reconciliationApplied++;
         } else {
           await resetIncompleteStamp(id);
-          policyFailure ??= SyncFailure(
+          reconciliationFailure ??= SyncFailure(
             'REMOTE_APPLY_INCOMPLETE',
             'Не удалось восстановить read-only ${c.name}:$id',
           );
@@ -640,7 +734,7 @@ class SyncEngine {
         final purged = await _purgeLocalCacheBySyncId(c, id);
         if (cancelled()) {
           SyncJournal.forget(c.name, id);
-          return cancelledReport(applied: applied + policyApplied);
+          return cancelledReport(applied: applied + reconciliationApplied);
         }
         if (!purged) throw StateError('cache still contains $id');
         await SyncJournal.record(
@@ -648,25 +742,21 @@ class SyncEngine {
           id,
           SyncStamp(_epoch, deleted: true),
         );
-        policyApplied++;
+        reconciliationApplied++;
       } catch (_) {
         SyncJournal.forget(c.name, id);
         await resetIncompleteStamp(id);
-        policyFailure ??= SyncFailure(
+        reconciliationFailure ??= SyncFailure(
           'LOCAL_POLICY_PURGE_FAILED',
           'Не удалось удалить локальный кэш ${c.name}:$id после отзыва доступа',
         );
       }
     }
 
-    if (policyApplied > 0) c.notifyChanged();
-    applied += policyApplied;
+    if (reconciliationApplied > 0) c.notifyChanged();
+    applied += reconciliationApplied;
 
     if (pushed.deliveredIds.isNotEmpty) {
-      final uploadedById = <String, SyncRecord>{
-        for (final record in plan.toUpload) record.id: record,
-      };
-
       for (final id in pushed.deliveredIds) {
         if (cancelled()) return cancelledReport(applied: applied);
         final source = uploadedById[id];
@@ -695,7 +785,7 @@ class SyncEngine {
       collection: c.name,
       applied: applied,
       uploaded: pushed.sent,
-      failure: policyFailure ?? pushed.failure,
+      failure: reconciliationFailure ?? pushed.failure,
     );
   }
 
