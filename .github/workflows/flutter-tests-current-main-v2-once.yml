@@ -24,7 +24,7 @@ jobs:
       - name: Run Flutter tests and capture failures
         shell: bash
         run: |
-          # Revalidate after dartssh2/SDK/NDK compatibility fixes.
+          # Revalidate after pinning dartssh2 2.14.0 with current SDK/NDK.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           PUB=$?
