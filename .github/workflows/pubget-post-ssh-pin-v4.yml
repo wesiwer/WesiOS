@@ -1,0 +1,42 @@
+name: PubGet Post SSH Pin V4
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/pubget-post-ssh-pin-v4.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  pubget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        shell: bash
+        run: |
+          set +e
+          flutter pub get >/tmp/pub.log 2>&1
+          RC=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "PUB_GET=$RC"
+            tail -n 120 /tmp/pub.log
+          } > .github/pubget-post-ssh-pin-v4.txt
+          git config user.name 'WesiOS PubGet V4'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/pubget-post-ssh-pin-v4
+          git add .github/pubget-post-ssh-pin-v4.txt
+          git commit -m 'ops: capture pubget post SSH pin v4'
+          git push --force origin HEAD:diag/pubget-post-ssh-pin-v4
+          test "$RC" -eq 0
