@@ -1,0 +1,409 @@
+ANALYZE=1
+TESTS=0
+ANDROID_DEBUG=0
+NODE_SYNC=1
+SOURCE=fe55c52ddf7a7151b7c87e656a2a13d06c602d05
+=== ANALYZE ===
+warning • The value of the local variable 'accountId' isn't used • lib/core/sync/sync_codec.dart:623:11 • unused_local_variable
+136 issues found. (ran in 26.7s)
+=== NODE ===
+  ---
+  duration_ms: 0.213037
+  type: 'test'
+  ...
+# Subtest: equal-time tombstone wins and preserves current authoritative payload
+ok 18 - equal-time tombstone wins and preserves current authoritative payload
+  ---
+  duration_ms: 0.70701
+  type: 'test'
+  ...
+# Subtest: createIfAbsent never overwrites a canonical row regardless of stamp
+ok 19 - createIfAbsent never overwrites a canonical row regardless of stamp
+  ---
+  duration_ms: 0.368277
+  type: 'test'
+  ...
+# Subtest: append-only existing row is immutable even for a newer incoming stamp
+ok 20 - append-only existing row is immutable even for a newer incoming stamp
+  ---
+  duration_ms: 0.173798
+  type: 'test'
+  ...
+# Subtest: append-only tombstone is rejected before any transaction write
+ok 21 - append-only tombstone is rejected before any transaction write
+  ---
+  duration_ms: 0.535075
+  type: 'test'
+  ...
+# Subtest: missing live employee invalidates transaction authorization
+ok 22 - missing live employee invalidates transaction authorization
+  ---
+  duration_ms: 2.564619
+  type: 'test'
+  ...
+# Subtest: refresh uses current employee modules rather than request snapshot
+ok 23 - refresh uses current employee modules rather than request snapshot
+  ---
+  duration_ms: 0.88219
+  type: 'test'
+  ...
+# Subtest: revoked org grant disappears from transaction scope
+ok 24 - revoked org grant disappears from transaction scope
+  ---
+  duration_ms: 0.298253
+  type: 'test'
+  ...
+# Subtest: employee sync authorization never falls back to portal snapshot
+ok 25 - employee sync authorization never falls back to portal snapshot
+  ---
+  duration_ms: 0.930932
+  type: 'test'
+  ...
+# Subtest: missing live employee terminates session with UnauthorizedError
+ok 26 - missing live employee terminates session with UnauthorizedError
+  ---
+  duration_ms: 0.228249
+  type: 'test'
+  ...
+# Subtest: ordinary employee sees only CRM rows in org + ownership/responsibility scope
+ok 27 - ordinary employee sees only CRM rows in org + ownership/responsibility scope
+  ---
+  duration_ms: 1.249506
+  type: 'test'
+  ...
+# Subtest: deleted relations propagate tombstones but do not expose live rows forever
+ok 28 - deleted relations propagate tombstones but do not expose live rows forever
+  ---
+  duration_ms: 0.210904
+  type: 'test'
+  ...
+# Subtest: manager still cannot cross allowed organization boundary
+ok 29 - manager still cannot cross allowed organization boundary
+  ---
+  duration_ms: 0.253126
+  type: 'test'
+  ...
+# Subtest: ordinary employee cannot edit foreign client even if an assigned deal makes it readable
+not ok 30 - ordinary employee cannot edit foreign client even if an assigned deal makes it readable
+  ---
+  duration_ms: 0.80808
+  type: 'test'
+  location: '/home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_crm_contract_test.mjs:117:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    The error is expected to be an instance of "FakeForbiddenError". Received "TypeError"
+    
+    Error message:
+    
+    runtime.authorizeClient is not a function
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  stack: |-
+    TestContext.<anonymous> (file:///home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_crm_contract_test.mjs:130:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: new ordinary client is normalized to current employee owner
+not ok 31 - new ordinary client is normalized to current employee owner
+  ---
+  duration_ms: 0.1482
+  type: 'test'
+  location: '/home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_crm_contract_test.mjs:136:1'
+  failureType: 'testCodeFailure'
+  error: 'runtime.authorizeClient is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_crm_contract_test.mjs:143:11)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: legacy all-row sync reads are internally paged instead of truncated at 10k
+ok 32 - legacy all-row sync reads are internally paged instead of truncated at 10k
+  ---
+  duration_ms: 5.491986
+  type: 'test'
+  ...
+# Subtest: invalid negative sync read limit remains bounded
+ok 33 - invalid negative sync read limit remains bounded
+  ---
+  duration_ms: 0.20212
+  type: 'test'
+  ...
+# Subtest: missing row and backend failure are different sync states
+ok 34 - missing row and backend failure are different sync states
+  ---
+  duration_ms: 1.139532
+  type: 'test'
+  ...
+# Subtest: all production sync gateway reads use the shared fail-closed contract
+ok 35 - all production sync gateway reads use the shared fail-closed contract
+  ---
+  duration_ms: 0.669014
+  type: 'test'
+  ...
+# Subtest: extended sync helpers live in a request-local runtime module
+ok 36 - extended sync helpers live in a request-local runtime module
+  ---
+  duration_ms: 2.676615
+  type: 'test'
+  ...
+# Subtest: route callbacks require the runtime instead of closing over top-level helpers
+ok 37 - route callbacks require the runtime instead of closing over top-level helpers
+  ---
+  duration_ms: 0.410389
+  type: 'test'
+  ...
+# Subtest: all audited extended collections remain explicitly registered
+ok 38 - all audited extended collections remain explicitly registered
+  ---
+  duration_ms: 1.939821
+  type: 'test'
+  ...
+# Subtest: legacy profile_private is migrated before canonical profile or shield access
+ok 39 - legacy profile_private is migrated before canonical profile or shield access
+  ---
+  duration_ms: 0.469047
+  type: 'test'
+  ...
+# Subtest: migration never overwrites canonical targets and converts avatar bytes
+ok 40 - migration never overwrites canonical targets and converts avatar bytes
+  ---
+  duration_ms: 0.378201
+  type: 'test'
+  ...
+# Subtest: extended normal writes use transactional authoritative commit
+ok 41 - extended normal writes use transactional authoritative commit
+  ---
+  duration_ms: 1.031702
+  type: 'test'
+  ...
+# Subtest: profile is a singleton channel with rid me on both read and write
+ok 42 - profile is a singleton channel with rid me on both read and write
+  ---
+  duration_ms: 0.331542
+  type: 'test'
+  ...
+# Subtest: ordinary employee sees only participant-scoped file metadata
+ok 43 - ordinary employee sees only participant-scoped file metadata
+  ---
+  duration_ms: 1.309865
+  type: 'test'
+  ...
+# Subtest: manager can see all file metadata rows
+ok 44 - manager can see all file metadata rows
+  ---
+  duration_ms: 0.215049
+  type: 'test'
+  ...
+# Subtest: ordinary employee cannot create request for another employee
+ok 45 - ordinary employee cannot create request for another employee
+  ---
+  duration_ms: 0.597427
+  type: 'test'
+  ...
+# Subtest: request participants are immutable after creation
+ok 46 - request participants are immutable after creation
+  ---
+  duration_ms: 0.254568
+  type: 'test'
+  ...
+# Subtest: ordinary employee cannot mutate grants
+ok 47 - ordinary employee cannot mutate grants
+  ---
+  duration_ms: 0.217743
+  type: 'test'
+  ...
+# Subtest: ordinary employee may only record a handover from self
+ok 48 - ordinary employee may only record a handover from self
+  ---
+  duration_ms: 0.23598
+  type: 'test'
+  ...
+# Subtest: employee avatar update preserves transaction-current protected fields
+ok 49 - employee avatar update preserves transaction-current protected fields
+  ---
+  duration_ms: 2.30307
+  type: 'test'
+  ...
+# Subtest: task cannot be updated after concurrent reassignment outside employee scope
+ok 50 - task cannot be updated after concurrent reassignment outside employee scope
+  ---
+  duration_ms: 0.659169
+  type: 'test'
+  ...
+# Subtest: transaction cannot be moved from an organization without edit permission
+ok 51 - transaction cannot be moved from an organization without edit permission
+  ---
+  duration_ms: 0.372603
+  type: 'test'
+  ...
+# Subtest: message authorization rechecks transaction-current parent chat
+ok 52 - message authorization rechecks transaction-current parent chat
+  ---
+  duration_ms: 0.248108
+  type: 'test'
+  ...
+# Subtest: knowledge reparenting requires access to both current and target scope
+ok 53 - knowledge reparenting requires access to both current and target scope
+  ---
+  duration_ms: 0.287397
+  type: 'test'
+  ...
+# Subtest: newer incoming row is accepted
+ok 54 - newer incoming row is accepted
+  ---
+  duration_ms: 1.583701
+  type: 'test'
+  ...
+# Subtest: late stale request cannot overwrite newer server row
+ok 55 - late stale request cannot overwrite newer server row
+  ---
+  duration_ms: 0.166127
+  type: 'test'
+  ...
+# Subtest: deletion wins an exact timestamp tie
+ok 56 - deletion wins an exact timestamp tie
+  ---
+  duration_ms: 1.359149
+  type: 'test'
+  ...
+# Subtest: existing server row is authoritative on equal live timestamps
+ok 57 - existing server row is authoritative on equal live timestamps
+  ---
+  duration_ms: 0.221529
+  type: 'test'
+  ...
+# Subtest: valid incoming row repairs an invalid historical server stamp
+ok 58 - valid incoming row repairs an invalid historical server stamp
+  ---
+  duration_ms: 0.186858
+  type: 'test'
+  ...
+# Subtest: company and private scopes produce one composite revision
+ok 59 - company and private scopes produce one composite revision
+  ---
+  duration_ms: 1.632314
+  type: 'test'
+  ...
+# Subtest: owner account does not need a duplicate private marker
+ok 60 - owner account does not need a duplicate private marker
+  ---
+  duration_ms: 0.312914
+  type: 'test'
+  ...
+# Subtest: duplicate historical markers are deterministic and all affect the token
+ok 61 - duplicate historical markers are deterministic and all affect the token
+  ---
+  duration_ms: 0.241128
+  type: 'test'
+  ...
+# Subtest: marker logical stamp advances even when two writes share one millisecond
+ok 62 - marker logical stamp advances even when two writes share one millisecond
+  ---
+  duration_ms: 91.056976
+  type: 'test'
+  ...
+# Subtest: duplicate markers advance from the newest previous logical stamp
+ok 63 - duplicate markers advance from the newest previous logical stamp
+  ---
+  duration_ms: 0.387805
+  type: 'test'
+  ...
+# Subtest: marker stays above an allowed future business stamp for legacy revision
+ok 64 - marker stays above an allowed future business stamp for legacy revision
+  ---
+  duration_ms: 0.308989
+  type: 'test'
+  ...
+# Subtest: pre-marker installations fall back to latest business state until first write
+ok 65 - pre-marker installations fall back to latest business state until first write
+  ---
+  duration_ms: 0.30335
+  type: 'test'
+  ...
+# Subtest: latest business row remains a fallback when marker nonce is unchanged
+ok 66 - latest business row remains a fallback when marker nonce is unchanged
+  ---
+  duration_ms: 0.377781
+  type: 'test'
+  ...
+# Subtest: record hook covers create, update and delete while excluding marker recursion
+ok 67 - record hook covers create, update and delete while excluding marker recursion
+  ---
+  duration_ms: 0.972774
+  type: 'test'
+  ...
+# Subtest: legacy profile_private POST is rejected while old GET data stays migratable
+ok 68 - legacy profile_private POST is rejected while old GET data stays migratable
+  ---
+  duration_ms: 0.77477
+  type: 'test'
+  ...
+# Subtest: revision-v2 no longer derives its primary token from one max row
+ok 69 - revision-v2 no longer derives its primary token from one max row
+  ---
+  duration_ms: 0.420084
+  type: 'test'
+  ...
+# Subtest: touch retries as update when another hook wins the first marker create
+not ok 70 - touch retries as update when another hook wins the first marker create
+  ---
+  duration_ms: 54.034854
+  type: 'test'
+  location: '/home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_revision_race_test.mjs:109:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    retry must issue a fresh revision token instead of accepting the competitor token
+    + actual - expected
+    
+    + '1787071169998:nonce-2'
+    - 'nonce-2'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'nonce-2'
+  actual: '1787071169998:nonce-2'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_revision_race_test.mjs:122:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+# Subtest: clean install exits before querying a missing wesios_records table
+ok 71 - clean install exits before querying a missing wesios_records table
+  ---
+  duration_ms: 2.401486
+  type: 'test'
+  ...
+# Subtest: migration keeps one deterministic LWW winner per sync identity
+ok 72 - migration keeps one deterministic LWW winner per sync identity
+  ---
+  duration_ms: 2.032087
+  type: 'test'
+  ...
+# Subtest: migration persists the exact unique owner/coll/rid index
+ok 73 - migration persists the exact unique owner/coll/rid index
+  ---
+  duration_ms: 0.705979
+  type: 'test'
+  ...
+1..73
+# tests 73
+# suites 0
+# pass 69
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 709.966217
