@@ -84,6 +84,7 @@ function clientVisible(ctx, crm, row, includeDeletedRelations) {
     if (!includeDeletedRelations && dealRow.getBool("deleted")) continue;
     const d = payloadOf(dealRow);
     if (String(d.clientId || "") !== id) continue;
+    if (orgIdOf(d) !== orgId) continue;
     if (!orgAllowed(ctx, orgIdOf(d))) continue;
     if (String(d.responsibleEmployeeId || "") === ctx.employeeId) return true;
   }
@@ -302,9 +303,9 @@ function authorizeInteraction(txApp, existing, input, ctx) {
 }
 
 function write(e, collection) {
-  const ctx = e.get("wesiSyncContext");
-  if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
-  if (!hasCrm(ctx)) forbidden("Раздел CRM не открыт этому сотруднику");
+  const requestCtx = e.get("wesiSyncContext");
+  if (!requestCtx) throw new UnauthorizedError("Нет контекста синхронизации");
+  if (!hasCrm(requestCtx)) forbidden("Раздел CRM не открыт этому сотруднику");
 
   const body = e.requestInfo().body || {};
   const rid = String(body.rid || "").trim();
@@ -323,20 +324,25 @@ function write(e, collection) {
     ? new Date(parsedStamp).toISOString()
     : new Date(now).toISOString();
 
+  const fresh = (txApp) => {
+    const ctx = require(`${__hooks}/wesi_sync_authz.js`).refresh(txApp, requestCtx);
+    if (!hasCrm(ctx)) forbidden("Раздел CRM больше не открыт этому сотруднику");
+    return ctx;
+  };
   const authorize = collection === "crm_clients"
     ? function(txApp, existing, input) {
-        authorizeClient(txApp, existing, input, ctx);
+        authorizeClient(txApp, existing, input, fresh(txApp));
       }
     : collection === "crm_deals"
       ? function(txApp, existing, input) {
-          authorizeDeal(txApp, existing, input, ctx);
+          authorizeDeal(txApp, existing, input, fresh(txApp));
         }
       : function(txApp, existing, input) {
-          authorizeInteraction(txApp, existing, input, ctx);
+          authorizeInteraction(txApp, existing, input, fresh(txApp));
         };
 
   const committed = require(`${__hooks}/wesi_sync_atomic.js`).commit(e.app, {
-    owner: ctx.ownerId,
+    owner: requestCtx.ownerId,
     org: "wesi-inc",
     coll: collection,
     rid: rid,
