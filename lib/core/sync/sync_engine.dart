@@ -67,6 +67,9 @@ class SyncEngine {
   static Future<void>? _prepareFuture;
   static int _runGeneration = 0;
 
+  static DateTime get _epoch =>
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+
   static void invalidateActiveRun() {
     _runGeneration++;
     SyncJournal.discardExpectations();
@@ -123,28 +126,14 @@ class SyncEngine {
 
     if (cancelled()) return;
 
-    // Missing journal stamps are not only a first-install problem. A later
-    // app version may introduce a new sync collection after this account has
-    // already completed many successful exchanges. The old single
-    // `sync_seeded_at` marker cannot tell whether THAT collection was seeded.
-    //
-    // Seed missing rows on every new lifecycle. On the true first exchange the
-    // existing server-wins rule protects conflicts, so using current time is
-    // fine. For an established account, an unknown legacy timestamp is seeded
-    // at epoch: a matching remote row wins, while a local-only row is still
-    // uploaded because the server has no competing record.
     final observedAt = now ?? SyncClock.now();
-    final seedAt = SyncEndpoint.lastRun == null
-        ? observedAt
-        : DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+    final seedAt = SyncEndpoint.lastRun == null ? observedAt : _epoch;
     for (final c in SyncCodec.collections) {
       if (cancelled()) return;
       await SyncJournal.seed(c.name, c.local().keys, seedAt);
     }
     if (cancelled()) return;
 
-    // Keep the coarse marker for compatibility/diagnostics, but correctness no
-    // longer depends on it being collection-aware.
     if (SyncEndpoint.seededAt == null) {
       await SyncEndpoint.markSeeded(observedAt);
       if (cancelled()) return;
@@ -188,13 +177,19 @@ class SyncEngine {
     final stamps = SyncJournal.forCollection(c.name);
     final out = <String, SyncRecord>{};
 
+    // A missing stamp on an established account is unknown history, not a
+    // fresh edit. Treat it conservatively as epoch so a matching remote row
+    // wins. On the true first exchange `_onlyNewTo` already protects conflicts,
+    // and the current timestamp remains useful for local-only seed data.
+    final safeFallback = firstEverExchange ? fallbackStamp : _epoch;
+
     values.forEach((id, value) {
       final stamp = stamps[id];
       out[id] = SyncRecord(
         id: id,
         fields: c.encode(value),
         updatedAt:
-            (stamp != null && !stamp.deleted) ? stamp.updatedAt : fallbackStamp,
+            (stamp != null && !stamp.deleted) ? stamp.updatedAt : safeFallback,
       );
     });
 
@@ -342,11 +337,7 @@ class SyncEngine {
 
     Future<void> resetIncompleteStamp(String id) async {
       SyncJournal.forget(c.name, id);
-      await SyncJournal.record(
-        c.name,
-        id,
-        SyncStamp(DateTime.fromMillisecondsSinceEpoch(0, isUtc: true)),
-      );
+      await SyncJournal.record(c.name, id, SyncStamp(_epoch));
     }
 
     while (pending.isNotEmpty) {
@@ -440,9 +431,31 @@ class SyncEngine {
     if (cancelled()) return cancelledReport(applied: applied);
 
     if (pushed.deliveredIds.isNotEmpty) {
+      final uploadedById = <String, SyncRecord>{
+        for (final record in plan.toUpload) record.id: record,
+      };
+
+      // Align the local LWW journal with the timestamp actually committed by
+      // the server. This closes the loop when the server clamps a far-future
+      // device clock. If a successful response omitted a valid stamp, epoch is
+      // safer than keeping the client's untrusted future value: the next pull
+      // will restore the authoritative server timestamp.
+      for (final id in pushed.deliveredIds) {
+        if (cancelled()) return cancelledReport(applied: applied);
+        final source = uploadedById[id];
+        final serverStamp = pushed.acceptedStamps[id] ?? _epoch;
+        await SyncJournal.record(
+          c.name,
+          id,
+          SyncStamp(serverStamp, deleted: source?.deleted == true),
+        );
+      }
+
+      if (cancelled()) return cancelledReport(applied: applied);
       await c.afterUpload(pushed.deliveredIds);
       if (cancelled()) return cancelledReport(applied: applied);
     }
+
     return SyncCollectionReport(
       collection: c.name,
       applied: applied,
