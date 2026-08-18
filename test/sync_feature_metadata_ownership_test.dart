@@ -17,7 +17,7 @@ void main() {
 
     expect(endpoint, contains("static const String _lastRunKey = 'sync_last_run';"));
     expect(endpoint, contains("static const String _seededKey = 'sync_seeded_at';"));
-    expect(endpoint, contains("return '$base::\$userId';"),
+    expect(endpoint, contains("return '\$base::\$userId';"),
         reason:
             'run/seed metadata authority must remain scoped by PocketBase auth user');
   });
