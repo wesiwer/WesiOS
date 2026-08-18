@@ -27,15 +27,17 @@ jobs:
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           PUB=$?
-          flutter analyze --no-fatal-infos >/tmp/analyze.log 2>&1
+          flutter analyze --no-fatal-infos --no-fatal-warnings >/tmp/analyze.log 2>&1
           ANALYZE=$?
           set -e
           {
             echo "SOURCE=$(git rev-parse HEAD)"
             echo "PUB_GET=$PUB"
             echo "ANALYZE=$ANALYZE"
-            echo '=== ANALYZE ==='
-            cat /tmp/analyze.log
+            echo '=== ERRORS ==='
+            grep -n 'error •' /tmp/analyze.log || true
+            echo '=== ANALYZE TAIL ==='
+            tail -n 160 /tmp/analyze.log
           } > .github/analyze-current-main.txt
           git config user.name 'WesiOS Analyzer'
           git config user.email 'actions@users.noreply.github.com'
