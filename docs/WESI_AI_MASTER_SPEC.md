@@ -132,8 +132,13 @@ Policy Engine находится ниже модели и не может быт
 
 ## 9. Субагенты
 
-Основной агент должен уметь создавать специализированных субагентов. Предустановленные роли могут включать:
-- Coding/Flutter Agent;
+Основной агент (Lead Persona: Зейн или Нирвана) должен уметь создавать и вызывать специализированных субагентов. Субагенты находятся **ниже** Persona Agents и не являются пользовательскими личностями.
+
+### 9.1. Базовые предустановленные роли
+
+Минимальный набор предустановленных ролей:
+
+- Coding / Flutter Agent;
 - QA Agent;
 - Build Agent;
 - Research Agent;
@@ -141,9 +146,205 @@ Policy Engine находится ниже модели и не может быт
 - Media Agent;
 - Review Agent.
 
-Обязательны **динамические субагенты**: Main Agent может создать временного специалиста под конкретную задачу, например CMake/Gradle/database specialist, задать ему узкий system role, task, context и ограниченный набор tools. После выполнения временный агент закрывается, а его результат возвращается координатору.
+### 9.2. Динамические субагенты
 
-Субагент не обязан быть отдельной локальной моделью/процессом: это может быть отдельный LLM API call с собственным контекстом. Resource Scheduler ограничивает реальный параллелизм тяжёлых инструментов.
+Обязательны **динамические субагенты**: Lead Persona / Orchestrator может создать временного специалиста под конкретную задачу (например CMake/Gradle/database specialist), задать ему:
+
+- узкий system role;
+- конкретную task;
+- ограниченный context;
+- whitelist tools;
+- resource budget.
+
+После выполнения временный агент закрывается, его рабочий контекст уничтожается, а structured result возвращается создавшей его Persona / координатору.
+
+Субагент не обязан быть отдельной локальной моделью или процессом: это может быть отдельный LLM API call с собственным контекстом. Resource Scheduler ограничивает реальный параллелизм тяжёлых инструментов.
+
+### 9.3. Agency-Agents — библиотека специализированных субагентов
+
+Каталог `msitarzewski/agency-agents` (The Agency) используется как **библиотека готовых специализированных ролей**, а не как набор новых пользовательских персон.
+
+**Принцип:**
+
+- Agency-агент = специализированный или шаблон для динамического субагента.
+- Agency-агент **никогда** не становится Lead Persona.
+- Agency-агент **не может** расширять собственные permissions.
+- Все tool-вызовы идут только через Action Broker и Policy Engine.
+- Тяжёлые операции (L3/L4) выполняются только на Desktop / Remote Worker.
+- Контекст субагенту передаётся минимально необходимый (не вся история чата).
+
+Иерархия остаётся неизменной:
+
+```
+User
+  → Selected Persona (Зейн / Нирвана) — Lead
+    → Orchestrator / Router
+      → Persona Co-Agent (при необходимости)
+        → Specialized / Dynamic Subagents (в т.ч. Agency-Agents)
+          → Tool Runtime / Workers
+            → Policy Engine
+              → Integration / Review
+                → Lead Persona
+                  → User
+```
+
+### 9.4. Модель данных Agency-агента
+
+Каждый агент каталога нормализуется в:
+
+- `id` — стабильный идентификатор;
+- `name`;
+- `division` (engineering, design, marketing, paid-media, sales, product, project-management, testing, support, finance, security, specialized и др.);
+- `description`;
+- `system_prompt` — адаптированный под контракт Wesi AI;
+- `vibe` / personality;
+- `preferred_persona` — `zane` | `nirvana` | `both`;
+- `default_tools` — whitelist;
+- `risk_level`;
+- `success_metrics` / KPI (если есть);
+- `source_path`;
+- `version` / `hash`;
+- `enabled`.
+
+Хранение: нормализованный индекс (Hive / server metadata) + оригинальный markdown для аудита. Импорт идемпотентный.
+
+### 9.5. Импорт и сопровождение каталога
+
+- Источник: git-submodule или контролируемый pull `msitarzewski/agency-agents`.
+- Обязателен адаптационный слой: исходные prompts переписываются под Wesi AI (Policy, tools, workspace, запрет raw shell, формат handoff result).
+- Breaking-изменения upstream system_prompt не применяются молча — требуется diff/review.
+- Каталог поддерживает фильтрацию по division, preferred_persona, enabled и поиск.
+
+### 9.6. Принадлежность отделов Persona
+
+| Домены | Предпочтительный Lead |
+|--------|------------------------|
+| Engineering, Backend, Frontend, AI Engineer, DevOps, Security, Testing, Data, Build | Зейн |
+| Design, UX, UI, Branding, Visual, Motion, Creative Media, Storytelling | Нирвана |
+| Product (tech-heavy) | Зейн (+ Нирвана при UX) |
+| Marketing / Growth (creative) | Нирвана (+ Зейн при аналитике) |
+| Finance, Sales, Support, Project Management | both (по типу задачи) |
+
+Это приоритеты, не жёсткие запреты.
+
+### 9.7. Роутер и автоматический выбор
+
+Orchestrator обязан:
+
+1. Классифицировать intent и domains задачи.
+2. Определить Lead Persona (если ещё не выбрана).
+3. Решить, нужен ли Co-Agent.
+4. Подобрать 1–5 Agency-субагентов **или** создать dynamic subagent на их основе.
+5. Сформировать typed `handoff_task` (цель, scope, ожидаемый результат, контекст, artifacts, критерии приёмки, tools, budget).
+6. Запустить с учётом Resource Scheduler.
+7. Собрать structured results → review/integration → ответ от Lead Persona.
+
+Правила экономии:
+
+- не вызывать лишних субагентов и Co-Agent без пользы;
+- минимальный контекст;
+- учитывать cost и latency;
+- простые задачи Lead закрывает сам.
+
+### 9.8. Dynamic Subagents на базе Agency
+
+Lead может:
+
+- взять Agency-агента как шаблон;
+- сузить system role под подзадачу;
+- ограничить tools и budget;
+- выполнить работу;
+- закрыть временный контекст;
+- принять / отклонить / отправить на revision результат.
+
+Динамический субагент не сохраняется как постоянный чат и не является пользовательской личностью.
+
+### 9.9. Handoff result
+
+Structured result субагента обязан содержать:
+
+- изменения / artifacts;
+- assumptions;
+- blockers;
+- validation status;
+- рекомендации;
+- provenance.
+
+Lead принимает, отклоняет или возвращает на revision.  
+Пользователь по умолчанию получает итог от Lead Persona. Timeline handoff’ов доступен для сложных задач.
+
+### 9.10. Инструменты и данные WesiOS
+
+Субагенты используют только brokered capabilities:
+
+- Tasks, Calendar, Treasury, CRM, Knowledge, Roadmap, Audio Vault, Team и другие зарегистрированные tools;
+- filesystem / terminal / Git / HTTP / runtimes — только через Local Runtime и Policy;
+- никаких raw shell, host secrets и расширения scopes.
+
+Employee / organization isolation соблюдается так же, как для Persona.
+
+### 9.11. Приоритет ролей для первого внедрения
+
+**Высокий (MVP):**
+- Engineering: Frontend, Backend, AI Engineer, DevOps, Code Reviewer, Security
+- Product / Project Management
+- Testing / QA
+- Finance / Analytics
+- Reality Checker
+
+**Средний:**
+- Design / UX / UI
+- Marketing / Growth
+- Sales / Support
+
+**Низкий (позже):**
+- Spatial, Game, Academic и узкие роли.
+
+Запрещено тащить весь каталог (100–200+ агентов) в каждый запрос. Роутер обязан быть жадным.
+
+### 9.12. Этапы внедрения Agency-слоя
+
+**A — Foundation**
+- Импортёр → модель.
+- Реестр.
+- Ручной вызов субагента из чата Зейна/Нирваны.
+- Адаптация prompts.
+
+**B — Smart Routing**
+- Intent + domain matching.
+- Автовыбор 1–3 агентов.
+- Handoff protocol.
+- Ограничение параллелизма Scheduler’ом.
+
+**C — Full Integration**
+- Работа с реальными WesiOS tools.
+- Conflict-safe multi-agent workspace (Stage 13).
+- Команды агентов.
+- Метрики успешности.
+
+**D — Polish**
+- UI каталога и timeline.
+- Обновление из upstream.
+- Cost/budget awareness.
+
+### 9.13. Acceptance
+
+- Из чата Зейна/Нирваны можно автоматически или вручную вызвать Agency-субагента.
+- Субагент работает только в рамках Policy Engine и возвращает structured result.
+- Lead интегрирует результат и отвечает пользователю.
+- Параллельный запуск уважает Resource Scheduler.
+- Нет деградации Stage 1–10.
+- Есть тесты: импорт, нормализация, роутинг, handoff, policy isolation, org/employee isolation.
+- L3/L4 не выполняются на Control Plane VPS.
+
+### 9.14. Запреты
+
+- Делать Agency-агентов новыми пользовательскими персонами.
+- Обходить Policy Engine / Action Broker / Capability Registry.
+- Передавать субагенту всю историю чата без необходимости.
+- Выполнять тяжёлые workload’ы на Main/Control Plane.
+- Молча применять breaking-изменения upstream prompts.
+- Считать слой «готовым» без acceptance и тестов.
 
 ## 10. AI Projects
 
