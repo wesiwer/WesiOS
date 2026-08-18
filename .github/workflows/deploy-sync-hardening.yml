@@ -11,6 +11,8 @@ on:
       - 'server/pb_hooks/wesi_sync_crm_runtime.js'
       - 'server/pb_hooks/wesi_sync_context.pb.js'
       - 'server/pb_hooks/wesi_ai_sync_writer.js'
+      - 'server/pb_hooks/wesi_ai_lib.js'
+      - 'server/pb_hooks/wesi_ai_audit.js'
       - 'server/pb_hooks/wesi_ai_task_tools.js'
       - 'server/pb_hooks/wesi_ai_calendar_write_tools.js'
       - 'server/pb_hooks/wesi_ai_task_write_tools.js'
@@ -21,6 +23,7 @@ on:
       - 'server/pb_hooks/wesi_ai_audio_tools.js'
       - 'server/pb_hooks/wesi_sync_authz_test.mjs'
       - 'server/pb_hooks/wesi_sync_context_contract_test.mjs'
+      - 'server/pb_hooks/wesi_ai_identity_contract_test.mjs'
       - 'server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs'
       - 'server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs'
       - '.github/workflows/deploy-sync-hardening.yml'
@@ -54,6 +57,8 @@ jobs:
             server/pb_hooks/wesi_sync_crm_runtime.js
             server/pb_hooks/wesi_sync_context.pb.js
             server/pb_hooks/wesi_ai_sync_writer.js
+            server/pb_hooks/wesi_ai_lib.js
+            server/pb_hooks/wesi_ai_audit.js
             server/pb_hooks/wesi_ai_task_tools.js
             server/pb_hooks/wesi_ai_calendar_write_tools.js
             server/pb_hooks/wesi_ai_task_write_tools.js
@@ -72,11 +77,14 @@ jobs:
             server/pb_hooks/wesi_sync_authz_test.mjs \
             server/pb_hooks/wesi_sync_generic_policy_test.mjs \
             server/pb_hooks/wesi_sync_context_contract_test.mjs \
+            server/pb_hooks/wesi_ai_identity_contract_test.mjs \
             server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs \
             server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs
           grep -q 'UnauthorizedError("Сотрудник деактивирован' server/pb_hooks/wesi_sync_context.pb.js
+          grep -q 'UnauthorizedError("Сотрудник деактивирован' server/pb_hooks/wesi_ai_lib.js
           grep -q 'authz.refresh(txApp, requestCtx)' server/pb_hooks/wesi_ai_sync_writer.js
           grep -q 'rebase: function' server/pb_hooks/wesi_ai_sync_writer.js
+          grep -q 'wesi_sync_atomic.js' server/pb_hooks/wesi_ai_audit.js
 
       - name: Check production SSH configuration
         env:
@@ -127,6 +135,8 @@ jobs:
             server/pb_hooks/wesi_sync_crm_runtime.js \
             server/pb_hooks/wesi_sync_context.pb.js \
             server/pb_hooks/wesi_ai_sync_writer.js \
+            server/pb_hooks/wesi_ai_lib.js \
+            server/pb_hooks/wesi_ai_audit.js \
             server/pb_hooks/wesi_ai_task_tools.js \
             server/pb_hooks/wesi_ai_calendar_write_tools.js \
             server/pb_hooks/wesi_ai_task_write_tools.js \
@@ -147,6 +157,8 @@ jobs:
             wesi_sync_crm_runtime.js
             wesi_sync_context.pb.js
             wesi_ai_sync_writer.js
+            wesi_ai_lib.js
+            wesi_ai_audit.js
             wesi_ai_task_tools.js
             wesi_ai_calendar_write_tools.js
             wesi_ai_task_write_tools.js
