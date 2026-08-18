@@ -55,9 +55,9 @@ function legacyBytesToBase64(value) {
 ///   * profile/me     — one canonical profile record;
 ///   * shield_private — keyed Shield configuration only.
 ///
-/// Never overwrite a canonical target that already exists. This migration is
-/// therefore safe to run before every profile/shield read or write and also
-/// safe during a rolling deployment with multiple devices.
+/// Canonical targets are created through transactional createIfAbsent. That is
+/// stronger than an outer "if (!existing) save": two concurrent migration/
+/// current-client requests cannot let legacy data overwrite a canonical row.
 function migrateLegacyProfilePrivate(e) {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
@@ -66,6 +66,7 @@ function migrateLegacyProfilePrivate(e) {
   if (!owner) return;
 
   const access = require(`${__hooks}/wesi_sync_data_access.js`);
+  const atomic = require(`${__hooks}/wesi_sync_atomic.js`);
   const legacy = access.records(
     e.app,
     "wesios_records",
@@ -96,7 +97,6 @@ function migrateLegacyProfilePrivate(e) {
     shield_password_hint: true,
   };
 
-  const recordsCollection = e.app.findCollectionByNameOrId("wesios_records");
   const profilePayload = {};
   let profileStampMs = -1;
   let hasProfileValue = false;
@@ -108,23 +108,15 @@ function migrateLegacyProfilePrivate(e) {
 
     if (shieldKeys[key] === true) {
       const rid = String(ctx.employeeId) + "::" + key;
-      const existingShield = access.first(
-        e.app,
-        "wesios_records",
-        "owner={:owner} && coll='shield_private' && rid={:rid}",
-        {owner: owner, rid: rid},
-      );
-      if (!existingShield) {
-        const migratedShield = new Record(recordsCollection);
-        migratedShield.set("owner", owner);
-        migratedShield.set("org", "private:" + String(ctx.employeeId));
-        migratedShield.set("coll", "shield_private");
-        migratedShield.set("rid", rid);
-        migratedShield.set("payload", {key: key, value: old.value});
-        migratedShield.set("stamp", safeStamp(row.getString("stamp")));
-        migratedShield.set("deleted", false);
-        e.app.save(migratedShield);
-      }
+      atomic.createIfAbsent(e.app, {
+        owner: owner,
+        org: "private:" + String(ctx.employeeId),
+        coll: "shield_private",
+        rid: rid,
+        payload: {key: key, value: old.value},
+        stamp: safeStamp(row.getString("stamp")),
+        deleted: false,
+      });
     }
 
     const target = profileKeys[key];
@@ -144,26 +136,17 @@ function migrateLegacyProfilePrivate(e) {
 
   if (!hasProfileValue) return;
 
-  const existingProfile = access.first(
-    e.app,
-    "wesios_records",
-    "owner={:owner} && coll='profile' && rid='me'",
-    {owner: owner},
-  );
-  if (existingProfile) return;
-
-  const profile = new Record(recordsCollection);
-  profile.set("owner", owner);
-  profile.set("org", "private:" + String(ctx.employeeId));
-  profile.set("coll", "profile");
-  profile.set("rid", "me");
-  profile.set("payload", profilePayload);
-  profile.set(
-    "stamp",
-    safeStamp(profileStampMs >= 0 ? new Date(profileStampMs).toISOString() : null),
-  );
-  profile.set("deleted", false);
-  e.app.save(profile);
+  atomic.createIfAbsent(e.app, {
+    owner: owner,
+    org: "private:" + String(ctx.employeeId),
+    coll: "profile",
+    rid: "me",
+    payload: profilePayload,
+    stamp: safeStamp(
+      profileStampMs >= 0 ? new Date(profileStampMs).toISOString() : null,
+    ),
+    deleted: false,
+  });
 }
 
 function read(e, collection, scope, requiredModule, privateKeyed) {
@@ -218,7 +201,7 @@ function write(e, collection, scope, requiredModule, privateKeyed) {
     throw new BadRequestError("Некорректный id синхронизации");
   }
 
-  let incoming =
+  const incoming =
     body.payload && typeof body.payload === "object" && !Array.isArray(body.payload)
       ? body.payload
       : {};
@@ -244,49 +227,23 @@ function write(e, collection, scope, requiredModule, privateKeyed) {
 
   const privateScope = scope === "private" || privateKeyed === true;
   const owner = privateScope ? e.auth.id : ctx.ownerId;
-  let existing = null;
-  existing = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
-      "wesios_records",
-      "owner={:owner} && coll={:coll} && rid={:rid}",
-      {owner: owner, coll: collection, rid: rid},
-    );
+  const committed = require(`${__hooks}/wesi_sync_atomic.js`).commit(e.app, {
+    owner: owner,
+    org: privateScope ? "private:" + String(ctx.employeeId) : "wesi-inc",
+    coll: collection,
+    rid: rid,
+    payload: incoming,
+    stamp: stamp,
+    deleted: deleted,
+  });
 
-  // Keep the previous payload on tombstones so scoped metadata is not lost.
-  if (deleted && existing) incoming = payloadOf(existing);
-
-  if (existing) {
-    const decision = require(`${__hooks}/wesi_sync_lww.js`).decide(
-      existing.getString("stamp"),
-      existing.getBool("deleted"),
-      stamp,
-      deleted,
-    );
-    if (!decision.apply) {
-      return e.json(200, {
-        ok: true,
-        rid: rid,
-        stamp: existing.getString("stamp"),
-        applied: false,
-        reason: decision.reason,
-      });
-    }
-  }
-
-  const recordsCollection = e.app.findCollectionByNameOrId("wesios_records");
-  const record = existing || new Record(recordsCollection);
-  record.set("owner", owner);
-  record.set(
-    "org",
-    privateScope ? "private:" + String(ctx.employeeId) : "wesi-inc",
-  );
-  record.set("coll", collection);
-  record.set("rid", rid);
-  record.set("payload", incoming);
-  record.set("stamp", stamp);
-  record.set("deleted", deleted);
-  e.app.save(record);
-
-  return e.json(200, {ok: true, rid: rid, stamp: stamp, applied: true});
+  return e.json(200, {
+    ok: true,
+    rid: rid,
+    stamp: committed.stamp,
+    applied: committed.applied,
+    reason: committed.reason,
+  });
 }
 
 function revision(e) {
