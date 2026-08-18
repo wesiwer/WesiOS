@@ -23,6 +23,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          echo 'toolchain retry trigger 2'
           python3 <<'PY'
           from pathlib import Path
           path = Path('.github/workflows/release-app.yml')
