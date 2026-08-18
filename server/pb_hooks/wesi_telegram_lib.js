@@ -30,8 +30,10 @@ function parseCommand(raw, botUsername) {
   if (!input) return {name: "", args: "", raw: ""};
   if (input[0] !== "/") {
     const lower = input.toLowerCase();
-    if (/касс|денег|баланс/.test(lower)) return {name: "cash", args: "", raw: input};
+    // Specific risk language must win over the generic cash stem: phrases
+    // such as "кассовый разрыв" contain "касс" but are risk questions.
     if (/риск|разрыв/.test(lower)) return {name: "risk", args: "", raw: input};
+    if (/касс|денег|баланс/.test(lower)) return {name: "cash", args: "", raw: input};
     if (/просроч/.test(lower)) return {name: "overdue", args: "", raw: input};
     if (/сегодня|задач/.test(lower)) return {name: "today", args: "", raw: input};
     if (/дайджест|сводк|brief/.test(lower)) return {name: "brief", args: "", raw: input};
