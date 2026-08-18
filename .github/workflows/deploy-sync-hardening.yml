@@ -17,6 +17,7 @@ on:
       - 'server/pb_hooks/wesi_ai_finance_write_tools.js'
       - 'server/pb_hooks/wesi_ai_crm_write_tools.js'
       - 'server/pb_hooks/wesi_ai_roadmap_tools.js'
+      - 'server/pb_hooks/wesi_ai_audio_tools.js'
       - 'server/pb_hooks/wesi_sync_authz_test.mjs'
       - 'server/pb_hooks/wesi_sync_context_contract_test.mjs'
       - 'server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs'
@@ -57,6 +58,7 @@ jobs:
             server/pb_hooks/wesi_ai_finance_write_tools.js
             server/pb_hooks/wesi_ai_crm_write_tools.js
             server/pb_hooks/wesi_ai_roadmap_tools.js
+            server/pb_hooks/wesi_ai_audio_tools.js
           )
           for file in "${files[@]}"; do
             test -s "$file"
@@ -127,6 +129,7 @@ jobs:
             server/pb_hooks/wesi_ai_finance_write_tools.js \
             server/pb_hooks/wesi_ai_crm_write_tools.js \
             server/pb_hooks/wesi_ai_roadmap_tools.js \
+            server/pb_hooks/wesi_ai_audio_tools.js \
             "$USER@$HOST:$REMOTE/"
           $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' bash -s" <<'REMOTE'
           set -euo pipefail
@@ -145,6 +148,7 @@ jobs:
             wesi_ai_finance_write_tools.js
             wesi_ai_crm_write_tools.js
             wesi_ai_roadmap_tools.js
+            wesi_ai_audio_tools.js
           )
           install_one() {
             src="$1"; dst="$2"; dir="$(dirname "$dst")"
@@ -182,6 +186,7 @@ jobs:
             /api/wesi/sync/tasks \
             /api/wesi/sync/articles \
             /api/wesi/sync/calendar_events \
+            /api/wesi/sync/audio_beats \
             /api/wesi/sync/crm_clients \
             /api/wesi/sync/crm_deals; do
             code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 "$API$path" || true)
