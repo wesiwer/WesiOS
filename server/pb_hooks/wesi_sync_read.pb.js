@@ -34,14 +34,16 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
   };
   if (!known[collection]) throw new BadRequestError("Неизвестная коллекция синхронизации");
 
-  // CRM per-record collections have employee ownership/responsibility policy
-  // that is intentionally implemented by exact routes in wesi_sync_crm.pb.js.
-  // If a partial/old hook deployment ever lets one of them reach this generic
-  // handler, fail closed instead of returning the entire company CRM.
+  // These collections require exact row-level policy handlers. Reaching the
+  // generic gateway means the dedicated hook set is incomplete/old; fail
+  // closed instead of returning company-wide sensitive rows.
   if (collection === "crm_clients" ||
       collection === "crm_deals" ||
-      collection === "crm_interactions") {
-    throw new ForbiddenError("CRM sync route is not available");
+      collection === "crm_interactions" ||
+      collection === "file_requests" ||
+      collection === "file_grants" ||
+      collection === "file_handovers") {
+    throw new ForbiddenError("Dedicated sync route is not available");
   }
 
   const hasModule = (name) => ctx.isOwner || ctx.modules.indexOf(name) >= 0;
