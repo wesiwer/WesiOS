@@ -1,0 +1,206 @@
+name: Deploy Wesi Telegram
+
+on:
+  workflow_dispatch:
+    inputs:
+      bot_username:
+        description: 'Telegram bot username without @'
+        required: true
+        default: 'WesiOSBot'
+        type: string
+      public_base_url:
+        description: 'Main Wesi server public URL'
+        required: true
+        default: 'https://api.wesi-inc.ru'
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesi-telegram-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+      BOT_USERNAME: ${{ inputs.bot_username }}
+      PUBLIC_BASE_URL: ${{ inputs.public_base_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate sources and configuration
+        env:
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          BOT_TOKEN_PRIMARY: ${{ secrets.WESI_TELEGRAM_BOT_TOKEN }}
+          BOT_TOKEN_LEGACY: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          WEBHOOK_SECRET: ${{ secrets.WESI_TELEGRAM_WEBHOOK_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "${MAIN_HOST:-}"
+          test -n "${MAIN_USER:-}"
+          test -n "${MAIN_KEY:-}"
+          BOT_TOKEN="${BOT_TOKEN_PRIMARY:-${BOT_TOKEN_LEGACY:-}}"
+          if [ -z "$BOT_TOKEN" ]; then
+            echo '::error::Set WESI_TELEGRAM_BOT_TOKEN (preferred) or TELEGRAM_BOT_TOKEN in Actions secrets.'
+            exit 1
+          fi
+          if ! [[ "$BOT_USERNAME" =~ ^[A-Za-z0-9_]{5,32}$ ]]; then
+            echo '::error::bot_username must be a Telegram username without @'
+            exit 1
+          fi
+          if ! [[ "$PUBLIC_BASE_URL" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]]; then
+            echo '::error::public_base_url must be an https origin without path'
+            exit 1
+          fi
+
+          for file in \
+            server/pb_hooks/wesi_telegram_lib.js \
+            server/pb_hooks/wesi_telegram_store.js \
+            server/pb_hooks/wesi_telegram.pb.js \
+            server/pb_hooks/wesi_ai_finance_tools.js \
+            server/pb_hooks/wesi_ai_task_tools.js; do
+            node --check "$file"
+          done
+          node server/pb_hooks/wesi_telegram_lib_test.mjs
+
+          if [ -z "${WEBHOOK_SECRET:-}" ]; then
+            WEBHOOK_SECRET="$(python3 - <<'PY'
+          import hashlib, os
+          print(hashlib.sha256(('wesios-telegram-webhook-v1:' + os.environ['BOT_TOKEN']).encode()).hexdigest())
+          PY
+          )"
+          fi
+          if ! [[ "$WEBHOOK_SECRET" =~ ^[A-Za-z0-9_-]{24,256}$ ]]; then
+            echo '::error::WESI_TELEGRAM_WEBHOOK_SECRET must be 24-256 chars [A-Za-z0-9_-].'
+            exit 1
+          fi
+
+          umask 077
+          python3 - <<'PY'
+          import json, os
+          with open('wesi-telegram.json', 'w', encoding='utf-8') as f:
+              json.dump({
+                  'botToken': os.environ['BOT_TOKEN'],
+                  'webhookSecret': os.environ['WEBHOOK_SECRET'],
+                  'botUsername': os.environ['BOT_USERNAME'],
+                  'publicBaseUrl': os.environ['PUBLIC_BASE_URL'].rstrip('/'),
+              }, f)
+          PY
+          echo "BOT_TOKEN=$BOT_TOKEN" >> "$GITHUB_ENV"
+          echo "WEBHOOK_SECRET=$WEBHOOK_SECRET" >> "$GITHUB_ENV"
+          chmod 600 wesi-telegram.json
+
+      - name: Prepare SSH
+        env:
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          if [ -n "${MAIN_KNOWN:-}" ]; then
+            printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known_hosts
+          else
+            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/main_known_hosts
+
+      - name: Atomically deploy Telegram and shared tool hooks
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          REMOTE="/tmp/wesi-telegram-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" \
+            server/pb_hooks/wesi_telegram_lib.js \
+            server/pb_hooks/wesi_telegram_store.js \
+            server/pb_hooks/wesi_telegram.pb.js \
+            server/pb_hooks/wesi_ai_finance_tools.js \
+            server/pb_hooks/wesi_ai_task_tools.js \
+            wesi-telegram.json \
+            "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          test -d "$HOOK_DIR"
+          test -w "$HOOK_DIR"
+
+          atomic_install() {
+            src="$1"
+            dst="$2"
+            mode="$3"
+            tmp="$HOOK_DIR/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
+            cat "$src" > "$tmp"
+            chmod "$mode" "$tmp"
+            cmp -s "$src" "$tmp"
+            mv -f "$tmp" "$dst"
+          }
+
+          atomic_install "$REMOTE/wesi_telegram_lib.js" "$HOOK_DIR/wesi_telegram_lib.js" 0644
+          atomic_install "$REMOTE/wesi_telegram_store.js" "$HOOK_DIR/wesi_telegram_store.js" 0644
+          atomic_install "$REMOTE/wesi_ai_finance_tools.js" "$HOOK_DIR/wesi_ai_finance_tools.js" 0644
+          atomic_install "$REMOTE/wesi_ai_task_tools.js" "$HOOK_DIR/wesi_ai_task_tools.js" 0644
+          atomic_install "$REMOTE/wesi-telegram.json" "$HOOK_DIR/.wesi-telegram.json" 0600
+          # Install the route file last so hot reload never observes it without
+          # its dependencies/config.
+          atomic_install "$REMOTE/wesi_telegram.pb.js" "$HOOK_DIR/wesi_telegram.pb.js" 0644
+
+          sleep 4
+          curl -fsS --max-time 8 http://127.0.0.1:8090/api/health >/dev/null
+          cmp -s "$REMOTE/wesi_telegram.pb.js" "$HOOK_DIR/wesi_telegram.pb.js"
+          cmp -s "$REMOTE/wesi-telegram.json" "$HOOK_DIR/.wesi-telegram.json"
+          rm -rf "$REMOTE"
+          echo WESI_TELEGRAM_HOOKS_DEPLOYED
+          REMOTE
+
+      - name: Configure Telegram webhook
+        run: |
+          set -euo pipefail
+          webhook_url="${PUBLIC_BASE_URL%/}/api/wesi/telegram/webhook"
+          response="$(curl -fsS --max-time 20 \
+            -X POST "https://api.telegram.org/bot${BOT_TOKEN}/setWebhook" \
+            -H 'Content-Type: application/json' \
+            --data-binary "$(python3 - <<PY
+          import json, os
+          print(json.dumps({
+              'url': os.environ['PUBLIC_BASE_URL'].rstrip('/') + '/api/wesi/telegram/webhook',
+              'secret_token': os.environ['WEBHOOK_SECRET'],
+              'allowed_updates': ['message', 'callback_query'],
+              'drop_pending_updates': False,
+          }))
+          PY
+          )")"
+          echo "$response" | python3 -c 'import json,sys; data=json.load(sys.stdin); assert data.get("ok") is True, data; print("TELEGRAM_SET_WEBHOOK_OK")'
+
+          info="$(curl -fsS --max-time 20 "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo")"
+          INFO="$info" EXPECTED="$webhook_url" python3 - <<'PY'
+          import json, os
+          data=json.loads(os.environ['INFO'])
+          assert data.get('ok') is True, data
+          result=data.get('result') or {}
+          assert result.get('url') == os.environ['EXPECTED'], result
+          assert result.get('has_custom_certificate') in (False, None), result
+          print('TELEGRAM_WEBHOOK_VERIFIED pending=' + str(result.get('pending_update_count', 0)))
+          PY
+
+      - name: Verify public Telegram routes
+        run: |
+          set -euo pipefail
+          base="${PUBLIC_BASE_URL%/}"
+          code="$(curl -sS -o /tmp/tg-webhook.out -w '%{http_code}' --max-time 15 -X POST "$base/api/wesi/telegram/webhook" -H 'Content-Type: application/json' -d '{}' || true)"
+          test "$code" = 401
+          open_code="$(curl -sS -o /dev/null -w '%{http_code}' --max-time 15 "$base/api/wesi/telegram/open?target=home" || true)"
+          test "$open_code" = 302
+          echo WESI_TELEGRAM_PUBLIC_ROUTES_OK
+
+      - name: Cleanup secrets
+        if: always()
+        run: rm -f wesi-telegram.json ~/.ssh/main_key
