@@ -11,7 +11,7 @@ permissions:
 
 concurrency:
   group: apply-wesi-ai-inline-console-queue-camera-once
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   apply:
