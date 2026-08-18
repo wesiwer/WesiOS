@@ -66,3 +66,8 @@ python_engines/__pycache__/
 !.env.example
 .wesi-ai-relay.json
 relay-secrets.b64
+
+# Persona Bundle собирается из server/personas/ скриптом
+# build-wesi-ai-personas.py на каждом деплое. В репозитории это артефакт:
+# закоммиченный, он начинает расходиться с исходниками молча.
+server/pb_hooks/.wesi-ai-personas.json
