@@ -50,6 +50,7 @@ class SyncFeatureExtensions {
   static bool _registered = false;
   static bool _rebinding = false;
   static Future<void>? _rebindFuture;
+  static int _rebindRequestGeneration = 0;
   static String? _boundEmployeeId;
   static StreamSubscription<BoxEvent>? _settingsSub;
   static Timer? _avatarProjection;
@@ -95,15 +96,34 @@ class SyncFeatureExtensions {
   }
 
   static void _onTeamRevision() {
-    if (_rebinding || TeamService.current?.id == _boundEmployeeId) return;
-    unawaited(rebindCurrentAccountAndSync());
+    // A revision can fire while a previous logout/account rebind is still
+    // awaiting SyncEngine.reset() or private-box restoration. Never discard a
+    // different identity just because `_rebinding` is true. Mark another pass
+    // as requested; the single worker below drains requests until the actual
+    // current employee is the one bound to private sync state.
+    if (TeamService.current?.id == _boundEmployeeId) return;
+    _requestRebind();
   }
 
-  /// Serializes account switches so the login screen and TeamService listener
-  /// cannot start two sync engines against different private boxes.
+  static void _requestRebind() {
+    _rebindRequestGeneration++;
+    unawaited(_ensureRebindWorker());
+  }
+
+  /// Serializes account switches and coalesces changes that happen while a
+  /// previous switch is still running.
+  ///
+  /// Old behavior returned the already-running Future and ignored the new
+  /// TeamService.revision. A fast logout -> MFA login could therefore finish
+  /// the old `current=null` pass and never bind/start sync for the new account.
   static Future<void> rebindCurrentAccountAndSync() {
+    _rebindRequestGeneration++;
+    return _ensureRebindWorker();
+  }
+
+  static Future<void> _ensureRebindWorker() {
     if (_rebindFuture case final running?) return running;
-    final future = _performRebind();
+    final future = _drainRebindRequests();
     _rebindFuture = future;
     unawaited(future.then<void>(
       (_) {
@@ -116,18 +136,59 @@ class SyncFeatureExtensions {
     return future;
   }
 
-  static Future<void> _performRebind() async {
+  static Future<void> _drainRebindRequests() async {
     _rebinding = true;
     try {
-      SyncAuto.stop(force: true);
-      await SyncEngine.reset();
-      await _bind(allowLegacy: false);
-      if (TeamService.current != null && SyncEndpoint.isConnected) {
-        await SyncEngine.runOnLaunch();
-        SyncAuto.start();
+      while (true) {
+        final handledGeneration = _rebindRequestGeneration;
+        await _performRebindPass();
+
+        // A TeamService revision may have arrived while this pass was inside
+        // any await. Also verify the concrete binding, because a caller can
+        // change current identity without the listener getting a chance to run
+        // before this continuation resumes.
+        if (handledGeneration == _rebindRequestGeneration &&
+            TeamService.current?.id == _boundEmployeeId) {
+          break;
+        }
       }
     } finally {
       _rebinding = false;
+    }
+  }
+
+  static Future<void> _performRebindPass() async {
+    final targetEmployeeId = TeamService.current?.id;
+
+    SyncAuto.stop(force: true);
+    await SyncEngine.reset();
+
+    // If identity changed while reset was draining an old fetch/apply, do not
+    // restore private state for the stale target. The outer drain loop will
+    // immediately run a fresh pass for the new identity.
+    if (TeamService.current?.id != targetEmployeeId) return;
+
+    await _bind(allowLegacy: false);
+
+    // `_bind` itself performs async Hive work. Do not start a full sync against
+    // a private box that ceased to be current during that work.
+    if (TeamService.current?.id != targetEmployeeId ||
+        _boundEmployeeId != targetEmployeeId) {
+      return;
+    }
+
+    if (TeamService.current != null && SyncEndpoint.isConnected) {
+      await SyncEngine.runOnLaunch();
+
+      // A session/account switch may occur during the network pass. The engine
+      // protects data with its own generation/session fingerprint, and this
+      // final check prevents an obsolete pass from enabling SyncAuto for the
+      // wrong account.
+      if (TeamService.current?.id == targetEmployeeId &&
+          _boundEmployeeId == targetEmployeeId &&
+          SyncEndpoint.isConnected) {
+        SyncAuto.start();
+      }
     }
   }
 
@@ -237,8 +298,9 @@ class SyncFeatureExtensions {
     }
     for (final rawKey in profile.keys) {
       final key = '$rawKey';
-      if (_profileKeys.contains(key))
+      if (_profileKeys.contains(key)) {
         await settings.put(key, profile.get(rawKey));
+      }
     }
     ShieldService.revision.value++;
   }
