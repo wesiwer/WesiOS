@@ -1,4 +1,5 @@
 const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
+const syncWriter = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_sync_writer.js");
 function payloadOf(record) {
   if (!record) return {};
   try {
@@ -110,37 +111,35 @@ module.exports = {
   execute: function(e, ctx, name, args) {
     if (!ctx.isOwner && ctx.modules.indexOf("calendar") < 0) return {ok: false, code: "FORBIDDEN", message: "Нет доступа к календарю"};
     const input = args && typeof args === "object" && !Array.isArray(args) ? args : {};
-    const now = new Date().toISOString();
 
     if (name === "calendar_create") {
       const id = "wai_calendar_" + Date.now() + "_" + $security.randomString(8);
       const value = {id: id};
       const applied = applyFields(value, input, true);
       if (!applied.ok) return {ok: false, code: "VALIDATION_ERROR", message: applied.message};
-      const collection = e.app.findCollectionByNameOrId("wesios_records");
-      const record = new Record(collection);
-      record.set("owner", ctx.ownerId); record.set("org", "wesi-inc"); record.set("coll", "calendar_events");
-      record.set("rid", id); record.set("payload", value); record.set("stamp", now); record.set("deleted", false);
-      e.app.save(record);
-      return {ok: true, result: {event: value}};
+      const saved = syncWriter.write(e, ctx, {coll: "calendar_events", rid: id, next: value, creating: true});
+      if (!saved.applied) return {ok: false, code: "WRITE_CONFLICT", message: "Событие изменилось параллельно, повторите действие"};
+      return {ok: true, result: {event: saved.payload}};
     }
 
     const id = String(input.eventId || "").trim();
     if (!id || id.length > 180) return {ok: false, code: "VALIDATION_ERROR", message: "Некорректный eventId"};
     const record = recordById(e, ctx, id);
     if (!record) return {ok: false, code: "NOT_FOUND", message: "Событие не найдено"};
+    const before = payloadOf(record);
     if (name === "calendar_delete") {
-      record.set("deleted", true); record.set("stamp", now); e.app.save(record);
+      const saved = syncWriter.write(e, ctx, {coll: "calendar_events", rid: id, before: before, next: before, deleted: true});
+      if (!saved.applied) return {ok: false, code: "WRITE_CONFLICT", message: "Событие уже было изменено, повторите действие"};
       return {ok: true, result: {event: {id: id, deleted: true}}};
     }
     if (name !== "calendar_update") return {ok: false, code: "UNKNOWN_TOOL", message: "Неизвестный Calendar-инструмент"};
-    const before = payloadOf(record);
     const value = {};
     for (const key of Object.keys(before)) value[key] = before[key];
     value.id = String(before.id || id);
     const applied = applyFields(value, input, false);
     if (!applied.ok) return {ok: false, code: "VALIDATION_ERROR", message: applied.message};
-    record.set("payload", value); record.set("stamp", now); record.set("deleted", false); e.app.save(record);
-    return {ok: true, result: {event: value}};
+    const saved = syncWriter.write(e, ctx, {coll: "calendar_events", rid: id, before: before, next: value});
+    if (!saved.applied) return {ok: false, code: "WRITE_CONFLICT", message: "Событие изменилось параллельно, повторите действие"};
+    return {ok: true, result: {event: saved.payload}};
   },
 };
