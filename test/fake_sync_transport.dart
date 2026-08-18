@@ -2,21 +2,12 @@ import 'package:wesios/core/sync/sync_merge.dart';
 import 'package:wesios/core/sync/sync_transport.dart';
 
 /// Сервер синхронизации, живущий в памяти теста.
-///
-/// Нужен, потому что иначе всё, что ниже транспорта — журнал, слияние,
-/// применение к боксам — проверялось бы только живым сервером. Ошибка
-/// синхронизации стоит потерянных данных, и обнаруживать её на настоящих
-/// данных недопустимо.
 class FakeSyncTransport implements SyncTransport {
   /// Состояние «сервера»: коллекция → записи.
   final Map<String, Map<String, SyncRecord>> store = {};
 
-  /// Что и в каком порядке спрашивали — по этому проверяется, что движок
-  /// действительно ходит на сервер, а не притворяется.
   final List<String> calls = [];
 
-  /// Отказ, который транспорт выдаёт вместо работы. Так проверяется
-  /// поведение при обрыве связи.
   SyncFailure? failWith;
 
   bool _signedIn = true;
@@ -44,9 +35,20 @@ class FakeSyncTransport implements SyncTransport {
     return SyncResult.ok(Map.of(store[collection] ?? const {}));
   }
 
-  /// Записи, которые «сервер» отказывается принимать. Так проверяется, что
-  /// одна упрямая запись не запирает всю очередь за собой.
+  /// Записи, которые «сервер» отказывается принимать.
   final Set<String> rejectIds = {};
+
+  /// Необязательная нормализация принятого времени конкретной записи.
+  ///
+  /// Реальный сервер использует это, когда часы устройства слишком далеко в
+  /// будущем. По умолчанию fake сохраняет исходный timestamp, как нормальный
+  /// успешный серверный write.
+  final Map<String, DateTime> acceptedStampOverrides = {};
+
+  /// Имитирует повреждённый успешный ответ: запись сервер принял, но stamp в
+  /// ответе отсутствует/не разбирается. Engine обязан fail closed перевести
+  /// journal этой записи в epoch и получить серверную версию следующим pull.
+  final Set<String> omitAcceptedStampIds = {};
 
   @override
   Future<SyncPushResult> push(
@@ -58,18 +60,36 @@ class FakeSyncTransport implements SyncTransport {
     if (!_signedIn) {
       return const SyncPushResult(failure: SyncFailure.notSignedIn);
     }
+
     final bucket = store.putIfAbsent(collection, () => {});
     final delivered = <String>[];
+    final acceptedStamps = <String, DateTime>{};
     SyncFailure? failure;
+
     for (final r in records) {
       if (rejectIds.contains(r.id)) {
         failure ??= const SyncFailure('HTTP_400', 'Запись не принята');
         continue;
       }
-      bucket[r.id] = r;
+
+      final acceptedStamp = acceptedStampOverrides[r.id] ?? r.updatedAt;
+      bucket[r.id] = SyncRecord(
+        id: r.id,
+        fields: r.fields,
+        updatedAt: acceptedStamp,
+        deleted: r.deleted,
+      );
       delivered.add(r.id);
+      if (!omitAcceptedStampIds.contains(r.id)) {
+        acceptedStamps[r.id] = acceptedStamp;
+      }
     }
-    return SyncPushResult(deliveredIds: delivered, failure: failure);
+
+    return SyncPushResult(
+      deliveredIds: delivered,
+      acceptedStamps: acceptedStamps,
+      failure: failure,
+    );
   }
 
   /// Положить запись «с другого устройства».
