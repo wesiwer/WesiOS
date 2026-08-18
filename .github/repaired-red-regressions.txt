@@ -1,0 +1,157 @@
+REGRESSION_PACK=0
+00:00 +0: loading /home/runner/work/WesiOS/WesiOS/test/sync_engine_lifecycle_test.dart
+00:00 +0: /home/runner/work/WesiOS/WesiOS/test/sync_engine_lifecycle_test.dart: (setUpAll)
+00:00 +0: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: (setUpAll)
+00:00 +0: /home/runner/work/WesiOS/WesiOS/test/sync_engine_lifecycle_test.dart: invalidated run cannot apply a fetch that completed after account switch
+00:00 +1: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: профиль участвует в обмене
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:00 +2: /home/runner/work/WesiOS/WesiOS/test/sync_engine_lifecycle_test.dart: concurrent prepare calls share one box preparation pass
+00:00 +2: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: заполненный профиль уезжает на сервер
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:00 +3: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: заполненный профиль уезжает на сервер
+00:00 +4: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: заполненный профиль уезжает на сервер
+00:00 +5: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: профиль с другого устройства виден на экране сразу
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:00 +6: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: загруженная аватарка переезжает вместе с профилем
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:00 +7: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: слишком большая картинка не уезжает целиком
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:00 +8: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: legacy профиль ждёт подтверждённый auth-user и затем переносится
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:00 +9: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: пустой профиль не отправляется и не затирает чужой
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:00 +10: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: секреты в профиль не попадают
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:00 +11: /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: (tearDownAll)
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:01 +11: /home/runner/work/WesiOS/WesiOS/test/sync_forbidden_cache_reconciliation_test.dart: (setUpAll)
+00:01 +11: /home/runner/work/WesiOS/WesiOS/test/sync_forbidden_cache_reconciliation_test.dart: row removed from permission-filtered remote snapshot is purged locally
+00:01 +12: /home/runner/work/WesiOS/WesiOS/test/sync_forbidden_cache_reconciliation_test.dart: policy eviction bypasses domain removeById no-op
+00:01 +13: /home/runner/work/WesiOS/WesiOS/test/sync_forbidden_cache_reconciliation_test.dart: visible but read-only row rolls forbidden local edit back to remote
+00:01 +14: /home/runner/work/WesiOS/WesiOS/test/sync_forbidden_cache_reconciliation_test.dart: permission revoked between fetch and forbidden push purges stale cache
+00:01 +15: /home/runner/work/WesiOS/WesiOS/test/sync_forbidden_cache_reconciliation_test.dart: failed post-403 permission refresh fails closed and purges denied cache
+00:01 +16: /home/runner/work/WesiOS/WesiOS/test/sync_forbidden_cache_reconciliation_test.dart: (tearDownAll)
+00:01 +16: /home/runner/work/WesiOS/WesiOS/test/sync_durable_tombstone_contract_test.dart: server rejects tombstones for durable business collections
+00:01 +17: /home/runner/work/WesiOS/WesiOS/test/sync_durable_tombstone_contract_test.dart: client verifies tombstone actually left the sync projection
+00:02 +18: /home/runner/work/WesiOS/WesiOS/test/organization_sync_integrity_test.dart: legacy account and transaction sync records become physical Wesi Inc records
+00:02 +19: /home/runner/work/WesiOS/WesiOS/test/organization_sync_integrity_test.dart: task sync recovers stable ownership from compatibility tags
+00:02 +20: /home/runner/work/WesiOS/WesiOS/test/organization_sync_integrity_test.dart: sync gateway keeps structural ancestors out of business data scope
+00:02 +21: /home/runner/work/WesiOS/WesiOS/test/organization_sync_integrity_test.dart: stats visibility cannot widen task, CRM, or audit permissions
+00:03 +22: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: (setUpAll)
+00:03 +22: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: журнал отметка кодируется и читается обратно без потерь
+00:03 +23: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: журнал мусор вместо отметки не разбирается, а не притворяется нулём
+00:03 +24: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: журнал правка в боксе сама попадает в журнал
+00:03 +25: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: журнал удаление оставляет надгробие, а не пустоту
+00:03 +26: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: журнал старые надгробия выбрасываются, живые отметки — нет
+00:03 +27: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: журнал засев отмечает только записи без отметки
+00:03 +28: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: кодек операция переживает круг через поля
+00:03 +29: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: кодек задача переживает круг вместе с чек-листом
+00:03 +30: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: кодек человек переживает круг, но пароль в синхронизацию не попадает
+00:03 +31: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: кодек запись без обязательных полей не разбирается
+00:03 +32: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: кодек незнакомое значение перечисления не роняет разбор
+00:03 +33: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: кодек встроенные статьи в обмен не идут
+00:03 +34: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: кодек имена коллекций уникальны и счета идут раньше операций
+00:03 +35: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок без входа честно говорит об этом
+00:03 +36: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок без входа не пытается ничего отправить
+00:03 +37: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок местная запись уезжает на сервер
+00:03 +38: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок чужая запись приезжает и попадает в бокс
+00:03 +39: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок применённая чужая запись не уезжает обратно на следующем проходе
+00:03 +40: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок более свежая местная правка побеждает серверную
+00:03 +41: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок более свежая серверная правка побеждает местную
+00:03 +42: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок удаление на другом устройстве стирает запись здесь
+00:03 +43: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок удаление здесь уезжает надгробием, а не исчезновением
+00:03 +44: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок обрыв связи не портит местные данные
+00:03 +45: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок отказ одной коллекции не выдаётся за общий успех
+00:03 +46: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок протухший пропуск выбрасывается, а не остаётся выглядеть рабочим
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:03 +47: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок автоматический проход не идёт, пока его не включили
+00:03 +48: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок свежая установка не затирает сервер своими заготовками
+00:03 +49: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок в первый обмен уезжает то, чего на сервере нет
+00:03 +50: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок правило первого обмена действует ровно один раз
+00:03 +51: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок удачный проход отмечается временем
+00:03 +52: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок два устройства сходятся к одному состоянию
+00:03 +53: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок запись из будущей версии не помечается как усвоенная
+00:03 +54: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: адрес сервера зашит в сборку и всегда по https
+00:03 +55: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: адрес сервера сохранённый адрес из старой установки ничего не решает
+00:03 +56: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: подключение без пропуска — не подключены
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:03 +57: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: подключение действующий пропуск — подключены
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:03 +58: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: подключение протухший пропуск не считается подключением
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+00:03 +59: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: упрямая запись не запирает за собой очередь и не прячет отказ
+00:03 +60: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: упрямая запись доставленным считается только то, что дошло
+00:03 +61: /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: (tearDownAll)
+00:03 +61: All tests passed!
