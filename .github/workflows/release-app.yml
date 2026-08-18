@@ -80,7 +80,6 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
           channel: 'stable'
 
       - run: flutter config --enable-windows-desktop
@@ -158,7 +157,6 @@ jobs:
 
       - uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
           channel: 'stable'
 
       - run: flutter pub get
@@ -195,10 +193,6 @@ jobs:
           }
           EOF
 
-      # Декодируем keystore и СРАЗУ проверяем пароль через keytool.
-      # Частая ловушка: при вставке в GitHub Secrets появляется хвостовой
-      # перевод строки — тогда storePassword «не тот», хотя визуально
-      # секрет выглядит правильным. Поэтому всё trim'им.
       - name: Decode and verify release keystore
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
@@ -207,7 +201,6 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
-
           if [ -z "${ANDROID_KEYSTORE_BASE64:-}" ]; then
             echo "::error::Секрет ANDROID_KEYSTORE_BASE64 не задан."
             echo "Добавь в Settings → Secrets and variables → Actions:"
@@ -215,26 +208,17 @@ jobs:
             echo "  ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD"
             exit 1
           fi
-
-          # Убираем все пробельные символы из base64 (переносы от base64 без -w0
-          # и хвостовой newline от вставки в UI).
           B64=$(printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]')
           printf '%s' "$B64" | base64 -d > "$RUNNER_TEMP/wesios-release.jks"
-
-          # Пароли и alias — тоже без хвостовых пробелов/переносов.
           STORE_PASS=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n')
           KEY_PASS=$(printf '%s' "$ANDROID_KEY_PASSWORD" | tr -d '\r\n')
           ALIAS=$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '[:space:]')
-
           if [ -z "$STORE_PASS" ] || [ -z "$KEY_PASS" ] || [ -z "$ALIAS" ]; then
             echo "::error::Один из секретов пароля/alias пуст после trim."
             exit 1
           fi
-
           echo "Keystore size: $(stat -c%s "$RUNNER_TEMP/wesios-release.jks") bytes"
           echo "Alias (length ${#ALIAS}): ok"
-
-          # Проверка store password + наличие alias — без печати секретов.
           if ! keytool -list \
               -keystore "$RUNNER_TEMP/wesios-release.jks" \
               -storepass "$STORE_PASS" \
@@ -244,7 +228,6 @@ jobs:
             echo "  keytool -list -keystore your.jks -storepass '...' -alias '...'"
             echo "Частые причины: хвостовой newline в секрете, другой .jks в base64,"
             echo "перепутан store password и key password, неверный alias."
-            # Покажем только список alias (если store pass всё же подошёл, а alias нет).
             if keytool -list -keystore "$RUNNER_TEMP/wesios-release.jks" -storepass "$STORE_PASS" > "$RUNNER_TEMP/kt.txt" 2>&1; then
               echo "Store password подходит. Alias в keystore:"
               grep -E 'Alias name:|Keystore type:' "$RUNNER_TEMP/kt.txt" || true
@@ -254,10 +237,7 @@ jobs:
             fi
             exit 1
           fi
-
           echo "Keystore + alias + store password — ок"
-
-          # Экспорт в env для Gradle (уже без хвостовых символов).
           {
             echo "KEYSTORE_PATH=$RUNNER_TEMP/wesios-release.jks"
             echo "KEYSTORE_PASSWORD=$STORE_PASS"
@@ -305,14 +285,11 @@ jobs:
     needs: [version, build-windows, build-android]
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 15
-    # Манифест публикуется ПОСЛЕДНИМ и только если обе сборки прошли: иначе
-    # приложение предложило бы обновиться на версию, ассета которой нет.
     steps:
       - uses: actions/checkout@v4
         with:
           clean: false
           fetch-depth: 1
-
       - name: Write app-manifest.json
         env:
           VERSION: ${{ needs.version.outputs.version }}
@@ -359,22 +336,8 @@ jobs:
           gh release upload "$RELEASE_TAG" app-manifest.json \
             --repo "$GITHUB_REPOSITORY" --clobber
 
-  # ------------------------------------------------------------- сервер
-  #
-  # Те же сборки уезжают на свой сервер и становятся там основным
-  # источником. GitHub Releases остаётся запасным путём: если сервер лежит
-  # или до него не дотянуться из сети сотрудника, приложение всё равно
-  # обновится.
-  #
-  # Идёт ПОСЛЕ публикации манифеста и только при успехе обеих сборок — по
-  # той же причине, что и манифест: выложить половину хуже, чем не
-  # выкладывать.
   deploy-server:
     needs: [version, build-windows, build-android, publish-manifest]
-    # Выключается осознанно, галочкой при запуске, — а не «само пропустится,
-    # если что-то не так». Пока nginx не отдаёт /artifacts, выкладке некуда
-    # ложиться, и честный красный прогон здесь никому не поможет: сборки-то
-    # собрались и в Releases уехали.
     if: ${{ github.event.inputs.deploy_to_server != 'false' }}
     runs-on: ${{ vars.RUNNER_LINUX || 'ubuntu-latest' }}
     timeout-minutes: 20
@@ -382,12 +345,6 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 1
-
-      # Секреты проверяем первым делом и падаем, если их нет.
-      #
-      # Тихо пропустить выкладку нельзя: прогон окажется зелёным, в GitHub
-      # сборка появится, на сервере — нет, и разойдётся это молча. Разбирать
-      # такое потом дороже, чем один понятный отказ сейчас.
       - name: Check server secrets
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -405,17 +362,14 @@ jobs:
             exit 1
           fi
           echo "Секреты на месте"
-
       - uses: actions/download-artifact@v4
         with:
           name: WesiOS-Windows
           path: upload
-
       - uses: actions/download-artifact@v4
         with:
           name: WesiOS-Android
           path: upload
-
       - name: Prepare SSH
         env:
           KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
@@ -426,14 +380,6 @@ jobs:
           mkdir -p ~/.ssh && chmod 700 ~/.ssh
           printf '%s\n' "$KEY" > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
-
-          # Отпечаток сервера.
-          #
-          # Если он лежит в секрете WESI_SERVER_KNOWN_HOSTS — берём оттуда, и
-          # тогда подмена сервера посередине не пройдёт. Если секрета нет —
-          # спрашиваем сам сервер, и это заметно слабее: в первый раз мы
-          # верим тому, кто ответил. Пишем об этом в лог прямо, а не делаем
-          # вид, что проверка была.
           if [ -n "${KNOWN:-}" ]; then
             printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
             echo "Отпечаток сервера — из секрета"
@@ -444,23 +390,6 @@ jobs:
             echo "и положите вывод в секрет WESI_SERVER_KNOWN_HOSTS."
           fi
           chmod 600 ~/.ssh/known_hosts
-
-      # Куда класть — выясняем ДО того, как гнать 50 МБ по сети.
-      #
-      # Здесь была поломка, из-за которой выкладка падала каждый релиз.
-      # Сторож брал каталог по умолчанию `/srv/wesi-artifacts`, а сам
-      # `deploy-artifact.sh` — `/opt/pocketbase/pb_public/artifacts`. То есть
-      # проверялся один каталог, а писался бы совсем другой: сторож честно
-      # сообщал «недоступен на запись» про путь, которым выкладка всё равно
-      # не воспользовалась бы.
-      #
-      # Поэтому теперь каталог не угадывается, а определяется: если задана
-      # переменная — берём её, иначе спрашиваем сам сервер, куда он пустит
-      # писать. Ровно так же уже поступает deploy-employee-portal.
-      #
-      # Найденный путь передаётся дальше через GITHUB_ENV, чтобы выкладка шла
-      # именно туда, где проверка прошла, — иначе расхождение вернётся, просто
-      # в другом месте.
       - name: Check the target directory is writable
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -469,15 +398,11 @@ jobs:
         run: |
           set -euo pipefail
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
-
-          # Порядок важен: первым идёт то, что раздаёт PocketBase без единой
-          # настройки, вторым — отдельное хранилище под nginx.
           if [ -n "${ARTIFACTS_DIR:-}" ]; then
             CANDIDATES="$ARTIFACTS_DIR"
           else
             CANDIDATES="/opt/pocketbase/pb_public/artifacts /srv/wesi-artifacts"
           fi
-
           FOUND=""
           for DIR in $CANDIDATES; do
             if $SSH "$USER@$HOST" "mkdir -p '$DIR/app' 2>/dev/null && test -w '$DIR/app'"; then
@@ -486,13 +411,11 @@ jobs:
             fi
             echo "Каталог $DIR — не подходит, пробую дальше"
           done
-
           if [ -n "$FOUND" ]; then
             echo "Каталог $FOUND/app доступен на запись"
             echo "RESOLVED_ARTIFACTS_DIR=$FOUND" >> "$GITHUB_ENV"
             exit 0
           fi
-
           {
             echo "### Выкладка на свой сервер не прошла"
             echo
@@ -504,19 +427,9 @@ jobs:
             echo "sudo mkdir -p /opt/pocketbase/pb_public/artifacts"
             echo "sudo chown -R $USER: /opt/pocketbase/pb_public/artifacts"
             echo '```'
-            echo
-            echo "Тогда файлы будет раздавать сам PocketBase, по тому же"
-            echo "адресу, который приложение и так спрашивает, — ни nginx,"
-            echo "ни переменной репозитория для этого не нужно."
-            echo
-            echo "Сборки при этом уже опубликованы в GitHub Releases, и"
-            echo "приложение возьмёт обновление оттуда — своя раздача это"
-            echo "запасной путь, а не единственный."
           } >> "$GITHUB_STEP_SUMMARY"
-
           echo "::error::Нет каталога, доступного на запись пользователю $USER — см. итог прогона"
           exit 1
-
       - name: Upload build to server
         env:
           HOST: ${{ secrets.WESI_SERVER_HOST }}
@@ -524,54 +437,24 @@ jobs:
           VERSION: ${{ needs.version.outputs.version }}
           BUILD: ${{ needs.version.outputs.build }}
           NOTES: ${{ github.event.inputs.notes }}
-          # Каталог, который предыдущий шаг нашёл и проверил. Брать здесь
-          # переменную репозитория заново нельзя: когда она не задана,
-          # проверенный путь потерялся бы, и мы вернулись бы к угадыванию.
           ARTIFACTS_DIR: ${{ env.RESOLVED_ARTIFACTS_DIR }}
         run: |
           set -euo pipefail
           SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
           REMOTE_TMP="/tmp/wesios-upload-$GITHUB_RUN_ID"
-
           $SSH "$USER@$HOST" "mkdir -p '$REMOTE_TMP'"
           scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
             upload/wesios-windows-x64.zip \
             upload/wesios-android.apk \
             server/deploy-artifact.sh \
             "$USER@$HOST:$REMOTE_TMP/"
-
-          # Текст «что нового» пишет человек, и он уезжает в команду,
-          # которая выполнится на сервере. Подставлять его туда как есть
-          # нельзя ни при каких кавычках: строка вида
-          #   '; rm -rf /srv; echo '
-          # это уже не описание версии, а команда. Кодируем в base64 —
-          # тогда в командной строке оказываются только буквы и цифры, а
-          # разбирает их сам скрипт на той стороне.
           NOTES_B64="$(printf '%s' "${NOTES:-}" | base64 -w0)"
-
-          # Куда класть — переменной репозитория WESI_ARTIFACTS_DIR.
-          # Пусто — каталог по умолчанию из самого скрипта.
-          #
-          # Смысл переменной в том, что раздавать файлы может либо nginx
-          # (нужен блок location и root), либо сам PocketBase из pb_public
-          # (не нужно ничего). Второе проще, и выбор не должен требовать
-          # правки этого файла.
           $SSH "$USER@$HOST" \
             "WESI_ARTIFACTS='${ARTIFACTS_DIR}' \
              bash '$REMOTE_TMP/deploy-artifact.sh' \
                --version '$VERSION' --build '$BUILD' \
                --from '$REMOTE_TMP' --notes-b64 '$NOTES_B64'"
-
-          # Прибираем за собой в любом случае: /tmp на сервере не бездонный,
-          # а каждая выкладка оставляет там по 40 МБ.
           $SSH "$USER@$HOST" "rm -rf '$REMOTE_TMP'"
-
-      # Выкладка без проверки — это надежда, а не выкладка.
-      #
-      # Файлы могут лечь на диск и при этом не отдаваться наружу: nginx не
-      # настроен на /artifacts, права не те, каталог не тот. Снаружи это
-      # выглядит как «обновление не приходит», и искать причину будут в
-      # приложении.
       - name: Verify the server actually serves it
         env:
           BASE: ${{ vars.WESI_ARTIFACTS_URL || 'https://api.wesi-inc.ru/artifacts' }}
@@ -581,7 +464,6 @@ jobs:
           set -euo pipefail
           MANIFEST="$BASE/app/app-manifest.json"
           echo "Проверяю $MANIFEST"
-
           if ! curl -fsS --max-time 30 "$MANIFEST" -o manifest.json; then
             echo "::error::Манифест не отдаётся по $MANIFEST"
             echo "Файлы на сервер легли, но наружу их не видно."
@@ -589,7 +471,6 @@ jobs:
             exit 1
           fi
           cat manifest.json
-
           python3 - <<'PY'
           import json, os, sys, urllib.request
           m = json.load(open('manifest.json'))
