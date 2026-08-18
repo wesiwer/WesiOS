@@ -40,11 +40,25 @@ class SyncResult<T> {
 
 /// Итог отправки одной коллекции.
 class SyncPushResult {
-  /// Записи, которые сервер действительно сохранил.
+  /// Записи, которые сервер действительно сохранил из этого push.
   final List<String> deliveredIds;
 
   /// Фактические timestamps, сохранённые сервером для delivered rows.
   final Map<String, DateTime> acceptedStamps;
+
+  /// Записи, для которых POST дошёл до сервера, но authoritative LWW/policy
+  /// оставила уже существующую серверную версию (`applied:false`).
+  ///
+  /// Это НЕ ошибка сети и НЕ delivered upload. Engine обязан заново fetch-нуть
+  /// коллекцию под текущими правами и применить фактическую серверную запись
+  /// локально. Иначе stale/tie payload может остаться расходящимся навсегда,
+  /// потому что сам сервер при applied:false свою revision не меняет.
+  final List<String> authoritativeIds;
+
+  /// Stamp серверной версии из applied:false response. Используется как
+  /// sanity-check/диагностика; payload всё равно перечитывается через обычный
+  /// permission-filtered GET, чтобы response на write не обходил read policy.
+  final Map<String, DateTime> authoritativeStamps;
 
   /// Записи, запись которых сервер запретил текущей server identity.
   ///
@@ -60,6 +74,8 @@ class SyncPushResult {
   const SyncPushResult({
     this.deliveredIds = const [],
     this.acceptedStamps = const {},
+    this.authoritativeIds = const [],
+    this.authoritativeStamps = const {},
     this.forbiddenIds = const [],
     this.failure,
   });
