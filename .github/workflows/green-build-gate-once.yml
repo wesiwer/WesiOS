@@ -64,12 +64,21 @@ jobs:
           RESULT: ${{ needs.flutter-and-android.result }}
         run: |
           set -euo pipefail
-          if [ "$RESULT" = success ]; then STATE=success; DESC='Analyze, tests and Android compile are green'; else STATE=failure; DESC="Flutter/Android=$RESULT"; fi
+          if [ "$RESULT" = success ]; then export STATE=success; export DESC='Analyze, tests and Android compile are green'; else export STATE=failure; export DESC="Flutter/Android=$RESULT"; fi
+          PAYLOAD=$(python3 - <<'PY'
+          import json, os
+          print(json.dumps({
+            'state': os.environ['STATE'],
+            'context': 'WesiOS Flutter Android',
+            'description': os.environ['DESC'][:140],
+          }))
+          PY
+          )
           curl -fsS -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H 'Accept: application/vnd.github+json' \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -d "$(python3 -c 'import json,os; print(json.dumps({"state":os.environ["STATE"],"context":"WesiOS Flutter Android","description":os.environ["DESC"][:140]}))' STATE="$STATE" DESC="$DESC")"
+            -d "$PAYLOAD"
 
   windows-status:
     if: always()
@@ -82,12 +91,21 @@ jobs:
           RESULT: ${{ needs.windows-release.result }}
         run: |
           set -euo pipefail
-          if [ "$RESULT" = success ]; then STATE=success; DESC='Windows release compile is green'; else STATE=failure; DESC="Windows=$RESULT"; fi
+          if [ "$RESULT" = success ]; then export STATE=success; export DESC='Windows release compile is green'; else export STATE=failure; export DESC="Windows=$RESULT"; fi
+          PAYLOAD=$(python3 - <<'PY'
+          import json, os
+          print(json.dumps({
+            'state': os.environ['STATE'],
+            'context': 'WesiOS Windows Build',
+            'description': os.environ['DESC'][:140],
+          }))
+          PY
+          )
           curl -fsS -X POST \
             -H "Authorization: Bearer $GH_TOKEN" \
             -H 'Accept: application/vnd.github+json' \
             "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -d "$(python3 -c 'import json,os; print(json.dumps({"state":os.environ["STATE"],"context":"WesiOS Windows Build","description":os.environ["DESC"][:140]}))' STATE="$STATE" DESC="$DESC")"
+            -d "$PAYLOAD"
 
   publish-status:
     if: always()
