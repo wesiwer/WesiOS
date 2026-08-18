@@ -13,24 +13,25 @@ permissions:
 jobs:
   capture:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Capture latest non-cancelled release run
+      - name: Capture latest non-cancelled release run after fixes
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           RUN_ID=''
-          for i in $(seq 1 36); do
-            gh run list --repo "$GITHUB_REPOSITORY" --workflow release-app.yml --limit 8 \
+          for i in $(seq 1 48); do
+            gh run list --repo "$GITHUB_REPOSITORY" --workflow release-app.yml --limit 10 \
               --json databaseId,status,conclusion,createdAt > /tmp/runs.json
             RUN_ID=$(python3 - <<'PY'
           import json
           rows=json.load(open('/tmp/runs.json'))
+          rows=sorted(rows, key=lambda r:r.get('createdAt',''), reverse=True)
           for row in rows:
               if row['databaseId'] <= 32154843215:
                   continue
