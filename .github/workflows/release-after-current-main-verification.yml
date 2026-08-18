@@ -1,0 +1,63 @@
+name: Release After Current Main Verification
+
+on:
+  workflow_run:
+    workflows: ['Verify Current Main Once']
+    types: [completed]
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  release:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Dispatch and capture signed release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          BEFORE=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          gh workflow run release-app.yml --repo "$GITHUB_REPOSITORY" --ref main \
+            -f notes='Sync hardening final: atomic LWW, permissions, profile/shield migration, Wesi AI concurrent writes, round-trip stability.' \
+            -f deploy_to_server=true
+
+          RUN_ID=''
+          for i in $(seq 1 30); do
+            gh run list --repo "$GITHUB_REPOSITORY" --workflow release-app.yml --limit 10 \
+              --json databaseId,status,conclusion,createdAt,headSha > /tmp/runs.json
+            RUN_ID=$(python3 - "$BEFORE" <<'PY'
+          import json,sys
+          before=sys.argv[1]
+          for r in json.load(open('/tmp/runs.json')):
+              if r.get('createdAt','') >= before and r.get('conclusion') != 'cancelled':
+                  print(r['databaseId']); break
+          PY
+            )
+            [ -n "$RUN_ID" ] && break
+            sleep 5
+          done
+          [ -n "$RUN_ID" ] || { echo 'release run not found'; exit 1; }
+          gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status || true
+          {
+            echo "VERIFICATION_RUN=${{ github.event.workflow_run.id }}"
+            echo "RELEASE_RUN=$RUN_ID"
+            gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json databaseId,status,conclusion,headSha,createdAt,jobs
+            echo '=== FAILED LOGS ==='
+            gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed || true
+          } > .github/current-final-release-result.txt
+          CONCLUSION=$(gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json conclusion -q .conclusion)
+          git config user.name 'WesiOS Release Verification'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/current-final-release
+          git add .github/current-final-release-result.txt
+          git commit -m 'ops: capture verified final release'
+          git push --force origin HEAD:diag/current-final-release
+          test "$CONCLUSION" = success
