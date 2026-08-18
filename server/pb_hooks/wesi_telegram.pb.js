@@ -82,6 +82,13 @@ cronAdd("wesios_telegram_alerts_v2", "*/5 * * * *", () => {
     const experience = require(`${__hooks}/wesi_telegram_experience.js`);
     experience.runNotifier($app);
   } catch (_) {}
+  // Morning delivery checks each linked employee's timezone and only sends
+  // once per local calendar day during the 08:00 hour. The speaker alternates
+  // deterministically: Nirvana -> Zane -> Nirvana -> Zane.
+  try {
+    const morning = require(`${__hooks}/wesi_telegram_morning.js`);
+    morning.runMorning($app);
+  } catch (_) {}
 });
 
 // Employee Portal revocation deletes the employee auth user. Revoking the
