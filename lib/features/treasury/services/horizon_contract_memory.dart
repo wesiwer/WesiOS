@@ -3,6 +3,8 @@ import 'dart:convert';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../../core/sync/sync_account_scope.dart';
+
 class HorizonContractMemory {
   final String beatId;
   final String leaseId;
@@ -112,7 +114,8 @@ class HorizonContractOutcome {
 class HorizonContractMemoryService {
   HorizonContractMemoryService._();
 
-  static const String boxName = 'wesios_horizon_contracts';
+  static const String baseBoxName = 'wesios_horizon_contracts';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
   static const String _key = 'contracts_v1';
   static const String _outcomesKey = 'contract_outcomes_v1';
 
