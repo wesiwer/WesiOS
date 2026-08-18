@@ -14,6 +14,7 @@ void main() {
   });
 
   tearDownAll(() async {
+    await Hive.close();
     dir.deleteSync(recursive: true);
   });
 
@@ -39,6 +40,51 @@ void main() {
           reason: 'сервер JavaScript Date не сохраняет микросекунды');
     }
     expect(stamps.first.microsecond, 0);
+  });
+
+  test('логический watermark сохраняется в Hive', () async {
+    final issued = SyncClock.now();
+    await Hive.box('wesios_settings').flush();
+
+    expect(
+      Hive.box('wesios_settings').get('sync_clock_last_logical_ms'),
+      issued.millisecondsSinceEpoch,
+      reason:
+          'последняя LWW-координата должна переживать завершение процесса',
+    );
+  });
+
+  test('после перезапуска и отката системных часов timestamp не идёт назад',
+      () async {
+    final persisted =
+        DateTime.now().add(const Duration(minutes: 10)).millisecondsSinceEpoch;
+    await Hive.box('wesios_settings')
+        .put('sync_clock_last_logical_ms', persisted);
+
+    // Новый процесс: память пустая, persisted Hive state остаётся.
+    SyncClock.reloadProcessStateForTesting();
+    final next = SyncClock.now();
+
+    expect(next.millisecondsSinceEpoch, persisted + 1,
+        reason:
+            'физические часы позади persisted watermark, поэтому LWW clock обязан продолжить с +1ms');
+  });
+
+  test('полный reset удаляет и offset, и logical watermark', () async {
+    SyncClock.now();
+    await Hive.box('wesios_settings').flush();
+    expect(
+      Hive.box('wesios_settings').get('sync_clock_last_logical_ms'),
+      isNotNull,
+    );
+
+    await SyncClock.reset();
+
+    expect(Hive.box('wesios_settings').get('sync_clock_offset_ms'), isNull);
+    expect(
+      Hive.box('wesios_settings').get('sync_clock_last_logical_ms'),
+      isNull,
+    );
   });
 
   test('отстающие часы подтягиваются к серверу', () async {
@@ -85,6 +131,11 @@ void main() {
     );
     expect(Hive.box('wesios_settings').get('sync_clock_offset_ms'), isNotNull,
         reason: 'правки до первого обмена должны попасть в ту же шкалу');
+
+    final before = SyncClock.offset;
+    SyncClock.reloadProcessStateForTesting();
+    expect(SyncClock.offset, before,
+        reason: 'новый процесс обязан перечитать persisted offset');
   });
 
   test('бессмысленный заголовок не уносит правки в другой век', () async {
