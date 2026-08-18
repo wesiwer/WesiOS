@@ -428,16 +428,11 @@ class SyncEngine {
     SyncFailure? policyFailure;
     var policyApplied = 0;
 
-    // A 403 is part of the current server policy snapshot, not a network
-    // failure. Use the fetch we just received as the authority for that id.
     for (final id in pushed.forbiddenIds) {
       if (cancelled()) return cancelledReport(applied: applied + policyApplied);
       final visibleRemote = remote.value![id];
 
       if (visibleRemote != null) {
-        // Read-only row: the employee may see it but may not write it. Restore
-        // exactly the server version instead of leaving the forbidden edit in
-        // local Hive.
         if (await applyAuthoritative(visibleRemote)) {
           policyApplied++;
         } else {
@@ -450,11 +445,6 @@ class SyncEngine {
         continue;
       }
 
-      // Not present in the permission-filtered remote snapshot at all: access
-      // was revoked (or this row never belonged to the employee). Purge the
-      // cached local copy. Store an epoch tombstone only in THIS account's
-      // journal, so a future permission grant will let any server row win and
-      // restore itself normally.
       SyncJournal.expect(
         c.name,
         id,
@@ -493,11 +483,24 @@ class SyncEngine {
       for (final id in pushed.deliveredIds) {
         if (cancelled()) return cancelledReport(applied: applied);
         final source = uploadedById[id];
+        if (source == null) continue;
+
+        // Do not let an HTTP response for an older snapshot erase a user edit
+        // made while the request was in flight. Reconcile the accepted server
+        // timestamp only if the journal still describes exactly the record we
+        // sent. If it changed meanwhile, the newer local stamp must survive so
+        // the next sync can upload the newer payload.
+        final current = SyncJournal.stampOf(c.name, id);
+        final unchangedSincePlan = current != null &&
+            current.updatedAt == source.updatedAt &&
+            current.deleted == source.deleted;
+        if (!unchangedSincePlan) continue;
+
         final serverStamp = pushed.acceptedStamps[id] ?? _epoch;
         await SyncJournal.record(
           c.name,
           id,
-          SyncStamp(serverStamp, deleted: source?.deleted == true),
+          SyncStamp(serverStamp, deleted: source.deleted),
         );
       }
 
