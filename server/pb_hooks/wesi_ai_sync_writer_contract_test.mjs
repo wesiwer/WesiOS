@@ -27,16 +27,30 @@ test('atomic boundary supports transaction-time AI payload rebase', () => {
     'rebase and live authorization must happen before LWW/save');
 });
 
-test('Wesi AI writer rebases deltas and reuses live sync authorization', () => {
+test('Wesi AI writer rebases, validates final state and reuses live authorization', () => {
   assert.match(helper, /wesi_sync_atomic\.js/);
   assert.match(helper, /wesi_sync_authz\.js/);
   assert.match(helper, /wesi_sync_generic_policy\.js/);
   assert.match(helper, /wesi_sync_crm_runtime\.js/);
   assert.match(helper, /rebase:\s*function/);
-  assert.match(helper, /authz\.refresh\(txApp, requestCtx\)/);
   assert.match(helper, /Object\.assign\(\{\}, current, patch\)/);
+  assert.match(helper, /validateRebased\(txApp, input, requestCtx\)/);
+  assert.match(helper, /authz\.refresh\(txApp, requestCtx\)/);
   assert.match(helper, /genericPolicy\.authorize\(txApp, existing, input, fresh\)/);
   assert.match(helper, /crmPolicy\.authorize(Client|Deal|Interaction)/);
+
+  const validationAt = helper.indexOf('validateRebased(txApp, input, requestCtx)');
+  const authzAt = helper.indexOf('authorize(txApp, existing, input, requestCtx)');
+  assert.ok(validationAt >= 0 && authzAt > validationAt,
+    'rebased relational validation must happen before final authorization/save');
+});
+
+test('rebased relational invariants cover roadmap, knowledge and task references', () => {
+  assert.match(helper, /end < start/);
+  assert.match(helper, /"roadmap_projects", projectId/);
+  assert.match(helper, /parentId === input\.rid/);
+  assert.match(helper, /"articles", parentId/);
+  assert.match(helper, /"employees", employeeId/);
 });
 
 for (const file of mutationTools) {
