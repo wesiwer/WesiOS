@@ -1,0 +1,476 @@
+SOURCE=8095fc880dc93d9c607951f5f2883b4c8a649009
+PUB_GET=0
+NODE_SYNC=0
+=== PUB ===
+Resolving dependencies...
+Downloading packages...
++ _fe_analyzer_shared 67.0.0 (105.0.0 available)
++ analyzer 6.4.1 (14.1.0 available)
++ archive 3.6.1 (4.0.9 available)
++ args 2.7.0
++ asn1lib 1.6.5
++ async 2.13.1
++ audioplayers 5.2.1 (6.8.1 available)
++ audioplayers_android 4.0.3 (5.3.0 available)
++ audioplayers_darwin 5.0.2 (6.5.0 available)
++ audioplayers_linux 3.1.0 (4.3.0 available)
++ audioplayers_platform_interface 6.1.0 (7.2.0 available)
++ audioplayers_web 4.1.0 (5.3.0 available)
++ audioplayers_windows 3.1.0 (4.4.1 available)
++ barcode 2.2.9
++ bidi 2.0.13
++ bloc 8.1.4 (9.2.1 available)
++ boolean_selector 2.1.2
++ build 2.4.1 (4.0.10 available)
++ build_config 1.1.2 (1.3.2 available)
++ build_daemon 4.1.5
++ build_resolvers 2.4.2 (3.0.4 available)
++ build_runner 2.4.13 (2.16.0 available)
++ build_runner_core 7.3.2 (9.3.2 available)
++ built_collection 5.1.1
++ built_value 8.12.7
++ camera 0.10.6 (0.12.0+2 available)
++ camera_android 0.10.11
++ camera_avfoundation 0.9.23+2 (0.10.2 available)
++ camera_platform_interface 2.13.1
++ camera_web 0.3.5+5
++ characters 1.4.1
++ charcode 1.4.0
++ checked_yaml 2.0.4
++ cli_util 0.4.2 (0.5.2 available)
++ clock 1.1.2
++ code_assets 1.2.1 (2.0.0 available)
++ code_builder 4.11.1
++ collection 1.19.1
++ convert 3.1.2
++ cross_file 0.3.5+4
++ crypto 3.0.7
++ cryptography 2.9.0
++ csslib 1.0.2
++ dart_quill_delta 10.8.3
++ dart_style 2.3.6 (3.1.12 available)
++ dartssh2 2.11.0 (3.3.0 available)
++ dbus 0.7.12 (0.7.14 available)
++ device_info_plus 10.1.2 (13.2.0 available)
++ device_info_plus_platform_interface 7.0.3 (8.1.0 available)
++ diff_match_patch 0.4.1
++ dio 5.11.0
++ dio_web_adapter 2.2.1
++ equatable 2.1.0
++ fake_async 1.3.3
++ ffi 2.2.0
++ file 7.0.1
++ file_picker 6.2.1 (12.0.0 available)
++ file_selector_platform_interface 2.7.0
++ file_selector_windows 0.9.3+5
++ firebase_core 2.32.0 (4.13.0 available)
++ firebase_core_platform_interface 5.4.2 (8.1.0 available)
++ firebase_core_web 2.24.0 (3.10.0 available)
++ fixnum 1.1.1
++ fl_chart 0.66.2 (1.2.0 available)
++ flutter 0.0.0 from sdk flutter
++ flutter_animate 4.5.2
++ flutter_bloc 8.1.6 (9.1.1 available)
++ flutter_colorpicker 1.1.0
++ flutter_drawing_board 1.0.1+2
++ flutter_keyboard_visibility_linux 1.0.0
++ flutter_keyboard_visibility_macos 1.0.0
++ flutter_keyboard_visibility_platform_interface 2.0.0
++ flutter_keyboard_visibility_temp_fork 0.1.5
++ flutter_keyboard_visibility_windows 1.0.0
++ flutter_launcher_icons 0.13.1 (0.14.4 available)
++ flutter_lints 3.0.2 (6.0.0 available)
++ flutter_local_notifications 17.2.4 (22.3.0 available)
++ flutter_local_notifications_linux 4.0.1 (8.0.1 available)
++ flutter_local_notifications_platform_interface 7.2.0 (12.2.0 available)
++ flutter_localizations 0.0.0 from sdk flutter
++ flutter_plugin_android_lifecycle 2.0.35
++ flutter_quill 11.5.1
++ flutter_quill_delta_from_html 1.5.3
++ flutter_secure_storage 9.2.4 (11.0.0 available)
++ flutter_secure_storage_linux 1.2.3 (3.0.2 available)
++ flutter_secure_storage_macos 3.1.3 (4.0.0 available)
++ flutter_secure_storage_platform_interface 1.1.2 (2.0.3 available)
++ flutter_secure_storage_web 1.2.1 (2.1.1 available)
++ flutter_secure_storage_windows 3.1.2 (4.2.2 available)
++ flutter_shaders 0.1.3
++ flutter_soloud 3.1.12 (4.1.7 available)
++ flutter_test 0.0.0 from sdk flutter
++ flutter_timer_countdown 1.0.7
++ flutter_web_plugins 0.0.0 from sdk flutter
++ frontend_server_client 4.0.0
++ glob 2.1.3
++ graphs 2.3.2
++ hive 2.2.3
++ hive_flutter 1.1.0
++ hive_generator 2.0.1
++ hooks 2.2.0
++ html 0.15.6
++ http 1.6.0
++ http_multi_server 3.2.2
++ http_parser 4.1.2
++ image 4.3.0 (4.9.1 available)
++ intl 0.20.3
++ io 1.0.5
++ is_ios_simulator 1.0.1
++ jni 1.0.3
++ jni_flutter 1.0.2
++ jni_util 1.0.0
++ js 0.6.7 (0.7.2 available)
++ json_annotation 4.12.0
++ leak_tracker 11.0.2
++ leak_tracker_flutter_testing 3.0.10
++ leak_tracker_testing 3.0.2
++ lints 3.0.0 (6.1.0 available)
++ local_auth 2.3.0 (3.0.2 available)
++ local_auth_android 1.0.56 (2.0.9 available)
++ local_auth_darwin 1.6.1 (2.0.3 available)
++ local_auth_platform_interface 1.1.0
++ local_auth_windows 1.0.11 (2.0.1 available)
++ local_notifier 0.1.6
++ logging 1.3.0
++ markdown 7.3.1
++ matcher 0.12.20
++ material_color_utilities 0.13.0 (0.13.1 available)
++ math_expressions 2.7.0 (3.2.0 available)
++ meta 1.19.0
++ mime 1.0.6 (2.0.0 available)
++ nested 1.0.0
++ objective_c 9.5.0
++ package_config 2.2.0 (3.0.0 available)
++ path 1.9.1
++ path_parsing 1.1.0
++ path_provider 2.1.6
++ path_provider_android 2.3.1
++ path_provider_foundation 2.6.0
++ path_provider_linux 2.2.2
++ path_provider_platform_interface 2.1.3
++ path_provider_windows 2.3.0
++ pdf 3.12.0 (3.13.0 available)
++ pdf_widget_wrapper 1.0.4
++ pedantic 1.11.1
++ petitparser 6.1.0 (7.0.2 available)
++ pinenacl 0.6.0
++ platform 3.1.6
++ plugin_platform_interface 2.1.8
++ pointycastle 3.9.1 (4.0.0 available)
++ pool 1.5.2
++ printing 5.14.3 (5.15.0 available)
++ provider 6.1.5+1
++ pub_semver 2.2.0
++ pubspec_parse 1.5.0
++ qr 3.0.2 (4.0.0 available)
++ quill_native_bridge 11.1.0 (11.2.0 available)
++ quill_native_bridge_android 0.0.2
++ quill_native_bridge_ios 0.0.3
++ quill_native_bridge_macos 0.0.1
++ quill_native_bridge_platform_interface 0.0.2+1
++ quill_native_bridge_web 0.0.2
++ quill_native_bridge_windows 0.0.2 (0.1.0 available)
++ quiver 3.2.2
++ record_use 1.1.1
++ screen_retriever 0.1.9 (0.2.2 available)
++ share_plus 7.2.2 (13.3.0 available)
++ share_plus_platform_interface 3.4.0 (7.2.0 available)
++ shared_preferences 2.5.5
++ shared_preferences_android 2.4.27
++ shared_preferences_foundation 2.5.6
++ shared_preferences_linux 2.4.1
++ shared_preferences_platform_interface 2.4.2
++ shared_preferences_web 2.4.3
++ shared_preferences_windows 2.4.1
++ shelf 1.4.2
++ shelf_web_socket 2.0.1 (3.0.0 available)
++ simple_gesture_detector 0.2.1
++ sky_engine 0.0.0 from sdk flutter
++ source_gen 1.5.0 (4.2.4 available)
++ source_helper 1.3.5 (1.3.13 available)
++ source_span 1.10.2
++ speech_to_text 6.6.0 (7.4.0 available)
++ speech_to_text_macos 1.1.0
++ speech_to_text_platform_interface 2.4.0
++ stack_trace 1.12.1
++ stream_channel 2.1.4
++ stream_transform 2.1.1
++ string_scanner 1.4.1
++ syncfusion_flutter_core 28.2.12 (34.2.4 available)
++ syncfusion_flutter_gauges 28.2.12 (34.2.4 available)
++ synchronized 3.4.1+2
++ table_calendar 3.2.1
++ term_glyph 1.2.2
++ test_api 0.7.12 (0.7.13 available)
++ timezone 0.9.4 (0.11.1 available)
++ timing 1.0.2
++ typed_data 1.4.0
++ url_launcher 6.3.2
++ url_launcher_android 6.3.32
++ url_launcher_ios 6.4.1
++ url_launcher_linux 3.2.2
++ url_launcher_macos 3.2.5
++ url_launcher_platform_interface 2.3.2
++ url_launcher_web 2.4.3
++ url_launcher_windows 3.1.5
++ uuid 4.6.0
++ vector_math 2.4.2
++ vibration 1.9.0 (3.2.0 available)
++ vibration_platform_interface 0.0.3 (0.1.2 available)
++ video_player 2.14.0
++ video_player_android 2.12.0
++ video_player_avfoundation 2.11.0
++ video_player_platform_interface 6.9.0
++ video_player_web 2.4.0
++ vm_service 15.2.0
++ watcher 1.2.1
++ web 1.1.1
++ web_socket 1.0.1
++ web_socket_channel 3.0.3
++ win32 5.15.0 (6.4.0 available)
++ win32_registry 1.1.5 (3.0.3 available)
++ window_manager 0.3.9 (0.5.2 available)
++ xdg_directories 1.1.0
++ xml 6.5.0 (7.0.1 available)
++ yaml 3.1.3
+Changed 226 dependencies!
+78 packages have newer versions incompatible with dependency constraints.
+Try `flutter pub outdated` for more information.
+Upgrading analysis_options.yaml to exclude build and platform directories.
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+=== NODE FAILURES ===
+=== NODE TAIL ===
+  ...
+# Subtest: profile is a singleton channel with rid me on both read and write
+ok 84 - profile is a singleton channel with rid me on both read and write
+  ---
+  duration_ms: 0.291285
+  type: 'test'
+  ...
+# Subtest: ordinary employee sees only participant-scoped file metadata
+ok 85 - ordinary employee sees only participant-scoped file metadata
+  ---
+  duration_ms: 1.15523
+  type: 'test'
+  ...
+# Subtest: manager can see all file metadata rows
+ok 86 - manager can see all file metadata rows
+  ---
+  duration_ms: 0.249045
+  type: 'test'
+  ...
+# Subtest: ordinary employee cannot create request for another employee
+ok 87 - ordinary employee cannot create request for another employee
+  ---
+  duration_ms: 0.742388
+  type: 'test'
+  ...
+# Subtest: request participants are immutable after creation
+ok 88 - request participants are immutable after creation
+  ---
+  duration_ms: 0.287087
+  type: 'test'
+  ...
+# Subtest: ordinary employee cannot mutate grants
+ok 89 - ordinary employee cannot mutate grants
+  ---
+  duration_ms: 0.311903
+  type: 'test'
+  ...
+# Subtest: ordinary employee may only record a handover from self
+ok 90 - ordinary employee may only record a handover from self
+  ---
+  duration_ms: 0.26238
+  type: 'test'
+  ...
+# Subtest: employee avatar update preserves transaction-current protected fields
+ok 91 - employee avatar update preserves transaction-current protected fields
+  ---
+  duration_ms: 2.308966
+  type: 'test'
+  ...
+# Subtest: task cannot be updated after concurrent reassignment outside employee scope
+ok 92 - task cannot be updated after concurrent reassignment outside employee scope
+  ---
+  duration_ms: 0.699728
+  type: 'test'
+  ...
+# Subtest: transaction cannot be moved from an organization without edit permission
+ok 93 - transaction cannot be moved from an organization without edit permission
+  ---
+  duration_ms: 0.415466
+  type: 'test'
+  ...
+# Subtest: message authorization rechecks transaction-current parent chat
+ok 94 - message authorization rechecks transaction-current parent chat
+  ---
+  duration_ms: 0.276467
+  type: 'test'
+  ...
+# Subtest: knowledge reparenting requires access to both current and target scope
+ok 95 - knowledge reparenting requires access to both current and target scope
+  ---
+  duration_ms: 0.309699
+  type: 'test'
+  ...
+# Subtest: newer incoming row is accepted
+ok 96 - newer incoming row is accepted
+  ---
+  duration_ms: 2.078556
+  type: 'test'
+  ...
+# Subtest: late stale request cannot overwrite newer server row
+ok 97 - late stale request cannot overwrite newer server row
+  ---
+  duration_ms: 0.21364
+  type: 'test'
+  ...
+# Subtest: deletion wins an exact timestamp tie
+ok 98 - deletion wins an exact timestamp tie
+  ---
+  duration_ms: 1.246159
+  type: 'test'
+  ...
+# Subtest: existing server row is authoritative on equal live timestamps
+ok 99 - existing server row is authoritative on equal live timestamps
+  ---
+  duration_ms: 0.23026
+  type: 'test'
+  ...
+# Subtest: valid incoming row repairs an invalid historical server stamp
+ok 100 - valid incoming row repairs an invalid historical server stamp
+  ---
+  duration_ms: 2.77094
+  type: 'test'
+  ...
+# Subtest: wesi_sync_read.pb.js keeps profile in authenticated private scope
+ok 101 - wesi_sync_read.pb.js keeps profile in authenticated private scope
+  ---
+  duration_ms: 1.167833
+  type: 'test'
+  ...
+# Subtest: wesi_sync_write.pb.js keeps profile in authenticated private scope
+ok 102 - wesi_sync_write.pb.js keeps profile in authenticated private scope
+  ---
+  duration_ms: 0.271157
+  type: 'test'
+  ...
+# Subtest: exact extended profile route also remains private
+ok 103 - exact extended profile route also remains private
+  ---
+  duration_ms: 1.04321
+  type: 'test'
+  ...
+# Subtest: company and private scopes produce one composite revision
+ok 104 - company and private scopes produce one composite revision
+  ---
+  duration_ms: 2.086371
+  type: 'test'
+  ...
+# Subtest: owner account does not need a duplicate private marker
+ok 105 - owner account does not need a duplicate private marker
+  ---
+  duration_ms: 0.337631
+  type: 'test'
+  ...
+# Subtest: duplicate historical markers are deterministic and all affect the token
+ok 106 - duplicate historical markers are deterministic and all affect the token
+  ---
+  duration_ms: 0.300983
+  type: 'test'
+  ...
+# Subtest: marker logical stamp advances even when two writes share one millisecond
+ok 107 - marker logical stamp advances even when two writes share one millisecond
+  ---
+  duration_ms: 0.509893
+  type: 'test'
+  ...
+# Subtest: duplicate markers advance from the newest previous logical stamp
+ok 108 - duplicate markers advance from the newest previous logical stamp
+  ---
+  duration_ms: 0.348221
+  type: 'test'
+  ...
+# Subtest: marker stays above an allowed future business stamp for legacy revision
+ok 109 - marker stays above an allowed future business stamp for legacy revision
+  ---
+  duration_ms: 0.276216
+  type: 'test'
+  ...
+# Subtest: pre-marker installations fall back to latest business state until first write
+ok 110 - pre-marker installations fall back to latest business state until first write
+  ---
+  duration_ms: 0.329306
+  type: 'test'
+  ...
+# Subtest: latest business row remains a fallback when marker nonce is unchanged
+ok 111 - latest business row remains a fallback when marker nonce is unchanged
+  ---
+  duration_ms: 0.400358
+  type: 'test'
+  ...
+# Subtest: record hook covers create, update and delete while excluding marker recursion
+ok 112 - record hook covers create, update and delete while excluding marker recursion
+  ---
+  duration_ms: 0.841062
+  type: 'test'
+  ...
+# Subtest: legacy profile_private POST is rejected while old GET data stays migratable
+ok 113 - legacy profile_private POST is rejected while old GET data stays migratable
+  ---
+  duration_ms: 0.860729
+  type: 'test'
+  ...
+# Subtest: revision-v2 no longer derives its primary token from one max row
+ok 114 - revision-v2 no longer derives its primary token from one max row
+  ---
+  duration_ms: 0.403484
+  type: 'test'
+  ...
+# Subtest: touch retries as update when another hook wins the first marker create
+ok 115 - touch retries as update when another hook wins the first marker create
+  ---
+  duration_ms: 2.342749
+  type: 'test'
+  ...
+# Subtest: clean install exits before querying a missing wesios_records table
+ok 116 - clean install exits before querying a missing wesios_records table
+  ---
+  duration_ms: 3.45551
+  type: 'test'
+  ...
+# Subtest: migration keeps one deterministic LWW winner per sync identity
+ok 117 - migration keeps one deterministic LWW winner per sync identity
+  ---
+  duration_ms: 3.281775
+  type: 'test'
+  ...
+# Subtest: migration persists the exact unique owner/coll/rid index
+ok 118 - migration persists the exact unique owner/coll/rid index
+  ---
+  duration_ms: 1.082534
+  type: 'test'
+  ...
+1..118
+# tests 118
+# suites 0
+# pass 118
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 694.546019
