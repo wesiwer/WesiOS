@@ -15,6 +15,7 @@ on:
       - 'lib/features/profile/profile_with_telegram.dart'
       - 'lib/features/profile/telegram_link_screen.dart'
       - 'android/app/src/main/AndroidManifest.xml'
+      - 'test/telegram_deep_link_test.dart'
   workflow_dispatch:
 
 permissions:
@@ -49,8 +50,17 @@ jobs:
       - name: Run Telegram unit tests
         run: node server/pb_hooks/wesi_telegram_lib_test.mjs
 
+      - name: Reject legacy Vercel dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -E '@vercel/postgres|telegram-webhook/' server/pb_hooks/wesi_telegram*.js; then
+            echo '::error::Production Telegram gateway must not depend on the legacy Vercel prototype.'
+            exit 1
+          fi
+
   flutter:
-    name: Flutter analyze
+    name: Flutter analyze and deep links
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -61,9 +71,13 @@ jobs:
         with:
           flutter-version: '3.24.0'
           channel: 'stable'
+          cache: true
 
       - name: Get dependencies
         run: flutter pub get
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
+
+      - name: Test Telegram deep-link routing
+        run: flutter test test/telegram_deep_link_test.dart
