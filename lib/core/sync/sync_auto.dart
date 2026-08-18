@@ -102,6 +102,12 @@ class SyncAuto {
     });
   }
 
+  static bool _quickRetry(String? code) =>
+      code == 'LOCAL_CHANGED_DURING_SYNC' || code == 'BUSY';
+
+  static bool _lifecycleEnded(String? code) =>
+      code == 'CANCELLED' || code == 'SESSION_CHANGED';
+
   static void _onResumed() {
     if (!_listening || !SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
       return;
@@ -157,7 +163,17 @@ class SyncAuto {
       // Revision после pull здесь намеренно не читается: watermark принимает
       // только revision, наблюдавшуюся ДО соответствующего полного прохода.
     } else {
-      _schedule(retryAfter);
+      final code = report.firstFailure?.code;
+      if (_quickRetry(code)) {
+        // Optimistic concurrency did exactly what it should: it noticed that
+        // the user changed a row after the merge snapshot and refused to apply
+        // or send a stale plan. This is not a network failure. Keep the local
+        // change pending and recompute almost immediately.
+        pending.value = true;
+        _schedule(quiet);
+      } else if (!_lifecycleEnded(code)) {
+        _schedule(retryAfter);
+      }
     }
     return report;
   }
@@ -209,9 +225,11 @@ class SyncAuto {
       if (stale()) return;
       if (report.ok) {
         _acceptObservedRevision(observedRevision);
-      } else if (report.failure?.code != 'CANCELLED' &&
-          report.failure?.code != 'SESSION_CHANGED') {
-        _registerProbeFailure();
+      } else {
+        final code = report.firstFailure?.code;
+        if (!_lifecycleEnded(code) && !_quickRetry(code)) {
+          _registerProbeFailure();
+        }
       }
     } finally {
       if (generation == _generation) _probeBusy = false;
