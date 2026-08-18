@@ -24,7 +24,7 @@ jobs:
       - name: Run full verification and publish result
         shell: bash
         run: |
-          # Retry after aligning intl and Syncfusion gauges.
+          # Final validation after intl/Quill/Syncfusion and atomic-writer fixes.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           flutter analyze --no-fatal-infos >/tmp/analyze.log 2>&1
@@ -43,13 +43,13 @@ jobs:
             echo "ANDROID_DEBUG=$ANDROID"
             echo "NODE_SYNC=$NODE"
             echo '=== ANALYZE TAIL ==='
-            tail -n 80 /tmp/analyze.log
+            tail -n 120 /tmp/analyze.log
             echo '=== TESTS TAIL ==='
-            tail -n 120 /tmp/tests.log
+            tail -n 160 /tmp/tests.log
             echo '=== ANDROID TAIL ==='
-            tail -n 80 /tmp/android.log
+            tail -n 120 /tmp/android.log
             echo '=== NODE TAIL ==='
-            tail -n 160 /tmp/node.log
+            tail -n 80 /tmp/node.log
           } > .github/current-main-verification.txt
           git config user.name 'WesiOS Verification'
           git config user.email 'actions@users.noreply.github.com'
