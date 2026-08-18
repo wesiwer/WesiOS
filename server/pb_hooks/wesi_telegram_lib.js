@@ -54,7 +54,8 @@ function parseStartCode(command) {
 
 function callback(action, value) {
   const a = text(action).replace(/[^a-z0-9_-]/gi, "").slice(0, 24);
-  const v = text(value).replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, 32);
+  const available = Math.max(0, 64 - CALLBACK_PREFIX.length - a.length - 1);
+  const v = text(value).replace(/[^A-Za-z0-9_.:-]/g, "").slice(0, available);
   const out = CALLBACK_PREFIX + a + (v ? ":" + v : "");
   return out.length <= 64 ? out : out.slice(0, 64);
 }
@@ -67,7 +68,7 @@ function parseCallback(raw) {
   const action = split < 0 ? body : body.slice(0, split);
   const arg = split < 0 ? "" : body.slice(split + 1);
   if (!/^[a-z0-9_-]{1,24}$/i.test(action)) return null;
-  if (arg && !/^[A-Za-z0-9_.:-]{1,32}$/.test(arg)) return null;
+  if (arg && !/^[A-Za-z0-9_.:-]{1,58}$/.test(arg)) return null;
   return {action: action.toLowerCase(), value: arg};
 }
 
