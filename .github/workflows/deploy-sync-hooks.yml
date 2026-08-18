@@ -24,6 +24,9 @@ on:
       - 'server/pb_hooks/wesi_sync_crm.pb.js'
       - 'server/pb_hooks/wesi_sync_crm_runtime.js'
       - 'server/pb_hooks/wesi_sync_crm_contract_test.mjs'
+      - 'server/pb_hooks/wesi_sync_files.pb.js'
+      - 'server/pb_hooks/wesi_sync_files_runtime.js'
+      - 'server/pb_hooks/wesi_sync_files_contract_test.mjs'
       - 'server/pb_hooks/wesi_sync_unique_migration_test.mjs'
       - 'server/pb_migrations/1787055000_wesios_records_unique_rid.js'
       - 'server/verify-sync-db.py'
@@ -64,6 +67,8 @@ jobs:
             server/pb_hooks/wesi_sync_extra_runtime.js \
             server/pb_hooks/wesi_sync_crm.pb.js \
             server/pb_hooks/wesi_sync_crm_runtime.js \
+            server/pb_hooks/wesi_sync_files.pb.js \
+            server/pb_hooks/wesi_sync_files_runtime.js \
             server/pb_migrations/1787055000_wesios_records_unique_rid.js; do
             test -s "$file"
             node --check "$file"
@@ -77,6 +82,7 @@ jobs:
             server/pb_hooks/wesi_sync_revision_race_test.mjs \
             server/pb_hooks/wesi_sync_extra_contract_test.mjs \
             server/pb_hooks/wesi_sync_crm_contract_test.mjs \
+            server/pb_hooks/wesi_sync_files_contract_test.mjs \
             server/pb_hooks/wesi_sync_unique_migration_test.mjs
           grep -q 'wesiSyncContext' server/pb_hooks/wesi_sync_context.pb.js
           grep -q 'wesi_sync_data_access.js' server/pb_hooks/wesi_sync_context.pb.js
@@ -94,6 +100,9 @@ jobs:
           grep -q '/api/wesi/sync/crm_interactions' server/pb_hooks/wesi_sync_crm.pb.js
           grep -q 'wesi_sync_atomic.js' server/pb_hooks/wesi_sync_crm_runtime.js
           grep -q 'authorize:' server/pb_hooks/wesi_sync_crm_runtime.js
+          grep -q '/api/wesi/sync/' server/pb_hooks/wesi_sync_files.pb.js
+          grep -q 'wesi_sync_atomic.js' server/pb_hooks/wesi_sync_files_runtime.js
+          grep -q 'authorize:' server/pb_hooks/wesi_sync_files_runtime.js
           grep -q 'onRecordAfterCreateSuccess' server/pb_hooks/wesi_sync_revision.pb.js
           grep -q 'onRecordAfterUpdateSuccess' server/pb_hooks/wesi_sync_revision.pb.js
           grep -q 'idx_wesios_rid' server/pb_migrations/1787055000_wesios_records_unique_rid.js
@@ -156,13 +165,15 @@ jobs:
             server/pb_hooks/wesi_sync_extra_runtime.js \
             server/pb_hooks/wesi_sync_crm.pb.js \
             server/pb_hooks/wesi_sync_crm_runtime.js \
+            server/pb_hooks/wesi_sync_files.pb.js \
+            server/pb_hooks/wesi_sync_files_runtime.js \
             server/pb_migrations/1787055000_wesios_records_unique_rid.js \
             server/verify-sync-db.py \
             "$USER@$HOST:$REMOTE/"
           $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' MIGRATION_DIR='$MIGRATION_DIR' PB_DATA='$PB_DATA' bash -s" <<'SH'
           set -euo pipefail
-          runtime_files=(wesi_sync_data_access.js wesi_sync_lww.js wesi_sync_atomic.js wesi_sync_revision.js wesi_sync_extra_runtime.js wesi_sync_crm_runtime.js)
-          route_files=(wesi_sync_revision.pb.js wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js wesi_sync_crm.pb.js)
+          runtime_files=(wesi_sync_data_access.js wesi_sync_lww.js wesi_sync_atomic.js wesi_sync_revision.js wesi_sync_extra_runtime.js wesi_sync_crm_runtime.js wesi_sync_files_runtime.js)
+          route_files=(wesi_sync_revision.pb.js wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js wesi_sync_crm.pb.js wesi_sync_files.pb.js)
           migration_file=1787055000_wesios_records_unique_rid.js
 
           ensure_dir() {
@@ -210,22 +221,14 @@ jobs:
           }
 
           restart_pocketbase() {
-            if systemctl restart pocketbase 2>/dev/null; then
-              return
-            fi
-            if command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then
-              return
-            fi
+            if systemctl restart pocketbase 2>/dev/null; then return; fi
+            if command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then return; fi
             echo "Не удалось перезапустить pocketbase" >&2
             exit 5
           }
 
-          for f in "${runtime_files[@]}"; do
-            atomic_install "$REMOTE/$f" "$HOOK_DIR/$f"
-          done
-          for f in "${route_files[@]}"; do
-            atomic_install "$REMOTE/$f" "$HOOK_DIR/$f"
-          done
+          for f in "${runtime_files[@]}"; do atomic_install "$REMOTE/$f" "$HOOK_DIR/$f"; done
+          for f in "${route_files[@]}"; do atomic_install "$REMOTE/$f" "$HOOK_DIR/$f"; done
 
           migration_changed=0
           if cmp -s "$REMOTE/$migration_file" "$MIGRATION_DIR/$migration_file" 2>/dev/null; then
@@ -284,6 +287,9 @@ jobs:
             /api/wesi/sync/crm_clients \
             /api/wesi/sync/crm_deals \
             /api/wesi/sync/crm_interactions \
+            /api/wesi/sync/file_requests \
+            /api/wesi/sync/file_grants \
+            /api/wesi/sync/file_handovers \
             /api/wesi/sync/horizon_predictions; do
             code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 "$API$path" || true)
             case "$code" in
