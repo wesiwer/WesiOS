@@ -80,6 +80,7 @@ function rejectAppendOnlyDelete(input) {
 
 function commit(app, rawInput) {
   const input = normalizedInput(rawInput);
+  const rebase = typeof rawInput.rebase === "function" ? rawInput.rebase : null;
   const authorize = typeof rawInput.authorize === "function"
     ? rawInput.authorize
     : null;
@@ -91,6 +92,13 @@ function commit(app, rawInput) {
     // a single writer/transaction is allowed and using the outer app here can
     // deadlock or reintroduce a stale decision.
     const existing = currentRow(txApp, input);
+
+    // Server-side writers such as Wesi AI may have prepared their payload from
+    // a snapshot that was current before this writer transaction started.
+    // Rebase allows them to apply only their actual field delta to the latest
+    // transaction-current row. HTTP sync does not use this hook and therefore
+    // keeps its normal whole-record LWW semantics.
+    if (rebase) rebase(txApp, existing, input);
 
     // Permission/ownership checks that depend on current row state belong to
     // this same transaction. A preflight authorization can race with another
