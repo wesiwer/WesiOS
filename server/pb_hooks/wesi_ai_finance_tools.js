@@ -46,6 +46,11 @@ module.exports = {
     if (!policy.hasModule(ctx)) return [];
     return [
       {
+        name: "finance_balance",
+        description: "Получить текущий фактический остаток разрешённой АКТИВНОЙ организации WesiOS из того же ledger и по тому же правилу, что использует приложение. Используй для короткого вопроса о текущей кассе/балансе.",
+        parameters: {type: "object", properties: {organizationId: {type: "string", description: "Используй только если активная организация не передана WesiOS"}}},
+      },
+      {
         name: "finance_summary",
         description: "Посчитать на основном сервере Wesi финансы АКТИВНОЙ организации: текущий остаток на счетах (currentBalance и разбивка accounts) и сводку за период. На вопрос «сколько денег на счету / сколько у меня есть» отвечай currentBalance, а не net за период. Если WesiOS передал activeOrganizationId, не подменяй его другой организацией и не выдумывай ID.",
         parameters: {type: "object", properties: {organizationId: {type: "string", description: "Используй только если активная организация не передана WesiOS"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}}},
@@ -82,6 +87,25 @@ module.exports = {
     const requested = String(activeOrganizationId || input.organizationId || "").trim();
     const organizationId = policy.select(state, requested);
     if (!organizationId) return {ok: false, code: "FORBIDDEN", message: "Нет права просматривать финансы этой организации"};
+
+    if (name === "finance_balance") {
+      const balance = balanceState(e, ctx, policy, organizationId);
+      if (!balance) {
+        return {
+          ok: false,
+          code: "FINANCE_DATA_UNAVAILABLE",
+          message: "Не удалось прочитать счета WesiOS. Нулевой остаток не подставлен.",
+        };
+      }
+      return {ok: true, result: {
+        organizationId: organizationId,
+        organizationName: state.orgs[organizationId] ? state.orgs[organizationId].name : organizationId,
+        reportingCurrency: state.orgs[organizationId] ? state.orgs[organizationId].baseCurrency : "RUB",
+        currentBalance: balance.currentBalance,
+        accounts: balance.accounts,
+        asOf: new Date().toISOString(),
+      }};
+    }
 
     const now = new Date();
     const defaultTo = now.toISOString().slice(0, 10);
