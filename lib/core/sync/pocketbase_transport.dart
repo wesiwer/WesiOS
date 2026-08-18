@@ -85,17 +85,43 @@ class PocketBaseTransport implements SyncTransport {
     }
 
     final out = <String, SyncRecord>{};
-    for (final item in items) {
-      if (item is! Map) continue;
+    for (var index = 0; index < items.length; index++) {
+      final item = items[index];
+      if (item is! Map) {
+        return SyncResult.fail(
+          SyncFailure(
+            'REMOTE_DATA_INVALID',
+            'Повреждена запись $collection[$index] на сервере',
+          ),
+        );
+      }
       final rid = item['rid'];
       final stamp = DateTime.tryParse('${item['stamp']}');
-      if (rid is! String || rid.isEmpty || stamp == null) continue;
       final payload = item['payload'];
+      if (rid is! String ||
+          rid.isEmpty ||
+          stamp == null ||
+          payload is! Map) {
+        return SyncResult.fail(
+          SyncFailure(
+            'REMOTE_DATA_INVALID',
+            'Некорректная запись $collection[$index] на сервере',
+          ),
+        );
+      }
+      if (out.containsKey(rid)) {
+        return SyncResult.fail(
+          SyncFailure(
+            'REMOTE_DATA_INVALID',
+            'Сервер вернул дубликат $collection:$rid',
+          ),
+        );
+      }
       out[rid] = SyncRecord(
         id: rid,
         updatedAt: stamp,
         deleted: item['deleted'] == true,
-        fields: payload is Map ? Map<String, dynamic>.from(payload) : const {},
+        fields: Map<String, dynamic>.from(payload),
       );
     }
     return SyncResult.ok(out);
@@ -192,6 +218,15 @@ class PocketBaseTransport implements SyncTransport {
         if (_fatalCodes.contains(res.failure!.code)) break;
         continue;
       }
+
+      // Сервер повторно проверяет LWW прямо перед сохранением. Между нашим
+      // fetch и push другой клиент мог успеть записать более новую версию.
+      // Такой stale push возвращается как HTTP 200 + applied:false: это не
+      // сетевая ошибка, но считать запись доставленной нельзя, иначе afterUpload
+      // (например статус сообщения) солжёт. Следующий revision-poll подтянет
+      // авторитетную серверную версию.
+      if (res.value!['applied'] == false) continue;
+
       // Идентификатор записи на сервере запоминать больше не нужно: запись
       // идёт через собственный обработчик, и решение «создать или обновить»
       // принимает он сам по паре «коллекция + идентификатор». Заодно исчезли
