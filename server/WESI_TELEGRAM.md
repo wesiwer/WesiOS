@@ -6,12 +6,15 @@
 
 Production Gateway живёт в основном Wesi server contour:
 
-- `pb_hooks/wesi_telegram.pb.js` — HTTP routes, Telegram webhook, команды,
-  callback-кнопки и cron notifier;
+- `pb_hooks/wesi_telegram.pb.js` — только регистрация PocketBase routes и
+  cron. Handler-ы изолированы PocketBase, поэтому файл намеренно тонкий и
+  делает `require()` gateway внутри каждого handler-а;
+- `pb_hooks/wesi_telegram_gateway.js` — Telegram webhook, команды,
+  callback-кнопки, notifier, формат ответа и вызовы общего Tool Layer;
 - `pb_hooks/wesi_telegram_store.js` — link codes, identity link, revoke,
   active org и notification preferences;
 - `pb_hooks/wesi_telegram_lib.js` — чистые правила парсинга, callback,
-  rate-limit, quiet hours и форматирования;
+  rate-limit, quiet hours, alert transitions и форматирования;
 - `wesi_ai_finance_tools.js`, `wesi_ai_horizon_tools.js`,
   `wesi_ai_task_tools.js` — общий Tool Layer. Бот не считает отдельную
   «правду» о деньгах или задачах.
@@ -47,7 +50,7 @@ Authenticated WesiOS client:
 - `POST /api/wesi/telegram/context`
 - `POST /api/wesi/telegram/preferences`
 
-Telegram:
+Telegram/public transport:
 
 - `POST /api/wesi/telegram/webhook`
 - `GET /api/wesi/telegram/open?...` — whitelist redirect обратно в WesiOS
@@ -62,11 +65,16 @@ Telegram:
 - `/org`
 
 В личке поддерживается базовый естественный язык (`сколько денег`,
-`кассовый риск`, `просрочки`, `задачи сегодня`). Неизвестный NL intent пока
-не отправляется в LLM: Wesi AI Telegram chat — отдельный этап v1.2.
+`кассовый риск`, `просрочки`, `задачи сегодня`). Если в фразе однозначно
+названа доступная организация, например `Beats`, запрос выполняется в её
+контексте без молчаливого изменения сохранённой active org.
 
-Группы в MVP не получают финансовые цифры или тела задач. Чувствительные
-команды перенаправляются в личный чат.
+Неизвестный NL intent пока не отправляется в LLM: Wesi AI Telegram chat —
+отдельный этап v1.2.
+
+Группы в MVP fail-closed: бот реагирует только на явный
+`/command@WesiOSBot` и даже тогда не выводит баланс или тела задач. Полный
+контекст разрешён только в личке до появления отдельной group policy.
 
 ## Risk semantics
 
@@ -81,6 +89,13 @@ Telegram:
 - `>= 30 дней` — moderate;
 - нет расходного темпа — unknown.
 
+## Today / overdue и timezone
+
+`tasks_list` получил server-side `dueMode` и `timezoneOffsetMinutes`.
+Telegram передаёт offset устройства, на котором создавалась/обновлялась
+привязка. Поэтому «сегодня» считается как календарный день пользователя, а
+не как UTC-дата сервера.
+
 ## Proactive notifier
 
 PocketBase cron `wesios_telegram_alerts_v1` запускается каждые 5 минут.
@@ -90,14 +105,37 @@ MVP categories:
 - overdue tasks.
 
 Preferences живут per-link. Quiet hours по умолчанию `23:00–08:00` с
-timezone offset устройства, которое создало link. Delivery fingerprints
-не дают одному и тому же состоянию отправляться на каждом cron tick.
+timezone offset устройства.
+
+Notifier хранит не fingerprint каждой цифры, а последнее смысловое
+состояние:
+
+- risk приходит при входе в warning/critical и при ухудшении
+  `warning -> critical`;
+- изменение `12 дней -> 11 дней` внутри одного critical уровня не создаёт
+  новый alert;
+- overdue приходит только когда число просрочек выросло;
+- уменьшение/закрытие задач не спамит;
+- при выключенной категории текущее состояние всё равно становится baseline,
+  чтобы после включения не прилетела старая неделя;
+- во время quiet hours ухудшение не «съедается»: baseline обновляется после
+  разрешённого окна, когда alert может быть доставлен.
+
+## Deep links
+
+Gateway отдаёт только whitelist target (`home`, `treasury`, `forecast`,
+`tasks`, `ai`) и редиректит в `wesios:///...`.
+
+Клиент принимает `wesios://` через Android intent-filter. Перед применением
+`organizationId` используется существующий `OrganizationContext`, поэтому
+deep link не может расширить права сотрудника или открыть недоступную org.
 
 ## Secrets
 
 Ни bot token, ни webhook secret не коммитятся.
 
-На production server Gateway читает `/opt/pocketbase/pb_hooks/.wesi-telegram.json`:
+На production server Gateway читает
+`/opt/pocketbase/pb_hooks/.wesi-telegram.json`:
 
 ```json
 {
@@ -129,14 +167,28 @@ token; это не заменяет защиту bot token и не попада�
 
 1. syntax-check серверных JS files;
 2. запускает `wesi_telegram_lib_test.mjs`;
-3. атомарно ставит shared tools, Telegram helpers/config и только затем
-   route hook;
+3. атомарно ставит shared tools, Telegram lib/store/gateway/config и только
+   затем route-registration hook;
 4. ждёт PocketBase hot reload и проверяет `/api/health`;
 5. вызывает Telegram `setWebhook` с secret token и allowed updates
    `message`, `callback_query`;
 6. проверяет `getWebhookInfo`;
 7. убеждается, что webhook без secret отвечает `401`, а deep-link route
    существует.
+
+`Telegram Gateway Gate` отдельно проверяет Node syntax, pure policy tests,
+отсутствие зависимости production gateway от legacy Vercel, Flutter
+analyze и custom-scheme deep-link regression tests.
+
+## /due
+
+`/due` намеренно не объявлен готовым в этом MVP. Клиентская recurrence-модель
+поддерживает `recurringAnchor`, но текущий `TransactionModel.toJson()` не
+сериализует этот anchor в server payload. Проецировать будущую аренду от
+двигающейся `date` означало бы однажды показать неверную дату. Сначала
+нужно сделать anchor частью canonical sync payload и regression-тестом
+доказать совместимость старых записей; только после этого серверный
+`finance_due` может считаться правдой.
 
 ## Acceptance MVP
 
@@ -148,6 +200,8 @@ Production нельзя считать закрытым только по CI. Н
 4. `/org` переключает только разрешённые org;
 5. revoke из приложения сразу блокирует следующую Telegram команду;
 6. employee с ограниченными grants не видит finance другой org;
-7. warning/critical risk и overdue notifier приходят один раз на изменение,
-   а не каждые 5 минут;
-8. группа не получает чувствительные цифры.
+7. warning/critical risk и overdue notifier приходят только на смысловое
+   ухудшение, а не каждые 5 минут;
+8. группа без явного mention не получает ответа, с mention не получает
+   чувствительных цифр;
+9. deep-link открывает нужный модуль и не расширяет org access.
