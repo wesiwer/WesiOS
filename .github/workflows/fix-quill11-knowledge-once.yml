@@ -1,0 +1,79 @@
+name: Fix Quill 11 Knowledge Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-quill11-knowledge-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Migrate Knowledge editor/view to flutter_quill 11
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          # Article editor.
+          p = Path('lib/features/knowledge/screens/article_editor_screen.dart')
+          s = p.read_text()
+          old = '''                child: QuillEditor.basic(\n                  configurations: QuillEditorConfigurations(\n                    controller: _controller,\n'''
+          new = '''                child: QuillEditor.basic(\n                  controller: _controller,\n                  config: QuillEditorConfig(\n'''
+          if old not in s:
+              raise SystemExit('article editor QuillEditor snippet not found')
+          s = s.replace(old, new, 1)
+          # Add the new horizontal-spacing positional argument to all five custom block styles.
+          block_start = s.index('                    customStyles: DefaultStyles(')
+          block_end = s.index('                    ),\n                  ),', block_start)
+          block = s[block_start:block_end]
+          old_count = block.count('), const VerticalSpacing(')
+          if old_count != 5:
+              raise SystemExit(f'article editor expected 5 block styles, got {old_count}')
+          block = block.replace('), const VerticalSpacing(', '), HorizontalSpacing.zero, const VerticalSpacing(')
+          s = s[:block_start] + block + s[block_end:]
+          p.write_text(s)
+
+          # Read-only article body.
+          p = Path('lib/features/knowledge/widgets/article_body_view.dart')
+          s = p.read_text()
+          old = '''    return QuillEditor.basic(\n      configurations: QuillEditorConfigurations(\n        controller: _controller,\n'''
+          new = '''    return QuillEditor.basic(\n      controller: _controller,\n      config: QuillEditorConfig(\n'''
+          if old not in s:
+              raise SystemExit('article body QuillEditor snippet not found')
+          s = s.replace(old, new, 1)
+
+          block_start = s.index('        customStyles: DefaultStyles(')
+          block_end = s.index('        ),\n        onLaunchUrl:', block_start)
+          block = s[block_start:block_end]
+          marker = '),\n            const VerticalSpacing('
+          old_count = block.count(marker)
+          if old_count != 4:
+              raise SystemExit(f'article body expected 4 block styles, got {old_count}')
+          block = block.replace(marker, '),\n            HorizontalSpacing.zero,\n            const VerticalSpacing(')
+          s = s[:block_start] + block + s[block_end:]
+
+          old_sig = '''  Widget build(\n    BuildContext context,\n    QuillController controller,\n    Embed node,\n    bool readOnly,\n    bool inline,\n    TextStyle textStyle,\n  ) {\n'''
+          new_sig = '''  Widget build(BuildContext context, EmbedContext embedContext) {\n    final node = embedContext.node;\n'''
+          count = s.count(old_sig)
+          if count != 5:
+              raise SystemExit(f'expected 5 embed builder signatures, got {count}')
+          s = s.replace(old_sig, new_sig)
+          p.write_text(s)
+          PY
+
+          git config user.name 'WesiOS Quill Migration'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/features/knowledge/screens/article_editor_screen.dart \
+                  lib/features/knowledge/widgets/article_body_view.dart
+          git commit -m 'fix(knowledge): migrate editor and embeds to Quill 11'
+          git push origin HEAD:main
