@@ -47,11 +47,22 @@ class SyncAuto {
   static String? _sessionFingerprint;
   static int _probeFailures = 0;
   static DateTime? _nextProbeAt;
+
+  /// Epoch жизненного цикла автоматики.
+  ///
+  /// Отмена Timer недостаточна: HTTP revision(), уже начавшийся до logout,
+  /// может вернуться после stop() и продолжить старый callback. Generation
+  /// делает любой такой результат протухшим. Это особенно важно при быстром
+  /// logout -> login другого сотрудника: старый poll не имеет права принять
+  /// watermark или сбросить `_probeBusy` уже новой сессии.
+  static int _generation = 0;
+
   static final _SyncLifecycleObserver _lifecycle = _SyncLifecycleObserver();
 
   /// Начать следить. Повторный вызов ничего не ломает.
   static void start() {
     if (_listening) return;
+    _generation++;
     _listening = true;
     SyncJournal.localChanges.addListener(_onLocalChange);
     WidgetsBinding.instance.addObserver(_lifecycle);
@@ -68,13 +79,19 @@ class SyncAuto {
 
   /// Останавливает автоматический обмен.
   ///
-  /// Пока подтверждённая сессия активна и синхронизация включена, обычный
-  /// `stop()` не должен случайно выключить обмен. Старый LoginScreen делал
-  /// именно это для каждого non-owner сразу после успешного MFA-входа.
-  /// Настоящее выключение сначала ставит SyncEndpoint.enabled=false; внутренний
-  /// rebind/logout может использовать [force].
-  static void stop({bool force = false}) {
+  /// `stop()` означает реальную остановку. Раньше default был защищённым
+  /// no-op при активной сессии из-за старого LoginScreen, который ошибочно
+  /// вызывал stop сразу после MFA-входа. Login flow уже сериализован и больше
+  /// этого не делает, а сохранение старого default ломало настоящий logout:
+  /// TeamService вызывал stop(), но polling продолжал жить.
+  ///
+  /// [force]=false оставлен только как явный opt-in для старого защитного
+  /// поведения, если оно когда-нибудь понадобится конкретному caller.
+  static void stop({bool force = true}) {
     if (!force && SyncEndpoint.enabled && SyncEndpoint.isConnected) return;
+
+    // Инвалидируем in-flight callbacks ДО отмены таймеров/листенеров.
+    _generation++;
     if (_listening) {
       SyncJournal.localChanges.removeListener(_onLocalChange);
       WidgetsBinding.instance.removeObserver(_lifecycle);
@@ -94,14 +111,20 @@ class SyncAuto {
   }
 
   static void _onLocalChange() {
-    if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) return;
+    if (!_listening || !SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
+      return;
+    }
     pending.value = true;
     _schedule(quiet);
   }
 
   static void _schedule(Duration after) {
     _localTimer?.cancel();
-    _localTimer = Timer(after, () => unawaited(_runAuto()));
+    final generation = _generation;
+    _localTimer = Timer(after, () {
+      if (!_listening || generation != _generation) return;
+      unawaited(_runAuto(generation: generation));
+    });
   }
 
   /// Мобильная ОС может заморозить Timer.periodic в фоне. При возврате в
@@ -118,7 +141,16 @@ class SyncAuto {
     unawaited(_pollRemote(force: true));
   }
 
-  static Future<SyncReport> _runAuto() async {
+  static Future<SyncReport> _runAuto({int? generation}) async {
+    bool stale() => generation != null &&
+        (generation != _generation || !_listening);
+
+    if (stale()) {
+      return SyncReport(
+        at: DateTime.now(),
+        failure: const SyncFailure('CANCELLED', 'Синхронизация остановлена'),
+      );
+    }
     if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
       return SyncReport(
         at: DateTime.now(),
@@ -128,7 +160,7 @@ class SyncAuto {
     }
 
     if (SyncEngine.busy.value) {
-      _schedule(quiet);
+      if (!stale()) _schedule(quiet);
       return SyncReport(
         at: DateTime.now(),
         failure: const SyncFailure('BUSY', 'Синхронизация уже идёт'),
@@ -139,13 +171,18 @@ class SyncAuto {
     try {
       report = await SyncEngine.run();
     } catch (_) {
-      _schedule(retryAfter);
+      if (!stale()) _schedule(retryAfter);
       return SyncReport(
         at: DateTime.now(),
         failure:
             const SyncFailure('NETWORK', 'Не удалось выполнить синхронизацию'),
       );
     }
+
+    // Сам SyncEngine мог закончиться уже после logout/account switch. Его
+    // network side-effects отменить задним числом нельзя, но старый lifecycle
+    // больше не имеет права менять pending/backoff/watermark новой сессии.
+    if (stale()) return report;
 
     if (report.ok) {
       pending.value = false;
@@ -163,7 +200,10 @@ class SyncAuto {
 
   /// Лёгкая проверка: изменилось ли вообще что-нибудь на сервере.
   static Future<void> _pollRemote({bool force = false}) async {
-    if (_probeBusy || SyncEngine.busy.value) return;
+    final generation = _generation;
+    bool stale() => generation != _generation || !_listening;
+
+    if (stale() || _probeBusy || SyncEngine.busy.value) return;
     if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
       _remoteRevision = null;
       _sessionFingerprint = null;
@@ -187,6 +227,7 @@ class SyncAuto {
     _probeBusy = true;
     try {
       final result = await PocketBaseTransport.fromSettings().revision();
+      if (stale()) return;
       if (result.failure != null) {
         _registerProbeFailure();
         return;
@@ -205,14 +246,17 @@ class SyncAuto {
       // середине прохода (даже через 1 мс после последнего fetch), следующий
       // poll увидит более новую revision и гарантированно запустит ещё один
       // обмен. Поэтому изменение нельзя «перепрыгнуть» пост-синхронным чтением.
-      final report = await _runAuto();
+      final report = await _runAuto(generation: generation);
+      if (stale()) return;
       if (report.ok) {
         _acceptObservedRevision(observedRevision);
-      } else {
+      } else if (report.failure?.code != 'CANCELLED') {
         _registerProbeFailure();
       }
     } finally {
-      _probeBusy = false;
+      // Старый callback не должен сбросить busy нового lifecycle, если между
+      // await-ами успели stop() + start().
+      if (generation == _generation) _probeBusy = false;
     }
   }
 
