@@ -1,0 +1,205 @@
+name: Release Telegram MVP Android v2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/release-telegram-android-v2.trigger'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  statuses: write
+
+concurrency:
+  group: release-telegram-android
+  cancel-in-progress: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_TAG: app-latest
+      NOTES: 'Telegram: привязка аккаунта, /brief, /cash, /risk, /today, /overdue, организации и серверные алерты.'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Stage — prepare
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=pending -f context='WesiOS Android / prepare' -f description='Preparing Flutter dependencies' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=pending -f context='WesiOS Android Release v2' -f description='Signed Telegram MVP release is running' >/dev/null
+
+      - name: Verify version sources
+        id: version
+        run: |
+          python3 - <<'PY' >> "$GITHUB_OUTPUT"
+          import re
+          from pathlib import Path
+          pub=Path('pubspec.yaml').read_text(); app=Path('lib/core/constants/app_version.dart').read_text()
+          m=re.search(r'^version:\s*([0-9]+\.[0-9]+\.[0-9]+)\+([0-9]+)\s*$',pub,re.M)
+          n=re.search(r"number\s*=\s*'([^']+)'",app); b=re.search(r'build\s*=\s*([0-9]+)',app)
+          assert m and n and b
+          version,build=m.group(1),int(m.group(2))
+          assert n.group(1)==version and int(b.group(1))==build,(version,build,n.group(1),b.group(1))
+          print(f'version={version}'); print(f'build={build}'); print(f'release={version}+{build}')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Flutter dependencies
+        run: |
+          set -euo pipefail
+          flutter --version
+          flutter pub get
+          test -s android/app/google-services.json || { echo '::error::Missing real google-services.json'; exit 1; }
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=success -f context='WesiOS Android / prepare' -f description='Flutter dependencies ready' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=pending -f context='WesiOS Android / signing' -f description='Verifying release keystore' >/dev/null
+
+      - name: Verify release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            [ -n "${!name:-}" ] || { echo "::error::Missing Actions secret: $name"; exit 1; }
+          done
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | tr -d '[:space:]' | base64 -d > "$RUNNER_TEMP/wesios-release.jks"
+          STORE_PASS=$(printf '%s' "$ANDROID_KEYSTORE_PASSWORD" | tr -d '\r\n')
+          KEY_PASS=$(printf '%s' "$ANDROID_KEY_PASSWORD" | tr -d '\r\n')
+          ALIAS=$(printf '%s' "$ANDROID_KEY_ALIAS" | tr -d '[:space:]')
+          keytool -list -keystore "$RUNNER_TEMP/wesios-release.jks" -storepass "$STORE_PASS" -alias "$ALIAS" >/dev/null
+          {
+            echo "KEYSTORE_PATH=$RUNNER_TEMP/wesios-release.jks"
+            echo "KEYSTORE_PASSWORD=$STORE_PASS"
+            echo "KEY_ALIAS=$ALIAS"
+            echo "KEY_PASSWORD=$KEY_PASS"
+          } >> "$GITHUB_ENV"
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=success -f context='WesiOS Android / signing' -f description='Release key verified' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=pending -f context='WesiOS Android / build' -f description='Building signed release APK' >/dev/null
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build signed APK
+        env:
+          GRADLE_OPTS: '-Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false'
+        run: |
+          set -euo pipefail
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk wesios-android.apk
+          test -s wesios-android.apk
+          echo "APK_SIZE=$(stat -c%s wesios-android.apk)" >> "$GITHUB_ENV"
+          echo "APK_SHA=$(sha256sum wesios-android.apk | awk '{print $1}')" >> "$GITHUB_ENV"
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=success -f context='WesiOS Android / build' -f description='Signed APK built successfully' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=pending -f context='WesiOS Android / GitHub' -f description='Publishing app-latest assets' >/dev/null
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WesiOS-Android-Telegram-MVP-v2
+          path: wesios-android.apk
+          retention-days: 7
+
+      - name: Publish GitHub release assets
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+        run: |
+          set -euo pipefail
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --title 'WesiOS — latest build' --notes 'Актуальные сборки WesiOS.'
+          gh release upload "$RELEASE_TAG" wesios-android.apk --repo "$GITHUB_REPOSITORY" --clobber
+          mkdir -p "$RUNNER_TEMP/old-manifest"
+          if ! gh release download "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --pattern app-manifest.json --dir "$RUNNER_TEMP/old-manifest" >/dev/null 2>&1; then
+            echo '{}' > "$RUNNER_TEMP/old-manifest/app-manifest.json"
+          fi
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path(os.environ['RUNNER_TEMP'])/'old-manifest'/'app-manifest.json'
+          try:data=json.loads(p.read_text())
+          except Exception:data={}
+          if not isinstance(data,dict) or not isinstance(data.get('windows'),dict): raise SystemExit('existing GitHub manifest has no Windows entry')
+          v=os.environ['VERSION']; b=int(os.environ['BUILD'])
+          data['version']=v; data['build']=b
+          data['android']={'version':v,'build':b,'asset':'wesios-android.apk','sizeBytes':int(os.environ['APK_SIZE']),'sha256':os.environ['APK_SHA'],'notes':os.environ.get('NOTES') or None}
+          Path('app-manifest.json').write_text(json.dumps(data,ensure_ascii=False,indent=2))
+          PY
+          gh release upload "$RELEASE_TAG" app-manifest.json --repo "$GITHUB_REPOSITORY" --clobber
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=success -f context='WesiOS Android / GitHub' -f description='app-latest Android asset published' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=pending -f context='WesiOS Android / server' -f description='Publishing APK to api.wesi-inc.ru' >/dev/null
+
+      - name: Prepare production SSH
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          [ -n "${HOST:-}" ] && [ -n "${USER:-}" ] && [ -n "${KEY:-}" ] || { echo '::error::Missing production SSH secrets'; exit 1; }
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy && chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+          echo "PROD_HOST=$HOST" >> "$GITHUB_ENV"; echo "PROD_USER=$USER" >> "$GITHUB_ENV"
+
+      - name: Publish and verify production Android artifact
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUILD: ${{ steps.version.outputs.build }}
+          ARTIFACTS_DIR: ${{ vars.WESI_ARTIFACTS_DIR }}
+          BASE: ${{ vars.WESI_ARTIFACTS_URL || 'https://api.wesi-inc.ru/artifacts' }}
+        run: |
+          set -euo pipefail
+          SSH=(ssh -i "$HOME/.ssh/id_deploy" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          SCP=(scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/known_hosts")
+          CANDIDATES="${ARTIFACTS_DIR:-/opt/pocketbase/pb_public/artifacts /srv/wesi-artifacts}"
+          ROOT=''
+          for D in $CANDIDATES; do if "${SSH[@]}" "$PROD_USER@$PROD_HOST" "mkdir -p '$D/app' && test -w '$D/app'"; then ROOT="$D"; break; fi; done
+          [ -n "$ROOT" ] || { echo '::error::No writable production artifact directory'; exit 1; }
+          RELEASE="$VERSION+$BUILD"; REMOTE="/tmp/wesios-android-v2-$GITHUB_RUN_ID"
+          cat > /tmp/update-manifest.py <<'PY'
+          import base64,datetime,json,os,sys
+          manifest,version,build,relpath,size,sha,notes64=sys.argv[1:]
+          with open(manifest,encoding='utf-8') as f:data=json.load(f)
+          if not isinstance(data.get('windows'),dict): raise SystemExit('production manifest has no Windows entry')
+          data['version']=version; data['build']=int(build); data['publishedAt']=datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace('+00:00','Z')
+          data['android']={'version':version,'build':int(build),'asset':'wesios-android.apk','path':relpath,'sizeBytes':int(size),'sha256':sha,'notes':base64.b64decode(notes64).decode() if notes64 else None}
+          tmp=manifest+'.tmp'; open(tmp,'w',encoding='utf-8').write(json.dumps(data,ensure_ascii=False,indent=2)); os.chmod(tmp,0o644); os.replace(tmp,manifest)
+          PY
+          NOTES64=$(printf '%s' "$NOTES" | base64 -w0)
+          "${SSH[@]}" "$PROD_USER@$PROD_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          "${SCP[@]}" wesios-android.apk /tmp/update-manifest.py "$PROD_USER@$PROD_HOST:$REMOTE/"
+          "${SSH[@]}" "$PROD_USER@$PROD_HOST" "set -e; T='$ROOT/app/$RELEASE'; mkdir -p \"\$T\"; install -m 0644 '$REMOTE/wesios-android.apk' \"\$T/wesios-android.apk\"; python3 '$REMOTE/update-manifest.py' '$ROOT/app/app-manifest.json' '$VERSION' '$BUILD' 'app/$RELEASE/wesios-android.apk' '$APK_SIZE' '$APK_SHA' '$NOTES64'; rm -rf '$REMOTE'"
+          curl -fsS --max-time 30 "$BASE/app/app-manifest.json" -o /tmp/manifest.json
+          BASE="$BASE" VERSION="$VERSION" BUILD="$BUILD" APK_SIZE="$APK_SIZE" python3 - <<'PY'
+          import json,os,urllib.request
+          m=json.load(open('/tmp/manifest.json')); a=m['android']
+          assert a['version']==os.environ['VERSION'] and int(a['build'])==int(os.environ['BUILD']); assert isinstance(m.get('windows'),dict)
+          url=os.environ['BASE'].rstrip('/')+'/'+a['path']; r=urllib.request.urlopen(urllib.request.Request(url,method='HEAD'),timeout=30); got=int(r.headers.get('Content-Length',-1)); assert got==int(os.environ['APK_SIZE']),(got,os.environ['APK_SIZE'])
+          print('ANDROID_PRODUCTION_VERIFIED',url,got)
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=success -f context='WesiOS Android / server' -f description='Production manifest and APK verified' >/dev/null
+
+      - name: Release success
+        if: success()
+        run: gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=success -f context='WesiOS Android Release v2' -f description='0.22.27+102 published and verified' >/dev/null
+
+      - name: Release failure
+        if: failure()
+        run: gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" -f state=failure -f context='WesiOS Android Release v2' -f description='Staged Android release failed; inspect last stage status' >/dev/null || true
+
+      - name: Cleanup
+        if: always()
+        run: rm -f "$RUNNER_TEMP/wesios-release.jks" ~/.ssh/id_deploy
