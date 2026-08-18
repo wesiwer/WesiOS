@@ -176,6 +176,8 @@ class PocketBaseTransport implements SyncTransport {
 
     final delivered = <String>[];
     final acceptedStamps = <String, DateTime>{};
+    final authoritative = <String>[];
+    final authoritativeStamps = <String, DateTime>{};
     final forbidden = <String>[];
     SyncFailure? firstFailure;
 
@@ -201,24 +203,33 @@ class PocketBaseTransport implements SyncTransport {
         continue;
       }
 
-      if (res.value!['applied'] == false) continue;
-
-      delivered.add(r.id);
-
       final accepted = DateTime.tryParse('${res.value!['stamp'] ?? ''}');
-      if (accepted != null) {
-        acceptedStamps[r.id] = accepted;
-      } else {
+      if (accepted == null) {
         firstFailure ??= SyncFailure(
           'REMOTE_DATA_INVALID',
-          'Сервер принял $collection:${r.id}, но не вернул корректное время записи',
+          'Сервер ответил на $collection:${r.id}, но не вернул корректное время authoritative записи',
         );
+        continue;
       }
+
+      if (res.value!['applied'] == false) {
+        // The request was understood, but server LWW/immutability kept its
+        // existing row. This is not delivered local state: engine must refetch
+        // the permission-filtered authoritative payload and apply it locally.
+        authoritative.add(r.id);
+        authoritativeStamps[r.id] = accepted;
+        continue;
+      }
+
+      delivered.add(r.id);
+      acceptedStamps[r.id] = accepted;
     }
 
     return SyncPushResult(
       deliveredIds: delivered,
       acceptedStamps: acceptedStamps,
+      authoritativeIds: authoritative,
+      authoritativeStamps: authoritativeStamps,
       forbiddenIds: forbidden,
       failure: firstFailure,
     );
