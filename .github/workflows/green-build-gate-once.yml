@@ -1,4 +1,5 @@
 name: WesiOS Green Build Gate
+# Verification run for 0.22.28+103 after sync hardening and release alignment.
 
 on:
   push:
