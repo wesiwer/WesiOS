@@ -119,8 +119,8 @@ class _QuillBodyState extends State<_QuillBody> {
   @override
   Widget build(BuildContext context) {
     return QuillEditor.basic(
-      configurations: QuillEditorConfigurations(
-        controller: _controller,
+      controller: _controller,
+      config: QuillEditorConfig(
         padding: EdgeInsets.zero,
         showCursor: false,
         enableInteractiveSelection: true,
@@ -138,6 +138,7 @@ class _QuillBodyState extends State<_QuillBody> {
               fontWeight: FontWeight.w800,
               color: AppTheme.textPrimary,
             ),
+            HorizontalSpacing.zero,
             const VerticalSpacing(10, 6),
             const VerticalSpacing(0, 0),
             null,
@@ -148,6 +149,7 @@ class _QuillBodyState extends State<_QuillBody> {
               fontWeight: FontWeight.w700,
               color: AppTheme.accent,
             ),
+            HorizontalSpacing.zero,
             const VerticalSpacing(10, 4),
             const VerticalSpacing(0, 0),
             null,
@@ -158,6 +160,7 @@ class _QuillBodyState extends State<_QuillBody> {
               fontWeight: FontWeight.w700,
               color: AppTheme.textPrimary,
             ),
+            HorizontalSpacing.zero,
             const VerticalSpacing(8, 4),
             const VerticalSpacing(0, 0),
             null,
@@ -168,6 +171,7 @@ class _QuillBodyState extends State<_QuillBody> {
               height: 1.55,
               color: AppTheme.textSecondary,
             ),
+            HorizontalSpacing.zero,
             const VerticalSpacing(0, 6),
             const VerticalSpacing(0, 0),
             null,
@@ -190,14 +194,8 @@ class _ImageEmbedBuilder extends EmbedBuilder {
   String get key => BlockEmbed.imageType;
 
   @override
-  Widget build(
-    BuildContext context,
-    QuillController controller,
-    Embed node,
-    bool readOnly,
-    bool inline,
-    TextStyle textStyle,
-  ) {
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final node = embedContext.node;
     final source = node.value.data.toString();
     final isLocal = !source.startsWith('http') && File(source).existsSync();
     return Padding(
@@ -231,14 +229,8 @@ class _VideoEmbedBuilder extends EmbedBuilder {
   String get key => 'video';
 
   @override
-  Widget build(
-    BuildContext context,
-    QuillController controller,
-    Embed node,
-    bool readOnly,
-    bool inline,
-    TextStyle textStyle,
-  ) {
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final node = embedContext.node;
     final data = node.value.data;
     String source = data is String ? data : data.toString();
     if (source.trim().startsWith('{')) {
@@ -258,14 +250,8 @@ class _AudioEmbedBuilder extends EmbedBuilder {
   String get key => 'audio';
 
   @override
-  Widget build(
-    BuildContext context,
-    QuillController controller,
-    Embed node,
-    bool readOnly,
-    bool inline,
-    TextStyle textStyle,
-  ) {
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final node = embedContext.node;
     final source = node.value.data.toString();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -279,14 +265,8 @@ class _ChartEmbedBuilder extends EmbedBuilder {
   String get key => 'chart';
 
   @override
-  Widget build(
-    BuildContext context,
-    QuillController controller,
-    Embed node,
-    bool readOnly,
-    bool inline,
-    TextStyle textStyle,
-  ) {
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final node = embedContext.node;
     final data = node.value.data.toString();
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
@@ -300,14 +280,8 @@ class _TableEmbedBuilder extends EmbedBuilder {
   String get key => 'table';
 
   @override
-  Widget build(
-    BuildContext context,
-    QuillController controller,
-    Embed node,
-    bool readOnly,
-    bool inline,
-    TextStyle textStyle,
-  ) {
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final node = embedContext.node;
     final raw = node.value.data.toString();
     List<List<String>> rows = [];
     try {
