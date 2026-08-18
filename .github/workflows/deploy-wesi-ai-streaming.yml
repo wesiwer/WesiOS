@@ -240,5 +240,6 @@ jobs:
               context: 'Wesi AI Streaming Deploy',
               description: ok
                 ? 'Long-run gateway and Main AI hooks deployed and verified'
-                : 'Wesi AI streaming production deploy failed'
+                : 'Wesi AI streaming production deploy failed',
+              target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`
             });
