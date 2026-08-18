@@ -1,0 +1,57 @@
+name: Capture Latest Release Failure Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-latest-release-failure-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Capture latest Publish WesiOS Release failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .github
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow release-app.yml --limit 8 \
+            --json databaseId,status,conclusion,headSha,displayTitle,createdAt,event > /tmp/runs.json
+          python3 - <<'PY' > /tmp/run_id.txt
+          import json
+          rows=json.load(open('/tmp/runs.json'))
+          for row in rows:
+              if row.get('conclusion') == 'failure':
+                  print(row['databaseId'])
+                  break
+          PY
+          RUN_ID=$(cat /tmp/run_id.txt)
+          {
+            echo '=== RUNS ==='
+            cat /tmp/runs.json
+            echo
+          } > .github/release-failure.txt
+          if [ -n "$RUN_ID" ]; then
+            {
+              echo "=== FAILED LOGS RUN $RUN_ID ==="
+              gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed || true
+            } >> .github/release-failure.txt
+          else
+            echo 'NO_FAILED_RELEASE_RUN_FOUND' >> .github/release-failure.txt
+          fi
+          git config user.name 'WesiOS Release Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/release-failure
+          git add .github/release-failure.txt
+          git commit -m 'ops: capture latest release failure'
+          git push --force origin HEAD:diag/release-failure
