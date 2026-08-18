@@ -209,11 +209,6 @@ class SyncEngine {
           if (!remote.containsKey(e.key)) e.key: e.value,
       };
 
-  /// Optimistic local precondition for a plan built earlier in the same run.
-  ///
-  /// Most WesiOS boxes are keyed by sync id, so direct Hive lookup is O(1).
-  /// A few keyed/private codecs map local keys to different server ids; they
-  /// fall back to their explicit `local()` projection.
   static dynamic _localValueBySyncId(
     SyncCollection<dynamic> c,
     String id,
@@ -232,6 +227,52 @@ class SyncEngine {
     } catch (_) {
       return null;
     }
+  }
+
+  /// Policy eviction is not a business delete.
+  ///
+  /// Some codecs intentionally ignore/remove tombstones conservatively (for
+  /// example OrganizationsSync refuses normal remote deletion to avoid
+  /// orphaning finance/tasks). Permission revocation needs different semantics:
+  /// data the current identity may no longer read must disappear from its local
+  /// cache even when the business codec would reject a domain delete.
+  static Future<bool> _purgeLocalCacheBySyncId(
+    SyncCollection<dynamic> c,
+    String id,
+  ) async {
+    final box = c.box();
+    if (box != null) {
+      final keys = box.keys.toList(growable: false);
+      for (final key in keys) {
+        var matches = false;
+        try {
+          matches = c.watchesBoxKey(key) && c.syncIdForBoxKey(key) == id;
+        } catch (_) {}
+
+        if (!matches) {
+          try {
+            final value = box.get(key);
+            matches = value != null &&
+                c.shouldSync(value) &&
+                c.idOf(value) == id;
+          } catch (_) {}
+        }
+
+        if (!matches) continue;
+        await box.delete(key);
+        return _localValueBySyncId(c, id) == null;
+      }
+    }
+
+    // Fallback for non-standard stores that implement deletion outside their
+    // primary Hive key. Verify the cache afterwards instead of trusting a
+    // no-op domain implementation.
+    try {
+      await c.removeById(id);
+    } catch (_) {
+      return false;
+    }
+    return _localValueBySyncId(c, id) == null;
   }
 
   static Object? _canonical(Object? value) {
@@ -391,9 +432,6 @@ class SyncEngine {
 
     Future<bool> applyAuthoritative(SyncRecord r) async {
       if (cancelled()) return false;
-
-      // Register the expected box event first, but do NOT move the journal to
-      // remote time until the local payload/delete actually succeeds.
       SyncJournal.expect(
         c.name,
         r.id,
@@ -421,9 +459,6 @@ class SyncEngine {
         return false;
       }
 
-      // The watcher may already have consumed the expectation; recording the
-      // same stamp here makes the invariant explicit even when the watcher is
-      // delivered later.
       await SyncJournal.record(
         c.name,
         r.id,
@@ -465,9 +500,6 @@ class SyncEngine {
 
       for (final r in pending) {
         if (cancelled()) return cancelledReport(applied: applied);
-
-        // Let any Hive watcher event queued by a user action run before the
-        // optimistic precondition is checked.
         await Future<void>.delayed(Duration.zero);
         if (cancelled()) return cancelledReport(applied: applied);
 
@@ -531,9 +563,6 @@ class SyncEngine {
       return SyncCollectionReport(collection: c.name, applied: applied);
     }
 
-    // Revalidate the local side immediately before the request. A local edit
-    // that happened while other remote rows were being applied invalidates the
-    // old upload plan; never send that stale payload.
     for (final r in plan.toUpload) {
       await Future<void>.delayed(Duration.zero);
       if (cancelled()) return cancelledReport(applied: applied);
@@ -579,11 +608,12 @@ class SyncEngine {
         SyncStamp(_epoch, deleted: true),
       );
       try {
-        await c.removeById(id);
+        final purged = await _purgeLocalCacheBySyncId(c, id);
         if (cancelled()) {
           SyncJournal.forget(c.name, id);
           return cancelledReport(applied: applied + policyApplied);
         }
+        if (!purged) throw StateError('cache still contains $id');
         await SyncJournal.record(
           c.name,
           id,
