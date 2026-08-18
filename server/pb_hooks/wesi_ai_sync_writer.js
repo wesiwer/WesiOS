@@ -63,6 +63,52 @@ function requireModule(ctx, coll) {
   }
 }
 
+function liveRow(txApp, ownerId, coll, rid) {
+  return dataAccess.first(
+    txApp,
+    "wesios_records",
+    "owner={:owner} && coll={:coll} && rid={:rid} && deleted=false",
+    {owner: ownerId, coll: coll, rid: String(rid || "")},
+  );
+}
+
+function validateRebased(txApp, input, requestCtx) {
+  if (input.deleted) return;
+  const p = input.payload || {};
+
+  if (input.coll === "roadmap_projects" || input.coll === "roadmap_items") {
+    const start = Date.parse(String(p.startDate || ""));
+    const end = Date.parse(String(p.endDate || ""));
+    if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) {
+      throw new BadRequestError("Некорректный диапазон Roadmap после параллельного изменения");
+    }
+    if (input.coll === "roadmap_items") {
+      const projectId = String(p.projectId || "").trim();
+      if (!projectId || !liveRow(txApp, requestCtx.ownerId, "roadmap_projects", projectId)) {
+        throw new BadRequestError("Roadmap-проект больше не существует");
+      }
+    }
+  }
+
+  if (input.coll === "articles") {
+    const parentId = p.parentId == null ? "" : String(p.parentId).trim();
+    if (parentId === input.rid) {
+      throw new BadRequestError("Статья не может быть родителем самой себе");
+    }
+    if (parentId && !liveRow(txApp, requestCtx.ownerId, "articles", parentId)) {
+      throw new BadRequestError("Родительская статья больше не существует");
+    }
+  }
+
+  if (input.coll === "tasks") {
+    const employeeId = String(p.responsibleEmployeeId || p.assignee || "").trim();
+    if (employeeId && employeeId !== "owner" &&
+        !liveRow(txApp, requestCtx.ownerId, "employees", employeeId)) {
+      throw new BadRequestError("Назначенный сотрудник больше не существует");
+    }
+  }
+}
+
 function authorize(txApp, existing, input, requestCtx) {
   const fresh = authz.refresh(txApp, requestCtx);
   requireModule(fresh, input.coll);
@@ -117,13 +163,15 @@ function write(e, requestCtx, options) {
       if (creating && existing && !existing.getBool("deleted")) {
         throw new BadRequestError("Wesi AI запись уже существует");
       }
-      if (deleted) return;
-      if (!existing || existing.getBool("deleted")) {
-        input.payload = cloneMap(next);
-        return;
+      if (!deleted) {
+        if (!existing || existing.getBool("deleted")) {
+          input.payload = cloneMap(next);
+        } else {
+          const current = atomic.payloadOf(existing);
+          input.payload = Object.assign({}, current, patch);
+        }
       }
-      const current = atomic.payloadOf(existing);
-      input.payload = Object.assign({}, current, patch);
+      validateRebased(txApp, input, requestCtx);
     },
     authorize: function(txApp, existing, input) {
       authorize(txApp, existing, input, requestCtx);
@@ -151,4 +199,4 @@ function write(e, requestCtx, options) {
   };
 }
 
-module.exports = {write, delta, cloneMap};
+module.exports = {write, delta, cloneMap, validateRebased};
