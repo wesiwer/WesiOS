@@ -8,15 +8,16 @@ void main() {
         File('server/pb_hooks/wesi_sync_write.pb.js').readAsStringSync();
 
     final deleted = source.indexOf('const deleted = body.deleted === true;');
-    final lww = source.indexOf('wesi_sync_lww.js');
+    final atomic = source.indexOf('wesi_sync_atomic.js');
     expect(deleted, greaterThanOrEqualTo(0));
-    expect(lww, greaterThan(deleted));
+    expect(atomic, greaterThan(deleted),
+        reason: 'authoritative writes must pass through the atomic boundary');
 
     final guard = source.indexOf('if (deleted && (', deleted);
     expect(guard, greaterThan(deleted));
-    expect(guard, lessThan(lww),
+    expect(guard, lessThan(atomic),
         reason:
-            'incompatible tombstones must fail before the authoritative LWW/save boundary');
+            'incompatible tombstones must fail before the authoritative atomic save');
 
     for (final collection in <String>[
       'organizations',
@@ -24,7 +25,7 @@ void main() {
       'inter_org_transfers',
     ]) {
       expect(
-        source.substring(guard, lww),
+        source.substring(guard, atomic),
         contains('collection === "$collection"'),
         reason: '$collection is durable and its client codec does not delete it',
       );
