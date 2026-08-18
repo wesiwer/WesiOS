@@ -7,6 +7,7 @@ const helper = fs.readFileSync(new URL('./wesi_ai_sync_writer.js', root), 'utf8'
 const atomic = fs.readFileSync(new URL('./wesi_sync_atomic.js', root), 'utf8');
 
 const mutationTools = [
+  'wesi_ai_task_tools.js',
   'wesi_ai_calendar_write_tools.js',
   'wesi_ai_task_write_tools.js',
   'wesi_ai_knowledge_write_tools.js',
