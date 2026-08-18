@@ -239,7 +239,7 @@ jobs:
           tg_post setMyName '{"name":"WesiOS: BUSINESS OPERATING SYSTEM"}'
           tg_post setMyDescription '{"description":"WesiOS — операционная система бизнеса в Telegram: сводка, деньги, риски, задачи, организации и серверные уведомления."}'
           tg_post setMyShortDescription '{"short_description":"WesiOS — управление бизнесом и важные сигналы прямо в Telegram."}'
-          tg_post setMyCommands '[{"command":"brief","description":"📊 Главная сводка"},{"command":"cash","description":"💰 Деньги и текущий баланс"},{"command":"risk","description":"⚠️ Риски и кассовый runway"},{"command":"today","description":"✅ Задачи на сегодня"},{"command":"overdue","description":"⏰ Просроченные задачи"},{"command":"org","description":"🏢 Выбрать организацию"},{"command":"test","description":"🔔 Проверить Telegram-уведомления"},{"command":"help","description":"🧭 Все возможности"}]'
+          tg_post setMyCommands '{"commands":[{"command":"brief","description":"📊 Главная сводка"},{"command":"cash","description":"💰 Деньги и текущий баланс"},{"command":"risk","description":"⚠️ Риски и кассовый runway"},{"command":"today","description":"✅ Задачи на сегодня"},{"command":"overdue","description":"⏰ Просроченные задачи"},{"command":"org","description":"🏢 Выбрать организацию"},{"command":"test","description":"🔔 Проверить Telegram-уведомления"},{"command":"help","description":"🧭 Все возможности"}]}'
           tg_post setChatMenuButton '{"menu_button":{"type":"commands"}}'
 
           info="$(curl -fsS --max-time 20 "https://api.telegram.org/bot${BOT_TOKEN}/getWebhookInfo")"
