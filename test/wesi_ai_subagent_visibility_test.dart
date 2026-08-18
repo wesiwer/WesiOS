@@ -24,6 +24,8 @@ void main() {
       'kind': 'agent',
       'label': 'Security Reviewer · инструмент knowledge_search (субагент)',
       'status': 'result',
+      'input': '{"query": "форма входа"}',
+      'output': '{"articles": []}',
       'textOffset': 0,
     },
     <String, dynamic>{
@@ -111,6 +113,21 @@ void main() {
     await pump(tester, showWorkLog: true);
     expect(inWorkLog('finance_summary'), findsNothing);
     expect(find.textContaining('finance_summary'), findsOneWidget);
+  });
+
+  testWidgets('шаг раскрывается и показывает запрос и ответ', (tester) async {
+    await pump(tester, showWorkLog: true);
+    // Свёрнутый шаг показывает только подпись — иначе журнал превратится в
+    // простыню JSON.
+    expect(find.textContaining('форма входа'), findsNothing);
+
+    await tester.tap(inWorkLog('инструмент knowledge_search').first);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Запрос'), findsOneWidget);
+    expect(find.text('Ответ'), findsOneWidget);
+    expect(find.textContaining('форма входа'), findsOneWidget);
+    expect(find.textContaining('articles'), findsOneWidget);
   });
 
   test('в ход мыслей попадает всё, кроме инструментов ведущей персоны', () {

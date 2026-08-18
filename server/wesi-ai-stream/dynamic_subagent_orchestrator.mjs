@@ -9,6 +9,7 @@ import {
   workspaceSnapshot,
   applySubagentWorkspaceEdits,
 } from './multi_agent_workspace.mjs';
+import {stepIo} from './step_io.mjs';
 
 function stripLeadingReasoningBlocks(value) {
   let text = String(value || '').trim();
@@ -196,7 +197,15 @@ async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool,
       toolResult = safeToolResult(toolRequest.name, await invokeTool({spec, name: toolRequest.name, arguments: toolRequest.arguments}));
     }
     toolResults.push(toolResult);
-    send({type: 'tool', phase: 'result', role: 'subagent', agentId: spec.agentId, agentName: spec.role, name: toolRequest.name, ok: toolResult.ok === true, code: toolResult.code || null, additions: 0, deletions: 0, files: []});
+    // Аргументы и ответ едут вместе с событием: иначе шаг субагента нельзя
+    // развернуть и проверить — видно только, что инструмент отработал.
+    send({
+      type: 'tool', phase: 'result', role: 'subagent',
+      agentId: spec.agentId, agentName: spec.role, name: toolRequest.name,
+      ok: toolResult.ok === true, code: toolResult.code || null,
+      additions: 0, deletions: 0, files: [],
+      ...stepIo(toolRequest, toolResult),
+    });
   }
 
   if (parseDynamicSubagentToolRequest(raw)) throw new Error('WAI_SUBAGENT_TOOL_PROTOCOL_INVALID');

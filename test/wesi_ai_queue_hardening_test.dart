@@ -880,4 +880,57 @@ void main() {
     expect(toolEvent['label'], contains('(субагент)'));
     expect(toolEvent['status'], 'result');
   });
+
+  test('аргументы и ответ инструмента доезжают до записи шага', () async {
+    // Ради них шаг и раскрывают: в длинном проходе два десятка строк
+    // «инструмент отработал» ничего не доказывают.
+    final api = _StreamingControlledApi();
+    final store = _MemoryStore('employee-step-io');
+    final controller = WesiAiManagedChatController(store: store, api: api);
+    await controller.load();
+    await controller.createConversation(WesiAiPersona.zane);
+    final conversationId = controller.state.activeConversationId!;
+
+    final sending = controller.addUserMessage('сколько на счету');
+    await _waitUntil(() => api.onDelta != null && api.activityCallback != null);
+    api.activityCallback!({
+      'type': 'tool',
+      'phase': 'start',
+      'name': 'finance_summary',
+    });
+    api.activityCallback!({
+      'type': 'tool',
+      'phase': 'result',
+      'name': 'finance_summary',
+      'input': '{\n  "organizationId": "org_wesi_inc"\n}',
+      'output': '{\n  "currentBalance": 700\n}',
+    });
+    api.onDelta!('На счету 700');
+    await _waitUntil(() => controller.state.messagesFor(conversationId).any(
+          (message) =>
+              message.metadata['transportStreaming'] == true &&
+              message.text == 'На счету 700',
+        ));
+
+    api.reply.complete(
+        const WesiAiReply(answer: 'На счету 700', requestId: 'step-io-1'));
+    await sending;
+    final activity = controller.state.messagesFor(conversationId).last
+        .metadata['activity'] as List;
+    final step = activity
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .singleWhere((item) => item['sourceName'] == 'finance_summary');
+    expect('${step['input']}', contains('org_wesi_inc'));
+    expect('${step['output']}', contains('currentBalance'));
+
+    // И переживают сохранение: раскрыть шаг можно и после перезапуска.
+    final persisted = store.saved!.messagesFor(conversationId).last;
+    final persistedActivity = persisted.metadata['activity'] as List;
+    final persistedStep = persistedActivity
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .singleWhere((item) => item['sourceName'] == 'finance_summary');
+    expect('${persistedStep['output']}', contains('700'));
+  });
 }

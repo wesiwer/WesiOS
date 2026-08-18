@@ -382,6 +382,8 @@ class WesiAiChatController extends ChangeNotifier {
       int additions = 0,
       int deletions = 0,
       List<dynamic> files = const <dynamic>[],
+      String input = '',
+      String output = '',
     }) {
       final at = DateTime.now().toUtc();
       return <String, dynamic>{
@@ -400,6 +402,8 @@ class WesiAiChatController extends ChangeNotifier {
         if (files.isNotEmpty)
           'files':
               files.take(40).map((item) => '$item').toList(growable: false),
+        if (input.isNotEmpty) 'input': input,
+        if (output.isNotEmpty) 'output': output,
       };
     }
 
@@ -490,6 +494,10 @@ class WesiAiChatController extends ChangeNotifier {
                   files.take(40).map((item) => '$item').toList(growable: false);
             final detail = streamedToolDetail(raw);
             if (detail.isNotEmpty) current['detail'] = detail;
+            final stepInput = '${raw['input'] ?? ''}'.trim();
+            final stepOutput = '${raw['output'] ?? ''}'.trim();
+            if (stepInput.isNotEmpty) current['input'] = stepInput;
+            if (stepOutput.isNotEmpty) current['output'] = stepOutput;
             activity[index] = current;
           } else {
             activity.add(activityEntry(
@@ -505,6 +513,8 @@ class WesiAiChatController extends ChangeNotifier {
               additions: additions,
               deletions: deletions,
               files: files,
+              input: '${raw['input'] ?? ''}'.trim(),
+              output: '${raw['output'] ?? ''}'.trim(),
             ));
           }
         }

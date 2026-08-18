@@ -1,6 +1,7 @@
 import crypto from 'node:crypto';
 import {runPersonaCoagent} from './persona_coagent_orchestrator.mjs';
 import {runDynamicSubagents} from './dynamic_subagent_orchestrator.mjs';
+import {stepIo} from './step_io.mjs';
 import {
   appendDeliberation,
   createDeliberationState,
@@ -12,6 +13,42 @@ import {
 
 export const MAX_STREAM_BODY_BYTES = 28 * 1024 * 1024;
 export const MAX_TOOL_TURNS = 4;
+
+// Верхний предел на любой бюджет: даже если политика попросит больше, дальше
+// этого шлюз не пойдёт. Политика решает, сколько нужно; здесь — сколько
+// вообще возможно, чтобы ошибка в политике не превратилась в бесконечный
+// проход за счёт владельца.
+const RUN_STOP_LABELS = {
+  deadline: 'Время прохода вышло',
+  stalled: 'Проход буксует',
+  steps: 'Шаги прохода исчерпаны',
+};
+
+const RUN_STOP_DETAILS = {
+  deadline: 'Отведённое на проход время закончилось. Подвожу итог по собранному; недоделанное назову прямо.',
+  stalled: 'Последние вызовы не приносили нового: либо повторялись, либо отказывали. Останавливаюсь и подвожу итог, а не кручусь дальше.',
+  steps: 'Достигнут предел шагов для этого уровня. Подвожу итог по собранному; недоделанное назову прямо.',
+};
+
+export const MAX_RUN_STEPS_HARD_CAP = 60;
+export const MAX_RUN_DEADLINE_MS_HARD_CAP = 30 * 60000;
+
+export function runBudget(prepared) {
+  const policy = prepared && typeof prepared.run === 'object' && prepared.run ? prepared.run : {};
+  const rawSteps = Number(policy.maxSteps);
+  const rawDeadline = Number(policy.deadlineMs);
+  const rawStall = Number(policy.maxStalledSteps);
+  return {
+    maxSteps: Number.isFinite(rawSteps) && rawSteps > 0
+      ? Math.min(Math.trunc(rawSteps), MAX_RUN_STEPS_HARD_CAP)
+      : MAX_TOOL_TURNS,
+    deadlineMs: Number.isFinite(rawDeadline) && rawDeadline > 0
+      ? Math.min(Math.trunc(rawDeadline), MAX_RUN_DEADLINE_MS_HARD_CAP)
+      : MAX_RUN_DEADLINE_MS_HARD_CAP,
+    maxStalledSteps: Number.isFinite(rawStall) && rawStall > 0 ? Math.trunc(rawStall) : 3,
+    autonomous: policy.autonomous === true,
+  };
+}
 
 function toolTrace(event, fields = {}) {
   const safe = {
@@ -405,16 +442,38 @@ export function deliberationCommitment(deliberation) {
   ].join('\n');
 }
 
+function runPlanSection(prepared) {
+  const policy = prepared && typeof prepared.run === 'object' && prepared.run ? prepared.run : {};
+  if (policy.autonomous !== true) return '';
+  const steps = Math.max(1, Math.trunc(Number(policy.maxSteps) || 0));
+  const minutes = Math.max(1, Math.round((Number(policy.deadlineMs) || 0) / 60000));
+  return [
+    '[WESI_AI_LONG_RUN]',
+    `Это длинный самостоятельный проход: у тебя до ${steps} шагов с инструментами и около ${minutes} мин.`,
+    'Работай до конца задачи, не останавливаясь ради подтверждения после каждого шага. Не спрашивай «продолжать ли» — продолжай.',
+    'Прерывайся и спрашивай человека только тогда, когда без его решения дальше нельзя: развилка, которую выбирать не тебе, или недостающие данные, которых нет ни в одном инструменте.',
+    'Разрушающие действия по-прежнему требуют подтверждения — это не отменяется длинным проходом.',
+    'Проверяй свою работу теми же инструментами: сделал — убедись, что получилось, а не считай сделанным.',
+    'Финальный ответ давай, когда задача закрыта. Если что-то доделать не вышло — назови это прямо.',
+  ].join('\n');
+}
+
 export function relayPayload(prepared, toolResults, phase, finalOnly = false, deliberation = null) {
   const requestId = `${prepared.requestId}_${phase}`;
   const systemParts = [...prepared.systemParts];
+  const runPlan = runPlanSection(prepared);
   const commitment = deliberationCommitment(deliberation);
   if (commitment) systemParts.push(commitment);
   if (toolResults.length) {
     systemParts.push(`[WESI_AI_VERIFIED_TOOL_RESULTS]\n${JSON.stringify(toolResults)}`);
   }
   if (finalOnly) {
-    systemParts.push('[WESI_AI_FINAL_RESPONSE]\nЛимит инструментов исчерпан. Не вызывай инструменты снова. Дай только финальный ответ по verified results.');
+    systemParts.push('[WESI_AI_FINAL_RESPONSE]\nЛимит инструментов исчерпан. Не вызывай инструменты снова. Дай только финальный ответ по verified results. Если часть задачи осталась несделанной — скажи об этом прямо, а не выдавай половину за целое.');
+  } else if (runPlan) {
+    // Без этого персона по привычке останавливается после первого-двух
+    // вызовов и ждёт от человека «продолжай». Длинный проход существует
+    // ровно для того, чтобы этого «продолжай» не требовалось.
+    systemParts.push(runPlan);
   }
   return {
     requestId,
@@ -867,13 +926,49 @@ export function createGateway(options = {}) {
       });
       const toolResults = [];
       const seenCalls = new Set();
-      for (let turn = 0; turn < MAX_TOOL_TURNS; turn += 1) {
+      // Проход идёт, пока персона считает работу незаконченной, — но не
+      // дольше бюджета. Исчерпание любой границы не рвёт ответ: последний ход
+      // просто становится финальным, и персона подводит итог собранным.
+      const budget = runBudget(prepared);
+      const runStartedAt = Date.now();
+      let stalledSteps = 0;
+      let stopReason = '';
+      if (budget.autonomous) {
+        writeNdjson(res, {
+          type: 'activity',
+          kind: 'status',
+          phase: 'start',
+          label: 'Длинный проход',
+          detail: `Работаю до конца задачи, до ${budget.maxSteps} шагов. Остановить можно в любой момент.`,
+        });
+      }
+      for (let turn = 0; turn < budget.maxSteps; turn += 1) {
+        const stepsLeft = budget.maxSteps - turn;
+        const outOfTime = Date.now() - runStartedAt >= budget.deadlineMs;
+        const stalled = stalledSteps >= budget.maxStalledSteps;
+        // Последний доступный шаг обязан быть финальным, иначе персона
+        // потратит его на очередной вызов и останется без ответа.
+        const mustFinish = stepsLeft <= 1 || outOfTime || stalled;
+        if (mustFinish && !stopReason) {
+          stopReason = outOfTime ? 'deadline' : (stalled ? 'stalled' : 'steps');
+          // Обрыв по бюджету человек должен видеть. Иначе ответ на половине
+          // работы выглядит как полный, и доверять ему нельзя.
+          if (budget.autonomous) {
+            writeNdjson(res, {
+              type: 'activity',
+              kind: 'status',
+              phase: 'limit',
+              label: RUN_STOP_LABELS[stopReason] || 'Подвожу итог',
+              detail: RUN_STOP_DETAILS[stopReason] || 'Собираю итог по тому, что уже сделано.',
+            });
+          }
+        }
         const streamed = await streamOneTurn({
           prepared: leadPrepared,
           toolResults,
           deliberation: deliberationState,
           phase: String(turn + 1),
-          finalOnly: false,
+          finalOnly: mustFinish,
           relayUrl,
           relaySecret,
           signal: abort.signal,
@@ -935,6 +1030,9 @@ export function createGateway(options = {}) {
         const signature = `${toolRequest.name}|${JSON.stringify(toolRequest.arguments)}`;
         let toolResult;
         if (seenCalls.has(signature)) {
+          // Повтор того же вызова с теми же аргументами не даст нового знания.
+          // Несколько таких подряд — признак зацикливания, а не работы.
+          stalledSteps += 1;
           toolResult = {
             tool: toolRequest.name,
             verified: true,
@@ -970,6 +1068,11 @@ export function createGateway(options = {}) {
             fetchImpl,
           });
           toolResult = toolResponse.toolResult;
+          // Удачный вызов — это движение вперёд: счётчик простоя обнуляется.
+          // Неудачный копится: инструмент, который отказывает раз за разом,
+          // не приблизит ответ, сколько его ни звать.
+          if (toolResult && toolResult.ok === true) stalledSteps = 0;
+          else stalledSteps += 1;
         }
         toolResults.push(toolResult);
         toolTrace('result', {
@@ -992,6 +1095,7 @@ export function createGateway(options = {}) {
           name: toolRequest.name,
           ok: toolResult?.ok === true,
           code: toolResult?.code || null,
+          ...stepIo(toolRequest, toolResult),
         ...(toolResult?.ok === true ? {} : {diagnostic: toolResult?.diagnostic || diagnosticPayload({requestId: prepared.requestId, stage: 'TOOL', component: toolRequest.name, operation: 'tool.execute', code: toolResult?.code || 'WAI_TOOL_FAILED', httpStatus: 500, lastSuccess: 'TOOL_DISPATCH', detail: toolResult?.message || ''})}),
         ...(hasDiffMetadata ? {additions: diff.additions, deletions: diff.deletions, files: diff.files} : {}),
           ...(Number.isFinite(Number(toolPayload.transactionCount)) ? {transactionCount: Number(toolPayload.transactionCount)} : {}),

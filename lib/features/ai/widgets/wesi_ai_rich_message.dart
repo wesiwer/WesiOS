@@ -685,6 +685,86 @@ class WesiAiFormattedText extends StatelessWidget {
   }
 }
 
+
+/// Моноширинный блок с содержимым шага: чем звали инструмент и что он вернул.
+///
+/// Отдельный виджет, а не встроенный `Text`, потому что содержимое бывает
+/// длинным JSON или кодом: ему нужны прокрутка вбок, копирование и потолок по
+/// высоте, иначе один ответ инструмента растянет журнал работы на экран.
+class WesiAiStepPayload extends StatelessWidget {
+  final String title;
+  final String body;
+
+  const WesiAiStepPayload({super.key, required this.title, required this.body});
+
+  Future<void> _copy(BuildContext context) async {
+    await Clipboard.setData(ClipboardData(text: body));
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('$title скопирован')));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 24, top: 6),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const Spacer(),
+              InkWell(
+                onTap: () => _copy(context),
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.all(3),
+                  child: Icon(
+                    Icons.copy_all_outlined,
+                    size: 15,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 3),
+          Container(
+            width: double.infinity,
+            constraints: const BoxConstraints(maxHeight: 220),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: theme.dividerColor),
+            ),
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.all(9),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: SelectableText(
+                  body,
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    fontFamily: 'monospace',
+                    height: 1.42,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class WesiAiCodeBlock extends StatelessWidget {
   final String code;
   final String language;
@@ -1001,7 +1081,8 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
         !event.hasDiff &&
         event.files.isEmpty;
     final hasDetails = (!inlineReadDetail && event.detail.isNotEmpty) ||
-        event.files.isNotEmpty;
+        event.files.isNotEmpty ||
+        event.hasIo;
     final icon = switch (event.kind) {
       WesiAiActivityKind.tool => Icons.build_outlined,
       WesiAiActivityKind.agent => Icons.account_tree_outlined,
@@ -1099,6 +1180,13 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
                     ],
                   ),
                 ),
+              // Аргументы вызова и ответ инструмента. Ради них шаг и
+              // раскрывают: сводки хватает, чтобы следить за ходом, но не
+              // чтобы проверить длинный проход, где шагов два десятка.
+              if (event.input.isNotEmpty)
+                WesiAiStepPayload(title: 'Запрос', body: event.input),
+              if (event.output.isNotEmpty)
+                WesiAiStepPayload(title: 'Ответ', body: event.output),
             ],
           ],
         ),

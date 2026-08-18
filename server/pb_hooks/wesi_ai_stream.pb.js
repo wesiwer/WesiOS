@@ -192,7 +192,11 @@ function cleanRequest(e, body, ctx, ai, personaRuntime, tools, cfg) {
       conversationId: conversationId,
       toolNames: toolDefinitions.map(function(item) { return String(item.name || ""); }).filter(Boolean),
       coagent: coagentPolicy,
-      subagents: subagentPolicy
+      subagents: subagentPolicy,
+      run: require(`${__hooks}/wesi_ai_run_policy.js`).evaluate({
+        tier: tier,
+        toolDefinitions: toolDefinitions
+      })
     }
   };
 }

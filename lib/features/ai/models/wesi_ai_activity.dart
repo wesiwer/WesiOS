@@ -20,6 +20,14 @@ class WesiAiActivityEvent {
   final List<String> files;
   final String sourceName;
 
+  /// Что ушло в инструмент и что он вернул.
+  ///
+  /// Без этого длинный проход нельзя проверить: человек видит два десятка
+  /// строк «инструмент отработал» и обязан верить им на слово. Обрезается на
+  /// сервере — это ход мыслей, а не хранилище.
+  final String input;
+  final String output;
+
   const WesiAiActivityEvent({
     required this.id,
     required this.kind,
@@ -33,7 +41,11 @@ class WesiAiActivityEvent {
     this.deletions = 0,
     this.files = const <String>[],
     this.sourceName = '',
+    this.input = '',
+    this.output = '',
   });
+
+  bool get hasIo => input.isNotEmpty || output.isNotEmpty;
 
   bool get hasDiff => additions > 0 || deletions > 0 || files.isNotEmpty;
 
@@ -55,6 +67,8 @@ class WesiAiActivityEvent {
     int? deletions,
     List<String>? files,
     String? sourceName,
+    String? input,
+    String? output,
   }) =>
       WesiAiActivityEvent(
         id: id,
@@ -69,6 +83,8 @@ class WesiAiActivityEvent {
         deletions: deletions ?? this.deletions,
         files: files ?? this.files,
         sourceName: sourceName ?? this.sourceName,
+        input: input ?? this.input,
+        output: output ?? this.output,
       );
 
   Map<String, dynamic> toJson() => <String, dynamic>{
@@ -84,6 +100,8 @@ class WesiAiActivityEvent {
         'deletions': deletions,
         if (files.isNotEmpty) 'files': files,
         if (sourceName.isNotEmpty) 'sourceName': sourceName,
+        if (input.isNotEmpty) 'input': input,
+        if (output.isNotEmpty) 'output': output,
       };
 
   static WesiAiActivityEvent? fromJson(dynamic raw, {int fallbackIndex = 0}) {
@@ -157,6 +175,11 @@ class WesiAiActivityEvent {
     final startedAt = _date(map['startedAt'] ?? map['at']);
     final completedAt = _date(map['completedAt'] ?? map['finishedAt']);
     final id = _clip('${map['id'] ?? ''}', 180);
+    // Предел вдвое больше серверного: сервер уже обрезал, здесь запас на
+    // случай, если обрежет иначе. Хранить безразмерный вывод в истории чата
+    // нельзя — она лежит на устройстве.
+    final input = _clip('${map['input'] ?? ''}', 8000);
+    final output = _clip('${map['output'] ?? ''}', 8000);
     return WesiAiActivityEvent(
       id: id.isEmpty ? 'activity_$fallbackIndex' : id,
       kind: kind,
@@ -170,6 +193,8 @@ class WesiAiActivityEvent {
       deletions: deletions,
       files: files,
       sourceName: sourceName,
+      input: input,
+      output: output,
     );
   }
 
