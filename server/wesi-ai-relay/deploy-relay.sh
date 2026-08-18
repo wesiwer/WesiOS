@@ -135,9 +135,23 @@ install_relay() {
   [ -x "$node_bin" ] || fail "Node.js executable не найден после установки"
 
   mkdir -p "$APP_DIR"
-  for file in server.mjs auth.mjs google.mjs text-stream.mjs attachment-preprocessor.mjs staged-upload.mjs google-media.mjs google-artifact.mjs media-cache.mjs package.json; do
-    install -m 0644 "$SOURCE_DIR/$file" "$APP_DIR/$file"
+  # Раньше здесь стоял список файлов вручную. Такой список молча отстаёт:
+  # новый модуль появляется в репозитории, проходит все тесты, доезжает до
+  # сервера scp — и не ставится, потому что его забыли дописать. Relay падает
+  # при старте на ERR_MODULE_NOT_FOUND, а причина выглядит как поломка кода.
+  #
+  # Ставится всё, что не тест. Забыть теперь нечего.
+  local installed=0
+  for path in "$SOURCE_DIR"/*.mjs; do
+    [ -f "$path" ] || continue
+    case "$(basename "$path")" in
+      *.test.mjs) continue ;;
+    esac
+    install -m 0644 "$path" "$APP_DIR/$(basename "$path")"
+    installed=$((installed + 1))
   done
+  [ "$installed" -gt 0 ] || fail "В $SOURCE_DIR нет ни одного .mjs — нечего ставить"
+  install -m 0644 "$SOURCE_DIR/package.json" "$APP_DIR/package.json"
 
   umask 077
   cat >"$ENV_FILE" <<ENV
