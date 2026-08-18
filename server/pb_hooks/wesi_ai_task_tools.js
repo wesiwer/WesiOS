@@ -1,4 +1,5 @@
 const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
+const syncWriter = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_sync_writer.js");
 const ROOT_ORG = "org_wesi_inc";
 
 function payloadOf(record) {
@@ -18,8 +19,7 @@ function loadAccess(e, ctx) {
   if (ctx.isOwner) {
     permissions = {canManageTeam: true, canSeeOthersStats: true, canAssignTasks: true};
   } else {
-    let employee = null;
-    employee = dataAccess.first(e.app,
+    const employee = dataAccess.first(e.app,
         "wesios_records",
         "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
         {owner: ctx.ownerId, rid: ctx.employeeId},
@@ -29,13 +29,11 @@ function loadAccess(e, ctx) {
       ? snapshot.permissions : {};
   }
 
-  let organizations = [];
-  let grants = [];
-  organizations = dataAccess.records(e.app,
+  const organizations = dataAccess.records(e.app,
       "wesios_records", "owner={:owner} && coll='organizations' && deleted=false",
       "id", 1000, 0, {owner: ctx.ownerId},
     );
-  grants = dataAccess.records(e.app,
+  const grants = dataAccess.records(e.app,
       "wesios_records", "owner={:owner} && coll='organization_grants' && deleted=false",
       "id", 1000, 0, {owner: ctx.ownerId},
     );
@@ -94,8 +92,7 @@ function chooseOrganization(access, requested) {
 }
 
 function employees(e, ctx) {
-  let rows = [];
-  rows = dataAccess.records(e.app,
+  const rows = dataAccess.records(e.app,
       "wesios_records", "owner={:owner} && coll='employees' && deleted=false",
       "id", 1000, 0, {owner: ctx.ownerId},
     );
@@ -133,16 +130,8 @@ module.exports = {
   definitions: function(e, ctx) {
     if (!ctx.isOwner && ctx.modules.indexOf("tasks") < 0) return [];
     return [
-      {
-        name: "tasks_list",
-        description: "Получить реальные задачи WesiOS, доступные текущему сотруднику.",
-        parameters: {type: "object", properties: {status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]}, limit: {type: "integer", minimum: 1, maximum: 50}}},
-      },
-      {
-        name: "tasks_create",
-        description: "Создать реальную задачу WesiOS. Можно назначить другому сотруднику только при наличии соответствующего права.",
-        parameters: {type: "object", required: ["title"], properties: {title: {type: "string"}, description: {type: "string"}, dueDate: {type: "string", description: "ISO date YYYY-MM-DD"}, assignee: {type: "string", description: "Имя, логин или id сотрудника; пусто означает текущего сотрудника"}, organizationId: {type: "string"}, priority: {type: "string", enum: ["low", "normal", "high", "urgent"]}}},
-      },
+      {name: "tasks_list", description: "Получить реальные задачи WesiOS, доступные текущему сотруднику.", parameters: {type: "object", properties: {status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]}, limit: {type: "integer", minimum: 1, maximum: 50}}}},
+      {name: "tasks_create", description: "Создать реальную задачу WesiOS. Можно назначить другому сотруднику только при наличии соответствующего права.", parameters: {type: "object", required: ["title"], properties: {title: {type: "string"}, description: {type: "string"}, dueDate: {type: "string", description: "ISO date YYYY-MM-DD"}, assignee: {type: "string", description: "Имя, логин или id сотрудника; пусто означает текущего сотрудника"}, organizationId: {type: "string"}, priority: {type: "string", enum: ["low", "normal", "high", "urgent"]}}}},
     ];
   },
 
@@ -158,8 +147,7 @@ module.exports = {
     const input = args && typeof args === "object" ? args : {};
 
     if (name === "tasks_list") {
-      let rows = [];
-      rows = dataAccess.records(e.app,
+      const rows = dataAccess.records(e.app,
           "wesios_records", "owner={:owner} && coll='tasks' && deleted=false",
           "-stamp", 5000, 0, {owner: ctx.ownerId},
         );
@@ -197,7 +185,7 @@ module.exports = {
       const priority = ["low", "normal", "high", "urgent"].indexOf(String(input.priority || "normal")) >= 0 ? String(input.priority || "normal") : "normal";
       const now = new Date().toISOString();
       const id = "wai_task_" + Date.now() + "_" + $security.randomString(8);
-      const payload = {
+      const value = {
         id: id,
         title: title,
         description: input.description == null ? null : String(input.description).slice(0, 10000),
@@ -212,18 +200,11 @@ module.exports = {
         responsibleEmployeeId: target.id,
         subtasks: [],
       };
-      const collection = e.app.findCollectionByNameOrId("wesios_records");
-      const record = new Record(collection);
-      record.set("owner", ctx.ownerId);
-      record.set("org", "wesi-inc");
-      record.set("coll", "tasks");
-      record.set("rid", id);
-      record.set("payload", payload);
-      record.set("stamp", now);
-      record.set("deleted", false);
-      e.app.save(record);
-      recordAudit(e, ctx, {tool: "tasks_create", entityType: "task", entityId: id, organizationId: orgId, ok: true, targetEmployeeId: target.id});
-      return {ok: true, result: {task: {id: id, title: title, dueDate: dueDate, assigneeId: target.id, assignee: target.label, organizationId: orgId}}};
+      const saved = syncWriter.write(e, ctx, {coll: "tasks", rid: id, next: value, creating: true});
+      if (!saved.applied) return {ok: false, code: "WRITE_CONFLICT", message: "Задача изменилась параллельно, повторите действие"};
+      const out = saved.payload;
+      recordAudit(e, ctx, {tool: "tasks_create", entityType: "task", entityId: id, organizationId: String(out.organizationId || orgId), ok: true, targetEmployeeId: String(out.assignee || target.id)});
+      return {ok: true, result: {task: {id: id, title: String(out.title || title), dueDate: out.dueDate || null, assigneeId: String(out.assignee || target.id), assignee: target.label, organizationId: String(out.organizationId || orgId)}}};
     }
 
     return {ok: false, code: "UNKNOWN_TOOL", message: "Неизвестный инструмент Wesi AI"};
