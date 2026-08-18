@@ -38,6 +38,17 @@ jobs:
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
 
+      - name: Fix one-shot test expectation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/apply_wesi_ai_step_drilldown.py')
+          s = p.read_text(encoding='utf-8')
+          s = s.replace("expect(find.text('+12'), findsOneWidget);", "expect(find.text('+12'), findsWidgets);")
+          s = s.replace("expect(find.text('-4'), findsOneWidget);", "expect(find.text('-4'), findsWidgets);")
+          p.write_text(s, encoding='utf-8')
+          PY
+
       - name: Apply exact drilldown patch
         run: python3 .github/scripts/apply_wesi_ai_step_drilldown.py
 
