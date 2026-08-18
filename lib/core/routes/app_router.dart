@@ -37,7 +37,7 @@ import '../sync/sync_endpoint.dart';
 class AppRouter {
   static Route<dynamic> onGenerateRoute(RouteSettings settings) {
     final uri = Uri.tryParse(settings.name ?? '');
-    final routeName = uri != null && uri.path.isNotEmpty ? uri.path : settings.name;
+    final routeName = _routeName(uri, settings.name);
     final deepLinkOrganizationId = uri?.queryParameters['organizationId'];
 
     Widget orgAware(Widget child) => _DeepLinkOrganizationGate(
@@ -186,6 +186,22 @@ class AppRouter {
       default:
         return MaterialPageRoute(builder: (_) => _AccessGate(child: HomeScreen()));
     }
+  }
+
+  @visibleForTesting
+  static String? routeNameFor(String? raw) =>
+      _routeName(Uri.tryParse(raw ?? ''), raw);
+
+  static String? _routeName(Uri? uri, String? fallback) {
+    if (uri == null) return fallback;
+    // Flutter receives wesios://tasks with "tasks" as URI host, not path.
+    // Treat the host as the first route segment so both wesios://tasks and
+    // wesios:///tasks resolve to the same application route.
+    if (uri.scheme.toLowerCase() == 'wesios' && uri.host.isNotEmpty) {
+      final tail = uri.path == '/' ? '' : uri.path;
+      return '/${uri.host}$tail';
+    }
+    return uri.path.isNotEmpty ? uri.path : fallback;
   }
 
   static PageRouteBuilder _fadeRoute(Widget page) {
