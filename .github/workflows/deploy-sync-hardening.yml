@@ -11,6 +11,7 @@ on:
       - 'server/pb_hooks/wesi_sync_crm_runtime.js'
       - 'server/pb_hooks/wesi_sync_context.pb.js'
       - 'server/pb_hooks/wesi_ai_sync_writer.js'
+      - 'server/pb_hooks/wesi_ai_task_tools.js'
       - 'server/pb_hooks/wesi_ai_calendar_write_tools.js'
       - 'server/pb_hooks/wesi_ai_task_write_tools.js'
       - 'server/pb_hooks/wesi_ai_knowledge_write_tools.js'
@@ -52,6 +53,7 @@ jobs:
             server/pb_hooks/wesi_sync_crm_runtime.js
             server/pb_hooks/wesi_sync_context.pb.js
             server/pb_hooks/wesi_ai_sync_writer.js
+            server/pb_hooks/wesi_ai_task_tools.js
             server/pb_hooks/wesi_ai_calendar_write_tools.js
             server/pb_hooks/wesi_ai_task_write_tools.js
             server/pb_hooks/wesi_ai_knowledge_write_tools.js
@@ -123,6 +125,7 @@ jobs:
             server/pb_hooks/wesi_sync_crm_runtime.js \
             server/pb_hooks/wesi_sync_context.pb.js \
             server/pb_hooks/wesi_ai_sync_writer.js \
+            server/pb_hooks/wesi_ai_task_tools.js \
             server/pb_hooks/wesi_ai_calendar_write_tools.js \
             server/pb_hooks/wesi_ai_task_write_tools.js \
             server/pb_hooks/wesi_ai_knowledge_write_tools.js \
@@ -142,6 +145,7 @@ jobs:
             wesi_sync_crm_runtime.js
             wesi_sync_context.pb.js
             wesi_ai_sync_writer.js
+            wesi_ai_task_tools.js
             wesi_ai_calendar_write_tools.js
             wesi_ai_task_write_tools.js
             wesi_ai_knowledge_write_tools.js
