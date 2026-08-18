@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:hive/hive.dart';
 import 'package:wesios/core/sync/sync_codec.dart';
+import 'package:wesios/core/sync/sync_endpoint.dart';
 import 'package:wesios/core/sync/sync_engine.dart';
 import 'package:wesios/core/sync/sync_journal.dart';
 import 'package:wesios/features/profile/services/profile_service.dart';
@@ -30,11 +31,13 @@ void main() {
 
   tearDownAll(() async {
     await SyncEngine.reset();
+    await SyncEndpoint.clearSession();
     dir.deleteSync(recursive: true);
   });
 
   setUp(() async {
     await SyncEngine.reset();
+    await SyncEndpoint.clearSession();
     await Hive.box('wesios_settings').clear();
     await Hive.box(SyncJournal.boxName).clear();
     await ProfileService.clearForTest();
@@ -80,7 +83,6 @@ void main() {
 
     await SyncEngine.run(transport: t, now: base);
 
-    // Экран читает настройки — приехавшая запись обязана в них попасть.
     final settings = Hive.box('wesios_settings');
     expect(settings.get('profile_name'), 'Веси');
     expect(settings.get('profile_email'), 'wesi@example.com');
@@ -105,7 +107,6 @@ void main() {
     final record = t.store['profile']![ProfileService.recordKey]!;
     expect(record.fields['photo'], base64Encode(photo));
 
-    // На другом устройстве она обязана лечь туда, откуда её берёт шапка.
     await ProfileService.clearForTest();
     await Hive.box('wesios_settings').clear();
     await SyncEngine.reset();
@@ -134,20 +135,34 @@ void main() {
     expect(data['name'], 'Веси', reason: 'остальной профиль обязан сохраниться');
   });
 
-  test('профиль из старых настроек переносится в запись', () async {
+  test('legacy профиль ждёт подтверждённый auth-user и затем переносится',
+      () async {
     final settings = Hive.box('wesios_settings');
     await settings.put('profile_name', 'Старое имя');
     await settings.put('profile_email', 'old@example.com');
     await settings.put('avatar_index', 2);
 
+    final beforeLogin = await ProfileService.read();
+    expect(beforeLogin, isEmpty,
+        reason: 'legacy private data нельзя присваивать anonymous namespace');
+    expect(settings.get('profile_name'), 'Старое имя',
+        reason: 'до входа legacy профиль нельзя уничтожать');
+
+    await SyncEndpoint.saveSession(
+      token: 'test-token',
+      userId: 'legacy-auth-user',
+      sessionId: 'test-session',
+      expiresAt: DateTime.now().add(const Duration(hours: 1)),
+    );
+
     final data = await ProfileService.read();
     expect(data['name'], 'Старое имя',
-        reason: 'профиль, заполненный до перехода, обязан сохраниться');
+        reason: 'первый подтверждённый auth-user обязан забрать legacy профиль');
+    expect(data['email'], 'old@example.com');
     expect(data['avatarIndex'], 2);
   });
 
   test('пустой профиль не отправляется и не затирает чужой', () async {
-    // Свежая установка: настройки пусты, записи нет.
     final data = await ProfileService.read();
     expect(data, isEmpty);
 
