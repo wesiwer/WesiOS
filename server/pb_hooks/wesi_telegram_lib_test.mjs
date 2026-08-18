@@ -37,8 +37,8 @@ assert.equal(lib.shouldNotifyOverdue(1, 0), false);
 assert.equal(lib.dueState('2026-08-17T12:00:00Z', new Date('2026-08-18T10:00:00Z'), 0), 'overdue');
 assert.equal(lib.dueState('2026-08-18T23:00:00Z', new Date('2026-08-18T10:00:00Z'), 0), 'today');
 assert.equal(lib.dueState('2026-08-19T01:00:00Z', new Date('2026-08-18T10:00:00Z'), 0), 'future');
-// 23:30Z is already the next local day at UTC+3.
-assert.equal(lib.dueState('2026-08-18T23:30:00Z', new Date('2026-08-18T20:00:00Z'), 180), 'today');
+// At UTC+3 both 22:00Z and 23:30Z are already on the next local calendar day.
+assert.equal(lib.dueState('2026-08-18T23:30:00Z', new Date('2026-08-18T22:00:00Z'), 180), 'today');
 
 assert.equal(lib.isQuietHours(Date.UTC(2026, 7, 18, 21), 180, 23, 8), true); // 00:00 local
 assert.equal(lib.isQuietHours(Date.UTC(2026, 7, 18, 10), 180, 23, 8), false);
