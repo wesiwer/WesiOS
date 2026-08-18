@@ -26,9 +26,12 @@ class SyncFeatureExtensions {
 
   static const _settingsBox = 'wesios_settings';
 
-  /// Legacy marker used only to decide whether old unscoped Shield settings
-  /// may be migrated on the first launch after upgrade.
+  /// Legacy employee marker is consulted only on the first upgrade from the
+  /// old unscoped scheme. From that moment onward the auth-user marker below
+  /// is the only permission to seed private settings into an empty scope.
   static const _legacySettingsOwnerKey = 'sync_profile_settings_owner_v1';
+  static const _privateSettingsAuthOwnerKey =
+      'sync_private_settings_auth_user_v2';
 
   /// Keep the old base name so the already-created auth-scoped box is reused,
   /// but its contents are sanitized to Shield-only during bind.
@@ -203,8 +206,6 @@ class SyncFeatureExtensions {
     }
   }
 
-  /// Copies old employee-scoped private storage into the current auth-user
-  /// namespace exactly once. Auth-scoped target wins if it already has data.
   static Future<void> _migrateLegacyPrivateBox(
     String legacyName,
     Box<dynamic> target,
@@ -223,10 +224,6 @@ class SyncFeatureExtensions {
     await legacy.clear();
   }
 
-  /// Before the old overloaded private box is reduced to Shield-only, rescue
-  /// profile fields into the canonical ProfileService record when that record
-  /// is still empty. This handles devices that had local profile_private data
-  /// but never successfully uploaded the newer `profile/me` record.
   static Future<void> _migrateEmbeddedLegacyProfile(Box<dynamic> oldPrivate) async {
     final hasLegacy = _legacyProfileKeys.any(oldPrivate.containsKey);
     if (!hasLegacy) return;
@@ -237,7 +234,8 @@ class SyncFeatureExtensions {
     String text(String key) => '${oldPrivate.get(key) ?? ''}'.trim();
     final birthText = text('profile_birth');
     final rawAvatar = oldPrivate.get('avatar_index');
-    final avatarIndex = rawAvatar is num ? rawAvatar.toInt() : int.tryParse('$rawAvatar') ?? 0;
+    final avatarIndex =
+        rawAvatar is num ? rawAvatar.toInt() : int.tryParse('$rawAvatar') ?? 0;
     final rawPhoto = oldPrivate.get('avatar_custom');
     Uint8List? photo;
     if (rawPhoto is Uint8List) {
@@ -285,7 +283,8 @@ class SyncFeatureExtensions {
     final id = TeamService.current?.id;
     final authUserId = SyncAccountScope.currentUserId;
     final settings = Hive.box<dynamic>(_settingsBox);
-    final previousOwner = settings.get(_legacySettingsOwnerKey);
+    final previousAuthOwner = settings.get(_privateSettingsAuthOwnerKey);
+    final previousLegacyEmployee = settings.get(_legacySettingsOwnerKey);
 
     if (id == null || id.isEmpty || authUserId == 'anonymous') {
       _boundEmployeeId = null;
@@ -295,9 +294,16 @@ class SyncFeatureExtensions {
     }
     if (_boundEmployeeId == id && _boundAuthUserId == authUserId) return;
 
+    // Existing auth marker is authoritative. The old employee marker is used
+    // only once when upgrading from a version that did not know auth-user
+    // scoping. Therefore reissuing a new PocketBase user for the SAME employee
+    // cannot import the old user's Shield/Vault settings after an app restart.
     final migrateLegacySettings = allowLegacy &&
         _boundEmployeeId == null &&
-        (previousOwner == null || '$previousOwner' == id);
+        (previousAuthOwner == authUserId ||
+            (previousAuthOwner == null &&
+                (previousLegacyEmployee == null ||
+                    '$previousLegacyEmployee' == id)));
 
     final shield = await _open(shieldBoxName(authUserId));
     final vault = await _open(vaultBoxName(authUserId));
@@ -328,6 +334,7 @@ class SyncFeatureExtensions {
     }
 
     await settings.put(_legacySettingsOwnerKey, id);
+    await settings.put(_privateSettingsAuthOwnerKey, authUserId);
     _boundEmployeeId = id;
     _boundAuthUserId = authUserId;
     await _projectAvatarToEmployee();
@@ -390,7 +397,9 @@ class SyncFeatureExtensions {
   static Future<void> _mirrorSetting(BoxEvent event) async {
     if (_rebinding || TeamService.current == null) return;
     final key = '${event.key}';
-    if (key == _legacySettingsOwnerKey) return;
+    if (key == _legacySettingsOwnerKey || key == _privateSettingsAuthOwnerKey) {
+      return;
+    }
 
     if (_shieldKeys.contains(key)) {
       final box = await _open(shieldBoxName());
@@ -402,9 +411,6 @@ class SyncFeatureExtensions {
       return;
     }
 
-    // Avatar still projects to the employee/contact card, but it is NOT
-    // mirrored into shield_private. ProfileService is the only profile sync
-    // authority and already owns profile settings projection.
     if (key == 'avatar_index' || key == 'avatar_custom') {
       _scheduleAvatarProjection();
       return;
