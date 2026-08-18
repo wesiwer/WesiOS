@@ -19,12 +19,11 @@ jobs:
       - name: Migrate Knowledge editor/view to flutter_quill 11
         shell: bash
         run: |
+          # Retrigger after diagnostic jobs settled.
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-          import re
 
-          # Article editor.
           p = Path('lib/features/knowledge/screens/article_editor_screen.dart')
           s = p.read_text()
           old = '''                child: QuillEditor.basic(\n                  configurations: QuillEditorConfigurations(\n                    controller: _controller,\n'''
@@ -32,7 +31,6 @@ jobs:
           if old not in s:
               raise SystemExit('article editor QuillEditor snippet not found')
           s = s.replace(old, new, 1)
-          # Add the new horizontal-spacing positional argument to all five custom block styles.
           block_start = s.index('                    customStyles: DefaultStyles(')
           block_end = s.index('                    ),\n                  ),', block_start)
           block = s[block_start:block_end]
@@ -43,7 +41,6 @@ jobs:
           s = s[:block_start] + block + s[block_end:]
           p.write_text(s)
 
-          # Read-only article body.
           p = Path('lib/features/knowledge/widgets/article_body_view.dart')
           s = p.read_text()
           old = '''    return QuillEditor.basic(\n      configurations: QuillEditorConfigurations(\n        controller: _controller,\n'''
@@ -51,7 +48,6 @@ jobs:
           if old not in s:
               raise SystemExit('article body QuillEditor snippet not found')
           s = s.replace(old, new, 1)
-
           block_start = s.index('        customStyles: DefaultStyles(')
           block_end = s.index('        ),\n        onLaunchUrl:', block_start)
           block = s[block_start:block_end]
@@ -61,7 +57,6 @@ jobs:
               raise SystemExit(f'article body expected 4 block styles, got {old_count}')
           block = block.replace(marker, '),\n            HorizontalSpacing.zero,\n            const VerticalSpacing(')
           s = s[:block_start] + block + s[block_end:]
-
           old_sig = '''  Widget build(\n    BuildContext context,\n    QuillController controller,\n    Embed node,\n    bool readOnly,\n    bool inline,\n    TextStyle textStyle,\n  ) {\n'''
           new_sig = '''  Widget build(BuildContext context, EmbedContext embedContext) {\n    final node = embedContext.node;\n'''
           count = s.count(old_sig)
