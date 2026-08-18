@@ -12,10 +12,15 @@ function touchRevision(e) {
     revision.touch(e.app, e.record.getString("owner"));
   } catch (error) {
     // The business write is already committed because these are AfterSuccess
-    // hooks. Never turn a successful user mutation into an apparent failure
-    // just because revision maintenance had a transient problem; log it so
-    // deployment/monitoring can catch the degraded live-sync signal.
-    console.log("WesiOS sync revision touch failed: " + String(error));
+    // hooks. Revision maintenance is secondary and must never turn that
+    // successful mutation into a new application error. Logging itself is
+    // therefore best-effort too: PocketBase JSVM logging surfaces can differ
+    // between versions/builds.
+    try {
+      if (typeof console !== "undefined" && console && typeof console.log === "function") {
+        console.log("WesiOS sync revision touch failed: " + String(error));
+      }
+    } catch (_) {}
   }
 }
 
