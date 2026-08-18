@@ -161,6 +161,23 @@ test("record hook covers create, update and delete while excluding marker recurs
   assert.match(hook, /revision\.touch\(e\.app, e\.record\.getString\("owner"\)\)/);
 });
 
+test("legacy profile_private POST is rejected while old GET data stays migratable", () => {
+  const hook = fs.readFileSync(
+    path.resolve("server/pb_hooks/wesi_sync_revision.pb.js"),
+    "utf8",
+  );
+  assert.match(
+    hook,
+    /routerAdd\("POST",\s*"\/api\/wesi\/sync\/profile_private"/,
+  );
+  assert.match(hook, /устаревший формат профиля/);
+  assert.doesNotMatch(
+    hook,
+    /routerAdd\("GET",\s*"\/api\/wesi\/sync\/profile_private"/,
+    "legacy read remains owned by the generic collection route for migration",
+  );
+});
+
 test("revision-v2 no longer derives its primary token from one max row", () => {
   const runtime = fs.readFileSync(
     path.resolve("server/pb_hooks/wesi_sync_extra_runtime.js"),

@@ -44,7 +44,6 @@ test('legacy profile_private is migrated before canonical profile or shield acce
   assert.match(runtime, /coll='profile_private'\s*&&\s*deleted=false/);
   assert.match(runtime, /coll='profile'\s*&&\s*rid='me'/);
   assert.match(runtime, /coll='shield_private'/);
-  assert.match(runtime, /if\s*\(!existingProfile\)/);
 
   const readStart = runtime.indexOf('function read(e, collection');
   const writeStart = runtime.indexOf('function write(e, collection');

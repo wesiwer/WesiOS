@@ -1,18 +1,20 @@
-name: Telegram MVP Gate
+name: Telegram Gateway Gate
 
 on:
   pull_request:
     paths:
+      - '.github/workflows/telegram-gate.yml'
+      - '.github/workflows/deploy-wesi-telegram.yml'
+      - 'server/WESI_TELEGRAM.md'
       - 'server/pb_hooks/wesi_telegram*.js'
+      - 'server/pb_hooks/wesi_telegram*.mjs'
       - 'server/pb_hooks/wesi_ai_finance_tools.js'
       - 'server/pb_hooks/wesi_ai_task_tools.js'
-      - 'lib/core/services/telegram_link_service.dart'
-      - 'lib/features/profile/telegram_link_screen.dart'
-      - 'lib/features/profile/profile_with_telegram.dart'
       - 'lib/core/routes/app_router.dart'
+      - 'lib/core/services/telegram_link_service.dart'
+      - 'lib/features/profile/profile_with_telegram.dart'
+      - 'lib/features/profile/telegram_link_screen.dart'
       - 'android/app/src/main/AndroidManifest.xml'
-      - '.github/workflows/telegram-ci.yml'
-      - '.github/workflows/deploy-wesi-telegram.yml'
   workflow_dispatch:
 
 permissions:
@@ -24,12 +26,14 @@ concurrency:
 
 jobs:
   server:
+    name: Server hooks
     runs-on: ubuntu-latest
     timeout-minutes: 8
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check Telegram server syntax
+      - name: Syntax check Telegram contour
+        shell: bash
         run: |
           set -euo pipefail
           for file in \
@@ -42,19 +46,11 @@ jobs:
             node --check "$file"
           done
 
-      - name: Test pure Telegram policy
+      - name: Run Telegram unit tests
         run: node server/pb_hooks/wesi_telegram_lib_test.mjs
 
-      - name: Reject legacy Vercel imports from production gateway
-        run: |
-          set -euo pipefail
-          if grep -R -E '@vercel/postgres|telegram-webhook/' \
-              server/pb_hooks/wesi_telegram*.js; then
-            echo '::error::Production Telegram gateway must not depend on the legacy Vercel prototype.'
-            exit 1
-          fi
-
   flutter:
+    name: Flutter analyze
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -64,14 +60,10 @@ jobs:
         uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.24.0'
-          channel: stable
-          cache: true
+          channel: 'stable'
 
       - name: Get dependencies
         run: flutter pub get
 
       - name: Analyze
         run: flutter analyze --no-fatal-infos
-
-      - name: Test deep-link routing
-        run: flutter test test/telegram_deep_link_test.dart

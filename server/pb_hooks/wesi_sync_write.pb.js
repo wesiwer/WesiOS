@@ -289,41 +289,30 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
     }
   }
 
-  // A tombstone keeps the previous payload so other devices can still apply
-  // row-level visibility rules and receive the deletion.
+  // Keep the preflight payload for authorization decisions above. The final
+  // transaction will preserve the transaction-current payload on tombstones
+  // if another writer changed/created the row after this preflight read.
   if (deleted && existing) incoming = before;
 
-  // Re-check LWW at the authoritative write boundary. The client may have
-  // fetched this row before another device committed a newer version. Without
-  // this guard the late stale request would overwrite the newer server row.
-  if (existing) {
-    const decision = require(`${__hooks}/wesi_sync_lww.js`).decide(
-      existing.getString("stamp"),
-      existing.getBool("deleted"),
-      stamp,
-      deleted,
-    );
-    if (!decision.apply) {
-      return e.json(200, {
-        "ok": true,
-        "rid": rid,
-        "stamp": existing.getString("stamp"),
-        "applied": false,
-        "reason": decision.reason,
-      });
-    }
-  }
+  // The authoritative LWW decision MUST be made in the same transaction as
+  // the save. A preflight read cannot protect against two concurrent POSTs
+  // that both observed the same older row. PocketBase serializes writer
+  // transactions; wesi_sync_atomic re-reads through txApp and then decides.
+  const committed = require(`${__hooks}/wesi_sync_atomic.js`).commit(e.app, {
+    "owner": ownerScope,
+    "org": privateCollections[collection] ? "private:" + ctx.employeeId : "wesi-inc",
+    "coll": collection,
+    "rid": rid,
+    "payload": incoming,
+    "stamp": stamp,
+    "deleted": deleted
+  });
 
-  const recordsCollection = e.app.findCollectionByNameOrId("wesios_records");
-  const record = existing || new Record(recordsCollection);
-  record.set("owner", ownerScope);
-  record.set("org", privateCollections[collection] ? "private:" + ctx.employeeId : "wesi-inc");
-  record.set("coll", collection);
-  record.set("rid", rid);
-  record.set("payload", incoming);
-  record.set("stamp", stamp);
-  record.set("deleted", deleted);
-  e.app.save(record);
-
-  return e.json(200, {"ok": true, "rid": rid, "stamp": stamp, "applied": true});
+  return e.json(200, {
+    "ok": true,
+    "rid": rid,
+    "stamp": committed.stamp,
+    "applied": committed.applied,
+    "reason": committed.reason
+  });
 }, $apis.requireAuth("users"));
