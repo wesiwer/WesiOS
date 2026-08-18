@@ -123,7 +123,15 @@ class PocketBaseTransport implements SyncTransport {
       if (res.failure!.code == 'NOT_WESIOS') {
         final legacy = await _send('GET', '/api/wesi/sync/revision');
         if (legacy.failure != null) return SyncResult.fail(legacy.failure!);
-        return SyncResult.ok(revisionFromResponse(legacy.value!));
+
+        // Rolling-deploy compatibility. The old endpoint derives its token
+        // from a single max row and can miss equal-timestamp writes. While a
+        // new client waits for revision-v2 to appear, append a coarse safety
+        // bucket so a full pull happens at least once every five seconds.
+        // This mode disappears automatically as soon as v2 is available.
+        final legacyRevision = revisionFromResponse(legacy.value!);
+        final safetyBucket = DateTime.now().millisecondsSinceEpoch ~/ 5000;
+        return SyncResult.ok('$legacyRevision|compat:$safetyBucket');
       }
       return SyncResult.fail(res.failure!);
     }
@@ -183,10 +191,6 @@ class PocketBaseTransport implements SyncTransport {
         },
       );
       if (res.failure != null) {
-        // FORBIDDEN is actionable row-level policy information. Keep it out of
-        // the ordinary failure channel and let SyncEngine reconcile the local
-        // cache against the remote snapshot it fetched immediately before the
-        // push: restore visible read-only rows, purge rows no longer visible.
         if (res.failure!.code == 'FORBIDDEN') {
           forbidden.add(r.id);
           continue;
@@ -197,15 +201,10 @@ class PocketBaseTransport implements SyncTransport {
         continue;
       }
 
-      // HTTP 200 + applied:false means the server rejected this stale write
-      // at its LWW boundary. It is not delivered; the revision-driven pull
-      // will bring the authoritative row that raced with this request.
       if (res.value!['applied'] == false) continue;
 
       delivered.add(r.id);
 
-      // Reconcile to the timestamp the server actually committed. The server
-      // may clamp a far-future device clock to its own current time.
       final accepted = DateTime.tryParse('${res.value!['stamp'] ?? ''}');
       if (accepted != null) {
         acceptedStamps[r.id] = accepted;
