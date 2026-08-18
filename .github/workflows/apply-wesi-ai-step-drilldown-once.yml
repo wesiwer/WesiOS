@@ -97,6 +97,11 @@ jobs:
           fi
           git commit -m "feat(ai): add full step drilldown sheet"
 
+          # The test-fixture correction above is runner-only. Drop that disposable
+          # unstaged change so the verified product commit can rebase onto a main
+          # that is moving in parallel.
+          git restore .github/scripts/apply_wesi_ai_step_drilldown.py
+
           for attempt in 1 2 3 4; do
             git fetch origin main
             if ! git rebase origin/main; then
