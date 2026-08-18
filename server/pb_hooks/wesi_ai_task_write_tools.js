@@ -1,4 +1,5 @@
 const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
+const syncWriter = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_sync_writer.js");
 const ROOT_ORG = "org_wesi_inc";
 
 function payloadOf(record) {
@@ -23,12 +24,11 @@ function loadAccess(e, ctx) {
   if (ctx.isOwner) {
     permissions = {canManageTeam: true, canAssignTasks: true};
   } else {
-    let employee = null;
-    employee = dataAccess.first(e.app,
-        "wesios_records",
-        "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
-        {owner: ctx.ownerId, rid: ctx.employeeId},
-      );
+    const employee = dataAccess.first(e.app,
+      "wesios_records",
+      "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
+      {owner: ctx.ownerId, rid: ctx.employeeId},
+    );
     const p = payloadOf(employee);
     permissions = p.permissions && typeof p.permissions === "object" ? p.permissions : {};
   }
@@ -128,22 +128,14 @@ module.exports = {
   definitions: function(e, ctx) {
     if (!ctx.isOwner && ctx.modules.indexOf("tasks") < 0) return [];
     return [
-      {
-        name: "tasks_update",
-        description: "Изменить доступную реальную задачу WesiOS: название, описание, статус, приоритет, срок или ответственного. Меняй только явно указанные поля.",
-        parameters: {type: "object", required: ["taskId"], properties: {
-          taskId: {type: "string"}, title: {type: "string"}, description: {type: "string"},
-          status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]},
-          priority: {type: "string", enum: ["low", "normal", "high", "urgent"]},
-          dueDate: {type: ["string", "null"], description: "YYYY-MM-DD или null, чтобы убрать срок"},
-          assignee: {type: "string", description: "Имя, login или id сотрудника"}
-        }},
-      },
-      {
-        name: "tasks_archive",
-        description: "Архивировать/удалить доступную задачу WesiOS. DESTRUCTIVE: сервер всегда потребует отдельное подтверждение пользователя в WesiOS.",
-        parameters: {type: "object", required: ["taskId"], properties: {taskId: {type: "string"}}},
-      },
+      {name: "tasks_update", description: "Изменить доступную реальную задачу WesiOS: название, описание, статус, приоритет, срок или ответственного. Меняй только явно указанные поля.", parameters: {type: "object", required: ["taskId"], properties: {
+        taskId: {type: "string"}, title: {type: "string"}, description: {type: "string"},
+        status: {type: "string", enum: ["backlog", "inProgress", "review", "done"]},
+        priority: {type: "string", enum: ["low", "normal", "high", "urgent"]},
+        dueDate: {type: ["string", "null"], description: "YYYY-MM-DD или null, чтобы убрать срок"},
+        assignee: {type: "string", description: "Имя, login или id сотрудника"}
+      }}},
+      {name: "tasks_archive", description: "Архивировать/удалить доступную задачу WesiOS. DESTRUCTIVE: сервер всегда потребует отдельное подтверждение пользователя в WesiOS.", parameters: {type: "object", required: ["taskId"], properties: {taskId: {type: "string"}}}},
     ];
   },
 
@@ -163,9 +155,8 @@ module.exports = {
     if (!taskOwned(access, ctx, before)) return {ok: false, code: "FORBIDDEN", message: "Нет права изменять эту задачу"};
 
     if (name === "tasks_archive") {
-      record.set("deleted", true);
-      record.set("stamp", new Date().toISOString());
-      e.app.save(record);
+      const saved = syncWriter.write(e, ctx, {coll: "tasks", rid: id, before: before, next: before, deleted: true});
+      if (!saved.applied) return {ok: false, code: "WRITE_CONFLICT", message: "Задача уже изменилась, повторите действие"};
       return {ok: true, result: {task: {id: id, archived: true}}};
     }
     if (name !== "tasks_update") return {ok: false, code: "UNKNOWN_TOOL", message: "Неизвестный Task-инструмент"};
@@ -206,15 +197,14 @@ module.exports = {
       next.tags = tags;
     }
     next.id = String(before.id || id);
-    record.set("payload", next);
-    record.set("stamp", new Date().toISOString());
-    record.set("deleted", false);
-    e.app.save(record);
+    const saved = syncWriter.write(e, ctx, {coll: "tasks", rid: id, before: before, next: next});
+    if (!saved.applied) return {ok: false, code: "WRITE_CONFLICT", message: "Задача изменилась параллельно, повторите действие"};
+    const out = saved.payload;
     return {ok: true, result: {task: {
-      id: id, title: String(next.title || ""), status: String(next.status || "backlog"),
-      priority: String(next.priority || "normal"), dueDate: next.dueDate || null,
-      assigneeId: next.assignee || next.responsibleEmployeeId || null,
-      organizationId: String(next.organizationId || ROOT_ORG)
+      id: id, title: String(out.title || ""), status: String(out.status || "backlog"),
+      priority: String(out.priority || "normal"), dueDate: out.dueDate || null,
+      assigneeId: out.assignee || out.responsibleEmployeeId || null,
+      organizationId: String(out.organizationId || ROOT_ORG)
     }}};
   },
 };
