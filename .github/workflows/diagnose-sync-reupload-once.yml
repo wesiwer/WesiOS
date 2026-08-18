@@ -1,0 +1,60 @@
+name: Diagnose Sync Reupload Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-sync-reupload-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Instrument target test in workspace only
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('test/sync_engine_test.dart')
+          s=p.read_text()
+          needle="""      expect(second.uploaded, 0,\n          reason: 'чужую правку отправили обратно — она будет ходить по кругу');\n"""
+          repl="""      print('DIAG uploaded=${second.uploaded} applied=${second.applied}');\n      for (final r in second.collections) {\n        print('DIAG collection=${r.collection} uploaded=${r.uploaded} applied=${r.applied} failure=${r.failure?.code}');\n      }\n      print('DIAG calls=${t.calls.join(' || ')}');\n      expect(second.uploaded, 0,\n          reason: 'чужую правку отправили обратно — она будет ходить по кругу');\n"""
+          if needle not in s: raise SystemExit('needle not found')
+          p.write_text(s.replace(needle,repl,1))
+          PY
+      - name: Run exact regression
+        shell: bash
+        run: |
+          set +e
+          flutter test test/sync_engine_test.dart --plain-name 'движок применённая чужая запись не уезжает обратно на следующем проходе' -r expanded > /tmp/diag.log 2>&1
+          code=$?
+          set -e
+          grep -E 'DIAG |Expected:|Actual:|failed|All tests passed' /tmp/diag.log > .github/sync-reupload-diagnostic.txt || true
+          echo "exit=$code" >> .github/sync-reupload-diagnostic.txt
+          cat .github/sync-reupload-diagnostic.txt
+      - name: Publish diagnostic branch
+        if: always()
+        shell: bash
+        run: |
+          git reset --hard "$GITHUB_SHA"
+          cp /tmp/diag.log /tmp/full.log || true
+          grep -E 'DIAG |Expected:|Actual:|failed|All tests passed' /tmp/full.log > .github/sync-reupload-diagnostic.txt || true
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/sync-reupload
+          git add .github/sync-reupload-diagnostic.txt
+          git commit -m 'ops: record sync reupload diagnostic' || true
+          git push --force origin HEAD:diag/sync-reupload
