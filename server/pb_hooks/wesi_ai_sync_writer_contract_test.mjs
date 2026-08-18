@@ -13,6 +13,7 @@ const mutationTools = [
   'wesi_ai_finance_write_tools.js',
   'wesi_ai_crm_write_tools.js',
   'wesi_ai_roadmap_tools.js',
+  'wesi_ai_audio_tools.js',
 ];
 
 test('atomic boundary supports transaction-time AI payload rebase', () => {
