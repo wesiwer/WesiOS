@@ -38,6 +38,23 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
   if (!rid || rid.length > 180) throw new BadRequestError("Некорректный id синхронизации");
   let incoming = body.payload && typeof body.payload === "object" ? body.payload : {};
   const deleted = body.deleted === true;
+
+  // These collections deliberately preserve durable local history/structure.
+  // Their codecs do not remove the entity on a normal remote tombstone:
+  // organizations must not orphan descendants, accounts are archived for
+  // historical transactions, and inter-org transfers are immutable ledger
+  // facts. A server tombstone would therefore create a state the client cannot
+  // truthfully apply. Reject it at the authoritative boundary; callers must
+  // update/archive the payload instead of deleting the sync row.
+  if (deleted && (
+      collection === "organizations" ||
+      collection === "accounts" ||
+      collection === "inter_org_transfers")) {
+    throw new BadRequestError(
+      "Эту запись нельзя удалять через синхронизацию; используйте изменение или архивирование"
+    );
+  }
+
   const suppliedStamp = Date.parse(String(body.stamp || ""));
   const now = Date.now();
   const stamp = Number.isFinite(suppliedStamp) && suppliedStamp <= now + 5 * 60 * 1000
