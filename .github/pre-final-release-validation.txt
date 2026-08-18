@@ -1,0 +1,325 @@
+ANALYZE=0
+TESTS=1
+ANDROID_DEBUG=0
+NODE_SYNC=1
+SOURCE=bc682de2a5a0f700c304c6d6f1279bedaa4b9344
+=== TESTS ===
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок без входа не пытается ничего отправить
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок местная запись уезжает на сервер
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок чужая запись приезжает и попадает в бокс
+::group::❌ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок применённая чужая запись не уезжает обратно на следующем проходе (failed)
+Expected: <0>
+  Actual: <1>
+
+package:matcher                                     expect
+package:flutter_test/src/widget_tester.dart 480:18  expect
+test/sync_engine_test.dart 388:7                    main.<fn>.<fn>
+::endgroup::
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок более свежая местная правка побеждает серверную
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок более свежая серверная правка побеждает местную
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок удаление на другом устройстве стирает запись здесь
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок удаление здесь уезжает надгробием, а не исчезновением
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок обрыв связи не портит местные данные
+✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок отказ одной коллекции не выдаётся за общий успех
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/sync_engine_test.dart: движок протухший пропуск выбрасывается, а не остаётся выглядеть рабочим
+=== NODE ===
+# Subtest: new ordinary client is normalized to current employee owner
+not ok 31 - new ordinary client is normalized to current employee owner
+  ---
+  duration_ms: 0.266698
+  type: 'test'
+  location: '/home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_crm_contract_test.mjs:136:1'
+  failureType: 'testCodeFailure'
+  error: 'runtime.authorizeClient is not a function'
+  code: 'ERR_TEST_FAILURE'
+  name: 'TypeError'
+  stack: |-
+    TestContext.<anonymous> (file:///home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_crm_contract_test.mjs:143:11)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: legacy all-row sync reads are internally paged instead of truncated at 10k
+ok 32 - legacy all-row sync reads are internally paged instead of truncated at 10k
+  ---
+  duration_ms: 7.022035
+  type: 'test'
+  ...
+# Subtest: invalid negative sync read limit remains bounded
+ok 33 - invalid negative sync read limit remains bounded
+  ---
+  duration_ms: 0.293899
+  type: 'test'
+  ...
+# Subtest: missing row and backend failure are different sync states
+ok 34 - missing row and backend failure are different sync states
+  ---
+  duration_ms: 0.720696
+  type: 'test'
+  ...
+# Subtest: all production sync gateway reads use the shared fail-closed contract
+ok 35 - all production sync gateway reads use the shared fail-closed contract
+  ---
+  duration_ms: 1.131945
+  type: 'test'
+  ...
+# Subtest: extended sync helpers live in a request-local runtime module
+ok 36 - extended sync helpers live in a request-local runtime module
+  ---
+  duration_ms: 1.038159
+  type: 'test'
+  ...
+# Subtest: route callbacks require the runtime instead of closing over top-level helpers
+ok 37 - route callbacks require the runtime instead of closing over top-level helpers
+  ---
+  duration_ms: 0.297205
+  type: 'test'
+  ...
+# Subtest: all audited extended collections remain explicitly registered
+ok 38 - all audited extended collections remain explicitly registered
+  ---
+  duration_ms: 1.118439
+  type: 'test'
+  ...
+# Subtest: legacy profile_private is migrated before canonical profile or shield access
+ok 39 - legacy profile_private is migrated before canonical profile or shield access
+  ---
+  duration_ms: 0.406479
+  type: 'test'
+  ...
+# Subtest: migration never overwrites canonical targets and converts avatar bytes
+ok 40 - migration never overwrites canonical targets and converts avatar bytes
+  ---
+  duration_ms: 0.262641
+  type: 'test'
+  ...
+# Subtest: extended normal writes use transactional authoritative commit
+ok 41 - extended normal writes use transactional authoritative commit
+  ---
+  duration_ms: 0.162904
+  type: 'test'
+  ...
+# Subtest: profile is a singleton channel with rid me on both read and write
+ok 42 - profile is a singleton channel with rid me on both read and write
+  ---
+  duration_ms: 0.216013
+  type: 'test'
+  ...
+# Subtest: ordinary employee sees only participant-scoped file metadata
+ok 43 - ordinary employee sees only participant-scoped file metadata
+  ---
+  duration_ms: 4.744371
+  type: 'test'
+  ...
+# Subtest: manager can see all file metadata rows
+ok 44 - manager can see all file metadata rows
+  ---
+  duration_ms: 2.324823
+  type: 'test'
+  ...
+# Subtest: ordinary employee cannot create request for another employee
+ok 45 - ordinary employee cannot create request for another employee
+  ---
+  duration_ms: 0.737117
+  type: 'test'
+  ...
+# Subtest: request participants are immutable after creation
+ok 46 - request participants are immutable after creation
+  ---
+  duration_ms: 0.290212
+  type: 'test'
+  ...
+# Subtest: ordinary employee cannot mutate grants
+ok 47 - ordinary employee cannot mutate grants
+  ---
+  duration_ms: 0.284481
+  type: 'test'
+  ...
+# Subtest: ordinary employee may only record a handover from self
+ok 48 - ordinary employee may only record a handover from self
+  ---
+  duration_ms: 1.348239
+  type: 'test'
+  ...
+# Subtest: employee avatar update preserves transaction-current protected fields
+ok 49 - employee avatar update preserves transaction-current protected fields
+  ---
+  duration_ms: 2.670468
+  type: 'test'
+  ...
+# Subtest: task cannot be updated after concurrent reassignment outside employee scope
+ok 50 - task cannot be updated after concurrent reassignment outside employee scope
+  ---
+  duration_ms: 0.749199
+  type: 'test'
+  ...
+# Subtest: transaction cannot be moved from an organization without edit permission
+ok 51 - transaction cannot be moved from an organization without edit permission
+  ---
+  duration_ms: 0.406058
+  type: 'test'
+  ...
+# Subtest: message authorization rechecks transaction-current parent chat
+ok 52 - message authorization rechecks transaction-current parent chat
+  ---
+  duration_ms: 0.289692
+  type: 'test'
+  ...
+# Subtest: knowledge reparenting requires access to both current and target scope
+ok 53 - knowledge reparenting requires access to both current and target scope
+  ---
+  duration_ms: 0.343321
+  type: 'test'
+  ...
+# Subtest: newer incoming row is accepted
+ok 54 - newer incoming row is accepted
+  ---
+  duration_ms: 2.370336
+  type: 'test'
+  ...
+# Subtest: late stale request cannot overwrite newer server row
+ok 55 - late stale request cannot overwrite newer server row
+  ---
+  duration_ms: 0.292436
+  type: 'test'
+  ...
+# Subtest: deletion wins an exact timestamp tie
+ok 56 - deletion wins an exact timestamp tie
+  ---
+  duration_ms: 1.985568
+  type: 'test'
+  ...
+# Subtest: existing server row is authoritative on equal live timestamps
+ok 57 - existing server row is authoritative on equal live timestamps
+  ---
+  duration_ms: 0.257391
+  type: 'test'
+  ...
+# Subtest: valid incoming row repairs an invalid historical server stamp
+ok 58 - valid incoming row repairs an invalid historical server stamp
+  ---
+  duration_ms: 0.225411
+  type: 'test'
+  ...
+# Subtest: company and private scopes produce one composite revision
+ok 59 - company and private scopes produce one composite revision
+  ---
+  duration_ms: 2.143854
+  type: 'test'
+  ...
+# Subtest: owner account does not need a duplicate private marker
+ok 60 - owner account does not need a duplicate private marker
+  ---
+  duration_ms: 0.399907
+  type: 'test'
+  ...
+# Subtest: duplicate historical markers are deterministic and all affect the token
+ok 61 - duplicate historical markers are deterministic and all affect the token
+  ---
+  duration_ms: 0.293278
+  type: 'test'
+  ...
+# Subtest: marker logical stamp advances even when two writes share one millisecond
+ok 62 - marker logical stamp advances even when two writes share one millisecond
+  ---
+  duration_ms: 56.941633
+  type: 'test'
+  ...
+# Subtest: duplicate markers advance from the newest previous logical stamp
+ok 63 - duplicate markers advance from the newest previous logical stamp
+  ---
+  duration_ms: 0.344454
+  type: 'test'
+  ...
+# Subtest: marker stays above an allowed future business stamp for legacy revision
+ok 64 - marker stays above an allowed future business stamp for legacy revision
+  ---
+  duration_ms: 0.229369
+  type: 'test'
+  ...
+# Subtest: pre-marker installations fall back to latest business state until first write
+ok 65 - pre-marker installations fall back to latest business state until first write
+  ---
+  duration_ms: 0.240299
+  type: 'test'
+  ...
+# Subtest: latest business row remains a fallback when marker nonce is unchanged
+ok 66 - latest business row remains a fallback when marker nonce is unchanged
+  ---
+  duration_ms: 0.268292
+  type: 'test'
+  ...
+# Subtest: record hook covers create, update and delete while excluding marker recursion
+ok 67 - record hook covers create, update and delete while excluding marker recursion
+  ---
+  duration_ms: 0.817337
+  type: 'test'
+  ...
+# Subtest: legacy profile_private POST is rejected while old GET data stays migratable
+ok 68 - legacy profile_private POST is rejected while old GET data stays migratable
+  ---
+  duration_ms: 0.603908
+  type: 'test'
+  ...
+# Subtest: revision-v2 no longer derives its primary token from one max row
+ok 69 - revision-v2 no longer derives its primary token from one max row
+  ---
+  duration_ms: 0.2942
+  type: 'test'
+  ...
+# Subtest: touch retries as update when another hook wins the first marker create
+not ok 70 - touch retries as update when another hook wins the first marker create
+  ---
+  duration_ms: 57.849726
+  type: 'test'
+  location: '/home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_revision_race_test.mjs:109:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    retry must issue a fresh revision token instead of accepting the competitor token
+    + actual - expected
+    
+    + '1787070779105:nonce-2'
+    - 'nonce-2'
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 'nonce-2'
+  actual: '1787070779105:nonce-2'
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_sync_revision_race_test.mjs:122:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+# Subtest: clean install exits before querying a missing wesios_records table
+ok 71 - clean install exits before querying a missing wesios_records table
+  ---
+  duration_ms: 2.619602
+  type: 'test'
+  ...
+# Subtest: migration keeps one deterministic LWW winner per sync identity
+ok 72 - migration keeps one deterministic LWW winner per sync identity
+  ---
+  duration_ms: 2.196382
+  type: 'test'
+  ...
+# Subtest: migration persists the exact unique owner/coll/rid index
+ok 73 - migration persists the exact unique owner/coll/rid index
+  ---
+  duration_ms: 0.731717
+  type: 'test'
+  ...
+1..73
+# tests 73
+# suites 0
+# pass 69
+# fail 4
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 641.172156
