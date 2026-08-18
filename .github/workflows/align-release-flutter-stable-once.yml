@@ -12,6 +12,10 @@ permissions:
   actions: write
   statuses: write
 
+concurrency:
+  group: wesios-release-orchestrator
+  cancel-in-progress: true
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -79,6 +83,7 @@ jobs:
             echo 'No release input changes were needed'
           else
             git commit -m 'release: Wesi Telegram MVP'
+            git pull --rebase origin main
             git push origin HEAD:main
           fi
           SHA=$(git rev-parse HEAD)
