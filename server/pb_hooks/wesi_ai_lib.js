@@ -40,7 +40,10 @@ module.exports = {
     const employeeId = String(lp.employeeId || "");
     if (!ownerId || !employeeId) throw new ForbiddenError("Привязка сотрудника повреждена");
     const employee = dataAccess.first(e.app, "wesios_records", "owner={:owner} && coll='employees' && rid={:rid} && deleted=false", {owner: ownerId, rid: employeeId});
-    const snapshot = employee ? payloadOf(employee) : (lp.snapshot && typeof lp.snapshot === "object" ? lp.snapshot : lp);
+    if (!employee) {
+      throw new UnauthorizedError("Сотрудник деактивирован или удалён. Войдите заново");
+    }
+    const snapshot = payloadOf(employee);
     const permissions = snapshot.permissions && typeof snapshot.permissions === "object" ? snapshot.permissions : {};
     return {isOwner: false, ownerId: ownerId, employeeId: employeeId, modules: Array.isArray(permissions.modules) ? permissions.modules.map(String) : []};
   },
