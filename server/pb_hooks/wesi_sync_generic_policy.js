@@ -18,6 +18,15 @@ function payloadOf(record) {
 
 function forbidden(message) { throw new ForbiddenError(message); }
 
+function mapOf(value) {
+  return value && typeof value === "object" && !Array.isArray(value) ? value : {};
+}
+
+function sameJson(a, b) {
+  return JSON.stringify(a == null ? null : a) ===
+      JSON.stringify(b == null ? null : b);
+}
+
 function hasModule(ctx, name) {
   return ctx.isOwner || ctx.modules.indexOf(name) >= 0;
 }
@@ -102,9 +111,6 @@ function authorize(txApp, existing, input, ctx) {
     if (!existing || input.deleted || input.rid !== ctx.employeeId) {
       forbidden("Сотрудник может синхронизировать только свою аватарку");
     }
-    // Preserve the transaction-current employee row. A preflight merge based
-    // on an older snapshot must never revert owner-updated permissions/contact
-    // fields while the employee uploads a new avatar.
     input.payload = Object.assign({}, before, {
       avatarIndex: Number(input.payload.avatarIndex || 0),
       photo: input.payload.photo == null ? null : input.payload.photo,
@@ -237,8 +243,53 @@ function authorize(txApp, existing, input, ctx) {
 
   if (coll === "messages") {
     if (!hasModule(ctx, "chats")) forbidden("Раздел не открыт этому сотруднику");
-    if (existing) requireChat(txApp, ctx, before.chatId);
-    requireChat(txApp, ctx, target.chatId);
+
+    if (!existing) {
+      if (input.deleted || String(input.payload.authorId || "") !== ctx.employeeId) {
+        forbidden("Нельзя отправлять сообщения от имени другого сотрудника");
+      }
+      const reactions = mapOf(input.payload.reactions);
+      for (const actorId of Object.keys(reactions)) {
+        if (actorId !== ctx.employeeId) {
+          forbidden("Нельзя создавать реакции от имени другого сотрудника");
+        }
+      }
+      requireChat(txApp, ctx, input.payload.chatId);
+      return;
+    }
+
+    const beforeAuthor = String(before.authorId || "");
+    if (String(input.payload.authorId || beforeAuthor) !== beforeAuthor) {
+      forbidden("Автор сообщения неизменяем");
+    }
+    if (String(input.payload.chatId || before.chatId || "") !== String(before.chatId || "")) {
+      forbidden("Нельзя перенести сообщение в другой чат");
+    }
+    requireChat(txApp, ctx, before.chatId);
+
+    const beforeReactions = mapOf(before.reactions);
+    const incomingReactions = mapOf(input.payload.reactions);
+    const actors = {};
+    for (const id of Object.keys(beforeReactions)) actors[id] = true;
+    for (const id of Object.keys(incomingReactions)) actors[id] = true;
+    for (const actorId of Object.keys(actors)) {
+      if (actorId === ctx.employeeId) continue;
+      if (String(beforeReactions[actorId] || "") !== String(incomingReactions[actorId] || "")) {
+        forbidden("Нельзя менять реакцию другого сотрудника");
+      }
+    }
+
+    if (beforeAuthor !== ctx.employeeId) {
+      if (input.deleted) forbidden("Нельзя удалить чужое сообщение");
+      const protectedFields = [
+        "body", "kind", "at", "expiresAt", "archived", "replyTo", "editedAt", "attachment"
+      ];
+      for (const field of protectedFields) {
+        if (!sameJson(input.payload[field], before[field])) {
+          forbidden("Нельзя изменять содержимое чужого сообщения");
+        }
+      }
+    }
     return;
   }
 
