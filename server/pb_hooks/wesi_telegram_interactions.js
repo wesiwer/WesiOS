@@ -1,7 +1,24 @@
 const tg = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_lib.js");
 const store = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_store.js");
 
+const RETENTION_COLL = "telegram_retention";
+const RETENTION_TTL_MS = 24 * 60 * 60 * 1000;
+const RETENTION_MAX_ROWS = 5000;
+
+function nowIso() { return new Date().toISOString(); }
+
+function retentionRid(chatId, messageId) {
+  return `msg:${String(chatId || "")}:${String(messageId || "")}`;
+}
+
+function retentionDueAt(createdAt) {
+  const parsed = Date.parse(String(createdAt || ""));
+  const base = Number.isFinite(parsed) ? parsed : Date.now();
+  return new Date(base + RETENTION_TTL_MS).toISOString();
+}
+
 function telegramApi(cfg, method, payload) {
+  if (!cfg || !cfg.botToken) return {ok: false, code: "TELEGRAM_NOT_CONFIGURED"};
   let response;
   try {
     response = $http.send({
@@ -12,12 +29,184 @@ function telegramApi(cfg, method, payload) {
       timeout: 15,
     });
   } catch (_) {
-    return {ok: false};
+    return {ok: false, code: "TELEGRAM_UNAVAILABLE"};
   }
   const data = response && response.json && typeof response.json === "object" ? response.json : {};
+  if (!response || response.statusCode < 200 || response.statusCode >= 300 || data.ok !== true) {
+    return {
+      ok: false,
+      code: "TELEGRAM_BAD_RESPONSE",
+      description: String(data.description || ""),
+    };
+  }
+  return {ok: true, result: data.result || null};
+}
+
+function activePrivateLink(app, chatId) {
+  const id = String(chatId || "");
+  if (!app || !/^[1-9][0-9]*$/.test(id)) return null;
+  try { return store.linkByTelegram(app, id); }
+  catch (_) { return null; }
+}
+
+function retentionFind(app, rid) {
+  try {
+    return app.findFirstRecordByFilter(
+      "wesios_records",
+      "owner={:owner} && coll={:coll} && rid={:rid} && deleted=false",
+      {owner: store.SYSTEM_OWNER, coll: RETENTION_COLL, rid: rid},
+    );
+  } catch (_) {
+    return null;
+  }
+}
+
+function trackTelegramMessage(app, chatId, messageId, direction) {
+  const chat = String(chatId || "");
+  const mid = Math.floor(Number(messageId || 0));
+  if (!chat || !Number.isFinite(mid) || mid <= 0) return false;
+
+  // Retention applies only while this Telegram chat is actively linked to a
+  // WesiOS account. Offboarding revokes the link before the farewell is sent,
+  // therefore the farewell never enters this queue and remains permanently.
+  if (!activePrivateLink(app, chat)) return false;
+
+  const rid = retentionRid(chat, mid);
+  let record = retentionFind(app, rid);
+  let previous = {};
+  if (record) previous = store.payloadOf(record);
+  const createdAt = String(previous.createdAt || nowIso());
+  if (!record) {
+    const collection = app.findCollectionByNameOrId("wesios_records");
+    record = new Record(collection);
+    record.set("owner", store.SYSTEM_OWNER);
+    record.set("org", "wesi-inc");
+    record.set("coll", RETENTION_COLL);
+    record.set("rid", rid);
+  }
+  record.set("payload", {
+    chatId: chat,
+    messageId: mid,
+    direction: String(previous.direction || direction || "unknown").slice(0, 20),
+    createdAt: createdAt,
+    deleteAfter: String(previous.deleteAfter || retentionDueAt(createdAt)),
+    preserve: false,
+  });
+  record.set("stamp", nowIso());
+  record.set("deleted", false);
+  app.save(record);
+  return true;
+}
+
+function trackOutgoing(app, cfg, chatId, result, direction) {
+  if (!result || result.ok !== true || !result.result) return false;
+  const mid = Number(result.result.message_id || 0);
+  return trackTelegramMessage(app, chatId, mid, direction || "bot");
+}
+
+function markRetentionDeleted(app, record) {
+  try {
+    record.set("deleted", true);
+    record.set("stamp", nowIso());
+    app.save(record);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function deleteMessages(cfg, chatId, ids) {
+  const clean = (Array.isArray(ids) ? ids : [])
+    .map((id) => Math.floor(Number(id || 0)))
+    .filter((id) => Number.isFinite(id) && id > 0)
+    .slice(0, 100);
+  if (!clean.length) return {ok: true};
+  return telegramApi(cfg, "deleteMessages", {chat_id: String(chatId), message_ids: clean});
+}
+
+function deleteOne(cfg, chatId, id) {
+  return telegramApi(cfg, "deleteMessage", {
+    chat_id: String(chatId),
+    message_id: Math.floor(Number(id || 0)),
+  });
+}
+
+function cleanupRetentionRows(app, cfg, onlyChatId) {
+  if (!app || !cfg || !cfg.ready) return {deleted: 0, attempted: 0};
+  const filterChat = String(onlyChatId || "");
+  const rows = store.rows(app, RETENTION_COLL, RETENTION_MAX_ROWS);
+  const now = Date.now();
+  const groups = {};
+
+  for (const row of rows) {
+    const payload = store.payloadOf(row);
+    if (!payload || payload.preserve === true) continue;
+    const chatId = String(payload.chatId || "");
+    const messageId = Math.floor(Number(payload.messageId || 0));
+    const due = Date.parse(String(payload.deleteAfter || ""));
+    if (!chatId || !Number.isFinite(messageId) || messageId <= 0) continue;
+    if (filterChat && chatId !== filterChat) continue;
+    if (!Number.isFinite(due) || due > now) continue;
+    if (!groups[chatId]) groups[chatId] = [];
+    groups[chatId].push({row: row, messageId: messageId});
+  }
+
+  let deleted = 0;
+  let attempted = 0;
+  for (const chatId of Object.keys(groups)) {
+    const items = groups[chatId];
+    for (let offset = 0; offset < items.length; offset += 100) {
+      const batch = items.slice(offset, offset + 100);
+      attempted += batch.length;
+      const bulk = deleteMessages(cfg, chatId, batch.map((item) => item.messageId));
+      if (bulk.ok === true) {
+        for (const item of batch) if (markRetentionDeleted(app, item.row)) deleted++;
+        continue;
+      }
+
+      // One stale/unsupported message must not block the rest of the batch.
+      for (const item of batch) {
+        const single = deleteOne(cfg, chatId, item.messageId);
+        if (single.ok === true && markRetentionDeleted(app, item.row)) deleted++;
+      }
+    }
+  }
+  return {deleted: deleted, attempted: attempted};
+}
+
+function cleanupChat(app, cfg, chatId) {
+  return cleanupRetentionRows(app, cfg, String(chatId || ""));
+}
+
+function cleanupRetention(app) {
+  const cfg = store.config();
+  if (!cfg.ready) return {deleted: 0, attempted: 0};
+  return cleanupRetentionRows(app, cfg, "");
+}
+
+function captureIncoming(e) {
+  const cfg = store.config();
+  if (!cfg.ready) return {captured: false};
+  const secret = String(e.request.header.get("X-Telegram-Bot-Api-Secret-Token") || "");
+  if (!secret || !$security.equal(secret, cfg.webhookSecret)) return {captured: false};
+
+  const update = e.requestInfo().body || {};
+  const message = update.message || null;
+  const callback = update.callback_query || null;
+  const chat = message && message.chat
+    ? message.chat
+    : (callback && callback.message && callback.message.chat ? callback.message.chat : null);
+  if (!chat || String(chat.type || "") !== "private") return {captured: false};
+  const chatId = String(chat.id || "");
+  if (!activePrivateLink(e.app, chatId)) return {captured: false};
+
+  // Busy chats clean themselves immediately instead of waiting for cron.
+  cleanupChat(e.app, cfg, chatId);
+  if (!message) return {captured: false, cleaned: true};
+  const mid = Number(message.message_id || 0);
   return {
-    ok: !!response && response.statusCode >= 200 && response.statusCode < 300 && data.ok === true,
-    result: data.result || null,
+    captured: trackTelegramMessage(e.app, chatId, mid, "user"),
+    messageId: mid || null,
   };
 }
 
@@ -67,6 +256,7 @@ function handle(e) {
       }]],
     },
   });
+  trackOutgoing(e.app, cfg, chatId, result, "bot");
   if (result.ok && result.result && result.result.message_id) {
     link.payload.lastBotMessageId = Math.max(
       Number(link.payload.lastBotMessageId || 0),
@@ -81,4 +271,15 @@ function handle(e) {
   return {handled: true};
 }
 
-module.exports = {handle};
+module.exports = {
+  RETENTION_COLL,
+  RETENTION_TTL_MS,
+  retentionRid,
+  retentionDueAt,
+  trackTelegramMessage,
+  trackOutgoing,
+  captureIncoming,
+  cleanupChat,
+  cleanupRetention,
+  handle,
+};
