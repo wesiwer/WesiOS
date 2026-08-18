@@ -1,0 +1,48 @@
+name: Android Debug Current Main V2 Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/android-debug-current-main-v2-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Build Android debug
+        shell: bash
+        run: |
+          set +e
+          flutter pub get >/tmp/pub.log 2>&1
+          PUB=$?
+          flutter build apk --debug >/tmp/android.log 2>&1
+          ANDROID=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "PUB_GET=$PUB"
+            echo "ANDROID_DEBUG=$ANDROID"
+            echo '=== ERRORS ==='
+            grep -n -E '^e:|error:|FAILURE:|What went wrong|Exception|Could not|Unresolved reference' /tmp/android.log | tail -n 160 || true
+            echo '=== TAIL ==='
+            tail -n 120 /tmp/android.log
+          } > .github/android-debug-current-main-v2.txt
+          git config user.name 'WesiOS Android V2'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/android-debug-current-main-v2
+          git add .github/android-debug-current-main-v2.txt
+          git commit -m 'ops: capture Android debug current main v2'
+          git push --force origin HEAD:diag/android-debug-current-main-v2
+          test "$PUB" -eq 0 -a "$ANDROID" -eq 0
