@@ -49,12 +49,12 @@ class TelegramNotificationPrefs {
   static int _hour(Object? value, int fallback) {
     final parsed = value is num ? value.toInt() : int.tryParse('$value');
     if (parsed == null) return fallback;
-    return parsed.clamp(0, 23);
+    return parsed.clamp(0, 23).toInt();
   }
 
   static int _offset(Object? value) {
     final parsed = value is num ? value.toInt() : int.tryParse('$value');
-    return (parsed ?? 0).clamp(-840, 840);
+    return (parsed ?? 0).clamp(-840, 840).toInt();
   }
 }
 
@@ -174,7 +174,7 @@ class TelegramLinkService {
     if (!response.ok) {
       return TelegramLinkResult.fail(response.code, response.message);
     }
-    return const TelegramLinkResult.ok(null);
+    return const TelegramLinkResult<void>.ok(null);
   }
 
   static Future<TelegramLinkResult<TelegramNotificationPrefs>> updatePrefs({
