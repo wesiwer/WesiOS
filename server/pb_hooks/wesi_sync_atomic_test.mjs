@@ -25,16 +25,25 @@ class FakeRecord {
   }
 }
 
+class FakeBadRequestError extends Error {}
+
 globalThis.Record = FakeRecord;
+globalThis.BadRequestError = FakeBadRequestError;
 const atomic = require(path.resolve('server/pb_hooks/wesi_sync_atomic.js'));
 
-function row({stamp, deleted = false, payload = {value: 'server'}}) {
+function row({
+  stamp,
+  deleted = false,
+  payload = {value: 'server'},
+  coll = 'tasks',
+  rid = 'task-1',
+}) {
   const record = new FakeRecord();
   record.id = 'row-id';
   record.set('owner', 'owner');
   record.set('org', 'wesi-inc');
-  record.set('coll', 'tasks');
-  record.set('rid', 'task-1');
+  record.set('coll', coll);
+  record.set('rid', rid);
   record.set('payload', payload);
   record.set('stamp', stamp);
   record.set('deleted', deleted);
@@ -105,14 +114,22 @@ function harness(existing = null) {
   };
 }
 
-function input(stamp, {deleted = false, payload = {value: 'incoming'}} = {}) {
+function input(
+  StringStamp,
+  {
+    deleted = false,
+    payload = {value: 'incoming'},
+    coll = 'tasks',
+    rid = 'task-1',
+  } = {},
+) {
   return {
     owner: 'owner',
     org: 'wesi-inc',
-    coll: 'tasks',
-    rid: 'task-1',
+    coll,
+    rid,
     payload,
-    stamp,
+    stamp: StringStamp,
     deleted,
   };
 }
@@ -156,4 +173,64 @@ test('equal-time tombstone wins and preserves current authoritative payload', ()
     organizationId: 'org-a',
     value: 'current',
   });
+});
+
+test('createIfAbsent never overwrites a canonical row regardless of stamp', () => {
+  const h = harness(row({
+    stamp: '2026-08-18T09:00:00.000Z',
+    payload: {value: 'canonical'},
+    coll: 'profile',
+    rid: 'me',
+  }));
+  const result = atomic.createIfAbsent(
+    h.app,
+    input('2026-08-18T15:00:00.000Z', {
+      coll: 'profile',
+      rid: 'me',
+      payload: {value: 'legacy-migration'},
+    }),
+  );
+
+  assert.equal(result.created, false);
+  assert.equal(h.saves, 0);
+  assert.deepEqual(h.stored.get('payload'), {value: 'canonical'});
+});
+
+test('append-only existing row is immutable even for a newer incoming stamp', () => {
+  const h = harness(row({
+    stamp: '2026-08-18T10:00:00.000Z',
+    payload: {checksum: 'original'},
+    coll: 'file_handovers',
+    rid: 'handover-1',
+  }));
+  const result = atomic.commit(
+    h.app,
+    input('2026-08-18T16:00:00.000Z', {
+      coll: 'file_handovers',
+      rid: 'handover-1',
+      payload: {checksum: 'rewritten'},
+    }),
+  );
+
+  assert.equal(result.applied, false);
+  assert.equal(result.reason, 'append-only-existing');
+  assert.equal(h.saves, 0);
+  assert.deepEqual(h.stored.get('payload'), {checksum: 'original'});
+});
+
+test('append-only tombstone is rejected before any transaction write', () => {
+  const h = harness(null);
+  assert.throws(
+    () => atomic.commit(
+      h.app,
+      input('2026-08-18T17:00:00.000Z', {
+        coll: 'critical_audit',
+        rid: 'audit-1',
+        deleted: true,
+      }),
+    ),
+    FakeBadRequestError,
+  );
+  assert.equal(h.transactionCalls, 0);
+  assert.equal(h.saves, 0);
 });
