@@ -42,8 +42,6 @@ test('all audited extended collections remain explicitly registered', () => {
 test('legacy profile_private is migrated before canonical profile or shield access', () => {
   assert.match(runtime, /function\s+migrateLegacyProfilePrivate\s*\(/);
   assert.match(runtime, /coll='profile_private'\s*&&\s*deleted=false/);
-  assert.match(runtime, /coll='profile'\s*&&\s*rid='me'/);
-  assert.match(runtime, /coll='shield_private'/);
 
   const readStart = runtime.indexOf('function read(e, collection');
   const writeStart = runtime.indexOf('function write(e, collection');
@@ -58,10 +56,32 @@ test('legacy profile_private is migrated before canonical profile or shield acce
 });
 
 test('migration never overwrites canonical targets and converts avatar bytes', () => {
-  assert.match(runtime, /if\s*\(!existingShield\)/);
-  assert.match(runtime, /if\s*\(existingProfile\) return;/);
+  const migrationStart = runtime.indexOf('function migrateLegacyProfilePrivate(e)');
+  const readStart = runtime.indexOf('function read(e, collection');
+  assert.ok(migrationStart >= 0 && readStart > migrationStart);
+  const migrationBody = runtime.slice(migrationStart, readStart);
+
+  assert.match(migrationBody, /wesi_sync_atomic\.js/);
+  assert.match(migrationBody, /atomic\.createIfAbsent\(e\.app/);
+  assert.match(migrationBody, /coll:\s*"shield_private"/);
+  assert.match(migrationBody, /coll:\s*"profile"/);
+  assert.match(migrationBody, /rid:\s*"me"/);
+  assert.doesNotMatch(migrationBody, /e\.app\.save\(/,
+    'legacy migration must not use non-atomic check-then-save');
   assert.match(runtime, /legacyBytesToBase64/);
   assert.match(runtime, /__wesios_bytes_v1/);
   assert.match(runtime, /Math\.min\(parsed, now\)/,
     'legacy future stamps must be clamped during migration');
+});
+
+test('extended normal writes use transactional authoritative commit', () => {
+  const writeStart = runtime.indexOf('function write(e, collection');
+  const revisionStart = runtime.indexOf('function revision(e)');
+  const writeBody = runtime.slice(writeStart, revisionStart);
+
+  assert.match(writeBody, /wesi_sync_atomic\.js/);
+  assert.match(writeBody, /\.commit\(e\.app/);
+  assert.doesNotMatch(writeBody, /wesi_sync_lww\.js/,
+    'outer preflight LWW is not the authoritative write boundary anymore');
+  assert.doesNotMatch(writeBody, /e\.app\.save\(/);
 });
