@@ -11,6 +11,7 @@ import '../../features/audio/services/audio_vault_service.dart';
 import '../../features/chats/models/chat_message.dart';
 import '../../features/profile/services/profile_service.dart';
 import '../../features/treasury/models/transaction_model.dart';
+import '../../features/treasury/services/sandbox_service.dart';
 import '../../features/treasury/services/what_if_store.dart';
 import '../security/shield_service.dart';
 import 'sync_codec.dart';
@@ -183,8 +184,9 @@ class _PortableAudioBeatsSync extends AudioBeatsSync {
     if (localRaw != null && localRaw.isNotEmpty) {
       try {
         final raw = jsonDecode(localRaw);
-        if (raw is Map)
+        if (raw is Map) {
           local = BeatEntry.fromJson(Map<String, dynamic>.from(raw));
+        }
       } catch (_) {}
     }
 
@@ -243,7 +245,7 @@ class _SandboxTransactionsSync extends SyncCollection<TransactionModel> {
   String get name => 'sandbox_transactions';
 
   @override
-  String get boxName => 'wesios_sandbox';
+  String get boxName => SandboxService.boxName;
 
   @override
   String idOf(TransactionModel value) => value.id;
@@ -382,7 +384,7 @@ class _WhatIfPresetsSync extends SyncCollection<dynamic> {
   String get name => 'what_if_presets';
 
   @override
-  String get boxName => 'wesios_whatif';
+  String get boxName => WhatIfStore.boxName;
 
   @override
   String idOf(dynamic value) {
