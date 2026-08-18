@@ -248,7 +248,12 @@ class SyncAuto {
     _nextProbeAt = null;
   }
 
-  /// Принудительный обмен до устойчивой server revision.
+  /// Принудительный обмен до устойчивого локального snapshot и server revision.
+  ///
+  /// Manual Sync делает несколько ограниченных проходов. Изменение записи во
+  /// время merge — ожидаемый optimistic conflict, а не окончательная ошибка:
+  /// даём UI/локальному watcher 300 мс успокоиться и пересчитываем план. При
+  /// этом реальные network/apply/policy ошибки по-прежнему возвращаются сразу.
   static Future<SyncReport> now() async {
     _localTimer?.cancel();
 
@@ -286,6 +291,7 @@ class SyncAuto {
 
     SyncReport? lastSuccessful;
     String? lastObservedBefore;
+    String? lastRetryReason;
 
     for (var pass = 0; pass < manualStabilizationPasses; pass++) {
       if (sessionChanged()) {
@@ -322,7 +328,22 @@ class SyncAuto {
       lastObservedBefore = before.value!;
 
       final report = await SyncEngine.run();
-      if (!report.ok) return report;
+      if (!report.ok) {
+        final code = report.firstFailure?.code;
+        if (code == 'LOCAL_CHANGED_DURING_SYNC' || code == 'BUSY') {
+          // Do not surface a transient optimistic conflict from the button.
+          // Keep the edit pending and give the user/Hive watcher a short quiet
+          // window before rebuilding both local and remote snapshots.
+          pending.value = true;
+          lastRetryReason = code == 'BUSY' ? 'busy' : 'local';
+          if (pass + 1 < manualStabilizationPasses) {
+            await Future<void>.delayed(quiet);
+            continue;
+          }
+          break;
+        }
+        return report;
+      }
       if (sessionChanged()) return report;
       lastSuccessful = report;
       pending.value = false;
@@ -353,16 +374,36 @@ class SyncAuto {
         return report;
       }
 
+      // Server changed while the full exchange was running. The revision seen
+      // before that exchange has been consumed, but the newer revision must
+      // trigger another stabilization pass.
       _acceptObservedRevision(lastObservedBefore);
+      lastRetryReason = 'remote';
+    }
+
+    final SyncFailure failure;
+    if (lastRetryReason == 'local') {
+      failure = const SyncFailure(
+        'LOCAL_UNSTABLE',
+        'Локальные данные продолжали меняться во время синхронизации. Повторите Sync после завершения правок',
+      );
+      pending.value = true;
+    } else if (lastRetryReason == 'busy') {
+      failure = const SyncFailure(
+        'BUSY',
+        'Другой проход синхронизации не завершился. Повторите Sync',
+      );
+    } else {
+      failure = const SyncFailure(
+        'REMOTE_UNSTABLE',
+        'Сервер продолжал меняться во время синхронизации. Повторите Sync',
+      );
     }
 
     final unstable = SyncReport(
       at: DateTime.now(),
       collections: lastSuccessful?.collections ?? const [],
-      failure: const SyncFailure(
-        'REMOTE_UNSTABLE',
-        'Сервер продолжал меняться во время синхронизации. Повторите Sync',
-      ),
+      failure: failure,
     );
     SyncEngine.lastReport.value = unstable;
     return unstable;
