@@ -38,6 +38,15 @@ routerAdd("GET", "/api/wesi/telegram/open", (e) => {
 });
 
 routerAdd("POST", "/api/wesi/telegram/webhook", (e) => {
+  // Capture the exact incoming message id and opportunistically remove any
+  // WesiOS chat messages whose 24-hour retention window has expired.
+  // captureIncoming authenticates the Telegram secret again before touching
+  // the retention queue, so spoofed public requests cannot enqueue deletes.
+  try {
+    const interactions = require(`${__hooks}/wesi_telegram_interactions.js`);
+    interactions.captureIncoming(e);
+  } catch (_) {}
+
   // Experience preprocessing records private message ids, adds contextual
   // visuals and can consume updates from users that have been offboarded.
   try {
@@ -63,6 +72,12 @@ routerAdd("POST", "/api/wesi/telegram/webhook", (e) => {
 });
 
 cronAdd("wesios_telegram_alerts_v2", "*/5 * * * *", () => {
+  // Retention runs before new alerts so a due message is removed before a new
+  // push is sent. New outgoing messages receive their own +24h deadline.
+  try {
+    const interactions = require(`${__hooks}/wesi_telegram_interactions.js`);
+    interactions.cleanupRetention($app);
+  } catch (_) {}
   try {
     const experience = require(`${__hooks}/wesi_telegram_experience.js`);
     experience.runNotifier($app);
