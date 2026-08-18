@@ -39,7 +39,6 @@ jobs:
           con=sqlite3.connect('file:/opt/pocketbase/pb_data/data.db?mode=ro',uri=True); con.row_factory=sqlite3.Row
           rows=list(con.execute("select owner,payload,stamp from wesios_records where coll='critical_audit' and deleted=0 order by stamp desc limit 1000"))
           owner=None
-          # Choose the owner with the newest Wesi AI tool event; output never exposes owner id.
           events=[]
           for r in rows:
               try:p=json.loads(r['payload']) if isinstance(r['payload'],str) else r['payload']
@@ -59,7 +58,9 @@ jobs:
           cp /tmp/tool-summary.txt .github/production-ai-tool-summary.txt
           git config user.name 'WesiOS AI Diagnostics'
           git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/production-ai-tool-summary
           git add .github/production-ai-tool-summary.txt
           git commit -m 'ops: record production AI tool result summary'
-          git pull --rebase origin main
-          git push origin HEAD:main
+          git push --force origin HEAD:diag/production-ai-tool-summary
+
+# diagnostic result goes to isolated branch to avoid main races
