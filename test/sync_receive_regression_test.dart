@@ -132,22 +132,45 @@ void main() {
     expect(report.applied, 2);
   });
 
-  test('fresh interactive login starts receive polling for every employee', () {
+  test('fresh interactive login serializes rebind, pull and receive polling', () {
     final source =
         File('lib/features/auth/login_screen.dart').readAsStringSync();
-    expect(source, contains('await SyncEngine.runOnLaunch();'));
-    expect(source, contains('SyncAuto.start();'));
+    expect(
+      source,
+      contains('await SyncFeatureExtensions.rebindCurrentAccountAndSync();'),
+    );
+    expect(source, isNot(contains('await SyncEngine.runOnLaunch();')));
     expect(source, isNot(contains('if (employee.isOwner) {')));
   });
 
-  test('initial remote watermark is never accepted from stale lastReport', () {
+  test('remote watermark is accepted only after the matching pull succeeds', () {
     final source = File('lib/core/sync/sync_auto.dart').readAsStringSync();
     expect(source, isNot(contains('SyncEngine.lastReport.value?.ok == true')));
+    expect(source, contains('final observedRevision = result.value!;'));
     expect(
       source,
-      contains(
-        'if (_remoteRevision == null) {\n        final report = await _runAuto();',
-      ),
+      contains('final report = await _runAuto(generation: generation);'),
     );
+    expect(source, contains('_acceptObservedRevision(observedRevision);'));
+
+    final observed = source.indexOf('final observedRevision = result.value!;');
+    final run = source.indexOf(
+      'final report = await _runAuto(generation: generation);',
+      observed,
+    );
+    final accepted = source.indexOf(
+      '_acceptObservedRevision(observedRevision);',
+      run,
+    );
+    expect(observed, greaterThanOrEqualTo(0));
+    expect(run, greaterThan(observed));
+    expect(accepted, greaterThan(run));
+  });
+
+  test('remote Hive expectations use TTL instead of end-of-run clearing', () {
+    final source = File('lib/core/sync/sync_journal.dart').readAsStringSync();
+    expect(source, contains('_expectationLifetime = Duration(seconds: 5)'));
+    expect(source, contains('age <= _expectationLifetime'));
+    expect(source, contains('static void pruneExpectations()'));
   });
 }
