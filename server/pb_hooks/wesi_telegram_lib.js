@@ -15,7 +15,9 @@ function formatMoney(value, currency) {
   const amount = Number(value);
   if (!Number.isFinite(amount)) return "—";
   const rounded = Math.round((amount + Number.EPSILON) * 100) / 100;
-  const fixed = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  const fixed = Number.isInteger(rounded)
+    ? String(rounded)
+    : rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
   const parts = fixed.split(".");
   parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   const code = text(currency || "RUB").toUpperCase();
@@ -44,6 +46,14 @@ function parseCommand(raw, botUsername) {
   const expected = text(botUsername).replace(/^@/, "").toLowerCase();
   if (mention && expected && mention !== expected) return {name: "foreign", args: args, raw: input};
   return {name: command, args: args, raw: input};
+}
+
+function isExplicitGroupCommand(raw, botUsername) {
+  const input = text(raw);
+  if (!input || input[0] !== "/") return false;
+  const token = input.split(/\s+/, 1)[0].toLowerCase();
+  const expected = text(botUsername).replace(/^@/, "").toLowerCase();
+  return !!expected && token.endsWith("@" + expected);
 }
 
 function parseStartCode(command) {
@@ -81,18 +91,43 @@ function riskFromCushionDays(cushionDays) {
   return {level: "ok", label: "умеренный"};
 }
 
-function dayKey(value) {
-  const d = value instanceof Date ? value : new Date(value);
-  if (!Number.isFinite(d.getTime())) return "";
-  return d.toISOString().slice(0, 10);
+function riskRank(level) {
+  switch (String(level || "unknown")) {
+    case "critical": return 3;
+    case "warning": return 2;
+    case "ok": return 1;
+    default: return 0;
+  }
 }
 
-function dueState(dueDate, now) {
+function shouldNotifyRisk(previousLevel, currentLevel) {
+  const current = riskRank(currentLevel);
+  if (current < 2) return false;
+  const previous = riskRank(previousLevel);
+  return previous < 2 || current > previous;
+}
+
+function shouldNotifyOverdue(previousCount, currentCount) {
+  const current = Math.max(0, Number(currentCount || 0));
+  if (!Number.isFinite(current) || current <= 0) return false;
+  const previous = Math.max(0, Number(previousCount || 0));
+  if (!Number.isFinite(previous)) return true;
+  return current > previous;
+}
+
+function dayKey(value, offsetMinutes) {
+  const d = value instanceof Date ? value : new Date(value);
+  if (!Number.isFinite(d.getTime())) return "";
+  const offset = Math.max(-840, Math.min(840, Number(offsetMinutes || 0)));
+  return new Date(d.getTime() + offset * 60000).toISOString().slice(0, 10);
+}
+
+function dueState(dueDate, now, offsetMinutes) {
   const due = new Date(String(dueDate || ""));
   const current = now instanceof Date ? now : new Date(now || Date.now());
   if (!Number.isFinite(due.getTime()) || !Number.isFinite(current.getTime())) return "none";
-  const dueDay = dayKey(due);
-  const nowDay = dayKey(current);
+  const dueDay = dayKey(due, offsetMinutes);
+  const nowDay = dayKey(current, offsetMinutes);
   if (dueDay < nowDay) return "overdue";
   if (dueDay === nowDay) return "today";
   return "future";
@@ -132,10 +167,14 @@ module.exports = {
   escapeHtml,
   formatMoney,
   parseCommand,
+  isExplicitGroupCommand,
   parseStartCode,
   callback,
   parseCallback,
   riskFromCushionDays,
+  riskRank,
+  shouldNotifyRisk,
+  shouldNotifyOverdue,
   dueState,
   isQuietHours,
   acceptRate,
