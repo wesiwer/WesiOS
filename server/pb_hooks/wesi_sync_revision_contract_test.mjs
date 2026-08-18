@@ -49,7 +49,7 @@ test("company and private scopes produce one composite revision", () => {
 
   assert.equal(
     revision.readForContext(app, "company", "private"),
-    "company=marker:company-nonce|private=marker:private-nonce",
+    "company=marker:company-nonce|latest:empty|private=marker:private-nonce|latest:empty",
   );
 });
 
@@ -59,7 +59,7 @@ test("owner account does not need a duplicate private marker", () => {
   });
   assert.equal(
     revision.readForContext(app, "owner", "owner"),
-    "company=marker:one|private=marker:one",
+    "company=marker:one|latest:empty|private=marker:one|latest:empty",
   );
 });
 
@@ -70,16 +70,36 @@ test("duplicate historical markers are deterministic and all affect the token", 
       row({id: "b", coll: revision.markerCollection, rid: revision.markerRid, nonce: "a"}),
     ],
   });
-  assert.equal(revision.readOwner(app, "company"), "marker:a,z");
+  assert.equal(
+    revision.readOwner(app, "company"),
+    "marker:a,z|latest:empty",
+  );
 });
 
-test("pre-marker installations fall back to legacy state until first write", () => {
+test("pre-marker installations fall back to latest business state until first write", () => {
   const app = appWith({}, {
     company: [row({id: "business-row", coll: "tasks", rid: "t1", updated: "2026-08-18 04:00:00.000Z"})],
   });
   assert.equal(
     revision.readOwner(app, "company"),
     "legacy:business-row|2026-08-18 04:00:00.000Z",
+  );
+});
+
+test("latest business row remains a fallback when marker nonce is unchanged", () => {
+  const marker = {
+    company: [row({id: "m1", coll: revision.markerCollection, rid: revision.markerRid, nonce: "stable-marker"})],
+  };
+  const before = appWith(marker, {
+    company: [row({id: "a", coll: "tasks", rid: "a", updated: "2026-08-18 04:00:00.000Z"})],
+  });
+  const after = appWith(marker, {
+    company: [row({id: "b", coll: "tasks", rid: "b", updated: "2026-08-18 04:00:01.000Z"})],
+  });
+
+  assert.notEqual(
+    revision.readOwner(before, "company"),
+    revision.readOwner(after, "company"),
   );
 });
 
@@ -95,7 +115,7 @@ test("record hook covers create, update and delete while excluding marker recurs
   assert.match(hook, /revision\.touch\(e\.app, e\.record\.getString\("owner"\)\)/);
 });
 
-test("revision-v2 no longer derives its token from one max row", () => {
+test("revision-v2 no longer derives its primary token from one max row", () => {
   const runtime = fs.readFileSync(
     path.resolve("server/pb_hooks/wesi_sync_extra_runtime.js"),
     "utf8",
