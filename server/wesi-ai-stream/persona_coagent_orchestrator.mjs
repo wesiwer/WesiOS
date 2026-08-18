@@ -185,7 +185,7 @@ async function runAttempt({prepared, policy, invokeModel, invokeTool, emit, sign
   const initialPhase = reviewRound > 0 ? 'revision' : 'handoff';
   send(buildCoagentEvent(handoff, initialPhase, {
     label: reviewRound > 0 ? `${coagentLabel}: уточнение` : `Передано ${coagentLabel}`,
-    detail: reviewRound > 0 ? 'Один ограниченный revision round.' : (policy.reason || 'cross_specialty_review'),
+    detail: reviewRound > 0 ? 'Один круг уточнения по замечаниям ведущего.' : handoffReason(policy.reason),
   }));
   send(timelineEvent(
     reviewRound > 0 ? `${leadLabel} → ${coagentLabel} · уточнение` : `${leadLabel} → ${coagentLabel}`,
@@ -284,6 +284,23 @@ async function runAttempt({prepared, policy, invokeModel, invokeTool, emit, sign
     visibleResult || 'Проверка завершена; полезные выводы переданы Lead для итогового ответа.',
   ));
   return {ok: true, handoff, result, toolResults};
+}
+
+// Причина передачи слова теперь видна человеку в ходе мыслей, а не только в
+// логах, поэтому код заменяется фразой. Незнакомый код лучше показать как
+// есть, чем спрятать за общей отговоркой.
+const HANDOFF_REASONS = {
+  joint_mode: 'Запрошен совместный режим — отвечаем вдвоём.',
+  cross_domain_product: 'Задача продуктовая: нужны обе специализации.',
+  mixed_specializations: 'В запросе и техническая, и творческая часть.',
+  creative_review_needed: 'Нужен взгляд со стороны творческой части.',
+  technical_review_needed: 'Нужен взгляд со стороны технической части.',
+  cross_specialty_review: 'Нужна проверка смежной специализацией.',
+};
+
+function handoffReason(reason) {
+  const key = String(reason || '').trim();
+  return HANDOFF_REASONS[key] || (key ? `Причина: ${key}` : 'Нужна проверка смежной специализацией.');
 }
 
 export async function runPersonaCoagent({prepared, invokeModel, invokeTool, emit, signal}) {

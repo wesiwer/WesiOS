@@ -290,3 +290,19 @@ test('вызов инструмента подписан именем специ
       'инструмент не подписан специалистом — в ходе мыслей не видно, кто его запустил');
   }
 });
+
+test('причина передачи слова написана словами, а не кодом', async () => {
+  const events = [];
+  await runPersonaCoagent({
+    prepared: prepared(),
+    invokeModel: stubModel({plan: TWO_SPECIALISTS, decision: 'accept'}),
+    invokeTool: stubTool,
+    emit: (ev) => events.push(ev),
+    signal: null,
+  });
+  const handoff = events.find((ev) => ev.type === 'agent' && ev.phase === 'handoff');
+  assert.ok(handoff, 'события передачи слова нет');
+  assert.ok(!/^[a-z_]+$/.test(handoff.detail),
+    `в ходе мыслей показывается служебный код «${handoff.detail}»`);
+  assert.match(handoff.detail, /специализаци|режим|часть/);
+});
