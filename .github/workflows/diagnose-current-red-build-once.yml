@@ -1,0 +1,57 @@
+name: Diagnose Current Red Build Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-current-red-build-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Run analyze, tests and Android release compile
+        shell: bash
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos > /tmp/analyze.log 2>&1
+          analyze=$?
+          flutter test > /tmp/tests.log 2>&1
+          tests=$?
+          flutter build apk --release > /tmp/android.log 2>&1
+          android=$?
+          set -e
+          {
+            echo "analyze_exit=$analyze"
+            echo "tests_exit=$tests"
+            echo "android_exit=$android"
+            echo "=== ANALYZE TAIL ==="
+            tail -n 220 /tmp/analyze.log
+            echo "=== TESTS TAIL ==="
+            tail -n 320 /tmp/tests.log
+            echo "=== ANDROID TAIL ==="
+            tail -n 220 /tmp/android.log
+          } > .github/current-red-build.txt
+          git config user.name 'WesiOS Build Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/current-red-build
+          git add .github/current-red-build.txt
+          git commit -m 'ops: capture current red build'
+          git push --force origin HEAD:diag/current-red-build
