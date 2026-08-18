@@ -24,7 +24,7 @@ jobs:
       - name: Build Android debug
         shell: bash
         run: |
-          # Revalidate after dartssh2/compileSdk/NDK compatibility fixes.
+          # Revalidate after pinning dartssh2 2.14.0 and SDK/NDK alignment.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           PUB=$?
