@@ -110,6 +110,18 @@ test("duplicate markers advance from the newest previous logical stamp", () => {
   assert.equal(Date.parse(next), Date.parse(b) + 1);
 });
 
+test("marker stays above an allowed future business stamp for legacy revision", () => {
+  const previousMarker = "2999-01-01T00:00:00.100Z";
+  const futureBusiness = "2999-01-01T00:05:00.000Z";
+  const next = revision.nextMarkerStamp(
+    [row({id: "m", stamp: previousMarker})],
+    futureBusiness,
+  );
+
+  assert.equal(Date.parse(next), Date.parse(futureBusiness) + 1);
+  assert.ok(Date.parse(next) > Date.parse(previousMarker));
+});
+
 test("pre-marker installations fall back to latest business state until first write", () => {
   const app = appWith({}, {
     company: [row({id: "business-row", coll: "tasks", rid: "t1", updated: "2026-08-18 04:00:00.000Z"})],
