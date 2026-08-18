@@ -25,6 +25,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Mark release orchestrator running
@@ -37,7 +38,10 @@ jobs:
 
       - name: Refresh main
         shell: bash
-        run: git pull --ff-only origin main
+        run: |
+          set -euo pipefail
+          git fetch origin main
+          git checkout -B main origin/main
 
       - name: Align release toolchain and bump app version
         shell: bash
