@@ -1,0 +1,57 @@
+name: Summarize Current Red Build Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/summarize-current-red-build-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  summarize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Run gates and extract only actionable failures
+        shell: bash
+        run: |
+          set +e
+          flutter analyze --no-fatal-infos > /tmp/analyze.log 2>&1
+          analyze=$?
+          flutter test > /tmp/tests.log 2>&1
+          tests=$?
+          flutter build apk --debug > /tmp/android.log 2>&1
+          android=$?
+          set -e
+          {
+            echo "analyze_exit=$analyze tests_exit=$tests android_debug_exit=$android"
+            echo '=== ANALYZE ERRORS/WARNINGS ==='
+            grep -E '(^| )error •|(^| )warning •|^[[:space:]]*[0-9]+ issues found' /tmp/analyze.log || true
+            echo '=== FAILED TESTS / COMPILER ERRORS ==='
+            grep -E -B4 -A14 '(^| )Error:|FAILED|failed\)|\(failed\)|Expected:|Actual:|Some tests failed|Test failed|Compilation failed' /tmp/tests.log | tail -n 500 || true
+            echo '=== TEST SUMMARY TAIL ==='
+            tail -n 100 /tmp/tests.log
+            echo '=== ANDROID DEBUG FAILURES ==='
+            grep -E -B5 -A20 'FAILURE:|\* What went wrong:|Error:|error:|BUILD FAILED|Gradle task.*failed' /tmp/android.log | tail -n 300 || true
+          } > .github/current-red-build-summary.txt
+          git config user.name 'WesiOS Build Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/current-red-build-summary
+          git add .github/current-red-build-summary.txt
+          git commit -m 'ops: summarize current build failures'
+          git push --force origin HEAD:diag/current-red-build-summary
