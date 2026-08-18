@@ -1,0 +1,78 @@
+=== RUNS ===
+[{"conclusion":"failure","createdAt":"2026-08-18T15:30:14Z","databaseId":32154843215,"displayTitle":"Publish WesiOS Release","event":"workflow_dispatch","headSha":"527d38818c024d8eed882b76cdabf122aa58e9b3","status":"completed"},{"conclusion":"success","createdAt":"2026-08-17T19:29:10Z","databaseId":32060598385,"displayTitle":"Publish WesiOS Release","event":"workflow_dispatch","headSha":"dfd7d4bd19eb9a612e1140e0abb5b5f3b7f452dc","status":"completed"},{"conclusion":"failure","createdAt":"2026-08-17T18:06:08Z","databaseId":32053299904,"displayTitle":"Publish WesiOS Release","event":"workflow_dispatch","headSha":"7476851b94c1e145a68f0e8ef5f83bdc82b6ff57","status":"completed"},{"conclusion":"success","createdAt":"2026-08-17T15:19:11Z","databaseId":32041946951,"displayTitle":"Publish WesiOS Release","event":"workflow_dispatch","headSha":"1351cfd6315fbf0017d7400500de92042de0757c","status":"completed"},{"conclusion":"success","createdAt":"2026-08-17T14:17:54Z","databaseId":32038548719,"displayTitle":"Publish WesiOS Release","event":"workflow_dispatch","headSha":"b75fd9f62df744dda63ac1858542b4b5996dec7d","status":"completed"},{"conclusion":"success","createdAt":"2026-08-17T12:46:02Z","databaseId":32031499904,"displayTitle":"Publish WesiOS Release","event":"workflow_dispatch","headSha":"5ddf5f45a3d5b40bfac78dd7f28f92bc118f16fc","status":"completed"},{"conclusion":"success","createdAt":"2026-08-17T12:32:43Z","databaseId":32030377834,"displayTitle":"Publish WesiOS Release","event":"workflow_dispatch","headSha":"400c332738d83f10981fe86ccdeda15c538a6e56","status":"completed"},{"conclusion":"success","createdAt":"2026-08-17T10:32:10Z","databaseId":32020618765,"displayTitle":"Publish WesiOS Release","event":"workflow_dispatch","headSha":"0e947078eff58daa1d8a67dea2da272d285f752c","status":"completed"}]
+
+=== FAILED LOGS RUN 32154843215 ===
+build-android	Build signed APK	﻿2026-08-18T15:32:06.1396556Z ##[group]Run flutter build apk --release
+build-android	Build signed APK	2026-08-18T15:32:06.1396952Z ^[[36;1mflutter build apk --release^[[0m
+build-android	Build signed APK	2026-08-18T15:32:06.1433798Z shell: /usr/bin/bash -e {0}
+build-android	Build signed APK	2026-08-18T15:32:06.1434071Z env:
+build-android	Build signed APK	2026-08-18T15:32:06.1434294Z   RELEASE_TAG: app-latest
+build-android	Build signed APK	2026-08-18T15:32:06.1434680Z   JAVA_HOME: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-8/x64
+build-android	Build signed APK	2026-08-18T15:32:06.1435194Z   JAVA_HOME_17_X64: /opt/hostedtoolcache/Java_Temurin-Hotspot_jdk/17.0.20-8/x64
+build-android	Build signed APK	2026-08-18T15:32:06.1435954Z   FLUTTER_ROOT: /opt/hostedtoolcache/flutter/stable-3.24.0-x64/flutter
+build-android	Build signed APK	2026-08-18T15:32:06.1436543Z   PUB_CACHE: /home/runner/.pub-cache
+build-android	Build signed APK	2026-08-18T15:32:06.1436973Z   KEYSTORE_PATH: /home/runner/work/_temp/***-release.jks
+build-android	Build signed APK	2026-08-18T15:32:06.1437338Z   KEYSTORE_PASSWORD: ***
+build-android	Build signed APK	2026-08-18T15:32:06.1437617Z   KEY_ALIAS: ***
+build-android	Build signed APK	2026-08-18T15:32:06.1437858Z   KEY_PASSWORD: ***
+build-android	Build signed APK	2026-08-18T15:32:06.1438098Z   ANDROID_HOME: /usr/local/lib/android/sdk
+build-android	Build signed APK	2026-08-18T15:32:06.1438413Z   ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+build-android	Build signed APK	2026-08-18T15:32:06.1438856Z   GRADLE_OPTS: -Dorg.gradle.jvmargs=-Xmx4G -Dorg.gradle.daemon=false
+build-android	Build signed APK	2026-08-18T15:32:06.1439226Z ##[endgroup]
+build-android	Build signed APK	2026-08-18T15:32:06.8935158Z 
+build-android	Build signed APK	2026-08-18T15:33:38.9512987Z Running Gradle task 'assembleRelease'...                        
+build-android	Build signed APK	2026-08-18T15:33:38.9557549Z 
+build-android	Build signed APK	2026-08-18T15:33:38.9606416Z FAILURE: Build completed with 3 failures.
+build-android	Build signed APK	2026-08-18T15:33:38.9610435Z 
+build-android	Build signed APK	2026-08-18T15:33:38.9636579Z 1: Task failed with an exception.
+build-android	Build signed APK	2026-08-18T15:33:38.9666149Z -----------
+build-android	Build signed APK	2026-08-18T15:33:38.9696013Z * Where:
+build-android	Build signed APK	2026-08-18T15:33:38.9726514Z Build file '/home/runner/work/WesiOS/WesiOS/android/app/build.gradle' line: 81
+build-android	Build signed APK	2026-08-18T15:33:38.9727388Z 
+build-android	Build signed APK	2026-08-18T15:33:38.9752214Z * What went wrong:
+build-android	Build signed APK	2026-08-18T15:33:38.9776097Z A problem occurred evaluating project ':app'.
+build-android	Build signed APK	2026-08-18T15:33:38.9803494Z > Release version mismatch: pubspec/local.properties is 0.22.26+101, but AppVersion is 0.22.25+100. Update both before releasing.
+build-android	Build signed APK	2026-08-18T15:33:38.9834706Z 
+build-android	Build signed APK	2026-08-18T15:33:38.9835221Z * Try:
+build-android	Build signed APK	2026-08-18T15:33:38.9866316Z > Run with --stacktrace option to get the stack trace.
+build-android	Build signed APK	2026-08-18T15:33:38.9896308Z > Run with --info or --debug option to get more log output.
+build-android	Build signed APK	2026-08-18T15:33:38.9926239Z > Run with --scan to get full insights.
+build-android	Build signed APK	2026-08-18T15:33:38.9927284Z > Get more help at https://help.gradle.org.
+build-android	Build signed APK	2026-08-18T15:33:38.9956126Z ==============================================================================
+build-android	Build signed APK	2026-08-18T15:33:38.9985762Z 
+build-android	Build signed APK	2026-08-18T15:33:38.9986414Z 2: Task failed with an exception.
+build-android	Build signed APK	2026-08-18T15:33:39.0024338Z -----------
+build-android	Build signed APK	2026-08-18T15:33:39.0039826Z * What went wrong:
+build-android	Build signed APK	2026-08-18T15:33:39.0040706Z A problem occurred configuring project ':app'.
+build-android	Build signed APK	2026-08-18T15:33:39.0041637Z > Failed to notify project evaluation listener.
+build-android	Build signed APK	2026-08-18T15:33:39.0042681Z    > compileSdkVersion is not specified. Please add it to build.gradle
+build-android	Build signed APK	2026-08-18T15:33:39.0043722Z    > Cannot invoke method substring() on null object
+build-android	Build signed APK	2026-08-18T15:33:39.0044322Z 
+build-android	Build signed APK	2026-08-18T15:33:39.0044607Z * Try:
+build-android	Build signed APK	2026-08-18T15:33:39.0045608Z > Run with --stacktrace option to get the stack trace.
+build-android	Build signed APK	2026-08-18T15:33:39.0046602Z > Run with --info or --debug option to get more log output.
+build-android	Build signed APK	2026-08-18T15:33:39.0047518Z > Run with --scan to get full insights.
+build-android	Build signed APK	2026-08-18T15:33:39.0048384Z > Get more help at https://help.gradle.org.
+build-android	Build signed APK	2026-08-18T15:33:39.0049270Z ==============================================================================
+build-android	Build signed APK	2026-08-18T15:33:39.0049849Z 
+build-android	Build signed APK	2026-08-18T15:33:39.0050265Z 3: Task failed with an exception.
+build-android	Build signed APK	2026-08-18T15:33:39.0050873Z -----------
+build-android	Build signed APK	2026-08-18T15:33:39.0051433Z * What went wrong:
+build-android	Build signed APK	2026-08-18T15:33:39.0052260Z Failed to query the value of property 'buildFlowServiceProperty'.
+build-android	Build signed APK	2026-08-18T15:33:39.0054129Z > Could not isolate value org.jetbrains.kotlin.gradle.plugin.statistics.BuildFlowService$Parameters_Decorated@7092f3de of type BuildFlowService.Parameters
+build-android	Build signed APK	2026-08-18T15:33:39.0055947Z    > A problem occurred configuring project ':app'.
+build-android	Build signed APK	2026-08-18T15:33:39.0056840Z       > Failed to notify project evaluation listener.
+build-android	Build signed APK	2026-08-18T15:33:39.0058456Z          > compileSdkVersion is not specified. Please add it to build.gradle
+build-android	Build signed APK	2026-08-18T15:33:39.0059496Z          > Cannot invoke method substring() on null object
+build-android	Build signed APK	2026-08-18T15:33:39.0060069Z 
+build-android	Build signed APK	2026-08-18T15:33:39.0060357Z * Try:
+build-android	Build signed APK	2026-08-18T15:33:39.0061044Z > Run with --stacktrace option to get the stack trace.
+build-android	Build signed APK	2026-08-18T15:33:39.0061978Z > Run with --info or --debug option to get more log output.
+build-android	Build signed APK	2026-08-18T15:33:39.0062837Z > Run with --scan to get full insights.
+build-android	Build signed APK	2026-08-18T15:33:39.0063636Z > Get more help at https://help.gradle.org.
+build-android	Build signed APK	2026-08-18T15:33:39.0064779Z ==============================================================================
+build-android	Build signed APK	2026-08-18T15:33:39.0065582Z 
+build-android	Build signed APK	2026-08-18T15:33:39.0065994Z BUILD FAILED in 1m 31s
+build-android	Build signed APK	2026-08-18T15:33:39.5539987Z Running Gradle task 'assembleRelease'...                           92.6s
+build-android	Build signed APK	2026-08-18T15:33:39.5584817Z Gradle task assembleRelease failed with exit code 1
+build-android	Build signed APK	2026-08-18T15:33:39.5648520Z ##[error]Process completed with exit code 1.
