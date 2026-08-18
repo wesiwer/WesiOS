@@ -1,0 +1,56 @@
+name: Fix Flutter 3.47 Toolchain And Dispatch Release Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-flutter347-and-dispatch-release-once.yml'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  fix-and-dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Pin release workflow to Flutter 3.47.0
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/release-app.yml')
+          text = path.read_text(encoding='utf-8')
+          old = "          channel: 'stable'\n"
+          new = "          flutter-version: '3.47.0'\n"
+          count = text.count(old)
+          if count != 2:
+              raise SystemExit(f'Expected 2 stable Flutter selectors, found {count}')
+          path.write_text(text.replace(old, new), encoding='utf-8')
+          PY
+          git config user.name 'WesiOS Release Automation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/workflows/release-app.yml
+          if ! git diff --cached --quiet; then
+            git commit -m 'ci: pin release builds to Flutter 3.47.0'
+            git push origin HEAD:main
+          fi
+
+      - name: Dispatch signed release from updated main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='WesiOS 0.22.28+103 retry: Dart 3 compatible SSH stack, modern SHA256 host-key handling, Flutter 3.47.0 pinned.' \
+            -f deploy_to_server=true
+          echo 'Release dispatched from updated main.'
