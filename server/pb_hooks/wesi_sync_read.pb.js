@@ -27,16 +27,22 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     "critical_audit": true, "calendar_events": true, "articles": true,
     "chats": true, "messages": true, "roadmap_state": true,
     "crm_state": true, "profile_private": true, "vault_private": true,
-    // Появились, когда синхронизация перешла с «один список одной строкой»
-    // на запись за записью. Без них сервер отвечал 400 на первой же новой
-    // коллекции, и обмен вставал целиком — включая те коллекции, что он
-    // знал: проход по списку не доходил до конца.
     "roadmap_projects": true, "roadmap_items": true,
     "crm_clients": true, "crm_deals": true, "crm_interactions": true,
     "audio_beats": true, "profile": true,
     "file_grants": true, "file_requests": true, "file_handovers": true
   };
   if (!known[collection]) throw new BadRequestError("Неизвестная коллекция синхронизации");
+
+  // CRM per-record collections have employee ownership/responsibility policy
+  // that is intentionally implemented by exact routes in wesi_sync_crm.pb.js.
+  // If a partial/old hook deployment ever lets one of them reach this generic
+  // handler, fail closed instead of returning the entire company CRM.
+  if (collection === "crm_clients" ||
+      collection === "crm_deals" ||
+      collection === "crm_interactions") {
+    throw new ForbiddenError("CRM sync route is not available");
+  }
 
   const hasModule = (name) => ctx.isOwner || ctx.modules.indexOf(name) >= 0;
   const hasAnyModule = (names) => ctx.isOwner || names.some((n) => ctx.modules.indexOf(n) >= 0);
@@ -52,7 +58,6 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
       "chats": "chats", "messages": "chats", "roadmap_state": "roadmap",
       "crm_state": "crm",
       "roadmap_projects": "roadmap", "roadmap_items": "roadmap",
-      "crm_clients": "crm", "crm_deals": "crm", "crm_interactions": "crm",
       "audio_beats": "audio"
     };
     return map[collection] ? hasModule(map[collection]) : true;
@@ -120,9 +125,6 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     }
   }
 
-  // CRM is stored as three list snapshots. Filter those snapshots before they
-  // leave the server so ordinary employees never receive another employee's
-  // customer rows merely because the UI would hide them later.
   let crmFiltered = null;
   if (collection === "crm_state" && !ctx.isOwner) {
     const byKey = {};
