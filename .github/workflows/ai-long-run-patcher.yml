@@ -1,0 +1,95 @@
+name: Apply AI Long Run Patch
+
+on:
+  push:
+    branches: [agent/ai-long-run-hardening]
+    paths:
+      - '.github/workflows/ai-long-run-patcher.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ai-long-run-hardening
+
+      - name: Apply exact gateway fallback patch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('server/wesi-ai-stream/gateway.mjs')
+          text = path.read_text()
+          old = '''  await relayStream({
+              relayUrl,
+              relaySecret,
+              payload: relayPayload(prepared, toolResults, phase, finalOnly, deliberation),
+              signal,
+              fetchImpl,
+              onDelta,
+            });
+            return {
+              full,
+              buffer,
+              emitted,
+              toolRequest: parseToolRequest(full),
+              invalidToolProtocol: hasToolProtocolMarker(full) && !parseToolRequest(full),
+            };'''
+          # Source uses two-space indentation; normalize the exact local block separately.
+          old = '''  await relayStream({
+    relayUrl,
+    relaySecret,
+    payload: relayPayload(prepared, toolResults, phase, finalOnly, deliberation),
+    signal,
+    fetchImpl,
+    onDelta,
+  });
+  return {
+    full,
+    buffer,
+    emitted,
+    toolRequest: parseToolRequest(full),
+    invalidToolProtocol: hasToolProtocolMarker(full) && !parseToolRequest(full),
+  };'''
+          new = '''  const finalEvent = await relayStream({
+    relayUrl,
+    relaySecret,
+    payload: relayPayload(prepared, toolResults, phase, finalOnly, deliberation),
+    signal,
+    fetchImpl,
+    onDelta,
+  });
+  // Some providers can legally finish with a complete done.answer without
+  // emitting delta chunks. Treat that answer as the buffered turn so tool
+  // envelopes are still parsed, while keeping service JSON hidden from UI.
+  if (!full) {
+    full = String(finalEvent?.answer || '');
+    buffer = full;
+  }
+  return {
+    full,
+    buffer,
+    emitted,
+    toolRequest: parseToolRequest(full),
+    invalidToolProtocol: hasToolProtocolMarker(full) && !parseToolRequest(full),
+  };'''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one streamOneTurn block, found {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --test server/wesi-ai-stream/long_run_integration.test.mjs
+
+      - name: Commit patch
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS CI'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/wesi-ai-stream/gateway.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m 'fix(ai): accept complete done answer in tool turns'
+          git push origin HEAD:agent/ai-long-run-hardening
