@@ -21,6 +21,18 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
   };
   if (!known[collection]) throw new BadRequestError("Неизвестная коллекция синхронизации");
 
+  // Roadmap/CRM migrated from whole-section snapshots to per-record rows.
+  // New clients no longer read these legacy snapshot collections. Accepting a
+  // POST from an old installation would therefore acknowledge a mutation that
+  // every current client ignores — a false successful sync and two sources of
+  // truth. Keep legacy GET routes for migration/diagnostics, but fail writes
+  // explicitly so the old installation cannot silently diverge.
+  if (collection === "roadmap_state" || collection === "crm_state") {
+    throw new BadRequestError(
+      "Эта версия WesiOS использует устаревший формат Roadmap/CRM. Обновите приложение перед синхронизацией"
+    );
+  }
+
   const body = e.requestInfo().body || {};
   const rid = String(body.rid || "").trim();
   if (!rid || rid.length > 180) throw new BadRequestError("Некорректный id синхронизации");
@@ -218,101 +230,11 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
       throw new ForbiddenError("Нет доступа к сообщениям этого чата");
     }
   } else if (collection === "roadmap_state") {
-    requireModule("roadmap");
-    if (["projects_v1", "items_v1"].indexOf(rid) < 0) {
-      throw new BadRequestError("Некорректный раздел Roadmap");
-    }
+    // Unreachable because deprecated snapshot writes are rejected above.
+    throw new BadRequestError("Устаревший формат Roadmap");
   } else if (collection === "crm_state") {
-    requireModule("crm");
-    if (["clients_v1", "deals_v1", "interactions_v1"].indexOf(rid) < 0) {
-      throw new BadRequestError("Некорректный раздел CRM");
-    }
-    if (!ctx.isOwner) {
-      if (deleted) throw new ForbiddenError("Нельзя удалить весь раздел CRM");
-      const parseList = (value) => {
-        if (Array.isArray(value)) return value;
-        if (typeof value !== "string" || !value.trim()) return [];
-        try {
-          const parsed = JSON.parse(value);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch (_) { throw new BadRequestError("Повреждённый CRM snapshot"); }
-      };
-      const incomingRows = parseList(incoming.value);
-      const existingRows = parseList(before.value);
-      const manager = ctx.canManageTeam;
-      const allowedOrg = (row) => ctx.allowedOrgIds[String(row.organizationId || "org_wesi_inc")] === true;
-
-      // Load the other CRM snapshots to validate cross references.
-      const state = {};
-      let crmRows = [];
-      crmRows = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
-          "wesios_records",
-          "owner={:owner} && coll='crm_state' && deleted=false",
-          "id", 10000, 0, {"owner": ctx.ownerId},
-        );
-      for (const row of crmRows) {
-        const p = payloadOf(row);
-        state[String(p.key || row.getString("rid"))] = parseList(p.value);
-      }
-      state[rid] = existingRows;
-      const clients = state.clients_v1 || [];
-      const deals = state.deals_v1 || [];
-      const clientById = {};
-      for (const c of clients) clientById[String(c.id || "")] = c;
-
-      const visible = (row) => {
-        if (rid === "clients_v1") {
-          if (!allowedOrg(row)) return false;
-          if (manager) return true;
-          if (String(row.ownerEmployeeId || "") === ctx.employeeId) return true;
-          return deals.some((d) => allowedOrg(d) &&
-            String(d.clientId || "") === String(row.id || "") &&
-            String(d.responsibleEmployeeId || "") === ctx.employeeId);
-        }
-        if (rid === "deals_v1") {
-          if (!allowedOrg(row)) return false;
-          if (manager) return true;
-          const client = clientById[String(row.clientId || "")] || {};
-          return String(row.responsibleEmployeeId || "") === ctx.employeeId ||
-            String(client.ownerEmployeeId || "") === ctx.employeeId;
-        }
-        const visibleClientIds = {};
-        const visibleDealIds = {};
-        for (const c of clients) {
-          if (allowedOrg(c) && (manager || String(c.ownerEmployeeId || "") === ctx.employeeId)) {
-            visibleClientIds[String(c.id || "")] = true;
-          }
-        }
-        for (const d of deals) {
-          if (!allowedOrg(d)) continue;
-          const client = clientById[String(d.clientId || "")] || {};
-          if (manager || String(d.responsibleEmployeeId || "") === ctx.employeeId ||
-              String(client.ownerEmployeeId || "") === ctx.employeeId) {
-            visibleDealIds[String(d.id || "")] = true;
-            visibleClientIds[String(d.clientId || "")] = true;
-          }
-        }
-        return visibleClientIds[String(row.clientId || "")] === true &&
-          (!row.dealId || visibleDealIds[String(row.dealId || "")] === true);
-      };
-
-      // A shared workstation can still contain rows cached by the previous
-      // account. Never reject the whole snapshot because of those rows: drop
-      // them from the candidate set and preserve the authoritative hidden
-      // server rows unchanged. This lets the current employee sync their own
-      // CRM changes without gaining a write channel to someone else's data.
-      const accepted = [];
-      for (const row of incomingRows) {
-        if (!visible(row)) continue;
-        if (!manager && rid === "clients_v1" && row.ownerEmployeeId &&
-            String(row.ownerEmployeeId) !== ctx.employeeId) continue;
-        if (!manager && rid === "deals_v1" && row.responsibleEmployeeId &&
-            String(row.responsibleEmployeeId) !== ctx.employeeId) continue;
-        accepted.push(row);
-      }
-      const retained = existingRows.filter((row) => !visible(row));
-      incoming = {"key": rid, "value": JSON.stringify(retained.concat(accepted))};
-    }
+    // Unreachable because deprecated snapshot writes are rejected above.
+    throw new BadRequestError("Устаревший формат CRM");
   } else if (collection === "roadmap_projects" || collection === "roadmap_items") {
     requireModule("roadmap");
   } else if (collection === "crm_clients" || collection === "crm_deals" ||
