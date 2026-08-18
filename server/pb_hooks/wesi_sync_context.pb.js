@@ -114,9 +114,9 @@ routerUse((e) => {
     // Never fall back to portal-account.snapshot for authorization. That
     // snapshot is historical/bootstrap metadata and can outlive deactivation.
     // A missing live employee row means the linked identity has no company
-    // authorization anymore.
+    // authorization anymore and must terminate the local sync session.
     if (!employee) {
-      throw new ForbiddenError("Сотрудник деактивирован или удалён");
+      throw new UnauthorizedError("Сотрудник деактивирован или удалён. Войдите заново");
     }
     snapshot = payloadOf(employee);
   }
