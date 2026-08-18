@@ -1,0 +1,295 @@
+SOURCE=3db271ada5f5132e2418216212e1c094dbaa224f
+PUB_GET=0
+ANALYZE=0
+TESTS=0
+ANDROID_DEBUG=1
+NODE_SYNC=0
+=== ANALYZE ERRORS ===
+=== TEST FAILURES ===
+=== ANDROID ERRORS ===
+216:../../../.pub-cache/hosted/pub.dev/dartssh2-2.11.0/lib/src/sftp/sftp_client.dart:602:29: Error: A value of type 'int?' can't be assigned to a variable of type 'num'.
+223:Target kernel_snapshot_program failed: Exception
+226:FAILURE: Build completed with 2 failures.
+300:BUILD FAILED in 4m 45s
+=== NODE FAILURES ===
+=== TAILS ===
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: загруженная аватарка переезжает вместе с профилем
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: слишком большая картинка не уезжает целиком
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: legacy профиль ждёт подтверждённый auth-user и затем переносится
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: пустой профиль не отправляется и не затирает чужой
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: секреты в профиль не попадают
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: (tearDownAll)
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ Passing tests
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера оставляет только цифры и ведущий плюс
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера пустое и мусор дают пустую строку
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера плюс не в начале не считается плюсом
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети готовый адрес берётся как есть
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети собачка превращается в адрес
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети русские названия сетей тоже понимаются
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети WhatsApp получает номер без знаков
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети незнакомая сеть с доменом открывается как адрес
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети незнакомая сеть без домена ссылкой не становится
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети пустое значение ссылкой не становится
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети регистр названия сети не важен
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: help перечисляет реальные диагностические команды
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: обычная команда безопасно печатается в prompt
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: echo учитывает кавычки и сохраняет историю
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: повтор команды не дублируется в истории
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: токен не попадает в историю и маскируется для экрана
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: JWT разбирается локально без вывода полного секрета
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: отпечаток токена имеет SHA-256 и не раскрывает токен
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: каталог содержит WesiOS, сертификаты, SSH и токены
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: templates печатает готовые команды
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: шаблоны и команды привязываются к выбранному серверу
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: clear возвращает управляющий флаг без вывода
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: неизвестная команда объясняет, как открыть справку
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: автодополнение предлагает команды по префиксу
+::endgroup::
+
+🎉 1649 tests passed.
+Target kernel_snapshot_program failed: Exception
+
+
+FAILURE: Build completed with 2 failures.
+
+1: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':app:checkDebugAarMetadata'.
+> A failure occurred while executing com.android.build.gradle.internal.tasks.CheckAarMetadataWorkAction
+   > 3 issues were found when checking AAR metadata:
+
+       1.  Dependency 'androidx.browser:browser:1.9.0' requires libraries and applications that
+           depend on it to compile against version 36 or later of the
+           Android APIs.
+
+           :app is currently compiled against android-35.
+
+           Recommended action: Update this project to use a newer compileSdk
+           of at least 36, for example 36.
+
+           Note that updating a library or application's compileSdk (which
+           allows newer APIs to be used) can be done separately from updating
+           targetSdk (which opts the app in to new runtime behavior) and
+           minSdk (which determines which devices the app can be installed
+           on).
+
+       2.  Dependency 'androidx.core:core-ktx:1.17.0' requires libraries and applications that
+           depend on it to compile against version 36 or later of the
+           Android APIs.
+
+           :app is currently compiled against android-35.
+
+           Recommended action: Update this project to use a newer compileSdk
+           of at least 36, for example 36.
+
+           Note that updating a library or application's compileSdk (which
+           allows newer APIs to be used) can be done separately from updating
+           targetSdk (which opts the app in to new runtime behavior) and
+           minSdk (which determines which devices the app can be installed
+           on).
+
+       3.  Dependency 'androidx.core:core:1.17.0' requires libraries and applications that
+           depend on it to compile against version 36 or later of the
+           Android APIs.
+
+           :app is currently compiled against android-35.
+
+           Recommended action: Update this project to use a newer compileSdk
+           of at least 36, for example 36.
+
+           Note that updating a library or application's compileSdk (which
+           allows newer APIs to be used) can be done separately from updating
+           targetSdk (which opts the app in to new runtime behavior) and
+           minSdk (which determines which devices the app can be installed
+           on).
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+2: Task failed with an exception.
+-----------
+* What went wrong:
+Execution failed for task ':app:compileFlutterBuildDebug'.
+> Process 'command '/opt/hostedtoolcache/flutter/stable-3.47.0-x64/flutter/bin/flutter'' finished with non-zero exit value 1
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+==============================================================================
+
+BUILD FAILED in 4m 45s
+Running Gradle task 'assembleDebug'...                            287.8s
+Gradle task assembleDebug failed with exit code 1
+  duration_ms: 0.157143
+  type: 'test'
+  ...
+# Subtest: wesi_sync_read.pb.js keeps profile in authenticated private scope
+ok 101 - wesi_sync_read.pb.js keeps profile in authenticated private scope
+  ---
+  duration_ms: 1.641498
+  type: 'test'
+  ...
+# Subtest: wesi_sync_write.pb.js keeps profile in authenticated private scope
+ok 102 - wesi_sync_write.pb.js keeps profile in authenticated private scope
+  ---
+  duration_ms: 0.430723
+  type: 'test'
+  ...
+# Subtest: exact extended profile route also remains private
+ok 103 - exact extended profile route also remains private
+  ---
+  duration_ms: 1.871466
+  type: 'test'
+  ...
+# Subtest: company and private scopes produce one composite revision
+ok 104 - company and private scopes produce one composite revision
+  ---
+  duration_ms: 1.494043
+  type: 'test'
+  ...
+# Subtest: owner account does not need a duplicate private marker
+ok 105 - owner account does not need a duplicate private marker
+  ---
+  duration_ms: 0.314646
+  type: 'test'
+  ...
+# Subtest: duplicate historical markers are deterministic and all affect the token
+ok 106 - duplicate historical markers are deterministic and all affect the token
+  ---
+  duration_ms: 0.190685
+  type: 'test'
+  ...
+# Subtest: marker logical stamp advances even when two writes share one millisecond
+ok 107 - marker logical stamp advances even when two writes share one millisecond
+  ---
+  duration_ms: 0.500022
+  type: 'test'
+  ...
+# Subtest: duplicate markers advance from the newest previous logical stamp
+ok 108 - duplicate markers advance from the newest previous logical stamp
+  ---
+  duration_ms: 0.253052
+  type: 'test'
+  ...
+# Subtest: marker stays above an allowed future business stamp for legacy revision
+ok 109 - marker stays above an allowed future business stamp for legacy revision
+  ---
+  duration_ms: 0.223376
+  type: 'test'
+  ...
+# Subtest: pre-marker installations fall back to latest business state until first write
+ok 110 - pre-marker installations fall back to latest business state until first write
+  ---
+  duration_ms: 0.272117
+  type: 'test'
+  ...
+# Subtest: latest business row remains a fallback when marker nonce is unchanged
+ok 111 - latest business row remains a fallback when marker nonce is unchanged
+  ---
+  duration_ms: 0.267729
+  type: 'test'
+  ...
+# Subtest: record hook covers create, update and delete while excluding marker recursion
+ok 112 - record hook covers create, update and delete while excluding marker recursion
+  ---
+  duration_ms: 0.814428
+  type: 'test'
+  ...
+# Subtest: legacy profile_private POST is rejected while old GET data stays migratable
+ok 113 - legacy profile_private POST is rejected while old GET data stays migratable
+  ---
+  duration_ms: 0.737253
+  type: 'test'
+  ...
+# Subtest: revision-v2 no longer derives its primary token from one max row
+ok 114 - revision-v2 no longer derives its primary token from one max row
+  ---
+  duration_ms: 0.342207
+  type: 'test'
+  ...
+# Subtest: touch retries as update when another hook wins the first marker create
+ok 115 - touch retries as update when another hook wins the first marker create
+  ---
+  duration_ms: 2.487964
+  type: 'test'
+  ...
+# Subtest: clean install exits before querying a missing wesios_records table
+ok 116 - clean install exits before querying a missing wesios_records table
+  ---
+  duration_ms: 2.672548
+  type: 'test'
+  ...
+# Subtest: migration keeps one deterministic LWW winner per sync identity
+ok 117 - migration keeps one deterministic LWW winner per sync identity
+  ---
+  duration_ms: 2.129838
+  type: 'test'
+  ...
+# Subtest: migration persists the exact unique owner/coll/rid index
+ok 118 - migration persists the exact unique owner/coll/rid index
+  ---
+  duration_ms: 0.696137
+  type: 'test'
+  ...
+1..118
+# tests 118
+# suites 0
+# pass 118
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1035.986456
