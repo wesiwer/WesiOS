@@ -1,5 +1,6 @@
 const dataAccess = require(`${__hooks}/wesi_ai_data_access.js`);
 const rw = require(`${__hooks}/wesi_ai_remote_worker_lib.js`);
+const atomic = require(`${__hooks}/wesi_sync_atomic.js`);
 
 const COLL_PAIRING = "ai_remote_worker_pairings";
 const COLL_CREDENTIAL = "ai_remote_worker_credentials";
@@ -59,20 +60,17 @@ function rowsForWorker(app, ownerId, coll, workerId, limit) {
 }
 
 function upsert(app, ownerId, org, coll, rid, payload) {
-  let record = findRecord(app, ownerId, coll, rid);
-  if (!record) {
-    const collection = app.findCollectionByNameOrId("wesios_records");
-    record = new Record(collection);
-    record.set("owner", ownerId);
-    record.set("org", org || OWNER_ORG);
-    record.set("coll", coll);
-    record.set("rid", rid);
-  }
-  record.set("payload", payload);
-  record.set("stamp", new Date().toISOString());
-  record.set("deleted", false);
-  app.save(record);
-  return record;
+  const now = new Date().toISOString();
+  atomic.commit(app, {
+    owner: ownerId,
+    org: org || OWNER_ORG,
+    coll: coll,
+    rid: rid,
+    payload: payload,
+    stamp: now,
+    deleted: false,
+  });
+  return findRecord(app, ownerId, coll, rid);
 }
 
 function aiContext(e) {
@@ -149,9 +147,15 @@ function workerAuth(e, path) {
   if (!nonceState.ok) return {ok: false, code: "WRW_REPLAYED_REQUEST"};
   credentialPayload.recentNonces = nonceState.values;
   credentialPayload.lastAuthenticatedAt = new Date(nowMs).toISOString();
-  credential.set("payload", credentialPayload);
-  credential.set("stamp", new Date(nowMs).toISOString());
-  e.app.save(credential);
+  atomic.commit(e.app, {
+    owner: credential.getString("owner"),
+    org: credential.getString("org"),
+    coll: credential.getString("coll"),
+    rid: credential.getString("rid"),
+    payload: credentialPayload,
+    stamp: new Date(nowMs).toISOString(),
+    deleted: false,
+  });
   let payload;
   try { payload = rw.parsePayloadJson(payloadJson); }
   catch (error) { return {ok: false, code: String(error.message || "WRW_BAD_PAYLOAD")}; }
@@ -210,9 +214,16 @@ function saveMessage(app, ownerId, workerId, direction, message) {
       return p.acked === true;
     });
     for (let i = 0; i < removable.length && rows.length - i >= MAX_MESSAGES_PER_WORKER; i++) {
-      removable[i].set("deleted", true);
-      removable[i].set("stamp", new Date().toISOString());
-      app.save(removable[i]);
+      const row = removable[i];
+      atomic.commit(app, {
+        owner: row.getString("owner"),
+        org: row.getString("org"),
+        coll: row.getString("coll"),
+        rid: row.getString("rid"),
+        payload: payloadOf(row),
+        stamp: new Date().toISOString(),
+        deleted: true,
+      });
     }
     if (messageRows(app, ownerId, workerId).length >= MAX_MESSAGES_PER_WORKER) {
       throw new BadRequestError("Хранилище сообщений Wesi Worker заполнено");
@@ -236,9 +247,15 @@ function markMessageAcked(app, ownerId, workerId, direction, messageId) {
   if (payload.acked === true) return true;
   payload.acked = true;
   payload.ackedAt = new Date().toISOString();
-  record.set("payload", payload);
-  record.set("stamp", new Date().toISOString());
-  app.save(record);
+  atomic.commit(app, {
+    owner: record.getString("owner"),
+    org: record.getString("org"),
+    coll: record.getString("coll"),
+    rid: record.getString("rid"),
+    payload: payload,
+    stamp: new Date().toISOString(),
+    deleted: false,
+  });
   return true;
 }
 
@@ -319,9 +336,15 @@ routerAdd("POST", "/api/wesi/ai/workers/pairing/claim", (e) => {
   stored.claimedAt = new Date().toISOString();
   stored.claimedByEmployeeId = ctx.employeeId;
   stored.credentialId = credentialId;
-  record.set("payload", stored);
-  record.set("stamp", new Date().toISOString());
-  e.app.save(record);
+  atomic.commit(e.app, {
+    owner: record.getString("owner"),
+    org: record.getString("org"),
+    coll: record.getString("coll"),
+    rid: record.getString("rid"),
+    payload: stored,
+    stamp: new Date().toISOString(),
+    deleted: false,
+  });
   return e.json(200, {ok: true, credentialId: credentialId, workerId: ticket.workerId});
 }, $apis.requireAuth("users"));
 
@@ -353,9 +376,15 @@ routerAdd("POST", "/api/wesi/ai/workers/pairing/poll", (e) => {
   if (!credential) return e.json(409, {ok: false, code: "WRW_PAIRING_STATE_INVALID"});
   const publicCredential = rw.publicCredentialPayload(payloadOf(credential));
   stored.credentialDeliveredAt = new Date().toISOString();
-  record.set("payload", stored);
-  record.set("stamp", new Date().toISOString());
-  e.app.save(record);
+  atomic.commit(e.app, {
+    owner: record.getString("owner"),
+    org: record.getString("org"),
+    coll: record.getString("coll"),
+    rid: record.getString("rid"),
+    payload: stored,
+    stamp: new Date().toISOString(),
+    deleted: false,
+  });
   return e.json(200, {ok: true, ready: true, credential: publicCredential});
 });
 
@@ -393,9 +422,15 @@ routerAdd("POST", "/api/wesi/ai/workers/revoke", (e) => {
     const payload = payloadOf(row);
     if (String(payload.revokedAt || "")) continue;
     payload.revokedAt = revokedAt;
-    row.set("payload", payload);
-    row.set("stamp", revokedAt);
-    e.app.save(row);
+    atomic.commit(e.app, {
+      owner: row.getString("owner"),
+      org: row.getString("org"),
+      coll: row.getString("coll"),
+      rid: row.getString("rid"),
+      payload: payload,
+      stamp: revokedAt,
+      deleted: false,
+    });
   }
   return e.json(200, {ok: true, workerId: workerId, revokedAt: revokedAt});
 }, $apis.requireAuth("users"));
