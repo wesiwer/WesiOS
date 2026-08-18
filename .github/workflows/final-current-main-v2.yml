@@ -1,0 +1,65 @@
+name: Final Current Main V2
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/final-current-main-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Verify current main
+        shell: bash
+        run: |
+          set +e
+          flutter pub get >/tmp/pub.log 2>&1
+          PUB=$?
+          flutter analyze --no-fatal-warnings --no-fatal-infos >/tmp/analyze.log 2>&1
+          ANALYZE=$?
+          flutter test >/tmp/tests.log 2>&1
+          TESTS=$?
+          flutter build apk --debug >/tmp/android.log 2>&1
+          ANDROID=$?
+          node --test server/pb_hooks/*_test.mjs >/tmp/node.log 2>&1
+          NODE=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "PUB_GET=$PUB"
+            echo "ANALYZE=$ANALYZE"
+            echo "TESTS=$TESTS"
+            echo "ANDROID_DEBUG=$ANDROID"
+            echo "NODE_SYNC=$NODE"
+            echo '=== ANALYZE ERRORS ==='
+            grep -n 'error •' /tmp/analyze.log || true
+            echo '=== TEST FAILURES ==='
+            grep -n -E 'Some tests failed|Expected:|Actual:|TestFailure|FAILED|Exception:' /tmp/tests.log | tail -n 120 || true
+            echo '=== ANDROID ERRORS ==='
+            grep -n -E 'FAILURE:|error:|Error:|Exception|BUILD FAILED' /tmp/android.log | tail -n 120 || true
+            echo '=== NODE FAILURES ==='
+            grep -n -E 'not ok|AssertionError|failureType|ERR_' /tmp/node.log | tail -n 120 || true
+            echo '=== TAILS ==='
+            tail -n 80 /tmp/tests.log
+            tail -n 80 /tmp/android.log
+            tail -n 120 /tmp/node.log
+          } > .github/final-current-main-v2.txt
+          git config user.name 'WesiOS Final Gate'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/final-current-main-v2
+          git add .github/final-current-main-v2.txt
+          git commit -m 'ops: capture final current main v2'
+          git push --force origin HEAD:diag/final-current-main-v2
+          test "$PUB" -eq 0 -a "$ANALYZE" -eq 0 -a "$TESTS" -eq 0 -a "$ANDROID" -eq 0 -a "$NODE" -eq 0
