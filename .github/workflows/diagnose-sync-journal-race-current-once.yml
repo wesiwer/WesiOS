@@ -1,0 +1,101 @@
+name: Diagnose Sync Journal Race Current Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-sync-journal-race-current-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply patch
+        id: patch
+        continue-on-error: true
+        run: python3 .github/scripts/fix-sync-journal-expectation-race.py
+      - uses: subosito/flutter-action@v2
+        id: setup
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - name: Dependencies
+        id: deps
+        if: steps.setup.outcome == 'success'
+        continue-on-error: true
+        run: flutter pub get
+      - name: Format
+        id: format
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: dart format lib/core/sync/sync_journal.dart lib/core/sync/sync_engine.dart test/sync_receive_regression_test.dart test/sync_journal_expectation_race_test.dart
+      - name: Journal contract
+        id: journal
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: flutter test test/sync_journal_expectation_race_test.dart
+      - name: Receive regression
+        id: receive
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: flutter test test/sync_receive_regression_test.dart
+      - name: Engine regression
+        id: engine
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: flutter test test/sync_engine_test.dart
+      - name: Multi-device
+        id: multi
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: flutter test test/sync_multi_device_test.dart
+      - name: Corruption guard
+        id: corruption
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: flutter test test/sync_corruption_guard_test.dart
+      - name: Organization integrity
+        id: org
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: flutter test test/organization_sync_integrity_test.dart
+      - name: Analyze
+        id: analyze
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: flutter analyze lib/core/sync/sync_journal.dart lib/core/sync/sync_engine.dart test/sync_receive_regression_test.dart test/sync_journal_expectation_race_test.dart --no-fatal-infos
+      - name: Record only diagnostic
+        if: always()
+        env:
+          PATCH: ${{ steps.patch.outcome }}
+          SETUP: ${{ steps.setup.outcome }}
+          DEPS: ${{ steps.deps.outcome }}
+          FORMAT: ${{ steps.format.outcome }}
+          JOURNAL: ${{ steps.journal.outcome }}
+          RECEIVE: ${{ steps.receive.outcome }}
+          ENGINE: ${{ steps.engine.outcome }}
+          MULTI: ${{ steps.multi.outcome }}
+          CORRUPTION: ${{ steps.corruption.outcome }}
+          ORG: ${{ steps.org.outcome }}
+          ANALYZE: ${{ steps.analyze.outcome }}
+        run: |
+          set -euo pipefail
+          git reset --hard "$GITHUB_SHA"
+          git clean -fd
+          printf 'PATCH=%s\nSETUP=%s\nDEPS=%s\nFORMAT=%s\nJOURNAL=%s\nRECEIVE=%s\nENGINE=%s\nMULTI=%s\nCORRUPTION=%s\nORG=%s\nANALYZE=%s\nSOURCE=%s\n' "$PATCH" "$SETUP" "$DEPS" "$FORMAT" "$JOURNAL" "$RECEIVE" "$ENGINE" "$MULTI" "$CORRUPTION" "$ORG" "$ANALYZE" "$GITHUB_SHA" > .github/sync-journal-race-diagnostic.txt
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/sync-journal-race-current
+          git add .github/sync-journal-race-diagnostic.txt
+          git commit -m 'ops: record current sync journal race diagnostics'
+          git push --force origin HEAD:diag/sync-journal-race-current
