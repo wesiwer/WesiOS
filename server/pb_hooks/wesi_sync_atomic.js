@@ -80,6 +80,9 @@ function rejectAppendOnlyDelete(input) {
 
 function commit(app, rawInput) {
   const input = normalizedInput(rawInput);
+  const authorize = typeof rawInput.authorize === "function"
+    ? rawInput.authorize
+    : null;
   rejectAppendOnlyDelete(input);
   let result = null;
 
@@ -88,6 +91,11 @@ function commit(app, rawInput) {
     // a single writer/transaction is allowed and using the outer app here can
     // deadlock or reintroduce a stale decision.
     const existing = currentRow(txApp, input);
+
+    // Permission/ownership checks that depend on current row state belong to
+    // this same transaction. A preflight authorization can race with another
+    // writer re-parenting or re-assigning the entity before our save.
+    if (authorize) authorize(txApp, existing, input);
 
     // Append-only history is immutable at the same atomic boundary as LWW.
     // This specifically closes the race where two first-writes both passed an
@@ -146,11 +154,15 @@ function commit(app, rawInput) {
 // shield_private that a current client has already created.
 function createIfAbsent(app, rawInput) {
   const input = normalizedInput(rawInput);
+  const authorize = typeof rawInput.authorize === "function"
+    ? rawInput.authorize
+    : null;
   rejectAppendOnlyDelete(input);
   let result = null;
 
   app.runInTransaction((txApp) => {
     const existing = currentRow(txApp, input);
+    if (authorize) authorize(txApp, existing, input);
     if (existing) {
       result = {
         created: false,
