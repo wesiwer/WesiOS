@@ -1,0 +1,102 @@
+name: Diagnose Live Wesi AI Tool Route Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-live-ai-tool-route-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      RELAY_HOST: ${{ secrets.WESI_RELAY_SSH_HOST }}
+      RELAY_USER: ${{ secrets.WESI_RELAY_SSH_USER }}
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare SSH
+        env:
+          RELAY_KEY: ${{ secrets.WESI_RELAY_SSH_KEY }}
+          RELAY_KNOWN: ${{ secrets.WESI_RELAY_SSH_KNOWN_HOSTS }}
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$RELAY_KEY" > ~/.ssh/relay_key
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/relay_key ~/.ssh/main_key
+          if [ -n "${RELAY_KNOWN:-}" ]; then printf '%s\n' "$RELAY_KNOWN" > ~/.ssh/relay_known_hosts; else ssh-keyscan -H "$RELAY_HOST" > ~/.ssh/relay_known_hosts 2>/dev/null; fi
+          if [ -n "${MAIN_KNOWN:-}" ]; then printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known_hosts; else ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/*known_hosts
+
+      - name: Verify live gateway files and service
+        run: |
+          set -u
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          mismatch=0
+          for f in gateway.mjs server.mjs persona_coagent_orchestrator.mjs dynamic_subagent_orchestrator.mjs; do
+            expected=$(sha256sum "server/wesi-ai-stream/$f" | cut -d' ' -f1)
+            raw=$(ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "sudo -n sha256sum '/opt/wesi-ai-stream/$f'" 2>&1) || {
+              echo "gateway_file=$f read_failed"
+              mismatch=1
+              continue
+            }
+            actual=${raw%% *}
+            echo "gateway_file=$f expected=$expected actual=$actual"
+            if [ "$expected" != "$actual" ]; then mismatch=1; fi
+          done
+          if ! ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "sudo -n systemctl is-active wesi-ai-stream && curl -fsS --max-time 5 http://127.0.0.1:8792/health"; then
+            echo 'GATEWAY_SERVICE_OR_HEALTH_FAILED'
+            mismatch=1
+          fi
+          if [ "$mismatch" -ne 0 ]; then touch /tmp/wesi_gateway_mismatch; fi
+          exit 0
+
+      - name: Summarize recent Main tool route access without payloads
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" 'bash -s' <<'REMOTE'
+          set -euo pipefail
+          echo '=== MAIN TOOL-V2 ACCESS LAST 5000 ==='
+          if sudo -n test -r /var/log/nginx/access.log; then
+            sudo -n tail -n 5000 /var/log/nginx/access.log \
+              | grep -E 'POST /api/wesi/ai/stream/(prepare-v2|tool-v2)|POST /api/wesi/ai/action/confirm' \
+              | tail -n 120 || true
+            echo '=== STATUS COUNTS ==='
+            sudo -n tail -n 5000 /var/log/nginx/access.log \
+              | grep -E 'POST /api/wesi/ai/stream/(prepare-v2|tool-v2)|POST /api/wesi/ai/action/confirm' \
+              | awk '{path=$7; status=$9; key=path" "status; c[key]++} END {for(k in c) print c[k],k}' \
+              | sort -nr || true
+          else
+            echo 'NGINX_ACCESS_UNAVAILABLE'
+          fi
+          echo '=== POCKETBASE RECENT TOOL ERRORS ==='
+          sudo -n journalctl -u pocketbase --since '3 hours ago' --no-pager 2>/dev/null \
+            | grep -E 'WAI_TOOL_|CONFIRMATION_|stream/tool-v2|CONNECTOR_VAULT|HORIZON_DATA|INVALID_TOOL' \
+            | tail -n 120 || true
+          REMOTE
+
+      - name: Summarize recent gateway errors
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/relay_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/relay_known_hosts")
+          ssh "${SSH[@]}" "$RELAY_USER@$RELAY_HOST" "sudo -n journalctl -u wesi-ai-stream --since '3 hours ago' --no-pager | grep -E 'WAI_|tool|error|fail' | tail -n 120 || true"
+
+      - name: Fail if live gateway does not match
+        run: |
+          if [ -f /tmp/wesi_gateway_mismatch ]; then
+            echo 'LIVE_GATEWAY_MISMATCH_OR_UNHEALTHY'
+            exit 1
+          fi
+          echo 'LIVE_GATEWAY_MATCHES_REPOSITORY_AND_IS_HEALTHY'
+
+# diagnostic retry: shell quoting fixed

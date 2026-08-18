@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import 'pocketbase_transport.dart';
 import 'sync_endpoint.dart';
@@ -14,20 +15,11 @@ import 'sync_transport.dart';
 /// 1. локальная правка — после короткой тишины отправляем её на сервер;
 /// 2. изменение сервера — раз в секунду читаем только лёгкую ревизию и
 ///    запускаем полный обмен, только если ревизия изменилась.
-///
-/// Так второй компьютер узнаёт о продаже с телефона без перезапуска, но
-/// сервер не получает семь полных запросов по всем коллекциям каждую секунду.
 class SyncAuto {
-  /// Локальные действия часто пишут несколько связанных записей подряд.
-  /// 300 мс склеивают их в один обмен и при этом почти не ощущаются.
   static const Duration quiet = Duration(milliseconds: 300);
-
-  /// Частота лёгкой проверки серверной ревизии.
   static const Duration remotePollEvery = Duration(seconds: 1);
-
-  /// Повтор полного обмена после ошибки. Проверка ревизии имеет собственный
-  /// экспоненциальный backoff, поэтому офлайн-устройство не долбит сеть.
   static const Duration retryAfter = Duration(seconds: 15);
+  static const int manualStabilizationPasses = 4;
 
   static final ValueNotifier<bool> running = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> pending = ValueNotifier<bool>(false);
@@ -41,11 +33,18 @@ class SyncAuto {
   static int _probeFailures = 0;
   static DateTime? _nextProbeAt;
 
-  /// Начать следить. Повторный вызов ничего не ломает.
+  /// Epoch жизненного цикла автоматики. Отмена Timer недостаточна: уже
+  /// начавшийся HTTP callback может вернуться после logout/account switch.
+  static int _generation = 0;
+
+  static final _SyncLifecycleObserver _lifecycle = _SyncLifecycleObserver();
+
   static void start() {
     if (_listening) return;
+    _generation++;
     _listening = true;
     SyncJournal.localChanges.addListener(_onLocalChange);
+    WidgetsBinding.instance.addObserver(_lifecycle);
     running.value = true;
 
     _pollTimer?.cancel();
@@ -53,21 +52,24 @@ class SyncAuto {
       remotePollEvery,
       (_) => unawaited(_pollRemote()),
     );
-    // Не ждём первую секунду: после старта сразу ставим/проверяем watermark.
     unawaited(_pollRemote());
   }
 
-  /// Останавливает автоматический обмен.
+  /// Реальная остановка синхронизации.
   ///
-  /// Пока подтверждённая сессия активна и синхронизация включена, обычный
-  /// `stop()` не должен случайно выключить обмен. Старый LoginScreen делал
-  /// именно это для каждого non-owner сразу после успешного MFA-входа.
-  /// Настоящее выключение сначала ставит SyncEndpoint.enabled=false; внутренний
-  /// rebind/logout может использовать [force].
-  static void stop({bool force = false}) {
+  /// Помимо таймеров немедленно инвалидирует и уже запущенный SyncEngine.run().
+  /// Раньше полный проход мог продолжать fetch/apply/push в промежутке между
+  /// нажатием «Выйти» и фактическим clearSession(). Это оставляло небольшое,
+  /// но реальное окно, где старый аккаунт ещё менял локальную/серверную базу.
+  static void stop({bool force = true}) {
     if (!force && SyncEndpoint.enabled && SyncEndpoint.isConnected) return;
+
+    _generation++;
+    SyncEngine.invalidateActiveRun();
+
     if (_listening) {
       SyncJournal.localChanges.removeListener(_onLocalChange);
+      WidgetsBinding.instance.removeObserver(_lifecycle);
     }
     _listening = false;
     _localTimer?.cancel();
@@ -84,26 +86,58 @@ class SyncAuto {
   }
 
   static void _onLocalChange() {
-    if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) return;
+    if (!_listening || !SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
+      return;
+    }
     pending.value = true;
     _schedule(quiet);
   }
 
   static void _schedule(Duration after) {
     _localTimer?.cancel();
-    _localTimer = Timer(after, () => unawaited(_runAuto()));
+    final generation = _generation;
+    _localTimer = Timer(after, () {
+      if (!_listening || generation != _generation) return;
+      unawaited(_runAuto(generation: generation));
+    });
   }
 
-  static Future<SyncReport> _runAuto() async {
+  static bool _quickRetry(String? code) =>
+      code == 'LOCAL_CHANGED_DURING_SYNC' || code == 'BUSY';
+
+  static bool _lifecycleEnded(String? code) =>
+      code == 'CANCELLED' || code == 'SESSION_CHANGED';
+
+  static void _onResumed() {
+    if (!_listening || !SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
+      return;
+    }
+    _nextProbeAt = null;
+    _probeFailures = 0;
+    if (pending.value) _schedule(Duration.zero);
+    unawaited(_pollRemote(force: true));
+  }
+
+  static Future<SyncReport> _runAuto({int? generation}) async {
+    bool stale() =>
+        generation != null && (generation != _generation || !_listening);
+
+    if (stale()) {
+      return SyncReport(
+        at: DateTime.now(),
+        failure: const SyncFailure('CANCELLED', 'Синхронизация остановлена'),
+      );
+    }
     if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
       return SyncReport(
         at: DateTime.now(),
-        failure: const SyncFailure('NOT_SIGNED_IN', 'Синхронизация не подключена'),
+        failure:
+            const SyncFailure('NOT_SIGNED_IN', 'Синхронизация не подключена'),
       );
     }
 
     if (SyncEngine.busy.value) {
-      _schedule(quiet);
+      if (!stale()) _schedule(quiet);
       return SyncReport(
         at: DateTime.now(),
         failure: const SyncFailure('BUSY', 'Синхронизация уже идёт'),
@@ -114,25 +148,41 @@ class SyncAuto {
     try {
       report = await SyncEngine.run();
     } catch (_) {
-      _schedule(retryAfter);
+      if (!stale()) _schedule(retryAfter);
       return SyncReport(
         at: DateTime.now(),
-        failure: const SyncFailure('NETWORK', 'Не удалось выполнить синхронизацию'),
+        failure:
+            const SyncFailure('NETWORK', 'Не удалось выполнить синхронизацию'),
       );
     }
 
+    if (stale()) return report;
+
     if (report.ok) {
       pending.value = false;
-      await _captureRemoteRevision();
+      // Revision после pull здесь намеренно не читается: watermark принимает
+      // только revision, наблюдавшуюся ДО соответствующего полного прохода.
     } else {
-      _schedule(retryAfter);
+      final code = report.firstFailure?.code;
+      if (_quickRetry(code)) {
+        // Optimistic concurrency did exactly what it should: it noticed that
+        // the user changed a row after the merge snapshot and refused to apply
+        // or send a stale plan. This is not a network failure. Keep the local
+        // change pending and recompute almost immediately.
+        pending.value = true;
+        _schedule(quiet);
+      } else if (!_lifecycleEnded(code)) {
+        _schedule(retryAfter);
+      }
     }
     return report;
   }
 
-  /// Лёгкая проверка: изменилось ли вообще что-нибудь на сервере.
-  static Future<void> _pollRemote() async {
-    if (_probeBusy || SyncEngine.busy.value) return;
+  static Future<void> _pollRemote({bool force = false}) async {
+    final generation = _generation;
+    bool stale() => generation != _generation || !_listening;
+
+    if (stale() || _probeBusy || SyncEngine.busy.value) return;
     if (!SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
       _remoteRevision = null;
       _sessionFingerprint = null;
@@ -140,10 +190,13 @@ class SyncAuto {
     }
 
     final nextAllowed = _nextProbeAt;
-    if (nextAllowed != null && DateTime.now().isBefore(nextAllowed)) return;
+    if (!force && nextAllowed != null && DateTime.now().isBefore(nextAllowed)) {
+      return;
+    }
 
     final session = SyncEndpoint.session;
-    final fingerprint = '${session?['userId']}|${session?['token']}';
+    final fingerprint =
+        '${session?['userId']}|${session?['sessionId']}|${session?['token']}';
     if (_sessionFingerprint != fingerprint) {
       _sessionFingerprint = fingerprint;
       _remoteRevision = null;
@@ -154,6 +207,7 @@ class SyncAuto {
     _probeBusy = true;
     try {
       final result = await PocketBaseTransport.fromSettings().revision();
+      if (stale()) return;
       if (result.failure != null) {
         _registerProbeFailure();
         return;
@@ -161,89 +215,210 @@ class SyncAuto {
 
       _probeFailures = 0;
       _nextProbeAt = null;
-      final revision = result.value!;
+      final observedRevision = result.value!;
 
-      // runOnLaunch уже сделал полный обмен — его результат можно принять
-      // как исходную точку и не повторять тот же проход через секунду.
-      if (_remoteRevision == null) {
-        if (SyncEngine.lastReport.value?.ok == true) {
-          _remoteRevision = revision;
-          return;
-        }
-
-        final report = await _runAuto();
-        if (report.ok) {
-          _remoteRevision = revision;
-        } else {
-          _registerProbeFailure();
-        }
+      if (_remoteRevision != null && observedRevision == _remoteRevision) {
         return;
       }
 
-      if (revision == _remoteRevision) return;
-
-      // Watermark меняем только ПОСЛЕ успешного полного обмена. Если сеть
-      // оборвалась между проверкой и загрузкой данных, следующий tick снова
-      // увидит расхождение и повторит попытку, а не забудет изменение.
-      final report = await _runAuto();
+      final report = await _runAuto(generation: generation);
+      if (stale()) return;
       if (report.ok) {
-        await _captureRemoteRevision(fallback: revision);
+        _acceptObservedRevision(observedRevision);
       } else {
-        _registerProbeFailure();
+        final code = report.firstFailure?.code;
+        if (!_lifecycleEnded(code) && !_quickRetry(code)) {
+          _registerProbeFailure();
+        }
       }
     } finally {
-      _probeBusy = false;
+      if (generation == _generation) _probeBusy = false;
     }
   }
 
   static void _registerProbeFailure() {
     _probeFailures = (_probeFailures + 1).clamp(1, 4).toInt();
-    final seconds = 1 << _probeFailures; // 2, 4, 8, 16
+    final seconds = 1 << _probeFailures;
     _nextProbeAt = DateTime.now().add(Duration(seconds: seconds));
   }
 
-  static Future<void> _captureRemoteRevision({String? fallback}) async {
-    if (!SyncEndpoint.isConnected) return;
-    final result = await PocketBaseTransport.fromSettings().revision();
-    if (result.failure == null) {
-      _remoteRevision = result.value;
-      _probeFailures = 0;
-      _nextProbeAt = null;
-    } else if (fallback != null) {
-      _remoteRevision = fallback;
-    }
+  static void _acceptObservedRevision(String revision) {
+    _remoteRevision = revision;
+    _probeFailures = 0;
+    _nextProbeAt = null;
   }
 
-  /// Принудительный обмен. Работает даже если автоматический обмен временно
-  /// выключен: ручная кнопка должна означать именно «сделай сейчас».
+  /// Принудительный обмен до устойчивого локального snapshot и server revision.
+  ///
+  /// Manual Sync делает несколько ограниченных проходов. Изменение записи во
+  /// время merge — ожидаемый optimistic conflict, а не окончательная ошибка:
+  /// даём UI/локальному watcher 300 мс успокоиться и пересчитываем план. При
+  /// этом реальные network/apply/policy ошибки по-прежнему возвращаются сразу.
   static Future<SyncReport> now() async {
     _localTimer?.cancel();
 
     if (!SyncEndpoint.isConnected) {
       return SyncReport(
         at: DateTime.now(),
-        failure: const SyncFailure('NOT_SIGNED_IN', 'Сначала войдите в синхронизацию'),
+        failure: const SyncFailure(
+          'NOT_SIGNED_IN',
+          'Сначала войдите в синхронизацию',
+        ),
       );
     }
 
-    // Если автоматический проход уже заканчивается, коротко ждём его вместо
-    // того, чтобы возвращать пользователю бесполезное «BUSY».
     for (var i = 0; i < 20 && SyncEngine.busy.value; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
 
-    final report = await SyncEngine.run();
-    if (report.ok) {
-      pending.value = false;
-      await _captureRemoteRevision();
+    // Если через две секунды engine всё ещё занят, не запускаем второй проход
+    // поверх первого. Это лучше явного BUSY, чем параллельный merge одного box.
+    if (SyncEngine.busy.value) {
+      return SyncReport(
+        at: DateTime.now(),
+        failure: const SyncFailure('BUSY', 'Синхронизация уже идёт'),
+      );
     }
-    return report;
+
+    final session = SyncEndpoint.session;
+    final sessionFingerprint =
+        '${session?['userId']}|${session?['sessionId']}|${session?['token']}';
+    bool sessionChanged() {
+      final current = SyncEndpoint.session;
+      return sessionFingerprint !=
+          '${current?['userId']}|${current?['sessionId']}|${current?['token']}';
+    }
+
+    SyncReport? lastSuccessful;
+    String? lastObservedBefore;
+    String? lastRetryReason;
+
+    for (var pass = 0; pass < manualStabilizationPasses; pass++) {
+      if (sessionChanged()) {
+        return SyncReport(
+          at: DateTime.now(),
+          collections: lastSuccessful?.collections ?? const [],
+          failure: const SyncFailure(
+            'SESSION_CHANGED',
+            'Сеанс изменился во время синхронизации',
+          ),
+        );
+      }
+
+      final before = await PocketBaseTransport.fromSettings().revision();
+      if (sessionChanged()) {
+        return SyncReport(
+          at: DateTime.now(),
+          collections: lastSuccessful?.collections ?? const [],
+          failure: const SyncFailure(
+            'SESSION_CHANGED',
+            'Сеанс изменился во время синхронизации',
+          ),
+        );
+      }
+      if (before.failure != null) {
+        final failed = SyncReport(
+          at: DateTime.now(),
+          collections: lastSuccessful?.collections ?? const [],
+          failure: before.failure,
+        );
+        SyncEngine.lastReport.value = failed;
+        return failed;
+      }
+      lastObservedBefore = before.value!;
+
+      final report = await SyncEngine.run();
+      if (!report.ok) {
+        final code = report.firstFailure?.code;
+        if (code == 'LOCAL_CHANGED_DURING_SYNC' || code == 'BUSY') {
+          // Do not surface a transient optimistic conflict from the button.
+          // Keep the edit pending and give the user/Hive watcher a short quiet
+          // window before rebuilding both local and remote snapshots.
+          pending.value = true;
+          lastRetryReason = code == 'BUSY' ? 'busy' : 'local';
+          if (pass + 1 < manualStabilizationPasses) {
+            await Future<void>.delayed(quiet);
+            continue;
+          }
+          break;
+        }
+        return report;
+      }
+      if (sessionChanged()) return report;
+      lastSuccessful = report;
+      pending.value = false;
+
+      final after = await PocketBaseTransport.fromSettings().revision();
+      if (sessionChanged()) {
+        return SyncReport(
+          at: DateTime.now(),
+          collections: report.collections,
+          failure: const SyncFailure(
+            'SESSION_CHANGED',
+            'Сеанс изменился во время синхронизации',
+          ),
+        );
+      }
+      if (after.failure != null) {
+        final failed = SyncReport(
+          at: DateTime.now(),
+          collections: report.collections,
+          failure: after.failure,
+        );
+        SyncEngine.lastReport.value = failed;
+        return failed;
+      }
+
+      if (after.value == lastObservedBefore) {
+        _acceptObservedRevision(after.value!);
+        return report;
+      }
+
+      // Server changed while the full exchange was running. The revision seen
+      // before that exchange has been consumed, but the newer revision must
+      // trigger another stabilization pass.
+      _acceptObservedRevision(lastObservedBefore);
+      lastRetryReason = 'remote';
+    }
+
+    final SyncFailure failure;
+    if (lastRetryReason == 'local') {
+      failure = const SyncFailure(
+        'LOCAL_UNSTABLE',
+        'Локальные данные продолжали меняться во время синхронизации. Повторите Sync после завершения правок',
+      );
+      pending.value = true;
+    } else if (lastRetryReason == 'busy') {
+      failure = const SyncFailure(
+        'BUSY',
+        'Другой проход синхронизации не завершился. Повторите Sync',
+      );
+    } else {
+      failure = const SyncFailure(
+        'REMOTE_UNSTABLE',
+        'Сервер продолжал меняться во время синхронизации. Повторите Sync',
+      );
+    }
+
+    final unstable = SyncReport(
+      at: DateTime.now(),
+      collections: lastSuccessful?.collections ?? const [],
+      failure: failure,
+    );
+    SyncEngine.lastReport.value = unstable;
+    return unstable;
   }
 
-  /// Только для тестов.
   @visibleForTesting
   static void reset() {
     stop(force: true);
     pending.value = false;
+  }
+}
+
+class _SyncLifecycleObserver extends WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) SyncAuto._onResumed();
   }
 }

@@ -1,0 +1,60 @@
+name: Hotfix Sync Read Root Cause Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/hotfix-sync-read-root-cause-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch unsafe zero-limit sync reads
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('server/pb_hooks/wesi_sync_read.pb.js')
+          s = p.read_text(encoding='utf-8')
+          old = s
+          s = s.replace('"id", 0, 0, {"owner": ownerScope, "coll": collection},', '"id", 10000, 0, {"owner": ownerScope, "coll": collection},')
+          s = s.replace('"id", 0, 0, {"owner": ctx.ownerId},', '"id", 10000, 0, {"owner": ctx.ownerId},')
+          s = s.replace('  } catch (_) { records = []; }\n\n  const visibleChatIds', '  } catch (error) { throw error; }\n\n  const visibleChatIds')
+          s = s.replace('    } catch (_) { chats = []; }\n    for (const row of chats)', '    } catch (error) { throw error; }\n    for (const row of chats)')
+          if s == old:
+              raise SystemExit('sync read patch made no changes')
+          if '"id", 0, 0,' in s:
+              raise SystemExit('unsafe zero-limit id read remains in wesi_sync_read.pb.js')
+          p.write_text(s, encoding='utf-8')
+
+          p = Path('server/pb_hooks/wesi_sync_write.pb.js')
+          s = p.read_text(encoding='utf-8')
+          s2 = s.replace('"id", 0, 0, {"owner": ctx.ownerId},', '"id", 10000, 0, {"owner": ctx.ownerId},')
+          if s2 != s:
+              p.write_text(s2, encoding='utf-8')
+          PY
+      - name: Validate syntax and contracts
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_sync_read.pb.js
+          node --check server/pb_hooks/wesi_sync_write.pb.js
+          ! grep -n '"id", 0, 0' server/pb_hooks/wesi_sync_read.pb.js
+          git diff --check
+          git diff -- server/pb_hooks/wesi_sync_read.pb.js server/pb_hooks/wesi_sync_write.pb.js
+      - name: Commit root fix
+        run: |
+          set -euo pipefail
+          git config user.name 'wesiwer'
+          git config user.email '77644223+wesiwer@users.noreply.github.com'
+          git add server/pb_hooks/wesi_sync_read.pb.js server/pb_hooks/wesi_sync_write.pb.js
+          git commit -m 'fix(sync): stop treating failed server reads as empty'
+          git push origin HEAD:main

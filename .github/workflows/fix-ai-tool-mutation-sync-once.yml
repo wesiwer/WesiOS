@@ -1,0 +1,67 @@
+name: Fix AI Tool Mutation Sync Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-ai-tool-mutation-sync-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply mutation-sync contract
+        run: python3 .github/scripts/fix-ai-tool-mutation-sync.py
+
+      - name: Validate server JavaScript
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_ai_stream_v2.pb.js
+          node --check server/pb_hooks/wesi_ai_routes.pb.js
+          node --test server/pb_hooks/wesi_ai_tool_mutation_contract_test.mjs
+          node --test server/pb_hooks/wesi_ai_tool_data_access_contract_test.mjs server/pb_hooks/wesi_ai_remaining_data_contract_test.mjs
+          node --test server/pb_hooks/wesi_ai_finance_tools_test.mjs server/pb_hooks/wesi_ai_horizon_truth_test.mjs
+          node --test server/pb_hooks/wesi_ai_history_contract_test.mjs server/pb_hooks/wesi_ai_lib_history_test.mjs server/pb_hooks/wesi_ai_stream_contract_test.mjs
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Format touched Dart
+        run: dart format lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart
+
+      - name: Run relevant Flutter regressions
+        run: flutter test test/features/ai/wesi_ai_transport_history_test.dart test/sync_multi_device_test.dart
+
+      - name: Analyze touched client code
+        run: flutter analyze lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart --no-fatal-infos
+
+      - name: Validate diff
+        run: git diff --check
+
+      - name: Commit validated repair
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS AI Tool Repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/pb_hooks/wesi_ai_stream_v2.pb.js server/pb_hooks/wesi_ai_routes.pb.js server/pb_hooks/wesi_ai_tool_mutation_contract_test.mjs lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart
+          git diff --cached --check
+          git commit -m 'fix(ai,sync): converge tool mutations into client state'
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+# retry: only independently green AI + multi-device regressions

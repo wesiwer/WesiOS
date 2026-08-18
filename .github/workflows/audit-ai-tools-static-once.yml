@@ -1,0 +1,67 @@
+name: Audit All Wesi AI Tool Data Contracts Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/audit-ai-tools-static-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Audit server tool source patterns
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import pathlib, re
+          root = pathlib.Path('server/pb_hooks')
+          files = sorted(p for p in root.glob('wesi_ai_*.js') if 'test' not in p.name)
+          print('FILES', len(files))
+          for p in files:
+              text = p.read_text(encoding='utf-8')
+              hits=[]
+              for pattern,label in [
+                  (r'findRecordsByFilter\s*\(','READ'),
+                  (r'findFirstRecordByFilter\s*\(','FIRST'),
+                  (r'input\.organizationId\s*\|\|\s*activeOrganizationId','MODEL_ORG_FIRST'),
+                  (r'activeOrganizationId\s*\|\|\s*input\.organizationId','TRUSTED_ORG_FIRST'),
+                  (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+\[\]','CATCH_EMPTY_LIST'),
+                  (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+\{\}','CATCH_EMPTY_OBJECT'),
+                  (r'catch\s*\([^)]*\)\s*\{[^}]{0,240}return\s+null','CATCH_NULL'),
+              ]:
+                  for m in re.finditer(pattern,text,re.S):
+                      start=max(0,m.start()-120); end=min(len(text),m.end()+260)
+                      hits.append((label,' '.join(text[start:end].split())[:600]))
+              if hits:
+                  print('\n###',p.name)
+                  for label,s in hits:
+                      print(label,s)
+          PY
+
+      - name: Audit streaming tool loop and confirmation wiring
+        run: |
+          set -euo pipefail
+          echo '=== STREAM TOOL ENDPOINTS ==='
+          git grep -n -E 'stream/tool-v2|MAX_TOOL_TURNS|parseToolRequest|WESI_AI_VERIFIED_TOOL_RESULTS' -- server/wesi-ai-stream server/pb_hooks || true
+          echo '=== CONFIRMATION CLIENT REFERENCES ==='
+          git grep -n -E 'WesiAiActionApi|WesiAiActionConfirmationResult|confirmationId|CONFIRMATION_REQUIRED|confirmation_required' -- lib server test || true
+          echo '=== ACTION API IMPORTS ==='
+          git grep -n "wesi_ai_action_api.dart" -- lib test || true
+          echo '=== STREAM TOOL RESULT PARSING ==='
+          git grep -n -E "type.*tool|toolResults|confirmation" -- lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/ai_assistant_v2_screen.dart || true
+
+      - name: Run gateway and tool contract suites
+        run: |
+          set -euo pipefail
+          node --check server/wesi-ai-stream/gateway.mjs
+          node --test server/wesi-ai-stream/gateway.test.mjs server/wesi-ai-stream/connector_protocol.test.mjs
+          node --test server/pb_hooks/wesi_ai_tool_data_access_contract_test.mjs server/pb_hooks/wesi_ai_remaining_data_contract_test.mjs
+
+# orchestration audit: confirmation wiring + stream loop

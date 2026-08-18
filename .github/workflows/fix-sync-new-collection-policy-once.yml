@@ -1,0 +1,70 @@
+name: Fix Sync New Collection Policy Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-sync-new-collection-policy-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Integrate per-record sync policy
+        run: python3 .github/scripts/fix-sync-new-collection-policy-current.py
+
+      - name: Validate server sync contracts
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_sync_new_collection_policy.js
+          node --check server/pb_hooks/wesi_sync_read.pb.js
+          node --check server/pb_hooks/wesi_sync_write.pb.js
+          node --test server/pb_hooks/wesi_sync_new_collection_policy_test.mjs
+          node --test server/pb_hooks/wesi_sync_data_access_contract_test.mjs server/pb_hooks/wesi_sync_profile_scope_contract_test.mjs server/pb_hooks/wesi_sync_extra_contract_test.mjs server/pb_hooks/wesi_sync_lww_test.mjs
+          git diff --check
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run cross-device sync regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=(
+            test/sync_receive_regression_test.dart
+            test/sync_engine_test.dart
+            test/sync_corruption_guard_test.dart
+            test/sync_multi_device_test.dart
+            test/organization_sync_integrity_test.dart
+          )
+          existing=()
+          for f in "${tests[@]}"; do [ -f "$f" ] && existing+=("$f"); done
+          if [ ${#existing[@]} -gt 0 ]; then flutter test "${existing[@]}"; fi
+
+      - name: Commit validated policy integration
+        run: |
+          set -euo pipefail
+          git config user.name 'WesiOS Sync Policy Repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/pb_hooks/wesi_sync_read.pb.js server/pb_hooks/wesi_sync_write.pb.js server/pb_hooks/wesi_sync_new_collection_policy_test.mjs .github/workflows/deploy-sync-hooks.yml
+          git diff --cached --check
+          git commit -m 'fix(sync): enforce per-record policy on new collections'
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+# retry: current atomic deploy shape

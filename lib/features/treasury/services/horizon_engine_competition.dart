@@ -4,6 +4,7 @@ import 'dart:math';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../../core/sync/sync_account_scope.dart';
 import '../../organizations/models/organization_model.dart';
 import '../../organizations/services/organization_context.dart';
 import '../models/transaction_model.dart';
@@ -163,7 +164,8 @@ class _EnginePoint {
 class HorizonEngineCompetitionService {
   HorizonEngineCompetitionService._();
 
-  static const String boxName = 'wesios_horizon_engine_competition';
+  static const String baseBoxName = 'wesios_horizon_engine_competition';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
   static const String _legacyKey = 'championship_v2';
   static const List<int> horizons = [14, 30, 90, 180];
   static const List<int> _nativeSeeds = [11, 29, 47];

@@ -1,3 +1,93 @@
+# WesiOS — текущий handoff
+
+## Wesi AI Contextual Follow-ups / Clarification / Lazy Chat — 2026-08-16
+
+**Базовый main:** `de0032be2f52b73557aadb2afdaa3a03fa39c780`  
+**Рабочая ветка:** `agent/wesi-ai-contextual-followups-clarify-lazy-chat`  
+**Validated product commit:** `0721524c63f279fb244cdbb827d501c68594fc45`  
+**Полный one-shot gate:** workflow `31913817766` — success; patcher/persona validation/analyze/focused tests/full Flutter suite/validated commit — все success. Временный workflow и patcher-скрипты после проверки удалены.
+
+### Новый обязательный контракт
+
+- follow-up chips под ответом не являются фиксированным списком: они выделяют тему из последнего пользовательского сообщения/текущего ответа и формулируются вокруг неё; Zane/Nirvana могут иметь разную формулировку, но тема сохраняется;
+- канонические persona source `docs/wesi_ai/personas/ZANE_PERSONA.md` и `NIRVANA_PERSONA.md` больше не требуют постоянного упоминания создателя, Wesi Inc., Wesi AI или WesiOS; эти сведения — контекстная идентичность и используются только по релевантному вопросу/необходимости;
+- интерактивное уточнение задаётся fenced-блоком `question` с JSON `prompt`, `options` (2–5), `allowOther`; UI показывает варианты и `Свой ответ`, а выбор отправляется как обычный пользовательский turn;
+- malformed `question` fail-closed отображается как code block, а не превращается в невалидный интерактив;
+- при активном clarification generic follow-up chips не показываются;
+- `Новый чат` создаёт только transient UI draft: он не виден в истории и не сохраняется на диск до первого принятого пользовательского turn;
+- если открыть другой новый чат, не отправив сообщение в предыдущем, старый пустой draft удаляется; пустые чаты не накапливаются;
+- первый accepted turn материализует conversation в durable state; queue/attachment semantics для уже материализованных чатов сохраняются.
+
+### Проверки
+
+- persona bundle rebuilt и проверен на отсутствие прежних forced-self-promo инструкций;
+- contextual follow-up regression — green;
+- clarification quick reply + malformed JSON regressions — green;
+- real Hive lazy-conversation regression — green;
+- rich-message regressions — green;
+- queue hardening + attachment/chat-context regression на новой first-message семантике — green;
+- memory regressions — green;
+- `flutter analyze --no-fatal-infos` — green;
+- полный `flutter test` всего WesiOS — green.
+
+### Не откатывать
+
+- Не возвращать статический одинаковый follow-up list.
+- Не добавлять branding/создателя в обычные ответы ради persona consistency.
+- Не сохранять пустой conversation при нажатии `Новый чат`; durable boundary — первый accepted turn.
+- Не обходить этот контракт хранением старых blank draft IDs в памяти: abandoned draft должен реально исчезнуть.
+
+---
+
+## Wesi AI Observable Rich Chat UX — 2026-08-16
+
+**Базовый main перед проходом:** `0f817169913281d5efa4f5ac9b328f8af753e0dd`  
+**Рабочая ветка:** `agent/wesi-ai-chat-ux-parity-secure`  
+**Validated product commit:** `c3ba4699655093fcbd332118cc530e63283a33f1`  
+**Последний полный one-shot gate:** workflow `31911490007` — success; временный workflow и патчеры после проверки удалены.
+
+### Что является source of truth по chat UX
+
+Подробный контракт: `docs/WESI_AI_CHAT_UX.md`.
+
+Реализовано:
+
+- обычный ответ больше не выводится одним сырым `Text`: fenced code имеет отдельную карточку, язык, быстрый copy и полноэкранный просмотр;
+- `> quote` и fenced `text/message/email/draft/letter` отображаются как переносимые текстовые блоки с вертикальной линией и copy;
+- inline `**bold**`, `*italic*`, `` `code` `` рендерятся и не показывают служебные markdown-маркеры;
+- вместо выдуманного reasoning summary используется раскрываемый **наблюдаемый ход работы**: реальные `meta/activity/tool/agent` события streaming protocol; скрытая chain-of-thought не выводится;
+- work log виден ещё до первого токена финального ответа, во время работы раскрыт автоматически и сохраняется в `WesiAiMessage.metadata.activity` вместе с финальным сообщением;
+- tool/agent events привязаны к `textOffset`, поэтому renderer может показывать их в месте хода ответа, а не сваливать всё в отдельный хвост;
+- у каждого tool/agent event есть отдельные `additions/deletions/files`; общий badge открывает diff-review;
+- для `github_file_upsert` `+/-` берутся из GitHub commit detail после уже успешной записи; enrichment не повторяет WRITE и не может создать дубликат side effect;
+- под завершённым ответом есть copy, bookmark в архив **только текущего чата**, branch conversation от выбранного сообщения и diff review;
+- ветка чата сохраняет `branchedFromConversationId` и `branchedFromMessageId`, копирует историю только до выбранного сообщения и переживает reload;
+- камера Wesi AI открывается компактным modal dialog вместо fullscreen, при этом внутренний `CameraPreview` сохраняет аппаратный aspect ratio;
+- server streaming gateway теперь отдаёт lead-agent start/result и фактические activity/tool lifecycle events; неизвестные diff-числа не выдумываются и остаются нулевыми.
+
+### Проверки
+
+На validated product slice прошли:
+
+- `node --check` streaming gateway и GitHub connector;
+- весь `server/wesi-ai-stream/*.test.mjs`;
+- observability/security guards;
+- `flutter analyze --no-fatal-infos`;
+- новые rich-chat widget/parser tests;
+- durable Hive tests для chat-local archive и conversation branch;
+- расширенный streaming regression: tool activity видна до финала, затем остаётся в финальном сообщении и persisted store;
+- существующие confirmation/memory/queue regressions;
+- полный `flutter test` всего WesiOS.
+
+### Не откатывать
+
+- Не возвращать `safeReasoningSummary` как искусственную «мысль модели».
+- Не показывать скрытую chain-of-thought как будто это реальная телеметрия. Пользовательский блок — только наблюдаемые этапы/действия.
+- Не считать `+/-` токенами или временем. В WesiOS это исключительно реальные добавленные/удалённые строки, когда backend может их подтвердить.
+- Не возвращать отдельный конкурирующий renderer для code/quotes/activity: единый слой — `WesiAiRichMessage`.
+
+---
+
 # WesiOS — Horizon Top-Tier A→G final handoff
 
 **Дата:** 2026-08-10  

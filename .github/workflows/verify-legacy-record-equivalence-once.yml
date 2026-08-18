@@ -1,0 +1,90 @@
+name: Verify Legacy Record Equivalence Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-legacy-record-equivalence-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_diag && chmod 600 ~/.ssh/id_diag
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+      - name: Compare IDs and normalized payloads
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_diag -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" 'python3 -' > /tmp/equiv.txt <<'PY'
+          import json, sqlite3
+          con=sqlite3.connect('file:/opt/pocketbase/pb_data/data.db?mode=ro',uri=True); con.row_factory=sqlite3.Row
+          rows=[dict(r) for r in con.execute("select owner,coll,rid,payload,deleted from wesios_records where deleted=0")]
+          owner=next((str(r['owner']) for r in rows if r['coll']=='system' and r['rid']=='portal-owner'),None)
+          if not owner: raise SystemExit('NO_OWNER')
+          rows=[r for r in rows if str(r['owner'])==owner]
+          def obj(raw):
+              try:
+                  v=json.loads(raw) if isinstance(raw,str) else raw
+                  return v if isinstance(v,dict) else {}
+              except Exception:return {}
+          def legacy(coll,key):
+              out={}
+              for r in rows:
+                  if r['coll']!=coll:continue
+                  p=obj(r['payload'])
+                  if str(p.get('key') or r['rid'])!=key:continue
+                  v=p.get('value')
+                  try:a=json.loads(v) if isinstance(v,str) else v
+                  except Exception:a=[]
+                  if isinstance(a,list):
+                      for x in a:
+                          if isinstance(x,dict) and str(x.get('id') or ''):out[str(x['id'])]=x
+              return out
+          def current(coll):
+              out={}
+              for r in rows:
+                  if r['coll']!=coll:continue
+                  p=obj(r['payload']); rid=str(p.get('id') or r['rid'] or '')
+                  if rid:out[rid]=p
+              return out
+          def compare(name,a,b):
+              missing=set(a)-set(b); extra=set(b)-set(a); common=set(a)&set(b)
+              diff=0
+              for k in common:
+                  # Compare canonical business payloads while ignoring no fields.
+                  if json.dumps(a[k],sort_keys=True,separators=(',',':'),ensure_ascii=False)!=json.dumps(b[k],sort_keys=True,separators=(',',':'),ensure_ascii=False):diff+=1
+              print(f'{name}_missing={len(missing)}')
+              print(f'{name}_extra={len(extra)}')
+              print(f'{name}_payload_diff={diff}')
+          compare('roadmap_projects',legacy('roadmap_state','projects_v1'),current('roadmap_projects'))
+          compare('roadmap_items',legacy('roadmap_state','items_v1'),current('roadmap_items'))
+          compare('crm_clients',legacy('crm_state','clients_v1'),current('crm_clients'))
+          compare('crm_deals',legacy('crm_state','deals_v1'),current('crm_deals'))
+          compare('crm_interactions',legacy('crm_state','interactions_v1'),current('crm_interactions'))
+          con.close()
+          PY
+          cp /tmp/equiv.txt .github/sync-legacy-equivalence.txt
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/legacy-record-equivalence
+          git add .github/sync-legacy-equivalence.txt
+          git commit -m 'ops: record legacy per-record equivalence'
+          git push --force origin HEAD:diag/legacy-record-equivalence

@@ -1,10 +1,12 @@
 function rows(e, ctx, collection) {
-  try {
-    return e.app.findRecordsByFilter(
-      "wesios_records", "owner={:owner} && coll={:coll} && deleted=false",
-      "-stamp", 0, 0, {owner: ctx.ownerId, coll: collection},
-    );
-  } catch (_) { return []; }
+  // PocketBase's maxRecords argument must be positive here. A zero/invalid
+  // read used to be swallowed and converted into an empty ledger, which made
+  // Wesi AI confidently report 0 transactions even when synchronized rows
+  // existed on Main. Never turn a backend read failure into financial zeros.
+  return e.app.findRecordsByFilter(
+    "wesios_records", "owner={:owner} && coll={:coll} && deleted=false",
+    "-stamp", 5000, 0, {owner: ctx.ownerId, coll: collection},
+  );
 }
 
 function day(value, fallback) {
@@ -32,13 +34,13 @@ module.exports = {
     return [
       {
         name: "finance_summary",
-        description: "Посчитать на основном сервере Wesi сводку разрешённых финансов организации за период: доходы, расходы, net, категории, recurring и anomalies.",
-        parameters: {type: "object", properties: {organizationId: {type: "string"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}}},
+        description: "Посчитать на основном сервере Wesi сводку реальных разрешённых финансов АКТИВНОЙ организации за период. Если WesiOS передал activeOrganizationId, не подменяй его другой организацией и не выдумывай ID. Возвращает transactionCount, доходы, расходы, net, категории, recurring и anomalies.",
+        parameters: {type: "object", properties: {organizationId: {type: "string", description: "Используй только если активная организация не передана WesiOS"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}}},
       },
       {
         name: "finance_transactions",
-        description: "Получить ограниченный список реальных разрешённых финансовых операций WesiOS за период.",
-        parameters: {type: "object", properties: {organizationId: {type: "string"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}, type: {type: "string", enum: ["income", "expense"]}, limit: {type: "integer", minimum: 1, maximum: 50}}},
+        description: "Получить ограниченный список реальных разрешённых финансовых операций АКТИВНОЙ организации WesiOS за период. Если передан activeOrganizationId, не переключай организацию сам.",
+        parameters: {type: "object", properties: {organizationId: {type: "string", description: "Используй только если активная организация не передана WesiOS"}, from: {type: "string", description: "YYYY-MM-DD"}, to: {type: "string", description: "YYYY-MM-DD"}, type: {type: "string", enum: ["income", "expense"]}, limit: {type: "integer", minimum: 1, maximum: 50}}},
       },
     ];
   },
@@ -50,7 +52,10 @@ module.exports = {
     const allowed = Object.keys(state.financeOrgIds)
       .filter((id) => state.financeOrgIds[id] === true && state.orgs[id])
       .map((id) => ({id: id, name: state.orgs[id].name, baseCurrency: state.orgs[id].baseCurrency}));
-    return {financeOrganizations: allowed};
+    return {
+      financeOrganizations: allowed,
+      financeOrganizationRule: "activeOrganizationId from WesiOS is authoritative; never invent or switch organization IDs unless the user explicitly changes organization in WesiOS",
+    };
   },
 
   execute: function(e, ctx, name, args, activeOrganizationId) {
@@ -58,7 +63,10 @@ module.exports = {
     if (!policy.hasModule(ctx)) return {ok: false, code: "FORBIDDEN", message: "Нет доступа к финансовым модулям"};
     const input = args && typeof args === "object" ? args : {};
     const state = policy.access(e, ctx);
-    const requested = String(input.organizationId || activeOrganizationId || "").trim();
+
+    // The organization selected by authenticated WesiOS UI is authoritative.
+    // Model-generated arguments are only a fallback when no active org exists.
+    const requested = String(activeOrganizationId || input.organizationId || "").trim();
     const organizationId = policy.select(state, requested);
     if (!organizationId) return {ok: false, code: "FORBIDDEN", message: "Нет права просматривать финансы этой организации"};
 
@@ -71,7 +79,20 @@ module.exports = {
     if (!from || !to || from > to) return {ok: false, code: "VALIDATION_ERROR", message: "Некорректный период"};
     const fromMs = Date.parse(from + "T00:00:00Z");
     const toMs = Date.parse(to + "T23:59:59.999Z");
-    const source = rows(e, ctx, "transactions");
+
+    let source;
+    try {
+      source = rows(e, ctx, "transactions");
+    } catch (_) {
+      return {
+        ok: false,
+        code: "FINANCE_DATA_UNAVAILABLE",
+        message: "Не удалось прочитать синхронизированные финансовые данные WesiOS. Нулевой результат не подставлен.",
+      };
+    }
+    if (!Array.isArray(source)) {
+      return {ok: false, code: "FINANCE_DATA_UNAVAILABLE", message: "Финансовое хранилище WesiOS вернуло некорректный набор данных"};
+    }
 
     const filtered = [];
     for (const row of source) {
@@ -91,7 +112,7 @@ module.exports = {
       const type = String(input.type || "");
       const limit = Math.max(1, Math.min(50, Number(input.limit || 20)));
       const selected = filtered.filter((tx) => !type || tx.type === type).slice(0, limit);
-      return {ok: true, result: {organizationId: organizationId, from: from, to: to, transactions: selected}};
+      return {ok: true, result: {organizationId: organizationId, organizationName: state.orgs[organizationId] ? state.orgs[organizationId].name : organizationId, from: from, to: to, transactionCount: filtered.length, transactions: selected}};
     }
 
     if (name === "finance_summary") {

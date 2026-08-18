@@ -209,8 +209,7 @@ class TransactionModel {
       type: type ?? this.type,
       date: date ?? this.date,
       category: clearCategory ? null : (category ?? this.category),
-      description:
-          clearDescription ? null : (description ?? this.description),
+      description: clearDescription ? null : (description ?? this.description),
       isRecurring: isRecurring ?? this.isRecurring,
       recurringPeriod: clearRecurringPeriod
           ? null
@@ -221,9 +220,8 @@ class TransactionModel {
       recurringAnchor: recurringAnchor ?? this.recurringAnchor,
       organizationId: organizationId ?? this.organizationId,
       projectId: clearProjectId ? null : (projectId ?? this.projectId),
-      counterpartyId: clearCounterpartyId
-          ? null
-          : (counterpartyId ?? this.counterpartyId),
+      counterpartyId:
+          clearCounterpartyId ? null : (counterpartyId ?? this.counterpartyId),
       source: source ?? this.source,
       createdBy: createdBy ?? this.createdBy,
       updatedBy: updatedBy ?? this.updatedBy,
@@ -234,8 +232,7 @@ class TransactionModel {
       interOrgTransferId: clearInterOrgTransferId
           ? null
           : (interOrgTransferId ?? this.interOrgTransferId),
-      createdByEmployeeId:
-          createdByEmployeeId ?? this.createdByEmployeeId,
+      createdByEmployeeId: createdByEmployeeId ?? this.createdByEmployeeId,
       originalAmount: originalAmount ?? this.originalAmount,
       originalCurrency:
           (originalCurrency ?? this.originalCurrency).toUpperCase(),
@@ -263,7 +260,7 @@ class TransactionModel {
         'isAnomaly': isAnomaly,
         'zScore': zScore,
         'accountId': accountId,
-        'organizationId': organizationId,
+        'organizationId': effectiveOrganizationId,
         'projectId': projectId,
         'counterpartyId': counterpartyId,
         'source': source.name,
@@ -399,8 +396,7 @@ class TransactionModelAdapter extends TypeAdapter<TransactionModel> {
 
   /// Число могло быть записано целым — например, ноль. Жёсткое приведение к
   /// `double?` на таком значении падает, хотя данные совершенно исправны.
-  static double? _num(dynamic value) =>
-      value is num ? value.toDouble() : null;
+  static double? _num(dynamic value) => value is num ? value.toDouble() : null;
 
   @override
   void write(BinaryWriter writer, TransactionModel obj) {

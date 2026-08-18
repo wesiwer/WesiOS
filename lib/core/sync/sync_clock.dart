@@ -1,36 +1,37 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 /// Часы, по которым решаются споры между устройствами.
 ///
-/// Слияние выбирает более позднюю правку, а «позднее» до сих пор считалось по
-/// часам самого устройства. Часы у устройств расходятся: на телефоне их ведёт
-/// оператор, на компьютере — сеть или никто, и разница в несколько минут не
-/// редкость, а норма. Проверено тестом: правка, сделанная на телефоне на пять
-/// минут ПОЗЖЕ, проигрывала правке с ноутбука просто потому, что телефон
-/// отставал. Человек видит это как «мои изменения не сохранились».
-///
-/// Лечится приведением всех устройств к одной шкале — серверной. Сервер и так
-/// сообщает своё время в заголовке `Date` каждого ответа; остаётся вычесть из
-/// него своё и запомнить разницу. Менять сервер для этого не нужно.
-///
-/// Смещение переживает перезапуск: правки, сделанные до первого обмена,
-/// должны получить ту же шкалу, что и все остальные.
+/// Все локальные sync-stamps живут на той же точности, что и JavaScript Date
+/// на сервере — миллисекунды. Дополнительно [now] является логическими
+/// монотонными часами: два локальных изменения одной записи, случившиеся в
+/// одну физическую миллисекунду, всё равно получают разные timestamps.
 class SyncClock {
   static const String _boxName = 'wesios_settings';
   static const String _key = 'sync_clock_offset_ms';
+  static const String _logicalKey = 'sync_clock_last_logical_ms';
 
-  /// Больше этого смещение не бывает ни при каких сбитых часах — такое
-  /// значение означает испорченный заголовок, а не разницу во времени.
-  /// Принять его значило бы отправить все свои правки в другой век.
   static const Duration _sane = Duration(days: 370);
 
   static Duration _offset = Duration.zero;
   static bool _loaded = false;
 
+  /// Последний выданный локальный LWW timestamp в миллисекундах Unix epoch.
+  ///
+  /// Важный инвариант: watermark хранится не только в памяти, но и в Hive.
+  /// Иначе после перезапуска приложения и перевода системных часов назад
+  /// первая новая локальная правка могла получить timestamp старее уже
+  /// синхронизированной версии и проиграть LWW, хотя пользователь изменил
+  /// запись позже.
+  static int? _lastLogicalMs;
+  static bool _logicalLoaded = false;
+
   static Box<dynamic>? get _box =>
       Hive.isBoxOpen(_boxName) ? Hive.box<dynamic>(_boxName) : null;
 
-  /// Насколько часы сервера впереди наших.
   static Duration get offset {
     if (!_loaded) {
       final raw = _box?.get(_key);
@@ -40,16 +41,47 @@ class SyncClock {
     return _offset;
   }
 
-  /// Текущий момент по общей для всех устройств шкале.
-  static DateTime now() => DateTime.now().add(offset);
+  static int? _logicalWatermark() {
+    if (!_logicalLoaded) {
+      final raw = _box?.get(_logicalKey);
+      if (raw is int && raw >= 0) _lastLogicalMs = raw;
+      _logicalLoaded = true;
+    }
+    return _lastLogicalMs;
+  }
 
-  /// Учесть время сервера из заголовка `Date`.
+  /// Текущий момент по общей для устройств server-adjusted шкале.
   ///
-  /// [sentAt] и [receivedAt] — моменты по нашим часам до и после запроса.
-  /// Сетевая задержка делится пополам, как в обычной сверке часов: сервер
-  /// сформировал ответ где-то посередине между отправкой и получением.
-  /// Точности заголовка (одна секунда) с запасом хватает — расхождения,
-  /// из-за которых теряются правки, измеряются минутами.
+  /// JavaScript/PocketBase timestamps имеют миллисекундную точность. Раньше
+  /// Dart отправлял микросекунды, сервер обрезал их до миллисекунд, и две
+  /// быстрые правки одной записи могли схлопнуться в exact timestamp tie. На
+  /// сервере такой tie специально оставляет уже существующую запись, поэтому
+  /// вторая локальная правка могла потеряться.
+  ///
+  /// Время сначала приводится к миллисекундам, затем сравнивается с последним
+  /// логическим watermark. Watermark переживает перезапуск процесса, поэтому
+  /// последовательность локальных timestamps не откатывается назад вместе с
+  /// системными часами.
+  static DateTime now() {
+    final physicalMs = DateTime.now().add(offset).millisecondsSinceEpoch;
+    final previous = _logicalWatermark();
+    final logicalMs = previous != null && physicalMs <= previous
+        ? previous + 1
+        : physicalMs;
+    _lastLogicalMs = logicalMs;
+
+    final box = _box;
+    if (box != null) {
+      // Hive обновляет in-memory value сразу; disk flush возвращается Future.
+      // now() должен оставаться синхронным, потому что его вызывает Hive
+      // watcher при каждой локальной правке. Не блокируем UI, но обязательно
+      // запускаем persistence каждой выданной LWW-координаты.
+      unawaited(box.put(_logicalKey, logicalMs));
+    }
+
+    return DateTime.fromMillisecondsSinceEpoch(logicalMs);
+  }
+
   static Future<void> observeServerDate(
     String? header, {
     required DateTime sentAt,
@@ -67,8 +99,6 @@ class SyncClock {
     final delta = server.difference(middle);
     if (delta.abs() > _sane) return;
 
-    // Секунда туда-сюда — это точность самого заголовка, а не расхождение
-    // часов. Перезаписывать из-за неё значение не нужно.
     if ((delta - offset).abs() < const Duration(seconds: 2)) return;
 
     _offset = delta;
@@ -76,29 +106,47 @@ class SyncClock {
     await _box?.put(_key, delta.inMilliseconds);
   }
 
-  /// Забыть измеренное смещение. Нужно тестам и смене сервера.
+  /// Забыть измеренное смещение и persisted logical watermark.
+  ///
+  /// Это полный диагностический reset часов. Обычный перезапуск приложения
+  /// этот метод не вызывает — иначе межперезапускная монотонность потеряется.
   static Future<void> reset() async {
     _offset = Duration.zero;
     _loaded = true;
+    _lastLogicalMs = null;
+    _logicalLoaded = true;
     await _box?.delete(_key);
+    await _box?.delete(_logicalKey);
   }
 
-  /// Разбор даты из HTTP-заголовка.
-  ///
-  /// Свой разбор, а не `HttpDate.parse`: тот бросает исключение на любом
-  /// отклонении от формата, а сюда приходит заголовок от чужого сервера —
-  /// прокси, зеркала, чего угодно. Ронять из-за него синхронизацию нельзя,
-  /// и «не разобрали» — совершенно нормальный ответ.
+  /// Имитирует только новый процесс, не стирая persisted clock state.
+  @visibleForTesting
+  static void reloadProcessStateForTesting() {
+    _offset = Duration.zero;
+    _loaded = false;
+    _lastLogicalMs = null;
+    _logicalLoaded = false;
+  }
+
   static DateTime? _parseHttpDate(String raw) {
-    // Формат RFC 1123: "Tue, 12 Aug 2026 19:41:52 GMT".
     final m = RegExp(
       r'^\w{3},\s+(\d{1,2})\s+(\w{3})\s+(\d{4})\s+(\d{2}):(\d{2}):(\d{2})',
     ).firstMatch(raw.trim());
     if (m == null) return DateTime.tryParse(raw)?.toUtc();
 
     const months = {
-      'Jan': 1, 'Feb': 2, 'Mar': 3, 'Apr': 4, 'May': 5, 'Jun': 6,
-      'Jul': 7, 'Aug': 8, 'Sep': 9, 'Oct': 10, 'Nov': 11, 'Dec': 12,
+      'Jan': 1,
+      'Feb': 2,
+      'Mar': 3,
+      'Apr': 4,
+      'May': 5,
+      'Jun': 6,
+      'Jul': 7,
+      'Aug': 8,
+      'Sep': 9,
+      'Oct': 10,
+      'Nov': 11,
+      'Dec': 12,
     };
     final month = months[m.group(2)];
     if (month == null) return null;

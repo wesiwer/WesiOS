@@ -1,0 +1,83 @@
+name: Fix Sync Retry And Horizon Truth Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-sync-retry-horizon-truth-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-and-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch source and regression tests
+        run: python3 scripts/ops_fix_sync_retry_horizon_truth_once.py
+
+      - name: Validate source contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_ai_horizon_tools.js
+          node --test server/pb_hooks/wesi_ai_horizon_truth_test.mjs
+          ! grep -n 'organizationBaseAmount != null ? p.organizationBaseAmount : p.amount' server/pb_hooks/wesi_ai_horizon_tools.js
+          grep -q 'const amount = Number(p.amount);' server/pb_hooks/wesi_ai_horizon_tools.js
+          grep -q 'while (pending.isNotEmpty)' lib/core/sync/sync_engine.dart
+          grep -q 'if (applyFailure != null)' lib/core/sync/sync_engine.dart
+          git diff --check
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Format changed Dart
+        run: dart format lib/core/sync/sync_engine.dart test/sync_receive_regression_test.dart
+
+      - name: Run targeted sync regression suite
+        run: flutter test test/sync_receive_regression_test.dart test/sync_engine_test.dart test/sync_corruption_guard_test.dart test/sync_multi_device_test.dart test/organization_sync_integrity_test.dart
+
+      - name: Run relevant Horizon truth suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=(
+            test/horizon_balance_truth_test.dart
+            test/horizon_legacy_income_truth_test.dart
+            test/multi_currency_org_test.dart
+            test/horizon_account_recurring_risk_test.dart
+          )
+          existing=()
+          for f in "${files[@]}"; do
+            [ -f "$f" ] && existing+=("$f")
+          done
+          if [ ${#existing[@]} -gt 0 ]; then
+            flutter test "${existing[@]}"
+          fi
+
+      - name: Analyze changed Dart
+        run: flutter analyze lib/core/sync/sync_engine.dart test/sync_receive_regression_test.dart --no-fatal-infos
+
+      - name: Commit only after all tests pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'wesiwer'
+          git config user.email '77644223+wesiwer@users.noreply.github.com'
+          git add lib/core/sync/sync_engine.dart test/sync_receive_regression_test.dart server/pb_hooks/wesi_ai_horizon_tools.js server/pb_hooks/wesi_ai_horizon_truth_test.mjs
+          git commit -m 'fix(sync,ai): converge dependencies and align Horizon balance truth'
+          git push origin HEAD:main
+
+# validation revision: 2

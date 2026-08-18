@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'app.dart';
@@ -21,6 +22,8 @@ import 'core/services/github_auth_service.dart';
 import 'core/services/github_release_download.dart';
 import 'core/services/quote_mind_charge_service.dart';
 import 'core/services/secrets_service.dart';
+import 'core/sync/sync_audit_extensions.dart';
+import 'core/sync/sync_business_extensions.dart';
 import 'core/sync/sync_auto.dart';
 import 'core/sync/sync_endpoint.dart';
 import 'core/sync/sync_engine.dart';
@@ -104,7 +107,51 @@ Future<bool> _bootstrap(List<String> arguments) async {
     });
   }
 
-  await Hive.initFlutter();
+  // On Windows hive_flutter defaults to the user's Documents known folder.
+  // That folder can be redirected or unavailable even though Windows still
+  // reports a path for it. Keeping the database there therefore makes startup
+  // depend on a user-facing shell folder that WesiOS does not control.
+  //
+  // Store Windows Hive data in LOCALAPPDATA instead. Before switching, copy
+  // only WesiOS boxes from the legacy Documents location when it is readable.
+  // A broken legacy folder must never prevent a clean startup.
+  if (!kIsWeb && Platform.isWindows) {
+    final separator = Platform.pathSeparator;
+    final localAppData = Platform.environment['LOCALAPPDATA']?.trim();
+    final Directory hiveDirectory;
+    if (localAppData != null && localAppData.isNotEmpty) {
+      hiveDirectory = Directory(
+        '$localAppData${separator}WesiOS${separator}hive',
+      );
+    } else {
+      final supportDirectory = await getApplicationSupportDirectory();
+      hiveDirectory = Directory('${supportDirectory.path}${separator}hive');
+    }
+    await hiveDirectory.create(recursive: true);
+
+    try {
+      final legacyDirectory = await getApplicationDocumentsDirectory();
+      if (await legacyDirectory.exists()) {
+        await for (final entity in legacyDirectory.list(followLinks: false)) {
+          if (entity is! File) continue;
+          final name = entity.path.split(separator).last;
+          if (!name.startsWith('wesios_') || !name.endsWith('.hive')) {
+            continue;
+          }
+          final target = File('${hiveDirectory.path}$separator$name');
+          if (!await target.exists()) {
+            await entity.copy(target.path);
+          }
+        }
+      }
+    } catch (error, stack) {
+      debugPrint('Legacy Hive migration skipped: $error\n$stack');
+    }
+
+    Hive.init(hiveDirectory.path);
+  } else {
+    await Hive.initFlutter();
+  }
 
   Hive.registerAdapter(TransactionModelAdapter());
   Hive.registerAdapter(TransactionTypeAdapter());
@@ -155,6 +202,8 @@ Future<bool> _bootstrap(List<String> arguments) async {
   await TeamService.forgetUnrememberedSession();
   SyncTransactionAnchorFix.install();
   await SyncFeatureExtensions.install();
+  SyncAuditExtensions.install();
+  SyncBusinessExtensions.install();
 
   if (TeamService.current != null && SyncEndpoint.isConnected) {
     SessionService.startHeartbeat();

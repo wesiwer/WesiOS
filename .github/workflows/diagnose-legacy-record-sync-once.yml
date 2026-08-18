@@ -1,0 +1,77 @@
+name: Diagnose Legacy Record Sync Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-legacy-record-sync-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_diag && chmod 600 ~/.ssh/id_diag
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+      - name: Count legacy and per-record rows only
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_diag -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" 'python3 -' > /tmp/counts.txt <<'PY'
+          import json, sqlite3
+          con=sqlite3.connect('file:/opt/pocketbase/pb_data/data.db?mode=ro',uri=True); con.row_factory=sqlite3.Row
+          rows=[dict(r) for r in con.execute("select owner,coll,rid,payload,deleted from wesios_records where deleted=0")]
+          owner=next((str(r['owner']) for r in rows if r['coll']=='system' and r['rid']=='portal-owner'),None)
+          if not owner: raise SystemExit('NO_OWNER')
+          mine=[r for r in rows if str(r['owner'])==owner]
+          def parse(raw):
+              try:
+                  v=json.loads(raw) if isinstance(raw,str) else raw
+                  return v if isinstance(v,dict) else {}
+              except Exception:return {}
+          def count(coll): return sum(1 for r in mine if r['coll']==coll)
+          def legacy_items(coll, keys):
+              total=0
+              for r in mine:
+                  if r['coll']!=coll: continue
+                  p=parse(r['payload']); value=p.get('value')
+                  try: arr=json.loads(value) if isinstance(value,str) else value
+                  except Exception: arr=[]
+                  if str(p.get('key') or r['rid']) in keys and isinstance(arr,list): total += len(arr)
+              return total
+          print('roadmap_state_rows='+str(count('roadmap_state')))
+          print('roadmap_legacy_items='+str(legacy_items('roadmap_state',{'projects_v1','items_v1'})))
+          print('roadmap_projects_rows='+str(count('roadmap_projects')))
+          print('roadmap_items_rows='+str(count('roadmap_items')))
+          print('crm_state_rows='+str(count('crm_state')))
+          print('crm_legacy_items='+str(legacy_items('crm_state',{'clients_v1','deals_v1','interactions_v1'})))
+          print('crm_clients_rows='+str(count('crm_clients')))
+          print('crm_deals_rows='+str(count('crm_deals')))
+          print('crm_interactions_rows='+str(count('crm_interactions')))
+          con.close()
+          PY
+          cp /tmp/counts.txt .github/sync-legacy-record-counts.txt
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/legacy-record-sync
+          git add .github/sync-legacy-record-counts.txt
+          git commit -m 'ops: record legacy vs per-record sync counts'
+          git push --force origin HEAD:diag/legacy-record-sync
+
+# diagnostic result goes to isolated branch to avoid main races

@@ -32,8 +32,20 @@ jobs:
           node --check server/pb_hooks/wesi_auth_bootstrap.pb.js
           node --check server/pb_hooks/wesi_security.pb.js
           node --check server/pb_hooks/wesi_mail_health.pb.js
-          grep -q '2026-08-09.owner-email-v9' server/pb_hooks/wesi_auth_bootstrap.pb.js
-          grep -q '2026-08-09.security-mail-v8' server/pb_hooks/wesi_security.pb.js
+          # Версия маркера намеренно не фиксируется точным номером.
+          #
+          # Здесь стояли owner-email-v9 и security-mail-v8. Код ушёл на v11 и
+          # v9 коммитами 674733d и 367e336, а проверки остались, и деплой с
+          # 9 августа падал на первом же grep — то есть заголовки
+          # безопасности не доезжали до сервера вообще. Обнаружилось только
+          # тогда, когда push в main наконец снова тронул эти файлы.
+          #
+          # Смысл проверки — убедиться, что выкладывается брендированная
+          # версия хука, а не старая копия. Номер версии этому не служит: он
+          # растёт при каждой правке письма и превращает ворота в мину
+          # замедленного действия.
+          grep -qE '2026-08-09\.owner-email-v[0-9]+' server/pb_hooks/wesi_auth_bootstrap.pb.js
+          grep -qE '2026-08-09\.security-mail-v[0-9]+' server/pb_hooks/wesi_security.pb.js
           grep -q '2026-08-09.mail-design-v2' server/pb_hooks/wesi_auth_bootstrap.pb.js
           test "$(grep -c 'const wesiBuildOtpMail = (code, purpose) =>' server/pb_hooks/wesi_auth_bootstrap.pb.js)" -eq 2
           ! grep -q 'globalThis.wesiBuildOtpMail' server/pb_hooks/wesi_auth_bootstrap.pb.js

@@ -1,0 +1,100 @@
+name: Diagnose Legacy Record Differences Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-legacy-record-differences-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_diag && chmod 600 ~/.ssh/id_diag
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+      - name: Compare freshness and field names only
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_diag -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" 'python3 -' > /tmp/diff.txt <<'PY'
+          import json, sqlite3
+          from collections import Counter
+          from datetime import datetime
+          con=sqlite3.connect('file:/opt/pocketbase/pb_data/data.db?mode=ro',uri=True); con.row_factory=sqlite3.Row
+          rows=[dict(r) for r in con.execute("select owner,coll,rid,payload,stamp,deleted from wesios_records where deleted=0")]
+          owner=next((str(r['owner']) for r in rows if r['coll']=='system' and r['rid']=='portal-owner'),None)
+          if not owner: raise SystemExit('NO_OWNER')
+          rows=[r for r in rows if str(r['owner'])==owner]
+          def obj(raw):
+              try:
+                  v=json.loads(raw) if isinstance(raw,str) else raw
+                  return v if isinstance(v,dict) else {}
+              except Exception:return {}
+          def legacy(coll,key):
+              out={}; stamp={}
+              for r in rows:
+                  if r['coll']!=coll:continue
+                  p=obj(r['payload'])
+                  if str(p.get('key') or r['rid'])!=key:continue
+                  v=p.get('value')
+                  try:a=json.loads(v) if isinstance(v,str) else v
+                  except Exception:a=[]
+                  if isinstance(a,list):
+                      for x in a:
+                          if isinstance(x,dict) and str(x.get('id') or ''):
+                              out[str(x['id'])]=x; stamp[str(x['id'])]=str(r.get('stamp') or '')
+              return out,stamp
+          def current(coll):
+              out={}; stamp={}
+              for r in rows:
+                  if r['coll']!=coll:continue
+                  p=obj(r['payload']); rid=str(p.get('id') or r['rid'] or '')
+                  if rid:out[rid]=p; stamp[rid]=str(r.get('stamp') or '')
+              return out,stamp
+          def dt(x):
+              try:return datetime.fromisoformat(str(x).replace('Z','+00:00'))
+              except Exception:return None
+          def inspect(name,l,c):
+              a,sa=l; b,sb=c; fresh=Counter(); fields=Counter(); diffs=0
+              for k in set(a)&set(b):
+                  if json.dumps(a[k],sort_keys=True,separators=(',',':'),ensure_ascii=False)==json.dumps(b[k],sort_keys=True,separators=(',',':'),ensure_ascii=False):continue
+                  diffs+=1
+                  ta,tb=dt(sa.get(k)),dt(sb.get(k))
+                  if ta and tb: fresh['per_record_newer' if tb>ta else 'legacy_newer' if ta>tb else 'equal_stamp']+=1
+                  else:fresh['unknown_stamp']+=1
+                  for key in set(a[k])|set(b[k]):
+                      if a[k].get(key)!=b[k].get(key): fields[str(key)]+=1
+              print(name+'_diffs='+str(diffs))
+              for key,val in sorted(fresh.items()):print(name+'_freshness_'+key+'='+str(val))
+              print(name+'_different_fields='+','.join(f'{k}:{v}' for k,v in sorted(fields.items())))
+          inspect('roadmap_projects',legacy('roadmap_state','projects_v1'),current('roadmap_projects'))
+          inspect('roadmap_items',legacy('roadmap_state','items_v1'),current('roadmap_items'))
+          inspect('crm_clients',legacy('crm_state','clients_v1'),current('crm_clients'))
+          inspect('crm_deals',legacy('crm_state','deals_v1'),current('crm_deals'))
+          inspect('crm_interactions',legacy('crm_state','interactions_v1'),current('crm_interactions'))
+          con.close()
+          PY
+          cp /tmp/diff.txt .github/sync-legacy-differences.txt
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/legacy-record-differences
+          git add .github/sync-legacy-differences.txt
+          git commit -m 'ops: record legacy per-record differences'
+          git push --force origin HEAD:diag/legacy-record-differences

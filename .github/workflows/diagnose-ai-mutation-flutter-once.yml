@@ -1,0 +1,79 @@
+name: Diagnose AI Mutation Flutter Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-ai-mutation-flutter-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply patch
+        id: patch
+        continue-on-error: true
+        run: python3 .github/scripts/fix-ai-tool-mutation-sync.py
+
+      - name: Setup Flutter
+        id: setup
+        if: steps.patch.outcome == 'success'
+        continue-on-error: true
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+
+      - name: Get dependencies
+        id: deps
+        if: steps.setup.outcome == 'success'
+        continue-on-error: true
+        run: flutter pub get
+
+      - name: Format touched Dart
+        id: format
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: dart format --output=none --set-exit-if-changed lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart
+
+      - name: Relevant tests
+        id: tests
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: flutter test test/features/ai/wesi_ai_transport_history_test.dart test/sync_receive_regression_test.dart test/sync_engine_test.dart test/sync_multi_device_test.dart
+
+      - name: Analyze touched code
+        id: analyze
+        if: steps.deps.outcome == 'success'
+        continue-on-error: true
+        run: flutter analyze lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart --no-fatal-infos
+
+      - name: Record diagnostic only
+        if: always()
+        env:
+          PATCH: ${{ steps.patch.outcome }}
+          SETUP: ${{ steps.setup.outcome }}
+          DEPS: ${{ steps.deps.outcome }}
+          FORMAT: ${{ steps.format.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+          ANALYZE: ${{ steps.analyze.outcome }}
+        run: |
+          set -euo pipefail
+          git reset --hard "$GITHUB_SHA"
+          git clean -fd
+          printf 'PATCH=%s\nSETUP=%s\nDEPS=%s\nFORMAT=%s\nTESTS=%s\nANALYZE=%s\nSOURCE=%s\n' "$PATCH" "$SETUP" "$DEPS" "$FORMAT" "$TESTS" "$ANALYZE" "$GITHUB_SHA" > .github/ai-mutation-flutter-diagnostic.txt
+          git config user.name 'WesiOS Gate Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/ai-mutation-flutter-diagnostic.txt
+          git commit -m 'ops: record AI mutation Flutter diagnostics'
+          git pull --rebase origin main
+          git push origin HEAD:main

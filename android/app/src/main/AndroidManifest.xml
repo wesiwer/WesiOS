@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
@@ -31,8 +32,10 @@
               />
         </activity>
 
-        <!-- Keep stable component names for existing installations, but make
-             every launcher entry use the current generated WesiOS mark. -->
+        <!-- Keep stable component names for existing installations. The dark
+             alias uses the generated launcher mark; the light alias keeps its
+             own stable resource name but that resource now renders the current
+             light WesiOS mark. -->
         <activity-alias
             android:name=".IconDark"
             android:enabled="true"
@@ -61,7 +64,6 @@
             </intent-filter>
         </activity-alias>
 
-
         <!-- Scheduled Calendar/Time Center notifications survive process death
              and are restored after reboot/package replacement. -->
         <receiver
@@ -73,8 +75,8 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED"/>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
-                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
-                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWER_ON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWER_ON"/>
             </intent-filter>
         </receiver>
 

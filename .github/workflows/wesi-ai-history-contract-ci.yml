@@ -1,0 +1,66 @@
+name: Wesi AI History Contract CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/pb_hooks/wesi_ai_lib.js'
+      - 'server/pb_hooks/wesi_ai_routes.pb.js'
+      - 'server/pb_hooks/wesi_ai_stream.pb.js'
+      - 'server/pb_hooks/wesi_ai_lobby_core.js'
+      - 'server/pb_hooks/wesi_ai_*history*_test.mjs'
+      - 'server/pb_hooks/wesi_ai_stream_contract_test.mjs'
+      - 'lib/features/ai/wesi_ai_api.dart'
+      - 'test/features/ai/wesi_ai_transport_history_test.dart'
+      - '.github/workflows/wesi-ai-history-contract-ci.yml'
+  pull_request:
+    paths:
+      - 'server/pb_hooks/wesi_ai_lib.js'
+      - 'server/pb_hooks/wesi_ai_routes.pb.js'
+      - 'server/pb_hooks/wesi_ai_stream.pb.js'
+      - 'server/pb_hooks/wesi_ai_lobby_core.js'
+      - 'server/pb_hooks/wesi_ai_*history*_test.mjs'
+      - 'server/pb_hooks/wesi_ai_stream_contract_test.mjs'
+      - 'lib/features/ai/wesi_ai_api.dart'
+      - 'test/features/ai/wesi_ai_transport_history_test.dart'
+      - '.github/workflows/wesi-ai-history-contract-ci.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  history-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate server history contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_ai_lib.js
+          node --check server/pb_hooks/wesi_ai_routes.pb.js
+          node --check server/pb_hooks/wesi_ai_stream.pb.js
+          node --check server/pb_hooks/wesi_ai_lobby_core.js
+          node --test \
+            server/pb_hooks/wesi_ai_lib_history_test.mjs \
+            server/pb_hooks/wesi_ai_history_contract_test.mjs \
+            server/pb_hooks/wesi_ai_stream_contract_test.mjs
+          ! grep -q 'Слишком длинное сообщение в контексте' server/pb_hooks/wesi_ai_routes.pb.js
+          ! grep -q 'Слишком длинное сообщение в контексте' server/pb_hooks/wesi_ai_stream.pb.js
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+
+      - name: Validate client history contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter pub get
+          flutter test test/features/ai/wesi_ai_transport_history_test.dart
+          flutter analyze lib/features/ai/wesi_ai_api.dart --no-fatal-infos
+          ! grep -q 'shouldFallbackFromStreamError' lib/features/ai/wesi_ai_api.dart

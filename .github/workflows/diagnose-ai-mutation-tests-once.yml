@@ -1,0 +1,67 @@
+name: Diagnose AI Mutation Tests Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-ai-mutation-tests-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: AI transport baseline
+        id: ai
+        continue-on-error: true
+        run: flutter test test/features/ai/wesi_ai_transport_history_test.dart
+      - name: Sync receive baseline
+        id: receive
+        continue-on-error: true
+        run: flutter test test/sync_receive_regression_test.dart
+      - name: Sync engine baseline
+        id: engine
+        continue-on-error: true
+        run: flutter test test/sync_engine_test.dart
+      - name: Sync multi-device baseline
+        id: multi
+        continue-on-error: true
+        run: flutter test test/sync_multi_device_test.dart
+      - name: Apply AI patch and run AI transport again
+        id: patched
+        continue-on-error: true
+        run: |
+          python3 .github/scripts/fix-ai-tool-mutation-sync.py
+          dart format lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart
+          flutter test test/features/ai/wesi_ai_transport_history_test.dart
+      - name: Record outcomes only
+        if: always()
+        env:
+          AI: ${{ steps.ai.outcome }}
+          RECEIVE: ${{ steps.receive.outcome }}
+          ENGINE: ${{ steps.engine.outcome }}
+          MULTI: ${{ steps.multi.outcome }}
+          PATCHED: ${{ steps.patched.outcome }}
+        run: |
+          set -euo pipefail
+          git reset --hard "$GITHUB_SHA"
+          git clean -fd
+          printf 'AI_BASELINE=%s\nSYNC_RECEIVE_BASELINE=%s\nSYNC_ENGINE_BASELINE=%s\nSYNC_MULTI_BASELINE=%s\nAI_PATCHED=%s\nSOURCE=%s\n' "$AI" "$RECEIVE" "$ENGINE" "$MULTI" "$PATCHED" "$GITHUB_SHA" > .github/ai-mutation-test-diagnostic.txt
+          git config user.name 'WesiOS Gate Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/ai-mutation-test-diagnostic.txt
+          git commit -m 'ops: record AI mutation test diagnostics'
+          git pull --rebase origin main
+          git push origin HEAD:main

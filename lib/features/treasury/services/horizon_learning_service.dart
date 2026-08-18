@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:hive_flutter/hive_flutter.dart';
 
+import '../../../core/sync/sync_account_scope.dart';
 import '../../organizations/models/organization_model.dart';
 import '../../organizations/services/organization_context.dart';
 import '../models/transaction_model.dart';
@@ -29,7 +30,8 @@ class HorizonLearningSnapshot {
 class HorizonLearningService {
   HorizonLearningService._();
 
-  static const String boxName = 'wesios_horizon_learning';
+  static const String baseBoxName = 'wesios_horizon_learning';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
   static const String _legacyProfileKey = 'calibration_profile_v1';
   static const String _legacyLastMonthKey = 'last_learning_month_v1';
   static const String _legacyHistoryKey = 'learning_history_v1';

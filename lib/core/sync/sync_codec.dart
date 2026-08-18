@@ -43,6 +43,13 @@ abstract class SyncCollection<T> {
   T? decode(Map<String, dynamic> fields);
   bool shouldSync(T value) => true;
 
+  /// A collection may share a Hive box with unrelated local settings.
+  bool watchesBoxKey(Object? key) => true;
+
+  /// Most boxes use their Hive key as the sync id. Private keyed stores may
+  /// map a short local key to an account-scoped server id.
+  String syncIdForBoxKey(Object? key) => '$key';
+
   Box<T>? box() {
     if (!Hive.isBoxOpen(boxName)) return null;
     try {
@@ -260,8 +267,12 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
         'socials': value.socials,
         'notes': value.notes,
         'permissions': value.permissions.toJson(),
-        'passwordHash': value.passwordHash,
-        'passwordSalt': value.passwordSalt,
+        // Хэш и соль пароля не уходят в синхронизацию.
+        //
+        // Сервер их всё равно вычищает из ответа, но полагаться только на
+        // это нельзя: тогда защита держится на одной стороне, и откат
+        // сервера к прежней версии молча вернул бы утечку. Проверять пароль
+        // локально приложение давно перестало — вход идёт через сервер.
         'avatarIndex': value.avatarIndex,
         'createdAt': value.createdAt.toIso8601String(),
         'isOwner': value.isOwner,
@@ -292,8 +303,8 @@ class EmployeesSync extends SyncCollection<EmployeeModel> {
       permissions: perms is Map
           ? TeamPermissions.fromJson(Map<String, dynamic>.from(perms))
           : const TeamPermissions(),
-      passwordHash: _str(fields['passwordHash']),
-      passwordSalt: _str(fields['passwordSalt']),
+      // Приходящие поля пароля игнорируются намеренно: чужой хэш не должен
+      // попадать в локальное хранилище, которое не шифруется.
       avatarIndex: _int(fields['avatarIndex']),
       createdAt: createdAt,
       isOwner: fields['isOwner'] == true,

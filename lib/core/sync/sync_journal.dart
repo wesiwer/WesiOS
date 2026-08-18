@@ -3,17 +3,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import 'sync_account_scope.dart';
 import 'sync_clock.dart';
 
-/// Отметка о записи: когда её последний раз трогали и не удалена ли она.
 class SyncStamp {
   final DateTime updatedAt;
   final bool deleted;
 
   const SyncStamp(this.updatedAt, {this.deleted = false});
 
-  /// Хранится строкой, а не объектом: на журнал не нужен адаптер Hive, и
-  /// содержимое можно прочитать глазами при разборе полётов.
   String encode() =>
       '${updatedAt.toUtc().toIso8601String()}|${deleted ? 1 : 0}';
 
@@ -30,84 +28,86 @@ class SyncStamp {
   String toString() => 'SyncStamp(${encode()})';
 }
 
-/// Журнал изменений: что и когда поменялось, и что было удалено.
-///
-/// **Зачем он вообще нужен.** Слияние ([SyncMerge]) сравнивает время правки,
-/// но у половины моделей такого поля нет: у операции есть дата операции, а не
-/// дата, когда её последний раз редактировали. Добавлять поле в каждую модель
-/// значило бы менять формат уже записанных на диск данных ради служебной
-/// мелочи.
-///
-/// И главное: удаление вообще нельзя записать в модель — записи больше нет.
-/// Надгробие обязано лежать снаружи. Раз оно всё равно снаружи, туда же
-/// логично класть и отметку времени: одно место вместо двух.
-///
-/// **Как отметки появляются.** Никак — сами. Журнал подписывается на
-/// изменения бокса ([BoxBase.watch]) и отмечает всё, что в нём произошло.
-/// Расставлять вызовы `touch()` по восьми сервисам значило бы гарантированно
-/// один пропустить, и запись молча перестала бы синхронизироваться.
+/// Journal timestamps/tombstones for the current authenticated account.
 class SyncJournal {
-  static const String boxName = 'wesios_sync_journal';
+  static const String baseBoxName = 'wesios_sync_journal';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
 
   static Box<dynamic>? _box;
+  static String? _openedBoxName;
   static final Map<String, StreamSubscription<BoxEvent>> _watchers = {};
 
-  /// Отметки, которые ставит движок, применяя чужие правки.
+  /// Expected Hive events created by applying remote data.
   ///
-  /// Без этого получилась бы качель: движок записывает в бокс чужую правку,
-  /// подписка видит изменение и честно отмечает его как «правка прямо
-  /// сейчас», после чего на следующем проходе эта же запись уезжает обратно
-  /// на сервер как более свежая. И так до бесконечности.
-  ///
-  /// Ожидание снимается первым же событием по этому ключу, поэтому порядок
-  /// доставки событий значения не имеет — а он в Hive не гарантирован.
+  /// box.watch() is asynchronous: applyFields may finish before its event is
+  /// delivered. Therefore an expectation must survive the end of a sync run,
+  /// otherwise that late event looks like a fresh user edit and receives a new
+  /// local timestamp, causing an upload ping-pong back to the server.
   static final Map<String, SyncStamp> _expected = {};
+  static final Map<String, DateTime> _expectedAt = {};
+  static const Duration _expectationLifetime = Duration(seconds: 5);
 
-  /// Счётчик **своих** правок — тех, что сделал человек, а не привёз обмен.
-  ///
-  /// По нему запускается автоматическая синхронизация. Считать здесь любые
-  /// изменения бокса нельзя: движок, применяя чужие правки, пишет в те же
-  /// боксы, счётчик бы дёрнулся, обмен запустился бы снова, снова записал —
-  /// и так по кругу, без единой правки от человека.
-  ///
-  /// Отличить одно от другого умеет только это место: движок предупреждает
-  /// про свои записи через [expect], и такие события сюда не попадают.
   static final ValueNotifier<int> localChanges = ValueNotifier<int>(0);
 
   static String key(String collection, String id) => '$collection/$id';
 
   static Future<Box<dynamic>> open() async {
-    final box = _box;
-    if (box != null && box.isOpen) return box;
-    final opened = Hive.isBoxOpen(boxName)
-        ? Hive.box<dynamic>(boxName)
-        : await Hive.openBox<dynamic>(boxName);
+    final currentName = boxName;
+    final cached = _box;
+    if (cached != null && cached.isOpen && _openedBoxName == currentName) {
+      return cached;
+    }
+
+    if (cached != null && cached.isOpen && _openedBoxName != currentName) {
+      await cached.close();
+    }
+
+    final opened = Hive.isBoxOpen(currentName)
+        ? Hive.box<dynamic>(currentName)
+        : await Hive.openBox<dynamic>(currentName);
     _box = opened;
+    _openedBoxName = currentName;
     return opened;
   }
 
   static Box<dynamic>? get _opened {
+    final currentName = boxName;
     final box = _box;
-    if (box != null && box.isOpen) return box;
-    if (!Hive.isBoxOpen(boxName)) return null;
-    return _box = Hive.box<dynamic>(boxName);
+    if (box != null && box.isOpen && _openedBoxName == currentName) return box;
+    if (!Hive.isBoxOpen(currentName)) return null;
+    _openedBoxName = currentName;
+    return _box = Hive.box<dynamic>(currentName);
   }
 
-  /// Начинает следить за боксом. Повторный вызов ничего не ломает.
-  static void attach(String collection, BoxBase<dynamic> box) {
+  static void attach(
+    String collection,
+    BoxBase<dynamic> box, {
+    bool Function(Object? key)? acceptsKey,
+    String Function(Object? key)? syncIdForKey,
+  }) {
     if (_watchers.containsKey(collection)) return;
     _watchers[collection] = box.watch().listen((event) {
-      final id = '${event.key}';
+      if (acceptsKey != null && !acceptsKey(event.key)) return;
+      final id = syncIdForKey?.call(event.key) ?? '${event.key}';
+      if (id.isEmpty) return;
+
       final k = key(collection, id);
-      final expected = _expected.remove(k);
+      final expectedStamp = _expected.remove(k);
+      final expectedAt = _expectedAt.remove(k);
+      final now = DateTime.now();
+      final age = expectedAt == null ? null : now.difference(expectedAt);
+      final expected = expectedStamp != null &&
+              age != null &&
+              !age.isNegative &&
+              age <= _expectationLifetime
+          ? expectedStamp
+          : null;
+
       _opened?.put(
         k,
-        // Время — по общей для всех устройств шкале, а не по своим часам:
-        // иначе спор двух правок выигрывает тот, у кого часы спешат.
         (expected ?? SyncStamp(SyncClock.now(), deleted: event.deleted))
             .encode(),
       );
-      // Ожидания не было — значит правку сделал человек, и её надо отправить.
       if (expected == null) localChanges.value++;
     });
   }
@@ -117,23 +117,53 @@ class SyncJournal {
       await sub.cancel();
     }
     _watchers.clear();
-    _expected.clear();
+    discardExpectations();
   }
 
-  /// Предупредить журнал, что следующее изменение этого ключа — не правка
-  /// человека, а применение чужой. Вызывается движком прямо перед записью.
   static void expect(String collection, String id, SyncStamp stamp) {
-    _expected[key(collection, id)] = stamp;
+    pruneExpectations();
+    final k = key(collection, id);
+    _expected[k] = stamp;
+    _expectedAt[k] = DateTime.now();
   }
 
-  /// Снять одно ожидание — запись, которую собирались применить, применить
-  /// не удалось.
-  static void forget(String collection, String id) =>
-      _expected.remove(key(collection, id));
+  static void forget(String collection, String id) {
+    final k = key(collection, id);
+    _expected.remove(k);
+    _expectedAt.remove(k);
+  }
 
-  /// Забыть все ожидания. Движок делает это в конце прохода, чтобы
-  /// невыполненное ожидание не приклеилось к следующей настоящей правке.
-  static void clearExpectations() => _expected.clear();
+  /// Backwards-compatible end-of-pass hook.
+  ///
+  /// Fresh expectations are intentionally NOT cleared here. Existing engine
+  /// code calls this after a normal run; turning it into TTL pruning fixes the
+  /// asynchronous Hive watcher race without swallowing a later real user edit.
+  static void clearExpectations() => pruneExpectations();
+
+  static void pruneExpectations() {
+    if (_expectedAt.isEmpty) return;
+    final now = DateTime.now();
+    final expired = <String>[];
+    for (final entry in _expectedAt.entries) {
+      final age = now.difference(entry.value);
+      if (age.isNegative || age > _expectationLifetime) expired.add(entry.key);
+    }
+    for (final k in expired) {
+      _expected.remove(k);
+      _expectedAt.remove(k);
+    }
+  }
+
+  /// Жёстко выбрасывает все remote expectations.
+  ///
+  /// Используется только на lifecycle/account boundary. В отличие от
+  /// [clearExpectations] здесь нельзя оставлять свежие ожидания на TTL: event
+  /// старого аккаунта после logout не должен быть принят новым lifecycle даже
+  /// в течение нескольких миллисекунд.
+  static void discardExpectations() {
+    _expected.clear();
+    _expectedAt.clear();
+  }
 
   static SyncStamp? stampOf(String collection, String id) =>
       SyncStamp.decode(_opened?.get(key(collection, id)));
@@ -146,7 +176,6 @@ class SyncJournal {
     await _opened?.put(key(collection, id), stamp.encode());
   }
 
-  /// Все отметки одной коллекции: `id → отметка`.
   static Map<String, SyncStamp> forCollection(String collection) {
     final box = _opened;
     if (box == null) return const {};
@@ -161,14 +190,6 @@ class SyncJournal {
     return out;
   }
 
-  /// Проставить отметки записям, которые появились до журнала.
-  ///
-  /// Первый запуск после обновления: в боксах лежат данные, а отметок нет.
-  /// Без этого шага они выглядели бы как «не менялось никогда» и проиграли бы
-  /// любому спору с сервером — то есть тихо стёрлись бы чужими.
-  ///
-  /// Время берётся [at] и должно быть **позже** всего, что лежит на сервере,
-  /// иначе смысл теряется. Движок передаёт сюда момент первого запуска.
   static Future<void> seed(
     String collection,
     Iterable<String> ids,
@@ -185,10 +206,6 @@ class SyncJournal {
     if (missing.isNotEmpty) await box.putAll(missing);
   }
 
-  /// Выбросить надгробия старше срока.
-  ///
-  /// Живые отметки не трогаем никогда: без отметки запись снова становится
-  /// «не менялась никогда».
   static Future<void> pruneTombstones(
     DateTime now, {
     Duration keepFor = const Duration(days: 180),

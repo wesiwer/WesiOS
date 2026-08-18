@@ -5,32 +5,42 @@ import 'dart:ui' as ui;
 
 import 'package:hive/hive.dart';
 
-import '../../features/crm/services/crm_service.dart';
-import '../../features/roadmap/services/roadmap_service.dart';
-import '../../features/team/models/employee_model.dart';
+import '../../features/profile/services/profile_service.dart';
 import '../../features/team/services/team_service.dart';
 import '../security/secret_vault.dart';
 import '../security/shield_service.dart';
+import 'sync_account_scope.dart';
 import 'sync_auto.dart';
 import 'sync_codec.dart';
 import 'sync_endpoint.dart';
 import 'sync_engine.dart';
 
-/// Adds synchronization for feature state that used to live only on one
-/// device: Roadmap, CRM, Profile/Shield and encrypted Secret Vault rows.
+/// Synchronization for private settings that are not represented by normal
+/// business models.
+///
+/// User profile is intentionally NOT here anymore. It has one canonical
+/// `profile/me` record through [ProfileService]/ProfileSync. This extension
+/// owns only portable Shield configuration and encrypted Secret Vault rows.
 class SyncFeatureExtensions {
   SyncFeatureExtensions._();
 
   static const _settingsBox = 'wesios_settings';
-  static const _profileOwnerKey = 'sync_profile_settings_owner_v1';
-  static const _profileBoxPrefix = 'wesios_profile_sync_v1';
+
+  /// Legacy employee marker is consulted only on the first upgrade from the
+  /// old unscoped scheme. From that moment onward the auth-user marker below
+  /// is the only permission to seed private settings into an empty scope.
+  static const _legacySettingsOwnerKey = 'sync_profile_settings_owner_v1';
+  static const _privateSettingsAuthOwnerKey =
+      'sync_private_settings_auth_user_v2';
+
+  /// Keep the old base name so the already-created auth-scoped box is reused,
+  /// but its contents are sanitized to Shield-only during bind.
+  static const _shieldBoxPrefix = 'wesios_profile_sync_v1';
   static const _vaultBoxPrefix = 'wesios_vault_sync_v1';
-  static const _lastRunKey = 'sync_last_run';
-  static const _seededKey = 'sync_seeded_at';
   static const _vaultSaltKey = 'vault_kdf_salt';
   static const _vaultPrefix = 'vault_secret_';
 
-  static const Set<String> _profileKeys = {
+  static const Set<String> _legacyProfileKeys = {
     'profile_name',
     'profile_email',
     'profile_gender',
@@ -38,8 +48,11 @@ class SyncFeatureExtensions {
     'profile_birth',
     'avatar_index',
     'avatar_custom',
-    // Portable Shield configuration. Biometric enrollment, failed attempts
-    // and the local security log stay device-local.
+  };
+
+  /// Only portable Shield configuration belongs to shield_private.
+  /// Biometric enrollment, failed attempts and security log remain local.
+  static const Set<String> _shieldKeys = {
     'shield_hash',
     'shield_salt',
     'shield_iterations',
@@ -52,18 +65,38 @@ class SyncFeatureExtensions {
   static bool _registered = false;
   static bool _rebinding = false;
   static Future<void>? _rebindFuture;
+  static int _rebindRequestGeneration = 0;
   static String? _boundEmployeeId;
+  static String? _boundAuthUserId;
   static StreamSubscription<BoxEvent>? _settingsSub;
   static Timer? _avatarProjection;
 
   static String _safe(String raw) =>
       raw.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
 
-  static String profileBoxName([String? employeeId]) =>
-      '${_profileBoxPrefix}_${_safe(employeeId ?? TeamService.current?.id ?? 'anonymous')}';
+  static String shieldBoxName([String? authUserId]) =>
+      SyncAccountScope.forUser(
+        _shieldBoxPrefix,
+        authUserId ?? SyncAccountScope.currentUserId,
+      );
 
-  static String vaultBoxName([String? employeeId]) =>
-      '${_vaultBoxPrefix}_${_safe(employeeId ?? TeamService.current?.id ?? 'anonymous')}';
+  /// Temporary source-compatibility alias for the old audit extension.
+  /// The box now contains Shield only; profile data belongs to ProfileService.
+  @Deprecated('Use shieldBoxName; profile now has its own canonical box')
+  static String profileBoxName([String? authUserId]) =>
+      shieldBoxName(authUserId);
+
+  static String vaultBoxName([String? authUserId]) =>
+      SyncAccountScope.forUser(
+        _vaultBoxPrefix,
+        authUserId ?? SyncAccountScope.currentUserId,
+      );
+
+  static String _legacyPrivateBoxName(String employeeId) =>
+      '${_shieldBoxPrefix}_${_safe(employeeId)}';
+
+  static String _legacyVaultBoxName(String employeeId) =>
+      '${_vaultBoxPrefix}_${_safe(employeeId)}';
 
   static String privateRecordId(String key, [String? employeeId]) =>
       '${_safe(employeeId ?? TeamService.current?.id ?? 'anonymous')}::$key';
@@ -81,14 +114,8 @@ class SyncFeatureExtensions {
   static Future<void> install() async {
     if (!_registered) {
       _registered = true;
-      if (SyncCodec.byName('roadmap_state') == null) {
-        SyncCodec.collections.add(_RoadmapStateSync());
-      }
-      if (SyncCodec.byName('crm_state') == null) {
-        SyncCodec.collections.add(_CrmStateSync());
-      }
-      if (SyncCodec.byName('profile_private') == null) {
-        SyncCodec.collections.add(_ProfilePrivateSync());
+      if (SyncCodec.byName('shield_private') == null) {
+        SyncCodec.collections.add(_ShieldPrivateSync());
       }
       if (SyncCodec.byName('vault_private') == null) {
         SyncCodec.collections.add(_VaultPrivateSync());
@@ -98,20 +125,34 @@ class SyncFeatureExtensions {
 
     await _bind(allowLegacy: true);
     _settingsSub ??= Hive.box<dynamic>(_settingsBox).watch().listen(
-      (event) => unawaited(_mirrorSetting(event)),
-    );
+          (event) => unawaited(_mirrorSetting(event)),
+        );
+  }
+
+  static bool _bindingMatchesCurrent() {
+    final authUserId = SyncAccountScope.currentUserId;
+    final employeeId = authUserId == 'anonymous' ? null : TeamService.current?.id;
+    return _boundEmployeeId == employeeId && _boundAuthUserId == authUserId;
   }
 
   static void _onTeamRevision() {
-    if (_rebinding || TeamService.current?.id == _boundEmployeeId) return;
-    unawaited(rebindCurrentAccountAndSync());
+    if (_bindingMatchesCurrent()) return;
+    _requestRebind();
   }
 
-  /// Serializes account switches so the login screen and TeamService listener
-  /// cannot start two sync engines against different private boxes.
+  static void _requestRebind() {
+    _rebindRequestGeneration++;
+    unawaited(_ensureRebindWorker());
+  }
+
   static Future<void> rebindCurrentAccountAndSync() {
+    _rebindRequestGeneration++;
+    return _ensureRebindWorker();
+  }
+
+  static Future<void> _ensureRebindWorker() {
     if (_rebindFuture case final running?) return running;
-    final future = _performRebind();
+    final future = _drainRebindRequests();
     _rebindFuture = future;
     unawaited(future.then<void>(
       (_) {
@@ -124,91 +165,184 @@ class SyncFeatureExtensions {
     return future;
   }
 
-  static Future<void> _performRebind() async {
+  static Future<void> _drainRebindRequests() async {
     _rebinding = true;
     try {
-      SyncAuto.stop(force: true);
-      await SyncEngine.reset();
-      await _bind(allowLegacy: false);
-      if (TeamService.current != null && SyncEndpoint.isConnected) {
-        await SyncEngine.runOnLaunch();
-        SyncAuto.start();
+      while (true) {
+        final handledGeneration = _rebindRequestGeneration;
+        await _performRebindPass();
+        if (handledGeneration == _rebindRequestGeneration &&
+            _bindingMatchesCurrent()) {
+          break;
+        }
       }
     } finally {
       _rebinding = false;
     }
   }
 
-  static String _marker(String key, String employeeId) =>
-      '$key.account.${_safe(employeeId)}';
+  static Future<void> _performRebindPass() async {
+    final targetEmployeeId = TeamService.current?.id;
+    final targetAuthUserId = SyncAccountScope.currentUserId;
 
-  static Future<void> _stashMarkers(Box<dynamic> settings, String id) async {
-    for (final key in const [_lastRunKey, _seededKey]) {
-      final value = settings.get(key);
-      if (value != null) await settings.put(_marker(key, id), value);
+    SyncAuto.stop(force: true);
+    await SyncEngine.reset();
+
+    if (TeamService.current?.id != targetEmployeeId ||
+        SyncAccountScope.currentUserId != targetAuthUserId) {
+      return;
     }
-  }
 
-  static Future<void> _restoreMarkers(
-    Box<dynamic> settings,
-    String id, {
-    required bool allowLegacy,
-  }) async {
-    for (final key in const [_lastRunKey, _seededKey]) {
-      final scoped = settings.get(_marker(key, id));
-      if (scoped != null) {
-        await settings.put(key, scoped);
-      } else if (allowLegacy && settings.get(key) != null) {
-        await settings.put(_marker(key, id), settings.get(key));
-      } else {
-        await settings.delete(key);
+    await _bind(allowLegacy: false);
+
+    if (TeamService.current?.id != targetEmployeeId ||
+        SyncAccountScope.currentUserId != targetAuthUserId ||
+        !_bindingMatchesCurrent()) {
+      return;
+    }
+
+    if (TeamService.current != null && SyncEndpoint.isConnected) {
+      await SyncEngine.runOnLaunch();
+      if (TeamService.current?.id == targetEmployeeId &&
+          SyncAccountScope.currentUserId == targetAuthUserId &&
+          _bindingMatchesCurrent() &&
+          SyncEndpoint.isConnected) {
+        SyncAuto.start();
       }
     }
   }
 
-  static Future<void> _bind({required bool allowLegacy}) async {
-    final current = TeamService.current;
-    final id = current?.id;
-    final settings = Hive.box<dynamic>(_settingsBox);
-    final previousOwner = settings.get(_profileOwnerKey);
+  static Future<void> _migrateLegacyPrivateBox(
+    String legacyName,
+    Box<dynamic> target,
+  ) async {
+    if (legacyName == target.name) return;
+    final legacy = await _open(legacyName);
+    if (legacy.isEmpty) return;
 
-    if (id == null || id.isEmpty) {
-      final previous = _boundEmployeeId ??
-          (previousOwner is String && previousOwner.isNotEmpty
-              ? previousOwner
-              : null);
-      if (previous != null) await _stashMarkers(settings, previous);
-      await settings.delete(_lastRunKey);
-      await settings.delete(_seededKey);
+    if (target.isEmpty) {
+      final copy = <dynamic, dynamic>{};
+      for (final key in legacy.keys) {
+        copy[key] = legacy.get(key);
+      }
+      if (copy.isNotEmpty) await target.putAll(copy);
+    }
+    await legacy.clear();
+  }
+
+  static Future<void> _migrateEmbeddedLegacyProfile(Box<dynamic> oldPrivate) async {
+    final hasLegacy = _legacyProfileKeys.any(oldPrivate.containsKey);
+    if (!hasLegacy) return;
+
+    final canonical = await ProfileService.read();
+    if (canonical.isNotEmpty) return;
+
+    String text(String key) => '${oldPrivate.get(key) ?? ''}'.trim();
+    final birthText = text('profile_birth');
+    final rawAvatar = oldPrivate.get('avatar_index');
+    final avatarIndex =
+        rawAvatar is num ? rawAvatar.toInt() : int.tryParse('$rawAvatar') ?? 0;
+    final rawPhoto = oldPrivate.get('avatar_custom');
+    Uint8List? photo;
+    if (rawPhoto is Uint8List) {
+      photo = rawPhoto;
+    } else if (rawPhoto is List<int>) {
+      photo = Uint8List.fromList(rawPhoto);
+    }
+    if (photo != null && photo.length > ProfileService.maxPhotoBytes) {
+      photo = null;
+    }
+
+    final name = text('profile_name');
+    final email = text('profile_email');
+    final gender = text('profile_gender');
+    final country = text('profile_country');
+    final birth = DateTime.tryParse(birthText);
+    final meaningful = name.isNotEmpty ||
+        email.isNotEmpty ||
+        gender.isNotEmpty ||
+        country.isNotEmpty ||
+        birth != null ||
+        avatarIndex != 0 ||
+        photo != null;
+    if (!meaningful) return;
+
+    await ProfileService.write(
+      name: name,
+      email: email,
+      gender: gender,
+      country: country,
+      birth: birth,
+      avatarIndex: avatarIndex,
+      photo: photo,
+    );
+  }
+
+  static Future<void> _keepShieldOnly(Box<dynamic> shield) async {
+    for (final rawKey in shield.keys.toList()) {
+      final key = '$rawKey';
+      if (!_shieldKeys.contains(key)) await shield.delete(rawKey);
+    }
+  }
+
+  static Future<void> _bind({required bool allowLegacy}) async {
+    final id = TeamService.current?.id;
+    final authUserId = SyncAccountScope.currentUserId;
+    final settings = Hive.box<dynamic>(_settingsBox);
+    final previousAuthOwner = settings.get(_privateSettingsAuthOwnerKey);
+    final previousLegacyEmployee = settings.get(_legacySettingsOwnerKey);
+
+    if (id == null || id.isEmpty || authUserId == 'anonymous') {
       _boundEmployeeId = null;
+      _boundAuthUserId = authUserId;
       SecretVault.lock();
       return;
     }
-    if (_boundEmployeeId == id) return;
+    if (_boundEmployeeId == id && _boundAuthUserId == authUserId) return;
 
-    if (_boundEmployeeId case final previous? when previous != id) {
-      await _stashMarkers(settings, previous);
-    }
-    final migrateLegacy = allowLegacy &&
+    // Existing auth marker is authoritative. The old employee marker is used
+    // only once when upgrading from a version that did not know auth-user
+    // scoping. Therefore reissuing a new PocketBase user for the SAME employee
+    // cannot import the old user's Shield/Vault settings after an app restart.
+    final migrateLegacySettings = allowLegacy &&
         _boundEmployeeId == null &&
-        (previousOwner == null || '$previousOwner' == id);
-    await _restoreMarkers(settings, id, allowLegacy: migrateLegacy);
+        (previousAuthOwner == authUserId ||
+            (previousAuthOwner == null &&
+                (previousLegacyEmployee == null ||
+                    '$previousLegacyEmployee' == id)));
 
-    final profile = await _open(profileBoxName(id));
-    final vault = await _open(vaultBoxName(id));
-    if (migrateLegacy && profile.isEmpty) {
-      await _seedProfile(settings, profile);
-    } else {
-      await _restoreProfile(settings, profile, current!);
+    final shield = await _open(shieldBoxName(authUserId));
+    final vault = await _open(vaultBoxName(authUserId));
+    await _migrateLegacyPrivateBox(_legacyPrivateBoxName(id), shield);
+    await _migrateLegacyPrivateBox(_legacyVaultBoxName(id), vault);
+    await _migrateEmbeddedLegacyProfile(shield);
+    await _keepShieldOnly(shield);
+
+    if (TeamService.current?.id != id ||
+        SyncAccountScope.currentUserId != authUserId) {
+      return;
     }
-    if (migrateLegacy && vault.isEmpty) {
+
+    if (migrateLegacySettings && shield.isEmpty) {
+      await _seedShield(settings, shield);
+    } else {
+      await _restoreShield(settings, shield);
+    }
+    if (migrateLegacySettings && vault.isEmpty) {
       await _seedVault(settings, vault);
     } else {
       await _restoreVault(settings, vault);
     }
 
-    await settings.put(_profileOwnerKey, id);
+    if (TeamService.current?.id != id ||
+        SyncAccountScope.currentUserId != authUserId) {
+      return;
+    }
+
+    await settings.put(_legacySettingsOwnerKey, id);
+    await settings.put(_privateSettingsAuthOwnerKey, authUserId);
     _boundEmployeeId = id;
+    _boundAuthUserId = authUserId;
     await _projectAvatarToEmployee();
   }
 
@@ -216,36 +350,29 @@ class SyncFeatureExtensions {
       ? Future.value(Hive.box<dynamic>(name))
       : Hive.openBox<dynamic>(name);
 
-  static Future<void> _seedProfile(
+  static Future<void> _seedShield(
     Box<dynamic> settings,
-    Box<dynamic> profile,
+    Box<dynamic> shield,
   ) async {
-    for (final key in _profileKeys) {
+    for (final key in _shieldKeys) {
       if (!settings.containsKey(key)) continue;
-      var value = settings.get(key);
-      if (key == 'avatar_custom') value = await _normalizeAvatar(value);
-      if (value != null) await profile.put(key, value);
+      final value = settings.get(key);
+      if (value != null) await shield.put(key, value);
     }
   }
 
-  static Future<void> _restoreProfile(
+  static Future<void> _restoreShield(
     Box<dynamic> settings,
-    Box<dynamic> profile,
-    EmployeeModel current,
+    Box<dynamic> shield,
   ) async {
-    for (final key in _profileKeys) {
+    for (final key in _shieldKeys) {
       await settings.delete(key);
     }
-    if (profile.isEmpty) {
-      await profile.put('profile_name', current.fullName);
-      await profile.put('profile_email', current.email);
-      await profile.put('avatar_index', current.avatarIndex);
-      final photo = await _normalizeAvatar(current.photo);
-      if (photo != null) await profile.put('avatar_custom', photo);
-    }
-    for (final rawKey in profile.keys) {
+    for (final rawKey in shield.keys) {
       final key = '$rawKey';
-      if (_profileKeys.contains(key)) await settings.put(key, profile.get(rawKey));
+      if (_shieldKeys.contains(key)) {
+        await settings.put(key, shield.get(rawKey));
+      }
     }
     ShieldService.revision.value++;
   }
@@ -276,30 +403,22 @@ class SyncFeatureExtensions {
   static Future<void> _mirrorSetting(BoxEvent event) async {
     if (_rebinding || TeamService.current == null) return;
     final key = '${event.key}';
-    if (key == _profileOwnerKey) return;
+    if (key == _legacySettingsOwnerKey || key == _privateSettingsAuthOwnerKey) {
+      return;
+    }
 
-    if (_profileKeys.contains(key)) {
-      final box = await _open(profileBoxName());
+    if (_shieldKeys.contains(key)) {
+      final box = await _open(shieldBoxName());
       if (event.deleted) {
         await box.delete(key);
-      } else {
-        var value = event.value;
-        if (key == 'avatar_custom') {
-          value = await _normalizeAvatar(value);
-          if (value == null) {
-            await box.delete(key);
-            await Hive.box<dynamic>(_settingsBox).delete(key);
-            _scheduleAvatarProjection();
-            return;
-          }
-          final settings = Hive.box<dynamic>(_settingsBox);
-          if (!_same(settings.get(key), value)) await settings.put(key, value);
-        }
-        if (!_same(box.get(key), value)) await box.put(key, value);
+      } else if (!_same(box.get(key), event.value)) {
+        await box.put(key, event.value);
       }
-      if (key == 'avatar_index' || key == 'avatar_custom') {
-        _scheduleAvatarProjection();
-      }
+      return;
+    }
+
+    if (key == 'avatar_index' || key == 'avatar_custom') {
+      _scheduleAvatarProjection();
       return;
     }
 
@@ -348,7 +467,8 @@ class SyncFeatureExtensions {
       try {
         final codec = await ui.instantiateImageCodec(bytes, targetWidth: width);
         final frame = await codec.getNextFrame();
-        final data = await frame.image.toByteData(format: ui.ImageByteFormat.png);
+        final data =
+            await frame.image.toByteData(format: ui.ImageByteFormat.png);
         frame.image.dispose();
         codec.dispose();
         if (data == null) continue;
@@ -420,35 +540,22 @@ abstract class _KeyedStateSync extends SyncCollection<dynamic> {
   }
 }
 
-class _RoadmapStateSync extends _KeyedStateSync {
+class _ShieldPrivateSync extends _KeyedStateSync {
   @override
-  String get name => 'roadmap_state';
-  @override
-  String get boxName => RoadmapService.boxName;
-  @override
-  Set<String> get keys => const {'projects_v1', 'items_v1'};
-  @override
-  void notifyChanged() => RoadmapService.revision.value++;
-}
+  String get name => 'shield_private';
 
-class _CrmStateSync extends _KeyedStateSync {
   @override
-  String get name => 'crm_state';
-  @override
-  String get boxName => CrmService.boxName;
-  @override
-  Set<String> get keys => const {'clients_v1', 'deals_v1', 'interactions_v1'};
-  @override
-  void notifyChanged() => CrmService.revision.value++;
-}
+  String get boxName => SyncFeatureExtensions.shieldBoxName();
 
-class _ProfilePrivateSync extends _KeyedStateSync {
   @override
-  String get name => 'profile_private';
+  Set<String> get keys => SyncFeatureExtensions._shieldKeys;
+
   @override
-  String get boxName => SyncFeatureExtensions.profileBoxName();
+  bool watchesBoxKey(Object? key) => keys.contains('$key');
+
   @override
-  Set<String> get keys => SyncFeatureExtensions._profileKeys;
+  String syncIdForBoxKey(Object? key) =>
+      SyncFeatureExtensions.privateRecordId('$key');
 
   @override
   String idOf(dynamic value) => value is _KeyedValue
@@ -462,7 +569,8 @@ class _ProfilePrivateSync extends _KeyedStateSync {
     return {
       for (final key in keys)
         if (b.containsKey(key))
-          SyncFeatureExtensions.privateRecordId(key): _KeyedValue(key, b.get(key)),
+          SyncFeatureExtensions.privateRecordId(key):
+              _KeyedValue(key, b.get(key)),
     };
   }
 
@@ -474,9 +582,6 @@ class _ProfilePrivateSync extends _KeyedStateSync {
     await b.put(incoming.key, incoming.value);
     await Hive.box<dynamic>(SyncFeatureExtensions._settingsBox)
         .put(incoming.key, incoming.value);
-    if (incoming.key == 'avatar_index' || incoming.key == 'avatar_custom') {
-      SyncFeatureExtensions._scheduleAvatarProjection();
-    }
     ShieldService.revision.value++;
     return true;
   }
@@ -486,9 +591,6 @@ class _ProfilePrivateSync extends _KeyedStateSync {
     final key = SyncFeatureExtensions.privateKeyFromRecordId(id);
     await box()?.delete(key);
     await Hive.box<dynamic>(SyncFeatureExtensions._settingsBox).delete(key);
-    if (key == 'avatar_index' || key == 'avatar_custom') {
-      SyncFeatureExtensions._scheduleAvatarProjection();
-    }
     ShieldService.revision.value++;
   }
 }
@@ -496,8 +598,17 @@ class _ProfilePrivateSync extends _KeyedStateSync {
 class _VaultPrivateSync extends SyncCollection<dynamic> {
   @override
   String get name => 'vault_private';
+
   @override
   String get boxName => SyncFeatureExtensions.vaultBoxName();
+
+  @override
+  bool watchesBoxKey(Object? key) => SyncFeatureExtensions._vaultKey(key);
+
+  @override
+  String syncIdForBoxKey(Object? key) =>
+      SyncFeatureExtensions.privateRecordId('$key');
+
   @override
   String idOf(dynamic value) => value is _KeyedValue
       ? SyncFeatureExtensions.privateRecordId(value.key)
@@ -511,7 +622,8 @@ class _VaultPrivateSync extends SyncCollection<dynamic> {
     for (final rawKey in b.keys) {
       final key = '$rawKey';
       if (!SyncFeatureExtensions._vaultKey(key)) continue;
-      out[SyncFeatureExtensions.privateRecordId(key)] = _KeyedValue(key, b.get(rawKey));
+      out[SyncFeatureExtensions.privateRecordId(key)] =
+          _KeyedValue(key, b.get(rawKey));
     }
     return out;
   }
@@ -559,9 +671,12 @@ dynamic _wire(dynamic value) {
 }
 
 dynamic _unwire(dynamic value) {
-  if (value is Map && value.length == 1 && value['__wesios_bytes_v1'] is String) {
+  if (value is Map &&
+      value.length == 1 &&
+      value['__wesios_bytes_v1'] is String) {
     try {
-      return Uint8List.fromList(base64Decode(value['__wesios_bytes_v1'] as String));
+      return Uint8List.fromList(
+          base64Decode(value['__wesios_bytes_v1'] as String));
     } catch (_) {
       return null;
     }

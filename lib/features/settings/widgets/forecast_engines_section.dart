@@ -4,6 +4,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/localization/wesi_locale.dart';
 import '../../treasury/services/engine_install_service.dart';
 import '../../treasury/services/forecast_engine_kind.dart';
+import 'wesi_media_engines_section.dart';
 
 /// Раздел настроек «Модели прогноза»: статус и (пере)установка Prophet/
 /// SARIMAX, плюс тумблер видимости плавающего индикатора загрузки.
@@ -51,9 +52,6 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
     for (final kind in _engines) {
       result[kind] = await EngineInstallService.isInstalled(kind);
     }
-    // Настройки — то место, куда человек приходит осознанно проверить
-    // состояние движков, поэтому манифест здесь запрашиваем принудительно,
-    // не полагаясь на 6-часовой кэш.
     await EngineInstallService.fetchManifest(force: true);
     if (mounted) setState(() => _installed = result);
   }
@@ -65,6 +63,19 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
       children: [
         ..._engines.map(_engineTile),
         if (Platform.isWindows) _overlayToggleTile(),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Text(
+            WesiLocale.isRussian ? 'Модели Wesi AI' : 'Wesi AI models',
+            style: TextStyle(
+              color: AppTheme.textPrimary,
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const WesiMediaEnginesSection(),
       ],
     );
   }
@@ -103,10 +114,6 @@ class _ForecastEnginesSectionState extends State<ForecastEnginesSection> {
           ? '${'engine_update_available'.w}: ${release!.version}$versionPart'
           : '${'engine_installed'.w}$versionPart · ~$sizeMb $unit';
     } else if (failed) {
-      // Раньше любая неудача, кроме «не Windows», превращалась в «не
-      // установлен» — то есть человек нажимал «Скачать», ничего не
-      // происходило, и надпись возвращалась к прежней. Причина обязана быть
-      // видна: половина причин устраняется в одно действие.
       subtitle = switch (p?.error) {
         'windows_only' => 'engine_windows_only'.w,
         'github_sign_in' => 'engine_needs_github'.w,

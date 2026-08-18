@@ -1,0 +1,247 @@
+name: Diagnose AI Tools and Sync Structure Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-ai-tools-sync-structure-once.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Repository hook hashes
+        run: |
+          set -euo pipefail
+          for f in \
+            server/pb_hooks/wesi_ai_finance_tools.js \
+            server/pb_hooks/wesi_ai_finance_policy.js \
+            server/pb_hooks/wesi_ai_horizon_tools.js \
+            server/pb_hooks/wesi_ai_horizon_policy.js \
+            server/pb_hooks/wesi_sync_read.pb.js \
+            server/pb_hooks/wesi_sync_extra_runtime.js; do
+            sha256sum "$f"
+          done
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "$KEY"; test -n "$HOST"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_diag
+          chmod 600 ~/.ssh/id_diag
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Inspect production hooks, structural data and recent routes
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/id_diag -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" 'python3 -' <<'PY'
+          import hashlib, json, sqlite3
+          from collections import defaultdict
+          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+
+          HOOK = Path('/opt/pocketbase/pb_hooks')
+          FILES = [
+              'wesi_ai_finance_tools.js',
+              'wesi_ai_finance_policy.js',
+              'wesi_ai_horizon_tools.js',
+              'wesi_ai_horizon_policy.js',
+              'wesi_sync_read.pb.js',
+              'wesi_sync_extra_runtime.js',
+          ]
+          print('=== PROD_HOOK_HASHES ===')
+          for name in FILES:
+              p = HOOK / name
+              print(name, hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else 'MISSING')
+
+          def parse_payload(raw):
+              if isinstance(raw, dict): return raw
+              if not isinstance(raw, str) or not raw.strip(): return {}
+              try:
+                  value = json.loads(raw)
+                  return value if isinstance(value, dict) else {}
+              except Exception:
+                  return {}
+
+          def owner_hash(value):
+              return hashlib.sha256(str(value).encode()).hexdigest()[:12]
+
+          def bucket(n):
+              if n <= 0: return '0'
+              if n == 1: return '1'
+              if n <= 5: return '2-5'
+              if n <= 20: return '6-20'
+              return '21+'
+
+          db = None
+          con = None
+          for candidate in [Path('/opt/pocketbase/pb_data/data.db'), Path('/opt/pocketbase/pb_data/auxiliary.db')]:
+              if not candidate.exists(): continue
+              c = sqlite3.connect(f'file:{candidate}?mode=ro', uri=True)
+              tables = {r[0] for r in c.execute("select name from sqlite_master where type='table'")}
+              if 'wesios_records' in tables:
+                  db, con = candidate, c
+                  break
+              c.close()
+          if con is None:
+              raise SystemExit('wesios_records table not found')
+          con.row_factory = sqlite3.Row
+          print('DATA_DB=', db)
+
+          rows = list(con.execute('select owner,coll,rid,payload,stamp,deleted from wesios_records'))
+          decoded = []
+          for r in rows:
+              decoded.append({
+                  'owner': str(r['owner'] or ''),
+                  'coll': str(r['coll'] or ''),
+                  'rid': str(r['rid'] or ''),
+                  'payload': parse_payload(r['payload']),
+                  'stamp': str(r['stamp'] or ''),
+                  'deleted': bool(r['deleted']),
+              })
+
+          latest_tool = None
+          for r in decoded:
+              if r['coll'] != 'critical_audit' or r['deleted']: continue
+              p = r['payload']
+              if p.get('event') != 'wesi_ai_tool': continue
+              after = p.get('after') if isinstance(p.get('after'), dict) else {}
+              tool = str(after.get('tool') or '')
+              if tool not in ('finance_summary','horizon_snapshot'): continue
+              stamp = str(p.get('timestamp') or r['stamp'] or '')
+              candidate = (stamp, r['owner'], tool, str(p.get('organizationId') or ''), bool(after.get('ok')), str(p.get('reason') or ''))
+              if latest_tool is None or candidate[0] > latest_tool[0]: latest_tool = candidate
+
+          print('=== LATEST_TOOL_SCOPE ===')
+          if latest_tool is None:
+              print('LATEST_TOOL=NONE')
+              target_owner = ''
+          else:
+              stamp, target_owner, tool, org_id, ok, reason = latest_tool
+              print('LATEST_TOOL_AT=', stamp)
+              print('LATEST_TOOL_OWNER_HASH=', owner_hash(target_owner))
+              print('LATEST_TOOL_NAME=', tool)
+              print('LATEST_TOOL_ORG=', org_id)
+              print('LATEST_TOOL_OK=', ok)
+              print('LATEST_TOOL_REASON=', reason or 'none')
+
+          if target_owner:
+              active = [r for r in decoded if r['owner'] == target_owner and not r['deleted']]
+              by = defaultdict(list)
+              for r in active: by[r['coll']].append(r)
+
+              orgs = {}
+              for r in by['organizations']:
+                  p = r['payload']; oid = str(p.get('id') or r['rid'])
+                  if oid: orgs[oid] = p
+              employees = {str(r['payload'].get('id') or r['rid']) for r in by['employees']}
+              accounts = {}
+              for r in by['accounts']:
+                  p = r['payload']; aid = str(p.get('id') or r['rid'])
+                  if aid: accounts[aid] = p
+
+              def org_of(p): return str(p.get('organizationId') or p.get('orgId') or 'org_wesi_inc')
+              def main_account(org): return 'main' if org == 'org_wesi_inc' else 'main:' + org
+
+              tx = by['transactions']
+              root_tx = [r for r in tx if org_of(r['payload']) == 'org_wesi_inc']
+              nonroot_tx = [r for r in tx if org_of(r['payload']) != 'org_wesi_inc']
+              root_acc = [r for r in by['accounts'] if org_of(r['payload']) == 'org_wesi_inc']
+              nonroot_acc = [r for r in by['accounts'] if org_of(r['payload']) != 'org_wesi_inc']
+
+              bad_org_parent = 0
+              for oid,p in orgs.items():
+                  parent = p.get('parentId')
+                  if parent not in (None,'') and str(parent) not in orgs: bad_org_parent += 1
+
+              bad_account_org = 0
+              for aid,p in accounts.items():
+                  if org_of(p) not in orgs: bad_account_org += 1
+
+              bad_tx_org = bad_tx_account = bad_tx_account_org = bad_tx_employee = 0
+              for r in tx:
+                  p = r['payload']; oid = org_of(p)
+                  aid = str(p.get('accountId') or main_account(oid))
+                  if oid not in orgs: bad_tx_org += 1
+                  acc = accounts.get(aid)
+                  if acc is None: bad_tx_account += 1
+                  elif org_of(acc) != oid: bad_tx_account_org += 1
+                  emp = p.get('ownerEmployeeId')
+                  if emp not in (None,'') and str(emp) not in employees: bad_tx_employee += 1
+
+              bad_task_org = bad_task_employee = 0
+              for r in by['tasks']:
+                  p = r['payload']; oid = org_of(p)
+                  if oid not in orgs: bad_task_org += 1
+                  for key in ('assignee','responsibleEmployeeId'):
+                      value = p.get(key)
+                      if value not in (None,'') and str(value) not in employees:
+                          bad_task_employee += 1; break
+
+              bad_grant = 0
+              for r in by['organization_grants']:
+                  p = r['payload']
+                  if str(p.get('employeeId') or '') not in employees or str(p.get('organizationId') or '') not in orgs:
+                      bad_grant += 1
+
+              print('=== TARGET_OWNER_STRUCTURE ===')
+              print('ROOT_ORG_PRESENT=', 'org_wesi_inc' in orgs)
+              print('ORGANIZATIONS=', bucket(len(orgs)))
+              print('ACCOUNTS=', bucket(len(accounts)), 'ROOT=', bucket(len(root_acc)), 'NONROOT=', bucket(len(nonroot_acc)))
+              print('TRANSACTIONS=', bucket(len(tx)), 'ROOT=', bucket(len(root_tx)), 'NONROOT=', bucket(len(nonroot_tx)))
+              print('EMPLOYEES=', bucket(len(employees)))
+              print('BROKEN_ORG_PARENT=', bucket(bad_org_parent))
+              print('BROKEN_ACCOUNT_ORG=', bucket(bad_account_org))
+              print('BROKEN_TX_ORG=', bucket(bad_tx_org))
+              print('BROKEN_TX_ACCOUNT=', bucket(bad_tx_account))
+              print('BROKEN_TX_ACCOUNT_ORG=', bucket(bad_tx_account_org))
+              print('BROKEN_TX_EMPLOYEE=', bucket(bad_tx_employee))
+              print('BROKEN_TASK_ORG=', bucket(bad_task_org))
+              print('BROKEN_TASK_EMPLOYEE=', bucket(bad_task_employee))
+              print('BROKEN_GRANT_DEPENDENCY=', bucket(bad_grant))
+              for coll in ['roadmap_projects','roadmap_items','crm_clients','crm_deals','crm_interactions','profile','sandbox_transactions','what_if_presets','audio_extras','finance_categories','team_skills','time_center','horizon_predictions','horizon_learning','horizon_competition','horizon_contracts','task_ai_memory']:
+                  print('COLL', coll, bucket(len(by[coll])))
+
+          # Recent request status only; never print request bodies/headers.
+          print('=== RECENT_SYNC_AI_HTTP ===')
+          log_con = None
+          for candidate in [Path('/opt/pocketbase/pb_data/auxiliary.db'), Path('/opt/pocketbase/pb_data/data.db')]:
+              if not candidate.exists(): continue
+              lc = sqlite3.connect(f'file:{candidate}?mode=ro', uri=True)
+              lc.row_factory = sqlite3.Row
+              tables = {r[0] for r in lc.execute("select name from sqlite_master where type='table'")}
+              if '_logs' in tables:
+                  log_con = lc; break
+              lc.close()
+          if log_con is not None:
+              cutoff = (datetime.now(timezone.utc) - timedelta(hours=2)).strftime('%Y-%m-%d %H:%M:%S')
+              cols = {r[1] for r in log_con.execute('pragma table_info(_logs)')}
+              if {'created','data'}.issubset(cols):
+                  for row in log_con.execute('select created,data from _logs where created >= ? order by created desc limit 800', (cutoff,)):
+                      try: d = json.loads(row['data'] or '{}')
+                      except Exception: continue
+                      url = str(d.get('url') or '')
+                      if '/api/wesi/sync/' not in url and '/api/wesi/ai/' not in url: continue
+                      print('HTTP', row['created'], str(d.get('method') or ''), url, d.get('status'), str(d.get('error') or '')[:160])
+              log_con.close()
+          con.close()
+          PY

@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
 import '../../../core/localization/wesi_locale.dart';
+import '../../../core/sync/sync_account_scope.dart';
 import '../models/time_center_models.dart';
 import 'time_notification_scheduler.dart';
 
@@ -9,7 +10,8 @@ class TimeCenterService {
   TimeCenterService({TimeNotificationScheduler? scheduler})
       : _scheduler = scheduler ?? TimeNotificationScheduler.instance;
 
-  static const String boxName = 'wesios_time_center';
+  static const String baseBoxName = 'wesios_time_center';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
   static const String _alarmsKey = 'alarms';
   static const String _remindersKey = 'reminders';
   static const String _timerKey = 'timer';
@@ -19,9 +21,16 @@ class TimeCenterService {
 
   final TimeNotificationScheduler _scheduler;
   Box<dynamic>? _box;
+  String? _openedBoxName;
 
   Future<Box<dynamic>> get _store async {
-    _box ??= await Hive.openBox<dynamic>(boxName);
+    final currentName = boxName;
+    if (_box?.isOpen == true && _openedBoxName == currentName) return _box!;
+    if (_box?.isOpen == true && _openedBoxName != currentName) {
+      await _box!.close();
+    }
+    _box = await Hive.openBox<dynamic>(currentName);
+    _openedBoxName = currentName;
     return _box!;
   }
 

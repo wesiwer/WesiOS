@@ -2,6 +2,7 @@ import 'calendar_days.dart';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import '../../../core/sync/sync_account_scope.dart';
 import '../models/transaction_model.dart';
 import 'forecast_engine.dart';
 
@@ -156,14 +157,25 @@ class WhatIfPreset {
 /// конфигурация, а не бизнес-модель, и его форма будет меняться. JSON
 /// переживает добавление поля без миграции адаптера и без нового typeId.
 class WhatIfStore {
-  static const String _boxName = 'wesios_whatif';
+  static const String baseBoxName = 'wesios_whatif';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
 
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
 
   static Box? _box;
+  static String? _openedBoxName;
 
   static Future<Box> get _presetsBox async {
-    _box ??= await Hive.openBox(_boxName);
+    final currentName = boxName;
+    if (_box?.isOpen == true && _openedBoxName == currentName) return _box!;
+
+    // Static store живёт столько же, сколько процесс. После смены auth user
+    // обязательно отцепляемся от box предыдущего сотрудника.
+    if (_box?.isOpen == true && _openedBoxName != currentName) {
+      await _box!.close();
+    }
+    _box = await Hive.openBox(currentName);
+    _openedBoxName = currentName;
     return _box!;
   }
 

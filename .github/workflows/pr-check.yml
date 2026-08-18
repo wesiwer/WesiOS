@@ -22,12 +22,29 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for file in server/pb_hooks/*.js server/employee-portal/*.js server/wesi-ai-relay/*.mjs; do
+          for file in server/pb_hooks/*.js server/employee-portal/*.js server/wesi-ai-relay/*.mjs server/wesi-ai-stream/*.mjs; do
             [ -f "$file" ] || continue
             node --check "$file"
           done
+      - name: Validate Wesi AI deployment shell
+        shell: bash
+        run: |
+          set -euo pipefail
+          for file in server/wesi-ai-relay/*.sh server/wesi-ai-stream/*.sh; do
+            [ -f "$file" ] || continue
+            bash -n "$file"
+          done
+          test -s .github/workflows/deploy-wesi-ai.yml
+          test -s .github/workflows/deploy-wesi-ai-streaming.yml
+          test ! -e .github/workflows/deploy-wesi-ai-relay.yml
+          grep -q 'Deploy Wesi AI End-to-End' .github/workflows/deploy-wesi-ai.yml
+          grep -q 'Deploy Wesi AI Streaming' .github/workflows/deploy-wesi-ai-streaming.yml
+          grep -q 'configure-relay-https.sh' .github/workflows/deploy-wesi-ai.yml
+          grep -q 'GEMINI_API_KEY' .github/workflows/deploy-wesi-ai.yml
       - name: Test Wesi AI Relay
         run: node --test server/wesi-ai-relay/*.test.mjs
+      - name: Test Wesi AI Main streaming gateway
+        run: node --test server/wesi-ai-stream/*.test.mjs
       - name: Validate Wesi AI persona bundle
         shell: bash
         run: |

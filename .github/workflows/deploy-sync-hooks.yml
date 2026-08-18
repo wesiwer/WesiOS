@@ -1,0 +1,305 @@
+name: Deploy WesiOS Sync Hooks
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/pb_hooks/wesi_sync_data_access.js'
+      - 'server/pb_hooks/wesi_sync_data_access_contract_test.mjs'
+      - 'server/pb_hooks/wesi_sync_lww.js'
+      - 'server/pb_hooks/wesi_sync_lww_test.mjs'
+      - 'server/pb_hooks/wesi_sync_atomic.js'
+      - 'server/pb_hooks/wesi_sync_atomic_test.mjs'
+      - 'server/pb_hooks/wesi_sync_generic_policy.js'
+      - 'server/pb_hooks/wesi_sync_generic_policy_test.mjs'
+      - 'server/pb_hooks/wesi_sync_revision.js'
+      - 'server/pb_hooks/wesi_sync_revision.pb.js'
+      - 'server/pb_hooks/wesi_sync_revision_contract_test.mjs'
+      - 'server/pb_hooks/wesi_sync_revision_race_test.mjs'
+      - 'server/pb_hooks/wesi_sync_context.pb.js'
+      - 'server/pb_hooks/wesi_sync_read.pb.js'
+      - 'server/pb_hooks/wesi_sync_write.pb.js'
+      - 'server/pb_hooks/wesi_sync_extra.pb.js'
+      - 'server/pb_hooks/wesi_sync_extra_runtime.js'
+      - 'server/pb_hooks/wesi_sync_extra_contract_test.mjs'
+      - 'server/pb_hooks/wesi_sync_crm.pb.js'
+      - 'server/pb_hooks/wesi_sync_crm_runtime.js'
+      - 'server/pb_hooks/wesi_sync_crm_contract_test.mjs'
+      - 'server/pb_hooks/wesi_sync_files.pb.js'
+      - 'server/pb_hooks/wesi_sync_files_runtime.js'
+      - 'server/pb_hooks/wesi_sync_files_contract_test.mjs'
+      - 'server/pb_hooks/wesi_sync_unique_migration_test.mjs'
+      - 'server/pb_migrations/1787055000_wesios_records_unique_rid.js'
+      - 'server/verify-sync-db.py'
+      - '.github/workflows/deploy-sync-hooks.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesios-sync-hooks-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    environment:
+      name: employee-portal
+      url: https://api.wesi-inc.ru
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Validate sync hooks, runtime and schema contract
+        run: |
+          set -euo pipefail
+          for file in \
+            server/pb_hooks/wesi_sync_data_access.js \
+            server/pb_hooks/wesi_sync_lww.js \
+            server/pb_hooks/wesi_sync_atomic.js \
+            server/pb_hooks/wesi_sync_generic_policy.js \
+            server/pb_hooks/wesi_sync_revision.js \
+            server/pb_hooks/wesi_sync_revision.pb.js \
+            server/pb_hooks/wesi_sync_context.pb.js \
+            server/pb_hooks/wesi_sync_read.pb.js \
+            server/pb_hooks/wesi_sync_write.pb.js \
+            server/pb_hooks/wesi_sync_extra.pb.js \
+            server/pb_hooks/wesi_sync_extra_runtime.js \
+            server/pb_hooks/wesi_sync_crm.pb.js \
+            server/pb_hooks/wesi_sync_crm_runtime.js \
+            server/pb_hooks/wesi_sync_files.pb.js \
+            server/pb_hooks/wesi_sync_files_runtime.js \
+            server/pb_migrations/1787055000_wesios_records_unique_rid.js; do
+            test -s "$file"
+            node --check "$file"
+          done
+          python3 -m py_compile server/verify-sync-db.py
+          node --test \
+            server/pb_hooks/wesi_sync_data_access_contract_test.mjs \
+            server/pb_hooks/wesi_sync_lww_test.mjs \
+            server/pb_hooks/wesi_sync_atomic_test.mjs \
+            server/pb_hooks/wesi_sync_generic_policy_test.mjs \
+            server/pb_hooks/wesi_sync_revision_contract_test.mjs \
+            server/pb_hooks/wesi_sync_revision_race_test.mjs \
+            server/pb_hooks/wesi_sync_extra_contract_test.mjs \
+            server/pb_hooks/wesi_sync_crm_contract_test.mjs \
+            server/pb_hooks/wesi_sync_files_contract_test.mjs \
+            server/pb_hooks/wesi_sync_unique_migration_test.mjs
+          grep -q 'wesiSyncContext' server/pb_hooks/wesi_sync_context.pb.js
+          grep -q 'wesi_sync_data_access.js' server/pb_hooks/wesi_sync_context.pb.js
+          grep -q '/api/wesi/sync/revision' server/pb_hooks/wesi_sync_read.pb.js
+          grep -q '/api/wesi/sync/{collection}' server/pb_hooks/wesi_sync_read.pb.js
+          grep -q '/api/wesi/sync/{collection}' server/pb_hooks/wesi_sync_write.pb.js
+          grep -q 'wesi_sync_atomic.js' server/pb_hooks/wesi_sync_write.pb.js
+          grep -q 'wesi_sync_generic_policy.js' server/pb_hooks/wesi_sync_write.pb.js
+          grep -q '/api/wesi/sync/revision-v2' server/pb_hooks/wesi_sync_extra.pb.js
+          grep -q 'wesi_sync_extra_runtime.js' server/pb_hooks/wesi_sync_extra.pb.js
+          grep -q 'wesi_sync_data_access.js' server/pb_hooks/wesi_sync_extra_runtime.js
+          grep -q 'wesi_sync_atomic.js' server/pb_hooks/wesi_sync_extra_runtime.js
+          grep -q 'wesi_sync_revision.js' server/pb_hooks/wesi_sync_extra_runtime.js
+          grep -q '/api/wesi/sync/crm_clients' server/pb_hooks/wesi_sync_crm.pb.js
+          grep -q '/api/wesi/sync/crm_deals' server/pb_hooks/wesi_sync_crm.pb.js
+          grep -q '/api/wesi/sync/crm_interactions' server/pb_hooks/wesi_sync_crm.pb.js
+          grep -q 'wesi_sync_atomic.js' server/pb_hooks/wesi_sync_crm_runtime.js
+          grep -q 'authorize:' server/pb_hooks/wesi_sync_crm_runtime.js
+          grep -q '/api/wesi/sync/' server/pb_hooks/wesi_sync_files.pb.js
+          grep -q 'wesi_sync_atomic.js' server/pb_hooks/wesi_sync_files_runtime.js
+          grep -q 'authorize:' server/pb_hooks/wesi_sync_files_runtime.js
+          grep -q 'onRecordAfterCreateSuccess' server/pb_hooks/wesi_sync_revision.pb.js
+          grep -q 'onRecordAfterUpdateSuccess' server/pb_hooks/wesi_sync_revision.pb.js
+          grep -q 'idx_wesios_rid' server/pb_migrations/1787055000_wesios_records_unique_rid.js
+          grep -q 'collection.addIndex' server/pb_migrations/1787055000_wesios_records_unique_rid.js
+
+      - name: Check server secrets
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          [ -n "${HOST:-}" ] || { echo '::error::Нет WESI_SERVER_HOST'; exit 1; }
+          [ -n "${USER:-}" ] || { echo '::error::Нет WESI_SERVER_USER'; exit 1; }
+          [ -n "${KEY:-}" ] || { echo '::error::Нет WESI_SERVER_SSH_KEY'; exit 1; }
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Install sync runtime, hooks and migration atomically
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          CONFIGURED_HOOK_DIR: ${{ vars.WESI_PB_HOOK_DIR }}
+          CONFIGURED_MIGRATION_DIR: ${{ vars.WESI_PB_MIGRATION_DIR }}
+          CONFIGURED_DATA_DIR: ${{ vars.WESI_PB_DATA_DIR }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          REMOTE="/tmp/wesi-sync-hooks-$GITHUB_RUN_ID"
+          HOOK_DIR="${CONFIGURED_HOOK_DIR:-/opt/pocketbase/pb_hooks}"
+          MIGRATION_DIR="${CONFIGURED_MIGRATION_DIR:-/opt/pocketbase/pb_migrations}"
+          PB_DATA="${CONFIGURED_DATA_DIR:-/opt/pocketbase/pb_data}"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            server/pb_hooks/wesi_sync_data_access.js \
+            server/pb_hooks/wesi_sync_lww.js \
+            server/pb_hooks/wesi_sync_atomic.js \
+            server/pb_hooks/wesi_sync_generic_policy.js \
+            server/pb_hooks/wesi_sync_revision.js \
+            server/pb_hooks/wesi_sync_revision.pb.js \
+            server/pb_hooks/wesi_sync_context.pb.js \
+            server/pb_hooks/wesi_sync_read.pb.js \
+            server/pb_hooks/wesi_sync_write.pb.js \
+            server/pb_hooks/wesi_sync_extra.pb.js \
+            server/pb_hooks/wesi_sync_extra_runtime.js \
+            server/pb_hooks/wesi_sync_crm.pb.js \
+            server/pb_hooks/wesi_sync_crm_runtime.js \
+            server/pb_hooks/wesi_sync_files.pb.js \
+            server/pb_hooks/wesi_sync_files_runtime.js \
+            server/pb_migrations/1787055000_wesios_records_unique_rid.js \
+            server/verify-sync-db.py \
+            "$USER@$HOST:$REMOTE/"
+          $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' MIGRATION_DIR='$MIGRATION_DIR' PB_DATA='$PB_DATA' bash -s" <<'SH'
+          set -euo pipefail
+          runtime_files=(wesi_sync_data_access.js wesi_sync_lww.js wesi_sync_atomic.js wesi_sync_generic_policy.js wesi_sync_revision.js wesi_sync_extra_runtime.js wesi_sync_crm_runtime.js wesi_sync_files_runtime.js)
+          route_files=(wesi_sync_revision.pb.js wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js wesi_sync_crm.pb.js wesi_sync_files.pb.js)
+          migration_file=1787055000_wesios_records_unique_rid.js
+
+          ensure_dir() {
+            dir="$1"
+            if [ -d "$dir" ]; then return; fi
+            if command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+              sudo -n mkdir -p "$dir"
+            else
+              mkdir -p "$dir"
+            fi
+          }
+
+          atomic_install() {
+            src="$1"
+            dst="$2"
+            dir="$(dirname "$dst")"
+            ensure_dir "$dir"
+            if [ -w "$dir" ]; then
+              tmp="$dir/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
+              cat "$src" > "$tmp"
+              chmod 0644 "$tmp"
+              cmp -s "$src" "$tmp"
+              mv -f "$tmp" "$dst"
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+              tmp="$dir/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
+              sudo -n cp "$src" "$tmp"
+              sudo -n chmod 0644 "$tmp"
+              sudo -n cmp -s "$src" "$tmp"
+              sudo -n mv -f "$tmp" "$dst"
+            else
+              echo "Нет прав на атомарную установку $dst" >&2
+              exit 3
+            fi
+          }
+
+          verify_db() {
+            if [ -r "$PB_DATA/data.db" ]; then
+              python3 "$REMOTE/verify-sync-db.py" "$PB_DATA/data.db"
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+              sudo -n python3 "$REMOTE/verify-sync-db.py" "$PB_DATA/data.db"
+            else
+              echo "Нет прав проверить $PB_DATA/data.db" >&2
+              return 99
+            fi
+          }
+
+          restart_pocketbase() {
+            if systemctl restart pocketbase 2>/dev/null; then return; fi
+            if command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then return; fi
+            echo "Не удалось перезапустить pocketbase" >&2
+            exit 5
+          }
+
+          for f in "${runtime_files[@]}"; do atomic_install "$REMOTE/$f" "$HOOK_DIR/$f"; done
+          for f in "${route_files[@]}"; do atomic_install "$REMOTE/$f" "$HOOK_DIR/$f"; done
+
+          migration_changed=0
+          if cmp -s "$REMOTE/$migration_file" "$MIGRATION_DIR/$migration_file" 2>/dev/null; then
+            echo "Sync migration уже установлена: $migration_file"
+          elif command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$REMOTE/$migration_file" "$MIGRATION_DIR/$migration_file" 2>/dev/null; then
+            echo "Sync migration уже установлена: $migration_file"
+          else
+            atomic_install "$REMOTE/$migration_file" "$MIGRATION_DIR/$migration_file"
+            migration_changed=1
+            echo "Установлена новая sync migration: $migration_file"
+          fi
+
+          for f in "${runtime_files[@]}" "${route_files[@]}"; do
+            if cmp -s "$REMOTE/$f" "$HOOK_DIR/$f" 2>/dev/null; then
+              echo "Подтверждён sync file: $f"
+            elif command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$REMOTE/$f" "$HOOK_DIR/$f"; then
+              echo "Подтверждён sync file: $f"
+            else
+              echo "Установленный sync file не совпадает: $f" >&2
+              exit 4
+            fi
+          done
+
+          restart_needed="$migration_changed"
+          if [ "$restart_needed" = "0" ]; then
+            if verify_db >"$REMOTE/schema-before.txt" 2>&1; then
+              cat "$REMOTE/schema-before.txt"
+            else
+              cat "$REMOTE/schema-before.txt" >&2 || true
+              echo "Schema invariant ещё не применён — нужен restart"
+              restart_needed=1
+            fi
+          fi
+
+          if [ "$restart_needed" = "1" ]; then
+            echo "Перезапускаю PocketBase для применения/восстановления sync migration"
+            restart_pocketbase
+            sleep 3
+          fi
+
+          verify_db
+          rm -rf "$REMOTE"
+          SH
+
+      - name: Verify production sync routes are loaded and protected
+        run: |
+          set -euo pipefail
+          API='https://api.wesi-inc.ru'
+          sleep 3
+          for path in \
+            /api/wesi/sync/revision \
+            /api/wesi/sync/revision-v2 \
+            /api/wesi/sync/sandbox_transactions \
+            /api/wesi/sync/audio_extras \
+            /api/wesi/sync/profile \
+            /api/wesi/sync/crm_clients \
+            /api/wesi/sync/crm_deals \
+            /api/wesi/sync/crm_interactions \
+            /api/wesi/sync/file_requests \
+            /api/wesi/sync/file_grants \
+            /api/wesi/sync/file_handovers \
+            /api/wesi/sync/horizon_predictions; do
+            code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 "$API$path" || true)
+            case "$code" in
+              401|403) echo "Protected sync route loaded: $path ($code)" ;;
+              *) echo "::error::$path returned HTTP $code"; cat response.txt; exit 1 ;;
+            esac
+          done

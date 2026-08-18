@@ -1,6 +1,8 @@
 import 'dart:math';
 
 import 'controllers/wesi_ai_chat_controller.dart';
+import 'memory/wesi_ai_memory_api.dart';
+import 'models/wesi_ai_attachment.dart';
 import 'models/wesi_ai_chat_models.dart';
 import 'storage/wesi_ai_local_store.dart';
 import 'wesi_ai_api.dart';
@@ -11,17 +13,39 @@ class WesiAiLobbyChatController extends WesiAiChatController {
   WesiAiLobbyChatController({
     required WesiAiLocalStore store,
     WesiAiApi api = const WesiAiLobbyApi(),
-  }) : super(store: store, api: api);
+    WesiAiMemoryApi memoryApi = const WesiAiMemoryApi(),
+  }) : super(store: store, api: api, memoryApi: memoryApi);
 
   @override
-  Future<void> addUserMessage(String text) async {
+  Future<void> addUserMessage(
+    String text, {
+    List<WesiAiAttachment> attachments = const <WesiAiAttachment>[],
+    bool thinkingMode = true,
+  }) async {
     final conversation = state.activeConversation;
     if (conversation == null || conversation.persona != WesiAiPersona.lobby) {
-      return super.addUserMessage(text);
+      return super.addUserMessage(
+        text,
+        attachments: attachments,
+        thinkingMode: thinkingMode,
+      );
     }
+
+    // Multimodal Lobby uses the canonical universal chat path. This avoids
+    // the legacy dual-speaker codec ever dropping file bytes or pretending a
+    // file was seen when it was not.
+    if (attachments.isNotEmpty) {
+      return super.addUserMessage(
+        text,
+        attachments: attachments,
+        thinkingMode: thinkingMode,
+      );
+    }
+
     final clean = text.trim();
     if (clean.isEmpty || sending) return;
-    final history = state.messagesFor(conversation.id);
+    final fullHistory = state.messagesFor(conversation.id);
+    final history = historyForMemoryRequest(conversation.id, fullHistory);
     final now = DateTime.now();
     final user = WesiAiMessage(
       id: _id(now),
@@ -46,23 +70,35 @@ class WesiAiLobbyChatController extends WesiAiChatController {
     sending = true;
     await _save();
     try {
-      final reply = await api.send(
+      final reply = await awaitInterruptible(api.send(
         conversation: updated,
         tier: state.tier,
         message: clean,
         history: history,
-        memory: state.memory,
-      );
+        memory: relevantMemoryFor(updated, clean),
+        conversationSummary: conversationMemoryFor(updated.id).rollingSummary,
+        taskState: conversationMemoryFor(updated.id).taskState,
+      ));
+      if (reply == null) return;
       final turns = WesiAiLobbyCodec.decode(reply.answer);
       if (turns.isEmpty) {
         throw const WesiAiApiException(
           'WAI_BAD_LOBBY_RESPONSE',
           'Lobby вернул некорректный ответ',
+          stage: 'LOBBY',
+          component: 'WesiAiLobbyCodec',
+          operation: 'decode',
+          lastSuccess: 'LOBBY_RESPONSE_RECEIVED',
         );
       }
       final messages = <WesiAiMessage>[];
       for (var i = 0; i < turns.length; i++) {
         final at = DateTime.now().add(Duration(microseconds: i));
+        final actorActivity = _activityForTurn(
+          turns[i],
+          reply.requestId,
+          at,
+        );
         messages.add(
           WesiAiMessage(
             id: _id(at),
@@ -71,11 +107,20 @@ class WesiAiLobbyChatController extends WesiAiChatController {
             author: turns[i].author,
             text: turns[i].text,
             createdAt: at,
-            metadata: {'requestId': reply.requestId, 'lobby': true},
+            metadata: <String, dynamic>{
+              'requestId': reply.requestId,
+              'lobby': true,
+              'lobbyPersona': turns[i].author.name,
+              'activity': <Map<String, dynamic>>[
+                ...reply.activity,
+                actorActivity,
+              ],
+            },
           ),
         );
       }
       state = state.copyWith(messages: [...state.messages, ...messages]);
+      scheduleMemoryRefresh(updated, clean);
     } on WesiAiApiException catch (error) {
       final at = DateTime.now();
       state = state.copyWith(
@@ -87,9 +132,13 @@ class WesiAiLobbyChatController extends WesiAiChatController {
             employeeId: store.employeeId,
             author: WesiAiMessageAuthor.system,
             kind: WesiAiMessageKind.error,
-            text: error.message,
+            text: error.displayMessage,
             createdAt: at,
-            metadata: {'code': error.code},
+            metadata: <String, dynamic>{
+              'code': error.code,
+              'diagnostic': error.diagnostic,
+              if (error.requestId.isNotEmpty) 'requestId': error.requestId,
+            },
           ),
         ],
       );
@@ -97,6 +146,34 @@ class WesiAiLobbyChatController extends WesiAiChatController {
       sending = false;
       await _save();
     }
+  }
+
+  static Map<String, dynamic> _activityForTurn(
+    WesiAiLobbyTurn turn,
+    String requestId,
+    DateTime at,
+  ) {
+    final persona = switch (turn.author) {
+      WesiAiMessageAuthor.zane => 'zane',
+      WesiAiMessageAuthor.nirvana => 'nirvana',
+      _ => 'unknown',
+    };
+    final label = switch (turn.author) {
+      WesiAiMessageAuthor.zane => 'Отвечает Зейн',
+      WesiAiMessageAuthor.nirvana => 'Отвечает Нирвана',
+      _ => 'Ответ Lobby',
+    };
+    return <String, dynamic>{
+      'kind': 'persona',
+      'sourceName': label.replaceFirst('Отвечает ', ''),
+      'persona': persona,
+      'actorRole': 'lobby_participant',
+      'label': label,
+      'detail': 'Ответ сформирован отдельным участником Lobby: $persona.',
+      'status': 'done',
+      'completedAt': at.toUtc().toIso8601String(),
+      if (requestId.isNotEmpty) 'requestId': requestId,
+    };
   }
 
   Future<void> setLobbyMode(WesiAiLobbyMode mode) async {
@@ -120,6 +197,6 @@ class WesiAiLobbyChatController extends WesiAiChatController {
 
   Future<void> _save() async {
     await store.save(state);
-    notifyListeners();
+    notifyIfActive();
   }
 }

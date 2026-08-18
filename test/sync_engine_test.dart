@@ -40,7 +40,8 @@ void main() {
         createdAt: base,
       );
 
-  TransactionModel tx(String id, {double amount = 100, String title = 'Хлеб'}) =>
+  TransactionModel tx(String id,
+          {double amount = 100, String title = 'Хлеб'}) =>
       TransactionModel(
         id: id,
         title: title,
@@ -231,7 +232,7 @@ void main() {
       expect(back.order, 7);
     });
 
-    test('человек переживает круг вместе с правами и хешем пароля', () {
+    test('человек переживает круг, но пароль в синхронизацию не попадает', () {
       final c = EmployeesSync();
       final original = EmployeeModel(
         id: 'e1',
@@ -260,8 +261,15 @@ void main() {
       expect(back.permissions.modules, {'tasks', 'treasury'});
       expect(back.permissions.knowledgeIds, {'a1'});
       expect(back.permissions.canSeeNotes, isTrue);
-      expect(back.passwordHash, 'hash');
-      expect(back.passwordSalt, 'salt');
+      // Раньше здесь ожидалось обратное — что хэш и соль переживут круг.
+      // Именно это и было дырой: сервер отдавал их владельцу по всем
+      // сотрудникам, а локальное хранилище приложения не шифруется. Проверять
+      // пароль локально приложение давно перестало, вход идёт через сервер,
+      // поэтому в синхронизации этим полям делать нечего.
+      expect(back.passwordHash, isEmpty,
+          reason: 'хэш пароля снова уходит в синхронизацию');
+      expect(back.passwordSalt, isEmpty,
+          reason: 'соль пароля снова уходит в синхронизацию');
       expect(back.demoStats['balance'], 1000.0);
     });
 
@@ -313,7 +321,8 @@ void main() {
       final names = [for (final c in SyncCodec.collections) c.name];
       expect(names.toSet().length, names.length);
       expect(names.indexOf('accounts'), lessThan(names.indexOf('transactions')),
-          reason: 'операция не должна ни кадра ссылаться на несуществующий счёт');
+          reason:
+              'операция не должна ни кадра ссылаться на несуществующий счёт');
     });
   });
 
@@ -342,7 +351,8 @@ void main() {
       expect(t.store['transactions']!.containsKey('t1'), isTrue);
       expect(t.store['transactions']!['t1']!.fields['title'], 'Хлеб');
       expect(report.uploaded, greaterThanOrEqualTo(1),
-          reason: 'baseline organization/account rows may sync alongside the transaction');
+          reason:
+              'baseline organization/account rows may sync alongside the transaction');
     });
 
     test('чужая запись приезжает и попадает в бокс', () async {
@@ -370,8 +380,8 @@ void main() {
       await Future<void>.delayed(Duration.zero);
 
       t.calls.clear();
-      final second =
-          await SyncEngine.run(transport: t, now: base.add(const Duration(minutes: 1)));
+      final second = await SyncEngine.run(
+          transport: t, now: base.add(const Duration(minutes: 1)));
 
       expect(second.uploaded, 0,
           reason: 'чужую правку отправили обратно — она будет ходить по кругу');
@@ -390,7 +400,8 @@ void main() {
       await SyncJournal.record(
           'transactions', 't1', SyncStamp(base.add(const Duration(hours: 1))));
 
-      await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 2)));
+      await SyncEngine.run(
+          transport: t, now: base.add(const Duration(hours: 2)));
 
       expect(txBox().get('t1')!.title, 'Новое');
       expect(t.store['transactions']!['t1']!.fields['title'], 'Новое');
@@ -402,11 +413,14 @@ void main() {
       await SyncJournal.record('transactions', 't1', SyncStamp(base));
 
       final t = FakeSyncTransport();
-      t.seed('transactions', 't1',
+      t.seed(
+          'transactions',
+          't1',
           TransactionsSync().encode(tx('t1', title: 'Серверное')),
           base.add(const Duration(hours: 1)));
 
-      await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 2)));
+      await SyncEngine.run(
+          transport: t, now: base.add(const Duration(hours: 2)));
       expect(txBox().get('t1')!.title, 'Серверное');
     });
 
@@ -416,10 +430,11 @@ void main() {
       await SyncJournal.record('transactions', 't1', SyncStamp(base));
 
       final t = FakeSyncTransport();
-      t.seed('transactions', 't1', const {},
-          base.add(const Duration(hours: 1)), deleted: true);
+      t.seed('transactions', 't1', const {}, base.add(const Duration(hours: 1)),
+          deleted: true);
 
-      await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 2)));
+      await SyncEngine.run(
+          transport: t, now: base.add(const Duration(hours: 2)));
 
       expect(txBox().get('t1'), isNull,
           reason: 'удаление не доехало — запись живёт на одном устройстве');
@@ -435,7 +450,8 @@ void main() {
 
       await txBox().delete('t1');
       await Future<void>.delayed(Duration.zero);
-      await SyncEngine.run(transport: t, now: base.add(const Duration(hours: 1)));
+      await SyncEngine.run(
+          transport: t, now: base.add(const Duration(hours: 1)));
 
       final onServer = t.store['transactions']!['t1']!;
       expect(onServer.deleted, isTrue,
@@ -459,8 +475,8 @@ void main() {
     test('отказ одной коллекции не выдаётся за общий успех', () async {
       final t = _FailingOnceTransport('tasks');
       await txBox().put('t1', tx('t1'));
-      await taskBox().put(
-          'k1', TaskModel(id: 'k1', title: 'Задача', createdAt: base));
+      await taskBox()
+          .put('k1', TaskModel(id: 'k1', title: 'Задача', createdAt: base));
       await Future<void>.delayed(Duration.zero);
 
       final report = await SyncEngine.run(transport: t, now: base);
@@ -583,7 +599,8 @@ void main() {
       await txBox().put('mine', tx('mine', title: 'С компьютера'));
       await Future<void>.delayed(Duration.zero);
 
-      await SyncEngine.run(transport: t, now: base.add(const Duration(minutes: 5)));
+      await SyncEngine.run(
+          transport: t, now: base.add(const Duration(minutes: 5)));
 
       expect(txBox().keys.toSet(), {'mine', 'other'});
       expect(t.store['transactions']!.keys.toSet(), {'mine', 'other'});
@@ -594,7 +611,8 @@ void main() {
       t.seed('transactions', 'future', const {'id': 'future'}, base);
 
       final report = await SyncEngine.run(transport: t, now: base);
-      expect(report.ok, isTrue);
+      expect(report.ok, isFalse);
+      expect(report.firstFailure?.code, 'REMOTE_APPLY_INCOMPLETE');
       expect(txBox().get('future'), isNull);
 
       final stamp = SyncJournal.stampOf('transactions', 'future');
@@ -678,12 +696,12 @@ void main() {
       final t = FakeSyncTransport()..rejectIds.add('T2');
       final report = await SyncEngine.run(transport: t, now: base);
 
-      final tasks = report.collections.firstWhere((c) => c.collection == 'tasks');
+      final tasks =
+          report.collections.firstWhere((c) => c.collection == 'tasks');
       expect(tasks.uploaded, 1);
       expect(tasks.ok, isFalse);
     });
   });
-
 }
 
 class _FailingOnceTransport extends FakeSyncTransport {

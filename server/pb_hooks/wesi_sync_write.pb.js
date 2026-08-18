@@ -2,7 +2,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
   const collection = String(e.request.pathValue("collection") || "");
-  const privateCollections = {"profile_private": true, "vault_private": true};
+  const privateCollections = {"profile": true, "profile_private": true, "vault_private": true};
   const known = {
     "organizations": true, "employees": true, "organization_grants": true,
     "accounts": true, "transactions": true, "tasks": true,
@@ -10,10 +10,6 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
     "critical_audit": true, "calendar_events": true, "articles": true,
     "chats": true, "messages": true, "roadmap_state": true,
     "crm_state": true, "profile_private": true, "vault_private": true,
-    // Появились, когда синхронизация перешла с «один список одной строкой»
-    // на запись за записью. Без них сервер отвечал 400 на первой же новой
-    // коллекции, и обмен вставал целиком — включая те коллекции, что он
-    // знал: проход по списку не доходил до конца.
     "roadmap_projects": true, "roadmap_items": true,
     "crm_clients": true, "crm_deals": true, "crm_interactions": true,
     "audio_beats": true, "profile": true,
@@ -21,11 +17,36 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
   };
   if (!known[collection]) throw new BadRequestError("Неизвестная коллекция синхронизации");
 
+  if (collection === "roadmap_state" || collection === "crm_state") {
+    throw new BadRequestError(
+      "Эта версия WesiOS использует устаревший формат Roadmap/CRM. Обновите приложение перед синхронизацией"
+    );
+  }
+
+  if (collection === "crm_clients" ||
+      collection === "crm_deals" ||
+      collection === "crm_interactions" ||
+      collection === "file_requests" ||
+      collection === "file_grants" ||
+      collection === "file_handovers") {
+    throw new ForbiddenError("Dedicated sync route is not available");
+  }
+
   const body = e.requestInfo().body || {};
   const rid = String(body.rid || "").trim();
   if (!rid || rid.length > 180) throw new BadRequestError("Некорректный id синхронизации");
   let incoming = body.payload && typeof body.payload === "object" ? body.payload : {};
   const deleted = body.deleted === true;
+
+  if (deleted && (
+      collection === "organizations" ||
+      collection === "accounts" ||
+      collection === "inter_org_transfers")) {
+    throw new BadRequestError(
+      "Эту запись нельзя удалять через синхронизацию; используйте изменение или архивирование"
+    );
+  }
+
   const suppliedStamp = Date.parse(String(body.stamp || ""));
   const now = Date.now();
   const stamp = Number.isFinite(suppliedStamp) && suppliedStamp <= now + 5 * 60 * 1000
@@ -85,14 +106,11 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
   };
 
   const ownerScope = privateCollections[collection] ? e.auth.id : ctx.ownerId;
-  let existing = null;
-  try {
-    existing = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner={:owner} && coll={:coll} && rid={:rid}",
-      {"owner": ownerScope, "coll": collection, "rid": rid},
-    );
-  } catch (_) { existing = null; }
+  let existing = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
+    "wesios_records",
+    "owner={:owner} && coll={:coll} && rid={:rid}",
+    {"owner": ownerScope, "coll": collection, "rid": rid},
+  );
   const before = existing ? payloadOf(existing) : {};
 
   const requireModule = (name) => {
@@ -105,8 +123,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
   };
 
   if (privateCollections[collection]) {
-    // Authenticated-account scope is sufficient; records never share owner id
-    // with another employee.
+    // Authenticated-account scope is sufficient.
   } else if (collection === "employees") {
     if (!ctx.isOwner) {
       if (rid !== ctx.employeeId || deleted || !existing) {
@@ -125,12 +142,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
       }
     }
   } else if (collection === "organization_grants") {
-    if (!ctx.isOwner) {
-      // Client code contains additional delegation checks, but server is the
-      // authority boundary. Until those checks have a server equivalent only
-      // the owner may alter grants; reads for the employee still synchronize.
-      throw new ForbiddenError("Изменять права сотрудников может владелец");
-    }
+    if (!ctx.isOwner) throw new ForbiddenError("Изменять права сотрудников может владелец");
   } else if (collection === "accounts") {
     requireFinanceModule();
     const orgId = orgIdOf(deleted ? before : incoming);
@@ -176,9 +188,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
       }
     }
   } else if (collection === "transaction_audit" || collection === "critical_audit") {
-    if (deleted || existing) {
-      throw new ForbiddenError("Журнал аудита только дополняется");
-    }
+    if (deleted || existing) throw new ForbiddenError("Журнал аудита только дополняется");
     if (collection === "transaction_audit") {
       requireFinanceModule();
       const orgId = orgIdOf(incoming);
@@ -188,8 +198,7 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
       }
     } else if (!ctx.isOwner) {
       const orgId = orgIdOf(incoming);
-      if (ctx.allowedOrgIds[orgId] !== true ||
-          String(incoming.actorId || "") !== ctx.employeeId) {
+      if (ctx.allowedOrgIds[orgId] !== true || String(incoming.actorId || "") !== ctx.employeeId) {
         throw new ForbiddenError("Нельзя отправить чужую запись аудита");
       }
     }
@@ -210,166 +219,49 @@ routerAdd("POST", "/api/wesi/sync/{collection}", (e) => {
     requireModule("chats");
     const target = deleted ? before : incoming;
     const chatId = String(target.chatId || "");
-    let chat = null;
-    try {
-      chat = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner={:owner} && coll='chats' && rid={:rid} && deleted=false",
-        {"owner": ctx.ownerId, "rid": chatId},
-      );
-    } catch (_) { chat = null; }
+    const chat = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
+      "wesios_records",
+      "owner={:owner} && coll='chats' && rid={:rid} && deleted=false",
+      {"owner": ctx.ownerId, "rid": chatId},
+    );
     if (!chat || !chatVisible(payloadOf(chat))) {
       throw new ForbiddenError("Нет доступа к сообщениям этого чата");
     }
-  } else if (collection === "roadmap_state") {
-    requireModule("roadmap");
-    if (["projects_v1", "items_v1"].indexOf(rid) < 0) {
-      throw new BadRequestError("Некорректный раздел Roadmap");
-    }
-  } else if (collection === "crm_state") {
-    requireModule("crm");
-    if (["clients_v1", "deals_v1", "interactions_v1"].indexOf(rid) < 0) {
-      throw new BadRequestError("Некорректный раздел CRM");
-    }
-    if (!ctx.isOwner) {
-      if (deleted) throw new ForbiddenError("Нельзя удалить весь раздел CRM");
-      const parseList = (value) => {
-        if (Array.isArray(value)) return value;
-        if (typeof value !== "string" || !value.trim()) return [];
-        try {
-          const parsed = JSON.parse(value);
-          return Array.isArray(parsed) ? parsed : [];
-        } catch (_) { throw new BadRequestError("Повреждённый CRM snapshot"); }
-      };
-      const incomingRows = parseList(incoming.value);
-      const existingRows = parseList(before.value);
-      const manager = ctx.canManageTeam;
-      const allowedOrg = (row) => ctx.allowedOrgIds[String(row.organizationId || "org_wesi_inc")] === true;
-
-      // Load the other CRM snapshots to validate cross references.
-      const state = {};
-      let crmRows = [];
-      try {
-        crmRows = e.app.findRecordsByFilter(
-          "wesios_records",
-          "owner={:owner} && coll='crm_state' && deleted=false",
-          "id", 0, 0, {"owner": ctx.ownerId},
-        );
-      } catch (_) { crmRows = []; }
-      for (const row of crmRows) {
-        const p = payloadOf(row);
-        state[String(p.key || row.getString("rid"))] = parseList(p.value);
-      }
-      state[rid] = existingRows;
-      const clients = state.clients_v1 || [];
-      const deals = state.deals_v1 || [];
-      const clientById = {};
-      for (const c of clients) clientById[String(c.id || "")] = c;
-
-      const visible = (row) => {
-        if (rid === "clients_v1") {
-          if (!allowedOrg(row)) return false;
-          if (manager) return true;
-          if (String(row.ownerEmployeeId || "") === ctx.employeeId) return true;
-          return deals.some((d) => allowedOrg(d) &&
-            String(d.clientId || "") === String(row.id || "") &&
-            String(d.responsibleEmployeeId || "") === ctx.employeeId);
-        }
-        if (rid === "deals_v1") {
-          if (!allowedOrg(row)) return false;
-          if (manager) return true;
-          const client = clientById[String(row.clientId || "")] || {};
-          return String(row.responsibleEmployeeId || "") === ctx.employeeId ||
-            String(client.ownerEmployeeId || "") === ctx.employeeId;
-        }
-        const visibleClientIds = {};
-        const visibleDealIds = {};
-        for (const c of clients) {
-          if (allowedOrg(c) && (manager || String(c.ownerEmployeeId || "") === ctx.employeeId)) {
-            visibleClientIds[String(c.id || "")] = true;
-          }
-        }
-        for (const d of deals) {
-          if (!allowedOrg(d)) continue;
-          const client = clientById[String(d.clientId || "")] || {};
-          if (manager || String(d.responsibleEmployeeId || "") === ctx.employeeId ||
-              String(client.ownerEmployeeId || "") === ctx.employeeId) {
-            visibleDealIds[String(d.id || "")] = true;
-            visibleClientIds[String(d.clientId || "")] = true;
-          }
-        }
-        return visibleClientIds[String(row.clientId || "")] === true &&
-          (!row.dealId || visibleDealIds[String(row.dealId || "")] === true);
-      };
-
-      // A shared workstation can still contain rows cached by the previous
-      // account. Never reject the whole snapshot because of those rows: drop
-      // them from the candidate set and preserve the authoritative hidden
-      // server rows unchanged. This lets the current employee sync their own
-      // CRM changes without gaining a write channel to someone else's data.
-      const accepted = [];
-      for (const row of incomingRows) {
-        if (!visible(row)) continue;
-        if (!manager && rid === "clients_v1" && row.ownerEmployeeId &&
-            String(row.ownerEmployeeId) !== ctx.employeeId) continue;
-        if (!manager && rid === "deals_v1" && row.responsibleEmployeeId &&
-            String(row.responsibleEmployeeId) !== ctx.employeeId) continue;
-        accepted.push(row);
-      }
-      const retained = existingRows.filter((row) => !visible(row));
-      incoming = {"key": rid, "value": JSON.stringify(retained.concat(accepted))};
-    }
   } else if (collection === "roadmap_projects" || collection === "roadmap_items") {
     requireModule("roadmap");
-  } else if (collection === "crm_clients" || collection === "crm_deals" ||
-             collection === "crm_interactions") {
-    // Теперь запись за записью, а не весь раздел одной строкой. Проверка
-    // организации поэтому идёт по самой записи, а не по всему списку.
-    requireModule("crm");
-    if (!ctx.isOwner) {
-      const target = deleted ? before : incoming;
-      const orgId = String((target && target.organizationId) || "org_wesi_inc");
-      if (ctx.allowedOrgIds[orgId] !== true) {
-        throw new ForbiddenError("Нет доступа к этой организации");
-      }
-    }
   } else if (collection === "audio_beats") {
     requireModule("audio");
   } else if (collection === "profile") {
-    // Профиль правит только его хозяин: чужую карточку через этот путь
-    // переписать нельзя даже тому, кто управляет командой.
     if (!ctx.isOwner && rid !== ctx.employeeId && rid !== "me") {
       throw new ForbiddenError("Чужой профиль править нельзя");
     }
-  } else if (collection === "file_grants" || collection === "file_requests" ||
-             collection === "file_handovers") {
-    // Доступ к файлам живёт рядом с модулем аудио: биты и документы
-    // раздаются оттуда.
-    requireModule("audio");
-    if (!ctx.isOwner && collection === "file_grants") {
-      // Выдать себе доступ к чужому файлу нельзя — это и есть весь смысл
-      // разграничения. Право выдавать есть у владельца и у того, кто
-      // управляет командой.
-      if (!ctx.canManageTeam) {
-        throw new ForbiddenError("Выдавать доступ к файлам может владелец");
-      }
-    }
   }
 
-  // A tombstone keeps the previous payload so other devices can still apply
-  // row-level visibility rules and receive the deletion.
   if (deleted && existing) incoming = before;
 
-  const recordsCollection = e.app.findCollectionByNameOrId("wesios_records");
-  const record = existing || new Record(recordsCollection);
-  record.set("owner", ownerScope);
-  record.set("org", privateCollections[collection] ? "private:" + ctx.employeeId : "wesi-inc");
-  record.set("coll", collection);
-  record.set("rid", rid);
-  record.set("payload", incoming);
-  record.set("stamp", stamp);
-  record.set("deleted", deleted);
-  e.app.save(record);
+  const committed = require(`${__hooks}/wesi_sync_atomic.js`).commit(e.app, {
+    "owner": ownerScope,
+    "org": privateCollections[collection] ? "private:" + ctx.employeeId : "wesi-inc",
+    "coll": collection,
+    "rid": rid,
+    "payload": incoming,
+    "stamp": stamp,
+    "deleted": deleted,
+    "authorize": function(txApp, current, input) {
+      require(`${__hooks}/wesi_sync_generic_policy.js`).authorizeFresh(
+        txApp,
+        current,
+        input,
+        ctx,
+      );
+    }
+  });
 
-  return e.json(200, {"ok": true, "rid": rid, "stamp": stamp});
+  return e.json(200, {
+    "ok": true,
+    "rid": rid,
+    "stamp": committed.stamp,
+    "applied": committed.applied,
+    "reason": committed.reason
+  });
 }, $apis.requireAuth("users"));

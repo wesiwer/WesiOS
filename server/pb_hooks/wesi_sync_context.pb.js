@@ -27,13 +27,6 @@ routerUse((e) => {
     return {};
   };
 
-  // Security session records are critical and have a fixed shape. Reading
-  // them through record.get("payload") is not reliable across PocketBase JS
-  // runtime versions: a JSON field can be exposed as a proxy/value that looks
-  // like an object but doesn't provide its properties as normal JS fields.
-  // The main security hook uses unmarshalJSONField, so sync must validate the
-  // exact same persisted session in the exact same way. Otherwise OTP verify
-  // succeeds, then the first sync request falsely reports "session ended".
   const sessionPayloadOf = (record) => {
     if (!record) return {};
     try {
@@ -57,14 +50,11 @@ routerUse((e) => {
   if (!/^[A-Za-z0-9_-]{24,96}$/.test(sid)) {
     throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
   }
-  let session = null;
-  try {
-    session = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='__wesios_security__' && coll='security' && rid={:rid} && deleted=false",
-      {"rid": "session:" + sid},
-    );
-  } catch (_) { session = null; }
+  const session = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
+    "wesios_records",
+    "owner='__wesios_security__' && coll='security' && rid={:rid} && deleted=false",
+    {"rid": "session:" + sid},
+  );
   if (!session) throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
   const sessionPayload = sessionPayloadOf(session);
   const expiresAt = Date.parse(String(sessionPayload.expiresAt || ""));
@@ -74,14 +64,11 @@ routerUse((e) => {
     throw new UnauthorizedError("Сеанс WesiOS завершён. Войдите заново");
   }
 
-  let ownerMarker = null;
-  try {
-    ownerMarker = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner={:owner} && coll='system' && rid='portal-owner' && deleted=false",
-      {"owner": e.auth.id},
-    );
-  } catch (_) { ownerMarker = null; }
+  const ownerMarker = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
+    "wesios_records",
+    "owner={:owner} && coll='system' && rid='portal-owner' && deleted=false",
+    {"owner": e.auth.id},
+  );
 
   let ownerId = "";
   let employeeId = "";
@@ -108,31 +95,30 @@ routerUse((e) => {
       }
     };
   } else {
-    let link = null;
-    try {
-      link = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "coll='system' && rid={:rid} && deleted=false",
-        {"rid": "portal-account:" + e.auth.id},
-      );
-    } catch (_) { link = null; }
+    const link = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
+      "wesios_records",
+      "coll='system' && rid={:rid} && deleted=false",
+      {"rid": "portal-account:" + e.auth.id},
+    );
     if (!link) throw new ForbiddenError("Учётная запись не привязана к сотруднику WesiOS");
     const linkPayload = payloadOf(link);
     ownerId = link.getString("owner");
     employeeId = String(linkPayload.employeeId || "");
     if (!ownerId || !employeeId) throw new ForbiddenError("Привязка сотрудника повреждена");
 
-    let employee = null;
-    try {
-      employee = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
-        {"owner": ownerId, "rid": employeeId},
-      );
-    } catch (_) { employee = null; }
-    snapshot = employee ? payloadOf(employee) :
-      (linkPayload.snapshot && typeof linkPayload.snapshot === "object"
-        ? linkPayload.snapshot : linkPayload);
+    const employee = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
+      "wesios_records",
+      "owner={:owner} && coll='employees' && rid={:rid} && deleted=false",
+      {"owner": ownerId, "rid": employeeId},
+    );
+    // Never fall back to portal-account.snapshot for authorization. That
+    // snapshot is historical/bootstrap metadata and can outlive deactivation.
+    // A missing live employee row means the linked identity has no company
+    // authorization anymore and must terminate the local sync session.
+    if (!employee) {
+      throw new UnauthorizedError("Сотрудник деактивирован или удалён. Войдите заново");
+    }
+    snapshot = payloadOf(employee);
   }
 
   const permissions = snapshot.permissions && typeof snapshot.permissions === "object"
@@ -141,22 +127,16 @@ routerUse((e) => {
   const knowledgeIds = Array.isArray(permissions.knowledgeIds)
     ? permissions.knowledgeIds.map(String) : [];
 
-  let organizations = [];
-  let grants = [];
-  try {
-    organizations = e.app.findRecordsByFilter(
-      "wesios_records",
-      "owner={:owner} && coll='organizations' && deleted=false",
-      "id", 0, 0, {"owner": ownerId},
-    );
-  } catch (_) { organizations = []; }
-  try {
-    grants = e.app.findRecordsByFilter(
-      "wesios_records",
-      "owner={:owner} && coll='organization_grants' && deleted=false",
-      "id", 0, 0, {"owner": ownerId},
-    );
-  } catch (_) { grants = []; }
+  const organizations = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
+    "wesios_records",
+    "owner={:owner} && coll='organizations' && deleted=false",
+    "id", 0, 0, {"owner": ownerId},
+  );
+  const grants = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
+    "wesios_records",
+    "owner={:owner} && coll='organization_grants' && deleted=false",
+    "id", 0, 0, {"owner": ownerId},
+  );
 
   const orgParents = {};
   const allOrgIds = {};
@@ -175,9 +155,6 @@ routerUse((e) => {
     if (isOwner || String(p.employeeId || "") === employeeId) ownGrants.push(p);
   }
 
-  // allowedOrgIds is a strict data scope. structuralOrgIds additionally contains
-  // ancestors required to render/validate the organization tree. Never use
-  // structuralOrgIds to authorize business data.
   const allowedOrgIds = {};
   if (isOwner) {
     for (const id of Object.keys(allOrgIds)) allowedOrgIds[id] = true;
@@ -242,9 +219,10 @@ routerUse((e) => {
   return e.next();
 });
 
-// Message integrity guard. The client already prevents editing another
-// employee's words, but the server must enforce the same rule because a
-// modified client can call the sync endpoint directly.
+// Fast preflight message integrity guard. The exact same invariants are also
+// repeated inside wesi_sync_generic_policy.js under the atomic transaction;
+// keeping this layer gives modified clients an immediate error before opening
+// a writer transaction, while transaction-time authorization closes TOCTOU.
 routerUse((e) => {
   const path = String(e.request.url.path || "");
   const method = String(e.request.method || "").toUpperCase();
@@ -272,14 +250,11 @@ routerUse((e) => {
     ? value : {};
   const sameJson = (a, b) => JSON.stringify(a == null ? null : a) === JSON.stringify(b == null ? null : b);
 
-  let existing = null;
-  try {
-    existing = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner={:owner} && coll='messages' && rid={:rid}",
-      {"owner": ctx.ownerId, "rid": rid},
-    );
-  } catch (_) { existing = null; }
+  const existing = require(`${__hooks}/wesi_sync_data_access.js`).first(e.app,
+    "wesios_records",
+    "owner={:owner} && coll='messages' && rid={:rid}",
+    {"owner": ctx.ownerId, "rid": rid},
+  );
 
   if (!existing) {
     if (String(incoming.authorId || "") !== ctx.employeeId) {

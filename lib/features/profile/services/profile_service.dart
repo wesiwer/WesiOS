@@ -4,28 +4,33 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:hive/hive.dart';
 
+import '../../../core/sync/sync_account_scope.dart';
+
 /// Профиль человека: имя, почта, дата рождения, страна и аватарка.
 ///
-/// Раньше всё это лежало прямо в `wesios_settings` отдельными ключами, а тот
-/// бокс не синхронизируется — и правильно, что не синхронизируется: там же
-/// адрес сервера, пропуск сессии и смещение часов, которым на чужом
-/// устройстве делать нечего. В результате человек, заполнив профиль на
-/// компьютере, на телефоне видел пустые поля и стандартную аватарку.
-///
-/// Профиль вынесен в собственный бокс одной записью — так он попадает в общий
-/// обмен, а секреты остаются на месте.
-///
-/// Запись одна, ключ постоянный: у человека один профиль, и заводить под него
-/// идентификатор незачем — данные и так лежат в личном пространстве владельца.
+/// Профиль синхронизируется в private server scope, поэтому и локальный Hive
+/// обязан быть private per auth-user. Общий `wesios_profile` позволял профилю
+/// предыдущего сотрудника остаться на общем устройстве и стать локальной
+/// записью следующего аккаунта.
 class ProfileService {
-  static const String boxName = 'wesios_profile';
+  static const String baseBoxName = 'wesios_profile';
+  static String get boxName => SyncAccountScope.boxName(baseBoxName);
 
-  /// Ключ единственной записи. Постоянный: если бы он зависел от устройства,
-  /// на сервере оказалось бы столько профилей, сколько у человека телефонов.
+  /// Ключ единственной записи. Постоянный внутри личного account namespace.
   static const String recordKey = 'me';
 
   static const String settingsBoxName = 'wesios_settings';
   static const String _migratedKey = 'profile_moved_to_record_v1';
+  static const String _projectionOwnerKey = 'profile_projection_auth_user_v2';
+  static const List<String> _projectionKeys = <String>[
+    'profile_name',
+    'profile_email',
+    'profile_gender',
+    'profile_country',
+    'profile_birth',
+    'avatar_index',
+    'avatar_custom',
+  ];
 
   /// Предел на аватарку. Записи уходят на сервер целиком, и лимит там — два
   /// мегабайта на запись; картинка в base64 растёт ещё на треть. Полмегабайта
@@ -34,17 +39,30 @@ class ProfileService {
 
   static final ValueNotifier<int> revision = ValueNotifier<int>(0);
   static Box<String>? _box;
+  static String? _openedBoxName;
 
   static Future<Box<String>> _open() async {
+    await _ensureProjectionOwner();
+
+    final currentName = boxName;
     final cached = _box;
-    if (cached != null && cached.isOpen) {
+    if (cached != null && cached.isOpen && _openedBoxName == currentName) {
       await _migrateIfNeeded();
       return cached;
     }
-    final box = Hive.isBoxOpen(boxName)
-        ? Hive.box<String>(boxName)
-        : await Hive.openBox<String>(boxName);
+
+    // ProfileService — static singleton. После account switch старый Box
+    // может оставаться живым в памяти, даже если новый server-session уже
+    // активен. Закрываем его до открытия namespace нового auth-user.
+    if (cached != null && cached.isOpen && _openedBoxName != currentName) {
+      await cached.close();
+    }
+
+    final box = Hive.isBoxOpen(currentName)
+        ? Hive.box<String>(currentName)
+        : await Hive.openBox<String>(currentName);
     _box = box;
+    _openedBoxName = currentName;
     await _migrateIfNeeded();
     return box;
   }
@@ -53,18 +71,56 @@ class ProfileService {
       ? Hive.box<dynamic>(settingsBoxName)
       : null;
 
+  /// `profile_*` в wesios_settings — только UI-проекция, не источник общей
+  /// истины. Она принадлежит конкретному PocketBase auth-user.
+  ///
+  /// Важный migration edge: старые версии вообще не имели owner-marker. Пока
+  /// подтверждённой сессии нет, такие legacy-ключи НЕ очищаем и НЕ переносим в
+  /// anonymous box — оставляем их нетронутыми до входа. Первый подтверждённый
+  /// auth-user может забрать эту unowned legacy-проекцию один раз. После записи
+  /// marker любое переключение на другой auth-user идёт fail-closed и очищает
+  /// UI-проекцию, поэтому профиль предыдущего аккаунта не пересекает границу.
+  static Future<void> _ensureProjectionOwner() async {
+    final settings = _settings;
+    if (settings == null) return;
+    final currentOwner = SyncAccountScope.currentUserId;
+    final previousOwner = settings.get(_projectionOwnerKey);
+
+    if (previousOwner == currentOwner) return;
+
+    if (previousOwner == null) {
+      // До подтверждённого входа нельзя ни уничтожать legacy-профиль, ни
+      // приписывать его anonymous namespace. Оставляем миграцию отложенной.
+      if (currentOwner == 'anonymous') return;
+      await settings.put(_projectionOwnerKey, currentOwner);
+      return;
+    }
+
+    // Owner уже был зафиксирован и изменился: это настоящий account switch.
+    for (final key in _projectionKeys) {
+      await settings.delete(key);
+    }
+    await settings.put(_projectionOwnerKey, currentOwner);
+    await settings.delete(_migratedKey);
+  }
+
   static bool _migrating = false;
 
-  /// Перенос профиля из настроек.
-  ///
-  /// Старые ключи не удаляются: на них смотрит аватарка в шапке и ещё
-  /// несколько экранов, и выдёргивать их из-под работающего интерфейса ради
-  /// переезда незачем. Отметка о переносе не даёт затереть более свежий
-  /// профиль, приехавший с другого устройства.
+  /// Перенос старых ключей текущего аккаунта в его scoped record.
   static Future<void> _migrateIfNeeded() async {
     if (_migrating) return;
     final settings = _settings;
     if (settings == null || settings.get(_migratedKey) == true) return;
+
+    // Не забираем legacy profile_* в anonymous namespace. После успешного
+    // входа [_ensureProjectionOwner] закрепит их за конкретным auth-user и
+    // следующий read/write выполнит миграцию в его scoped box.
+    final currentOwner = SyncAccountScope.currentUserId;
+    if (currentOwner == 'anonymous' &&
+        settings.get(_projectionOwnerKey) == null) {
+      return;
+    }
+
     _migrating = true;
     try {
       final box = _box;
@@ -152,6 +208,10 @@ class ProfileService {
 
     final settings = _settings;
     if (settings != null) {
+      final owner = SyncAccountScope.currentUserId;
+      if (owner != 'anonymous') {
+        await settings.put(_projectionOwnerKey, owner);
+      }
       await settings.put('profile_name', data['name']);
       await settings.put('profile_email', data['email']);
       await settings.put('profile_gender', data['gender']);
@@ -161,16 +221,25 @@ class ProfileService {
       } else {
         await settings.delete('profile_birth');
       }
+      final index = data['avatarIndex'];
+      if (index is int) await settings.put('avatar_index', index);
+      if (data['photo'] is String) {
+        try {
+          await settings.put(
+            'avatar_custom',
+            base64Decode(data['photo'] as String),
+          );
+        } catch (_) {}
+      } else if (clearPhoto) {
+        await settings.delete('avatar_custom');
+      }
     }
     revision.value++;
   }
 
   /// Разложить приехавший профиль по ключам настроек.
-  ///
-  /// Вызывается синхронизацией после применения чужой записи: интерфейс
-  /// читает настройки, и без этого шага профиль доехал бы до устройства, но
-  /// на экране остался бы прежним до перезаполнения вручную.
   static Future<void> spreadToSettings() async {
+    await _ensureProjectionOwner();
     final settings = _settings;
     if (settings == null) return;
     final data = await read();
@@ -186,6 +255,10 @@ class ProfileService {
       }
     }
 
+    final owner = SyncAccountScope.currentUserId;
+    if (owner != 'anonymous') {
+      await settings.put(_projectionOwnerKey, owner);
+    }
     await copy('name', 'profile_name');
     await copy('email', 'profile_email');
     await copy('gender', 'profile_gender');
@@ -210,7 +283,9 @@ class ProfileService {
 
   static Future<void> clearForTest() async {
     await (await _open()).clear();
-    _settings?.delete(_migratedKey);
+    final settings = _settings;
+    await settings?.delete(_migratedKey);
+    await settings?.delete(_projectionOwnerKey);
     revision.value++;
   }
 }

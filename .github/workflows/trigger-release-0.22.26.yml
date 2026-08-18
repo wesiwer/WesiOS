@@ -1,0 +1,26 @@
+name: Trigger WesiOS 0.22.26 Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/trigger-release-0.22.26.yml'
+
+permissions:
+  actions: write
+  contents: read
+
+jobs:
+  dispatch-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch signed release workflow (final retry)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh workflow run release-app.yml \
+            --repo "$GITHUB_REPOSITORY" \
+            --ref main \
+            -f notes='Исправлена и усилена синхронизация: atomic LWW, CRM/File permissions, Profile/Shield migration, Wesi AI concurrent writes и отзыв доступа.' \
+            -f deploy_to_server=true

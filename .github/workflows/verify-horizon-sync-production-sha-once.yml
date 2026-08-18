@@ -1,0 +1,81 @@
+name: Verify Horizon And Sync Production SHA Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-horizon-sync-production-sha-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_verify && chmod 600 ~/.ssh/id_verify
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Verify exact production files
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          files=(
+            wesi_ai_data_access.js
+            wesi_ai_lib.js
+            wesi_ai_action_broker.js
+            wesi_ai_audio_tools.js
+            wesi_ai_calendar_write_tools.js
+            wesi_ai_crm_write_tools.js
+            wesi_ai_connector_vault.js
+            wesi_ai_finance_policy.js
+            wesi_ai_finance_write_tools.js
+            wesi_ai_github_connector.js
+            wesi_ai_knowledge_tools.js
+            wesi_ai_knowledge_write_tools.js
+            wesi_ai_media_lib.js
+            wesi_ai_remote_worker.pb.js
+            wesi_ai_roadmap_tools.js
+            wesi_ai_task_tools.js
+            wesi_ai_task_write_tools.js
+            wesi_ai_team_tools.js
+            wesi_ai_workspace_tools.js
+            wesi_ai_horizon_tools.js
+            wesi_ai_finance_tools.js
+            wesi_sync_data_access.js
+            wesi_sync_context.pb.js
+            wesi_sync_read.pb.js
+            wesi_sync_write.pb.js
+            wesi_sync_extra.pb.js
+            wesi_sync_extra_runtime.js
+          )
+          for f in "${files[@]}"; do
+            local="server/pb_hooks/$f"
+            expected=$(sha256sum "$local" | cut -d' ' -f1)
+            actual=$(ssh -i ~/.ssh/id_verify -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" "sha256sum '/opt/pocketbase/pb_hooks/$f' | cut -d' ' -f1")
+            [ "$actual" = "$expected" ] || { echo "mismatch:$f expected=$expected actual=$actual"; exit 1; }
+            echo "match:$f $actual"
+          done
+      - name: Record verified production bundle
+        run: |
+          set -euo pipefail
+          printf 'verified_commit=%s\nverified_at=%s\n' "$GITHUB_SHA" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > .github/production-sync-verified.txt
+          git config user.name 'WesiOS Production Verification'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/production-sync-verified.txt
+          git commit -m 'ops: record verified production sync bundle'
+          git push origin HEAD:main
+
+# validation: 2026-08-18 self-recording production SHA pass

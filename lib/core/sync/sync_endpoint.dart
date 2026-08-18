@@ -220,21 +220,37 @@ class SyncEndpoint {
         expiresAt.isNotEmpty;
   }
 
+  /// Служебные маркеры обмена должны принадлежать конкретной серверной
+  /// учётной записи, а не всей установке приложения. Иначе после выхода из
+  /// аккаунта A и входа в аккаунт B второй пользователь наследовал бы
+  /// `sync_last_run` первого и движок ошибочно пропускал бы безопасное правило
+  /// первого обмена (server wins on conflicts).
+  ///
+  /// Старые глобальные ключи намеренно НЕ мигрируются в scoped-ключ. После
+  /// обновления каждый уже существующий аккаунт один раз проходит безопасный
+  /// first-exchange заново. Это консервативнее, чем ошибочно считать его уже
+  /// сверенным после смены схемы идентичности.
+  static String _metadataKey(String base) {
+    final userId = _session?['userId'];
+    if (userId is! String || userId.isEmpty) return base;
+    return '$base::$userId';
+  }
+
   static DateTime? get lastRun {
-    final raw = _open()?.get(_lastRunKey);
+    final raw = _open()?.get(_metadataKey(_lastRunKey));
     return raw is String ? DateTime.tryParse(raw) : null;
   }
 
   static Future<void> markRun(DateTime at) async {
-    await _open()?.put(_lastRunKey, at.toIso8601String());
+    await _open()?.put(_metadataKey(_lastRunKey), at.toIso8601String());
     revision.value++;
   }
 
   static DateTime? get seededAt {
-    final raw = _open()?.get(_seededKey);
+    final raw = _open()?.get(_metadataKey(_seededKey));
     return raw is String ? DateTime.tryParse(raw) : null;
   }
 
   static Future<void> markSeeded(DateTime at) async =>
-      _open()?.put(_seededKey, at.toIso8601String());
+      _open()?.put(_metadataKey(_seededKey), at.toIso8601String());
 }

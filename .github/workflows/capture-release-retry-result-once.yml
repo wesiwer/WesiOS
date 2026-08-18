@@ -1,0 +1,58 @@
+name: Capture Release Retry Result Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/capture-release-retry-result-once.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Wait for the new release run and capture result
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The retry trigger may still be dispatching release-app when this job starts.
+          # Ignore the known failed run 32154843215 and wait for a newer run id.
+          RUN_ID=''
+          for i in $(seq 1 30); do
+            CANDIDATE=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release-app.yml --limit 1 --json databaseId --jq '.[0].databaseId // empty')
+            if [ -n "$CANDIDATE" ] && [ "$CANDIDATE" -gt 32154843215 ]; then
+              RUN_ID="$CANDIDATE"
+              break
+            fi
+            sleep 10
+          done
+          if [ -z "$RUN_ID" ]; then
+            echo 'NEW_RELEASE_RUN_NOT_FOUND' > /tmp/result.txt
+          else
+            gh run watch "$RUN_ID" --repo "$GITHUB_REPOSITORY" --exit-status || true
+            gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --json databaseId,status,conclusion,headSha,createdAt,jobs > /tmp/run.json
+            {
+              echo "RUN_ID=$RUN_ID"
+              cat /tmp/run.json
+              echo
+              echo '=== FAILED LOGS (empty when successful) ==='
+              gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed || true
+            } > /tmp/result.txt
+          fi
+          cp /tmp/result.txt .github/release-retry-result.txt
+          git config user.name 'WesiOS Release Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/release-retry-result
+          git add .github/release-retry-result.txt
+          git commit -m 'ops: capture release retry result'
+          git push --force origin HEAD:diag/release-retry-result

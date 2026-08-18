@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'pocketbase_transport.dart';
@@ -8,7 +10,6 @@ import 'sync_journal.dart';
 import 'sync_merge.dart';
 import 'sync_transport.dart';
 
-/// Что произошло с одной коллекцией.
 class SyncCollectionReport {
   final String collection;
   final int uploaded;
@@ -25,12 +26,9 @@ class SyncCollectionReport {
   bool get ok => failure == null;
 }
 
-/// Итог прохода.
 class SyncReport {
   final DateTime at;
   final List<SyncCollectionReport> collections;
-
-  /// Отказ, из-за которого не начали вообще: нет адреса, нет входа, нет сети.
   final SyncFailure? failure;
 
   const SyncReport({
@@ -39,20 +37,11 @@ class SyncReport {
     this.failure,
   });
 
-  int get uploaded =>
-      collections.fold(0, (sum, c) => sum + c.uploaded);
-
+  int get uploaded => collections.fold(0, (sum, c) => sum + c.uploaded);
   int get applied => collections.fold(0, (sum, c) => sum + c.applied);
-
   int get changed => uploaded + applied;
-
-  /// Проход считается удачным, только если удались все коллекции.
-  ///
-  /// «Три из пяти прошло» — это не успех: человек увидит зелёную галочку и
-  /// решит, что данные на сервере, а двух коллекций там нет.
   bool get ok => failure == null && collections.every((c) => c.ok);
 
-  /// Первая настоящая причина отказа — её и показываем.
   SyncFailure? get firstFailure {
     if (failure != null) return failure;
     for (final c in collections) {
@@ -64,94 +53,128 @@ class SyncReport {
   String describe({bool russian = true}) {
     final f = firstFailure;
     if (f != null) return f.describe(russian: russian);
-    if (changed == 0) {
-      return russian ? 'Всё уже совпадает' : 'Already in sync';
-    }
+    if (changed == 0) return russian ? 'Всё уже совпадает' : 'Already in sync';
     return russian
         ? 'Отправлено $uploaded, получено $applied'
         : 'Sent $uploaded, received $applied';
   }
 }
 
-/// Синхронизация устройств.
-///
-/// Порядок работы одинаков для всех коллекций:
-/// 1. собрать местное состояние — записи из бокса плюс надгробия из журнала;
-/// 2. забрать состояние сервера;
-/// 3. слить ([SyncMerge]) — правила спора живут там и только там;
-/// 4. применить чужие правки у себя;
-/// 5. отправить свои.
-///
-/// **Почему сначала применяем, потом отправляем.** Если отправить первым и
-/// оборваться на середине, сервер окажется в состоянии, которого нет ни у
-/// одного устройства. Обратный порядок в худшем случае оставляет наши правки
-/// дома — их отправит следующий проход.
 class SyncEngine {
   static final ValueNotifier<bool> busy = ValueNotifier<bool>(false);
   static final ValueNotifier<SyncReport?> lastReport =
       ValueNotifier<SyncReport?>(null);
 
   static bool _journalReady = false;
+  static Future<void>? _prepareFuture;
+  static int _runGeneration = 0;
 
-  /// Открыть журнал и подписать его на все синхронизируемые боксы.
-  ///
-  /// Вызывается на старте приложения — до того, как человек что-то поменяет.
-  /// Подписка, поставленная позже, пропустила бы правки, сделанные до неё, и
-  /// они выглядели бы как «не менялось никогда».
+  static DateTime get _epoch =>
+      DateTime.fromMillisecondsSinceEpoch(0, isUtc: true);
+
+  static void invalidateActiveRun() {
+    _runGeneration++;
+    SyncJournal.discardExpectations();
+  }
+
+  static String _sessionFingerprint() {
+    final session = SyncEndpoint.session;
+    return '${session?['userId']}|${session?['sessionId']}|${session?['token']}';
+  }
+
+  static bool _fatalTransportFailure(String? code) =>
+      code == 'NOT_SIGNED_IN' ||
+      code == 'NETWORK' ||
+      code == 'BAD_ADDRESS' ||
+      code == 'NOT_WESIOS';
+
   static Future<void> prepare({DateTime? now}) async {
     if (_journalReady) return;
-    await SyncJournal.open();
 
-    for (final c in SyncCodec.collections) {
-      try {
-        SyncJournal.attach(c.name, await c.ensureBox());
-      } catch (_) {
-        // Один недоступный бокс не должен срывать подписку на остальные:
-        // без синхронизации одного модуля жить можно, без запуска — нет.
-      }
+    final existing = _prepareFuture;
+    if (existing != null) {
+      await existing;
+      return;
     }
 
-    // Первый запуск после обновления: в боксах лежат данные, а отметок нет.
-    // Ставим им текущее время — «когда меняли, неизвестно, считаем, что
-    // недавно». Это безопасное направление: запись, объявленная свежей,
-    // в худшем случае перезапишет свою же копию на сервере, а объявленная
-    // древней — молча пропадёт под чужой.
-    //
-    // Первый обмен с сервером это не портит: там действует отдельное
-    // правило (см. [_onlyNewTo]), и по спорным записям принимается сервер.
+    final generation = _runGeneration;
+    final future = _prepareOnce(now: now, generation: generation);
+    _prepareFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_prepareFuture, future)) _prepareFuture = null;
+    }
+  }
+
+  static Future<void> _prepareOnce({
+    DateTime? now,
+    required int generation,
+  }) async {
+    bool cancelled() => generation != _runGeneration;
+
+    await SyncJournal.open();
+    if (cancelled()) return;
+
+    for (final c in SyncCodec.collections) {
+      if (cancelled()) return;
+      try {
+        final box = await c.ensureBox();
+        if (cancelled()) return;
+        SyncJournal.attach(
+          c.name,
+          box,
+          acceptsKey: c.watchesBoxKey,
+          syncIdForKey: c.syncIdForBoxKey,
+        );
+      } catch (_) {}
+    }
+
+    if (cancelled()) return;
+
+    final observedAt = now ?? SyncClock.now();
+    final seedAt = SyncEndpoint.lastRun == null ? observedAt : _epoch;
+    for (final c in SyncCodec.collections) {
+      if (cancelled()) return;
+      await SyncJournal.seed(c.name, c.local().keys, seedAt);
+    }
+    if (cancelled()) return;
+
     if (SyncEndpoint.seededAt == null) {
-      final at = now ?? SyncClock.now();
-      for (final c in SyncCodec.collections) {
-        await SyncJournal.seed(c.name, c.local().keys, at);
-      }
-      await SyncEndpoint.markSeeded(at);
+      await SyncEndpoint.markSeeded(observedAt);
+      if (cancelled()) return;
     }
 
     _journalReady = true;
   }
 
-  /// Сбросить подписки и результат последнего прохода.
   static Future<void> reset() async {
+    invalidateActiveRun();
+
+    final preparing = _prepareFuture;
+    if (preparing != null) {
+      try {
+        await preparing;
+      } catch (_) {}
+    }
+
+    while (busy.value) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    }
     await SyncJournal.detach();
     lastReport.value = null;
     _journalReady = false;
+    _prepareFuture = null;
   }
 
-  /// Проход при запуске программы, если человек включил «автоматически».
-  ///
-  /// Молча: неудача при старте не должна встречать человека сообщением об
-  /// ошибке — он ещё ничего не сделал. Результат виден на экране
-  /// синхронизации и в подписи к пункту настроек.
   static Future<void> runOnLaunch() async {
-    await prepare();
-    if (!SyncEndpoint.enabled) return;
+    if (!SyncEndpoint.enabled) {
+      await prepare();
+      return;
+    }
     await run();
   }
 
-  /// Местное состояние коллекции в виде, понятном слиянию.
-  ///
-  /// Надгробия берутся из журнала: записи в боксе уже нет, а сказать серверу
-  /// «её удалили тогда-то» надо — иначе она вернётся с другого устройства.
   static Map<String, SyncRecord> localState(
     SyncCollection<dynamic> c,
     DateTime fallbackStamp,
@@ -159,18 +182,15 @@ class SyncEngine {
     final values = c.local();
     final stamps = SyncJournal.forCollection(c.name);
     final out = <String, SyncRecord>{};
+    final safeFallback = firstEverExchange ? fallbackStamp : _epoch;
 
     values.forEach((id, value) {
       final stamp = stamps[id];
       out[id] = SyncRecord(
         id: id,
         fields: c.encode(value),
-        // Записи без отметки быть не должно — журнал засевается на старте.
-        // Но если она всё-таки есть, лучше объявить её свежей, чем дать
-        // молча стереть себя чужой копией.
-        updatedAt: (stamp != null && !stamp.deleted)
-            ? stamp.updatedAt
-            : fallbackStamp,
+        updatedAt:
+            (stamp != null && !stamp.deleted) ? stamp.updatedAt : safeFallback,
       );
     });
 
@@ -182,24 +202,8 @@ class SyncEngine {
     return out;
   }
 
-  /// Это первый в жизни устройства обмен с сервером.
   static bool get firstEverExchange => SyncEndpoint.lastRun == null;
 
-  /// Оставить только то, чего на сервере нет.
-  ///
-  /// Правило первого обмена: **по спорным записям принимаем сервер**.
-  ///
-  /// Без него свежая установка затирает настоящие данные своими пустыми, и
-  /// это не редкий случай, а гарантированный. Приложение само создаёт при
-  /// первом запуске счёт с постоянным идентификатором `main` и владельца с
-  /// идентификатором `owner`. На новом телефоне это «Основной счёт» с нулём и
-  /// «Владелец» без прав — и оба новее того, что лежит на сервере, потому что
-  /// созданы только что. Обычное слияние по времени честно решило бы, что
-  /// пустая заготовка свежее, и отправило бы её наверх поверх настоящих
-  /// данных.
-  ///
-  /// Записи, которых на сервере нет, всё равно уезжают: устройство, где
-  /// человек уже работал, ничего не теряет.
   static Map<String, SyncRecord> _onlyNewTo(
     Map<String, SyncRecord> local,
     Map<String, SyncRecord> remote,
@@ -209,26 +213,120 @@ class SyncEngine {
           if (!remote.containsKey(e.key)) e.key: e.value,
       };
 
-  /// Один проход по всем коллекциям.
-  ///
-  /// [transport] передаётся тестами; в приложении берётся из настроек.
-  /// Один проход.
-  ///
-  /// [only] — обменяться лишь этими коллекциями. Нужно для переписки:
-  /// пока чат открыт, обмен идёт часто, и таскать при этом операции,
-  /// задачи, статьи и состав — лишняя работа для сервера с одним ядром.
-  /// null — все коллекции, как при обычном проходе.
+  static dynamic _localValueBySyncId(
+    SyncCollection<dynamic> c,
+    String id,
+  ) {
+    final box = c.box();
+    if (box != null) {
+      try {
+        final direct = box.get(id);
+        if (direct != null && c.shouldSync(direct) && c.idOf(direct) == id) {
+          return direct;
+        }
+      } catch (_) {}
+    }
+    try {
+      return c.local()[id];
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<bool> _purgeLocalCacheBySyncId(
+    SyncCollection<dynamic> c,
+    String id,
+  ) async {
+    final box = c.box();
+    if (box != null) {
+      final keys = box.keys.toList(growable: false);
+      for (final key in keys) {
+        var matches = false;
+        try {
+          matches = c.watchesBoxKey(key) && c.syncIdForBoxKey(key) == id;
+        } catch (_) {}
+
+        if (!matches) {
+          try {
+            final value = box.get(key);
+            matches = value != null &&
+                c.shouldSync(value) &&
+                c.idOf(value) == id;
+          } catch (_) {}
+        }
+
+        if (!matches) continue;
+        await box.delete(key);
+        return _localValueBySyncId(c, id) == null;
+      }
+    }
+
+    try {
+      await c.removeById(id);
+    } catch (_) {
+      return false;
+    }
+    return _localValueBySyncId(c, id) == null;
+  }
+
+  static Object? _canonical(Object? value) {
+    if (value is Map) {
+      final keys = value.keys.map((e) => '$e').toList()..sort();
+      return <String, Object?>{
+        for (final key in keys) key: _canonical(value[key]),
+      };
+    }
+    if (value is List) return [for (final item in value) _canonical(item)];
+    return value;
+  }
+
+  static bool _sameFields(
+    Map<String, dynamic> a,
+    Map<String, dynamic> b,
+  ) {
+    try {
+      return jsonEncode(_canonical(a)) == jsonEncode(_canonical(b));
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static bool _localSnapshotStillCurrent(
+    SyncCollection<dynamic> c,
+    String id,
+    SyncRecord? snapshot,
+  ) {
+    final currentStamp = SyncJournal.stampOf(c.name, id);
+    final currentValue = _localValueBySyncId(c, id);
+
+    if (snapshot == null) {
+      return currentValue == null && currentStamp == null;
+    }
+
+    if (currentStamp == null ||
+        currentStamp.updatedAt != snapshot.updatedAt ||
+        currentStamp.deleted != snapshot.deleted) {
+      return false;
+    }
+
+    if (snapshot.deleted) return currentValue == null;
+    if (currentValue == null) return false;
+
+    try {
+      return _sameFields(c.encode(currentValue), snapshot.fields);
+    } catch (_) {
+      return false;
+    }
+  }
+
   static Future<SyncReport> run({
     SyncTransport? transport,
     DateTime? now,
     Set<String>? only,
   }) async {
-    // Вся сверка времени идёт по общей шкале — см. [SyncClock].
     final at = now ?? SyncClock.now();
 
     if (busy.value) {
-      // Два прохода одновременно означали бы, что второй читает боксы,
-      // пока первый их переписывает.
       return SyncReport(
         at: at,
         failure: const SyncFailure('BUSY', 'Синхронизация уже идёт'),
@@ -240,29 +338,74 @@ class SyncEngine {
       return _finish(SyncReport(at: at, failure: SyncFailure.notSignedIn));
     }
 
+    final generation = _runGeneration;
+    final productionSession = transport == null ? _sessionFingerprint() : null;
+    bool cancelled() => generation != _runGeneration ||
+        (productionSession != null &&
+            productionSession != _sessionFingerprint());
+
+    SyncFailure cancelledFailure() => const SyncFailure(
+          'SESSION_CHANGED',
+          'Сеанс изменился во время синхронизации',
+        );
+
     busy.value = true;
     try {
       await prepare(now: at);
-      final reports = <SyncCollectionReport>[];
+      if (cancelled()) {
+        return _finish(SyncReport(at: at, failure: cancelledFailure()));
+      }
 
+      final reports = <SyncCollectionReport>[];
       for (final c in SyncCodec.collections) {
         if (only != null && !only.contains(c.name)) continue;
-        reports.add(await _runOne(c, t, at));
+        if (cancelled()) {
+          return _finish(SyncReport(
+            at: at,
+            collections: reports,
+            failure: cancelledFailure(),
+          ));
+        }
+        final one = await _runOne(c, t, at, cancelled: cancelled);
+        reports.add(one);
+        if (cancelled() || one.failure?.code == 'SESSION_CHANGED') {
+          return _finish(SyncReport(
+            at: at,
+            collections: reports,
+            failure: cancelledFailure(),
+          ));
+        }
+        if (_fatalTransportFailure(one.failure?.code)) {
+          final report = SyncReport(at: at, collections: reports);
+          if (one.failure?.code == 'NOT_SIGNED_IN') {
+            t.signOut();
+            await SyncEndpoint.clearSession();
+          }
+          return _finish(report);
+        }
+      }
+
+      if (cancelled()) {
+        return _finish(SyncReport(
+          at: at,
+          collections: reports,
+          failure: cancelledFailure(),
+        ));
       }
 
       await SyncJournal.pruneTombstones(at);
-      SyncJournal.clearExpectations();
+      if (cancelled()) {
+        return _finish(SyncReport(
+          at: at,
+          collections: reports,
+          failure: cancelledFailure(),
+        ));
+      }
+      SyncJournal.pruneExpectations();
 
       final report = SyncReport(at: at, collections: reports);
-      // Частичный обмен не считается «первым полным»: правило первого
-      // обмена (см. _onlyNewTo) должно отработать на всех коллекциях, а не
-      // на двух из семи. Иначе счета и состав приехали бы уже по обычным
-      // правилам слияния — то есть могли бы затереться пустой заготовкой.
       if (report.ok && only == null) await SyncEndpoint.markRun(at);
 
-      // Пропуск протух — выбрасываем его. Иначе экран продолжал бы
-      // показывать «сервер подключён», а каждый следующий проход молча
-      // отказывал бы: худший вид поломки — тот, который выглядит рабочим.
       if (report.firstFailure?.code == 'NOT_SIGNED_IN') {
         t.signOut();
         await SyncEndpoint.clearSession();
@@ -276,63 +419,373 @@ class SyncEngine {
   static Future<SyncCollectionReport> _runOne(
     SyncCollection<dynamic> c,
     SyncTransport t,
-    DateTime at,
-  ) async {
-    final remote = await t.fetch(c.name);
-    if (!remote.ok) {
-      return SyncCollectionReport(
-          collection: c.name, failure: remote.failure);
+    DateTime at, {
+    required bool Function() cancelled,
+  }) async {
+    SyncCollectionReport cancelledReport({int applied = 0}) =>
+        SyncCollectionReport(
+          collection: c.name,
+          applied: applied,
+          failure: const SyncFailure(
+            'SESSION_CHANGED',
+            'Сеанс изменился во время синхронизации',
+          ),
+        );
+
+    Future<bool> applyAuthoritative(SyncRecord r) async {
+      if (cancelled()) return false;
+      SyncJournal.expect(
+        c.name,
+        r.id,
+        SyncStamp(r.updatedAt, deleted: r.deleted),
+      );
+
+      var accepted = false;
+      try {
+        if (r.deleted) {
+          await c.removeById(r.id);
+          // A codec may intentionally keep a durable local entity (for
+          // example organization/account history). A remote tombstone is only
+          // applied when the row actually disappears from THIS collection's
+          // sync projection. Archived/local-only representations are fine:
+          // `_localValueBySyncId` already ignores shouldSync=false rows.
+          accepted = _localValueBySyncId(c, r.id) == null;
+        } else {
+          accepted = await c.applyFields(r.fields);
+        }
+      } catch (_) {
+        accepted = false;
+      }
+
+      if (cancelled()) {
+        SyncJournal.forget(c.name, r.id);
+        return false;
+      }
+      if (!accepted) {
+        SyncJournal.forget(c.name, r.id);
+        return false;
+      }
+
+      await SyncJournal.record(
+        c.name,
+        r.id,
+        SyncStamp(r.updatedAt, deleted: r.deleted),
+      );
+      return !cancelled();
     }
 
+    Future<void> resetIncompleteStamp(String id) async {
+      SyncJournal.forget(c.name, id);
+      await SyncJournal.record(c.name, id, SyncStamp(_epoch));
+    }
+
+    if (cancelled()) return cancelledReport();
+    final remote = await t.fetch(c.name);
+    if (cancelled()) return cancelledReport();
+    if (!remote.ok) {
+      return SyncCollectionReport(collection: c.name, failure: remote.failure);
+    }
+
+    final allLocalBefore = localState(c, at);
+    final mergeLocal = firstEverExchange
+        ? _onlyNewTo(allLocalBefore, remote.value!)
+        : allLocalBefore;
     final plan = SyncMerge.merge(
-      local: firstEverExchange
-          ? _onlyNewTo(localState(c, at), remote.value!)
-          : localState(c, at),
+      local: mergeLocal,
       remote: remote.value!,
     );
 
     var applied = 0;
-    for (final r in plan.toApplyLocally) {
-      // Журнал предупреждается до записи, иначе он отметит чужую правку как
-      // нашу, и она уедет обратно на сервер уже как более свежая.
-      SyncJournal.expect(c.name, r.id, SyncStamp(r.updatedAt, deleted: r.deleted));
-      await SyncJournal.record(
-          c.name, r.id, SyncStamp(r.updatedAt, deleted: r.deleted));
+    SyncFailure? applyFailure;
+    var concurrentLocalChange = false;
+    String? concurrentId;
+    var pending = List<SyncRecord>.from(plan.toApplyLocally);
 
-      if (r.deleted) {
-        await c.removeById(r.id);
-        applied++;
-      } else if (await c.applyFields(r.fields)) {
-        applied++;
-      } else {
-        // Запись не разобралась — например, приехала от более новой версии
-        // приложения. Откатываем отметку в самое начало времён: тогда
-        // следующий проход снова увидит серверную копию как более свежую и
-        // попробует ещё раз, уже после обновления. Оставить отметку как есть
-        // значило бы решить, что запись у нас уже есть.
-        SyncJournal.forget(c.name, r.id);
-        await SyncJournal.record(
-            c.name, r.id, SyncStamp(DateTime.fromMillisecondsSinceEpoch(0)));
+    while (pending.isNotEmpty) {
+      var progressed = false;
+      final deferred = <SyncRecord>[];
+
+      for (final r in pending) {
+        if (cancelled()) return cancelledReport(applied: applied);
+        await Future<void>.delayed(Duration.zero);
+        if (cancelled()) return cancelledReport(applied: applied);
+
+        if (!_localSnapshotStillCurrent(c, r.id, allLocalBefore[r.id])) {
+          concurrentLocalChange = true;
+          concurrentId ??= r.id;
+          continue;
+        }
+
+        final accepted = await applyAuthoritative(r);
+        if (cancelled()) return cancelledReport(applied: applied);
+
+        if (accepted) {
+          applied++;
+          progressed = true;
+        } else {
+          deferred.add(r);
+        }
       }
+
+      if (deferred.isEmpty) {
+        pending = const <SyncRecord>[];
+        break;
+      }
+      pending = deferred;
+      if (!progressed) break;
     }
 
+    if (cancelled()) return cancelledReport(applied: applied);
+
+    if (pending.isNotEmpty) {
+      for (final r in pending) {
+        if (cancelled()) return cancelledReport(applied: applied);
+        await resetIncompleteStamp(r.id);
+      }
+      final first = pending.first.id;
+      final suffix = pending.length > 1 ? ' (+${pending.length - 1})' : '';
+      applyFailure = SyncFailure(
+        'REMOTE_APPLY_INCOMPLETE',
+        'Не удалось применить ${c.name}:$first$suffix',
+      );
+    } else if (concurrentLocalChange) {
+      applyFailure = SyncFailure(
+        'LOCAL_CHANGED_DURING_SYNC',
+        'Локальная запись ${c.name}:${concurrentId ?? '?'} изменилась во время синхронизации; конфликт будет пересчитан',
+      );
+    }
+
+    if (cancelled()) return cancelledReport(applied: applied);
     if (applied > 0) c.notifyChanged();
+
+    if (applyFailure != null) {
+      return SyncCollectionReport(
+        collection: c.name,
+        applied: applied,
+        failure: applyFailure,
+      );
+    }
 
     if (plan.toUpload.isEmpty) {
       return SyncCollectionReport(collection: c.name, applied: applied);
     }
-    final pushed = await t.push(c.name, plan.toUpload);
-    // Сообщаем коллекции ровно то, что действительно уехало, а не весь план.
-    // Это нужно сообщениям: у них есть состояние «дошло ли», и пометить
-    // доставленным то, что осталось дома, — прямая ложь на экране.
-    if (pushed.deliveredIds.isNotEmpty) {
-      await c.afterUpload(pushed.deliveredIds);
+
+    for (final r in plan.toUpload) {
+      await Future<void>.delayed(Duration.zero);
+      if (cancelled()) return cancelledReport(applied: applied);
+      if (!_localSnapshotStillCurrent(c, r.id, allLocalBefore[r.id])) {
+        return SyncCollectionReport(
+          collection: c.name,
+          applied: applied,
+          failure: SyncFailure(
+            'LOCAL_CHANGED_DURING_SYNC',
+            'Локальная запись ${c.name}:${r.id} изменилась до отправки; план будет пересчитан',
+          ),
+        );
+      }
     }
+
+    if (cancelled()) return cancelledReport(applied: applied);
+    final pushed = await t.push(c.name, plan.toUpload);
+    if (cancelled()) return cancelledReport(applied: applied);
+
+    final uploadedById = <String, SyncRecord>{
+      for (final record in plan.toUpload) record.id: record,
+    };
+
+    SyncFailure? reconciliationFailure;
+    var reconciliationApplied = 0;
+    Map<String, SyncRecord> refreshedRemote = remote.value!;
+    final needsRefresh = pushed.forbiddenIds.isNotEmpty ||
+        pushed.authoritativeIds.isNotEmpty;
+    var refreshSucceeded = true;
+
+    if (needsRefresh) {
+      // Both permission denial and `applied:false` are post-push outcomes, so
+      // the pre-push fetch is stale by definition. One shared refresh gives us
+      // the current permission-filtered server payload for both cases.
+      final refreshed = await t.fetch(c.name);
+      if (cancelled()) return cancelledReport(applied: applied);
+      if (refreshed.ok) {
+        refreshedRemote = refreshed.value!;
+      } else {
+        refreshSucceeded = false;
+        // For forbidden rows keep the old fail-closed purge behaviour below.
+        // For authoritativeIds do NOT destroy local data merely because this
+        // second GET had a transient network failure; surface the real failure
+        // and retry later.
+        if (pushed.authoritativeIds.isNotEmpty) {
+          reconciliationFailure ??= refreshed.failure ??
+              const SyncFailure(
+                'AUTHORITATIVE_REFRESH_FAILED',
+                'Не удалось перечитать серверную версию после отклонённой записи',
+              );
+        } else {
+          reconciliationFailure ??= SyncFailure(
+            'POLICY_REFRESH_FAILED',
+            'Сервер запретил изменение ${c.name}, но не удалось обновить права чтения: ${refreshed.failure?.message ?? 'неизвестная ошибка'}',
+          );
+        }
+      }
+    }
+
+    // applied:false means the server intentionally kept its current row. It is
+    // neither a delivered upload nor a permission failure. Re-fetch and apply
+    // that exact row now, otherwise server revision may not change and local
+    // payload could remain divergent indefinitely.
+    if (refreshSucceeded) {
+      for (final id in pushed.authoritativeIds) {
+        if (cancelled()) {
+          return cancelledReport(applied: applied + reconciliationApplied);
+        }
+
+        final source = uploadedById[id];
+        if (source == null) continue;
+        if (!_localSnapshotStillCurrent(c, id, allLocalBefore[id])) {
+          return SyncCollectionReport(
+            collection: c.name,
+            applied: applied + reconciliationApplied,
+            uploaded: pushed.sent,
+            failure: SyncFailure(
+              'LOCAL_CHANGED_DURING_SYNC',
+              'Локальная запись ${c.name}:$id изменилась, пока сервер отклонял предыдущую версию; новый конфликт будет пересчитан',
+            ),
+          );
+        }
+
+        final visibleRemote = refreshedRemote[id];
+        if (visibleRemote != null) {
+          if (await applyAuthoritative(visibleRemote)) {
+            reconciliationApplied++;
+          } else {
+            await resetIncompleteStamp(id);
+            reconciliationFailure ??= SyncFailure(
+              'REMOTE_APPLY_INCOMPLETE',
+              'Не удалось применить authoritative ${c.name}:$id после server rejection',
+            );
+          }
+          continue;
+        }
+
+        // The POST returned applied:false for an existing authoritative row,
+        // but a permission-filtered GET no longer exposes it. Fail closed: do
+        // not retain a cache that current identity cannot prove it may read.
+        SyncJournal.expect(c.name, id, SyncStamp(_epoch, deleted: true));
+        try {
+          final purged = await _purgeLocalCacheBySyncId(c, id);
+          if (cancelled()) {
+            SyncJournal.forget(c.name, id);
+            return cancelledReport(applied: applied + reconciliationApplied);
+          }
+          if (!purged) throw StateError('cache still contains $id');
+          await SyncJournal.record(
+            c.name,
+            id,
+            SyncStamp(_epoch, deleted: true),
+          );
+          reconciliationApplied++;
+          reconciliationFailure ??= SyncFailure(
+            'AUTHORITATIVE_ROW_HIDDEN',
+            'Сервер отклонил ${c.name}:$id и после обновления прав запись больше не доступна',
+          );
+        } catch (_) {
+          SyncJournal.forget(c.name, id);
+          await resetIncompleteStamp(id);
+          reconciliationFailure ??= SyncFailure(
+            'LOCAL_POLICY_PURGE_FAILED',
+            'Не удалось удалить локальный кэш ${c.name}:$id после скрытия authoritative записи',
+          );
+        }
+      }
+    }
+
+    // Permission-denied writes are reconciled independently. If the refresh
+    // failed, `refreshedRemote` must be treated as empty so forbidden cache is
+    // evicted rather than trusting the stale pre-push snapshot.
+    final policyRemote = refreshSucceeded
+        ? refreshedRemote
+        : const <String, SyncRecord>{};
+
+    for (final id in pushed.forbiddenIds) {
+      if (cancelled()) {
+        return cancelledReport(applied: applied + reconciliationApplied);
+      }
+      final visibleRemote = policyRemote[id];
+
+      if (visibleRemote != null) {
+        if (await applyAuthoritative(visibleRemote)) {
+          reconciliationApplied++;
+        } else {
+          await resetIncompleteStamp(id);
+          reconciliationFailure ??= SyncFailure(
+            'REMOTE_APPLY_INCOMPLETE',
+            'Не удалось восстановить read-only ${c.name}:$id',
+          );
+        }
+        continue;
+      }
+
+      SyncJournal.expect(
+        c.name,
+        id,
+        SyncStamp(_epoch, deleted: true),
+      );
+      try {
+        final purged = await _purgeLocalCacheBySyncId(c, id);
+        if (cancelled()) {
+          SyncJournal.forget(c.name, id);
+          return cancelledReport(applied: applied + reconciliationApplied);
+        }
+        if (!purged) throw StateError('cache still contains $id');
+        await SyncJournal.record(
+          c.name,
+          id,
+          SyncStamp(_epoch, deleted: true),
+        );
+        reconciliationApplied++;
+      } catch (_) {
+        SyncJournal.forget(c.name, id);
+        await resetIncompleteStamp(id);
+        reconciliationFailure ??= SyncFailure(
+          'LOCAL_POLICY_PURGE_FAILED',
+          'Не удалось удалить локальный кэш ${c.name}:$id после отзыва доступа',
+        );
+      }
+    }
+
+    if (reconciliationApplied > 0) c.notifyChanged();
+    applied += reconciliationApplied;
+
+    if (pushed.deliveredIds.isNotEmpty) {
+      for (final id in pushed.deliveredIds) {
+        if (cancelled()) return cancelledReport(applied: applied);
+        final source = uploadedById[id];
+        if (source == null) continue;
+
+        final current = SyncJournal.stampOf(c.name, id);
+        final unchangedSincePlan = current != null &&
+            current.updatedAt == source.updatedAt &&
+            current.deleted == source.deleted;
+        if (!unchangedSincePlan) continue;
+
+        final serverStamp = pushed.acceptedStamps[id] ?? _epoch;
+        await SyncJournal.record(
+          c.name,
+          id,
+          SyncStamp(serverStamp, deleted: source.deleted),
+        );
+      }
+
+      if (cancelled()) return cancelledReport(applied: applied);
+      await c.afterUpload(pushed.deliveredIds);
+      if (cancelled()) return cancelledReport(applied: applied);
+    }
+
     return SyncCollectionReport(
       collection: c.name,
       applied: applied,
       uploaded: pushed.sent,
-      failure: pushed.failure,
+      failure: reconciliationFailure ?? pushed.failure,
     );
   }
 

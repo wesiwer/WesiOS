@@ -2,14 +2,12 @@ routerAdd("GET", "/api/wesi/sync/revision", (e) => {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
   let rows = [];
-  try {
-    rows = e.app.findRecordsByFilter(
+  rows = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
       "wesios_records",
       "owner={:company} || owner={:private}",
       "-stamp,-id", 1, 0,
       {"company": ctx.ownerId, "private": e.auth.id},
     );
-  } catch (_) { rows = []; }
   if (!rows.length) return e.json(200, {"revision": "empty"});
   const first = rows[0];
   return e.json(200, {
@@ -21,7 +19,7 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
   const ctx = e.get("wesiSyncContext");
   if (!ctx) throw new UnauthorizedError("Нет контекста синхронизации");
   const collection = String(e.request.pathValue("collection") || "");
-  const privateCollections = {"profile_private": true, "vault_private": true};
+  const privateCollections = {"profile": true, "profile_private": true, "vault_private": true};
   const known = {
     "organizations": true, "employees": true, "organization_grants": true,
     "accounts": true, "transactions": true, "tasks": true,
@@ -29,16 +27,24 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     "critical_audit": true, "calendar_events": true, "articles": true,
     "chats": true, "messages": true, "roadmap_state": true,
     "crm_state": true, "profile_private": true, "vault_private": true,
-    // Появились, когда синхронизация перешла с «один список одной строкой»
-    // на запись за записью. Без них сервер отвечал 400 на первой же новой
-    // коллекции, и обмен вставал целиком — включая те коллекции, что он
-    // знал: проход по списку не доходил до конца.
     "roadmap_projects": true, "roadmap_items": true,
     "crm_clients": true, "crm_deals": true, "crm_interactions": true,
     "audio_beats": true, "profile": true,
     "file_grants": true, "file_requests": true, "file_handovers": true
   };
   if (!known[collection]) throw new BadRequestError("Неизвестная коллекция синхронизации");
+
+  // These collections require exact row-level policy handlers. Reaching the
+  // generic gateway means the dedicated hook set is incomplete/old; fail
+  // closed instead of returning company-wide sensitive rows.
+  if (collection === "crm_clients" ||
+      collection === "crm_deals" ||
+      collection === "crm_interactions" ||
+      collection === "file_requests" ||
+      collection === "file_grants" ||
+      collection === "file_handovers") {
+    throw new ForbiddenError("Dedicated sync route is not available");
+  }
 
   const hasModule = (name) => ctx.isOwner || ctx.modules.indexOf(name) >= 0;
   const hasAnyModule = (names) => ctx.isOwner || names.some((n) => ctx.modules.indexOf(n) >= 0);
@@ -54,7 +60,6 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
       "chats": "chats", "messages": "chats", "roadmap_state": "roadmap",
       "crm_state": "crm",
       "roadmap_projects": "roadmap", "roadmap_items": "roadmap",
-      "crm_clients": "crm", "crm_deals": "crm", "crm_interactions": "crm",
       "audio_beats": "audio"
     };
     return map[collection] ? hasModule(map[collection]) : true;
@@ -102,33 +107,26 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
 
   const ownerScope = privateCollections[collection] ? e.auth.id : ctx.ownerId;
   let records = [];
-  try {
-    records = e.app.findRecordsByFilter(
+  records = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
       "wesios_records",
       "owner={:owner} && coll={:coll}",
-      "id", 0, 0, {"owner": ownerScope, "coll": collection},
+      "id", 10000, 0, {"owner": ownerScope, "coll": collection},
     );
-  } catch (_) { records = []; }
 
   const visibleChatIds = {};
   if (collection === "messages" && !ctx.isOwner) {
     let chats = [];
-    try {
-      chats = e.app.findRecordsByFilter(
+    chats = require(`${__hooks}/wesi_sync_data_access.js`).records(e.app,
         "wesios_records",
         "owner={:owner} && coll='chats' && deleted=false",
-        "id", 0, 0, {"owner": ctx.ownerId},
+        "id", 10000, 0, {"owner": ctx.ownerId},
       );
-    } catch (_) { chats = []; }
     for (const row of chats) {
       const p = payloadOf(row);
       if (chatVisible(p)) visibleChatIds[String(p.id || row.getString("rid"))] = true;
     }
   }
 
-  // CRM is stored as three list snapshots. Filter those snapshots before they
-  // leave the server so ordinary employees never receive another employee's
-  // customer rows merely because the UI would hide them later.
   let crmFiltered = null;
   if (collection === "crm_state" && !ctx.isOwner) {
     const byKey = {};
@@ -207,7 +205,13 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
         "isOwner": self && p.isOwner === true,
         "demoStats": (self || ctx.canSeeOthersStats) && p.demoStats && typeof p.demoStats === "object"
           ? p.demoStats : {},
-        "photo": p.photo == null ? null : p.photo
+        "photo": p.photo == null ? null : p.photo,
+        "skills": Array.isArray(p.skills) ? p.skills.map(String) : [],
+        "weeklyCapacityPoints": Number(p.weeklyCapacityPoints || 10),
+        "workloadMinRatio": Number(p.workloadMinRatio == null ? 0.65 : p.workloadMinRatio),
+        "workloadMaxRatio": Number(p.workloadMaxRatio == null ? 1.10 : p.workloadMaxRatio),
+        "managerEmployeeId": p.managerEmployeeId == null ? null : String(p.managerEmployeeId),
+        "workloadAlertTarget": String(p.workloadAlertTarget || "manager")
       };
     } else if (collection === "tasks") {
       const orgId = orgIdOf(p);
@@ -238,6 +242,21 @@ routerAdd("GET", "/api/wesi/sync/{collection}", (e) => {
     }
 
     if (!allowed) continue;
+
+    // Хэш и соль пароля не покидают сервер ни для кого, включая владельца.
+    //
+    // Зачистка стоит здесь, последней и без условий, а не внутри ветки про
+    // сотрудников: ветка выполняется только для не-владельца, и владелец
+    // получал эти поля по всем сотрудникам сразу. На его устройстве это
+    // готовая база для офлайн-перебора чужих паролей, а локальное хранилище
+    // приложения не шифруется.
+    //
+    // Проверять пароль локально приложение давно перестало — вход идёт через
+    // сервер, — поэтому клиенту эти поля не нужны вообще.
+    if (collection === "employees" && p && typeof p === "object") {
+      p = Object.assign({}, p, {"passwordHash": "", "passwordSalt": ""});
+    }
+
     items.push({
       "rid": row.getString("rid"),
       "payload": p,

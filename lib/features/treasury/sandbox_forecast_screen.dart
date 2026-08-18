@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/sync/sync_audit_extensions.dart';
 import '../../core/widgets/wesi_wordmark.dart';
 import 'package:fl_chart/fl_chart.dart';
 import '../../core/theme/app_theme.dart';
@@ -87,7 +88,16 @@ class _SandboxForecastScreenState extends State<SandboxForecastScreen> {
   @override
   void initState() {
     super.initState();
+    SandboxSyncSignal.revision.addListener(_load);
+    WhatIfStore.revision.addListener(_load);
     _load();
+  }
+
+  @override
+  void dispose() {
+    SandboxSyncSignal.revision.removeListener(_load);
+    WhatIfStore.revision.removeListener(_load);
+    super.dispose();
   }
 
   /// Загрузка под страховкой.
