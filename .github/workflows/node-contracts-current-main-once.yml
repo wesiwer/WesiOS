@@ -1,4 +1,5 @@
 name: Node Contracts Current Main Once
+# Re-run after latest Telegram merge and synchronization hardening.
 
 on:
   push:
