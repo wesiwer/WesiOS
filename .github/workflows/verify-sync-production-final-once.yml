@@ -1,0 +1,50 @@
+name: Verify Sync Production Final Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-sync-production-final-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_sync_verify && chmod 600 ~/.ssh/id_sync_verify
+          if [ -n "${KNOWN:-}" ]; then printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts; else ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null; fi
+          chmod 600 ~/.ssh/known_hosts
+      - name: Verify sync hook SHA256
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+        run: |
+          set -euo pipefail
+          for f in wesi_sync_data_access.js wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js wesi_sync_extra_runtime.js; do
+            expected=$(sha256sum "server/pb_hooks/$f" | cut -d' ' -f1)
+            actual=$(ssh -i ~/.ssh/id_sync_verify -o BatchMode=yes -o UserKnownHostsFile=~/.ssh/known_hosts "$USER@$HOST" "sha256sum '/opt/pocketbase/pb_hooks/$f' | cut -d' ' -f1")
+            test "$expected" = "$actual"
+          done
+      - name: Record success
+        run: |
+          set -euo pipefail
+          printf 'sync_production_verified=true\nsource_commit=%s\n' "$GITHUB_SHA" > .github/production-sync-verified.txt
+          git config user.name 'WesiOS Production Verification'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/production-sync-verified.txt
+          git commit -m 'ops: record verified production sync bundle'
+          git push origin HEAD:main
