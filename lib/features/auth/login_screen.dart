@@ -3,9 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../core/localization/wesi_locale.dart';
 import '../../core/security/session_service.dart';
-import '../../core/sync/sync_auto.dart';
 import '../../core/sync/sync_endpoint.dart';
-import '../../core/sync/sync_engine.dart';
+import '../../core/sync/sync_feature_extensions.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/hover_button.dart';
 import '../../core/widgets/wesi_wordmark.dart';
@@ -241,11 +240,21 @@ class _LoginScreenState extends State<LoginScreen> {
     _password.clear();
     _code.clear();
     SessionService.startHeartbeat();
-    // Every authenticated account participates in sync. The server applies
-    // module/org/row permissions; disabling SyncAuto for non-owners leaves
-    // their device without the remote revision receiver after a fresh login.
-    await SyncEngine.runOnLaunch();
-    SyncAuto.start();
+
+    // TeamService.applyServerIdentity() меняет TeamService.revision. Listener
+    // SyncFeatureExtensions на это изменение уже может запустить account
+    // rebind: stop(force) -> SyncEngine.reset() -> bind private boxes -> first
+    // sync. Раньше LoginScreen сразу параллельно запускал ещё один
+    // SyncEngine.runOnLaunch(), и два контура могли одновременно сбрасывать и
+    // открывать journal/private boxes. Это особенно проявлялось после смены
+    // сотрудника на уже запущенном устройстве: часть remote apply терялась или
+    // первый poll видел промежуточное состояние.
+    //
+    // rebindCurrentAccountAndSync() сам сериализован: если listener уже начал
+    // работу, мы await-им тот же Future; если нет — запускаем его здесь. После
+    // его завершения full pull выполнен и SyncAuto уже включён ровно один раз.
+    await SyncFeatureExtensions.rebindCurrentAccountAndSync();
+
     if (!mounted) return;
     setState(() => _busy = false);
     _goHome();
@@ -421,80 +430,70 @@ class _LoginScreenState extends State<LoginScreen> {
           controller: _code,
           focusNode: _codeFocus,
           enabled: !_busy,
+          autofocus: true,
           keyboardType: TextInputType.number,
-          textAlign: TextAlign.center,
           textInputAction: TextInputAction.done,
-          maxLength: 6,
-          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+          inputFormatters: [
+            FilteringTextInputFormatter.digitsOnly,
+            LengthLimitingTextInputFormatter(6),
+          ],
           onSubmitted: (_) => _verifyCode(),
+          textAlign: TextAlign.center,
           style: TextStyle(
-            color: AppTheme.textPrimary,
-            fontSize: 24,
-            fontWeight: FontWeight.w700,
-            letterSpacing: 10,
-          ),
+              color: AppTheme.textPrimary,
+              fontSize: 24,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 8),
           decoration: InputDecoration(
-            counterText: '',
             labelText: _ru ? 'Код из письма' : 'Email code',
-            prefixIcon: Icon(Icons.shield_outlined,
-                size: 18, color: AppTheme.textMuted),
+            counterText: '',
           ),
         ),
         _errorWidget(),
         const SizedBox(height: 18),
         _button(
           onTap: _verifyCode,
-          label: _ru ? 'Подтвердить и войти' : 'Verify and sign in',
-          busyLabel: _ru ? 'Подтверждаю…' : 'Verifying…',
+          label: _ru ? 'Войти' : 'Sign in',
+          busyLabel: _ru ? 'Вхожу…' : 'Signing in…',
         ),
         const SizedBox(height: 8),
         TextButton(
             onPressed: _busy ? null : _backToPassword,
-            child: Text(_ru ? 'Запросить код заново' : 'Request a new code')),
+            child: Text(_ru ? 'Назад' : 'Back')),
       ];
 
-  Widget _errorWidget() => _error == null
-      ? const SizedBox(height: 6)
-      : Padding(
-          padding: const EdgeInsets.only(top: 12, bottom: 6),
-          child: Text(
-            _error!,
-            textAlign: TextAlign.center,
-            style: const TextStyle(fontSize: 12, color: AppTheme.accentRed),
-          ),
-        );
+  Widget _errorWidget() {
+    final error = _error;
+    if (error == null || error.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Text(error,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+              color: Color(0xFFFF6B6B), fontSize: 12, height: 1.35)),
+    );
+  }
 
   Widget _button({
-    required Future<void> Function() onTap,
+    required VoidCallback onTap,
     required String label,
     required String busyLabel,
-  }) =>
-      HoverButton(
-        onTap: _busy ? () {} : onTap,
-        padding: const EdgeInsets.symmetric(vertical: 15),
-        backgroundColor: _busy ? AppTheme.surface : AppTheme.accent,
-        child: Center(
-          child: _busy
-              ? Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
-                    ),
-                    const SizedBox(width: 10),
-                    Text(busyLabel,
-                        style: const TextStyle(color: Colors.white)),
-                  ],
-                )
-              : Text(label,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  )),
+  }) {
+    return HoverButton(
+      onTap: _busy ? null : onTap,
+      child: Container(
+        height: 46,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: AppTheme.accent,
+          borderRadius: BorderRadius.circular(12),
         ),
-      );
+        child: Text(_busy ? busyLabel : label,
+            style: const TextStyle(
+                color: Colors.white,
+                fontSize: 13,
+                fontWeight: FontWeight.w700)),
+      ),
+    );
+  }
 }
