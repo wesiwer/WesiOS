@@ -1,0 +1,38 @@
+name: Align Release Flutter Stable Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/align-release-flutter-stable-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Align release workflow with current Flutter stable
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/workflows/release-app.yml')
+          s = p.read_text()
+          old = """      - uses: subosito/flutter-action@v2\n        with:\n          flutter-version: '3.24.0'\n          channel: 'stable'\n"""
+          new = """      - uses: subosito/flutter-action@v2\n        with:\n          channel: 'stable'\n"""
+          count = s.count(old)
+          if count != 2:
+              raise SystemExit(f'expected 2 Flutter 3.24 pins in release-app.yml, got {count}')
+          p.write_text(s.replace(old, new))
+          PY
+          git config user.name 'WesiOS Release Toolchain'
+          git config user.email 'actions@users.noreply.github.com'
+          git add .github/workflows/release-app.yml
+          git commit -m 'fix(release): build with current Flutter stable'
+          git push origin HEAD:main
