@@ -103,12 +103,14 @@ class WesiAiReply {
   final String requestId;
   final List<WesiAiContentBlock> blocks;
   final List<Map<String, dynamic>> activity;
+  final bool workspaceMutated;
 
   const WesiAiReply({
     required this.answer,
     required this.requestId,
     this.blocks = const <WesiAiContentBlock>[],
     this.activity = const <Map<String, dynamic>>[],
+    this.workspaceMutated = false,
   });
 }
 
@@ -563,7 +565,21 @@ class WesiAiApi {
       blocks:
           blocks.take(WesiAiContentParser.maxBlocks).toList(growable: false),
       activity: _activityFromToolResults(json['toolResults']),
+      workspaceMutated: _workspaceMutatedFromToolResults(json['toolResults']),
     );
+  }
+
+  static bool _workspaceMutatedFromToolResults(dynamic raw) {
+    if (raw is! List) return false;
+    for (final item in raw) {
+      if (item is! Map || item['verified'] != true || item['ok'] != true)
+        continue;
+      final capabilityRaw = item['capability'];
+      if (capabilityRaw is! Map) continue;
+      final capability = Map<String, dynamic>.from(capabilityRaw);
+      if (capability['mutation'] == true) return true;
+    }
+    return false;
   }
 
   static List<Map<String, dynamic>> _activityFromToolResults(dynamic raw) {

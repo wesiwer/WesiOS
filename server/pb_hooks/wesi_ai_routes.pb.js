@@ -2,6 +2,7 @@ routerAdd("GET", "/api/wesi/ai/capabilities", (e) => {
   const ai = require(`${__hooks}/wesi_ai_lib.js`);
   const personaRuntime = require(`${__hooks}/wesi_ai_persona_runtime.js`);
   const tools = require(`${__hooks}/wesi_ai_tools.js`);
+  const registry = require(`${__hooks}/wesi_ai_capability_registry.js`);
   const ctx = ai.resolveIdentity(e);
   ai.requireAiModule(ctx);
   const cfg = ai.readRelayConfig();
@@ -199,7 +200,8 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
     const executed = tools.execute(e, ctx, toolRequest.name, toolRequest.arguments, runtimeContext.activeOrganizationId, {
       persona: persona, conversationId: conversationId, requestId: requestId
     });
-    toolResults.push({tool: toolRequest.name, verified: true, ok: executed.ok === true, code: executed.code || null, message: executed.message || null, alternatives: executed.alternatives || null, result: executed.result || null, confirmation: executed.confirmation || null, diagnostic: executed.ok === true ? null : diagnostic("TOOL", toolRequest.name, "tool.execute", executed.code || "WAI_TOOL_FAILED", 500, "TOOL_DISPATCH", executed.message || "")});
+    const capability = registry.get(toolRequest.name);
+    toolResults.push({tool: toolRequest.name, verified: true, ok: executed.ok === true, code: executed.code || null, message: executed.message || null, alternatives: executed.alternatives || null, result: executed.result || null, confirmation: executed.confirmation || null, capability: capability ? {module: capability.module, action: capability.action, risk: capability.risk, mutation: capability.risk !== registry.RISK_READ} : null, diagnostic: executed.ok === true ? null : diagnostic("TOOL", toolRequest.name, "tool.execute", executed.code || "WAI_TOOL_FAILED", 500, "TOOL_DISPATCH", executed.message || "")});
   }
 
   const finalSystem = systemParts.concat([
@@ -214,21 +216,30 @@ routerAdd("POST", "/api/wesi/ai/chat", (e) => {
 routerAdd("POST", "/api/wesi/ai/action/confirm", (e) => {
   const ai = require(`${__hooks}/wesi_ai_lib.js`);
   const tools = require(`${__hooks}/wesi_ai_tools.js`);
+  const registry = require(`${__hooks}/wesi_ai_capability_registry.js`);
   const ctx = ai.resolveIdentity(e);
   ai.requireAiModule(ctx);
   const body = e.requestInfo().body || {};
   const confirmationId = String(body.confirmationId || "").trim();
   const executed = tools.confirm(e, ctx, confirmationId);
+  const confirmedTool = String((executed && executed.tool) || "confirmed_action");
+  const capability = registry.get(confirmedTool);
   return e.json(200, {
     ok: true,
     toolResult: {
-      tool: String((executed && executed.tool) || "confirmed_action"),
+      tool: confirmedTool,
       verified: true,
       ok: executed && executed.ok === true,
       code: executed && executed.code ? executed.code : null,
       message: executed && executed.message ? executed.message : null,
       alternatives: executed && executed.alternatives ? executed.alternatives : null,
       result: executed && executed.result ? executed.result : null,
+      capability: capability ? {
+        module: capability.module,
+        action: capability.action,
+        risk: capability.risk,
+        mutation: capability.risk !== registry.RISK_READ
+      } : null,
     }
   });
 }, $apis.requireAuth("users"));

@@ -59,6 +59,7 @@ routerAdd("POST", "/api/wesi/ai/stream/tool-v2", (e) => {
     leadPersona: leadPersona,
     handoffId: handoffId
   });
+  const capability = registry.get(name);
   return e.json(200, {
     ok: true,
     toolResult: {
@@ -69,7 +70,13 @@ routerAdd("POST", "/api/wesi/ai/stream/tool-v2", (e) => {
       message: executed.message || null,
       alternatives: executed.alternatives || null,
       result: executed.result || null,
-      confirmation: executed.confirmation || null
+      confirmation: executed.confirmation || null,
+      capability: capability ? {
+        module: capability.module,
+        action: capability.action,
+        risk: capability.risk,
+        mutation: capability.risk !== registry.RISK_READ
+      } : null
     }
   });
 }, $apis.requireAuth("users"));

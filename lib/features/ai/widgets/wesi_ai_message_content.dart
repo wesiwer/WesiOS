@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
+import '../../../core/sync/sync_auto.dart';
+
 import '../../knowledge/knowledge_base_screen.dart';
 import '../../knowledge/services/knowledge_service.dart';
 import '../../team/services/team_service.dart';
@@ -71,15 +73,15 @@ class _BlockView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => switch (block.type) {
-    WesiAiContentBlockType.knowledge => _KnowledgeBlock(data: block.data),
-    WesiAiContentBlockType.table => _TableBlock(data: block.data),
-    WesiAiContentBlockType.chart => _ChartBlock(data: block.data),
-    WesiAiContentBlockType.diagram => _DiagramBlock(data: block.data),
-    WesiAiContentBlockType.media => _MediaBlock(data: block.data),
-    WesiAiContentBlockType.confirmation => _ActionConfirmationBlock(
-      data: block.data,
-    ),
-  };
+        WesiAiContentBlockType.knowledge => _KnowledgeBlock(data: block.data),
+        WesiAiContentBlockType.table => _TableBlock(data: block.data),
+        WesiAiContentBlockType.chart => _ChartBlock(data: block.data),
+        WesiAiContentBlockType.diagram => _DiagramBlock(data: block.data),
+        WesiAiContentBlockType.media => _MediaBlock(data: block.data),
+        WesiAiContentBlockType.confirmation => _ActionConfirmationBlock(
+            data: block.data,
+          ),
+      };
 }
 
 class _ActionConfirmationBlock extends StatefulWidget {
@@ -111,15 +113,23 @@ class _ActionConfirmationBlockState extends State<_ActionConfirmationBlock> {
     }
     setState(() => _running = true);
     final result = await const WesiAiActionApi().confirm(id);
+    String? syncFailure;
+    if (result.ok) {
+      final syncReport = await SyncAuto.now();
+      if (!syncReport.ok) {
+        final failure = syncReport.firstFailure;
+        syncFailure =
+            'Действие выполнено на сервере, но Sync не завершён: ${failure?.code ?? 'UNKNOWN'} · ${failure?.message ?? 'ошибка синхронизации'}';
+      }
+    }
     if (!mounted) return;
     setState(() {
       _running = false;
       _success = result.ok;
       _message = result.ok
-          ? 'Действие выполнено.'
+          ? (syncFailure ?? 'Действие выполнено, данные синхронизированы.')
           : (result.message ?? 'Не удалось выполнить действие.');
-      _terminal =
-          result.ok ||
+      _terminal = result.ok ||
           (result.code != null &&
               result.code != 'NETWORK' &&
               result.code != 'WAI_CONFIRMATION_BAD_RESPONSE');
@@ -197,8 +207,8 @@ class _ActionConfirmationBlockState extends State<_ActionConfirmationBlock> {
                 _success
                     ? 'Выполнено'
                     : expired
-                    ? 'Подтверждение истекло'
-                    : 'Подтвердить действие',
+                        ? 'Подтверждение истекло'
+                        : 'Подтвердить действие',
               ),
             ),
           ],
@@ -229,8 +239,7 @@ class _KnowledgeBlock extends StatelessWidget {
     }
 
     final permissions = TeamService.currentPermissions;
-    final allowed =
-        permissions.knowledgeAll ||
+    final allowed = permissions.knowledgeAll ||
         permissions.allowsArticle(article.id) ||
         (article.parentId != null &&
             permissions.allowsArticle(article.parentId!));
@@ -547,9 +556,8 @@ class _AiChartPainter extends CustomPainter {
       );
     }
 
-    final maxPoints = series
-        .map(_values)
-        .fold<int>(0, (a, b) => math.max(a, b.length));
+    final maxPoints =
+        series.map(_values).fold<int>(0, (a, b) => math.max(a, b.length));
     if (maxPoints == 0) return;
     double xAt(int index) => maxPoints <= 1
         ? rect.center.dx
@@ -830,7 +838,8 @@ class _MediaBlock extends StatelessWidget {
       'image' => _ImageMedia(url: url, title: title),
       'video' => _VideoMedia(url: url, title: title),
       'audio' ||
-      'music' => _AudioMedia(url: url, title: title, music: type == 'music'),
+      'music' =>
+        _AudioMedia(url: url, title: title, music: type == 'music'),
       _ => const SizedBox.shrink(),
     };
   }
@@ -844,30 +853,30 @@ class _ImageMedia extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Card(
-    clipBehavior: Clip.antiAlias,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Image.network(
-          url,
-          width: double.infinity,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => const SizedBox(
-            height: 140,
-            child: Center(child: Icon(Icons.broken_image_outlined)),
-          ),
-        ),
-        if (title.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Text(
-              title,
-              style: const TextStyle(fontWeight: FontWeight.w600),
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Image.network(
+              url,
+              width: double.infinity,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => const SizedBox(
+                height: 140,
+                child: Center(child: Icon(Icons.broken_image_outlined)),
+              ),
             ),
-          ),
-      ],
-    ),
-  );
+            if (title.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.all(10),
+                child: Text(
+                  title,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+          ],
+        ),
+      );
 }
 
 class _AudioMedia extends StatefulWidget {
@@ -915,19 +924,19 @@ class _AudioMediaState extends State<_AudioMedia> {
 
   @override
   Widget build(BuildContext context) => Card(
-    child: ListTile(
-      leading: Icon(widget.music ? Icons.music_note : Icons.graphic_eq),
-      title: Text(
-        widget.title.isEmpty
-            ? (widget.music ? 'Музыка Wesi AI' : 'Аудио Wesi AI')
-            : widget.title,
-      ),
-      trailing: IconButton.filledTonal(
-        onPressed: _toggle,
-        icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
-      ),
-    ),
-  );
+        child: ListTile(
+          leading: Icon(widget.music ? Icons.music_note : Icons.graphic_eq),
+          title: Text(
+            widget.title.isEmpty
+                ? (widget.music ? 'Музыка Wesi AI' : 'Аудио Wesi AI')
+                : widget.title,
+          ),
+          trailing: IconButton.filledTonal(
+            onPressed: _toggle,
+            icon: Icon(_playing ? Icons.pause : Icons.play_arrow),
+          ),
+        ),
+      );
 }
 
 class _VideoMedia extends StatefulWidget {

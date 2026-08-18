@@ -3,6 +3,8 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 
+import '../../../core/sync/sync_auto.dart';
+
 import '../media_engines/wesi_media_input_stager.dart';
 import '../memory/wesi_ai_memory_api.dart';
 import '../memory/wesi_ai_memory_engine.dart';
@@ -663,6 +665,20 @@ class WesiAiChatController extends ChangeNotifier {
         closed['status'] = 'done';
         closed['completedAt'] = completedAt;
         activity[index] = closed;
+      }
+      if (reply.workspaceMutated) {
+        final syncReport = await SyncAuto.now();
+        final failure = syncReport.firstFailure;
+        activity.add(activityEntry(
+          kind: 'status',
+          label: syncReport.ok
+              ? 'Изменения WesiOS синхронизированы'
+              : 'Изменение выполнено, Sync не завершён',
+          detail: syncReport.ok
+              ? 'Серверное изменение применено и локальное состояние стабилизировано.'
+              : 'Код Sync: ${failure?.code ?? 'UNKNOWN'} · ${failure?.message ?? 'Не удалось стабилизировать локальные данные'}',
+          status: syncReport.ok ? 'done' : 'error',
+        ));
       }
       final at = DateTime.now();
       final assistant = WesiAiMessage(
