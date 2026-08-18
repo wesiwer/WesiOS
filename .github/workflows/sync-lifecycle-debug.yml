@@ -1,0 +1,27 @@
+name: Sync Lifecycle Isolation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/sync-lifecycle-debug.yml'
+      - 'test/sync_engine_lifecycle_test.dart'
+      - 'lib/core/sync/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Run lifecycle test only
+        run: flutter test test/sync_engine_lifecycle_test.dart --reporter expanded
