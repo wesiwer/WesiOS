@@ -16,107 +16,21 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Move remaining wesios_records writes to atomic boundary
+      - name: Move every remote-worker sync-row mutation to atomic boundary
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
-
-          # Action broker confirmations.
-          p = Path('server/pb_hooks/wesi_ai_action_broker.js')
-          s = p.read_text()
-          old = '''    const collection = e.app.findCollectionByNameOrId("wesios_records");
-    const record = new Record(collection);
-    record.set("owner", ctx.ownerId);
-    record.set("org", "wesi-inc");
-    record.set("coll", CONFIRMATION_COLL);
-    record.set("rid", id);
-    record.set("payload", payload);
-    record.set("stamp", now.toISOString());
-    record.set("deleted", false);
-    e.app.save(record);
-'''
-          new = '''    require(modulePath("wesi_sync_atomic.js")).commit(e.app, {
-      owner: ctx.ownerId,
-      org: "wesi-inc",
-      coll: CONFIRMATION_COLL,
-      rid: id,
-      payload: payload,
-      stamp: now.toISOString(),
-      deleted: false,
-    });
-'''
-          if old not in s: raise SystemExit('action broker direct sync write snippet not found')
-          p.write_text(s.replace(old, new, 1))
-
-          # Media jobs: both create and status updates are wesios_records rows.
-          p = Path('server/pb_hooks/wesi_ai_media_lib.js')
-          s = p.read_text()
-          old = '''const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
-'''
-          new = '''const base = typeof __hooks !== "undefined" ? __hooks + "/" : "./";
-const dataAccess = require(base + "wesi_ai_data_access.js");
-const atomic = require(base + "wesi_sync_atomic.js");
-'''
-          if old not in s: raise SystemExit('media imports snippet not found')
-          s = s.replace(old, new, 1)
-          old = '''  const collection = $app.findCollectionByNameOrId("wesios_records");
-  const record = new Record(collection);
-  const now = new Date().toISOString();
-'''
-          new = '''  const now = new Date().toISOString();
-'''
-          if old not in s: raise SystemExit('media create header snippet not found')
-          s = s.replace(old, new, 1)
-          old = '''  record.set("owner", String(ctx.ownerId || ""));
-  record.set("org", "");
-  record.set("coll", "ai_media");
-  record.set("rid", "media:" + jobId);
-  record.set("payload", payload);
-  record.set("stamp", now);
-  record.set("deleted", false);
-  $app.save(record);
-  return record;
-'''
-          new = '''  atomic.commit($app, {
-    owner: String(ctx.ownerId || ""),
-    org: "",
-    coll: "ai_media",
-    rid: "media:" + jobId,
-    payload: payload,
-    stamp: now,
-    deleted: false,
-  });
-  return findJob(jobId);
-'''
-          if old not in s: raise SystemExit('media create body snippet not found')
-          s = s.replace(old, new, 1)
-          old = '''  payload.updatedAt = now;
-  record.set("payload", payload);
-  record.set("stamp", now);
-  $app.save(record);
-  return payload;
-'''
-          new = '''  payload.updatedAt = now;
-  atomic.commit($app, {
-    owner: record.getString("owner"),
-    org: record.getString("org"),
-    coll: record.getString("coll"),
-    rid: record.getString("rid"),
-    payload: payload,
-    stamp: now,
-    deleted: false,
-  });
-  return payload;
-'''
-          if old not in s: raise SystemExit('media savePayload snippet not found')
-          p.write_text(s.replace(old, new, 1))
-
-          # Remote worker upsert. Other e.app.save calls in this file target
-          # non-sync collections and intentionally remain direct PocketBase writes.
           p = Path('server/pb_hooks/wesi_ai_remote_worker.pb.js')
           s = p.read_text()
+
+          s = s.replace(
+            'const rw = require(`${__hooks}/wesi_ai_remote_worker_lib.js`);\n',
+            'const rw = require(`${__hooks}/wesi_ai_remote_worker_lib.js`);\nconst atomic = require(`${__hooks}/wesi_sync_atomic.js`);\n',
+            1,
+          )
+
           old = '''function upsert(app, ownerId, org, coll, rid, payload) {
   let record = findRecord(app, ownerId, coll, rid);
   if (!record) {
@@ -134,45 +48,55 @@ const atomic = require(base + "wesi_sync_atomic.js");
   return record;
 }
 '''
-          new = '''function upsert(app, ownerId, org, coll, rid, payload) {
-  const now = new Date().toISOString();
-  require(`${__hooks}/wesi_sync_atomic.js`).commit(app, {
+          new = '''function persistRecord(app, record, payload, deleted) {
+  const stamp = new Date().toISOString();
+  atomic.commit(app, {
+    owner: record.getString("owner"),
+    org: record.getString("org"),
+    coll: record.getString("coll"),
+    rid: record.getString("rid"),
+    payload: payload,
+    stamp: stamp,
+    deleted: deleted === true,
+  });
+  return findRecord(app, record.getString("owner"), record.getString("coll"), record.getString("rid"));
+}
+
+function upsert(app, ownerId, org, coll, rid, payload) {
+  const stamp = new Date().toISOString();
+  atomic.commit(app, {
     owner: ownerId,
     org: org || OWNER_ORG,
     coll: coll,
     rid: rid,
     payload: payload,
-    stamp: now,
+    stamp: stamp,
     deleted: false,
   });
   return findRecord(app, ownerId, coll, rid);
 }
 '''
           if old not in s: raise SystemExit('remote worker upsert snippet not found')
-          p.write_text(s.replace(old, new, 1))
+          s = s.replace(old, new, 1)
 
-          # Guard only direct writes tied to a wesios_records collection handle.
-          p = Path('server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs')
-          s = p.read_text()
-          old = '''    if (!source.includes('wesios_records')) continue;
-    if (/\\be\\.app\\.save\\s*\\(/.test(source) || /\\bnew\\s+Record\\s*\\(/.test(source)) {
-      offenders.push(name);
-    }
-'''
-          new = '''    if (!source.includes('wesios_records')) continue;
-    const directCollectionCreate = /findCollectionByNameOrId\\(["']wesios_records["']\\)[\\s\\S]{0,500}?new\\s+Record\\s*\\(/.test(source);
-    const legacyRemoteUpsert = /function\\s+upsert\\s*\\([\\s\\S]{0,900}?findCollectionByNameOrId\\(["']wesios_records["']\\)/.test(source);
-    if (directCollectionCreate || legacyRemoteUpsert) offenders.push(name);
-'''
-          if old not in s: raise SystemExit('writer guard snippet not found')
-          p.write_text(s.replace(old, new, 1))
+          replacements = [
+            ('''  credential.set("payload", credentialPayload);\n  credential.set("stamp", new Date(nowMs).toISOString());\n  e.app.save(credential);\n''', '''  persistRecord(e.app, credential, credentialPayload, false);\n'''),
+            ('''      removable[i].set("deleted", true);\n      removable[i].set("stamp", new Date().toISOString());\n      app.save(removable[i]);\n''', '''      persistRecord(app, removable[i], payloadOf(removable[i]), true);\n'''),
+            ('''  record.set("payload", payload);\n  record.set("stamp", new Date().toISOString());\n  app.save(record);\n  return true;\n''', '''  persistRecord(app, record, payload, false);\n  return true;\n'''),
+            ('''  record.set("payload", stored);\n  record.set("stamp", new Date().toISOString());\n  e.app.save(record);\n  return e.json(200, {ok: true, credentialId: credentialId, workerId: ticket.workerId});\n''', '''  persistRecord(e.app, record, stored, false);\n  return e.json(200, {ok: true, credentialId: credentialId, workerId: ticket.workerId});\n'''),
+            ('''  record.set("payload", stored);\n  record.set("stamp", new Date().toISOString());\n  e.app.save(record);\n  return e.json(200, {ok: true, ready: true, credential: publicCredential});\n''', '''  persistRecord(e.app, record, stored, false);\n  return e.json(200, {ok: true, ready: true, credential: publicCredential});\n'''),
+            ('''    row.set("payload", payload);\n    row.set("stamp", revokedAt);\n    e.app.save(row);\n''', '''    persistRecord(e.app, row, payload, false);\n'''),
+          ]
+          for old_snip, new_snip in replacements:
+            if old_snip not in s:
+              raise SystemExit('remote worker direct-save snippet not found: ' + old_snip.splitlines()[0])
+            s = s.replace(old_snip, new_snip, 1)
+
+          p.write_text(s)
           PY
 
           git config user.name 'WesiOS Atomic Fixes'
           git config user.email 'actions@users.noreply.github.com'
-          git add server/pb_hooks/wesi_ai_action_broker.js \
-                  server/pb_hooks/wesi_ai_media_lib.js \
-                  server/pb_hooks/wesi_ai_remote_worker.pb.js \
-                  server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs
-          git commit -m 'fix(sync): route remaining Wesi AI records through atomic writer'
+          git add server/pb_hooks/wesi_ai_remote_worker.pb.js
+          git commit -m 'fix(sync): atomically persist every remote-worker sync row'
           git push origin HEAD:main
