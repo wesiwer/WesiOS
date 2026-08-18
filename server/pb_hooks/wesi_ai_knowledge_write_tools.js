@@ -1,4 +1,5 @@
 const dataAccess = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_data_access.js");
+const syncWriter = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_sync_writer.js");
 function payload(record) {
   if (!record) return {};
   try {
@@ -91,9 +92,10 @@ module.exports = {
       const id = "wai_article_" + Date.now() + "_" + $security.randomString(8);
       const value = {id, title, body, section: sec, tags: tags(input.tags), createdAt: now, updatedAt: now, builtIn: false,
         pinned: input.pinned === true, parentId: parentId || null, isFolder: input.isFolder === true, orderRaw: Number.isFinite(Number(input.order)) ? Math.trunc(Number(input.order)) : null};
-      const collection = e.app.findCollectionByNameOrId("wesios_records"); const record = new Record(collection);
-      record.set("owner", ctx.ownerId); record.set("org", "wesi-inc"); record.set("coll", "articles"); record.set("rid", id); record.set("payload", value); record.set("stamp", now); record.set("deleted", false); e.app.save(record);
-      return {ok: true, result: {article: {id, title, parentId: value.parentId, isFolder: value.isFolder}}};
+      const saved = syncWriter.write(e, ctx, {coll: "articles", rid: id, next: value, creating: true});
+      if (!saved.applied) return {ok: false, code: "WRITE_CONFLICT", message: "Статья изменилась параллельно, повторите действие"};
+      const out = saved.payload;
+      return {ok: true, result: {article: {id, title: String(out.title || title), parentId: out.parentId || null, isFolder: out.isFolder === true}}};
     }
 
     const id = String(input.articleId || "").trim();
@@ -104,7 +106,8 @@ module.exports = {
     if (!canEdit(perms, ctx, id, before.parentId)) return {ok: false, code: "FORBIDDEN", message: "Нет права изменять эту статью"};
     if (name === "knowledge_archive") {
       if (before.builtIn === true) return {ok: false, code: "FORBIDDEN", message: "Встроенную статью удалить нельзя"};
-      record.set("deleted", true); record.set("stamp", now); e.app.save(record);
+      const saved = syncWriter.write(e, ctx, {coll: "articles", rid: id, before: before, next: before, deleted: true});
+      if (!saved.applied) return {ok: false, code: "WRITE_CONFLICT", message: "Статья уже изменилась, повторите действие"};
       return {ok: true, result: {article: {id, archived: true}}};
     }
     if (name !== "knowledge_update") return {ok: false, code: "UNKNOWN_TOOL", message: "Неизвестный Knowledge-инструмент"};
@@ -123,7 +126,10 @@ module.exports = {
       if (parentId && !byId(e, ctx, parentId)) return {ok: false, code: "NOT_FOUND", message: "Родительская статья не найдена"};
       next.parentId = parentId || null;
     }
-    next.updatedAt = now; record.set("payload", next); record.set("stamp", now); record.set("deleted", false); e.app.save(record);
-    return {ok: true, result: {article: {id, title: String(next.title || ""), parentId: next.parentId || null, isFolder: next.isFolder === true}}};
+    next.updatedAt = now;
+    const saved = syncWriter.write(e, ctx, {coll: "articles", rid: id, before: before, next: next});
+    if (!saved.applied) return {ok: false, code: "WRITE_CONFLICT", message: "Статья изменилась параллельно, повторите действие"};
+    const out = saved.payload;
+    return {ok: true, result: {article: {id, title: String(out.title || ""), parentId: out.parentId || null, isFolder: out.isFolder === true}}};
   },
 };
