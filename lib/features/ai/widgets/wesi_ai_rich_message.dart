@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/wesi_ai_activity.dart';
+import 'wesi_ai_step_detail_sheet.dart';
 import 'wesi_ai_code_console.dart';
 import 'wesi_ai_visualization.dart';
 
@@ -1081,7 +1082,7 @@ class _WesiAiWorkLogState extends State<WesiAiWorkLog> {
   }
 }
 
-class WesiAiActivityRow extends StatefulWidget {
+class WesiAiActivityRow extends StatelessWidget {
   final WesiAiActivityEvent event;
   final bool compact;
 
@@ -1092,31 +1093,20 @@ class WesiAiActivityRow extends StatefulWidget {
   });
 
   @override
-  State<WesiAiActivityRow> createState() => _WesiAiActivityRowState();
-}
-
-class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
-  bool _expanded = false;
-
-  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final event = widget.event;
-    // Суть показывается сразу, без нажатия.
-    //
-    // У агентов это принципиально: строка «Зову специалиста · Security
-    // Reviewer» без поручения не отвечает на вопрос, зачем его позвали, а
-    // спрятать ответ под раскрытие — значит не показать его вовсе. Сервер
-    // ограничивает эту строку тремя сотнями знаков, так что она не разносит
-    // журнал работы.
     final inlineReadDetail = (event.kind == WesiAiActivityKind.tool ||
             event.kind == WesiAiActivityKind.agent) &&
         event.detail.isNotEmpty &&
         !event.hasDiff &&
         event.files.isEmpty;
-    final hasDetails = (!inlineReadDetail && event.detail.isNotEmpty) ||
+    final hasDetails = event.detail.isNotEmpty ||
         event.files.isNotEmpty ||
-        event.hasIo;
+        event.hasIo ||
+        event.sourceName.isNotEmpty ||
+        event.status.isNotEmpty ||
+        event.duration != null ||
+        event.hasDiff;
     final icon = switch (event.kind) {
       WesiAiActivityKind.tool => Icons.build_outlined,
       WesiAiActivityKind.agent => Icons.account_tree_outlined,
@@ -1133,10 +1123,11 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
 
     return InkWell(
       borderRadius: BorderRadius.circular(10),
-      onTap: hasDetails ? () => setState(() => _expanded = !_expanded) : null,
+      onTap:
+          hasDetails ? () => WesiAiStepDetailSheet.open(context, event) : null,
       child: Padding(
         padding: EdgeInsets.symmetric(
-          horizontal: widget.compact ? 0 : 8,
+          horizontal: compact ? 0 : 8,
           vertical: 5,
         ),
         child: Column(
@@ -1149,7 +1140,7 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
                 Expanded(
                   child: Text(
                     event.label,
-                    maxLines: widget.compact ? 2 : 1,
+                    maxLines: compact ? 2 : 1,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w600,
@@ -1176,8 +1167,9 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
                 if (hasDetails) ...[
                   const SizedBox(width: 3),
                   Icon(
-                    _expanded ? Icons.expand_less : Icons.chevron_right,
+                    Icons.chevron_right_rounded,
                     size: 18,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ],
               ],
@@ -1187,41 +1179,13 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
                 padding: const EdgeInsets.only(left: 24, top: 5),
                 child: Text(
                   event.detail,
+                  maxLines: 3,
+                  overflow: TextOverflow.ellipsis,
                   style: theme.textTheme.bodySmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
               ),
-            if (_expanded) ...[
-              if (event.detail.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(left: 24, top: 5),
-                  child: Text(event.detail, style: theme.textTheme.bodySmall),
-                ),
-              if (event.files.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(left: 24, top: 5),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      for (final file in event.files.take(12))
-                        Text(
-                          file,
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            fontFamily: 'monospace',
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-              // Аргументы вызова и ответ инструмента. Ради них шаг и
-              // раскрывают: сводки хватает, чтобы следить за ходом, но не
-              // чтобы проверить длинный проход, где шагов два десятка.
-              if (event.input.isNotEmpty)
-                WesiAiStepPayload(title: 'Запрос', body: event.input),
-              if (event.output.isNotEmpty)
-                WesiAiStepPayload(title: 'Ответ', body: event.output),
-            ],
           ],
         ),
       ),
