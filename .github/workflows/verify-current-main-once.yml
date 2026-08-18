@@ -1,0 +1,59 @@
+name: Verify Current Main Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-current-main-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Run full verification and publish result
+        shell: bash
+        run: |
+          set +e
+          flutter pub get >/tmp/pub.log 2>&1
+          flutter analyze --no-fatal-infos >/tmp/analyze.log 2>&1
+          ANALYZE=$?
+          flutter test >/tmp/tests.log 2>&1
+          TESTS=$?
+          flutter build apk --debug >/tmp/android.log 2>&1
+          ANDROID=$?
+          node --test server/pb_hooks/*_test.mjs >/tmp/node.log 2>&1
+          NODE=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "ANALYZE=$ANALYZE"
+            echo "TESTS=$TESTS"
+            echo "ANDROID_DEBUG=$ANDROID"
+            echo "NODE_SYNC=$NODE"
+            echo '=== ANALYZE TAIL ==='
+            tail -n 80 /tmp/analyze.log
+            echo '=== TESTS TAIL ==='
+            tail -n 120 /tmp/tests.log
+            echo '=== ANDROID TAIL ==='
+            tail -n 80 /tmp/android.log
+            echo '=== NODE TAIL ==='
+            tail -n 160 /tmp/node.log
+          } > .github/current-main-verification.txt
+          git config user.name 'WesiOS Verification'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/current-main-verification
+          git add .github/current-main-verification.txt
+          git commit -m 'ops: capture current main verification'
+          git push --force origin HEAD:diag/current-main-verification
+          test "$ANALYZE" -eq 0 -a "$TESTS" -eq 0 -a "$ANDROID" -eq 0 -a "$NODE" -eq 0
