@@ -4,7 +4,7 @@ on:
   pull_request:
     paths:
       - '.github/workflows/sync-lifecycle-debug.yml'
-      - 'test/sync_engine_lifecycle_test.dart'
+      - 'test/**'
       - 'lib/core/sync/**'
   workflow_dispatch:
 
@@ -13,6 +13,7 @@ permissions:
 
 jobs:
   lifecycle:
+    name: Lifecycle only
     runs-on: ubuntu-latest
     timeout-minutes: 12
     steps:
@@ -25,3 +26,18 @@ jobs:
       - run: flutter pub get
       - name: Run lifecycle test only
         run: flutter test test/sync_engine_lifecycle_test.dart --reporter expanded
+
+  serialized-suite:
+    name: Full suite serial
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Run full suite without parallel test files
+        run: flutter test -j 1 --reporter expanded
