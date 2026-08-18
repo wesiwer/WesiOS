@@ -45,6 +45,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Validate sources and configuration
+        id: validate
         env:
           MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
           BOT_TOKEN_PRIMARY: ${{ secrets.WESI_TELEGRAM_BOT_TOKEN }}
@@ -107,6 +108,7 @@ jobs:
           chmod 600 wesi-telegram.json
 
       - name: Generate WesiOS Telegram visuals
+        id: visuals
         run: |
           set -euo pipefail
           python3 -m pip install --disable-pip-version-check --quiet 'Pillow>=11.0,<13.0'
@@ -123,6 +125,7 @@ jobs:
           PY
 
       - name: Prepare SSH
+        id: ssh
         env:
           MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
           MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
@@ -139,6 +142,7 @@ jobs:
           chmod 600 ~/.ssh/main_known_hosts
 
       - name: Atomically deploy Telegram hooks and visuals
+        id: server
         run: |
           set -euo pipefail
           SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
@@ -202,6 +206,7 @@ jobs:
           REMOTE
 
       - name: Configure Telegram profile menu and webhook
+        id: telegram
         run: |
           set -euo pipefail
           tg_post() {
@@ -261,6 +266,7 @@ jobs:
           PY
 
       - name: Verify public Telegram routes and visuals
+        id: public
         run: |
           set -euo pipefail
           base="${PUBLIC_BASE_URL%/}"
@@ -287,11 +293,30 @@ jobs:
         if: always()
         run: rm -f wesi-telegram.json ~/.ssh/main_key
 
-      - name: Publish deploy status
+      - name: Publish deploy stage statuses
         if: always()
         uses: actions/github-script@v7
         with:
           script: |
+            const stages = {
+              validate: '${{ steps.validate.outcome }}',
+              visuals: '${{ steps.visuals.outcome }}',
+              ssh: '${{ steps.ssh.outcome }}',
+              server: '${{ steps.server.outcome }}',
+              telegram: '${{ steps.telegram.outcome }}',
+              public: '${{ steps.public.outcome }}'
+            };
+            for (const [name, outcome] of Object.entries(stages)) {
+              const state = outcome === 'success' ? 'success' : (outcome === 'failure' ? 'failure' : 'pending');
+              await github.rest.repos.createCommitStatus({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                sha: context.sha,
+                state,
+                context: `Wesi Telegram / ${name}`,
+                description: `stage ${name}: ${outcome || 'not-run'}`
+              });
+            }
             const ok = '${{ job.status }}' === 'success';
             await github.rest.repos.createCommitStatus({
               owner: context.repo.owner,
