@@ -176,11 +176,6 @@ class SyncEngine {
     final values = c.local();
     final stamps = SyncJournal.forCollection(c.name);
     final out = <String, SyncRecord>{};
-
-    // A missing stamp on an established account is unknown history, not a
-    // fresh edit. Treat it conservatively as epoch so a matching remote row
-    // wins. On the true first exchange `_onlyNewTo` already protects conflicts,
-    // and the current timestamp remains useful for local-only seed data.
     final safeFallback = firstEverExchange ? fallbackStamp : _epoch;
 
     values.forEach((id, value) {
@@ -317,6 +312,42 @@ class SyncEngine {
           ),
         );
 
+    Future<bool> applyAuthoritative(SyncRecord r) async {
+      if (cancelled()) return false;
+      SyncJournal.expect(
+        c.name,
+        r.id,
+        SyncStamp(r.updatedAt, deleted: r.deleted),
+      );
+      await SyncJournal.record(
+        c.name,
+        r.id,
+        SyncStamp(r.updatedAt, deleted: r.deleted),
+      );
+      if (cancelled()) {
+        SyncJournal.forget(c.name, r.id);
+        return false;
+      }
+
+      try {
+        if (r.deleted) {
+          await c.removeById(r.id);
+          return !cancelled();
+        }
+        final accepted = await c.applyFields(r.fields);
+        if (!accepted) SyncJournal.forget(c.name, r.id);
+        return accepted && !cancelled();
+      } catch (_) {
+        SyncJournal.forget(c.name, r.id);
+        return false;
+      }
+    }
+
+    Future<void> resetIncompleteStamp(String id) async {
+      SyncJournal.forget(c.name, id);
+      await SyncJournal.record(c.name, id, SyncStamp(_epoch));
+    }
+
     if (cancelled()) return cancelledReport();
     final remote = await t.fetch(c.name);
     if (cancelled()) return cancelledReport();
@@ -335,55 +366,19 @@ class SyncEngine {
     SyncFailure? applyFailure;
     var pending = List<SyncRecord>.from(plan.toApplyLocally);
 
-    Future<void> resetIncompleteStamp(String id) async {
-      SyncJournal.forget(c.name, id);
-      await SyncJournal.record(c.name, id, SyncStamp(_epoch));
-    }
-
     while (pending.isNotEmpty) {
       var progressed = false;
       final deferred = <SyncRecord>[];
 
       for (final r in pending) {
         if (cancelled()) return cancelledReport(applied: applied);
-
-        SyncJournal.expect(
-          c.name,
-          r.id,
-          SyncStamp(r.updatedAt, deleted: r.deleted),
-        );
-        await SyncJournal.record(
-          c.name,
-          r.id,
-          SyncStamp(r.updatedAt, deleted: r.deleted),
-        );
-        if (cancelled()) {
-          SyncJournal.forget(c.name, r.id);
-          return cancelledReport(applied: applied);
-        }
-
-        var accepted = false;
-        try {
-          if (r.deleted) {
-            await c.removeById(r.id);
-            accepted = true;
-          } else {
-            accepted = await c.applyFields(r.fields);
-          }
-        } catch (_) {
-          accepted = false;
-        }
-
-        if (cancelled()) {
-          SyncJournal.forget(c.name, r.id);
-          return cancelledReport(applied: applied);
-        }
+        final accepted = await applyAuthoritative(r);
+        if (cancelled()) return cancelledReport(applied: applied);
 
         if (accepted) {
           applied++;
           progressed = true;
         } else {
-          SyncJournal.forget(c.name, r.id);
           deferred.add(r);
         }
       }
@@ -430,16 +425,71 @@ class SyncEngine {
     final pushed = await t.push(c.name, plan.toUpload);
     if (cancelled()) return cancelledReport(applied: applied);
 
+    SyncFailure? policyFailure;
+    var policyApplied = 0;
+
+    // A 403 is part of the current server policy snapshot, not a network
+    // failure. Use the fetch we just received as the authority for that id.
+    for (final id in pushed.forbiddenIds) {
+      if (cancelled()) return cancelledReport(applied: applied + policyApplied);
+      final visibleRemote = remote.value![id];
+
+      if (visibleRemote != null) {
+        // Read-only row: the employee may see it but may not write it. Restore
+        // exactly the server version instead of leaving the forbidden edit in
+        // local Hive.
+        if (await applyAuthoritative(visibleRemote)) {
+          policyApplied++;
+        } else {
+          await resetIncompleteStamp(id);
+          policyFailure ??= SyncFailure(
+            'REMOTE_APPLY_INCOMPLETE',
+            'Не удалось восстановить read-only ${c.name}:$id',
+          );
+        }
+        continue;
+      }
+
+      // Not present in the permission-filtered remote snapshot at all: access
+      // was revoked (or this row never belonged to the employee). Purge the
+      // cached local copy. Store an epoch tombstone only in THIS account's
+      // journal, so a future permission grant will let any server row win and
+      // restore itself normally.
+      SyncJournal.expect(
+        c.name,
+        id,
+        SyncStamp(_epoch, deleted: true),
+      );
+      await SyncJournal.record(
+        c.name,
+        id,
+        SyncStamp(_epoch, deleted: true),
+      );
+      try {
+        await c.removeById(id);
+        if (cancelled()) {
+          SyncJournal.forget(c.name, id);
+          return cancelledReport(applied: applied + policyApplied);
+        }
+        policyApplied++;
+      } catch (_) {
+        SyncJournal.forget(c.name, id);
+        await resetIncompleteStamp(id);
+        policyFailure ??= SyncFailure(
+          'LOCAL_POLICY_PURGE_FAILED',
+          'Не удалось удалить локальный кэш ${c.name}:$id после отзыва доступа',
+        );
+      }
+    }
+
+    if (policyApplied > 0) c.notifyChanged();
+    applied += policyApplied;
+
     if (pushed.deliveredIds.isNotEmpty) {
       final uploadedById = <String, SyncRecord>{
         for (final record in plan.toUpload) record.id: record,
       };
 
-      // Align the local LWW journal with the timestamp actually committed by
-      // the server. This closes the loop when the server clamps a far-future
-      // device clock. If a successful response omitted a valid stamp, epoch is
-      // safer than keeping the client's untrusted future value: the next pull
-      // will restore the authoritative server timestamp.
       for (final id in pushed.deliveredIds) {
         if (cancelled()) return cancelledReport(applied: applied);
         final source = uploadedById[id];
@@ -460,7 +510,7 @@ class SyncEngine {
       collection: c.name,
       applied: applied,
       uploaded: pushed.sent,
-      failure: pushed.failure,
+      failure: policyFailure ?? pushed.failure,
     );
   }
 
