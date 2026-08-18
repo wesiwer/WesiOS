@@ -9,6 +9,7 @@ import '../../features/team/models/employee_model.dart';
 import '../../features/team/services/team_service.dart';
 import '../security/secret_vault.dart';
 import '../security/shield_service.dart';
+import 'sync_account_scope.dart';
 import 'sync_auto.dart';
 import 'sync_codec.dart';
 import 'sync_endpoint.dart';
@@ -52,17 +53,34 @@ class SyncFeatureExtensions {
   static Future<void>? _rebindFuture;
   static int _rebindRequestGeneration = 0;
   static String? _boundEmployeeId;
+  static String? _boundAuthUserId;
   static StreamSubscription<BoxEvent>? _settingsSub;
   static Timer? _avatarProjection;
 
   static String _safe(String raw) =>
       raw.replaceAll(RegExp(r'[^A-Za-z0-9_.-]'), '_');
 
-  static String profileBoxName([String? employeeId]) =>
-      '${_profileBoxPrefix}_${_safe(employeeId ?? TeamService.current?.id ?? 'anonymous')}';
+  /// Private box namespace follows PocketBase auth user — the same identity the
+  /// server uses for `owner=e.auth.id` and SyncJournal uses for its account
+  /// scope. Employee id remains part of the record id, but must never decide
+  /// which local vault/profile box is opened.
+  static String profileBoxName([String? authUserId]) =>
+      SyncAccountScope.forUser(
+        _profileBoxPrefix,
+        authUserId ?? SyncAccountScope.currentUserId,
+      );
 
-  static String vaultBoxName([String? employeeId]) =>
-      '${_vaultBoxPrefix}_${_safe(employeeId ?? TeamService.current?.id ?? 'anonymous')}';
+  static String vaultBoxName([String? authUserId]) =>
+      SyncAccountScope.forUser(
+        _vaultBoxPrefix,
+        authUserId ?? SyncAccountScope.currentUserId,
+      );
+
+  static String _legacyProfileBoxName(String employeeId) =>
+      '${_profileBoxPrefix}_${_safe(employeeId)}';
+
+  static String _legacyVaultBoxName(String employeeId) =>
+      '${_vaultBoxPrefix}_${_safe(employeeId)}';
 
   static String privateRecordId(String key, [String? employeeId]) =>
       '${_safe(employeeId ?? TeamService.current?.id ?? 'anonymous')}::$key';
@@ -95,13 +113,19 @@ class SyncFeatureExtensions {
         );
   }
 
+  static bool _bindingMatchesCurrent() {
+    final authUserId = SyncAccountScope.currentUserId;
+    final employeeId = authUserId == 'anonymous' ? null : TeamService.current?.id;
+    return _boundEmployeeId == employeeId && _boundAuthUserId == authUserId;
+  }
+
   static void _onTeamRevision() {
     // A revision can fire while a previous logout/account rebind is still
     // awaiting SyncEngine.reset() or private-box restoration. Never discard a
     // different identity just because `_rebinding` is true. Mark another pass
-    // as requested; the single worker below drains requests until the actual
-    // current employee is the one bound to private sync state.
-    if (TeamService.current?.id == _boundEmployeeId) return;
+    // as requested; the single worker below drains requests until both the
+    // business employee and the auth-user namespace are current.
+    if (_bindingMatchesCurrent()) return;
     _requestRebind();
   }
 
@@ -112,10 +136,6 @@ class SyncFeatureExtensions {
 
   /// Serializes account switches and coalesces changes that happen while a
   /// previous switch is still running.
-  ///
-  /// Old behavior returned the already-running Future and ignored the new
-  /// TeamService.revision. A fast logout -> MFA login could therefore finish
-  /// the old `current=null` pass and never bind/start sync for the new account.
   static Future<void> rebindCurrentAccountAndSync() {
     _rebindRequestGeneration++;
     return _ensureRebindWorker();
@@ -143,12 +163,8 @@ class SyncFeatureExtensions {
         final handledGeneration = _rebindRequestGeneration;
         await _performRebindPass();
 
-        // A TeamService revision may have arrived while this pass was inside
-        // any await. Also verify the concrete binding, because a caller can
-        // change current identity without the listener getting a chance to run
-        // before this continuation resumes.
         if (handledGeneration == _rebindRequestGeneration &&
-            TeamService.current?.id == _boundEmployeeId) {
+            _bindingMatchesCurrent()) {
           break;
         }
       }
@@ -159,33 +175,30 @@ class SyncFeatureExtensions {
 
   static Future<void> _performRebindPass() async {
     final targetEmployeeId = TeamService.current?.id;
+    final targetAuthUserId = SyncAccountScope.currentUserId;
 
     SyncAuto.stop(force: true);
     await SyncEngine.reset();
 
-    // If identity changed while reset was draining an old fetch/apply, do not
-    // restore private state for the stale target. The outer drain loop will
-    // immediately run a fresh pass for the new identity.
-    if (TeamService.current?.id != targetEmployeeId) return;
+    if (TeamService.current?.id != targetEmployeeId ||
+        SyncAccountScope.currentUserId != targetAuthUserId) {
+      return;
+    }
 
     await _bind(allowLegacy: false);
 
-    // `_bind` itself performs async Hive work. Do not start a full sync against
-    // a private box that ceased to be current during that work.
     if (TeamService.current?.id != targetEmployeeId ||
-        _boundEmployeeId != targetEmployeeId) {
+        SyncAccountScope.currentUserId != targetAuthUserId ||
+        !_bindingMatchesCurrent()) {
       return;
     }
 
     if (TeamService.current != null && SyncEndpoint.isConnected) {
       await SyncEngine.runOnLaunch();
 
-      // A session/account switch may occur during the network pass. The engine
-      // protects data with its own generation/session fingerprint, and this
-      // final check prevents an obsolete pass from enabling SyncAuto for the
-      // wrong account.
       if (TeamService.current?.id == targetEmployeeId &&
-          _boundEmployeeId == targetEmployeeId &&
+          SyncAccountScope.currentUserId == targetAuthUserId &&
+          _bindingMatchesCurrent() &&
           SyncEndpoint.isConnected) {
         SyncAuto.start();
       }
@@ -219,13 +232,39 @@ class SyncFeatureExtensions {
     }
   }
 
+  /// One-time migration from the previous employee-scoped private boxes.
+  ///
+  /// Copy only when the new auth-scoped target is empty. If both exist, the
+  /// auth-scoped box is authoritative. In either case clear the legacy box so
+  /// private profile/vault values do not remain readable under a namespace
+  /// that is weaker than the server's auth-user boundary.
+  static Future<void> _migrateLegacyPrivateBox(
+    String legacyName,
+    Box<dynamic> target,
+  ) async {
+    if (legacyName == target.name) return;
+    final legacy = await _open(legacyName);
+    if (legacy.isEmpty) return;
+
+    if (target.isEmpty) {
+      final copy = <dynamic, dynamic>{};
+      for (final key in legacy.keys) {
+        copy[key] = legacy.get(key);
+      }
+      if (copy.isNotEmpty) await target.putAll(copy);
+    }
+
+    await legacy.clear();
+  }
+
   static Future<void> _bind({required bool allowLegacy}) async {
     final current = TeamService.current;
     final id = current?.id;
+    final authUserId = SyncAccountScope.currentUserId;
     final settings = Hive.box<dynamic>(_settingsBox);
     final previousOwner = settings.get(_profileOwnerKey);
 
-    if (id == null || id.isEmpty) {
+    if (id == null || id.isEmpty || authUserId == 'anonymous') {
       final previous = _boundEmployeeId ??
           (previousOwner is String && previousOwner.isNotEmpty
               ? previousOwner
@@ -234,10 +273,11 @@ class SyncFeatureExtensions {
       await settings.delete(_lastRunKey);
       await settings.delete(_seededKey);
       _boundEmployeeId = null;
+      _boundAuthUserId = authUserId;
       SecretVault.lock();
       return;
     }
-    if (_boundEmployeeId == id) return;
+    if (_boundEmployeeId == id && _boundAuthUserId == authUserId) return;
 
     if (_boundEmployeeId case final previous? when previous != id) {
       await _stashMarkers(settings, previous);
@@ -247,8 +287,19 @@ class SyncFeatureExtensions {
         (previousOwner == null || '$previousOwner' == id);
     await _restoreMarkers(settings, id, allowLegacy: migrateLegacy);
 
-    final profile = await _open(profileBoxName(id));
-    final vault = await _open(vaultBoxName(id));
+    final profile = await _open(profileBoxName(authUserId));
+    final vault = await _open(vaultBoxName(authUserId));
+    await _migrateLegacyPrivateBox(_legacyProfileBoxName(id), profile);
+    await _migrateLegacyPrivateBox(_legacyVaultBoxName(id), vault);
+
+    // Account could switch while legacy Hive data was being copied. Do not
+    // project the stale target into global settings; the drain loop will reset
+    // and bind the new identity immediately.
+    if (TeamService.current?.id != id ||
+        SyncAccountScope.currentUserId != authUserId) {
+      return;
+    }
+
     if (migrateLegacy && profile.isEmpty) {
       await _seedProfile(settings, profile);
     } else {
@@ -260,8 +311,14 @@ class SyncFeatureExtensions {
       await _restoreVault(settings, vault);
     }
 
+    if (TeamService.current?.id != id ||
+        SyncAccountScope.currentUserId != authUserId) {
+      return;
+    }
+
     await settings.put(_profileOwnerKey, id);
     _boundEmployeeId = id;
+    _boundAuthUserId = authUserId;
     await _projectAvatarToEmployee();
   }
 
