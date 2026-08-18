@@ -1,12 +1,11 @@
 name: Ship Telegram MVP Release Once
 
-# Retriggered after synchronization hardening to publish the current main with
-# the same stable Flutter toolchain used by validation.
 on:
   push:
     branches: [main]
     paths:
       - '.github/workflows/align-release-flutter-stable-once.yml'
+      - '.github/release-telegram-mvp.trigger'
 
 permissions:
   contents: write
@@ -23,6 +22,14 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Mark release orchestrator running
+        shell: bash
+        run: |
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=pending \
+            -f context='WesiOS Release Orchestrator' \
+            -f description='Preparing signed Telegram MVP release' >/dev/null
 
       - name: Refresh main
         shell: bash
@@ -52,8 +59,6 @@ jobs:
           if not m:
               raise SystemExit('pubspec version not found')
           major, minor, patch, build = map(int, m.groups())
-          # This one-shot is specifically the first build containing the
-          # production Telegram MVP. Never decrement if another agent bumped it.
           target_patch = max(patch + 1, 27)
           target_build = max(build + 1, 102)
           new_version = f'{major}.{minor}.{target_patch}+{target_build}'
@@ -94,7 +99,6 @@ jobs:
             -f deploy_to_server=true
 
       - name: Wait for release workflow
-        id: wait
         shell: bash
         env:
           TARGET_SHA: ${{ steps.commit.outputs.sha }}
@@ -116,7 +120,6 @@ jobs:
             echo '::error::Could not find dispatched release run for target SHA'
             exit 1
           fi
-          echo "release_run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
           echo "Watching release run $RUN_ID for $TARGET_SHA"
           gh run watch "$RUN_ID" --exit-status --interval 15
 
@@ -128,6 +131,10 @@ jobs:
           gh api "repos/$GITHUB_REPOSITORY/statuses/$TARGET_SHA" \
             -f state=success \
             -f context='WesiOS Release' \
+            -f description='Signed Telegram MVP release published' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=success \
+            -f context='WesiOS Release Orchestrator' \
             -f description='Signed Telegram MVP release published' >/dev/null
 
       - name: Publish failed release status
@@ -141,3 +148,7 @@ jobs:
               -f context='WesiOS Release' \
               -f description='Telegram MVP release build failed' >/dev/null || true
           fi
+          gh api "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state=failure \
+            -f context='WesiOS Release Orchestrator' \
+            -f description='Telegram MVP release orchestration failed' >/dev/null || true
