@@ -27,7 +27,7 @@ jobs:
           channel: stable
           cache: true
       - run: flutter pub get
-      - name: Run gates and extract only actionable failures
+      - name: Run gates and extract only actionable failures (retry after fixes)
         shell: bash
         run: |
           set +e
