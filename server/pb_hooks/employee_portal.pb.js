@@ -22,10 +22,7 @@ routerAdd("GET", "/api/wesi/portal/session", (e) => {
 routerAdd("GET", "/api/wesi/app/bootstrap", (e) => {
   const ownerMarker = (ownerId) => {
     try {
-      return e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='" + ownerId + "' && coll='system' && rid='portal-owner' && deleted=false",
-      );
+      return e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": ownerId});
     } catch (_) {
       return null;
     }
@@ -155,11 +152,8 @@ routerAdd("GET", "/api/wesi/app/bootstrap", (e) => {
 
   let employeeRecord = null;
   try {
-    employeeRecord = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='" + ownerId + "' && coll='employees' && rid='" +
-        employeeId + "' && deleted=false",
-    );
+    employeeRecord = e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='employees' && rid='" +
+        employeeId + "' && deleted=false", {"p_owner": ownerId});
   } catch (_) {
     employeeRecord = null;
   }
@@ -197,10 +191,7 @@ routerAdd("POST", "/api/wesi/portal/profile/credentials", (e) => {
   };
   const ownerMarker = (ownerId) => {
     try {
-      return e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='" + ownerId + "' && coll='system' && rid='portal-owner' && deleted=false",
-      );
+      return e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": ownerId});
     } catch (_) {
       return null;
     }
@@ -321,10 +312,7 @@ routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
   };
   const ownerMarker = (ownerId) => {
     try {
-      return e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='" + ownerId + "' && coll='system' && rid='portal-owner' && deleted=false",
-      );
+      return e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": ownerId});
     } catch (_) {
       return null;
     }
@@ -502,10 +490,7 @@ routerAdd("POST", "/api/wesi/portal/employees/provision", (e) => {
 routerAdd("POST", "/api/wesi/portal/employees/access", (e) => {
   const ownerMarker = (ownerId) => {
     try {
-      return e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='" + ownerId + "' && coll='system' && rid='portal-owner' && deleted=false",
-      );
+      return e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": ownerId});
     } catch (_) {
       return null;
     }
@@ -576,10 +561,7 @@ routerAdd("POST", "/api/wesi/portal/employees/access", (e) => {
 routerAdd("POST", "/api/wesi/portal/employees/revoke", (e) => {
   const ownerMarker = (ownerId) => {
     try {
-      return e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='" + ownerId + "' && coll='system' && rid='portal-owner' && deleted=false",
-      );
+      return e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": ownerId});
     } catch (_) {
       return null;
     }
@@ -607,10 +589,7 @@ routerAdd("POST", "/api/wesi/portal/employees/revoke", (e) => {
 
   const linkRid = "portal-account:" + user.id;
   try {
-    const link = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='" + e.auth.id + "' && coll='system' && rid='" + linkRid + "' && deleted=false",
-    );
+    const link = e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='" + linkRid + "' && deleted=false", {"p_owner": e.auth.id});
     link.set("deleted", true);
     link.set("stamp", new Date().toISOString());
     e.app.save(link);

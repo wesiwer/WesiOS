@@ -58,10 +58,7 @@ routerAdd(
   (e) => {
     const ownerMarker = (ownerId) => {
       try {
-        return e.app.findFirstRecordByFilter(
-          "wesios_records",
-          "owner='" + ownerId + "' && coll='system' && rid='portal-owner' && deleted=false",
-        );
+        return e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": ownerId});
       } catch (_) {
         return null;
       }

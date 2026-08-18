@@ -47,3 +47,22 @@ lib/firebase_options.dart
 # Python (bundled forecast engines — python_engines/*.py IS tracked)
 python_engines/__pycache__/
 *.pyc
+
+# Ключи и секреты — ничего из этого не должно попасть в публичный репозиторий.
+#
+# На момент добавления в репозитории не было ни одного такого файла: правило
+# стоит не как уборка, а как страховка. Ключ подписи Android и файл настроек
+# Relay попадают на машину при выкладке, и один рассеянный `git add -A`
+# отправил бы их в открытый доступ навсегда — историю git чистить дорого, а
+# утёкший ключ подписи не отзывается вовсе.
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+.env
+.env.*
+!.env.example
+.wesi-ai-relay.json
+relay-secrets.b64

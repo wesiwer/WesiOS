@@ -232,7 +232,7 @@ void main() {
       expect(back.order, 7);
     });
 
-    test('человек переживает круг вместе с правами и хешем пароля', () {
+    test('человек переживает круг, но пароль в синхронизацию не попадает', () {
       final c = EmployeesSync();
       final original = EmployeeModel(
         id: 'e1',
@@ -261,8 +261,15 @@ void main() {
       expect(back.permissions.modules, {'tasks', 'treasury'});
       expect(back.permissions.knowledgeIds, {'a1'});
       expect(back.permissions.canSeeNotes, isTrue);
-      expect(back.passwordHash, 'hash');
-      expect(back.passwordSalt, 'salt');
+      // Раньше здесь ожидалось обратное — что хэш и соль переживут круг.
+      // Именно это и было дырой: сервер отдавал их владельцу по всем
+      // сотрудникам, а локальное хранилище приложения не шифруется. Проверять
+      // пароль локально приложение давно перестало, вход идёт через сервер,
+      // поэтому в синхронизации этим полям делать нечего.
+      expect(back.passwordHash, isEmpty,
+          reason: 'хэш пароля снова уходит в синхронизацию');
+      expect(back.passwordSalt, isEmpty,
+          reason: 'соль пароля снова уходит в синхронизацию');
       expect(back.demoStats['balance'], 1000.0);
     });
 
