@@ -1,5 +1,6 @@
 const tg = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_lib.js");
 const store = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_store.js");
+const interactions = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_interactions.js");
 const financeTools = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_finance_tools.js");
 const horizonTools = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_horizon_tools.js");
 const taskTools = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_task_tools.js");
@@ -75,7 +76,17 @@ function sendMessage(cfg, chatId, text, keyboard) {
     disable_web_page_preview: true,
   };
   if (keyboard && keyboard.length) payload.reply_markup = {inline_keyboard: keyboard};
-  return telegramApi(cfg, "sendMessage", payload);
+  const result = telegramApi(cfg, "sendMessage", payload);
+  try {
+    interactions.trackOutgoing(
+      typeof $app !== "undefined" ? $app : null,
+      cfg,
+      chatId,
+      result,
+      "bot",
+    );
+  } catch (_) {}
+  return result;
 }
 
 function answerCallback(cfg, callbackId, text) {
