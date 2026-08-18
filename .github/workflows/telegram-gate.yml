@@ -44,6 +44,7 @@ jobs:
             server/pb_hooks/wesi_telegram_gateway.js \
             server/pb_hooks/wesi_telegram_experience.js \
             server/pb_hooks/wesi_telegram_interactions.js \
+            server/pb_hooks/wesi_telegram_morning_photos.js \
             server/pb_hooks/wesi_telegram_morning.js \
             server/pb_hooks/wesi_telegram.pb.js \
             server/pb_hooks/wesi_ai_finance_tools.js \
@@ -55,6 +56,7 @@ jobs:
         run: |
           node server/pb_hooks/wesi_telegram_lib_test.mjs
           node server/pb_hooks/wesi_telegram_retention_test.mjs
+          node server/pb_hooks/wesi_telegram_morning_photos_test.mjs
           node server/pb_hooks/wesi_telegram_morning_test.mjs
 
       - name: Generate and validate visual cards
