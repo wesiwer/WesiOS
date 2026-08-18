@@ -1,0 +1,99 @@
+SOURCE=6373bf7e5179ae993c588eda865b5ef541eb27e0
+PUB_GET=0
+ANDROID_DEBUG=1
+=== ERRORS ===
+74:Target kernel_snapshot_program failed: Exception
+77:FAILURE: Build failed with an exception.
+79:* What went wrong:
+=== TAIL ===
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+Upgrading build.gradle
+Upgrading gradle.properties
+Upgrading gradle.properties
+Running Gradle task 'assembleDebug'...                          
+Warning: Flutter support for your project's Gradle version (8.14.3) will soon be dropped. Please upgrade your Gradle version to a version of at least 9.1.0 soon.
+Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
+
+Potential fix: Your project's gradle version is typically defined in the gradle wrapper file. By default, this can be found at /home/runner/work/WesiOS/WesiOS/android/gradle/wrapper/gradle-wrapper.properties. 
+For more information, see https://docs.gradle.org/current/userguide/gradle_wrapper.html.
+
+Warning: Flutter support for your project's Android Gradle Plugin version (Android Gradle Plugin version 8.11.1) will soon be dropped. Please upgrade your Android Gradle Plugin version to a version of at least Android Gradle Plugin version 9.0.1 soon.
+Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
+
+Potential fix: Your project's AGP version is typically defined in the plugins block of the `settings.gradle` file (/home/runner/work/WesiOS/WesiOS/android/settings.gradle), by a plugin with the id of com.android.application. 
+If you don't see a plugins block, your project was likely created with an older template version. In this case it is most likely defined in the top-level build.gradle file (/home/runner/work/WesiOS/WesiOS/android/build.gradle) by the following line in the dependencies block of the buildscript: "classpath 'com.android.tools.build:gradle:<version>'".
+
+Warning: Flutter support for your project's Kotlin version (2.2.20) will soon be dropped. Please upgrade your Kotlin version to a version of at least 2.3.20 soon.
+Alternatively, use the flag "--android-skip-build-dependency-validation" to bypass this check.
+
+Potential fix: Your project's KGP version is typically defined in the plugins block of the `settings.gradle` file (/home/runner/work/WesiOS/WesiOS/android/settings.gradle), by a plugin with the id of org.jetbrains.kotlin.android. 
+If you don't see a plugins block, your project was likely created with an older template version, in which case it is most likely defined in the top-level build.gradle file (/home/runner/work/WesiOS/WesiOS/android/build.gradle) by the ext.kotlin_version property.
+
+Checking the license for package NDK (Side by side) 27.0.12077973 in /usr/local/lib/android/sdk/licenses
+License for package NDK (Side by side) 27.0.12077973 accepted.
+Preparing "Install NDK (Side by side) 27.0.12077973 v.27.0.12077973".
+"Install NDK (Side by side) 27.0.12077973 v.27.0.12077973" ready.
+Installing NDK (Side by side) 27.0.12077973 in /usr/local/lib/android/sdk/ndk/27.0.12077973
+"Install NDK (Side by side) 27.0.12077973 v.27.0.12077973" complete.
+"Install NDK (Side by side) 27.0.12077973 v.27.0.12077973" finished.
+Checking the license for package Android SDK Platform 33 in /usr/local/lib/android/sdk/licenses
+License for package Android SDK Platform 33 accepted.
+Preparing "Install Android SDK Platform 33 (revision 3)".
+"Install Android SDK Platform 33 (revision 3)" ready.
+Installing Android SDK Platform 33 in /usr/local/lib/android/sdk/platforms/android-33
+"Install Android SDK Platform 33 (revision 3)" complete.
+"Install Android SDK Platform 33 (revision 3)" finished.
+[=========                              ] 25%                                   
+[=========                              ] 25% Fetch remote repository...        
+[=======================================] 100% Fetch remote repository...       
+Package file_picker:linux references file_picker:linux as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: linux: default_package: file_picker` or add an inline implementation to file_picker via `platforms: linux:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:macos references file_picker:macos as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: macos: default_package: file_picker` or add an inline implementation to file_picker via `platforms: macos:` `pluginClass` or `dartPluginClass`.
+
+Package file_picker:windows references file_picker:windows as the default plugin, but it does not provide an inline implementation.
+Ask the maintainers of file_picker to either avoid referencing a default implementation via `platforms: windows: default_package: file_picker` or add an inline implementation to file_picker via `platforms: windows:` `pluginClass` or `dartPluginClass`.
+
+../../../.pub-cache/hosted/pub.dev/dartssh2-2.14.0/lib/src/sftp/sftp_client.dart:602:29: Error: A value of type 'int?' can't be assigned to a variable of type 'num'.
+      if (bytessRecieved >= length) {
+                            ^
+../../../.pub-cache/hosted/pub.dev/dartssh2-2.14.0/lib/src/sftp/sftp_client.dart:583:17: Context: Variable 'length' could not be promoted due to an 'await' or 'yield'.
+Try checking the type of the variable after the 'await' or 'yield'.  See http://dart.dev/go/non-promo-suspension
+        chunk = await _readChunk(chunkLength, chunkStart);
+                ^
+Target kernel_snapshot_program failed: Exception
+
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':app:compileFlutterBuildDebug'.
+> Process 'command '/opt/hostedtoolcache/flutter/stable-3.47.0-x64/flutter/bin/flutter'' finished with non-zero exit value 1
+
+* Try:
+> Run with --stacktrace option to get the stack trace.
+> Run with --info or --debug option to get more log output.
+> Run with --scan to get full insights.
+> Get more help at https://help.gradle.org.
+
+BUILD FAILED in 4m 20s
+Running Gradle task 'assembleDebug'...                            262.5s
+Gradle task assembleDebug failed with exit code 1
