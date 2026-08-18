@@ -19,6 +19,7 @@ jobs:
       - name: Align release workflow with current Flutter stable
         shell: bash
         run: |
+          # Required after current dependency/toolchain alignment.
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
