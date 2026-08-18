@@ -2,6 +2,7 @@ const tg = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "we
 const store = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_store.js");
 const interactions = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_interactions.js");
 const taskTools = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_ai_task_tools.js");
+const photoPool = require((typeof __hooks !== "undefined" ? __hooks + "/" : "./") + "wesi_telegram_morning_photos.js");
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ANCHOR_DAY = Math.floor(Date.UTC(2026, 7, 18) / DAY_MS);
@@ -9,16 +10,7 @@ const MORNING_HOUR = 8;
 const MAX_THREAD_CHARS = 850;
 const MIN_THREAD_CHARS = 180;
 const RECENT_TEXTS_LIMIT = 4;
-
-const PHOTOS = [
-  "https://images.pexels.com/photos/33456309/pexels-photo-33456309.jpeg?cs=srgb&fm=jpg&w=1400",
-  "https://images.pexels.com/photos/29791979/pexels-photo-29791979.jpeg?cs=srgb&fm=jpg&w=1400",
-  "https://images.pexels.com/photos/15654210/pexels-photo-15654210.jpeg?cs=srgb&fm=jpg&w=1400",
-  "https://images.pexels.com/photos/30234384/pexels-photo-30234384.jpeg?cs=srgb&fm=jpg&w=1400",
-  "https://images.pexels.com/photos/35594938/pexels-photo-35594938.jpeg?cs=srgb&fm=jpg&w=1400",
-  "https://images.pexels.com/photos/30234386/pexels-photo-30234386.jpeg?cs=srgb&fm=jpg&w=1400",
-  "https://images.pexels.com/photos/31969694/pexels-photo-31969694.jpeg?cs=srgb&fm=jpg&w=1400",
-];
+const PHOTOS = photoPool.PHOTOS;
 
 function telegramApi(cfg, method, payload) {
   let response;
@@ -249,5 +241,6 @@ function runMorning(eventOrApp, nowMs) {
 
 module.exports = {
   ANCHOR_DAY, MORNING_HOUR, MIN_THREAD_CHARS, MAX_THREAD_CHARS,
+  PHOTO_POOL_SIZE: PHOTOS.length,
   localClock, speakerForDay, personaName, photoFor, generationPrompt, cleanGenerated, morningCaption, runMorning,
 };
