@@ -24,6 +24,7 @@ jobs:
       - name: Analyze actual errors only
         shell: bash
         run: |
+          # Revalidate after direct Quill 11 Knowledge migration.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           PUB=$?
