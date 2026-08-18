@@ -53,6 +53,42 @@ jobs:
       - name: Windows release compile
         run: flutter build windows --release
 
+  flutter-android-status:
+    if: always()
+    needs: [flutter-and-android]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish Flutter and Android status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.flutter-and-android.result }}
+        run: |
+          set -euo pipefail
+          if [ "$RESULT" = success ]; then STATE=success; DESC='Analyze, tests and Android compile are green'; else STATE=failure; DESC="Flutter/Android=$RESULT"; fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -d "$(python3 -c 'import json,os; print(json.dumps({"state":os.environ["STATE"],"context":"WesiOS Flutter Android","description":os.environ["DESC"][:140]}))' STATE="$STATE" DESC="$DESC")"
+
+  windows-status:
+    if: always()
+    needs: [windows-release]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish Windows status
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESULT: ${{ needs.windows-release.result }}
+        run: |
+          set -euo pipefail
+          if [ "$RESULT" = success ]; then STATE=success; DESC='Windows release compile is green'; else STATE=failure; DESC="Windows=$RESULT"; fi
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -d "$(python3 -c 'import json,os; print(json.dumps({"state":os.environ["STATE"],"context":"WesiOS Windows Build","description":os.environ["DESC"][:140]}))' STATE="$STATE" DESC="$DESC")"
+
   publish-status:
     if: always()
     needs: [flutter-and-android, windows-release]
