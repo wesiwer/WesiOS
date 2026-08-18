@@ -1,0 +1,46 @@
+name: Analyze Current Main Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/analyze-current-main-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Analyze current main
+        shell: bash
+        run: |
+          set +e
+          flutter pub get >/tmp/pub.log 2>&1
+          PUB=$?
+          flutter analyze --no-fatal-infos >/tmp/analyze.log 2>&1
+          ANALYZE=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "PUB_GET=$PUB"
+            echo "ANALYZE=$ANALYZE"
+            echo '=== ANALYZE ==='
+            cat /tmp/analyze.log
+          } > .github/analyze-current-main.txt
+          git config user.name 'WesiOS Analyzer'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/analyze-current-main
+          git add .github/analyze-current-main.txt
+          git commit -m 'ops: capture analyzer current main'
+          git push --force origin HEAD:diag/analyze-current-main
+          test "$PUB" -eq 0 -a "$ANALYZE" -eq 0
