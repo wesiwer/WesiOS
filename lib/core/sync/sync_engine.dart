@@ -444,7 +444,12 @@ class SyncEngine {
       try {
         if (r.deleted) {
           await c.removeById(r.id);
-          accepted = true;
+          // A codec may intentionally keep a durable local entity (for
+          // example organization/account history). A remote tombstone is only
+          // applied when the row actually disappears from THIS collection's
+          // sync projection. Archived/local-only representations are fine:
+          // `_localValueBySyncId` already ignores shouldSync=false rows.
+          accepted = _localValueBySyncId(c, r.id) == null;
         } else {
           accepted = await c.applyFields(r.fields);
         }
