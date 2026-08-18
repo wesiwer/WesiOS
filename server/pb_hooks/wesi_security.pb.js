@@ -44,10 +44,7 @@ routerUse((e) => {
     if (!/^[A-Za-z0-9_-]{24,96}$/.test(sessionId)) return null;
     let record = null;
     try {
-      record = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='__wesios_security__' && coll='security' && rid='session:" + sessionId + "' && deleted=false",
-      );
+      record = e.app.findFirstRecordByFilter("wesios_records", "owner='__wesios_security__' && coll='security' && rid={:p_rid} && deleted=false", {"p_rid": "session:" + sessionId});
     } catch (_) {
       return null;
     }
@@ -233,10 +230,7 @@ routerAdd("POST", "/api/wesi/auth/start", (e) => {
   };
   const ownerMarker = (userId) => {
     try {
-      return e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='" + userId + "' && coll='system' && rid='portal-owner' && deleted=false",
-      );
+      return e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": userId});
     } catch (_) { return null; }
   };
 
@@ -266,10 +260,7 @@ routerAdd("POST", "/api/wesi/auth/start", (e) => {
     const ownerPayload = valueObject(owner, "payload");
     email = realEmail(ownerPayload.email);
     try {
-      const employeeRecord = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='" + user.id + "' && coll='employees' && rid='owner' && deleted=false",
-      );
+      const employeeRecord = e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='employees' && rid='owner' && deleted=false", {"p_owner": user.id});
       const payload = valueObject(employeeRecord, "payload");
       email = email || realEmail(payload.email);
       displayName = String(payload.fullName || payload.name || displayName);
@@ -277,10 +268,7 @@ routerAdd("POST", "/api/wesi/auth/start", (e) => {
   } else {
     let link = null;
     try {
-      link = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "coll='system' && rid='portal-account:" + user.id + "' && deleted=false",
-      );
+      link = e.app.findFirstRecordByFilter("wesios_records", "coll='system' && rid={:p_rid} && deleted=false", {"p_rid": "portal-account:" + user.id});
     } catch (_) {
       link = null;
     }
@@ -417,20 +405,14 @@ routerAdd("POST", "/api/wesi/auth/verify", (e) => {
 
   let challenge = null;
   try {
-    challenge = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='__wesios_security__' && coll='security' && rid='otp:" + challengeId + "' && deleted=false",
-    );
+    challenge = e.app.findFirstRecordByFilter("wesios_records", "owner='__wesios_security__' && coll='security' && rid={:p_rid} && deleted=false", {"p_rid": "otp:" + challengeId});
   } catch (_) {
     challenge = null;
   }
   if (!challenge) {
     let previous = null;
     try {
-      previous = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='__wesios_security__' && coll='security' && rid='otp:" + challengeId + "'",
-      );
+      previous = e.app.findFirstRecordByFilter("wesios_records", "owner='__wesios_security__' && coll='security' && rid={:p_rid}", {"p_rid": "otp:" + challengeId});
     } catch (_) {
       previous = null;
     }
@@ -484,10 +466,7 @@ routerAdd("POST", "/api/wesi/auth/verify", (e) => {
   // The employee link must still exist at the exact moment the code is used.
   if (String(payload.employeeId || "") !== "owner") {
     try {
-      e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "coll='system' && rid='portal-account:" + user.id + "' && deleted=false",
-      );
+      e.app.findFirstRecordByFilter("wesios_records", "coll='system' && rid={:p_rid} && deleted=false", {"p_rid": "portal-account:" + user.id});
     } catch (_) {
       throw new ForbiddenError("Профиль сотрудника закрыт");
     }
@@ -567,10 +546,7 @@ routerAdd("GET", "/api/wesi/security/session/ping", (e) => {
   if (!sessionId) throw new UnauthorizedError("Сеанс завершён");
   let record = null;
   try {
-    record = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='__wesios_security__' && coll='security' && rid='session:" + sessionId + "' && deleted=false",
-    );
+    record = e.app.findFirstRecordByFilter("wesios_records", "owner='__wesios_security__' && coll='security' && rid={:p_rid} && deleted=false", {"p_rid": "session:" + sessionId});
   } catch (_) { record = null; }
   if (!record) throw new UnauthorizedError("Сеанс завершён");
   let payload = {};
@@ -675,10 +651,7 @@ routerAdd("POST", "/api/wesi/security/sessions/revoke", (e) => {
   }
   let target = null;
   try {
-    target = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='__wesios_security__' && coll='security' && rid='session:" + targetId + "' && deleted=false",
-    );
+    target = e.app.findFirstRecordByFilter("wesios_records", "owner='__wesios_security__' && coll='security' && rid={:p_rid} && deleted=false", {"p_rid": "session:" + targetId});
   } catch (_) { target = null; }
   if (!target) return e.json(200, {"ok": true, "alreadyEnded": true});
   let payload = {};
@@ -766,3 +739,50 @@ onRecordAfterDeleteSuccess((e) => {
   }
   e.next();
 }, "users");
+
+/// Заголовки безопасности на каждый ответ.
+///
+/// До этого сервер отдавал только `X-Content-Type-Options` и
+/// `X-Frame-Options` — их ставит сам PocketBase. Не хватало двух вещей.
+///
+/// HSTS. Без него первый заход по http на `api.wesi-inc.ru` можно перехватить
+/// и увести на подставной адрес: браузер узнаёт про https только из ответа,
+/// который ещё не получил. Год и поддомены — обычная величина. `preload`
+/// намеренно не ставится: это одностороннее решение, откатить его нельзя.
+///
+/// CSP. Единственное, что продолжает работать, если межсайтовый скрипт всё
+/// же появится. Политика разная по назначению адреса:
+///
+/// * страница портала верстается сборкой, которая вшивает свои CSS и JS
+///   прямо в HTML, поэтому `'unsafe-inline'` здесь неизбежен. Ценность
+///   остаётся в остальном: чужой скрипт не загрузится (`default-src 'self'`),
+///   украденное некуда отправить (`connect-src 'self'`), плагины запрещены,
+///   базовый адрес подменить нельзя;
+/// * всё остальное — JSON и файлы — не выполняет ничего вообще, и там стоит
+///   самая жёсткая политика `default-src 'none'`.
+routerUse((e) => {
+  const headers = e.response.header();
+  headers.set("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  headers.set("Referrer-Policy", "strict-origin-when-cross-origin");
+  headers.set("X-Content-Type-Options", "nosniff");
+  headers.set("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=(), usb=()");
+
+  const path = String(e.request.url.path || "");
+  if (path === "/" || path.indexOf("/portal") === 0) {
+    headers.set("Content-Security-Policy",
+      "default-src 'self'; " +
+      "script-src 'self' 'unsafe-inline'; " +
+      "style-src 'self' 'unsafe-inline'; " +
+      "img-src 'self' data:; " +
+      "font-src 'self' data:; " +
+      "connect-src 'self'; " +
+      "object-src 'none'; " +
+      "base-uri 'none'; " +
+      "form-action 'self'; " +
+      "frame-ancestors 'self'");
+  } else {
+    headers.set("Content-Security-Policy",
+      "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+  }
+  return e.next();
+});

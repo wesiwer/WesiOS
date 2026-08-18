@@ -269,10 +269,7 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
 
   let owner = null;
   try {
-    owner = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='" + user.id + "' && coll='system' && rid='portal-owner' && deleted=false",
-    );
+    owner = e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": user.id});
   } catch (_) { owner = null; }
 
   let employeeId = "";
@@ -283,10 +280,7 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
     const ownerPayload = valueObject(owner);
     email = validEmail(ownerPayload.email);
     try {
-      const employeeRecord = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "owner='" + user.id + "' && coll='employees' && rid='owner' && deleted=false",
-      );
+      const employeeRecord = e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='employees' && rid='owner' && deleted=false", {"p_owner": user.id});
       const p = valueObject(employeeRecord);
       email = email || validEmail(p.email);
       displayName = String(p.fullName || p.name || displayName);
@@ -294,10 +288,7 @@ routerAdd("POST", "/api/wesi/auth/start-v2", (e) => {
   } else {
     let link = null;
     try {
-      link = e.app.findFirstRecordByFilter(
-        "wesios_records",
-        "coll='system' && rid='portal-account:" + user.id + "' && deleted=false",
-      );
+      link = e.app.findFirstRecordByFilter("wesios_records", "coll='system' && rid={:p_rid} && deleted=false", {"p_rid": "portal-account:" + user.id});
     } catch (_) { link = null; }
     if (!link) throw new ForbiddenError("Профиль сотрудника закрыт или не активирован");
     const p = valueObject(link);
@@ -597,10 +588,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
 
   let challenge = null;
   try {
-    challenge = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='__wesios_security__' && coll='security' && rid='otp:" + challengeId + "' && deleted=false",
-    );
+    challenge = e.app.findFirstRecordByFilter("wesios_records", "owner='__wesios_security__' && coll='security' && rid={:p_rid} && deleted=false", {"p_rid": "otp:" + challengeId});
   } catch (_) { challenge = null; }
   if (!challenge) throw new UnauthorizedError("Проверка входа истекла");
   const payload = valueObject(challenge);
@@ -609,10 +597,7 @@ routerAdd("POST", "/api/wesi/auth/setup-email", (e) => {
   }
   let ownerMarker = null;
   try {
-    ownerMarker = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='" + String(payload.userId || "") + "' && coll='system' && rid='portal-owner' && deleted=false",
-    );
+    ownerMarker = e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": String(payload.userId || "")});
   } catch (_) { ownerMarker = null; }
   if (!ownerMarker) {
     throw new ForbiddenError("Профиль владельца не закреплён [owner-email-v9]");
@@ -675,10 +660,7 @@ routerAdd("POST", "/api/wesi/security/confirm-owner-email", (e) => {
   if (!sid) throw new UnauthorizedError("Нет подтверждённого сеанса");
   let session = null;
   try {
-    session = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='__wesios_security__' && coll='security' && rid='session:" + sid + "' && deleted=false",
-    );
+    session = e.app.findFirstRecordByFilter("wesios_records", "owner='__wesios_security__' && coll='security' && rid={:p_rid} && deleted=false", {"p_rid": "session:" + sid});
   } catch (_) { session = null; }
   if (!session) throw new UnauthorizedError("Сеанс завершён");
   let sessionPayload = {};
@@ -700,10 +682,7 @@ routerAdd("POST", "/api/wesi/security/confirm-owner-email", (e) => {
 
   let marker = null;
   try {
-    marker = e.app.findFirstRecordByFilter(
-      "wesios_records",
-      "owner='" + e.auth.id + "' && coll='system' && rid='portal-owner' && deleted=false",
-    );
+    marker = e.app.findFirstRecordByFilter("wesios_records", "owner={:p_owner} && coll='system' && rid='portal-owner' && deleted=false", {"p_owner": e.auth.id});
   } catch (_) { marker = null; }
   if (!marker) throw new ForbiddenError("Профиль владельца не закреплён");
   let payload = {};
