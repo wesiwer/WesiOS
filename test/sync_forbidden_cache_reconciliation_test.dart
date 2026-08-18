@@ -28,6 +28,17 @@ class _PolicyCollection extends SyncCollection<String> {
   String? decode(Map<String, dynamic> fields) => fields['value'] as String?;
 }
 
+class _NoDomainDeletePolicyCollection extends _PolicyCollection {
+  @override
+  String get name => 'policy_cache_no_domain_delete_probe';
+
+  @override
+  Future<void> removeById(String id) async {
+    // Mirrors codecs such as OrganizationsSync where a normal synced business
+    // tombstone is intentionally not allowed to delete the local entity.
+  }
+}
+
 void main() {
   late Directory dir;
   late List<SyncCollection<dynamic>> originalCollections;
@@ -89,6 +100,31 @@ void main() {
     expect(stamp?.updatedAt.millisecondsSinceEpoch, 0,
         reason:
             'permission tombstone is account-local and deliberately loses to a future restored server row');
+  });
+
+  test('policy eviction bypasses domain removeById no-op', () async {
+    final noDelete = _NoDomainDeletePolicyCollection();
+    await SyncEngine.reset();
+    SyncCodec.collections
+      ..clear()
+      ..add(noDelete);
+    await SyncEngine.prepare(now: base);
+
+    final box = Hive.box<String>(_PolicyCollection.testBox);
+    await box.put('org-like', 'org-like:cached-secret');
+    await Future<void>.delayed(Duration.zero);
+
+    final transport = FakeSyncTransport()..forbiddenIds.add('org-like');
+    final report = await SyncEngine.run(
+      transport: transport,
+      now: base.add(const Duration(minutes: 1)),
+      only: {noDelete.name},
+    );
+
+    expect(report.ok, isTrue, reason: report.describe());
+    expect(box.containsKey('org-like'), isFalse,
+        reason:
+            'permission cache eviction must not reuse conservative business deletion semantics');
   });
 
   test('visible but read-only row rolls forbidden local edit back to remote',
