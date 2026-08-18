@@ -8,6 +8,10 @@ assert.equal(lib.parseCommand('/cash@WesiOSBot', 'WesiOSBot').name, 'cash');
 assert.equal(lib.parseCommand('/cash@OtherBot', 'WesiOSBot').name, 'foreign');
 assert.equal(lib.parseCommand('сколько денег на Beats?', 'WesiOSBot').name, 'cash');
 assert.equal(lib.parseCommand('есть риск кассового разрыва?', 'WesiOSBot').name, 'risk');
+assert.equal(lib.isExplicitGroupCommand('/cash@WesiOSBot', 'WesiOSBot'), true);
+assert.equal(lib.isExplicitGroupCommand('/cash', 'WesiOSBot'), false);
+assert.equal(lib.isExplicitGroupCommand('сколько денег?', 'WesiOSBot'), false);
+assert.equal(lib.isExplicitGroupCommand('/cash@OtherBot', 'WesiOSBot'), false);
 assert.equal(lib.parseStartCode({name: 'start', args: 'Abcd_1234567890-xy'}), 'Abcd_1234567890-xy');
 assert.equal(lib.parseStartCode({name: 'start', args: '123'}), '');
 
@@ -19,10 +23,22 @@ assert.equal(lib.riskFromCushionDays(8).level, 'critical');
 assert.equal(lib.riskFromCushionDays(20).level, 'warning');
 assert.equal(lib.riskFromCushionDays(45).level, 'ok');
 assert.equal(lib.riskFromCushionDays(null).level, 'unknown');
+assert.equal(lib.shouldNotifyRisk('ok', 'warning'), true);
+assert.equal(lib.shouldNotifyRisk('warning', 'warning'), false);
+assert.equal(lib.shouldNotifyRisk('warning', 'critical'), true);
+assert.equal(lib.shouldNotifyRisk('critical', 'warning'), false);
+assert.equal(lib.shouldNotifyRisk('critical', 'ok'), false);
+assert.equal(lib.shouldNotifyOverdue(0, 1), true);
+assert.equal(lib.shouldNotifyOverdue(2, 3), true);
+assert.equal(lib.shouldNotifyOverdue(3, 3), false);
+assert.equal(lib.shouldNotifyOverdue(3, 1), false);
+assert.equal(lib.shouldNotifyOverdue(1, 0), false);
 
-assert.equal(lib.dueState('2026-08-17T12:00:00Z', new Date('2026-08-18T10:00:00Z')), 'overdue');
-assert.equal(lib.dueState('2026-08-18T23:00:00Z', new Date('2026-08-18T10:00:00Z')), 'today');
-assert.equal(lib.dueState('2026-08-19T01:00:00Z', new Date('2026-08-18T10:00:00Z')), 'future');
+assert.equal(lib.dueState('2026-08-17T12:00:00Z', new Date('2026-08-18T10:00:00Z'), 0), 'overdue');
+assert.equal(lib.dueState('2026-08-18T23:00:00Z', new Date('2026-08-18T10:00:00Z'), 0), 'today');
+assert.equal(lib.dueState('2026-08-19T01:00:00Z', new Date('2026-08-18T10:00:00Z'), 0), 'future');
+// 23:30Z is already the next local day at UTC+3.
+assert.equal(lib.dueState('2026-08-18T23:30:00Z', new Date('2026-08-18T20:00:00Z'), 180), 'today');
 
 assert.equal(lib.isQuietHours(Date.UTC(2026, 7, 18, 21), 180, 23, 8), true); // 00:00 local
 assert.equal(lib.isQuietHours(Date.UTC(2026, 7, 18, 10), 180, 23, 8), false);
