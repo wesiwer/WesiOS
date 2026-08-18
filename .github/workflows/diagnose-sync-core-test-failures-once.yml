@@ -1,0 +1,48 @@
+name: Diagnose Sync Core Test Failures Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-sync-core-test-failures-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Run and capture core sync tests
+        shell: bash
+        run: |
+          set +e
+          flutter test test/sync_receive_regression_test.dart > /tmp/receive.log 2>&1
+          receive=$?
+          flutter test test/sync_engine_test.dart > /tmp/engine.log 2>&1
+          engine=$?
+          set -e
+          {
+            echo "receive_exit=$receive"
+            echo "engine_exit=$engine"
+            echo "=== RECEIVE TAIL ==="
+            tail -n 160 /tmp/receive.log
+            echo "=== ENGINE TAIL ==="
+            tail -n 160 /tmp/engine.log
+          } > .github/sync-core-test-failures.txt
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/sync-core-test-failures
+          git add .github/sync-core-test-failures.txt
+          git commit -m 'ops: record core sync test failures'
+          git push --force origin HEAD:diag/sync-core-test-failures
