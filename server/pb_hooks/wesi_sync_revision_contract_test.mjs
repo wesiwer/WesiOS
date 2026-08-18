@@ -7,7 +7,14 @@ import test from "node:test";
 const require = createRequire(import.meta.url);
 const revision = require(path.resolve("server/pb_hooks/wesi_sync_revision.js"));
 
-function row({id, coll, rid, nonce, updated = "2026-08-18 03:00:00.000Z"}) {
+function row({
+  id,
+  coll,
+  rid,
+  nonce,
+  stamp = "2026-08-18T03:00:00.000Z",
+  updated = "2026-08-18 03:00:00.000Z",
+}) {
   return {
     id,
     get(name) {
@@ -17,6 +24,7 @@ function row({id, coll, rid, nonce, updated = "2026-08-18 03:00:00.000Z"}) {
     getString(name) {
       if (name === "coll") return coll || "";
       if (name === "rid") return rid || "";
+      if (name === "stamp") return stamp;
       if (name === "updated") return updated;
       return "";
     },
@@ -74,6 +82,32 @@ test("duplicate historical markers are deterministic and all affect the token", 
     revision.readOwner(app, "company"),
     "marker:a,z|latest:empty",
   );
+});
+
+test("marker logical stamp advances even when two writes share one millisecond", () => {
+  const previous = "2999-01-01T00:00:00.123Z";
+  const next = revision.nextMarkerStamp([
+    row({
+      id: "m1",
+      coll: revision.markerCollection,
+      rid: revision.markerRid,
+      nonce: "old",
+      stamp: previous,
+    }),
+  ]);
+
+  assert.equal(Date.parse(next), Date.parse(previous) + 1);
+  assert.notEqual(next, previous);
+});
+
+test("duplicate markers advance from the newest previous logical stamp", () => {
+  const a = "2999-01-01T00:00:00.100Z";
+  const b = "2999-01-01T00:00:00.900Z";
+  const next = revision.nextMarkerStamp([
+    row({id: "a", stamp: a}),
+    row({id: "b", stamp: b}),
+  ]);
+  assert.equal(Date.parse(next), Date.parse(b) + 1);
 });
 
 test("pre-marker installations fall back to latest business state until first write", () => {
