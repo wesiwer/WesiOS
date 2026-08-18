@@ -72,40 +72,55 @@ class ProfileService {
       : null;
 
   /// `profile_*` в wesios_settings — только UI-проекция, не источник общей
-  /// истины. Она тоже должна принадлежать конкретному auth-user.
+  /// истины. Она принадлежит конкретному PocketBase auth-user.
   ///
-  /// Если owner-маркер отсутствует (обновление со старой схемы) или отличается,
-  /// fail closed: старую проекцию не переносим новому аккаунту и не показываем
-  /// её даже кратковременно. Сам legacy `wesios_profile` здесь не удаляется —
-  /// данные не уничтожаются, но больше не могут автоматически стать данными
-  /// другого сотрудника.
+  /// Важный migration edge: старые версии вообще не имели owner-marker. Пока
+  /// подтверждённой сессии нет, такие legacy-ключи НЕ очищаем и НЕ переносим в
+  /// anonymous box — оставляем их нетронутыми до входа. Первый подтверждённый
+  /// auth-user может забрать эту unowned legacy-проекцию один раз. После записи
+  /// marker любое переключение на другой auth-user идёт fail-closed и очищает
+  /// UI-проекцию, поэтому профиль предыдущего аккаунта не пересекает границу.
   static Future<void> _ensureProjectionOwner() async {
     final settings = _settings;
     if (settings == null) return;
     final currentOwner = SyncAccountScope.currentUserId;
     final previousOwner = settings.get(_projectionOwnerKey);
+
     if (previousOwner == currentOwner) return;
 
+    if (previousOwner == null) {
+      // До подтверждённого входа нельзя ни уничтожать legacy-профиль, ни
+      // приписывать его anonymous namespace. Оставляем миграцию отложенной.
+      if (currentOwner == 'anonymous') return;
+      await settings.put(_projectionOwnerKey, currentOwner);
+      return;
+    }
+
+    // Owner уже был зафиксирован и изменился: это настоящий account switch.
     for (final key in _projectionKeys) {
       await settings.delete(key);
     }
     await settings.put(_projectionOwnerKey, currentOwner);
-    // После смены owner старая migration-отметка не имеет смысла для нового
-    // scoped box. Проекция уже очищена, поэтому повторная миграция не сможет
-    // скопировать чужой профиль.
     await settings.delete(_migratedKey);
   }
 
   static bool _migrating = false;
 
   /// Перенос старых ключей текущего аккаунта в его scoped record.
-  ///
-  /// Проекция перед этим проходит [_ensureProjectionOwner], поэтому ключи от
-  /// другого auth-user сюда уже не попадут.
   static Future<void> _migrateIfNeeded() async {
     if (_migrating) return;
     final settings = _settings;
     if (settings == null || settings.get(_migratedKey) == true) return;
+
+    // Не забираем legacy profile_* в anonymous namespace. После успешного
+    // входа [_ensureProjectionOwner] закрепит их за конкретным auth-user и
+    // следующий read/write выполнит миграцию в его scoped box.
+    final currentOwner = SyncAccountScope.currentUserId;
+    if (currentOwner == 'anonymous' &&
+        settings.get(_projectionOwnerKey) == null) {
+      return;
+    }
+
     _migrating = true;
     try {
       final box = _box;
@@ -193,7 +208,10 @@ class ProfileService {
 
     final settings = _settings;
     if (settings != null) {
-      await settings.put(_projectionOwnerKey, SyncAccountScope.currentUserId);
+      final owner = SyncAccountScope.currentUserId;
+      if (owner != 'anonymous') {
+        await settings.put(_projectionOwnerKey, owner);
+      }
       await settings.put('profile_name', data['name']);
       await settings.put('profile_email', data['email']);
       await settings.put('profile_gender', data['gender']);
@@ -220,10 +238,6 @@ class ProfileService {
   }
 
   /// Разложить приехавший профиль по ключам настроек.
-  ///
-  /// Вызывается синхронизацией после применения remote record: интерфейс
-  /// читает настройки, и без этого шага профиль доехал бы до устройства, но
-  /// на экране остался бы прежним до перезаполнения вручную.
   static Future<void> spreadToSettings() async {
     await _ensureProjectionOwner();
     final settings = _settings;
@@ -241,7 +255,10 @@ class ProfileService {
       }
     }
 
-    await settings.put(_projectionOwnerKey, SyncAccountScope.currentUserId);
+    final owner = SyncAccountScope.currentUserId;
+    if (owner != 'anonymous') {
+      await settings.put(_projectionOwnerKey, owner);
+    }
     await copy('name', 'profile_name');
     await copy('email', 'profile_email');
     await copy('gender', 'profile_gender');
