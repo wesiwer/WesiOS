@@ -6,15 +6,12 @@ import 'package:hive/hive.dart';
 import 'sync_account_scope.dart';
 import 'sync_clock.dart';
 
-/// Отметка о записи: когда её последний раз трогали и не удалена ли она.
 class SyncStamp {
   final DateTime updatedAt;
   final bool deleted;
 
   const SyncStamp(this.updatedAt, {this.deleted = false});
 
-  /// Хранится строкой, а не объектом: на журнал не нужен адаптер Hive, и
-  /// содержимое можно прочитать глазами при разборе полётов.
   String encode() =>
       '${updatedAt.toUtc().toIso8601String()}|${deleted ? 1 : 0}';
 
@@ -31,13 +28,7 @@ class SyncStamp {
   String toString() => 'SyncStamp(${encode()})';
 }
 
-/// Журнал изменений: что и когда поменялось, и что было удалено.
-///
-/// Журнал является частью sync identity не меньше, чем сами данные. В нём
-/// лежат timestamps и tombstones, а значит глобальный journal на общем
-/// устройстве способен перенести конфликтную метку сотрудника A в merge
-/// сотрудника B даже тогда, когда их data-boxes уже раздельные. Поэтому
-/// journal тоже хранится в account-scoped Hive namespace.
+/// Journal timestamps/tombstones for the current authenticated account.
 class SyncJournal {
   static const String baseBoxName = 'wesios_sync_journal';
   static String get boxName => SyncAccountScope.boxName(baseBoxName);
@@ -46,15 +37,16 @@ class SyncJournal {
   static String? _openedBoxName;
   static final Map<String, StreamSubscription<BoxEvent>> _watchers = {};
 
-  /// Отметки, которые ставит движок, применяя чужие правки.
+  /// Expected Hive events created by applying remote data.
   ///
-  /// Без этого получилась бы качель: движок записывает в бокс чужую правку,
-  /// подписка видит изменение и честно отмечает его как «правка прямо
-  /// сейчас», после чего на следующем проходе эта же запись уезжает обратно
-  /// на сервер как более свежая. И так до бесконечности.
+  /// box.watch() is asynchronous: applyFields may finish before its event is
+  /// delivered. Therefore an expectation must survive the end of a sync run,
+  /// otherwise that late event looks like a fresh user edit and receives a new
+  /// local timestamp, causing an upload ping-pong back to the server.
   static final Map<String, SyncStamp> _expected = {};
+  static final Map<String, DateTime> _expectedAt = {};
+  static const Duration _expectationLifetime = Duration(seconds: 5);
 
-  /// Счётчик **своих** правок — тех, что сделал человек, а не привёз обмен.
   static final ValueNotifier<int> localChanges = ValueNotifier<int>(0);
 
   static String key(String collection, String id) => '$collection/$id';
@@ -66,10 +58,6 @@ class SyncJournal {
       return cached;
     }
 
-    // Account rebind всегда сначала вызывает SyncEngine.reset()/detach(), но
-    // сам journal-box мог оставаться открытым. Не переиспользуем его для новой
-    // server identity: tombstone `profile/me` или одинаковый id Sandbox от
-    // предыдущего пользователя не должен участвовать в новом merge.
     if (cached != null && cached.isOpen && _openedBoxName != currentName) {
       await cached.close();
     }
@@ -86,16 +74,11 @@ class SyncJournal {
     final currentName = boxName;
     final box = _box;
     if (box != null && box.isOpen && _openedBoxName == currentName) return box;
-
-    // Getter не открывает/закрывает Hive асинхронно. Если identity уже
-    // изменилась, старый journal считается недоступным до следующего open().
-    // Это fail-closed: лучше временно не увидеть stamp, чем прочитать чужой.
     if (!Hive.isBoxOpen(currentName)) return null;
     _openedBoxName = currentName;
     return _box = Hive.box<dynamic>(currentName);
   }
 
-  /// Начинает следить за боксом. Повторный вызов ничего не ломает.
   static void attach(
     String collection,
     BoxBase<dynamic> box, {
@@ -107,8 +90,19 @@ class SyncJournal {
       if (acceptsKey != null && !acceptsKey(event.key)) return;
       final id = syncIdForKey?.call(event.key) ?? '${event.key}';
       if (id.isEmpty) return;
+
       final k = key(collection, id);
-      final expected = _expected.remove(k);
+      final expectedStamp = _expected.remove(k);
+      final expectedAt = _expectedAt.remove(k);
+      final now = DateTime.now();
+      final age = expectedAt == null ? null : now.difference(expectedAt);
+      final expected = expectedStamp != null &&
+              age != null &&
+              !age.isNegative &&
+              age <= _expectationLifetime
+          ? expectedStamp
+          : null;
+
       _opened?.put(
         k,
         (expected ?? SyncStamp(SyncClock.now(), deleted: event.deleted))
@@ -123,19 +117,47 @@ class SyncJournal {
       await sub.cancel();
     }
     _watchers.clear();
-    _expected.clear();
+    _discardExpectations();
   }
 
-  /// Предупредить журнал, что следующее изменение этого ключа — не правка
-  /// человека, а применение чужой.
   static void expect(String collection, String id, SyncStamp stamp) {
-    _expected[key(collection, id)] = stamp;
+    pruneExpectations();
+    final k = key(collection, id);
+    _expected[k] = stamp;
+    _expectedAt[k] = DateTime.now();
   }
 
-  static void forget(String collection, String id) =>
-      _expected.remove(key(collection, id));
+  static void forget(String collection, String id) {
+    final k = key(collection, id);
+    _expected.remove(k);
+    _expectedAt.remove(k);
+  }
 
-  static void clearExpectations() => _expected.clear();
+  /// Backwards-compatible end-of-pass hook.
+  ///
+  /// Fresh expectations are intentionally NOT cleared here. Existing engine
+  /// code calls this after a run; turning it into TTL pruning fixes the race
+  /// without allowing a five-second-old expectation to swallow a real edit.
+  static void clearExpectations() => pruneExpectations();
+
+  static void pruneExpectations() {
+    if (_expectedAt.isEmpty) return;
+    final now = DateTime.now();
+    final expired = <String>[];
+    for (final entry in _expectedAt.entries) {
+      final age = now.difference(entry.value);
+      if (age.isNegative || age > _expectationLifetime) expired.add(entry.key);
+    }
+    for (final k in expired) {
+      _expected.remove(k);
+      _expectedAt.remove(k);
+    }
+  }
+
+  static void _discardExpectations() {
+    _expected.clear();
+    _expectedAt.clear();
+  }
 
   static SyncStamp? stampOf(String collection, String id) =>
       SyncStamp.decode(_opened?.get(key(collection, id)));
@@ -162,7 +184,6 @@ class SyncJournal {
     return out;
   }
 
-  /// Проставить отметки записям, которые появились до журнала.
   static Future<void> seed(
     String collection,
     Iterable<String> ids,
@@ -179,7 +200,6 @@ class SyncJournal {
     if (missing.isNotEmpty) await box.putAll(missing);
   }
 
-  /// Выбросить надгробия старше срока.
   static Future<void> pruneTombstones(
     DateTime now, {
     Duration keepFor = const Duration(days: 180),
