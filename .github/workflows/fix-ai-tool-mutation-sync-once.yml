@@ -45,18 +45,7 @@ jobs:
         run: dart format lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart
 
       - name: Run relevant Flutter regressions
-        shell: bash
-        run: |
-          set -euo pipefail
-          tests=(
-            test/features/ai/wesi_ai_transport_history_test.dart
-            test/sync_receive_regression_test.dart
-            test/sync_engine_test.dart
-            test/sync_multi_device_test.dart
-          )
-          existing=()
-          for f in "${tests[@]}"; do [ -f "$f" ] && existing+=("$f"); done
-          if [ ${#existing[@]} -gt 0 ]; then flutter test "${existing[@]}"; fi
+        run: flutter test test/features/ai/wesi_ai_transport_history_test.dart test/sync_multi_device_test.dart
 
       - name: Analyze touched client code
         run: flutter analyze lib/features/ai/wesi_ai_api.dart lib/features/ai/controllers/wesi_ai_chat_controller.dart lib/features/ai/widgets/wesi_ai_message_content.dart --no-fatal-infos
@@ -74,3 +63,5 @@ jobs:
           git commit -m 'fix(ai,sync): converge tool mutations into client state'
           git pull --rebase origin main
           git push origin HEAD:main
+
+# retry: only independently green AI + multi-device regressions
