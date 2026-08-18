@@ -76,41 +76,59 @@ function nextMarkerStamp(existing, businessStamp) {
   return new Date(nextMs).toISOString();
 }
 
-function touch(app, owner) {
-  owner = String(owner || "").trim();
-  if (!owner) return;
-
+function updateMarkers(app, owner, existing, businessStamp) {
+  if (!existing || !existing.length) return false;
   const value = nonce();
-  const existing = markerRows(app, owner);
-  const latestBusiness = latestBusinessByStamp(app, owner);
-  const markerStamp = nextMarkerStamp(
-    existing,
-    latestBusiness ? latestBusiness.getString("stamp") : null,
-  );
+  const markerStamp = nextMarkerStamp(existing, businessStamp);
 
-  if (!existing.length) {
-    const collection = app.findCollectionByNameOrId("wesios_records");
-    const record = new Record(collection);
-    record.set("owner", owner);
-    record.set("org", "__sync_revision__");
-    record.set("coll", markerCollection);
-    record.set("rid", markerRid);
-    record.set("payload", { nonce: value });
-    record.set("stamp", markerStamp);
-    record.set("deleted", false);
-    app.save(record);
-    return;
-  }
-
-  // Historical concurrent first-writes could theoretically create duplicate
-  // markers because (owner,coll,rid) is not a database unique constraint.
-  // Rewriting all duplicates to the same nonce AND the same next logical stamp
-  // keeps both revision-v2 and the legacy max-row endpoint deterministic.
+  // Old installations could historically have duplicate marker rows. The
+  // schema migration collapses them, but updating every row here keeps this
+  // runtime backwards-compatible until that migration is applied.
   for (const record of existing) {
     record.set("payload", { nonce: value });
     record.set("stamp", markerStamp);
     record.set("deleted", false);
     app.save(record);
+  }
+  return true;
+}
+
+function touch(app, owner) {
+  owner = String(owner || "").trim();
+  if (!owner) return;
+
+  let existing = markerRows(app, owner);
+  let latestBusiness = latestBusinessByStamp(app, owner);
+  let businessStamp = latestBusiness ? latestBusiness.getString("stamp") : null;
+
+  if (updateMarkers(app, owner, existing, businessStamp)) return;
+
+  const collection = app.findCollectionByNameOrId("wesios_records");
+  const record = new Record(collection);
+  record.set("owner", owner);
+  record.set("org", "__sync_revision__");
+  record.set("coll", markerCollection);
+  record.set("rid", markerRid);
+  record.set("payload", { nonce: nonce() });
+  record.set("stamp", nextMarkerStamp([], businessStamp));
+  record.set("deleted", false);
+
+  try {
+    app.save(record);
+    return;
+  } catch (createError) {
+    // With UNIQUE(owner,coll,rid), two AfterSuccess hooks can both observe an
+    // absent marker before either has committed its first create. The loser
+    // must not silently lose its revision touch. Re-read the marker created by
+    // the winner and turn this touch into a normal update.
+    existing = markerRows(app, owner);
+    if (!existing.length) throw createError;
+
+    // A newer business row may have committed while the create raced, so use a
+    // fresh business watermark as well as the newly-created marker stamp.
+    latestBusiness = latestBusinessByStamp(app, owner);
+    businessStamp = latestBusiness ? latestBusiness.getString("stamp") : null;
+    if (!updateMarkers(app, owner, existing, businessStamp)) throw createError;
   }
 }
 
