@@ -1,0 +1,252 @@
+receive_exit=1
+engine_exit=1
+=== RECEIVE TAIL ===
+            '\n'
+            '    final session = SyncEndpoint.session;\n'
+            '    final fingerprint = \'${session?[\'userId\']}|${session?[\'token\']}\';\n'
+            '    if (_sessionFingerprint != fingerprint) {\n'
+            '      _sessionFingerprint = fingerprint;\n'
+            '      _remoteRevision = null;\n'
+            '      _probeFailures = 0;\n'
+            '      _nextProbeAt = null;\n'
+            '    }\n'
+            '\n'
+            '    _probeBusy = true;\n'
+            '    try {\n'
+            '      final result = await PocketBaseTransport.fromSettings().revision();\n'
+            '      if (result.failure != null) {\n'
+            '        _registerProbeFailure();\n'
+            '        return;\n'
+            '      }\n'
+            '\n'
+            '      _probeFailures = 0;\n'
+            '      _nextProbeAt = null;\n'
+            '      final observedRevision = result.value!;\n'
+            '\n'
+            '      if (_remoteRevision != null && observedRevision == _remoteRevision) {\n'
+            '        return;\n'
+            '      }\n'
+            '\n'
+            '      // Ключевой инвариант: watermark — это revision, увиденная ДО pull.\n'
+            '      // После успешного прохода сохраняем именно её. Если сервер изменился в\n'
+            '      // середине прохода (даже через 1 мс после последнего fetch), следующий\n'
+            '      // poll увидит более новую revision и гарантированно запустит ещё один\n'
+            '      // обмен. Поэтому изменение нельзя «перепрыгнуть» пост-синхронным чтением.\n'
+            '      final report = await _runAuto();\n'
+            '      if (report.ok) {\n'
+            '        _acceptObservedRevision(observedRevision);\n'
+            '      } else {\n'
+            '        _registerProbeFailure();\n'
+            '      }\n'
+            '    } finally {\n'
+            '      _probeBusy = false;\n'
+            '    }\n'
+            '  }\n'
+            '\n'
+            '  static void _registerProbeFailure() {\n'
+            '    _probeFailures = (_probeFailures + 1).clamp(1, 4).toInt();\n'
+            '    final seconds = 1 << _probeFailures; // 2, 4, 8, 16\n'
+            '    _nextProbeAt = DateTime.now().add(Duration(seconds: seconds));\n'
+            '  }\n'
+            '\n'
+            '  static void _acceptObservedRevision(String revision) {\n'
+            '    _remoteRevision = revision;\n'
+            '    _probeFailures = 0;\n'
+            '    _nextProbeAt = null;\n'
+            '  }\n'
+            '\n'
+            '  /// Принудительный обмен.\n'
+            '  ///\n'
+            '  /// Ручная кнопка означает «сверь сейчас и верни успех только на устойчивом\n'
+            '  /// снимке». Для этого каждый проход ограждается revision до и после него.\n'
+            '  /// Если они различаются, в момент обмена сервер менялся (в том числе из-за\n'
+            '  /// наших upload-ов), поэтому повторяем проход. Так после зелёного результата\n'
+            '  /// локальное состояние соответствует серверному состоянию, наблюдавшемуся\n'
+            '  /// на границе завершения Sync.\n'
+            '  static Future<SyncReport> now() async {\n'
+            '    _localTimer?.cancel();\n'
+            '\n'
+            '    if (!SyncEndpoint.isConnected) {\n'
+            '      return SyncReport(\n'
+            '        at: DateTime.now(),\n'
+            '        failure: const SyncFailure(\n'
+            '          \'NOT_SIGNED_IN\',\n'
+            '          \'Сначала войдите в синхронизацию\',\n'
+            '        ),\n'
+            '      );\n'
+            '    }\n'
+            '\n'
+            '    // Если автоматический проход уже заканчивается, коротко ждём его вместо\n'
+            '    // того, чтобы возвращать пользователю бесполезное «BUSY».\n'
+            '    for (var i = 0; i < 20 && SyncEngine.busy.value; i++) {\n'
+            '      await Future<void>.delayed(const Duration(milliseconds: 100));\n'
+            '    }\n'
+            '\n'
+            '    SyncReport? lastSuccessful;\n'
+            '    String? lastObservedBefore;\n'
+            '\n'
+            '    for (var pass = 0; pass < manualStabilizationPasses; pass++) {\n'
+            '      final before = await PocketBaseTransport.fromSettings().revision();\n'
+            '      if (before.failure != null) {\n'
+            '        final failed = SyncReport(\n'
+            '          at: DateTime.now(),\n'
+            '          collections: lastSuccessful?.collections ?? const [],\n'
+            '          failure: before.failure,\n'
+            '        );\n'
+            '        SyncEngine.lastReport.value = failed;\n'
+            '        return failed;\n'
+            '      }\n'
+            '      lastObservedBefore = before.value!;\n'
+            '\n'
+            '      final report = await SyncEngine.run();\n'
+            '      if (!report.ok) return report;\n'
+            '      lastSuccessful = report;\n'
+            '      pending.value = false;\n'
+            '\n'
+            '      final after = await PocketBaseTransport.fromSettings().revision();\n'
+            '      if (after.failure != null) {\n'
+            '        final failed = SyncReport(\n'
+            '          at: DateTime.now(),\n'
+            '          collections: report.collections,\n'
+            '          failure: after.failure,\n'
+            '        );\n'
+            '        SyncEngine.lastReport.value = failed;\n'
+            '        return failed;\n'
+            '      }\n'
+            '\n'
+            '      if (after.value == lastObservedBefore) {\n'
+            '        _acceptObservedRevision(after.value!);\n'
+            '        return report;\n'
+            '      }\n'
+            '\n'
+            '      // Сохраняем только revision, которая была известна ДО текущего pull.\n'
+            '      // Более новая `after` пока не считается применённой: следующий проход\n'
+            '      // обязан скачать всё, что появилось между двумя revision-чтениями.\n'
+            '      _acceptObservedRevision(lastObservedBefore);\n'
+            '    }\n'
+            '\n'
+            '    final unstable = SyncReport(\n'
+            '      at: DateTime.now(),\n'
+            '      collections: lastSuccessful?.collections ?? const [],\n'
+            '      failure: const SyncFailure(\n'
+            '        \'REMOTE_UNSTABLE\',\n'
+            '        \'Сервер продолжал меняться во время синхронизации. Повторите Sync\',\n'
+            '      ),\n'
+            '    );\n'
+            '    SyncEngine.lastReport.value = unstable;\n'
+            '    return unstable;\n'
+            '  }\n'
+            '\n'
+            '  /// Только для тестов.\n'
+            '  @visibleForTesting\n'
+            '  static void reset() {\n'
+            '    stop(force: true);\n'
+            '    pending.value = false;\n'
+            '  }\n'
+            '}\n'
+            '\n'
+            'class _SyncLifecycleObserver extends WidgetsBindingObserver {\n'
+            '  @override\n'
+            '  void didChangeAppLifecycleState(AppLifecycleState state) {\n'
+            '    if (state == AppLifecycleState.resumed) SyncAuto._onResumed();\n'
+            '  }\n'
+            '}\n'
+            ''
+   Which: does not contain 'if (_remoteRevision == null) {\n'
+            '        final report = await _runAuto();'
+
+package:matcher                                     expect
+package:flutter_test/src/widget_tester.dart 480:18  expect
+test/sync_receive_regression_test.dart 146:5        main.<fn>
+::endgroup::
+
+::error::2 tests passed, 2 failed.
+=== ENGINE TAIL ===
+
+✅ журнал отметка кодируется и читается обратно без потерь
+✅ журнал мусор вместо отметки не разбирается, а не притворяется нулём
+✅ журнал правка в боксе сама попадает в журнал
+✅ журнал удаление оставляет надгробие, а не пустоту
+✅ журнал старые надгробия выбрасываются, живые отметки — нет
+✅ журнал засев отмечает только записи без отметки
+✅ кодек операция переживает круг через поля
+✅ кодек задача переживает круг вместе с чек-листом
+✅ кодек человек переживает круг вместе с правами и хешем пароля
+✅ кодек запись без обязательных полей не разбирается
+✅ кодек незнакомое значение перечисления не роняет разбор
+✅ кодек встроенные статьи в обмен не идут
+✅ кодек имена коллекций уникальны и счета идут раньше операций
+✅ движок без входа честно говорит об этом
+✅ движок без входа не пытается ничего отправить
+✅ движок местная запись уезжает на сервер
+✅ движок чужая запись приезжает и попадает в бокс
+::group::❌ движок применённая чужая запись не уезжает обратно на следующем проходе (failed)
+Expected: <0>
+  Actual: <1>
+
+package:matcher                                     expect
+package:flutter_test/src/widget_tester.dart 480:18  expect
+test/sync_engine_test.dart 381:7                    main.<fn>.<fn>
+::endgroup::
+✅ движок более свежая местная правка побеждает серверную
+✅ движок более свежая серверная правка побеждает местную
+✅ движок удаление на другом устройстве стирает запись здесь
+✅ движок удаление здесь уезжает надгробием, а не исчезновением
+✅ движок обрыв связи не портит местные данные
+✅ движок отказ одной коллекции не выдаётся за общий успех
+::group::✅ движок протухший пропуск выбрасывается, а не остаётся выглядеть рабочим
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+✅ движок автоматический проход не идёт, пока его не включили
+✅ движок свежая установка не затирает сервер своими заготовками
+✅ движок в первый обмен уезжает то, чего на сервере нет
+✅ движок правило первого обмена действует ровно один раз
+✅ движок удачный проход отмечается временем
+✅ движок два устройства сходятся к одному состоянию
+✅ движок запись из будущей версии не помечается как усвоенная
+✅ адрес сервера зашит в сборку и всегда по https
+✅ адрес сервера сохранённый адрес из старой установки ничего не решает
+::group::✅ подключение без пропуска — не подключены
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ подключение действующий пропуск — подключены
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ подключение протухший пропуск не считается подключением
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+✅ упрямая запись не запирает за собой очередь и не прячет отказ
+✅ упрямая запись доставленным считается только то, что дошло
+
+::error::38 tests passed, 1 failed.
