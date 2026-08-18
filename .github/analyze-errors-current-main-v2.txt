@@ -1,0 +1,13 @@
+SOURCE=3fd1fac0a53343112be6ecf349e1fcf49a941372
+PUB_GET=0
+ANALYZE=0
+=== ERRORS ===
+=== SUMMARY ===
+   info • Use 'const' for final variables initialized to a constant value. Try replacing 'final' with 'const' • test/update_paths_test.dart:21:7 • prefer_const_declarations
+   info • Unnecessary escape in string literal. Remove the '\' escape • test/update_paths_test.dart:21:28 • unnecessary_string_escapes
+   info • Use 'const' for final variables initialized to a constant value. Try replacing 'final' with 'const' • test/update_paths_test.dart:28:7 • prefer_const_declarations
+   info • The import of 'dart:async' is unnecessary because all of the used elements are also provided by the import of 'package:flutter_test/flutter_test.dart'. Try removing the import directive • test/wesi_ai_memory_engine_test.dart:1:8 • unnecessary_import
+   info • Parameter 'employeeId' could be a super parameter. Trying converting 'employeeId' to a super parameter • test/wesi_ai_queue_hardening_test.dart:19:3 • use_super_parameters
+   info • Unnecessary use of string interpolation. Try replacing the string literal with the variable name • test/wesi_runtime_pack_test.dart:438:59 • unnecessary_string_interpolations
+
+844 issues found. (ran in 22.6s)
