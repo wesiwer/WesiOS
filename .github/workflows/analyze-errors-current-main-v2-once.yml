@@ -24,7 +24,7 @@ jobs:
       - name: Analyze actual errors only
         shell: bash
         run: |
-          # Revalidate latest main after sync/build fixes and parallel AI changes.
+          # Revalidate after dartssh2/SDK/NDK compatibility fixes.
           set +e
           flutter pub get >/tmp/pub.log 2>&1
           PUB=$?
