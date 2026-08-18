@@ -16,7 +16,6 @@ function payloadOf(record) {
   return {};
 }
 
-function bad(message) { throw new BadRequestError(message); }
 function forbidden(message) { throw new ForbiddenError(message); }
 
 function hasModule(ctx, name) {
@@ -103,6 +102,13 @@ function authorize(txApp, existing, input, ctx) {
     if (!existing || input.deleted || input.rid !== ctx.employeeId) {
       forbidden("Сотрудник может синхронизировать только свою аватарку");
     }
+    // Preserve the transaction-current employee row. A preflight merge based
+    // on an older snapshot must never revert owner-updated permissions/contact
+    // fields while the employee uploads a new avatar.
+    input.payload = Object.assign({}, before, {
+      avatarIndex: Number(input.payload.avatarIndex || 0),
+      photo: input.payload.photo == null ? null : input.payload.photo,
+    });
     return;
   }
 
@@ -144,9 +150,10 @@ function authorize(txApp, existing, input, ctx) {
     if (!grantApplies(ctx, newOrg, needed)) {
       forbidden("Нет права изменять операции этой организации");
     }
-    if ((before.isRecurring === true || target.isRecurring === true) &&
-        (!grantApplies(ctx, oldOrg, "manage_recurring") ||
-         !grantApplies(ctx, newOrg, "manage_recurring"))) {
+    if (before.isRecurring === true && !grantApplies(ctx, oldOrg, "manage_recurring")) {
+      forbidden("Нет права изменять исходную регулярную операцию");
+    }
+    if (target.isRecurring === true && !grantApplies(ctx, newOrg, "manage_recurring")) {
       forbidden("Нет права изменять регулярные операции");
     }
     return;
