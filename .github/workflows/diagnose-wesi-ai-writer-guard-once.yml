@@ -1,0 +1,38 @@
+name: Diagnose Wesi AI Writer Guard Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-wesi-ai-writer-guard-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run Node contracts with full failure context
+        shell: bash
+        run: |
+          set +e
+          node --test server/pb_hooks/*_test.mjs >/tmp/node.log 2>&1
+          CODE=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "EXIT=$CODE"
+            echo '=== FAILURE CONTEXT ==='
+            sed -n '165,215p' /tmp/node.log
+            echo '=== DIRECT WRITE GREP ==='
+            grep -RInE 'e\.app\.save\(|new Record\(' server/pb_hooks/wesi_ai_*.js || true
+          } > .github/wesi-ai-writer-guard-diagnostic.txt
+          git config user.name 'WesiOS Guard Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/wesi-ai-writer-guard
+          git add .github/wesi-ai-writer-guard-diagnostic.txt
+          git commit -m 'ops: capture Wesi AI writer guard failure'
+          git push --force origin HEAD:diag/wesi-ai-writer-guard
