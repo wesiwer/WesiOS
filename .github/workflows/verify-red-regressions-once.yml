@@ -1,0 +1,51 @@
+name: Verify Repaired Red Regressions Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/verify-red-regressions-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Run repaired regression files
+        shell: bash
+        run: |
+          set +e
+          flutter test \
+            test/sync_engine_lifecycle_test.dart \
+            test/profile_sync_test.dart \
+            test/sync_forbidden_cache_reconciliation_test.dart \
+            test/sync_durable_tombstone_contract_test.dart \
+            test/organization_sync_integrity_test.dart \
+            test/sync_engine_test.dart -r expanded > /tmp/tests.log 2>&1
+          code=$?
+          set -e
+          { echo "REGRESSION_PACK=$code"; tail -n 250 /tmp/tests.log; } > /tmp/result.txt
+      - name: Publish result branch
+        if: always()
+        shell: bash
+        run: |
+          git reset --hard "$GITHUB_SHA"
+          cp /tmp/result.txt .github/repaired-red-regressions.txt
+          git config user.name 'WesiOS Regression Verification'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/repaired-red-regressions
+          git add .github/repaired-red-regressions.txt
+          git commit -m 'ops: record repaired red regressions'
+          git push --force origin HEAD:diag/repaired-red-regressions
