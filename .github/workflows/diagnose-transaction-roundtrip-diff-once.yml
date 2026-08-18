@@ -1,0 +1,57 @@
+name: Diagnose Transaction Roundtrip Diff Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/diagnose-transaction-roundtrip-diff-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Instrument test workspace
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('test/sync_engine_test.dart')
+          s=p.read_text()
+          needle="""      await SyncEngine.run(transport: t, now: base);\n      await Future<void>.delayed(Duration.zero);\n\n      t.calls.clear();\n"""
+          repl="""      await SyncEngine.run(transport: t, now: base);\n      await Future<void>.delayed(Duration.zero);\n      final diagRemote = t.store['transactions']!['remote1']!.fields;\n      final diagLocal = TransactionsSync().encode(txBox().get('remote1')!);\n      final diagKeys = {...diagRemote.keys, ...diagLocal.keys}.toList()..sort();\n      for (final k in diagKeys) {\n        if ('${diagRemote[k]}' != '${diagLocal[k]}' || diagRemote[k].runtimeType != diagLocal[k].runtimeType) {\n          print('FIELD_DIFF $k REMOTE=${diagRemote[k]} (${diagRemote[k].runtimeType}) LOCAL=${diagLocal[k]} (${diagLocal[k].runtimeType})');\n        }\n      }\n\n      t.calls.clear();\n"""
+          if needle not in s: raise SystemExit('target block not found')
+          p.write_text(s.replace(needle,repl,1))
+          PY
+      - name: Run regression and collect diff
+        shell: bash
+        run: |
+          set +e
+          flutter test test/sync_engine_test.dart --plain-name 'движок применённая чужая запись не уезжает обратно на следующем проходе' -r expanded > /tmp/diag.log 2>&1
+          code=$?
+          set -e
+          { echo "EXIT=$code"; grep -E 'FIELD_DIFF|Expected:|Actual:' /tmp/diag.log || true; } > /tmp/result.txt
+      - name: Publish diagnostic branch
+        if: always()
+        shell: bash
+        run: |
+          git reset --hard "$GITHUB_SHA"
+          cp /tmp/result.txt .github/transaction-roundtrip-diff.txt
+          git config user.name 'WesiOS Sync Diagnostics'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/transaction-roundtrip-diff
+          git add .github/transaction-roundtrip-diff.txt
+          git commit -m 'ops: record transaction round-trip diff'
+          git push --force origin HEAD:diag/transaction-roundtrip-diff
