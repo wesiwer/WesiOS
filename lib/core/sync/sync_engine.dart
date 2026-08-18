@@ -77,6 +77,15 @@ class SyncEngine {
 
   static bool _journalReady = false;
 
+  /// Единственный prepare текущего lifecycle.
+  ///
+  /// Холодный запуск раньше делал `runOnLaunch()->prepare()` при busy=false и
+  /// почти одновременно запускал SyncAuto. Быстрый revision poll мог войти во
+  /// второй `run()->prepare()`. Оба прохода открывали account-scoped boxes,
+  /// seed'или timestamps и ставили watchers параллельно. Один shared Future
+  /// делает подготовку атомарной относительно всех callers.
+  static Future<void>? _prepareFuture;
+
   /// Generation текущего жизненного цикла sync engine.
   ///
   /// Нужна отдельно от SyncAuto: ручной/чатовый проход тоже может быть активен
@@ -89,7 +98,7 @@ class SyncEngine {
   /// await старый проход увидит generation mismatch и остановится до apply/push.
   static void invalidateActiveRun() {
     _runGeneration++;
-    SyncJournal.clearExpectations();
+    SyncJournal.discardExpectations();
   }
 
   static String _sessionFingerprint() {
@@ -100,13 +109,40 @@ class SyncEngine {
   /// Открыть журнал и подписать его на все синхронизируемые боксы.
   static Future<void> prepare({DateTime? now}) async {
     if (_journalReady) return;
+
+    final existing = _prepareFuture;
+    if (existing != null) {
+      await existing;
+      return;
+    }
+
+    final generation = _runGeneration;
+    final future = _prepareOnce(now: now, generation: generation);
+    _prepareFuture = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_prepareFuture, future)) _prepareFuture = null;
+    }
+  }
+
+  static Future<void> _prepareOnce({
+    DateTime? now,
+    required int generation,
+  }) async {
+    bool cancelled() => generation != _runGeneration;
+
     await SyncJournal.open();
+    if (cancelled()) return;
 
     for (final c in SyncCodec.collections) {
+      if (cancelled()) return;
       try {
+        final box = await c.ensureBox();
+        if (cancelled()) return;
         SyncJournal.attach(
           c.name,
-          await c.ensureBox(),
+          box,
           acceptsKey: c.watchesBoxKey,
           syncIdForKey: c.syncIdForBoxKey,
         );
@@ -115,12 +151,16 @@ class SyncEngine {
       }
     }
 
+    if (cancelled()) return;
     if (SyncEndpoint.seededAt == null) {
       final at = now ?? SyncClock.now();
       for (final c in SyncCodec.collections) {
+        if (cancelled()) return;
         await SyncJournal.seed(c.name, c.local().keys, at);
       }
+      if (cancelled()) return;
       await SyncEndpoint.markSeeded(at);
+      if (cancelled()) return;
     }
 
     _journalReady = true;
@@ -128,21 +168,38 @@ class SyncEngine {
 
   /// Сбросить подписки и результат последнего прохода.
   ///
-  /// Сначала инвалидируем уже идущий run и ждём, пока он выйдет через guard.
-  /// Только затем можно отвязать journal и открыть private boxes другой учётки.
+  /// Сначала инвалидируем уже идущий run/prepare и ждём их выхода. Только
+  /// затем можно отвязать journal и открыть private boxes другой учётки.
   static Future<void> reset() async {
     invalidateActiveRun();
+
+    final preparing = _prepareFuture;
+    if (preparing != null) {
+      try {
+        await preparing;
+      } catch (_) {
+        // Reset всё равно обязан завершить очистку после неудачного prepare.
+      }
+    }
+
     while (busy.value) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
     }
     await SyncJournal.detach();
     lastReport.value = null;
     _journalReady = false;
+    _prepareFuture = null;
   }
 
   static Future<void> runOnLaunch() async {
-    await prepare();
-    if (!SyncEndpoint.enabled) return;
+    // При включённом Sync сразу входим в run(): он выставляет busy=true ДО
+    // prepare(), поэтому запущенный рядом SyncAuto не сможет начать второй
+    // полный проход. Если Sync выключен, journal всё равно готовим, чтобы
+    // локальные изменения получали timestamps для будущего включения.
+    if (!SyncEndpoint.enabled) {
+      await prepare();
+      return;
+    }
     await run();
   }
 
@@ -262,7 +319,9 @@ class SyncEngine {
           failure: cancelledFailure(),
         ));
       }
-      SyncJournal.clearExpectations();
+      // Fresh remote expectations must survive until the asynchronous Hive
+      // watcher consumes them; only expired entries are pruned here.
+      SyncJournal.pruneExpectations();
 
       final report = SyncReport(at: at, collections: reports);
       if (report.ok && only == null) await SyncEndpoint.markRun(at);
