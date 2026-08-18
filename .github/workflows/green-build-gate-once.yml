@@ -66,17 +66,13 @@ jobs:
         run: |
           set -euo pipefail
           if [ "$LINUX_RESULT" = success ] && [ "$WINDOWS_RESULT" = success ]; then
-            STATE=success
-            DESCRIPTION='Analyze, tests, Android and Windows builds are green'
+            export STATE=success
+            export DESCRIPTION='Analyze, tests, Android and Windows builds are green'
           else
-            STATE=failure
-            DESCRIPTION="Flutter/Android=$LINUX_RESULT Windows=$WINDOWS_RESULT"
+            export STATE=failure
+            export DESCRIPTION="Flutter/Android=$LINUX_RESULT Windows=$WINDOWS_RESULT"
           fi
-          curl -fsS -X POST \
-            -H "Authorization: Bearer $GH_TOKEN" \
-            -H 'Accept: application/vnd.github+json' \
-            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
-            -d "$(python3 - <<'PY'
+          PAYLOAD=$(python3 - <<'PY'
           import json, os
           print(json.dumps({
             'state': os.environ['STATE'],
@@ -84,10 +80,9 @@ jobs:
             'description': os.environ['DESCRIPTION'][:140],
           }))
           PY
-          )"
-        env:
-          GH_TOKEN: ${{ github.token }}
-          LINUX_RESULT: ${{ needs.flutter-and-android.result }}
-          WINDOWS_RESULT: ${{ needs.windows-release.result }}
-          STATE: ${{ (needs.flutter-and-android.result == 'success' && needs.windows-release.result == 'success') && 'success' || 'failure' }}
-          DESCRIPTION: ${{ format('Flutter/Android={0} Windows={1}', needs.flutter-and-android.result, needs.windows-release.result) }}
+          )
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H 'Accept: application/vnd.github+json' \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -d "$PAYLOAD"
