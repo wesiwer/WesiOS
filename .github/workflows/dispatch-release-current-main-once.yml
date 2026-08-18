@@ -23,6 +23,6 @@ jobs:
           gh workflow run release-app.yml \
             --repo "$GITHUB_REPOSITORY" \
             --ref main \
-            -f notes='WesiOS 0.22.28+103: Telegram bot updates, Wesi AI improvements including adaptive mobile visualizations, and synchronization hardening.' \
+            -f notes='WesiOS 0.22.28+103 retry: fixed Flutter stable intl resolution; includes Telegram bot updates, Wesi AI improvements and synchronization hardening.' \
             -f deploy_to_server=true
-          echo 'Release workflow dispatched.'
+          echo 'Release workflow dispatched after dependency fix.'
