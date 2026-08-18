@@ -11,6 +11,8 @@ on:
       - 'server/pb_hooks/wesi_sync_lww_test.mjs'
       - 'server/pb_hooks/wesi_sync_atomic.js'
       - 'server/pb_hooks/wesi_sync_atomic_test.mjs'
+      - 'server/pb_hooks/wesi_sync_generic_policy.js'
+      - 'server/pb_hooks/wesi_sync_generic_policy_test.mjs'
       - 'server/pb_hooks/wesi_sync_revision.js'
       - 'server/pb_hooks/wesi_sync_revision.pb.js'
       - 'server/pb_hooks/wesi_sync_revision_contract_test.mjs'
@@ -58,6 +60,7 @@ jobs:
             server/pb_hooks/wesi_sync_data_access.js \
             server/pb_hooks/wesi_sync_lww.js \
             server/pb_hooks/wesi_sync_atomic.js \
+            server/pb_hooks/wesi_sync_generic_policy.js \
             server/pb_hooks/wesi_sync_revision.js \
             server/pb_hooks/wesi_sync_revision.pb.js \
             server/pb_hooks/wesi_sync_context.pb.js \
@@ -78,6 +81,7 @@ jobs:
             server/pb_hooks/wesi_sync_data_access_contract_test.mjs \
             server/pb_hooks/wesi_sync_lww_test.mjs \
             server/pb_hooks/wesi_sync_atomic_test.mjs \
+            server/pb_hooks/wesi_sync_generic_policy_test.mjs \
             server/pb_hooks/wesi_sync_revision_contract_test.mjs \
             server/pb_hooks/wesi_sync_revision_race_test.mjs \
             server/pb_hooks/wesi_sync_extra_contract_test.mjs \
@@ -90,6 +94,7 @@ jobs:
           grep -q '/api/wesi/sync/{collection}' server/pb_hooks/wesi_sync_read.pb.js
           grep -q '/api/wesi/sync/{collection}' server/pb_hooks/wesi_sync_write.pb.js
           grep -q 'wesi_sync_atomic.js' server/pb_hooks/wesi_sync_write.pb.js
+          grep -q 'wesi_sync_generic_policy.js' server/pb_hooks/wesi_sync_write.pb.js
           grep -q '/api/wesi/sync/revision-v2' server/pb_hooks/wesi_sync_extra.pb.js
           grep -q 'wesi_sync_extra_runtime.js' server/pb_hooks/wesi_sync_extra.pb.js
           grep -q 'wesi_sync_data_access.js' server/pb_hooks/wesi_sync_extra_runtime.js
@@ -156,6 +161,7 @@ jobs:
             server/pb_hooks/wesi_sync_data_access.js \
             server/pb_hooks/wesi_sync_lww.js \
             server/pb_hooks/wesi_sync_atomic.js \
+            server/pb_hooks/wesi_sync_generic_policy.js \
             server/pb_hooks/wesi_sync_revision.js \
             server/pb_hooks/wesi_sync_revision.pb.js \
             server/pb_hooks/wesi_sync_context.pb.js \
@@ -172,7 +178,7 @@ jobs:
             "$USER@$HOST:$REMOTE/"
           $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' MIGRATION_DIR='$MIGRATION_DIR' PB_DATA='$PB_DATA' bash -s" <<'SH'
           set -euo pipefail
-          runtime_files=(wesi_sync_data_access.js wesi_sync_lww.js wesi_sync_atomic.js wesi_sync_revision.js wesi_sync_extra_runtime.js wesi_sync_crm_runtime.js wesi_sync_files_runtime.js)
+          runtime_files=(wesi_sync_data_access.js wesi_sync_lww.js wesi_sync_atomic.js wesi_sync_generic_policy.js wesi_sync_revision.js wesi_sync_extra_runtime.js wesi_sync_crm_runtime.js wesi_sync_files_runtime.js)
           route_files=(wesi_sync_revision.pb.js wesi_sync_context.pb.js wesi_sync_read.pb.js wesi_sync_write.pb.js wesi_sync_extra.pb.js wesi_sync_crm.pb.js wesi_sync_files.pb.js)
           migration_file=1787055000_wesios_records_unique_rid.js
 
