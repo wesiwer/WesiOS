@@ -1,0 +1,193 @@
+name: Deploy Sync Hardening
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'server/pb_hooks/wesi_sync_atomic.js'
+      - 'server/pb_hooks/wesi_sync_authz.js'
+      - 'server/pb_hooks/wesi_sync_generic_policy.js'
+      - 'server/pb_hooks/wesi_sync_crm_runtime.js'
+      - 'server/pb_hooks/wesi_sync_context.pb.js'
+      - 'server/pb_hooks/wesi_ai_sync_writer.js'
+      - 'server/pb_hooks/wesi_ai_calendar_write_tools.js'
+      - 'server/pb_hooks/wesi_ai_task_write_tools.js'
+      - 'server/pb_hooks/wesi_ai_knowledge_write_tools.js'
+      - 'server/pb_hooks/wesi_ai_finance_write_tools.js'
+      - 'server/pb_hooks/wesi_ai_crm_write_tools.js'
+      - 'server/pb_hooks/wesi_ai_roadmap_tools.js'
+      - 'server/pb_hooks/wesi_sync_authz_test.mjs'
+      - 'server/pb_hooks/wesi_sync_context_contract_test.mjs'
+      - 'server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs'
+      - '.github/workflows/deploy-sync-hardening.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wesios-sync-hooks-production
+  cancel-in-progress: false
+
+jobs:
+  validate-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: employee-portal
+      url: https://api.wesi-inc.ru
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate hardening bundle
+        run: |
+          set -euo pipefail
+          files=(
+            server/pb_hooks/wesi_sync_data_access.js
+            server/pb_hooks/wesi_sync_lww.js
+            server/pb_hooks/wesi_sync_atomic.js
+            server/pb_hooks/wesi_sync_authz.js
+            server/pb_hooks/wesi_sync_generic_policy.js
+            server/pb_hooks/wesi_sync_crm_runtime.js
+            server/pb_hooks/wesi_sync_context.pb.js
+            server/pb_hooks/wesi_ai_sync_writer.js
+            server/pb_hooks/wesi_ai_calendar_write_tools.js
+            server/pb_hooks/wesi_ai_task_write_tools.js
+            server/pb_hooks/wesi_ai_knowledge_write_tools.js
+            server/pb_hooks/wesi_ai_finance_write_tools.js
+            server/pb_hooks/wesi_ai_crm_write_tools.js
+            server/pb_hooks/wesi_ai_roadmap_tools.js
+          )
+          for file in "${files[@]}"; do
+            test -s "$file"
+            node --check "$file"
+          done
+          node --test \
+            server/pb_hooks/wesi_sync_atomic_test.mjs \
+            server/pb_hooks/wesi_sync_authz_test.mjs \
+            server/pb_hooks/wesi_sync_generic_policy_test.mjs \
+            server/pb_hooks/wesi_sync_context_contract_test.mjs \
+            server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs
+          grep -q 'UnauthorizedError("Сотрудник деактивирован' server/pb_hooks/wesi_sync_context.pb.js
+          grep -q 'authz.refresh(txApp, requestCtx)' server/pb_hooks/wesi_ai_sync_writer.js
+          grep -q 'rebase: function' server/pb_hooks/wesi_ai_sync_writer.js
+
+      - name: Check production SSH configuration
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "${HOST:-}" || { echo '::error::Нет WESI_SERVER_HOST'; exit 1; }
+          test -n "${USER:-}" || { echo '::error::Нет WESI_SERVER_USER'; exit 1; }
+          test -n "${KEY:-}" || { echo '::error::Нет WESI_SERVER_SSH_KEY'; exit 1; }
+
+      - name: Prepare SSH
+        env:
+          KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          if [ -n "${KNOWN:-}" ]; then
+            printf '%s\n' "$KNOWN" > ~/.ssh/known_hosts
+          else
+            ssh-keyscan -H "$HOST" > ~/.ssh/known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/known_hosts
+
+      - name: Atomically install hardening bundle
+        env:
+          HOST: ${{ secrets.WESI_SERVER_HOST }}
+          USER: ${{ secrets.WESI_SERVER_USER }}
+          CONFIGURED_HOOK_DIR: ${{ vars.WESI_PB_HOOK_DIR }}
+        run: |
+          set -euo pipefail
+          SSH="ssh -i $HOME/.ssh/id_deploy -o BatchMode=yes"
+          HOOK_DIR="${CONFIGURED_HOOK_DIR:-/opt/pocketbase/pb_hooks}"
+          REMOTE="/tmp/wesi-sync-hardening-$GITHUB_RUN_ID"
+          $SSH "$USER@$HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp -i "$HOME/.ssh/id_deploy" -o BatchMode=yes \
+            server/pb_hooks/wesi_sync_data_access.js \
+            server/pb_hooks/wesi_sync_lww.js \
+            server/pb_hooks/wesi_sync_atomic.js \
+            server/pb_hooks/wesi_sync_authz.js \
+            server/pb_hooks/wesi_sync_generic_policy.js \
+            server/pb_hooks/wesi_sync_crm_runtime.js \
+            server/pb_hooks/wesi_sync_context.pb.js \
+            server/pb_hooks/wesi_ai_sync_writer.js \
+            server/pb_hooks/wesi_ai_calendar_write_tools.js \
+            server/pb_hooks/wesi_ai_task_write_tools.js \
+            server/pb_hooks/wesi_ai_knowledge_write_tools.js \
+            server/pb_hooks/wesi_ai_finance_write_tools.js \
+            server/pb_hooks/wesi_ai_crm_write_tools.js \
+            server/pb_hooks/wesi_ai_roadmap_tools.js \
+            "$USER@$HOST:$REMOTE/"
+          $SSH "$USER@$HOST" "REMOTE='$REMOTE' HOOK_DIR='$HOOK_DIR' bash -s" <<'REMOTE'
+          set -euo pipefail
+          files=(
+            wesi_sync_data_access.js
+            wesi_sync_lww.js
+            wesi_sync_atomic.js
+            wesi_sync_authz.js
+            wesi_sync_generic_policy.js
+            wesi_sync_crm_runtime.js
+            wesi_sync_context.pb.js
+            wesi_ai_sync_writer.js
+            wesi_ai_calendar_write_tools.js
+            wesi_ai_task_write_tools.js
+            wesi_ai_knowledge_write_tools.js
+            wesi_ai_finance_write_tools.js
+            wesi_ai_crm_write_tools.js
+            wesi_ai_roadmap_tools.js
+          )
+          install_one() {
+            src="$1"; dst="$2"; dir="$(dirname "$dst")"
+            if [ -w "$dir" ]; then
+              tmp="$dir/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
+              cat "$src" > "$tmp"; chmod 0644 "$tmp"; cmp -s "$src" "$tmp"; mv -f "$tmp" "$dst"
+            elif command -v sudo >/dev/null 2>&1 && sudo -n true >/dev/null 2>&1; then
+              tmp="$dir/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
+              sudo -n cp "$src" "$tmp"; sudo -n chmod 0644 "$tmp"; sudo -n cmp -s "$src" "$tmp"; sudo -n mv -f "$tmp" "$dst"
+            else
+              echo "Нет прав на установку $dst" >&2; exit 3
+            fi
+          }
+          for f in "${files[@]}"; do install_one "$REMOTE/$f" "$HOOK_DIR/$f"; done
+          for f in "${files[@]}"; do
+            if cmp -s "$REMOTE/$f" "$HOOK_DIR/$f" 2>/dev/null; then :
+            elif command -v sudo >/dev/null 2>&1 && sudo -n cmp -s "$REMOTE/$f" "$HOOK_DIR/$f"; then :
+            else echo "Установленный файл не совпадает: $f" >&2; exit 4; fi
+          done
+          if systemctl restart pocketbase 2>/dev/null; then :
+          elif command -v sudo >/dev/null 2>&1 && sudo -n systemctl restart pocketbase; then :
+          else echo "Не удалось перезапустить PocketBase" >&2; exit 5; fi
+          sleep 3
+          curl -fsS --max-time 10 http://127.0.0.1:8090/api/health >/dev/null
+          rm -rf "$REMOTE"
+          echo SYNC_HARDENING_INSTALLED
+          REMOTE
+
+      - name: Verify production protected sync routes
+        run: |
+          set -euo pipefail
+          API='https://api.wesi-inc.ru'
+          for path in \
+            /api/wesi/sync/revision-v2 \
+            /api/wesi/sync/tasks \
+            /api/wesi/sync/articles \
+            /api/wesi/sync/calendar_events \
+            /api/wesi/sync/crm_clients \
+            /api/wesi/sync/crm_deals; do
+            code=$(curl -sS -o response.txt -w '%{http_code}' --max-time 20 "$API$path" || true)
+            case "$code" in
+              401|403) echo "Protected route loaded: $path ($code)" ;;
+              *) echo "::error::$path returned HTTP $code"; cat response.txt || true; exit 1 ;;
+            esac
+          done
+          echo SYNC_HARDENING_PRODUCTION_READY
