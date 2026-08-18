@@ -22,6 +22,7 @@ on:
       - 'server/pb_hooks/wesi_sync_authz_test.mjs'
       - 'server/pb_hooks/wesi_sync_context_contract_test.mjs'
       - 'server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs'
+      - 'server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs'
       - '.github/workflows/deploy-sync-hardening.yml'
 
 permissions:
@@ -71,7 +72,8 @@ jobs:
             server/pb_hooks/wesi_sync_authz_test.mjs \
             server/pb_hooks/wesi_sync_generic_policy_test.mjs \
             server/pb_hooks/wesi_sync_context_contract_test.mjs \
-            server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs
+            server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs \
+            server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs
           grep -q 'UnauthorizedError("Сотрудник деактивирован' server/pb_hooks/wesi_sync_context.pb.js
           grep -q 'authz.refresh(txApp, requestCtx)' server/pb_hooks/wesi_ai_sync_writer.js
           grep -q 'rebase: function' server/pb_hooks/wesi_ai_sync_writer.js
