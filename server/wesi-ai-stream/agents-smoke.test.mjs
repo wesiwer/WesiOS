@@ -227,3 +227,66 @@ test('без рабочей модели агент не запускается 
     /WAI_COAGENT_RUNTIME_INVALID/,
   );
 });
+
+// Ход мыслей питается этими событиями. Если из них пропадёт поручение или
+// фаза призыва, интерфейс не сможет показать, кого позвали и зачем, — а
+// именно этого от него и ждут.
+async function collectEvents() {
+  const events = [];
+  await runDynamicSubagents({
+    prepared: prepared(),
+    invokeModel: stubModel({plan: TWO_SPECIALISTS}),
+    invokeTool: stubTool,
+    emit: (ev) => events.push(ev),
+    signal: null,
+  });
+  return events;
+}
+
+test('призыв специалиста приходит отдельной фазой, а не как завершение', async () => {
+  const events = await collectEvents();
+  const planned = events.filter((ev) => ev.type === 'agent' && ev.phase === 'planned');
+  assert.equal(planned.length, 2, 'событий призыва должно быть по одному на специалиста');
+  for (const ev of planned) {
+    assert.match(ev.label, /Зову специалиста/, `призыв подписан как «${ev.label}»`);
+    assert.ok(ev.detail.length > 0, 'призыв без пояснения, зачем нужен специалист');
+  }
+});
+
+test('событие агента несёт поручение', async () => {
+  const events = await collectEvents();
+  for (const ev of events.filter((x) => x.type === 'agent')) {
+    assert.ok(String(ev.task || '').length > 0, `у события ${ev.phase} нет поручения`);
+  }
+});
+
+test('завершение специалиста показывает его вывод, а не служебную фразу', async () => {
+  const events = await collectEvents();
+  const done = events.filter((ev) => ev.type === 'agent' && ev.phase === 'result');
+  assert.equal(done.length, 2);
+  for (const ev of done) {
+    assert.match(ev.detail, /Вывод специалиста/, `завершение показывает «${ev.detail}»`);
+  }
+});
+
+test('вызов инструмента подписан именем специалиста', async () => {
+  const events = [];
+  await runDynamicSubagents({
+    prepared: prepared(),
+    invokeModel: async ({actor, phase}) => {
+      if (phase === 'subagent-plan') return JSON.stringify({subagents: [TWO_SPECIALISTS.subagents[0]]});
+      // Первый ход — запрос инструмента, второй — готовый результат.
+      if (phase === 'tool-1') return JSON.stringify({wesiTool: {name: 'knowledge_search', arguments: {query: 'вход'}}});
+      return JSON.stringify({summary: `Вывод ${actor}`, findings: [], risks: [], recommendation: '', workspaceEdits: []});
+    },
+    invokeTool: stubTool,
+    emit: (ev) => events.push(ev),
+    signal: null,
+  });
+  const toolEvents = events.filter((ev) => ev.type === 'tool');
+  assert.ok(toolEvents.length >= 2, 'специалист не сходил в инструмент');
+  for (const ev of toolEvents) {
+    assert.equal(ev.agentName, 'Security Reviewer',
+      'инструмент не подписан специалистом — в ходе мыслей не видно, кто его запустил');
+  }
+});

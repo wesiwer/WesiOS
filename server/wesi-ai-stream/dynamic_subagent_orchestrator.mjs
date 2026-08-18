@@ -159,7 +159,11 @@ function safeToolResult(name, raw) {
 
 async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool, emit, signal, budget}) {
   const send = typeof emit === 'function' ? emit : () => {};
-  send(buildDynamicSubagentEvent(spec, 'start', {label: `${spec.role}: старт`, detail: 'Временный специалист получил ограниченный контекст, budget и workspace snapshot.'}));
+  // Поручение уже названо при призыве — повторять его здесь незачем.
+  send(buildDynamicSubagentEvent(spec, 'start', {
+    label: `${spec.role} · за работой`,
+    detail: 'Работает отдельно, с урезанными правами и своим бюджетом вызовов.',
+  }));
   const toolResults = [];
   const seenCalls = new Set();
   const allowedTools = new Set(Array.isArray(policy.allowedToolNames) ? policy.allowedToolNames.map(String) : []);
@@ -186,11 +190,13 @@ async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool,
     } else {
       seenCalls.add(signature);
       budget.remainingToolTurns -= 1;
-      send({type: 'tool', phase: 'start', role: 'subagent', agentId: spec.agentId, name: toolRequest.name});
+      // agentName подписывает вызов: иначе в ходе мыслей видно «инструмент
+      // запущен», но не видно, что его запустил именно этот специалист.
+      send({type: 'tool', phase: 'start', role: 'subagent', agentId: spec.agentId, agentName: spec.role, name: toolRequest.name});
       toolResult = safeToolResult(toolRequest.name, await invokeTool({spec, name: toolRequest.name, arguments: toolRequest.arguments}));
     }
     toolResults.push(toolResult);
-    send({type: 'tool', phase: 'result', role: 'subagent', agentId: spec.agentId, name: toolRequest.name, ok: toolResult.ok === true, code: toolResult.code || null, additions: 0, deletions: 0, files: []});
+    send({type: 'tool', phase: 'result', role: 'subagent', agentId: spec.agentId, agentName: spec.role, name: toolRequest.name, ok: toolResult.ok === true, code: toolResult.code || null, additions: 0, deletions: 0, files: []});
   }
 
   if (parseDynamicSubagentToolRequest(raw)) throw new Error('WAI_SUBAGENT_TOOL_PROTOCOL_INVALID');
@@ -207,7 +213,10 @@ async function runOneSubagent({spec, policy, workspace, invokeModel, invokeTool,
   } else if (workspaceResult.applied.length) {
     send(buildDynamicSubagentEvent(spec, 'workspace', {label: `${spec.role}: workspace`, detail: `${workspaceResult.applied.length} revision-safe edits accepted.`}));
   }
-  send(buildDynamicSubagentEvent(spec, 'result', {label: `${spec.role}: готово`, detail: 'Результат передан Lead Coordinator.'}));
+  send(buildDynamicSubagentEvent(spec, 'result', {
+    label: `${spec.role} · готово`,
+    detail: visibleSnippet(result.summary, 300) || 'Результат передан ведущей персоне.',
+  }));
   const visibleResult = visibleSnippet([result.summary, result.recommendation].filter(Boolean).join(' '), 520);
   send(reasoningEvent(
     `Что дал ${spec.role}`,
@@ -230,7 +239,10 @@ export async function runDynamicSubagents({prepared, invokeModel, invokeTool, em
   if (!specs.length) return {ok: true, skipped: true, reason: 'planner_selected_none', results: [], workspace: workspaceSnapshot(workspace)};
 
   for (const spec of specs) {
-    send(buildDynamicSubagentEvent(spec, 'planned', {label: `Специалист: ${spec.role}`, detail: 'Lead создал временного специалиста с ограниченным scope.'}));
+    send(buildDynamicSubagentEvent(spec, 'planned', {
+      label: `Зову специалиста · ${spec.role}`,
+      detail: `Поручаю: ${visibleSnippet(spec.task, 300)}`,
+    }));
     send(reasoningEvent(
       `Зачем нужен ${spec.role}`,
       `Поручу ему отдельную проверку: ${visibleSnippet(spec.task, 420)}`,

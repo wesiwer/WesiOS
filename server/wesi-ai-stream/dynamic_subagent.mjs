@@ -288,5 +288,8 @@ export function buildDynamicSubagentEvent(spec, phase, detail = {}) {
     parentRequestId: spec.parentRequestId,
     label: cleanText(detail.label, 180),
     detail: cleanText(detail.detail, 500),
+    // Поручение едет вместе с событием. Без него ход мыслей показывает, что
+    // специалист появился, но не за чем — а именно это и хочет видеть человек.
+    task: cleanText(spec.task, 400),
   };
 }

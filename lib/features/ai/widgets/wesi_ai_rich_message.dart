@@ -263,19 +263,21 @@ class WesiAiRichMessage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final activities = WesiAiActivityEvent.listFrom(activityRaw);
+    // Работа агентов принадлежит ходу мыслей, а не тексту ответа.
+    //
+    // Раньше события агентов шли врезками внутрь сообщения по смещению в
+    // тексте. Но специалисты отрабатывают до того, как появится первая буква
+    // ответа, поэтому смещение у всех нулевое — весь их след сваливался в
+    // одну кучу перед первым абзацем. Человек хотел видеть, кого позвали и
+    // зачем, а видел стопку одинаковых строк не на своём месте.
+    //
+    // Инструменты ведущей персоны остаются врезками: они вызываются по ходу
+    // ответа, и их место в тексте осмысленно.
     final work = activities
-        .where(
-          (event) =>
-              event.kind != WesiAiActivityKind.tool &&
-              event.kind != WesiAiActivityKind.agent,
-        )
+        .where((event) => event.kind != WesiAiActivityKind.tool)
         .toList(growable: false);
     final inline = activities
-        .where(
-          (event) =>
-              event.kind == WesiAiActivityKind.tool ||
-              event.kind == WesiAiActivityKind.agent,
-        )
+        .where((event) => event.kind == WesiAiActivityKind.tool)
         .toList(growable: false);
 
     final children = <Widget>[];
@@ -986,7 +988,15 @@ class _WesiAiActivityRowState extends State<WesiAiActivityRow> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final event = widget.event;
-    final inlineReadDetail = event.kind == WesiAiActivityKind.tool &&
+    // Суть показывается сразу, без нажатия.
+    //
+    // У агентов это принципиально: строка «Зову специалиста · Security
+    // Reviewer» без поручения не отвечает на вопрос, зачем его позвали, а
+    // спрятать ответ под раскрытие — значит не показать его вовсе. Сервер
+    // ограничивает эту строку тремя сотнями знаков, так что она не разносит
+    // журнал работы.
+    final inlineReadDetail = (event.kind == WesiAiActivityKind.tool ||
+            event.kind == WesiAiActivityKind.agent) &&
         event.detail.isNotEmpty &&
         !event.hasDiff &&
         event.files.isEmpty;

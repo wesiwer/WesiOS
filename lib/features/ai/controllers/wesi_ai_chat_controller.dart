@@ -455,17 +455,30 @@ class WesiAiChatController extends ChangeNotifier {
       final files = raw['files'] is List
           ? List<dynamic>.from(raw['files'] as List)
           : const <dynamic>[];
+      // Имя специалиста, если инструмент запустил не сам ведущий. Без него в
+      // ходе мыслей видно «инструмент запущен», но не видно кем.
+      final agentName = '${raw['agentName'] ?? ''}'.trim();
       if (type == 'tool') {
+        // Инструмент, запущенный специалистом, — это его работа, и место ей в
+        // ходе мыслей рядом с самим специалистом. Инструменты ведущей персоны
+        // остаются врезкой в текст: они вызываются по ходу ответа.
+        final toolKind = agentName.isEmpty ? 'tool' : 'agent';
+        final toolKey = agentName.isEmpty ? name : '$agentName|$name';
         if (phase == 'start') {
+          final toolLabel = name.isEmpty
+              ? 'Запущен инструмент'
+              : (agentName.isEmpty
+                  ? 'Инструмент · $name'
+                  : '$agentName · инструмент $name');
           activity.add(activityEntry(
-            kind: 'tool',
-            label: name.isEmpty ? 'Запущен инструмент' : 'Инструмент · $name',
+            kind: toolKind,
+            label: toolLabel,
             sourceName: name,
             status: 'start',
           ));
-          if (name.isNotEmpty) openTools[name] = activity.length - 1;
+          if (name.isNotEmpty) openTools[toolKey] = activity.length - 1;
         } else {
-          final index = name.isEmpty ? null : openTools.remove(name);
+          final index = name.isEmpty ? null : openTools.remove(toolKey);
           if (index != null && index >= 0 && index < activity.length) {
             final current = Map<String, dynamic>.from(activity[index]);
             current['status'] = 'result';
@@ -480,9 +493,12 @@ class WesiAiChatController extends ChangeNotifier {
             activity[index] = current;
           } else {
             activity.add(activityEntry(
-              kind: 'tool',
-              label:
-                  name.isEmpty ? 'Инструмент завершён' : 'Инструмент · $name',
+              kind: toolKind,
+              label: name.isEmpty
+                  ? 'Инструмент завершён'
+                  : (agentName.isEmpty
+                      ? 'Инструмент · $name'
+                      : '$agentName · инструмент $name'),
               sourceName: name,
               status: 'result',
               detail: streamedToolDetail(raw),
@@ -493,11 +509,36 @@ class WesiAiChatController extends ChangeNotifier {
           }
         }
       } else if (type == 'agent') {
-        if (phase == 'start') {
+        // Что именно поручено специалисту. Сервер шлёт это в task/detail;
+        // раньше оба поля терялись, и ход мыслей сообщал, что агент появился,
+        // но не за чем.
+        final agentDetail = '${raw['detail'] ?? ''}'.trim();
+        final agentTask = '${raw['task'] ?? ''}'.trim();
+        final agentLabel = '${raw['label'] ?? ''}'.trim();
+        final describe =
+            agentDetail.isNotEmpty ? agentDetail : agentTask;
+
+        // Призыв специалиста — отдельная запись. Раньше фаза planned попадала
+        // в ветку завершения: ход мыслей показывал «агент завершил работу»
+        // раньше, чем тот успевал начать.
+        if (phase == 'planned') {
           activity.add(activityEntry(
             kind: 'agent',
-            label: name.isEmpty ? 'Подключён агент' : 'Агент · $name',
+            label: agentLabel.isNotEmpty
+                ? agentLabel
+                : (name.isEmpty ? 'Зову специалиста' : 'Зову специалиста · $name'),
             sourceName: name,
+            detail: describe,
+            status: 'start',
+          ));
+        } else if (phase == 'start') {
+          activity.add(activityEntry(
+            kind: 'agent',
+            label: agentLabel.isNotEmpty
+                ? agentLabel
+                : (name.isEmpty ? 'Подключён агент' : 'Агент · $name'),
+            sourceName: name,
+            detail: describe,
             status: 'start',
           ));
           if (name.isNotEmpty) openAgents[name] = activity.length - 1;
@@ -509,6 +550,8 @@ class WesiAiChatController extends ChangeNotifier {
             current['completedAt'] = DateTime.now().toUtc().toIso8601String();
             current['additions'] = additions;
             current['deletions'] = deletions;
+            if (agentLabel.isNotEmpty) current['label'] = agentLabel;
+            if (describe.isNotEmpty) current['detail'] = describe;
             if (files.isNotEmpty)
               current['files'] =
                   files.take(40).map((item) => '$item').toList(growable: false);
@@ -516,8 +559,11 @@ class WesiAiChatController extends ChangeNotifier {
           } else {
             activity.add(activityEntry(
               kind: 'agent',
-              label: name.isEmpty ? 'Агент завершил работу' : 'Агент · $name',
+              label: agentLabel.isNotEmpty
+                  ? agentLabel
+                  : (name.isEmpty ? 'Агент завершил работу' : 'Агент · $name'),
               sourceName: name,
+              detail: describe,
               status: 'result',
               additions: additions,
               deletions: deletions,
