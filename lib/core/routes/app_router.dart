@@ -15,7 +15,8 @@ import '../../features/shield/shield_screen.dart';
 import '../../features/keys/keys_screen.dart';
 import '../../features/ai/ai_assistant_v2_screen.dart';
 import '../../features/settings/settings_screen.dart';
-import '../../features/profile/profile_screen.dart';
+import '../../features/profile/profile_with_telegram.dart';
+import '../../features/profile/telegram_link_screen.dart';
 import '../../features/calculator/calculator_screen.dart';
 import '../../features/audio/audio_vault_v2_screen.dart';
 import '../../features/crm/crm_screen.dart';
@@ -127,7 +128,9 @@ class AppRouter {
       case '/settings':
         return _slideUpRoute(_AccessGate(child: SettingsScreen()));
       case '/profile':
-        return _slideUpRoute(_AccessGate(child: ProfileScreen()));
+        return _slideUpRoute(_AccessGate(child: const ProfileWithTelegram()));
+      case '/profile/telegram':
+        return _slideUpRoute(_AccessGate(child: const TelegramLinkScreen()));
       case '/calculator':
         return PageRouteBuilder(
           opaque: false,
