@@ -18,15 +18,15 @@ jobs:
         with:
           ref: main
           fetch-depth: 0
-      - name: Capture latest failed release Android logs into main
+      - name: Capture newest release run Android failure into main
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          echo 'capture retry 6 -> main'
-          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release-app.yml --limit 10 --json databaseId,status,conclusion,createdAt --jq '[.[] | select(.conclusion=="failure")][0].databaseId')
-          [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ] || { echo 'No failed release run found'; exit 1; }
+          echo 'capture retry 7 -> newest run'
+          RUN_ID=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow release-app.yml --limit 10 --json databaseId,status,conclusion,createdAt --jq '.[0].databaseId')
+          [ -n "$RUN_ID" ] && [ "$RUN_ID" != "null" ] || { echo 'No release run found'; exit 1; }
           echo "RUN_ID=$RUN_ID"
           gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --json databaseId,status,conclusion,headSha,createdAt,jobs > /tmp/release.json
           gh run view "$RUN_ID" --repo "$GITHUB_REPOSITORY" --log-failed > /tmp/failed.log || true
@@ -40,6 +40,6 @@ jobs:
           git config user.name 'WesiOS Release Diagnostics'
           git config user.email 'actions@users.noreply.github.com'
           git add .github/latest-android-release-failure.txt
-          git commit -m "diag: capture release failure $RUN_ID" || exit 0
+          git commit -m "diag: capture newest release $RUN_ID" || exit 0
           git pull --rebase origin main
           git push origin HEAD:main
