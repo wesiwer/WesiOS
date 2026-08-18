@@ -1,0 +1,65 @@
+SOURCE=890792b490ce2afc58e4733d7a597bdc1709dc1d
+EXIT=1
+=== FAILURE CONTEXT ===
+# Subtest: all Stage14 media tools are exposed and registered as media WRITE
+ok 28 - all Stage14 media tools are exposed and registered as media WRITE
+  ---
+  duration_ms: 0.591531
+  type: 'test'
+  ...
+# Subtest: input tools emit only normalized workflow and attachment indexes
+ok 29 - input tools emit only normalized workflow and attachment indexes
+  ---
+  duration_ms: 0.499985
+  type: 'test'
+  ...
+# Subtest: unknown workflows fail closed
+ok 30 - unknown workflows fail closed
+  ---
+  duration_ms: 0.183804
+  type: 'test'
+  ...
+# Subtest: no Wesi AI module bypasses authoritative sync writer
+not ok 31 - no Wesi AI module bypasses authoritative sync writer
+  ---
+  duration_ms: 10.932093
+  type: 'test'
+  location: '/home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs:13:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    direct wesios_records writers: wesi_ai_action_broker.js, wesi_ai_media_lib.js, wesi_ai_remote_worker.pb.js
+    + actual - expected
+    
+    + [
+    +   'wesi_ai_action_broker.js',
+    +   'wesi_ai_media_lib.js',
+    +   'wesi_ai_remote_worker.pb.js'
+    + ]
+    - []
+    
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+  actual:
+    0: 'wesi_ai_action_broker.js'
+    1: 'wesi_ai_media_lib.js'
+    2: 'wesi_ai_remote_worker.pb.js'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file:///home/runner/work/WesiOS/WesiOS/server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs:22:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+=== DIRECT WRITE GREP ===
+server/pb_hooks/wesi_ai_action_broker.js:124:    const record = new Record(collection);
+server/pb_hooks/wesi_ai_action_broker.js:132:    e.app.save(record);
+server/pb_hooks/wesi_ai_connector_vault.js:77:  if (!record) record = new Record(coll(e));
+server/pb_hooks/wesi_ai_connector_vault.js:85:  e.app.save(record);
+server/pb_hooks/wesi_ai_media_lib.js:96:  const record = new Record(collection);
+server/pb_hooks/wesi_ai_remote_worker.pb.js:65:    record = new Record(collection);
+server/pb_hooks/wesi_ai_remote_worker.pb.js:154:  e.app.save(credential);
+server/pb_hooks/wesi_ai_remote_worker.pb.js:324:  e.app.save(record);
+server/pb_hooks/wesi_ai_remote_worker.pb.js:358:  e.app.save(record);
+server/pb_hooks/wesi_ai_remote_worker.pb.js:398:    e.app.save(row);
