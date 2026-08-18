@@ -27,98 +27,17 @@ function leaders(map) {
     .slice(0, 8);
 }
 
-// Остаток на счетах считается ровно тем же правилом, что показывает экран
-// «Казна» (lib/features/treasury/services/account_service.dart): начальный
-// остаток счёта плюс его доходы минус расходы.
-//
-// Если правило разойдётся хоть в одной детали, Wesi AI будет называть сумму,
-// которой пользователь не видит нигде в приложении, — а это хуже отказа
-// отвечать. Поэтому здесь повторены все четыре исключения оригинала.
-const MAIN_ACCOUNT = "main";
-
-function mainAccountIdFor(organizationId) {
-  return organizationId === "org_wesi_inc" ? MAIN_ACCOUNT : MAIN_ACCOUNT + ":" + organizationId;
-}
-
 function balanceState(e, ctx, policy, organizationId) {
+  const balance = require(`${__hooks}/wesi_ai_balance.js`);
   let accountRows = [];
-  try {
-    accountRows = rows(e, ctx, "accounts");
-  } catch (_) {
-    return null;
-  }
-  if (!Array.isArray(accountRows)) return null;
-
   let transactionRows = [];
   try {
+    accountRows = rows(e, ctx, "accounts");
     transactionRows = rows(e, ctx, "transactions");
   } catch (_) {
     return null;
   }
-  if (!Array.isArray(transactionRows)) return null;
-
-  const accounts = [];
-  for (const row of accountRows) {
-    const p = policy.payload(row);
-    if (String(p.organizationId || policy.ROOT_ORG) !== organizationId) continue;
-    if (p.archived === true) continue;
-    const id = String(p.id || row.getString("rid") || "");
-    if (!id) continue;
-    const opening = Number(p.openingBalance || 0);
-    accounts.push({
-      id: id,
-      name: String(p.name || id),
-      opening: Number.isFinite(opening) ? opening : 0,
-      income: 0,
-      expense: 0,
-    });
-  }
-  if (!accounts.length) return {accounts: [], currentBalance: 0};
-
-  const byId = {};
-  for (const account of accounts) byId[account.id] = account;
-
-  // Повторяющиеся доходы — шаблоны, а не деньги. Старые сборки порождали из
-  // них настоящие операции с id вида "<шаблон>_<дата>"; такие тоже нельзя
-  // складывать, иначе один и тот же доход учтётся дважды.
-  const recurringIncomeIds = [];
-  for (const row of transactionRows) {
-    const p = policy.payload(row);
-    if (p.isRecurring !== true || String(p.type || "expense") !== "income") continue;
-    const id = String(p.id || row.getString("rid") || "");
-    if (id) recurringIncomeIds.push(id);
-  }
-
-  const nowMs = Date.now();
-  for (const row of transactionRows) {
-    const p = policy.payload(row);
-    const orgId = String(p.organizationId || policy.ROOT_ORG);
-    if (orgId !== organizationId) continue;
-    if (p.isRecurring === true) continue;
-
-    const id = String(p.id || row.getString("rid") || "");
-    const type = String(p.type || "expense");
-    if (type === "income" && recurringIncomeIds.some((parent) => id.indexOf(parent + "_") === 0)) continue;
-
-    const amount = Number(p.amount);
-    const timestamp = Date.parse(String(p.date || ""));
-    if (!Number.isFinite(amount) || amount < 0 || !Number.isFinite(timestamp) || timestamp > nowMs) continue;
-
-    const accountId = p.accountId == null || String(p.accountId) === "" ? mainAccountIdFor(orgId) : String(p.accountId);
-    const account = byId[accountId];
-    if (!account) continue;
-    if (type === "income") account.income += amount;
-    else account.expense += amount;
-  }
-
-  let total = 0;
-  const result = [];
-  for (const account of accounts) {
-    const balance = account.opening + account.income - account.expense;
-    total += balance;
-    result.push({id: account.id, name: account.name, balance: round(balance)});
-  }
-  return {accounts: result, currentBalance: round(total)};
+  return balance.compute(accountRows, transactionRows, policy.payload, organizationId);
 }
 
 module.exports = {
