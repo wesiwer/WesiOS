@@ -1,0 +1,48 @@
+name: Flutter Tests Current Main V2 Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/flutter-tests-current-main-v2-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - name: Run Flutter tests and capture failures
+        shell: bash
+        run: |
+          set +e
+          flutter pub get >/tmp/pub.log 2>&1
+          PUB=$?
+          flutter test >/tmp/tests.log 2>&1
+          TESTS=$?
+          set -e
+          {
+            echo "SOURCE=$(git rev-parse HEAD)"
+            echo "PUB_GET=$PUB"
+            echo "TESTS=$TESTS"
+            echo '=== FAILURES ==='
+            grep -n -E '::error::|\[E\]|FAILED|Some tests failed|Expected:|Actual:|TestFailure|Error:' /tmp/tests.log | tail -n 160 || true
+            echo '=== TAIL ==='
+            tail -n 100 /tmp/tests.log
+          } > .github/flutter-tests-current-main-v2.txt
+          git config user.name 'WesiOS Flutter Tests V2'
+          git config user.email 'actions@users.noreply.github.com'
+          git switch -C diag/flutter-tests-current-main-v2
+          git add .github/flutter-tests-current-main-v2.txt
+          git commit -m 'ops: capture Flutter tests current main v2'
+          git push --force origin HEAD:diag/flutter-tests-current-main-v2
+          test "$PUB" -eq 0 -a "$TESTS" -eq 0
