@@ -25,40 +25,60 @@ function payloadOf(record) {
   return {};
 }
 
-function commit(app, input) {
-  const owner = String(input.owner || "").trim();
-  const org = String(input.org || "");
-  const coll = String(input.coll || "").trim();
-  const rid = String(input.rid || "").trim();
-  const stamp = String(input.stamp || "");
-  const deleted = input.deleted === true;
-  const suppliedPayload = input.payload && typeof input.payload === "object" &&
-      !Array.isArray(input.payload)
-    ? input.payload
-    : {};
-
-  if (!owner || !coll || !rid) {
-    throw new Error("Atomic sync commit requires owner, coll and rid");
+function normalizedInput(input) {
+  const out = {
+    owner: String(input.owner || "").trim(),
+    org: String(input.org || ""),
+    coll: String(input.coll || "").trim(),
+    rid: String(input.rid || "").trim(),
+    stamp: String(input.stamp || ""),
+    deleted: input.deleted === true,
+    payload: input.payload && typeof input.payload === "object" &&
+        !Array.isArray(input.payload)
+      ? input.payload
+      : {},
+  };
+  if (!out.owner || !out.coll || !out.rid) {
+    throw new Error("Atomic sync write requires owner, coll and rid");
   }
+  return out;
+}
 
+function currentRow(txApp, input) {
+  return dataAccess.first(
+    txApp,
+    "wesios_records",
+    "owner={:owner} && coll={:coll} && rid={:rid}",
+    {owner: input.owner, coll: input.coll, rid: input.rid},
+  );
+}
+
+function fill(record, input, payload) {
+  record.set("owner", input.owner);
+  record.set("org", input.org);
+  record.set("coll", input.coll);
+  record.set("rid", input.rid);
+  record.set("payload", payload);
+  record.set("stamp", input.stamp);
+  record.set("deleted", input.deleted);
+}
+
+function commit(app, rawInput) {
+  const input = normalizedInput(rawInput);
   let result = null;
+
   app.runInTransaction((txApp) => {
     // IMPORTANT: always re-read through txApp. PocketBase documents that only
     // a single writer/transaction is allowed and using the outer app here can
     // deadlock or reintroduce a stale decision.
-    const existing = dataAccess.first(
-      txApp,
-      "wesios_records",
-      "owner={:owner} && coll={:coll} && rid={:rid}",
-      {owner: owner, coll: coll, rid: rid},
-    );
+    const existing = currentRow(txApp, input);
 
     if (existing) {
       const decision = lww.decide(
         existing.getString("stamp"),
         existing.getBool("deleted"),
-        stamp,
-        deleted,
+        input.stamp,
+        input.deleted,
       );
       if (!decision.apply) {
         result = {
@@ -75,20 +95,15 @@ function commit(app, input) {
     // A tombstone carries the last authoritative payload for row-level read
     // policy/migration. If the row appeared after the caller's preflight read,
     // preserve the transaction-current payload rather than writing {}.
-    const payload = deleted && existing ? payloadOf(existing) : suppliedPayload;
-
-    record.set("owner", owner);
-    record.set("org", org);
-    record.set("coll", coll);
-    record.set("rid", rid);
-    record.set("payload", payload);
-    record.set("stamp", stamp);
-    record.set("deleted", deleted);
+    const payload = input.deleted && existing
+      ? payloadOf(existing)
+      : input.payload;
+    fill(record, input, payload);
     txApp.save(record);
 
     result = {
       applied: true,
-      stamp: stamp,
+      stamp: input.stamp,
       reason: existing ? "updated" : "created",
     };
   });
@@ -97,7 +112,39 @@ function commit(app, input) {
   return result;
 }
 
+// Migration-only primitive. Unlike normal LWW commit, an already-existing
+// canonical target ALWAYS wins, regardless of timestamps. This prevents a
+// late legacy profile_private migration from overwriting profile/me or
+// shield_private that a current client has already created.
+function createIfAbsent(app, rawInput) {
+  const input = normalizedInput(rawInput);
+  let result = null;
+
+  app.runInTransaction((txApp) => {
+    const existing = currentRow(txApp, input);
+    if (existing) {
+      result = {
+        created: false,
+        stamp: existing.getString("stamp"),
+      };
+      return;
+    }
+
+    const collection = txApp.findCollectionByNameOrId("wesios_records");
+    const record = new Record(collection);
+    fill(record, input, input.payload);
+    txApp.save(record);
+    result = {created: true, stamp: input.stamp};
+  });
+
+  if (!result) {
+    throw new Error("Atomic create-if-absent transaction returned no result");
+  }
+  return result;
+}
+
 module.exports = {
   commit,
+  createIfAbsent,
   payloadOf,
 };
