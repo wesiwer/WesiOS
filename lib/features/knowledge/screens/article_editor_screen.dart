@@ -559,19 +559,19 @@ class _ArticleEditorScreenState extends State<ArticleEditorScreen> {
               child: Container(
                 color: AppTheme.background,
                 child: QuillEditor.basic(
-                  configurations: QuillEditorConfigurations(
-                    controller: _controller,
+                  controller: _controller,
+                  config: QuillEditorConfig(
                     scrollable: true,
                     autoFocus: widget.initial != null,
                     expands: true,
                     padding: const EdgeInsets.all(16),
                     customStyles: DefaultStyles(
-                      h1: DefaultTextBlockStyle(TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary), const VerticalSpacing(12, 8), const VerticalSpacing(0, 0), null),
-                      h2: DefaultTextBlockStyle(TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.accent), const VerticalSpacing(10, 6), const VerticalSpacing(0, 0), null),
-                      h3: DefaultTextBlockStyle(TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary), const VerticalSpacing(8, 4), const VerticalSpacing(0, 0), null),
-                      paragraph: DefaultTextBlockStyle(TextStyle(fontSize: 14, height: 1.6, color: AppTheme.textSecondary), const VerticalSpacing(0, 8), const VerticalSpacing(0, 0), null),
+                      h1: DefaultTextBlockStyle(TextStyle(fontSize: 22, fontWeight: FontWeight.w800, color: AppTheme.textPrimary), HorizontalSpacing.zero, const VerticalSpacing(12, 8), const VerticalSpacing(0, 0), null),
+                      h2: DefaultTextBlockStyle(TextStyle(fontSize: 18, fontWeight: FontWeight.w700, color: AppTheme.accent), HorizontalSpacing.zero, const VerticalSpacing(10, 6), const VerticalSpacing(0, 0), null),
+                      h3: DefaultTextBlockStyle(TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: AppTheme.textPrimary), HorizontalSpacing.zero, const VerticalSpacing(8, 4), const VerticalSpacing(0, 0), null),
+                      paragraph: DefaultTextBlockStyle(TextStyle(fontSize: 14, height: 1.6, color: AppTheme.textSecondary), HorizontalSpacing.zero, const VerticalSpacing(0, 8), const VerticalSpacing(0, 0), null),
                       link: TextStyle(color: AppTheme.accent, decoration: TextDecoration.underline),
-                      placeHolder: DefaultTextBlockStyle(TextStyle(fontSize: 14, color: AppTheme.textMuted), const VerticalSpacing(0, 0), const VerticalSpacing(0, 0), null),
+                      placeHolder: DefaultTextBlockStyle(TextStyle(fontSize: 14, color: AppTheme.textMuted), HorizontalSpacing.zero, const VerticalSpacing(0, 0), const VerticalSpacing(0, 0), null),
                     ),
                   ),
                 ),
