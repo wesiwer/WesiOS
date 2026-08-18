@@ -99,6 +99,7 @@ function harness(existing = null) {
 
   return {
     app,
+    txApp,
     get stored() {
       return stored;
     },
@@ -144,6 +145,33 @@ test('commit performs its authoritative read and save through txApp only', () =>
   assert.equal(h.saves, 1);
   assert.equal(h.outerDbUsed, false);
   assert.equal(h.stored.getString('stamp'), '2026-08-18T10:00:00.000Z');
+});
+
+test('transactional authorize callback sees txApp and transaction-current row', () => {
+  const current = row({
+    stamp: '2026-08-18T10:30:00.000Z',
+    payload: {ownerEmployeeId: 'employee-new'},
+  });
+  const h = harness(current);
+  let authorizeCalls = 0;
+
+  const result = atomic.commit(h.app, {
+    ...input('2026-08-18T11:00:00.000Z', {
+      payload: {ownerEmployeeId: 'employee-new', value: 'authorized'},
+    }),
+    authorize(txApp, existing, normalized) {
+      authorizeCalls++;
+      assert.equal(txApp, h.txApp);
+      assert.equal(existing, current);
+      assert.equal(existing.get('payload').ownerEmployeeId, 'employee-new');
+      assert.equal(normalized.rid, 'task-1');
+    },
+  });
+
+  assert.equal(authorizeCalls, 1);
+  assert.equal(result.applied, true);
+  assert.equal(h.saves, 1);
+  assert.equal(h.outerDbUsed, false);
 });
 
 test('older concurrent request cannot overwrite newer transaction-current row', () => {
