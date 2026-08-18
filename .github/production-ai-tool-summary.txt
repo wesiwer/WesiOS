@@ -1,0 +1,5 @@
+events=19
+tool=finance_summary code=OK ok=true risk=READ persona=zane count=14
+tool=finance_transactions code=OK ok=true risk=READ persona=zane count=2
+tool=horizon_snapshot code=OK ok=true risk=READ persona=zane count=2
+tool=generate_music code=OK ok=true risk=WRITE persona=nirvana count=1
