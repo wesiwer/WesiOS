@@ -80,6 +80,12 @@ class SyncFeatureExtensions {
         authUserId ?? SyncAccountScope.currentUserId,
       );
 
+  /// Temporary source-compatibility alias for the old audit extension.
+  /// The box now contains Shield only; profile data belongs to ProfileService.
+  @Deprecated('Use shieldBoxName; profile now has its own canonical box')
+  static String profileBoxName([String? authUserId]) =>
+      shieldBoxName(authUserId);
+
   static String vaultBoxName([String? authUserId]) =>
       SyncAccountScope.forUser(
         _vaultBoxPrefix,
