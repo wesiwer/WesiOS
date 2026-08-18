@@ -15,25 +15,10 @@ import 'sync_transport.dart';
 /// 1. локальная правка — после короткой тишины отправляем её на сервер;
 /// 2. изменение сервера — раз в секунду читаем только лёгкую ревизию и
 ///    запускаем полный обмен, только если ревизия изменилась.
-///
-/// Так второй компьютер узнаёт о продаже с телефона без перезапуска, но
-/// сервер не получает семь полных запросов по всем коллекциям каждую секунду.
 class SyncAuto {
-  /// Локальные действия часто пишут несколько связанных записей подряд.
-  /// 300 мс склеивают их в один обмен и при этом почти не ощущаются.
   static const Duration quiet = Duration(milliseconds: 300);
-
-  /// Частота лёгкой проверки серверной ревизии.
   static const Duration remotePollEvery = Duration(seconds: 1);
-
-  /// Повтор полного обмена после ошибки. Проверка ревизии имеет собственный
-  /// экспоненциальный backoff, поэтому офлайн-устройство не долбит сеть.
   static const Duration retryAfter = Duration(seconds: 15);
-
-  /// Ручной Sync должен закончиться на согласованном снимке, а не просто
-  /// выполнить один проход. Первый проход может сам изменить сервер своими
-  /// upload-ами, поэтому обычно достаточно двух. Несколько дополнительных
-  /// проходов оставляют запас на одновременную работу другого устройства.
   static const int manualStabilizationPasses = 4;
 
   static final ValueNotifier<bool> running = ValueNotifier<bool>(false);
@@ -48,18 +33,12 @@ class SyncAuto {
   static int _probeFailures = 0;
   static DateTime? _nextProbeAt;
 
-  /// Epoch жизненного цикла автоматики.
-  ///
-  /// Отмена Timer недостаточна: HTTP revision(), уже начавшийся до logout,
-  /// может вернуться после stop() и продолжить старый callback. Generation
-  /// делает любой такой результат протухшим. Это особенно важно при быстром
-  /// logout -> login другого сотрудника: старый poll не имеет права принять
-  /// watermark или сбросить `_probeBusy` уже новой сессии.
+  /// Epoch жизненного цикла автоматики. Отмена Timer недостаточна: уже
+  /// начавшийся HTTP callback может вернуться после logout/account switch.
   static int _generation = 0;
 
   static final _SyncLifecycleObserver _lifecycle = _SyncLifecycleObserver();
 
-  /// Начать следить. Повторный вызов ничего не ломает.
   static void start() {
     if (_listening) return;
     _generation++;
@@ -73,25 +52,21 @@ class SyncAuto {
       remotePollEvery,
       (_) => unawaited(_pollRemote()),
     );
-    // Не ждём первую секунду: после старта сразу ставим/проверяем watermark.
     unawaited(_pollRemote());
   }
 
-  /// Останавливает автоматический обмен.
+  /// Реальная остановка синхронизации.
   ///
-  /// `stop()` означает реальную остановку. Раньше default был защищённым
-  /// no-op при активной сессии из-за старого LoginScreen, который ошибочно
-  /// вызывал stop сразу после MFA-входа. Login flow уже сериализован и больше
-  /// этого не делает, а сохранение старого default ломало настоящий logout:
-  /// TeamService вызывал stop(), но polling продолжал жить.
-  ///
-  /// [force]=false оставлен только как явный opt-in для старого защитного
-  /// поведения, если оно когда-нибудь понадобится конкретному caller.
+  /// Помимо таймеров немедленно инвалидирует и уже запущенный SyncEngine.run().
+  /// Раньше полный проход мог продолжать fetch/apply/push в промежутке между
+  /// нажатием «Выйти» и фактическим clearSession(). Это оставляло небольшое,
+  /// но реальное окно, где старый аккаунт ещё менял локальную/серверную базу.
   static void stop({bool force = true}) {
     if (!force && SyncEndpoint.enabled && SyncEndpoint.isConnected) return;
 
-    // Инвалидируем in-flight callbacks ДО отмены таймеров/листенеров.
     _generation++;
+    SyncEngine.invalidateActiveRun();
+
     if (_listening) {
       SyncJournal.localChanges.removeListener(_onLocalChange);
       WidgetsBinding.instance.removeObserver(_lifecycle);
@@ -127,10 +102,6 @@ class SyncAuto {
     });
   }
 
-  /// Мобильная ОС может заморозить Timer.periodic в фоне. При возврате в
-  /// приложение проверяем сервер сразу и сбрасываем сетевой backoff: изменение
-  /// на другом устройстве не должно ждать 16 секунд только потому, что этот
-  /// телефон раньше был офлайн.
   static void _onResumed() {
     if (!_listening || !SyncEndpoint.enabled || !SyncEndpoint.isConnected) {
       return;
@@ -142,8 +113,8 @@ class SyncAuto {
   }
 
   static Future<SyncReport> _runAuto({int? generation}) async {
-    bool stale() => generation != null &&
-        (generation != _generation || !_listening);
+    bool stale() =>
+        generation != null && (generation != _generation || !_listening);
 
     if (stale()) {
       return SyncReport(
@@ -179,26 +150,18 @@ class SyncAuto {
       );
     }
 
-    // Сам SyncEngine мог закончиться уже после logout/account switch. Его
-    // network side-effects отменить задним числом нельзя, но старый lifecycle
-    // больше не имеет права менять pending/backoff/watermark новой сессии.
     if (stale()) return report;
 
     if (report.ok) {
       pending.value = false;
-      // ВАЖНО: не читаем revision после полного прохода и не принимаем её как
-      // watermark. Между последним fetch и таким чтением другое устройство
-      // может записать новые данные. Тогда мы запомнили бы уже новую revision,
-      // хотя этих данных локально ещё нет, и следующий poll навсегда счёл бы
-      // устройство актуальным. Watermark принимает только [_pollRemote] — ту
-      // revision, которую он наблюдал ДО запуска полного pull.
+      // Revision после pull здесь намеренно не читается: watermark принимает
+      // только revision, наблюдавшуюся ДО соответствующего полного прохода.
     } else {
       _schedule(retryAfter);
     }
     return report;
   }
 
-  /// Лёгкая проверка: изменилось ли вообще что-нибудь на сервере.
   static Future<void> _pollRemote({bool force = false}) async {
     final generation = _generation;
     bool stale() => generation != _generation || !_listening;
@@ -216,7 +179,8 @@ class SyncAuto {
     }
 
     final session = SyncEndpoint.session;
-    final fingerprint = '${session?['userId']}|${session?['token']}';
+    final fingerprint =
+        '${session?['userId']}|${session?['sessionId']}|${session?['token']}';
     if (_sessionFingerprint != fingerprint) {
       _sessionFingerprint = fingerprint;
       _remoteRevision = null;
@@ -241,28 +205,22 @@ class SyncAuto {
         return;
       }
 
-      // Ключевой инвариант: watermark — это revision, увиденная ДО pull.
-      // После успешного прохода сохраняем именно её. Если сервер изменился в
-      // середине прохода (даже через 1 мс после последнего fetch), следующий
-      // poll увидит более новую revision и гарантированно запустит ещё один
-      // обмен. Поэтому изменение нельзя «перепрыгнуть» пост-синхронным чтением.
       final report = await _runAuto(generation: generation);
       if (stale()) return;
       if (report.ok) {
         _acceptObservedRevision(observedRevision);
-      } else if (report.failure?.code != 'CANCELLED') {
+      } else if (report.failure?.code != 'CANCELLED' &&
+          report.failure?.code != 'SESSION_CHANGED') {
         _registerProbeFailure();
       }
     } finally {
-      // Старый callback не должен сбросить busy нового lifecycle, если между
-      // await-ами успели stop() + start().
       if (generation == _generation) _probeBusy = false;
     }
   }
 
   static void _registerProbeFailure() {
     _probeFailures = (_probeFailures + 1).clamp(1, 4).toInt();
-    final seconds = 1 << _probeFailures; // 2, 4, 8, 16
+    final seconds = 1 << _probeFailures;
     _nextProbeAt = DateTime.now().add(Duration(seconds: seconds));
   }
 
@@ -272,14 +230,7 @@ class SyncAuto {
     _nextProbeAt = null;
   }
 
-  /// Принудительный обмен.
-  ///
-  /// Ручная кнопка означает «сверь сейчас и верни успех только на устойчивом
-  /// снимке». Для этого каждый проход ограждается revision до и после него.
-  /// Если они различаются, в момент обмена сервер менялся (в том числе из-за
-  /// наших upload-ов), поэтому повторяем проход. Так после зелёного результата
-  /// локальное состояние соответствует серверному состоянию, наблюдавшемуся
-  /// на границе завершения Sync.
+  /// Принудительный обмен до устойчивой server revision.
   static Future<SyncReport> now() async {
     _localTimer?.cancel();
 
@@ -293,17 +244,54 @@ class SyncAuto {
       );
     }
 
-    // Если автоматический проход уже заканчивается, коротко ждём его вместо
-    // того, чтобы возвращать пользователю бесполезное «BUSY».
     for (var i = 0; i < 20 && SyncEngine.busy.value; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 100));
+    }
+
+    // Если через две секунды engine всё ещё занят, не запускаем второй проход
+    // поверх первого. Это лучше явного BUSY, чем параллельный merge одного box.
+    if (SyncEngine.busy.value) {
+      return SyncReport(
+        at: DateTime.now(),
+        failure: const SyncFailure('BUSY', 'Синхронизация уже идёт'),
+      );
+    }
+
+    final session = SyncEndpoint.session;
+    final sessionFingerprint =
+        '${session?['userId']}|${session?['sessionId']}|${session?['token']}';
+    bool sessionChanged() {
+      final current = SyncEndpoint.session;
+      return sessionFingerprint !=
+          '${current?['userId']}|${current?['sessionId']}|${current?['token']}';
     }
 
     SyncReport? lastSuccessful;
     String? lastObservedBefore;
 
     for (var pass = 0; pass < manualStabilizationPasses; pass++) {
+      if (sessionChanged()) {
+        return SyncReport(
+          at: DateTime.now(),
+          collections: lastSuccessful?.collections ?? const [],
+          failure: const SyncFailure(
+            'SESSION_CHANGED',
+            'Сеанс изменился во время синхронизации',
+          ),
+        );
+      }
+
       final before = await PocketBaseTransport.fromSettings().revision();
+      if (sessionChanged()) {
+        return SyncReport(
+          at: DateTime.now(),
+          collections: lastSuccessful?.collections ?? const [],
+          failure: const SyncFailure(
+            'SESSION_CHANGED',
+            'Сеанс изменился во время синхронизации',
+          ),
+        );
+      }
       if (before.failure != null) {
         final failed = SyncReport(
           at: DateTime.now(),
@@ -317,10 +305,21 @@ class SyncAuto {
 
       final report = await SyncEngine.run();
       if (!report.ok) return report;
+      if (sessionChanged()) return report;
       lastSuccessful = report;
       pending.value = false;
 
       final after = await PocketBaseTransport.fromSettings().revision();
+      if (sessionChanged()) {
+        return SyncReport(
+          at: DateTime.now(),
+          collections: report.collections,
+          failure: const SyncFailure(
+            'SESSION_CHANGED',
+            'Сеанс изменился во время синхронизации',
+          ),
+        );
+      }
       if (after.failure != null) {
         final failed = SyncReport(
           at: DateTime.now(),
@@ -336,9 +335,6 @@ class SyncAuto {
         return report;
       }
 
-      // Сохраняем только revision, которая была известна ДО текущего pull.
-      // Более новая `after` пока не считается применённой: следующий проход
-      // обязан скачать всё, что появилось между двумя revision-чтениями.
       _acceptObservedRevision(lastObservedBefore);
     }
 
@@ -354,7 +350,6 @@ class SyncAuto {
     return unstable;
   }
 
-  /// Только для тестов.
   @visibleForTesting
   static void reset() {
     stop(force: true);
