@@ -7,6 +7,9 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ANCHOR_DAY = Math.floor(Date.UTC(2026, 7, 18) / DAY_MS); // 18 Aug 2026 = Nirvana.
 const MORNING_HOUR = 8;
 
+// Curated Pexels workspace/morning photography. Telegram fetches the public
+// image URL directly; text fallback keeps the brief useful if a remote image
+// is temporarily unavailable.
 const PHOTOS = [
   "https://images.pexels.com/photos/33456309/pexels-photo-33456309.jpeg?cs=srgb&fm=jpg&w=1400",
   "https://images.pexels.com/photos/29791979/pexels-photo-29791979.jpeg?cs=srgb&fm=jpg&w=1400",
