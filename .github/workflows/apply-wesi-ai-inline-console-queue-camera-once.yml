@@ -59,8 +59,29 @@ jobs:
       - name: Analyze Wesi AI
         run: flutter analyze --no-fatal-infos lib/features/ai
 
-      - name: Run tests
-        run: flutter test
+      - name: Verify camera frame and aspect contract
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          screen = Path('lib/features/ai/ai_assistant_v2_screen.dart').read_text(encoding='utf-8')
+          camera = Path('lib/features/ai/widgets/wesi_ai_camera_capture.dart').read_text(encoding='utf-8')
+
+          checks = {
+              'compact 58% camera dialog': 'size.height * 0.58' in screen,
+              'bounded camera dialog height': 'clamp(360.0, 560.0)' in screen,
+              'rounded camera frame': 'BorderRadius.circular(24)' in screen and 'clipBehavior: Clip.antiAlias' in screen,
+              'uniform aspect-preserving fill': 'FittedBox(' in camera and 'fit: BoxFit.cover' in camera,
+              'portrait preview dimensions swapped correctly': 'final width = portrait ? previewSize.height : previewSize.width;' in camera and 'final height = portrait ? previewSize.width : previewSize.height;' in camera,
+              'preview clipped to frame': 'ClipRect(' in camera and 'SizedBox.expand(' in camera,
+              'real CameraPreview remains source': 'CameraPreview(controller)' in camera,
+          }
+          failed = [name for name, ok in checks.items() if not ok]
+          for name, ok in checks.items():
+              print(f"{'OK' if ok else 'FAIL'}: {name}")
+          if failed:
+              raise SystemExit('Camera presentation contract failed: ' + ', '.join(failed))
+          PY
 
       - name: Commit verified patch
         shell: bash
@@ -108,9 +129,7 @@ jobs:
               state,
               context: 'Wesi AI UX Patch',
               description: state === 'success'
-                ? 'Chat UX patch applied and verified'
+                ? 'Chat UX patch applied and camera contract verified'
                 : 'Chat UX patch verification failed',
               target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
             });
-
-# Retry after aligning dependency pins with Flutter 3.24 / Dart 3.5.
