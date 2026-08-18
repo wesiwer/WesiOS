@@ -26,31 +26,33 @@ void main() {
     );
   });
 
-  test('stale rebind pass cannot start auto sync for a different employee', () {
+  test('stale rebind pass cannot start auto sync for a different identity', () {
     final source =
         File('lib/core/sync/sync_feature_extensions.dart').readAsStringSync();
 
     expect(source, contains('final targetEmployeeId = TeamService.current?.id;'));
     expect(
       source,
-      contains('if (TeamService.current?.id != targetEmployeeId) return;'),
-      reason: 'identity must be revalidated after SyncEngine.reset()',
-    );
-    expect(
-      source,
-      contains('_boundEmployeeId != targetEmployeeId'),
-      reason: 'private binding must still match before full sync starts',
+      contains('final targetAuthUserId = SyncAccountScope.currentUserId;'),
+      reason: 'auth user is part of the private sync identity',
     );
 
-    final startAuto = source.lastIndexOf('SyncAuto.start();');
-    final finalIdentityCheck = source.lastIndexOf(
-      'TeamService.current?.id == targetEmployeeId',
-      startAuto,
-    );
-    expect(startAuto, greaterThanOrEqualTo(0));
-    expect(finalIdentityCheck, greaterThanOrEqualTo(0));
-    expect(finalIdentityCheck, lessThan(startAuto),
+    final passStart = source.indexOf('static Future<void> _performRebindPass()');
+    final bindStart = source.indexOf('await _bind(allowLegacy: false);', passStart);
+    expect(passStart, greaterThanOrEqualTo(0));
+    expect(bindStart, greaterThan(passStart));
+
+    final afterReset = source.substring(passStart, bindStart);
+    expect(afterReset, contains('TeamService.current?.id != targetEmployeeId'));
+    expect(afterReset, contains('SyncAccountScope.currentUserId != targetAuthUserId'));
+
+    final startAuto = source.indexOf('SyncAuto.start();', bindStart);
+    expect(startAuto, greaterThan(bindStart));
+    final beforeAuto = source.substring(bindStart, startAuto);
+    expect(beforeAuto, contains('_bindingMatchesCurrent()'),
         reason:
-            'auto sync may only be enabled after a final current-account check');
+            'private binding must still match both employee and auth-user before full/auto sync');
+    expect(beforeAuto, contains('TeamService.current?.id == targetEmployeeId'));
+    expect(beforeAuto, contains('SyncAccountScope.currentUserId == targetAuthUserId'));
   });
 }
