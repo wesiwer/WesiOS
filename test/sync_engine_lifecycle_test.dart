@@ -200,4 +200,29 @@ void main() {
     expect(probe.ensureCalls, 2,
         reason: 'a new lifecycle must not inherit old journal readiness');
   });
+
+  test('new collection on an established account gets conservative epoch stamps',
+      () async {
+    await SyncEngine.reset();
+    final settings = Hive.box<dynamic>('wesios_settings');
+    await settings.put('sync_last_run', DateTime.utc(2026, 8, 1).toIso8601String());
+    await settings.put('sync_seeded_at', DateTime.utc(2026, 8, 1).toIso8601String());
+
+    final collection = _StringCollection();
+    SyncCodec.collections
+      ..clear()
+      ..add(collection);
+    final box = Hive.box<String>(collection.boxName);
+    await box.clear();
+    await box.put('legacy', 'legacy:local-only-before-sync-support');
+    await SyncJournal.open();
+    await Hive.box<dynamic>(SyncJournal.boxName).clear();
+
+    await SyncEngine.prepare(now: DateTime.utc(2026, 8, 18, 6));
+
+    final stamp = SyncJournal.stampOf(collection.name, 'legacy');
+    expect(stamp, isNotNull);
+    expect(stamp!.updatedAt.millisecondsSinceEpoch, 0,
+        reason: 'unknown pre-sync freshness must never masquerade as now');
+  });
 }
