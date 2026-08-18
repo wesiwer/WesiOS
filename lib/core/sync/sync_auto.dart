@@ -30,6 +30,12 @@ class SyncAuto {
   /// экспоненциальный backoff, поэтому офлайн-устройство не долбит сеть.
   static const Duration retryAfter = Duration(seconds: 15);
 
+  /// Ручной Sync должен закончиться на согласованном снимке, а не просто
+  /// выполнить один проход. Первый проход может сам изменить сервер своими
+  /// upload-ами, поэтому обычно достаточно двух. Несколько дополнительных
+  /// проходов оставляют запас на одновременную работу другого устройства.
+  static const int manualStabilizationPasses = 4;
+
   static final ValueNotifier<bool> running = ValueNotifier<bool>(false);
   static final ValueNotifier<bool> pending = ValueNotifier<bool>(false);
 
@@ -143,7 +149,12 @@ class SyncAuto {
 
     if (report.ok) {
       pending.value = false;
-      await _captureRemoteRevision();
+      // ВАЖНО: не читаем revision после полного прохода и не принимаем её как
+      // watermark. Между последним fetch и таким чтением другое устройство
+      // может записать новые данные. Тогда мы запомнили бы уже новую revision,
+      // хотя этих данных локально ещё нет, и следующий poll навсегда счёл бы
+      // устройство актуальным. Watermark принимает только [_pollRemote] — ту
+      // revision, которую он наблюдал ДО запуска полного pull.
     } else {
       _schedule(retryAfter);
     }
@@ -183,30 +194,20 @@ class SyncAuto {
 
       _probeFailures = 0;
       _nextProbeAt = null;
-      final revision = result.value!;
+      final observedRevision = result.value!;
 
-      // A watermark is valid only after this receiver has completed its own
-      // fresh full pull. `lastReport` may be left from an earlier listener or
-      // session phase; accepting the current revision from that stale report
-      // can permanently hide changes that arrived while SyncAuto was stopped.
-      if (_remoteRevision == null) {
-        final report = await _runAuto();
-        if (report.ok) {
-          await _captureRemoteRevision(fallback: revision);
-        } else {
-          _registerProbeFailure();
-        }
+      if (_remoteRevision != null && observedRevision == _remoteRevision) {
         return;
       }
 
-      if (revision == _remoteRevision) return;
-
-      // Watermark меняем только ПОСЛЕ успешного полного обмена. Если сеть
-      // оборвалась между проверкой и загрузкой данных, следующий tick снова
-      // увидит расхождение и повторит попытку, а не забудет изменение.
+      // Ключевой инвариант: watermark — это revision, увиденная ДО pull.
+      // После успешного прохода сохраняем именно её. Если сервер изменился в
+      // середине прохода (даже через 1 мс после последнего fetch), следующий
+      // poll увидит более новую revision и гарантированно запустит ещё один
+      // обмен. Поэтому изменение нельзя «перепрыгнуть» пост-синхронным чтением.
       final report = await _runAuto();
       if (report.ok) {
-        await _captureRemoteRevision(fallback: revision);
+        _acceptObservedRevision(observedRevision);
       } else {
         _registerProbeFailure();
       }
@@ -221,20 +222,20 @@ class SyncAuto {
     _nextProbeAt = DateTime.now().add(Duration(seconds: seconds));
   }
 
-  static Future<void> _captureRemoteRevision({String? fallback}) async {
-    if (!SyncEndpoint.isConnected) return;
-    final result = await PocketBaseTransport.fromSettings().revision();
-    if (result.failure == null) {
-      _remoteRevision = result.value;
-      _probeFailures = 0;
-      _nextProbeAt = null;
-    } else if (fallback != null) {
-      _remoteRevision = fallback;
-    }
+  static void _acceptObservedRevision(String revision) {
+    _remoteRevision = revision;
+    _probeFailures = 0;
+    _nextProbeAt = null;
   }
 
-  /// Принудительный обмен. Работает даже если автоматический обмен временно
-  /// выключен: ручная кнопка должна означать именно «сделай сейчас».
+  /// Принудительный обмен.
+  ///
+  /// Ручная кнопка означает «сверь сейчас и верни успех только на устойчивом
+  /// снимке». Для этого каждый проход ограждается revision до и после него.
+  /// Если они различаются, в момент обмена сервер менялся (в том числе из-за
+  /// наших upload-ов), поэтому повторяем проход. Так после зелёного результата
+  /// локальное состояние соответствует серверному состоянию, наблюдавшемуся
+  /// на границе завершения Sync.
   static Future<SyncReport> now() async {
     _localTimer?.cancel();
 
@@ -242,7 +243,9 @@ class SyncAuto {
       return SyncReport(
         at: DateTime.now(),
         failure: const SyncFailure(
-            'NOT_SIGNED_IN', 'Сначала войдите в синхронизацию'),
+          'NOT_SIGNED_IN',
+          'Сначала войдите в синхронизацию',
+        ),
       );
     }
 
@@ -252,12 +255,59 @@ class SyncAuto {
       await Future<void>.delayed(const Duration(milliseconds: 100));
     }
 
-    final report = await SyncEngine.run();
-    if (report.ok) {
+    SyncReport? lastSuccessful;
+    String? lastObservedBefore;
+
+    for (var pass = 0; pass < manualStabilizationPasses; pass++) {
+      final before = await PocketBaseTransport.fromSettings().revision();
+      if (before.failure != null) {
+        final failed = SyncReport(
+          at: DateTime.now(),
+          collections: lastSuccessful?.collections ?? const [],
+          failure: before.failure,
+        );
+        SyncEngine.lastReport.value = failed;
+        return failed;
+      }
+      lastObservedBefore = before.value!;
+
+      final report = await SyncEngine.run();
+      if (!report.ok) return report;
+      lastSuccessful = report;
       pending.value = false;
-      await _captureRemoteRevision();
+
+      final after = await PocketBaseTransport.fromSettings().revision();
+      if (after.failure != null) {
+        final failed = SyncReport(
+          at: DateTime.now(),
+          collections: report.collections,
+          failure: after.failure,
+        );
+        SyncEngine.lastReport.value = failed;
+        return failed;
+      }
+
+      if (after.value == lastObservedBefore) {
+        _acceptObservedRevision(after.value!);
+        return report;
+      }
+
+      // Сохраняем только revision, которая была известна ДО текущего pull.
+      // Более новая `after` пока не считается применённой: следующий проход
+      // обязан скачать всё, что появилось между двумя revision-чтениями.
+      _acceptObservedRevision(lastObservedBefore);
     }
-    return report;
+
+    final unstable = SyncReport(
+      at: DateTime.now(),
+      collections: lastSuccessful?.collections ?? const [],
+      failure: const SyncFailure(
+        'REMOTE_UNSTABLE',
+        'Сервер продолжал меняться во время синхронизации. Повторите Sync',
+      ),
+    );
+    SyncEngine.lastReport.value = unstable;
+    return unstable;
   }
 
   /// Только для тестов.
