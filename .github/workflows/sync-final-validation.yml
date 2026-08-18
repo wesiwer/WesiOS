@@ -1,0 +1,105 @@
+name: Final Sync Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'lib/core/sync/**'
+      - 'test/sync_*.dart'
+      - 'server/pb_hooks/wesi_sync_*.js'
+      - 'server/pb_hooks/wesi_sync_*.mjs'
+      - 'server/pb_hooks/wesi_ai_*.js'
+      - 'server/pb_hooks/wesi_ai_*.mjs'
+      - '.github/workflows/sync-final-validation.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: final-sync-validation
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Analyze
+        run: flutter analyze --no-fatal-infos
+
+      - name: Test full Flutter suite
+        run: flutter test
+
+      - name: Validate sync server JavaScript syntax
+        run: |
+          set -euo pipefail
+          for file in \
+            server/pb_hooks/wesi_sync_data_access.js \
+            server/pb_hooks/wesi_sync_lww.js \
+            server/pb_hooks/wesi_sync_atomic.js \
+            server/pb_hooks/wesi_sync_authz.js \
+            server/pb_hooks/wesi_sync_generic_policy.js \
+            server/pb_hooks/wesi_sync_crm_runtime.js \
+            server/pb_hooks/wesi_sync_files_runtime.js \
+            server/pb_hooks/wesi_sync_extra_runtime.js \
+            server/pb_hooks/wesi_sync_context.pb.js \
+            server/pb_hooks/wesi_sync_read.pb.js \
+            server/pb_hooks/wesi_sync_write.pb.js \
+            server/pb_hooks/wesi_ai_sync_writer.js \
+            server/pb_hooks/wesi_ai_lib.js \
+            server/pb_hooks/wesi_ai_audit.js \
+            server/pb_hooks/wesi_ai_task_tools.js \
+            server/pb_hooks/wesi_ai_calendar_write_tools.js \
+            server/pb_hooks/wesi_ai_task_write_tools.js \
+            server/pb_hooks/wesi_ai_knowledge_write_tools.js \
+            server/pb_hooks/wesi_ai_finance_write_tools.js \
+            server/pb_hooks/wesi_ai_crm_write_tools.js \
+            server/pb_hooks/wesi_ai_roadmap_tools.js \
+            server/pb_hooks/wesi_ai_audio_tools.js; do
+            node --check "$file"
+          done
+
+      - name: Run sync server contracts
+        run: |
+          set -euo pipefail
+          node --test \
+            server/pb_hooks/wesi_sync_data_access_contract_test.mjs \
+            server/pb_hooks/wesi_sync_lww_test.mjs \
+            server/pb_hooks/wesi_sync_atomic_test.mjs \
+            server/pb_hooks/wesi_sync_authz_test.mjs \
+            server/pb_hooks/wesi_sync_generic_policy_test.mjs \
+            server/pb_hooks/wesi_sync_context_contract_test.mjs \
+            server/pb_hooks/wesi_sync_revision_contract_test.mjs \
+            server/pb_hooks/wesi_sync_revision_race_test.mjs \
+            server/pb_hooks/wesi_sync_extra_contract_test.mjs \
+            server/pb_hooks/wesi_sync_crm_contract_test.mjs \
+            server/pb_hooks/wesi_sync_files_contract_test.mjs \
+            server/pb_hooks/wesi_sync_unique_migration_test.mjs \
+            server/pb_hooks/wesi_ai_identity_contract_test.mjs \
+            server/pb_hooks/wesi_ai_sync_writer_contract_test.mjs \
+            server/pb_hooks/wesi_ai_no_direct_sync_write_test.mjs
+
+      - name: Final sync invariant scan
+        run: |
+          set -euo pipefail
+          ! grep -R --line-number --include='wesi_ai_*.js' -E '\be\.app\.save\s*\(|\bnew[[:space:]]+Record\s*\(' server/pb_hooks | grep 'wesios_records' || {
+            echo '::error::Found direct Wesi AI wesios_records write bypass'
+            exit 1
+          }
+          grep -q 'UnauthorizedError("Сотрудник деактивирован' server/pb_hooks/wesi_sync_context.pb.js
+          grep -q 'UnauthorizedError("Сотрудник деактивирован' server/pb_hooks/wesi_ai_lib.js
+          grep -q 'authoritativeIds' lib/core/sync/sync_transport.dart
+          grep -q 'LOCAL_CHANGED_DURING_SYNC' lib/core/sync/sync_engine.dart
+          echo FINAL_SYNC_VALIDATION_OK
