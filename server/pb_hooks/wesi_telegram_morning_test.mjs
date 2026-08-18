@@ -3,6 +3,7 @@ import {createRequire} from 'node:module';
 
 const require = createRequire(import.meta.url);
 const morning = require('./wesi_telegram_morning.js');
+const photos = require('./wesi_telegram_morning_photos.js');
 
 const aug18 = morning.localClock(Date.UTC(2026, 7, 18, 8, 0, 0), 0);
 const aug19 = morning.localClock(Date.UTC(2026, 7, 19, 8, 0, 0), 0);
@@ -45,8 +46,16 @@ assert.ok(cleaned.length >= morning.MIN_THREAD_CHARS);
 assert.ok(cleaned.length <= morning.MAX_THREAD_CHARS);
 assert.ok(!cleaned.startsWith('«'));
 
+assert.ok(photos.PHOTO_IDS.length >= 60, `morning photo pool too small: ${photos.PHOTO_IDS.length}`);
+assert.equal(photos.PHOTO_IDS.length, new Set(photos.PHOTO_IDS).size, 'morning photo ids must be unique');
+assert.equal(photos.PHOTOS.length, photos.PHOTO_IDS.length);
+assert.equal(morning.PHOTO_POOL_SIZE, photos.PHOTOS.length);
+for (const url of photos.PHOTOS) {
+  assert.match(url, /^https:\/\/images\.pexels\.com\/photos\/\d+\/pexels-photo-\d+\.jpeg\?/);
+}
+
 const photo = morning.photoFor('2026-08-20');
 assert.ok(photo.startsWith('https://images.pexels.com/photos/'));
 assert.equal(photo, morning.photoFor('2026-08-20'));
 
-console.log('WESI_TELEGRAM_MORNING_AI_GENERATION_OK');
+console.log(`WESI_TELEGRAM_MORNING_AI_GENERATION_OK photoPool=${photos.PHOTOS.length}`);
