@@ -15,12 +15,38 @@ const berlinish = morning.localClock(Date.UTC(2026, 7, 19, 6, 0, 0), 120);
 assert.equal(berlinish.hour, 8);
 assert.equal(berlinish.dateKey, '2026-08-19');
 
-const first = morning.variantFor('nirvana', '2026-08-20', '123');
-const same = morning.variantFor('nirvana', '2026-08-20', '123');
-assert.equal(first, same);
-assert.ok(first.length > 80);
+const promptN = morning.generationPrompt('nirvana', {
+  organizationName: 'WesiOS',
+  dateKey: '2026-08-20',
+  taskCount: 4,
+  taskTitles: ['Закрыть релиз', 'Проверить задачи'],
+  recentTexts: ['Вчерашнее сообщение для проверки неповторяемости.'],
+});
+assert.match(promptN, /общей большой цели/i);
+assert.match(promptN, /командный дух/i);
+assert.match(promptN, /великие дела/i);
+assert.match(promptN, /не выдумывай конкретные достижения/i);
+assert.match(promptN, /Нирвана/);
+assert.match(promptN, /4 задач/);
+
+const promptZ = morning.generationPrompt('zane', {
+  organizationName: 'WesiOS',
+  dateKey: '2026-08-21',
+  taskCount: null,
+  taskTitles: [],
+  recentTexts: [],
+});
+assert.match(promptZ, /Зейн/);
+assert.match(promptZ, /энергичный/i);
+assert.match(promptZ, /проверить актуальные задачи/i);
+
+const cleaned = morning.cleanGenerated('«' + 'Сегодня мы спокойно собираем сильный день. '.repeat(7) + '»');
+assert.ok(cleaned.length >= morning.MIN_THREAD_CHARS);
+assert.ok(cleaned.length <= morning.MAX_THREAD_CHARS);
+assert.ok(!cleaned.startsWith('«'));
+
 const photo = morning.photoFor('2026-08-20');
 assert.ok(photo.startsWith('https://images.pexels.com/photos/'));
 assert.equal(photo, morning.photoFor('2026-08-20'));
 
-console.log('WESI_TELEGRAM_MORNING_ROTATION_OK');
+console.log('WESI_TELEGRAM_MORNING_AI_GENERATION_OK');
