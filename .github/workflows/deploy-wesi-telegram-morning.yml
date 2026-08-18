@@ -1,0 +1,108 @@
+name: Deploy Wesi Telegram Morning
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/pb_hooks/wesi_telegram_morning.js'
+      - 'server/pb_hooks/wesi_telegram.pb.js'
+      - '.github/workflows/deploy-wesi-telegram-morning.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  statuses: write
+
+concurrency:
+  group: wesi-telegram-morning-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      MAIN_HOST: ${{ secrets.WESI_SERVER_HOST }}
+      MAIN_USER: ${{ secrets.WESI_SERVER_USER }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate morning module
+        run: |
+          set -euo pipefail
+          node --check server/pb_hooks/wesi_telegram_morning.js
+          node --check server/pb_hooks/wesi_telegram.pb.js
+          node server/pb_hooks/wesi_telegram_morning_test.mjs
+
+      - name: Prepare SSH
+        env:
+          MAIN_KEY: ${{ secrets.WESI_SERVER_SSH_KEY }}
+          MAIN_KNOWN: ${{ secrets.WESI_SERVER_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          test -n "${MAIN_HOST:-}"
+          test -n "${MAIN_USER:-}"
+          test -n "${MAIN_KEY:-}"
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$MAIN_KEY" > ~/.ssh/main_key
+          chmod 600 ~/.ssh/main_key
+          if [ -n "${MAIN_KNOWN:-}" ]; then
+            printf '%s\n' "$MAIN_KNOWN" > ~/.ssh/main_known_hosts
+          else
+            ssh-keyscan -H "$MAIN_HOST" > ~/.ssh/main_known_hosts 2>/dev/null
+          fi
+          chmod 600 ~/.ssh/main_known_hosts
+
+      - name: Deploy morning module and cron hook
+        run: |
+          set -euo pipefail
+          SSH=(-i "$HOME/.ssh/main_key" -o BatchMode=yes -o UserKnownHostsFile="$HOME/.ssh/main_known_hosts")
+          REMOTE="/tmp/wesi-telegram-morning-$GITHUB_RUN_ID"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "rm -rf '$REMOTE' && mkdir -p '$REMOTE'"
+          scp "${SSH[@]}" \
+            server/pb_hooks/wesi_telegram_morning.js \
+            server/pb_hooks/wesi_telegram.pb.js \
+            "$MAIN_USER@$MAIN_HOST:$REMOTE/"
+          ssh "${SSH[@]}" "$MAIN_USER@$MAIN_HOST" "REMOTE='$REMOTE' bash -s" <<'REMOTE'
+          set -euo pipefail
+          HOOK_DIR=/opt/pocketbase/pb_hooks
+          test -d "$HOOK_DIR"
+          test -w "$HOOK_DIR"
+          atomic_install() {
+            src="$1"; dst="$2"; mode="$3"
+            tmp="$(dirname "$dst")/.deploy-$(basename "$dst").$$.$RANDOM.tmp"
+            cat "$src" > "$tmp"
+            chmod "$mode" "$tmp"
+            cmp -s "$src" "$tmp"
+            mv -f "$tmp" "$dst"
+          }
+          # Install dependency before the hook that requires it.
+          atomic_install "$REMOTE/wesi_telegram_morning.js" "$HOOK_DIR/wesi_telegram_morning.js" 0644
+          atomic_install "$REMOTE/wesi_telegram.pb.js" "$HOOK_DIR/wesi_telegram.pb.js" 0644
+          sleep 4
+          curl -fsS --max-time 8 http://127.0.0.1:8090/api/health >/dev/null
+          cmp -s "$REMOTE/wesi_telegram_morning.js" "$HOOK_DIR/wesi_telegram_morning.js"
+          cmp -s "$REMOTE/wesi_telegram.pb.js" "$HOOK_DIR/wesi_telegram.pb.js"
+          rm -rf "$REMOTE"
+          echo WESI_TELEGRAM_MORNING_DEPLOYED
+          REMOTE
+
+      - name: Cleanup secrets
+        if: always()
+        run: rm -f ~/.ssh/main_key
+
+      - name: Publish deploy status
+        if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const ok = '${{ job.status }}' === 'success';
+            await github.rest.repos.createCommitStatus({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              sha: context.sha,
+              state: ok ? 'success' : 'failure',
+              context: 'Wesi Telegram Morning Deploy',
+              description: ok ? '08:00 Nirvana/Zane morning brief deployed' : 'Morning brief production deploy failed'
+            });
