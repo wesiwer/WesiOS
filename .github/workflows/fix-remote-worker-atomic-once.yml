@@ -1,0 +1,57 @@
+name: Fix Remote Worker Atomic Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-remote-worker-atomic-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Route all remote worker sync writes through atomic boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('server/pb_hooks/wesi_ai_remote_worker.pb.js')
+          s = p.read_text()
+
+          def one(old, new, label):
+              global s
+              if old not in s:
+                  raise SystemExit(f'{label} snippet not found')
+              s = s.replace(old, new, 1)
+
+          one('''const dataAccess = require(`${__hooks}/wesi_ai_data_access.js`);\nconst rw = require(`${__hooks}/wesi_ai_remote_worker_lib.js`);\n''', '''const dataAccess = require(`${__hooks}/wesi_ai_data_access.js`);\nconst rw = require(`${__hooks}/wesi_ai_remote_worker_lib.js`);\nconst atomic = require(`${__hooks}/wesi_sync_atomic.js`);\n''', 'imports')
+
+          one('''function upsert(app, ownerId, org, coll, rid, payload) {\n  let record = findRecord(app, ownerId, coll, rid);\n  if (!record) {\n    const collection = app.findCollectionByNameOrId("wesios_records");\n    record = new Record(collection);\n    record.set("owner", ownerId);\n    record.set("org", org || OWNER_ORG);\n    record.set("coll", coll);\n    record.set("rid", rid);\n  }\n  record.set("payload", payload);\n  record.set("stamp", new Date().toISOString());\n  record.set("deleted", false);\n  app.save(record);\n  return record;\n}\n''', '''function upsert(app, ownerId, org, coll, rid, payload) {\n  const now = new Date().toISOString();\n  atomic.commit(app, {\n    owner: ownerId,\n    org: org || OWNER_ORG,\n    coll: coll,\n    rid: rid,\n    payload: payload,\n    stamp: now,\n    deleted: false,\n  });\n  return findRecord(app, ownerId, coll, rid);\n}\n''', 'upsert')
+
+          one('''  credentialPayload.recentNonces = nonceState.values;\n  credentialPayload.lastAuthenticatedAt = new Date(nowMs).toISOString();\n  credential.set("payload", credentialPayload);\n  credential.set("stamp", new Date(nowMs).toISOString());\n  e.app.save(credential);\n''', '''  credentialPayload.recentNonces = nonceState.values;\n  credentialPayload.lastAuthenticatedAt = new Date(nowMs).toISOString();\n  atomic.commit(e.app, {\n    owner: credential.getString("owner"),\n    org: credential.getString("org"),\n    coll: credential.getString("coll"),\n    rid: credential.getString("rid"),\n    payload: credentialPayload,\n    stamp: new Date(nowMs).toISOString(),\n    deleted: false,\n  });\n''', 'credential nonce')
+
+          one('''    for (let i = 0; i < removable.length && rows.length - i >= MAX_MESSAGES_PER_WORKER; i++) {\n      removable[i].set("deleted", true);\n      removable[i].set("stamp", new Date().toISOString());\n      app.save(removable[i]);\n    }\n''', '''    for (let i = 0; i < removable.length && rows.length - i >= MAX_MESSAGES_PER_WORKER; i++) {\n      const row = removable[i];\n      atomic.commit(app, {\n        owner: row.getString("owner"),\n        org: row.getString("org"),\n        coll: row.getString("coll"),\n        rid: row.getString("rid"),\n        payload: payloadOf(row),\n        stamp: new Date().toISOString(),\n        deleted: true,\n      });\n    }\n''', 'message prune')
+
+          one('''  payload.acked = true;\n  payload.ackedAt = new Date().toISOString();\n  record.set("payload", payload);\n  record.set("stamp", new Date().toISOString());\n  app.save(record);\n  return true;\n''', '''  payload.acked = true;\n  payload.ackedAt = new Date().toISOString();\n  atomic.commit(app, {\n    owner: record.getString("owner"),\n    org: record.getString("org"),\n    coll: record.getString("coll"),\n    rid: record.getString("rid"),\n    payload: payload,\n    stamp: new Date().toISOString(),\n    deleted: false,\n  });\n  return true;\n''', 'message ack')
+
+          one('''  stored.claimedAt = new Date().toISOString();\n  stored.claimedByEmployeeId = ctx.employeeId;\n  stored.credentialId = credentialId;\n  record.set("payload", stored);\n  record.set("stamp", new Date().toISOString());\n  e.app.save(record);\n''', '''  stored.claimedAt = new Date().toISOString();\n  stored.claimedByEmployeeId = ctx.employeeId;\n  stored.credentialId = credentialId;\n  atomic.commit(e.app, {\n    owner: record.getString("owner"),\n    org: record.getString("org"),\n    coll: record.getString("coll"),\n    rid: record.getString("rid"),\n    payload: stored,\n    stamp: new Date().toISOString(),\n    deleted: false,\n  });\n''', 'pairing claim')
+
+          one('''  const publicCredential = rw.publicCredentialPayload(payloadOf(credential));\n  stored.credentialDeliveredAt = new Date().toISOString();\n  record.set("payload", stored);\n  record.set("stamp", new Date().toISOString());\n  e.app.save(record);\n''', '''  const publicCredential = rw.publicCredentialPayload(payloadOf(credential));\n  stored.credentialDeliveredAt = new Date().toISOString();\n  atomic.commit(e.app, {\n    owner: record.getString("owner"),\n    org: record.getString("org"),\n    coll: record.getString("coll"),\n    rid: record.getString("rid"),\n    payload: stored,\n    stamp: new Date().toISOString(),\n    deleted: false,\n  });\n''', 'pairing poll')
+
+          one('''    payload.revokedAt = revokedAt;\n    row.set("payload", payload);\n    row.set("stamp", revokedAt);\n    e.app.save(row);\n''', '''    payload.revokedAt = revokedAt;\n    atomic.commit(e.app, {\n      owner: row.getString("owner"),\n      org: row.getString("org"),\n      coll: row.getString("coll"),\n      rid: row.getString("rid"),\n      payload: payload,\n      stamp: revokedAt,\n      deleted: false,\n    });\n''', 'revoke')
+
+          p.write_text(s)
+          PY
+
+          git config user.name 'WesiOS Atomic Fixes'
+          git config user.email 'actions@users.noreply.github.com'
+          git add server/pb_hooks/wesi_ai_remote_worker.pb.js
+          git commit -m 'fix(sync): make remote worker records atomic'
+          git push origin HEAD:main
