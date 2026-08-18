@@ -26,6 +26,39 @@ class _StringCollection extends SyncCollection<String> {
   String? decode(Map<String, dynamic> fields) => fields['value'] as String?;
 }
 
+class _DelayedPrepareCollection extends SyncCollection<String> {
+  static const String probeBoxName = 'wesios_sync_prepare_probe';
+
+  final Completer<void> started = Completer<void>();
+  final Completer<void> release = Completer<void>();
+  int ensureCalls = 0;
+
+  @override
+  String get name => 'prepare_probe';
+
+  @override
+  String get boxName => probeBoxName;
+
+  @override
+  String idOf(String value) => value;
+
+  @override
+  Map<String, dynamic> encode(String value) => {'value': value};
+
+  @override
+  String? decode(Map<String, dynamic> fields) => fields['value'] as String?;
+
+  @override
+  Future<Box<String>> ensureBox() async {
+    ensureCalls++;
+    if (!started.isCompleted) started.complete();
+    await release.future;
+    return Hive.isBoxOpen(boxName)
+        ? Hive.box<String>(boxName)
+        : Hive.openBox<String>(boxName);
+  }
+}
+
 class _DelayedTransport implements SyncTransport {
   final Completer<void> fetchStarted = Completer<void>();
   final Completer<SyncResult<Map<String, SyncRecord>>> fetchResult =
@@ -83,6 +116,9 @@ void main() {
     if (Hive.isBoxOpen('wesios_sync_lifecycle_test')) {
       await Hive.box<String>('wesios_sync_lifecycle_test').close();
     }
+    if (Hive.isBoxOpen(_DelayedPrepareCollection.probeBoxName)) {
+      await Hive.box<String>(_DelayedPrepareCollection.probeBoxName).close();
+    }
   });
 
   tearDownAll(() async {
@@ -116,5 +152,52 @@ void main() {
       isFalse,
       reason: 'remote data from the old lifecycle must never reach a new box',
     );
+  });
+
+  test('concurrent prepare calls share one box preparation pass', () async {
+    await SyncEngine.reset();
+    final probe = _DelayedPrepareCollection();
+    SyncCodec.collections
+      ..clear()
+      ..add(probe);
+
+    final first = SyncEngine.prepare(now: DateTime.utc(2026, 8, 18, 3));
+    await probe.started.future;
+    final second = SyncEngine.prepare(now: DateTime.utc(2026, 8, 18, 3));
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+
+    expect(probe.ensureCalls, 1,
+        reason: 'prepare must be single-flight for one sync lifecycle');
+
+    probe.release.complete();
+    await Future.wait<void>([first, second]);
+    expect(probe.ensureCalls, 1);
+  });
+
+  test('reset waits an in-flight prepare and next lifecycle prepares again',
+      () async {
+    await SyncEngine.reset();
+    final probe = _DelayedPrepareCollection();
+    SyncCodec.collections
+      ..clear()
+      ..add(probe);
+
+    final preparing = SyncEngine.prepare(now: DateTime.utc(2026, 8, 18, 4));
+    await probe.started.future;
+
+    var resetFinished = false;
+    final resetting = SyncEngine.reset().then((_) => resetFinished = true);
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+    expect(resetFinished, isFalse,
+        reason: 'reset must not detach while old prepare still owns the boxes');
+
+    probe.release.complete();
+    await preparing;
+    await resetting;
+    expect(resetFinished, isTrue);
+
+    await SyncEngine.prepare(now: DateTime.utc(2026, 8, 18, 5));
+    expect(probe.ensureCalls, 2,
+        reason: 'a new lifecycle must not inherit old journal readiness');
   });
 }
