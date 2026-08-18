@@ -1,0 +1,105 @@
+SOURCE=c99b960c2dbc932f921c10f4f4e3ba48feead48c
+PUB_GET=0
+TESTS=0
+=== FAILURES ===
+=== TAIL ===
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: смена логина слишком короткий логин не принимается
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: смена логина тот же логин — не ошибка и ничего не ломает
+✅ /home/runner/work/WesiOS/WesiOS/test/team_session_test.dart: смена логина несуществующему человеку логин не меняется
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: профиль участвует в обмене
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: заполненный профиль уезжает на сервер
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: профиль с другого устройства виден на экране сразу
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: загруженная аватарка переезжает вместе с профилем
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: слишком большая картинка не уезжает целиком
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: legacy профиль ждёт подтверждённый auth-user и затем переносится
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+WesiOS secure session write failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: пустой профиль не отправляется и не затирает чужой
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: секреты в профиль не попадают
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ /home/runner/work/WesiOS/WesiOS/test/profile_sync_test.dart: (tearDownAll)
+WesiOS secure session delete failed: Binding has not yet been initialized.
+The "instance" getter on the ServicesBinding binding mixin is only available once that binding has been initialized.
+Typically, this is done by calling "WidgetsFlutterBinding.ensureInitialized()" or "runApp()" (the latter calls the former). Typically this call is done in the "void main()" method. The "ensureInitialized" method is idempotent; calling it multiple times is not harmful. After calling that method, the "instance" getter will return the binding.
+In a test, one can call "TestWidgetsFlutterBinding.ensureInitialized()" as the first line in the test's "main()" method to initialize the binding.
+If ServicesBinding is a custom binding mixin, there must also be a custom binding class, like WidgetsFlutterBinding, but that mixes in the selected binding, and that is the class that must be constructed before using the "instance" getter.
+::endgroup::
+::group::✅ Passing tests
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера оставляет только цифры и ведущий плюс
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера пустое и мусор дают пустую строку
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: нормализация номера плюс не в начале не считается плюсом
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети готовый адрес берётся как есть
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети собачка превращается в адрес
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети русские названия сетей тоже понимаются
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети WhatsApp получает номер без знаков
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети незнакомая сеть с доменом открывается как адрес
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети незнакомая сеть без домена ссылкой не становится
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети пустое значение ссылкой не становится
+✅ /home/runner/work/WesiOS/WesiOS/test/contact_actions_test.dart: ссылки на соцсети регистр названия сети не важен
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: help перечисляет реальные диагностические команды
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: обычная команда безопасно печатается в prompt
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: echo учитывает кавычки и сохраняет историю
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: повтор команды не дублируется в истории
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: токен не попадает в историю и маскируется для экрана
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: JWT разбирается локально без вывода полного секрета
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: отпечаток токена имеет SHA-256 и не раскрывает токен
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: каталог содержит WesiOS, сертификаты, SSH и токены
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: templates печатает готовые команды
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: шаблоны и команды привязываются к выбранному серверу
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: clear возвращает управляющий флаг без вывода
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: неизвестная команда объясняет, как открыть справку
+✅ /home/runner/work/WesiOS/WesiOS/test/sysadmin_console_test.dart: автодополнение предлагает команды по префиксу
+::endgroup::
+
+🎉 1649 tests passed.
