@@ -1,0 +1,15 @@
+roadmap_projects_missing=0
+roadmap_projects_extra=0
+roadmap_projects_payload_diff=0
+roadmap_items_missing=0
+roadmap_items_extra=0
+roadmap_items_payload_diff=2
+crm_clients_missing=0
+crm_clients_extra=0
+crm_clients_payload_diff=1
+crm_deals_missing=0
+crm_deals_extra=0
+crm_deals_payload_diff=1
+crm_interactions_missing=0
+crm_interactions_extra=0
+crm_interactions_payload_diff=0
