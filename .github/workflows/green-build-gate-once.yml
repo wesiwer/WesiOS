@@ -1,5 +1,5 @@
 name: WesiOS Green Build Gate
-# Verification run for current main 0.22.28+103 after signed release toolchain alignment.
+# Verification run for latest merged main after Telegram + sync/release hardening.
 
 on:
   push:
