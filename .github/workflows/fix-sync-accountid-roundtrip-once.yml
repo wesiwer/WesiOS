@@ -1,0 +1,45 @@
+name: Fix Sync AccountId Roundtrip Once
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/fix-sync-accountid-roundtrip-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Preserve nullable transaction accountId in sync decode
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('lib/core/sync/sync_codec.dart')
+          s=p.read_text()
+          anchor="class TransactionsSync extends SyncCollection<TransactionModel> {"
+          i=s.index(anchor)
+          j=s.index("class TasksSync extends", i)
+          block=s[i:j]
+          old="      accountId: accountId,\n"
+          new="      accountId: _strOrNull(fields['accountId']),\n"
+          if old not in block: raise SystemExit('transaction accountId target not found')
+          block=block.replace(old,new,1)
+          p.write_text(s[:i]+block+s[j:])
+          PY
+          git diff --check
+      - name: Commit fix to main
+        shell: bash
+        run: |
+          git config user.name 'WesiOS CI Repair'
+          git config user.email 'actions@users.noreply.github.com'
+          git add lib/core/sync/sync_codec.dart
+          git commit -m 'fix(sync): preserve nullable transaction account id'
+          git pull --rebase origin main
+          git push origin HEAD:main
